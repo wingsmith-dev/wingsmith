@@ -232,6 +232,10 @@ type Config struct {
 	BenchmarkCPU    string
 	BenchmarkMemory string
 
+	// BenchmarkTokenSecret names a Secret in WorkloadNamespace handed to benchmark jobs as
+	// environment, for a tokenizer in a gated repository. Empty, the default, hands them none.
+	BenchmarkTokenSecret string
+
 	// legacyEFA records that the fabric came from HANGAR_EFA_DEVICES, for a startup warning.
 	legacyEFA bool
 }
@@ -299,6 +303,7 @@ func Load() (*Config, error) {
 		BenchmarkTimeout:      l.duration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
 		BenchmarkCPU:          env("HANGAR_BENCHMARK_CPU", "500m"),
 		BenchmarkMemory:       env("HANGAR_BENCHMARK_MEMORY", "1Gi"),
+		BenchmarkTokenSecret:  env("HANGAR_BENCHMARK_TOKEN_SECRET", ""),
 		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", ""),
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),

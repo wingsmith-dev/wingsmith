@@ -413,3 +413,32 @@ func TestBenchmarkWithNoTokenizerUsesTheWritableCacheOutright(t *testing.T) {
 		t.Errorf("the harness has nowhere writable to put a tokenizer:\n%s", body)
 	}
 }
+
+// No credential reaches a harness unless the cluster names one.
+func TestBenchmarkCarriesNoTokenUnlessConfigured(t *testing.T) {
+	if from := mustBenchmarkJob(t, benchParams(nil)).Spec.Template.Spec.Containers[0].EnvFrom; len(from) != 0 {
+		t.Errorf("envFrom = %+v, want none by default", from)
+	}
+
+	opts, bench := benchOpts()
+	bench.TokenSecret = "hf-token-secret"
+	params := benchParams(nil)
+	job, err := BenchmarkJob(params["benchmark_id"], params, opts, bench)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := job.Spec.Template.Spec.Containers[0].EnvFrom
+	if len(from) != 1 || from[0].SecretRef == nil || from[0].SecretRef.Name != "hf-token-secret" {
+		t.Errorf("envFrom = %+v, want the configured secret", from)
+	}
+}
+
+func TestIgnoredBenchmarkParametersNamesWhatTheJobDoesNotRun(t *testing.T) {
+	got := IgnoredBenchmarkParameters(map[string]string{"command": "evalscope eval", "version_command": "", "model": "m"})
+	if strings.Join(got, ",") != "command" {
+		t.Errorf("ignored = %v, want [command]", got)
+	}
+	if got := IgnoredBenchmarkParameters(benchParams(nil)); len(got) != 0 {
+		t.Errorf("ignored = %v for an ordinary aiperf request, want none", got)
+	}
+}

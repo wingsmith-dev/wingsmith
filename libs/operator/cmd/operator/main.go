@@ -178,6 +178,7 @@ func run() error {
 			CPU:          cfg.BenchmarkCPU,
 			Memory:       cfg.BenchmarkMemory,
 			Images:       cfg.BenchmarkImages,
+			TokenSecret:  cfg.BenchmarkTokenSecret,
 		},
 		Logs:             logs,
 		BenchmarkTimeout: cfg.BenchmarkTimeout,

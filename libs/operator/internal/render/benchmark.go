@@ -52,6 +52,29 @@ type BenchmarkOptions struct {
 	// image is refused, and an empty list refuses every run: the plane chooses the image, so
 	// this list is what bounds the code a benchmark can execute on the cluster.
 	Images []string
+
+	// TokenSecret names a Secret in the workload namespace whose keys become the harness's
+	// environment, for a tokenizer in a gated Hugging Face repository. Empty, the default, gives
+	// the job no credential: the plane picks what a benchmark runs, so a token in its environment
+	// is a token the plane could read back out.
+	TokenSecret string
+}
+
+// ignoredBenchmarkParameters are parameters the plane may send that this operator does not run:
+// the command line is built here from typed parameters, and the version and report locations
+// are the harness's own.
+var ignoredBenchmarkParameters = []string{"command", "report_glob", "version_command"}
+
+// IgnoredBenchmarkParameters names the parameters in a request that the job will not use, so
+// the run's result can say a supplied command line was replaced rather than run.
+func IgnoredBenchmarkParameters(parameters map[string]string) []string {
+	var out []string
+	for _, key := range ignoredBenchmarkParameters {
+		if strings.TrimSpace(parameters[key]) != "" {
+			out = append(out, key)
+		}
+	}
+	return out
 }
 
 // Defaults for a load generator's request. Deliberately modest: no CPU limit is set anywhere
@@ -308,12 +331,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 							{Name: "HANGAR_BENCHMARK_ID", Value: benchmarkID},
 							{Name: "HANGAR_ARTIFACT_BASE", Value: bench.ArtifactBase},
 						},
-						EnvFrom: []corev1.EnvFromSource{{
-							SecretRef: &corev1.SecretEnvSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "hf-token-secret"},
-								Optional:             ptr(true),
-							},
-						}},
+						EnvFrom: benchmarkEnvFrom(bench),
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "model-cache", MountPath: "/models", ReadOnly: true},
 							{Name: "artifacts", MountPath: artifactDir},
@@ -325,6 +343,20 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 			},
 		},
 	}, nil
+}
+
+// benchmarkEnvFrom is the configured token Secret as environment, or nothing.
+func benchmarkEnvFrom(bench BenchmarkOptions) []corev1.EnvFromSource {
+	name := strings.TrimSpace(bench.TokenSecret)
+	if name == "" {
+		return nil
+	}
+	return []corev1.EnvFromSource{{
+		SecretRef: &corev1.SecretEnvSource{
+			LocalObjectReference: corev1.LocalObjectReference{Name: name},
+			Optional:             ptr(true),
+		},
+	}}
 }
 
 // BenchmarkJobName is the object name for a run's job. Keyed on the run and not the deployment:

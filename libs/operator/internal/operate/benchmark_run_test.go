@@ -480,3 +480,17 @@ func TestAnOperationDeadlineAlsoBoundsABenchmark(t *testing.T) {
 		t.Fatalf("phase = %q, want failed at the deadline", last.Phase)
 	}
 }
+
+// A command line the plane sent is not run, and the result says so instead of passing the
+// operator's own run off as the one that was asked for.
+func TestABenchmarkResultNamesTheParametersItDidNotRun(t *testing.T) {
+	logs := stubLogs{out: framed("aiperf 0.4.1", `{"time_to_first_token":{"avg":182.4}}`)}
+	rec, _ := runBenchmark(t, logs, benchmarkOperation(map[string]string{"command": "aiperf profile --custom"}),
+		finishedJob(batchv1.JobComplete, ""),
+		benchmarkPod("bench-abc", time.Now()),
+	)
+	op, _ := rec.lastOperation()
+	if op.Result["ignored_parameters"] != "command" {
+		t.Errorf("result = %v, want ignored_parameters=command", op.Result)
+	}
+}

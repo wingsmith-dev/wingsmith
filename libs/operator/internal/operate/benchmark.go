@@ -119,6 +119,10 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 	if renderErr != nil {
 		return nil, renderErr
 	}
+	if ignored := render.IgnoredBenchmarkParameters(op.Parameters); len(ignored) > 0 {
+		e.Log.Warn("benchmark parameters not used; the operator builds the command line itself",
+			"benchmark", benchmarkID, "ignored", ignored)
+	}
 
 	if err := e.startJob(ctx, job); err != nil {
 		return nil, err
@@ -159,6 +163,9 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 	}
 	if version != "" {
 		result["harness_version"] = version
+	}
+	if ignored := render.IgnoredBenchmarkParameters(op.Parameters); len(ignored) > 0 {
+		result["ignored_parameters"] = strings.Join(ignored, ",")
 	}
 
 	if jobErr != nil {
