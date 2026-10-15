@@ -131,7 +131,7 @@ def _recipe(path: str, doc: dict[str, Any]) -> dict[str, Any]:
         "hardware_overrides": doc.get("hardware_overrides") or {},
         # `strategy_hardware` opts a strategy in or out per GPU and can name one that
         # `compatible_strategies` does not list at all; `strategy_min_gpus` is the GPU
-        # floor a strategy needs, and its exact-GPU-id form is how the corpus says K3
+        # floor a strategy needs, and its exact-GPU-id form is how the corpus says a model
         # fits two H200 nodes and needs four H100 ones. Both were dropped in the first
         # pass and both change the answer to "where can this run".
         "strategy_hardware": doc.get("strategy_hardware") or {},
