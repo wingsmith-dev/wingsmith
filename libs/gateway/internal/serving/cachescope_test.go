@@ -82,7 +82,7 @@ func TestACallerCannotNameAnotherTenantsSalt(t *testing.T) {
 	}
 }
 
-// TestTheMediaIdentityStillHoldsInsideATenant keeps the 2026-09-12 fix: two images
+// TestTheMediaIdentityStillHoldsInsideATenant keeps the media identity fix: two images
 // from one tenant are still two identities.
 func TestTheMediaIdentityStillHoldsInsideATenant(t *testing.T) {
 	scope := cacheScope{Tenant: "ten_acme"}

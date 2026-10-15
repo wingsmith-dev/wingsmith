@@ -19,11 +19,10 @@ const (
 //
 // The rule, from what Dynamo's frontend serves in front of each kind of worker:
 //
-//   - A text upstream answers everything except the image and video generation paths. It has
-//     never been refused a path before, and the only paths added here are the ones no chat
-//     engine serves.
+//   - A text upstream answers every forwarded path except the image and video generation
+//     paths, which no chat engine serves.
 //   - An image upstream answers `/v1/images/*` and `/v1/chat/completions`. The second was
-//     verified on site-a on 2026-09-23: a chat request to an omni image model returns the image
+//     verified on a live deployment: a chat request to an omni image model returns the image
 //     as an `image_url` content part. Everything else — completions, embeddings, messages,
 //     responses, video — has no handler in front of a diffusion worker.
 //   - A video upstream answers `/v1/videos` and nothing else. Chat against a video model was

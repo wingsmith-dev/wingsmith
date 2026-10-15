@@ -13,7 +13,7 @@ import (
 
 // The defect this scope was added for. An endpoint answers on every path the
 // gateway fronts, and a policy is attached to the endpoint — so before a rule
-// could name a route, a temperature pin measured against Moonshot's chat
+// could name a route, a temperature pin measured against the provider's chat
 // completions was enforced against embeddings, Anthropic messages and the
 // responses API as well, none of which anybody had measured.
 func TestARouteScopedRuleIsInertOnEveryOtherPath(t *testing.T) {
@@ -138,7 +138,7 @@ func TestDottedPathResolution(t *testing.T) {
 
 // The concrete conformance failure this language was extended for. K3 answers
 // 400 to `{"thinking":{"keep":"all"}}` with "thinking.type must be enabled,
-// disabled, or adaptive", and Moonshot's contract is that an omitted type means
+// disabled, or adaptive", and the provider's contract is that an omitted type means
 // enabled — so the gateway spells it out on the way through.
 func TestDefaultFillsOnlyWhenTheParentIsPresent(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
@@ -628,7 +628,7 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 //
 // Dropping `reasoning_effort` makes it *ignored*, which is one half of K3's
 // contract. The other half is that `thinking.effort` is *honoured*, and the drop
-// does nothing for it. Measured on our endpoint 2026-09-04, asking the model its
+// does nothing for it. Measured on a live endpoint, asking the model its
 // own effective effort — the vendor suite's `_ask_effort` probe, which reads the
 // resolved level off the system prompt instead of inferring it from the length
 // of the trace — answers `max` for `thinking.effort=low` sent alone, with no
@@ -940,7 +940,7 @@ func mediaBody(part string) []byte {
 // The defect. A video whose bytes cannot be a container reached the worker, which
 // raised a Python exception with no status on it; the frontend had nothing to
 // triage and answered 500 `Failed to generate completions` to a request that was
-// the caller's mistake. Measured against model-a on 2026-09-10.
+// the caller's mistake, as measured on a live deployment.
 func TestAnUndecodableVideoIsRefusedRatherThanForwarded(t *testing.T) {
 	for _, tc := range []struct {
 		name string

@@ -35,9 +35,9 @@ var saltParts = map[string]string{
 // request with no `mm_features`, `_gen_mm_extra_hash_keys` contributes nothing,
 // and the prefix-cache block hash is token ids alone. Two different images of
 // the same pixel dimensions expand to the same placeholder run, so they hash
-// identically and the second request is served the first one's KV — measured on
-// `cluster-site-d` as 0 of 12 correct at concurrency 12, against 12 of
-// 12 with a salt.
+// identically and the second request is served the first one's KV — measured
+// on a disaggregated deployment as 0 of 12 correct at concurrency 12, against
+// 12 of 12 with a salt.
 //
 // `cache_salt` is the one field that survives that handoff into the block hash,
 // so deriving it from the media is how the identity the engine dropped is put
@@ -56,11 +56,11 @@ var saltParts = map[string]string{
 //
 // The text is in the digest for the same reason the media is, and the media
 // alone was not enough. Deriving the salt from the media put the image identity
-// back and was verified 24 of 24 on 2026-09-12, but it makes every question
-// about one image share a salt, and a prompt that differs only after the
-// placeholder run still collides in the block hash underneath — measured on
-// 2026-09-14 as one answer served to six different questions about one
-// document, on both endpoints, and reproduced under a caller's own shared salt,
+// back and was verified 24 of 24, but it makes every question about one image
+// share a salt, and a prompt that differs only after the placeholder run still
+// collides in the block hash underneath — measured as one answer served to six
+// different questions about one document, and reproduced under a caller's own
+// shared salt,
 // so the collision is the engine's and the salt is only the lever we hold. An
 // identity the engine cannot contradict is therefore the whole prompt: same
 // request means the same salt and a repeat still reuses everything, a different

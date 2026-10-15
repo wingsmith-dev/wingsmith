@@ -187,11 +187,23 @@ Every text generation request (`/v1/chat/completions`, `/v1/completions`, `/v1/r
   customer there, and gets one cache per customer. The header is ignored on the public listener and
   removed before the request leaves this hop.
 
-A request carrying media still has the prompt identity folded in on top (`cachesalt.go`), so the
-2026-09-12 image collision stays closed inside a tenant. A caller's own `cache_salt` is folded in,
+A request carrying media still has the prompt identity folded in on top (`cachesalt.go`), so two
+different images of the same size cannot share KV blocks inside a tenant. A caller's own `cache_salt` is folded in,
 never honoured as it stands: it can narrow its own sharing and can never name another tenant's.
 `x-tenant-id`, which Dynamo reads as a salt that overrides the body's, is stripped with the other
 steering headers. An endpoint with no owning tenant on the internal listener is left as it was.
+
+**What the media salt costs.** It works around an engine defect, not a gateway choice: on a
+disaggregated deployment the decode worker receives a multimodal prompt as token ids with the media
+dropped, so its prefix-cache hash cannot tell two images of the same size apart, and two prompts
+that differ only after the image collide too. The only identity the engine cannot contradict is the
+whole prompt, so every request carrying media gets a salt of its own. A repeat of the exact same
+request still reuses its cache; anything else does not. In practice **a multi-turn conversation that
+carries media gets no prefix-cache reuse from one turn to the next**, and every turn pays full
+prefill for the whole conversation, images included. Text-only requests are unaffected. Any
+prefix-cache hit rate or time-to-first-token figure quoted for an endpoint holds for text traffic
+only. The salt can be narrowed back to the media identity once the engine carries multimodal
+identity across the prefill/decode handoff.
 
 The salt is spliced into the bytes that arrived rather than written by re-encoding the body: a text
 request's `nvext` is the only part decoded (`splicedCacheSalt`). Re-encoding cost about 31 ms on a

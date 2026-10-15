@@ -16,11 +16,13 @@ import (
 const steeringHeaderPrefix = "x-dynamo-"
 
 // steeringHeaders are the names outside that prefix which Dynamo 1.5 reads for the
-// same purposes: the unprefixed aliases of the worker and rank pins, and the agent
-// harness session headers that bind a session to one worker once session affinity is
-// turned on. Affinity is off on the fleet today, which is exactly why these cannot be
-// left to pass: they would start pinning workers the day it is enabled, with nothing
-// in this repository changing.
+// same purposes: the unprefixed aliases of the worker and rank pins, and the
+// coding-agent session headers that bind a session to one worker once session
+// affinity is turned on. The session headers carry the names of the client tools that
+// send them because that is how Dynamo reads them; the gateway gives no client special
+// treatment and strips every one alike. With affinity off these do nothing, which is
+// exactly why they cannot be left to pass: they would start pinning workers the day it
+// is enabled, with nothing in this repository changing.
 //
 // `x-tenant-id` is the odd one: Dynamo (since 1.4) reads it as the request's
 // `cache_salt` and lets it override the body's. Passed through, it would let a caller

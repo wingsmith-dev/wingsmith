@@ -25,7 +25,7 @@ const (
 	responsesRoute  = "/v1/responses"
 )
 
-// kimiPolicy is the shape the Moonshot comparison produced: every pinned
+// kimiPolicy is the shape the reference-provider comparison produced: every pinned
 // parameter is an enum of one, and every one of them was measured against chat
 // completions and now says so.
 func kimiPolicy() *plane.Policy {
@@ -86,7 +86,7 @@ func TestAbsentParameterIsNotAViolation(t *testing.T) {
 	}
 }
 
-// The matrix measured against api.moonshot.ai/kimi-k3 on 2026-09-04. Exactly
+// The matrix measured against the reference provider's hosted API. Exactly
 // one cell is refused, and the two easy over-approximations of it — "an object
 // tool_choice" and "a named function" — both refuse requests the provider
 // serves.
@@ -111,7 +111,7 @@ func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 		{"named, thinking left to the default", named, thinkingOn, true},
 		{"named, thinking asked for", named, thinkingOnLoud, true},
 		{"named, thinking switched off", named, thinkingOff, false},
-		// The template spelling is not read. Moonshot has no
+		// The template spelling is not read. The provider has no
 		// `chat_template_kwargs`, ignores it and thinks anyway, so a request
 		// carrying it is in the refused cell there whatever it says. The
 		// endpoint's policy drops the field before the engine sees it, which is
@@ -659,7 +659,7 @@ func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 	}
 }
 
-// `chat_template_kwargs` is a vLLM concept and not a provider one. Moonshot has
+// `chat_template_kwargs` is a vLLM concept and not a provider one. The provider has
 // no such field, ignores it, and thinks anyway — so honouring it here answered
 // 200 to a request the provider answers 400 to, and turned thinking off on an
 // endpoint sold as consistent with one that leaves it on.
@@ -713,9 +713,9 @@ func TestTheTemplateThinkingKwargIsTakenOutOfTheBody(t *testing.T) {
 }
 
 // allowedToolsPolicy is the pair of drops that answers `tool_choice:
-// {"type":"allowed_tools",...}` the way Moonshot's own frontend does.
+// {"type":"allowed_tools",...}` the way the provider's own frontend does.
 //
-// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-10: the field is
+// Measured against the reference provider's hosted API: the field is
 // accepted and ignored. `prompt_tokens` is 202 whether it is sent or not, and
 // `{"mode":"required","tools":[get_time]}` on a weather question still calls
 // `get_weather`. So the vendor neither filters the tool list nor forces the
@@ -772,7 +772,7 @@ func TestAllowedToolsIsTakenOutOfTheBodyAndNothingElseIs(t *testing.T) {
 	}
 }
 
-// The provider's temperature pin, both modes, as measured on 2026-09-11.
+// The provider's temperature pin, both modes, as measured.
 //
 // Two cells are accepted and every other one is a 400, which is why this is a
 // predicate rather than an `enum` on the key: the accepted value depends on

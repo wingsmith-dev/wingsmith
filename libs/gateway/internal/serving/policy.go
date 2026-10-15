@@ -24,6 +24,14 @@ const supportedPolicyVersion = 2
 
 // denials are the wire features a policy may refuse by name.
 //
+// These and `diagnoses` below are the gateway's built-in predicates. None of
+// them applies to any endpoint by default: a plane policy selects one by name
+// for an endpoint whose terms call for it. Each reproduces a behaviour measured
+// against a hosted provider's own API, so that an endpoint sold as consistent
+// with that provider refuses what the provider refuses; the names are JSON
+// paths and not provider names, and nothing here is specific to one vendor's
+// deployment.
+//
 // A rule names one of these in its `predicate`, which is a namespace of its own
 // and never a JSON path: a key is read out of the body, a predicate is looked
 // up here. A name here describes a refusal in the terms a policy author can
@@ -37,10 +45,10 @@ const supportedPolicyVersion = 2
 // not recognise is left to the upstream, which will answer for it. Refusing on
 // a guess trades a conformance gap for a broken request.
 var denials = map[string]func(map[string]json.RawMessage) bool{
-	// Moonshot answers this one 400 `invalid_request_error`, with the message
-	// "tool_choice 'specified' is incompatible with thinking enabled".
-	// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-04. The full
-	// matrix has exactly one refused cell:
+	// The reference provider answers this one 400 `invalid_request_error`,
+	// with the message "tool_choice 'specified' is incompatible with thinking
+	// enabled". The full matrix, measured against its hosted API, has exactly
+	// one refused cell:
 	//
 	//	tool_choice                     thinking on   thinking off
 	//	auto / none / required          200           200
@@ -94,8 +102,8 @@ var diagnoses = map[string]func(map[string]json.RawMessage) (code string, messag
 
 // temperaturePins are the only temperature the provider accepts, per thinking mode.
 //
-// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-11. The matrix is
-// two cells wide and every other value in it is a 400:
+// Measured against the reference provider's hosted API. The matrix is two
+// cells wide and every other value in it is a 400:
 //
 //	temperature   thinking on   thinking off
 //	1.0           200           400
@@ -103,8 +111,8 @@ var diagnoses = map[string]func(map[string]json.RawMessage) (code string, messag
 //	0.0           400           400
 //
 // Which is a stricter rule than an `enum` on the key can express, and stricter
-// than the vendor verifier's own table believes. `IMMUTABLE_PARAMS` asserts 0.6
-// and 0.0 are both accepted with thinking on; the provider those tests describe
+// than the provider's published conformance table believes, which lists 0.6
+// and 0.0 as accepted with thinking on; the provider those tests describe
 // refuses both. That contradiction is the whole reason this is a term an
 // endpoint opts into rather than behaviour compiled in: one document asks for
 // the table, the other asks for the provider, and which one an endpoint is sold
@@ -179,14 +187,14 @@ func isNamedFunctionChoice(raw json.RawMessage) bool {
 // thinkingEnabled reports whether this request positively reaches the model
 // thinking.
 //
-// Absent means enabled: K3 thinks unless it is told not to, so a caller who
-// sends no `thinking` at all is in the refused cell.
+// Absent means enabled: the model thinks unless it is told not to, so a caller
+// who sends no `thinking` at all is in the refused cell.
 //
 // `thinking.type` is the only spelling read. `chat_template_kwargs.thinking` is
 // what the vLLM chat template reads and it used to be read here too, on the
 // grounds that a caller who had correctly switched thinking off should not be
 // refused for it. That was true of the engine and never of the provider:
-// Moonshot has no `chat_template_kwargs`, ignores it, and thinks anyway — so a
+// the provider has no `chat_template_kwargs`, ignores it, and thinks anyway — so a
 // request carrying it is in the *refused* cell there, and honouring it here
 // answered 200 where the endpoint's own provider answers 400.
 //
@@ -227,22 +235,22 @@ func objectField(raw json.RawMessage, name string) (value any, readable bool) {
 	return object[name], true
 }
 
-// maxToolNameLength is the longest function name K3 takes. It is deliberately
-// not OpenAI's 64: this endpoint sells consistency with Moonshot, and narrowing
-// the bound to the one most clients assume would refuse names the provider
-// serves.
+// maxToolNameLength is the longest function name the provider takes. It is
+// deliberately not OpenAI's 64: an endpoint using this rule sells consistency
+// with that provider, and narrowing the bound to the one most clients assume
+// would refuse names the provider serves.
 const maxToolNameLength = 256
 
-// malformedMessageTools reports a tool declared on a message in a shape K3
-// answers 400 to, and says which declaration and why.
+// malformedMessageTools reports a tool declared on a message in a shape the
+// provider answers 400 to, and says which declaration and why.
 //
-// K3 lets a caller attach tools to a `system` message instead of, or as well
-// as, the request-level array. The engine behind this endpoint does not read
-// that field at all — it drops it on the way through — so every malformed
+// The provider lets a caller attach tools to a `system` message instead of, or
+// as well as, the request-level array. The engine behind this endpoint does not
+// read that field at all — it drops it on the way through — so every malformed
 // declaration currently gets a 200 with the tool silently missing, and nothing
 // below this line will ever catch one. That is the gap this rule closes.
 //
-// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-04. Refused:
+// Measured against the reference provider's hosted API. Refused:
 //
 //	tools on a user or on an assistant message
 //	tools beside non-empty content on a system message
@@ -380,7 +388,7 @@ func toolDeclaration(raw json.RawMessage) (name string, fault string) {
 	return name, ""
 }
 
-// isToolName reports a name K3 will take, length aside.
+// isToolName reports a name the provider will take, length aside.
 //
 // A digit is allowed everywhere except first. That asymmetry is the vendor's,
 // not a typo here: `1bad_name` is refused where `bad_name1` is not, and a rule
