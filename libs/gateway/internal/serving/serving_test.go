@@ -206,7 +206,7 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 // as one of this hop's own objects. A 4xx engine message may be quoted inside
 // it, sanitised; a 5xx never is; the address of what is behind this hop never is.
 func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {
-	secret := "kimi-k3-frontend.dynamo.svc.cluster.local"
+	secret := "model-frontend.dynamo.svc.cluster.local"
 	for _, test := range []struct {
 		name   string
 		status int
@@ -341,7 +341,7 @@ func TestARedirectLeavesHereAsAPath(t *testing.T) {
 		upstream string
 		want     string
 	}{
-		{"http://kimi-k3-frontend.dynamo.svc.cluster.local:8000/v1/models", "/v1/models"},
+		{"http://model-frontend.dynamo.svc.cluster.local:8000/v1/models", "/v1/models"},
 		{"https://clu_ap.tunnel.hangar.internal/v1/models?limit=2", "/v1/models?limit=2"},
 		{"http://10.0.3.4:8000/v1/models#top", "/v1/models#top"},
 		{"/v1/models", "/v1/models"},

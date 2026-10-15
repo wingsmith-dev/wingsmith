@@ -87,7 +87,7 @@ func TestStreamScope(t *testing.T) {
 
 // A key is a JSON path, which is the whole reason `thinking.type` is now
 // writable as a rule: v1 could only name a top-level field, so the one term the
-// K3 endpoint most needed could not be said at all.
+// reference endpoint most needed could not be said at all.
 func TestDottedPathResolution(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Key: "thinking.type", Enum: []any{"enabled", "disabled", "adaptive"}},
@@ -136,7 +136,7 @@ func TestDottedPathResolution(t *testing.T) {
 	}
 }
 
-// The concrete conformance failure this language was extended for. K3 answers
+// The concrete conformance failure this language was extended for. The reference provider answers
 // 400 to `{"thinking":{"keep":"all"}}` with "thinking.type must be enabled,
 // disabled, or adaptive", and the provider's contract is that an omitted type means
 // enabled — so the gateway spells it out on the way through.
@@ -504,19 +504,19 @@ func TestARouteScopedRefusalDoesNotReachAnotherPathOnTheWire(t *testing.T) {
 	server, _ := upstreamServer(t)
 
 	route := routeTo(t, server.URL, nil)
-	route.Policy = kimiPolicy()
-	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"kimi": route}}})
+	route.Policy = referencePolicy()
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"ref": route}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, chatRoute,
-		strings.NewReader(`{"model":"kimi","temperature":0.7}`)))
+		strings.NewReader(`{"model":"ref","temperature":0.7}`)))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("chat completions: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, embeddingsRoute,
-		strings.NewReader(`{"model":"kimi","input":"hello","temperature":0.7}`)))
+		strings.NewReader(`{"model":"ref","input":"hello","temperature":0.7}`)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("embeddings: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -542,7 +542,7 @@ func assertSameJSON(t *testing.T, got []byte, want string) {
 }
 
 // The second conformance failure this language was extended for, and the one
-// that needed a term the shape did not have. K3's contract — their own
+// that needed a term the shape did not have. The reference provider's contract — its own
 // `test_reasoning_effort_ignored_when_effort_present` — is that a request
 // carrying both `thinking.effort` and the OpenAI-style `reasoning_effort`
 // honours the first and silently ignores the second.
@@ -626,7 +626,7 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 
 // What the drop above was measured against, and what it turned out not to be.
 //
-// Dropping `reasoning_effort` makes it *ignored*, which is one half of K3's
+// Dropping `reasoning_effort` makes it *ignored*, which is one half of the reference provider's
 // contract. The other half is that `thinking.effort` is *honoured*, and the drop
 // does nothing for it. Measured on a live endpoint, asking the model its
 // own effective effort — the vendor suite's `_ask_effort` probe, which reads the
@@ -933,7 +933,7 @@ const (
 )
 
 func mediaBody(part string) []byte {
-	return []byte(`{"model":"moonshotai/kimi-k3","messages":[{"role":"user","content":[` +
+	return []byte(`{"model":"org/reasoning-model","messages":[{"role":"user","content":[` +
 		`{"type":"text","text":"what is in this"},` + part + `]}]}`)
 }
 
@@ -1053,10 +1053,10 @@ func TestMediaThisRuleHasNoStandingOverIsForwarded(t *testing.T) {
 // being wrong here is every request against the endpoint.
 func TestBodiesWithoutOpenAIMediaPartsAreUntouched(t *testing.T) {
 	for _, body := range []string{
-		`{"model":"moonshotai/kimi-k3","messages":[{"role":"user","content":"hi"}]}`,
-		`{"model":"moonshotai/kimi-k3","max_tokens":16,"messages":[{"role":"user",
+		`{"model":"org/reasoning-model","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"org/reasoning-model","max_tokens":16,"messages":[{"role":"user",
 		  "content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + stubBytes + `"}}]}]}`,
-		`{"model":"moonshotai/kimi-k3","input":"hi"}`,
+		`{"model":"org/reasoning-model","input":"hi"}`,
 	} {
 		if _, message, ok := checkPolicy(mediaPolicy, chatRoute, []byte(body)); !ok {
 			t.Fatalf("refused a body carrying no OpenAI media part: %s\n%s", message, body)

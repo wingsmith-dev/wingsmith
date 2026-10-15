@@ -20,7 +20,7 @@ func rule(fields string) string {
 }
 
 // planeWire is what app.modules.endpoints.services.endpoint_policy serialises
-// for a Kimi K3 endpoint: the pinned parameters, the tool_choice denial, the
+// for the reference endpoint: the pinned parameters, the tool_choice denial, the
 // `thinking.type` default and the `reasoning_effort` drop — every one of them
 // scoped to the path it was measured on.
 var planeWire = `{"version":2,"rules":[` + strings.Join([]string{
@@ -70,7 +70,7 @@ func TestPlaneWireContract(t *testing.T) {
 		}
 	}
 
-	// Exactly what Moonshot answered 400 to in the 2026-09-01 comparison.
+	// Exactly what the reference provider's API answered 400 to.
 	for _, refused := range []string{
 		`{"model":"m","temperature":0.7}`,
 		`{"model":"m","top_p":0.9}`,

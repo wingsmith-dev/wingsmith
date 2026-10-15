@@ -126,8 +126,8 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 		{
 			name:   "a cluster-internal service name",
 			status: http.StatusBadRequest,
-			detail: "kv_cache_block_size rejected by kimi-k3-frontend.dynamo.svc.cluster.local:8000",
-			never:  []string{"kimi-k3-frontend", "svc.cluster.local", "8000"},
+			detail: "kv_cache_block_size rejected by model-frontend.dynamo.svc.cluster.local:8000",
+			never:  []string{"model-frontend", "svc.cluster.local", "8000"},
 		},
 		{
 			name:   "a URL and an address",
@@ -239,7 +239,7 @@ func TestOnlyTheCallerSOwnFieldNamesCanBeEchoed(t *testing.T) {
 	}{
 		{
 			name:     "a name only the engine knows",
-			upstream: `kv_cache_block_size rejected by kimi-k3-frontend.dynamo.svc.cluster.local`,
+			upstream: `kv_cache_block_size rejected by model-frontend.dynamo.svc.cluster.local`,
 			caller:   `{"model":"chat","temperature":1}`,
 			wantOut:  "kv_cache_block_size",
 		},

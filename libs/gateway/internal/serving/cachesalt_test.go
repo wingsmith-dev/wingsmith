@@ -252,7 +252,7 @@ func TestTheSaltIsNotTakenBackOutAsACallersHint(t *testing.T) {
 	}
 }
 
-// TestTwoQuestionsAboutOneImageNeverShareACacheIdentity is the 2026-09-14
+// TestTwoQuestionsAboutOneImageNeverShareACacheIdentity guards a measured
 // regression: the media-only identity gave every question about one document
 // the same salt, and the block hash underneath then served the first question's
 // answer to all six of them.

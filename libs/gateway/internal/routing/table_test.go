@@ -366,8 +366,8 @@ func TestAnAliasResolvesToTheSameRouteAsItsCanonical(t *testing.T) {
 		Revision: "1",
 		Endpoints: []plane.Endpoint{{
 			ID:              "end_1",
-			Name:            "kimi-k3",
-			Aliases:         []string{"moonshotai/kimi-k3"},
+			Name:            "reasoning-model",
+			Aliases:         []string{"org/reasoning-model"},
 			RoutingStrategy: "weighted",
 			Upstreams:       []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
 		}},
@@ -378,16 +378,16 @@ func TestAnAliasResolvesToTheSameRouteAsItsCanonical(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	canonical, err := router.Resolve("kimi-k3")
+	canonical, err := router.Resolve("reasoning-model")
 	if err != nil {
 		t.Fatalf("resolve canonical: %v", err)
 	}
-	alias, err := router.Resolve("moonshotai/kimi-k3")
+	alias, err := router.Resolve("org/reasoning-model")
 	if err != nil {
 		t.Fatalf("resolve alias: %v", err)
 	}
-	if alias.ID != canonical.ID || alias.Name != "kimi-k3" {
-		t.Fatalf("alias route = %q/%q, want end_1/kimi-k3", alias.ID, alias.Name)
+	if alias.ID != canonical.ID || alias.Name != "reasoning-model" {
+		t.Fatalf("alias route = %q/%q, want end_1/reasoning-model", alias.ID, alias.Name)
 	}
 }
 
@@ -395,7 +395,7 @@ func TestAnAliasResolvesWhateverCaseItIsTypedIn(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
 		Revision: "1",
 		Endpoints: []plane.Endpoint{{
-			ID: "end_1", Name: "kimi-k3", Aliases: []string{"moonshotai/kimi-k3"}, RoutingStrategy: "weighted",
+			ID: "end_1", Name: "reasoning-model", Aliases: []string{"org/reasoning-model"}, RoutingStrategy: "weighted",
 			Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
 		}},
 	}}}
@@ -404,8 +404,8 @@ func TestAnAliasResolvesWhateverCaseItIsTypedIn(t *testing.T) {
 	if err := router.Load(context.Background()); err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	for _, typed := range []string{"MoonshotAI/Kimi-K3", "KIMI-K3"} {
-		if route, err := router.Resolve(typed); err != nil || route.Name != "kimi-k3" {
+	for _, typed := range []string{"Org/Reasoning-Model", "REASONING-MODEL"} {
+		if route, err := router.Resolve(typed); err != nil || route.Name != "reasoning-model" {
 			t.Fatalf("Resolve(%q) = %q, %v", typed, route.Name, err)
 		}
 	}
@@ -416,7 +416,7 @@ func TestTheCatalogListsCanonicalsAndNeverAnAlias(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
 		Revision: "1",
 		Endpoints: []plane.Endpoint{{
-			ID: "end_1", Name: "kimi-k3", Aliases: []string{"moonshotai/kimi-k3", "kimi"},
+			ID: "end_1", Name: "reasoning-model", Aliases: []string{"org/reasoning-model", "rm"},
 			RoutingStrategy: "weighted", TenantID: "ten_globex",
 			Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
 		}},
@@ -426,11 +426,11 @@ func TestTheCatalogListsCanonicalsAndNeverAnAlias(t *testing.T) {
 	if err := router.Load(context.Background()); err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if got := router.Names(); len(got) != 1 || got[0] != "kimi-k3" {
-		t.Fatalf("Names() = %v, want [kimi-k3]", got)
+	if got := router.Names(); len(got) != 1 || got[0] != "reasoning-model" {
+		t.Fatalf("Names() = %v, want [reasoning-model]", got)
 	}
-	if got := router.NamesForTenant("ten_globex"); len(got) != 1 || got[0] != "kimi-k3" {
-		t.Fatalf("NamesForTenant() = %v, want [kimi-k3]", got)
+	if got := router.NamesForTenant("ten_globex"); len(got) != 1 || got[0] != "reasoning-model" {
+		t.Fatalf("NamesForTenant() = %v, want [reasoning-model]", got)
 	}
 }
 
@@ -441,7 +441,7 @@ func TestAnAliasCollidingWithAnotherEndpointKeepsTheFirstBinding(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
 		Revision: "1",
 		Endpoints: []plane.Endpoint{
-			{ID: "end_1", Name: "kimi-k3", Aliases: []string{"shared"}, RoutingStrategy: "weighted",
+			{ID: "end_1", Name: "reasoning-model", Aliases: []string{"shared"}, RoutingStrategy: "weighted",
 				Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")}},
 			{ID: "end_2", Name: "gpt-oss-120b", Aliases: []string{"shared"}, RoutingStrategy: "weighted",
 				Upstreams: []plane.Upstream{upstream("us", "dep_b", "http://us.svc:8000", 100, "running")}},
@@ -467,7 +467,7 @@ func TestAnAliasNeverShadowsAnotherEndpointsOwnModelID(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
 		Revision: "1",
 		Endpoints: []plane.Endpoint{
-			{ID: "end_1", Name: "kimi-k3", Aliases: []string{"gpt-oss-120b"}, RoutingStrategy: "weighted",
+			{ID: "end_1", Name: "reasoning-model", Aliases: []string{"gpt-oss-120b"}, RoutingStrategy: "weighted",
 				Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")}},
 			{ID: "end_2", Name: "gpt-oss-120b", RoutingStrategy: "weighted",
 				Upstreams: []plane.Upstream{upstream("us", "dep_b", "http://us.svc:8000", 100, "running")}},

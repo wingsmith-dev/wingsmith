@@ -112,7 +112,7 @@ type Rule struct {
 	// engine behind it.
 	//
 	// `{key: "reasoning_effort", value_from: "thinking.effort"}` is the whole of
-	// K3's effort contract in one rule: the vendor's own field is carried onto the
+	// a reference provider's effort contract in one rule: the vendor's own field is carried onto the
 	// field the engine reads, so the level the caller named in `thinking.effort`
 	// is the level that runs, and the `reasoning_effort` they sent beside it is
 	// ignored because it has been overwritten. A request with no `thinking.effort`

@@ -24,10 +24,10 @@ func aliased(route routing.Route, aliases ...string) map[string]routing.Route {
 
 func TestAnAliasRoutesToTheSameUpstreamAsTheCanonical(t *testing.T) {
 	server, _ := upstreamServer(t)
-	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	route := proxyRoute(t, "ep_1", "reasoning-model", "dep_1", "ap", server.URL)
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "org/reasoning-model")}})
 
-	rec := post(t, handler, `{"model":"moonshotai/kimi-k3","messages":[]}`)
+	rec := post(t, handler, `{"model":"org/reasoning-model","messages":[]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -39,7 +39,7 @@ func TestAnAliasCannotWalkPastTheDenyRuleWrittenAgainstTheModelItPointsAt(t *tes
 	// to sell an endpoint without the terms it was sold under.
 	server, _ := upstreamServer(t)
 	pinned := routeTo(t, server.URL, nil)
-	pinned.Policy = kimiPolicy()
+	pinned.Policy = referencePolicy()
 	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
 
 	for _, model := range []string{"chat", "chat-legacy"} {
@@ -55,7 +55,7 @@ func TestATermThatAdmitsTheCanonicalAdmitsItsAliasesToo(t *testing.T) {
 	// endpoint, so every name that reaches it is judged identically.
 	server, _ := upstreamServer(t)
 	pinned := routeTo(t, server.URL, nil)
-	pinned.Policy = kimiPolicy()
+	pinned.Policy = referencePolicy()
 	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
 
 	for _, model := range []string{"chat", "chat-legacy"} {
@@ -71,16 +71,16 @@ func TestUsageAndMetricsAreKeyedOnTheCanonicalWhateverTheCallerTyped(t *testing.
 	// happened to use would make an alias a second model in every dashboard.
 	server, _ := upstreamServer(t)
 	recorder := metrics.New()
-	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	route := proxyRoute(t, "ep_1", "reasoning-model", "dep_1", "ap", server.URL)
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: aliased(route, "org/reasoning-model")}})
 
-	post(t, handler, `{"model":"moonshotai/kimi-k3"}`)
+	post(t, handler, `{"model":"org/reasoning-model"}`)
 
-	match := map[string]string{"hangar_endpoint": "ep_1", "endpoint_name": "kimi-k3"}
+	match := map[string]string{"hangar_endpoint": "ep_1", "endpoint_name": "reasoning-model"}
 	if got := requests(t, recorder, match); got != 1 {
 		t.Fatalf("%v = %v, want 1 (series present: %v)", match, got, allSeries(t, recorder))
 	}
-	if got := requests(t, recorder, map[string]string{"endpoint_name": "moonshotai/kimi-k3"}); got != 0 {
+	if got := requests(t, recorder, map[string]string{"endpoint_name": "org/reasoning-model"}); got != 0 {
 		t.Fatalf("the alias reached a metric label: %v", allSeries(t, recorder))
 	}
 }
@@ -92,24 +92,24 @@ func TestTheResponseEchoesTheStringTheCallerSent(t *testing.T) {
 	// one — so the property is bought by not rewriting the inbound one either
 	// when the upstream declared no served name of its own.
 	server, _ := upstreamServer(t)
-	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	route := proxyRoute(t, "ep_1", "reasoning-model", "dep_1", "ap", server.URL)
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "org/reasoning-model")}})
 
-	rec := post(t, handler, `{"model":"moonshotai/kimi-k3","messages":[]}`)
+	rec := post(t, handler, `{"model":"org/reasoning-model","messages":[]}`)
 	var echoed struct {
 		Model string `json:"model"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &echoed); err != nil {
 		t.Fatalf("decode: %v (body %s)", err, rec.Body.String())
 	}
-	if echoed.Model != "moonshotai/kimi-k3" {
+	if echoed.Model != "org/reasoning-model" {
 		t.Fatalf("model = %q, want the caller's own string back", echoed.Model)
 	}
 }
 
 func TestTheCatalogNeverListsAnAlias(t *testing.T) {
-	route := routing.NewRoute("kimi-k3", "weighted")
-	handler := New(Config{Zone: ZoneInternal, Router: canonicalsOnly{routes: aliased(route, "moonshotai/kimi-k3"), canonical: []string{"kimi-k3"}}})
+	route := routing.NewRoute("reasoning-model", "weighted")
+	handler := New(Config{Zone: ZoneInternal, Router: canonicalsOnly{routes: aliased(route, "org/reasoning-model"), canonical: []string{"reasoning-model"}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
@@ -118,10 +118,10 @@ func TestTheCatalogNeverListsAnAlias(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(list.Data) != 1 || list.Data[0].ID != "kimi-k3" {
+	if len(list.Data) != 1 || list.Data[0].ID != "reasoning-model" {
 		t.Fatalf("catalog = %+v, want only the canonical", list.Data)
 	}
-	if strings.Contains(rec.Body.String(), "moonshotai") {
+	if strings.Contains(rec.Body.String(), "org/reasoning-model") {
 		t.Fatalf("an alias reached a client's picker: %s", rec.Body.String())
 	}
 }

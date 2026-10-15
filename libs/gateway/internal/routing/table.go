@@ -529,7 +529,7 @@ func (r *Router) Load(ctx context.Context) error {
 }
 
 // routeKey is how a public model id is indexed and looked up. Lowercased, so that
-// `Kimi-K3` and `kimi-k3` are one route rather than two somebody has to keep in
+// `Reasoning-Model` and `reasoning-model` are one route rather than two somebody has to keep in
 // step — the plane lowercases what it stores and a caller types what they like.
 func routeKey(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 

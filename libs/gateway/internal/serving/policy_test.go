@@ -25,10 +25,10 @@ const (
 	responsesRoute  = "/v1/responses"
 )
 
-// kimiPolicy is the shape the reference-provider comparison produced: every pinned
+// referencePolicy is the shape the reference-provider comparison produced: every pinned
 // parameter is an enum of one, and every one of them was measured against chat
 // completions and now says so.
-func kimiPolicy() *plane.Policy {
+func referencePolicy() *plane.Policy {
 	pinned := func(key string, value any) plane.Rule {
 		return plane.Rule{Route: chatRoute, Key: key, Enum: []any{value}}
 	}
@@ -59,7 +59,7 @@ func TestPinnedParameterRejectsOtherValues(t *testing.T) {
 		`{"model":"m","presence_penalty":0.5}`,
 		`{"model":"m","logprobs":true}`,
 	} {
-		code, _, ok := checkPolicy(kimiPolicy(), chatRoute, []byte(body))
+		code, _, ok := checkPolicy(referencePolicy(), chatRoute, []byte(body))
 		if ok {
 			t.Fatalf("%s: expected a violation", body)
 		}
@@ -71,7 +71,7 @@ func TestPinnedParameterRejectsOtherValues(t *testing.T) {
 
 func TestPinnedParameterAcceptsTheOneValue(t *testing.T) {
 	body := []byte(`{"model":"m","temperature":1,"top_p":0.95,"presence_penalty":0,"logprobs":false}`)
-	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+	if _, _, ok := checkPolicy(referencePolicy(), chatRoute, body); !ok {
 		t.Fatal("the pinned values must be accepted")
 	}
 }
@@ -81,7 +81,7 @@ func TestPinnedParameterAcceptsTheOneValue(t *testing.T) {
 // every client starts with.
 func TestAbsentParameterIsNotAViolation(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[]}`)
-	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+	if _, _, ok := checkPolicy(referencePolicy(), chatRoute, body); !ok {
 		t.Fatal("a request that sends nothing must pass a pinning policy")
 	}
 }
@@ -95,7 +95,7 @@ func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 		named   = `{"type":"function","function":{"name":"f"}}`
 		allowed = `{"type":"allowed_tools","allowed_tools":{"mode":"auto","tools":[]}}`
 
-		thinkingOn     = `` // absent: K3 thinks unless it is told not to
+		thinkingOn     = `` // absent: the reference model thinks unless it is told not to
 		thinkingOff    = `,"thinking":{"type":"disabled"}`
 		thinkingOnLoud = `,"thinking":{"type":"enabled"}`
 		templateOff    = `,"chat_template_kwargs":{"thinking":false}`
@@ -130,7 +130,7 @@ func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := []byte(`{"model":"m","tool_choice":` + tc.choice + tc.thinking + `}`)
-			code, _, ok := checkPolicy(kimiPolicy(), chatRoute, body)
+			code, _, ok := checkPolicy(referencePolicy(), chatRoute, body)
 			if ok == tc.refused {
 				t.Fatalf("refused = %v, want %v", !ok, tc.refused)
 			}
@@ -150,7 +150,7 @@ func TestUnreadableThinkingIsLeftToTheUpstream(t *testing.T) {
 		`{"model":"m","tool_choice":[]}`,
 		`{"model":"m","tool_choice":null}`,
 	} {
-		if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, []byte(body)); !ok {
+		if _, _, ok := checkPolicy(referencePolicy(), chatRoute, []byte(body)); !ok {
 			t.Fatalf("%s: a shape this rule cannot read must not be refused here", body)
 		}
 	}
@@ -183,9 +183,9 @@ func TestUnknownDenialIsIgnored(t *testing.T) {
 
 func TestViolationIsStableAcrossRuns(t *testing.T) {
 	body := []byte(`{"temperature":0.7,"top_p":0.9,"logprobs":true}`)
-	_, first, _ := checkPolicy(kimiPolicy(), chatRoute, body)
+	_, first, _ := checkPolicy(referencePolicy(), chatRoute, body)
 	for i := 0; i < 50; i++ {
-		if _, message, _ := checkPolicy(kimiPolicy(), chatRoute, body); message != first {
+		if _, message, _ := checkPolicy(referencePolicy(), chatRoute, body); message != first {
 			t.Fatalf("violation is unstable: %q then %q", first, message)
 		}
 	}
@@ -215,7 +215,7 @@ func TestPolicyRejectsBeforeReachingUpstream(t *testing.T) {
 	server, _ := upstreamServer(t)
 
 	pinned := routeTo(t, server.URL, nil)
-	pinned.Policy = kimiPolicy()
+	pinned.Policy = referencePolicy()
 	open := routeTo(t, server.URL, nil)
 
 	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
@@ -283,7 +283,7 @@ var refusedBodies = map[string]string{
 }
 
 // servedBodies are the six payloads the same board expects a 200 from. Every
-// one of them is a declaration K3 serves, so a rule that refuses one has
+// one of them is a declaration the reference provider serves, so a rule that refuses one has
 // replaced a wrong answer with a broken request, which is worse.
 var servedBodies = map[string]string{
 	"dynamic_tools.callable":             `{"messages":[{"role":"system","content":"","tools":[{"type":"function","function":{"name":"get_weather","description":"Get the weather of a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]},{"role":"user","content":"what is the weather in beijing?"}],"tool_choice":"required"}`,
@@ -300,11 +300,11 @@ var servedBodies = map[string]string{
 // malformed declaration cannot do anything with this sentence.
 const genericRefusal = "The request uses a feature this model does not accept."
 
-// dynamicToolsPolicy is what an endpoint selling K3 conformance carries once
+// dynamicToolsPolicy is what an endpoint selling the reference provider's conformance carries once
 // message-level declarations are enforced: the pinned parameters, the
 // tool_choice denial, and the new rule.
 func dynamicToolsPolicy() *plane.Policy {
-	policy := kimiPolicy()
+	policy := referencePolicy()
 	policy.Rules = append(policy.Rules,
 		plane.Rule{Route: chatRoute, Predicate: "messages.tools", Deny: true})
 	return policy
@@ -348,7 +348,7 @@ func TestBoardRejectionsAreRefused(t *testing.T) {
 	}
 }
 
-// Every row the board expects a 200 from. These are the requests K3 serves, so
+// Every row the board expects a 200 from. These are the requests the reference provider serves, so
 // refusing one here would replace a wrong answer with a broken request, which
 // is the worse of the two.
 func TestBoardAcceptancesAreServed(t *testing.T) {
@@ -374,7 +374,7 @@ func TestMessageToolsIsInertUnlessTheRuleIsNamed(t *testing.T) {
 			if _, _, ok := checkPolicy(nil, chatRoute, []byte(body)); !ok {
 				t.Fatal("an endpoint that sold no terms must forward what it was given")
 			}
-			if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, []byte(body)); !ok {
+			if _, _, ok := checkPolicy(referencePolicy(), chatRoute, []byte(body)); !ok {
 				t.Fatal("a policy that does not name this rule must not enforce it")
 			}
 		})
@@ -636,13 +636,13 @@ func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 
 	for _, body := range []string{
 		// Claude Code's own shape: tools declared once, at the top level.
-		`{"model":"moonshotai/kimi-k3","max_tokens":1024,"system":"You are a helpful assistant.",
+		`{"model":"org/reasoning-model","max_tokens":1024,"system":"You are a helpful assistant.",
 		  "tools":[{"name":"Bash","description":"run a command",
 		            "input_schema":{"type":"object","properties":{"command":{"type":"string"}}}}],
 		  "messages":[{"role":"user","content":"list the files"}]}`,
 
 		// A tool call and its result, as content blocks.
-		`{"model":"moonshotai/kimi-k3","max_tokens":1024,
+		`{"model":"org/reasoning-model","max_tokens":1024,
 		  "messages":[{"role":"user","content":[{"type":"text","text":"list the files"}]},
 		              {"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Bash",
 		                                              "input":{"command":"ls"}}]},
@@ -650,7 +650,7 @@ func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 		                                         "content":"a.go b.go"}]}]}`,
 
 		// Streaming, which is the shape that actually reaches production.
-		`{"model":"moonshotai/kimi-k3","max_tokens":1024,"stream":true,
+		`{"model":"org/reasoning-model","max_tokens":1024,"stream":true,
 		  "messages":[{"role":"user","content":"hi"}]}`,
 	} {
 		if _, _, ok := checkPolicy(policy, chatRoute, []byte(body)); !ok {
@@ -678,14 +678,14 @@ func TestTheTemplateThinkingKwargIsNotReadAsThinkingOff(t *testing.T) {
 		`null`,
 	} {
 		body := []byte(`{"model":"m","tool_choice":` + named + `,"chat_template_kwargs":` + kwargs + `}`)
-		if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); ok {
+		if _, _, ok := checkPolicy(referencePolicy(), chatRoute, body); ok {
 			t.Errorf("chat_template_kwargs %s moved a rule it must not reach", kwargs)
 		}
 	}
 
 	// And the spelling the provider does read still works.
 	body := []byte(`{"model":"m","tool_choice":` + named + `,"thinking":{"type":"disabled"},"chat_template_kwargs":{"thinking":true}}`)
-	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+	if _, _, ok := checkPolicy(referencePolicy(), chatRoute, body); !ok {
 		t.Error("thinking.type disabled must still be read, whatever the template kwarg says")
 	}
 }
@@ -725,7 +725,7 @@ func TestTheTemplateThinkingKwargIsTakenOutOfTheBody(t *testing.T) {
 //
 // Two rules because there are two spellings in the wild and they nest
 // differently: OpenAI's own is `tool_choice.allowed_tools.{mode,tools}`, and the
-// flat one the Kimi guidance suite sends is `tool_choice.{mode,tools}`.
+// flat one the provider's guidance suite sends is `tool_choice.{mode,tools}`.
 func allowedToolsPolicy() *plane.Policy {
 	return &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Route: chatRoute, Key: "tool_choice", Drop: true, WhenPresent: "tool_choice.allowed_tools"},
@@ -930,7 +930,7 @@ func TestMediaDecodeKwargsNeverReachTheEngine(t *testing.T) {
 // already do must not see a 400 for agreeing with us.
 func TestMediaDecodeKwargsAreDroppedAndNotRefused(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[],"media_io_kwargs":{"video":{"num_frames":-1}}}`)
-	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+	if _, _, ok := checkPolicy(referencePolicy(), chatRoute, body); !ok {
 		t.Fatal("the field must be dropped, never refused")
 	}
 }
