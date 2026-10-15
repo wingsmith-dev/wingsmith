@@ -1,13 +1,15 @@
 # evalscope
 
-[EvalScope](https://github.com/modelscope/evalscope) `1.11.1`, wrapped for the cluster benchmark path.
+[EvalScope](https://github.com/modelscope/evalscope) `1.11.1`, wrapped for the plane's cluster
+benchmark path. `hgrbench` does not use this image; the plane's `evalscope` harness does, and
+it lives here beside the other harness images so all of them build from one place.
 
 ## Why
 
-A run grades a serving surface against accuracy datasets such as `mmlu_pro`, `gpqa_diamond`,
-`aime2025`, `hle`, `longbench_v2`, `livecodebench` and `tau2_bench`, and EvalScope already speaks
-that list against an OpenAI-compatible endpoint. This image is a thin carrier: the pinned
-`evalscope` wheel, a shell, and nothing else. The CLI line is composed plane-side, in
+An accuracy run grades a serving surface against standard datasets (`mmlu_pro`,
+`gpqa_diamond`, `aime2025` and the like), and EvalScope already speaks that list against an
+OpenAI-compatible endpoint. This image is a thin carrier: the pinned `evalscope` wheel, a
+shell, and nothing else. The whole CLI shape is composed plane-side, in
 [`harnesses.py:_evalscope_command`](../../../plane/app/modules/benchmarks/harnesses.py),
 so a new evalscope release is a plane edit plus an image bump, not a new image shape.
 
@@ -32,18 +34,15 @@ docker run --rm hangar-evalscope:1.11.1 -c 'evalscope eval --help'
 ```
 
 In a real run the wrapper is the generic sentinel-framed one in
-[`render/benchmark.go:genericScript`](../../../operator/internal/render/benchmark.go):
-the plane sends a `command` parameter (`evalscope eval --model ... --api-url ...`), the
-operator tees the harness's stdout to a log, frames the summary between
-`---HANGAR-BENCHMARK-SUMMARY-BEGIN---` / `---HANGAR-BENCHMARK-SUMMARY-END---`, and the
-plane reads it back off the pod's log.
+[`render/benchmark.go:genericScript`](../../../operator/internal/render/benchmark.go): the
+plane sends a `command` parameter (`evalscope eval --model ... --api-url ...`) and a
+`report_glob`, the operator runs the command, merges every per-dataset report EvalScope wrote
+under its work directory into one `{"reports": [...]}` document, frames it between
+`---HANGAR-BENCHMARK-SUMMARY-BEGIN---` / `---HANGAR-BENCHMARK-SUMMARY-END---`, and the plane
+reads it back off the pod's log with `summaries.dataset_scores`.
 
-## Reading the summary
-
-EvalScope 1.11 writes one report per dataset at `<work-dir>/reports/<model>/<dataset>.json`.
-The plane sends `report_glob` pointing at those files; the wrapper merges them into
-`{"reports": [<report>, ...]}` and frames that. The plane's `summaries.dataset_scores` reads
-each report into a per-dataset metric and score.
+A version bump on the harness must not silently rewrite the shape the plane reads, so any
+adaptation of EvalScope's report happens in the plane's reader, not in this image.
 
 ## What this image is not
 
