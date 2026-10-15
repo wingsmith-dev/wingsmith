@@ -1,6 +1,7 @@
 package serving
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -129,9 +130,16 @@ func stageTenantEnabled(w http.ResponseWriter, r *http.Request, req *requestStat
 // The plane is expected to stop listing a disabled tenant's endpoints, but the
 // routing table and the tenant table refresh separately, and a routing table
 // that has not caught up must not keep serving a tenant somebody switched off.
-// So the tenant table is asked as well. A tenant it does not know is refused
-// too: the plane may drop a disabled tenant from the feed outright, and a route
-// naming an owner this hop cannot vouch for is not one to serve on trust.
+// So the tenant table is asked as well.
+//
+// A tenant the table does not know is either new (its endpoint reached the
+// routing table first) or gone (the plane may drop a disabled tenant from the
+// feed outright). The two look the same until the tenant table is reloaded, so
+// a miss reloads it, coalesced and rate-limited (tenancy.Store.RefreshOnMiss),
+// and asks again. Still missing after a successful reload means the plane does
+// not list it, and it is refused like a disabled tenant. A reload that failed
+// answers 503: this hop cannot vouch for the owner right now, and calling a
+// tenant created a second ago "disabled" would be wrong.
 //
 // An endpoint with no owning tenant, or a handler built with no tenant table,
 // is left alone.
@@ -146,12 +154,32 @@ func stageEndpointTenantEnabled(tenants Tenants) stage {
 			return r, true
 		}
 		owner, ok := tenants.Current().TenantByID(req.route.TenantID)
+		if !ok {
+			if refresher, can := tenants.(missRefresher); can {
+				if err := refresher.RefreshOnMiss(r.Context()); err != nil {
+					// Shed rather than internal_error: the plane is what is
+					// missing, and the caller can retry.
+					w.Header().Set("Retry-After", "2")
+					MarkOutcome(r, metrics.OutcomeShed)
+					writeError(w, http.StatusServiceUnavailable, "tenant_unverified",
+						"Unable to verify this model's tenant right now. Retry shortly.")
+					return r, false
+				}
+				owner, ok = tenants.Current().TenantByID(req.route.TenantID)
+			}
+		}
 		if ok && owner.Enabled {
 			return r, true
 		}
 		refuseDisabledTenant(w, r)
 		return r, false
 	}
+}
+
+// missRefresher is the optional half of Tenants: a table that can be reloaded
+// when a lookup misses. *tenancy.Store implements it.
+type missRefresher interface {
+	RefreshOnMiss(ctx context.Context) error
 }
 
 // tenantServing reports whether a route's tenant is one this hop may serve.

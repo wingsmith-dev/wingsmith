@@ -160,3 +160,59 @@ func TestEveryTenantIsIndexedByIDWithItsEnabledFlag(t *testing.T) {
 		t.Fatalf("TenantByID(acme) = %+v, %v, want it found and disabled", tenant, ok)
 	}
 }
+
+func TestRefreshOnMissPicksUpATenantCreatedSinceTheLastLoad(t *testing.T) {
+	source := &stubSource{tables: []plane.TenantTable{
+		{Revision: "1", Tenants: []plane.GatewayTenant{globex()}},
+		{Revision: "2", Tenants: []plane.GatewayTenant{globex(), acme()}},
+	}}
+	store := New(source)
+	if err := store.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.Current().TenantByID("ten_acme"); ok {
+		t.Fatal("acme is not in the first table")
+	}
+	if err := store.RefreshOnMiss(context.Background()); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if _, ok := store.Current().TenantByID("ten_acme"); !ok {
+		t.Fatal("a reload on a miss should have picked up acme")
+	}
+}
+
+func TestRefreshOnMissReloadsAtMostOncePerInterval(t *testing.T) {
+	source := &stubSource{tables: []plane.TenantTable{{Revision: "1", Tenants: []plane.GatewayTenant{globex()}}}}
+	store := New(source)
+	clock := time.Unix(1000, 0)
+	store.now = func() time.Time { return clock }
+
+	for range 5 {
+		_ = store.RefreshOnMiss(context.Background())
+	}
+	if len(source.calls) != 1 {
+		t.Fatalf("plane read %d times inside one interval, want 1", len(source.calls))
+	}
+	clock = clock.Add(DefaultMissRefreshInterval)
+	_ = store.RefreshOnMiss(context.Background())
+	if len(source.calls) != 2 {
+		t.Fatalf("plane read %d times after the interval passed, want 2", len(source.calls))
+	}
+}
+
+func TestRefreshOnMissRepeatsTheLastFailureInsideTheInterval(t *testing.T) {
+	down := errors.New("plane down")
+	source := &stubSource{errs: []error{down}}
+	store := New(source)
+	store.now = func() time.Time { return time.Unix(1000, 0) }
+
+	if err := store.RefreshOnMiss(context.Background()); !errors.Is(err, down) {
+		t.Fatalf("first refresh = %v, want the plane's error", err)
+	}
+	if err := store.RefreshOnMiss(context.Background()); !errors.Is(err, down) {
+		t.Fatalf("second refresh = %v, want the same error without a new read", err)
+	}
+	if len(source.calls) != 1 {
+		t.Fatalf("plane read %d times, want 1", len(source.calls))
+	}
+}

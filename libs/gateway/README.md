@@ -62,11 +62,22 @@ models without a key. `deploy/networkpolicy.yaml` is an example that admits the 
 the ingress controller to the public listener, agents to the tunnel port and monitoring to
 `:9090`, and denies everything else. Adapt its selectors and apply it with the gateway.
 
-**A disabled tenant gets `403 tenant_disabled`** on both listeners. The gateway checks the tenant
-table itself rather than trusting the routing table to have dropped the tenant's endpoints, because
-the two refresh separately. An endpoint whose owner is missing from the tenant feed is refused the
-same way. On the public listener the check runs after the key check, so an unauthenticated caller
-does not learn whether a tenant is enabled.
+**A disabled tenant is refused on both listeners.** The gateway checks the tenant table itself
+rather than trusting the routing table to have dropped the tenant's endpoints, because the two
+refresh separately. What the caller sees depends on how the plane reports the tenant:
+
+- listed in the tenant feed with `enabled: false`: `403 tenant_disabled` on both listeners. On the
+  public listener the check runs after the key check, so an unauthenticated caller does not learn
+  whether a tenant is enabled.
+- left out of the feed: on the public listener its host is unknown, so `404 unknown_host`. On the
+  internal listener, an endpoint whose owner is missing makes the gateway reload the tenant table
+  (at most once every 2 seconds, however many requests miss) and look again. Still missing means
+  `403 tenant_disabled`; a reload that failed means `503 tenant_unverified` with `Retry-After`. The
+  reload is what keeps a tenant created moments ago from being refused before the next resync.
+
+A tenant created moments ago can still get `404 unknown_host` on the public listener until the
+next resync (`-resync`, 30s by default). The public listener does not reload on a miss, because any
+caller on the internet can send an unknown `Host`.
 
 ## Configuration
 

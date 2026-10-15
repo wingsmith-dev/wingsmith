@@ -85,9 +85,11 @@ func empty() *Table {
 // internal listener — an internal tenant needs no host at all, since the
 // listener itself is the claim.
 //
-// A disabled tenant is indexed like any other. Refusing it is the serving
-// stages' job, so a disabled tenant gets a 403 that says so rather than reading
-// as a host or a key nobody has heard of.
+// A disabled tenant the feed still lists is indexed like any other. Refusing it
+// is the serving stages' job, so it gets a 403 that says so rather than reading
+// as a host or a key nobody has heard of. A plane that leaves disabled tenants
+// out of the feed instead gets the unknown-tenant answers: 404 unknown_host on
+// the public listener, 403 tenant_disabled on the internal one.
 func build(resolved plane.TenantTable) *Table {
 	table := &Table{
 		revision:  resolved.Revision,
@@ -115,18 +117,59 @@ func build(resolved plane.TenantTable) *Table {
 	return table
 }
 
+// DefaultMissRefreshInterval is the least time between two reloads caused by a
+// lookup that missed (Store.RefreshOnMiss).
+const DefaultMissRefreshInterval = 2 * time.Second
+
+// missRefreshTimeout bounds one reload made on a request's behalf.
+const missRefreshTimeout = 3 * time.Second
+
 // Store holds the current table behind a lock, refreshed from Source.
 type Store struct {
 	source Source
+	now    func() time.Time
 
 	mu    sync.RWMutex
 	table *Table
+
+	// missMu serialises reloads made by RefreshOnMiss. Holding it across the
+	// load is what coalesces them: a caller arriving during a reload waits for
+	// it and then finds lastMiss recent.
+	missMu      sync.Mutex
+	missEvery   time.Duration
+	lastMiss    time.Time
+	lastMissErr error
 }
 
 // New builds an empty Store. Load must succeed once before Current serves
 // anything a caller could be identified against.
 func New(source Source) *Store {
-	return &Store{source: source, table: empty()}
+	return &Store{source: source, now: time.Now, table: empty(), missEvery: DefaultMissRefreshInterval}
+}
+
+// RefreshOnMiss reloads the table because a lookup missed a tenant the caller
+// has reason to believe exists: an endpoint in the routing table names an owner
+// this table has not seen. The two tables resync on separate timers, so a
+// tenant created moments ago can be in one and not yet the other.
+//
+// At most one reload per DefaultMissRefreshInterval, however many requests
+// miss; callers inside that window get the last reload's result without
+// touching the plane. A nil error means the table is at most that old, so a
+// tenant still missing afterwards is one the plane does not list.
+func (s *Store) RefreshOnMiss(ctx context.Context) error {
+	s.missMu.Lock()
+	defer s.missMu.Unlock()
+	if !s.lastMiss.IsZero() && s.now().Sub(s.lastMiss) < s.missEvery {
+		return s.lastMissErr
+	}
+	ctx, cancel := context.WithTimeout(ctx, missRefreshTimeout)
+	defer cancel()
+	err := s.Load(ctx)
+	if err != nil {
+		slog.Warn("gateway: tenant table reload after a missed lookup failed", "err", err)
+	}
+	s.lastMiss, s.lastMissErr = s.now(), err
+	return err
 }
 
 // Current returns the table as of the last successful load.

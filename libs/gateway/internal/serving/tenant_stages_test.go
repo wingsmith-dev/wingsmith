@@ -2,9 +2,11 @@ package serving
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
@@ -281,6 +283,85 @@ func TestADisabledTenantsEndpointIsRefusedOnTheInternalZone(t *testing.T) {
 				t.Fatalf("catalog = %s, listed should be %v", catalog.Body, !listed)
 			}
 		})
+	}
+}
+
+// sequencedTenantSource answers each read with the next table, or the next
+// error, and repeats the last table once it runs out.
+type sequencedTenantSource struct {
+	mu     sync.Mutex
+	tables []plane.TenantTable
+	errs   []error
+	reads  int
+}
+
+func (s *sequencedTenantSource) TenantsResolved(_ context.Context, _ string) (plane.TenantTable, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := s.reads
+	s.reads++
+	if i < len(s.errs) && s.errs[i] != nil {
+		return plane.TenantTable{}, s.errs[i]
+	}
+	if i >= len(s.tables) {
+		i = len(s.tables) - 1
+	}
+	return s.tables[i], nil
+}
+
+// The routing table and the tenant table resync separately, so an endpoint of a
+// tenant created a moment ago can arrive before its tenant does. That must not
+// read as a disabled tenant: the miss reloads the tenant table and serves.
+func TestANewTenantsEndpointIsServedBeforeTheTenantTableResyncs(t *testing.T) {
+	server, _ := upstreamServer(t)
+	route := globexRoute(t, server.URL)
+	route.Visibility = "private"
+	source := &sequencedTenantSource{tables: []plane.TenantTable{
+		{Revision: "1"},
+		{Revision: "2", Tenants: []plane.GatewayTenant{globex()}},
+	}}
+	store := tenancy.New(source)
+	if err := store.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Config{
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": route}},
+		Tenants: store,
+		Zone:    ZoneInternal,
+	})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("edge", `{"model":"chat"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s, want 200 after the reload", rec.Code, rec.Body)
+	}
+}
+
+// When the reload itself fails, the owner can be neither confirmed nor ruled
+// out, and the answer is a retryable 503 rather than "disabled".
+func TestAnUnknownOwnerIsUnavailableWhileThePlaneCannotBeRead(t *testing.T) {
+	server, _ := upstreamServer(t)
+	route := globexRoute(t, server.URL)
+	route.Visibility = "private"
+	source := &sequencedTenantSource{
+		tables: []plane.TenantTable{{Revision: "1"}},
+		errs:   []error{nil, errors.New("plane down")},
+	}
+	store := tenancy.New(source)
+	if err := store.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Config{
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": route}},
+		Tenants: store,
+		Zone:    ZoneInternal,
+	})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("edge", `{"model":"chat"}`))
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "tenant_unverified") {
+		t.Fatalf("status = %d, body = %s, want 503 tenant_unverified", rec.Code, rec.Body)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("no Retry-After on a retryable refusal")
 	}
 }
 
