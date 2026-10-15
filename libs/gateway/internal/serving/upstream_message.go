@@ -90,7 +90,7 @@ var (
 	systemPath      = regexp.MustCompile(`(?:^|[\s"'(=])(/(?:usr|opt|home|root|app|workspace|tmp|var|etc|lib|lib64|srv|mnt|data|models|cache)(?:/[^\s"'()]*)?)`)
 	whitespace      = regexp.MustCompile(`\s+`)
 	// internalName is any token that names the stack behind this hop. The built-in words are the
-	// conformance suite's leak needles (libs/conformance/profiles/gateway.toml), so a quoted
+	// conformance suite's leak needles (libs/conformance/hgrconform/profiles/gateway.toml), so a quoted
 	// message cannot fail the leak probe. An operator adds its own names with RedactNames.
 	internalName = internalNamePattern(nil)
 )
