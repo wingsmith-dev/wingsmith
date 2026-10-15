@@ -697,6 +697,23 @@ def test_cors_allowed_origins_are_configurable(monkeypatch):
     assert response.headers.get("access-control-allow-origin") == "https://console.example.com"
 
 
+def test_a_cors_preflight_needs_no_credential_with_admin_auth_enabled(monkeypatch):
+    """A browser sends no Authorization on a preflight; refusing it would break the console."""
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
+    with TestClient(app=create_app()) as client:
+        response = client.options(
+            "/v1/clusters",
+            headers={
+                "Origin": "https://console.example.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+    assert response.status_code == 204
+    assert response.headers.get("access-control-allow-origin") == "https://console.example.com"
+
+
 def test_cors_rejects_an_unconfigured_origin(monkeypatch):
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
     with TestClient(app=create_app()) as client:
