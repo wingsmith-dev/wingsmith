@@ -1296,7 +1296,7 @@ def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
 def _workload(**kwargs):
     """A workload carrying the serving configuration a recipe used to hold.
 
-    The name is still the fit — `kimi-k3-mxfp4-tp8-1024k` — because that is the
+    The name is still the fit — `example-moe-mxfp4-tp8-1024k` — because that is the
     string these tests exist to keep off the wire. It is a workload's name now
     rather than a recipe's, and it is no more a model id than it was.
     """
@@ -1304,7 +1304,7 @@ def _workload(**kwargs):
 
     base = {
         "uid": "wkl_01j9x2ffffffffffffffffffff",
-        "name": "kimi-k3-mxfp4-tp8-1024k",
+        "name": "example-moe-mxfp4-tp8-1024k",
         "engine": "vllm",
         "engine_runtime_version": "0.6.0",
         "engine_runtime_image": None,
@@ -1337,17 +1337,17 @@ def _workload(**kwargs):
     return Workload(**(base | kwargs))
 
 
-def _kimi_artifact():
+def _artifact():
     from app.db.models import Artifact
 
-    return Artifact(name="moonshotai/Kimi-K3", digest="sha256:beef", slug="moonshotai/kimi-k3")
+    return Artifact(name="acme/Example-MoE", digest="sha256:beef", slug="acme/example-moe")
 
 
 def _wire_serving(**kwargs):
     """The `ServingSpec` inlined on `deployment.desired`, built the way the sender builds it."""
     from app.ingestion.desired import _serving
 
-    return _serving(_workload(**kwargs), _kimi_artifact())
+    return _serving(_workload(**kwargs), _artifact())
 
 
 def _wire_served_model(**kwargs):
@@ -1358,12 +1358,12 @@ def _wire_served_model(**kwargs):
     """
     from app.core.serving import declared_served_model
 
-    return declared_served_model(_workload(**kwargs), _kimi_artifact())
+    return declared_served_model(_workload(**kwargs), _artifact())
 
 
 def test_the_wire_carries_the_artifact_slug_when_no_one_declared_a_name() -> None:
     """The name that describes the fit must not reach a caller."""
-    assert _wire_served_model() == "moonshotai/kimi-k3"
+    assert _wire_served_model() == "acme/example-moe"
 
 
 def test_the_workload_cannot_declare_a_name_over_the_wire() -> None:
@@ -1384,20 +1384,21 @@ def test_the_wire_carries_the_workloads_own_frontend_image() -> None:
     """A model that needs its own frontend build says so on the workload, and the
     frame is where the operator reads it: the plane declares the override and the
     cluster renders it, the same way it does for the engine image."""
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    pinned = "registry.example.com/acme/vllm-frontend:1.4.0-tokenizer-fix"
     assert _wire_serving(frontend_image=pinned).frontend_image == pinned
 
 
 def test_a_workload_with_no_frontend_image_sends_nothing_not_the_runtime_image() -> None:
     """Empty is a real answer and it means the cluster decides.
 
-    Kimi K3 is why the field is not one field: the tokenizer fix is compiled into
-    the frontend binary and the worker correctly stays on the base image, so a
-    plane that filled an absent frontend image in with the engine's would be
-    stating the exact thing that broke — and on any cluster whose frontends are
-    not published from the engine's repository it would be an ImagePullBackOff.
+    The field is not one field because a model can need a fix compiled into the
+    frontend binary (a tokenizer, say) while the worker correctly stays on the base
+    image, so a plane that filled an absent frontend image in with the engine's
+    would be stating the exact thing that broke — and on any cluster whose
+    frontends are not published from the engine's repository it would be an
+    ImagePullBackOff.
     """
-    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    engine = "registry.example.com/acme/vllm-runtime:1.4.0"
     wire = _wire_serving(engine_runtime_image=engine)
     assert wire.engine_runtime_image == engine
     assert wire.frontend_image is None
@@ -1409,9 +1410,9 @@ def test_the_engine_args_hatch_is_left_off_the_wire() -> None:
     Resolving it here as well would put the same value on the frame twice, and two
     copies of one fact are two things that can disagree.
     """
-    args = {"served-model-name": "acme/kimi-hotfix"}
-    assert _wire_served_model(engine_args=args) == "moonshotai/kimi-k3"
-    assert _wire_serving(engine_args=args).engine_args["served-model-name"] == "acme/kimi-hotfix"
+    args = {"served-model-name": "acme/custom-name"}
+    assert _wire_served_model(engine_args=args) == "acme/example-moe"
+    assert _wire_serving(engine_args=args).engine_args["served-model-name"] == "acme/custom-name"
 
 
 def test_the_serving_block_carries_the_digest_that_names_the_configuration() -> None:
