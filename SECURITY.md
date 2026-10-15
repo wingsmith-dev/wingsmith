@@ -41,9 +41,9 @@ system beyond these.
 - **admin**: the single human operator of the installation, using the console or `hgr`. Signs in
   with a password (`POST /v1/auth/login`) and receives a short-lived signed session token plus a
   server-side refresh token. Hangar assumes one operator, or a small team sharing that role; it has
-  no per-user accounts, SSO or audit trail by person. Admin auth can be turned off with
-  `ADMIN_AUTH=disabled`, which makes every HTTP request an admin. Only do that for an API that is
-  reachable solely through `kubectl port-forward`.
+  no per-user accounts, SSO or audit trail by person. Admin auth is off only under
+  `HANGAR_APP_ENV=local`, for a laptop, where every HTTP request is an admin. Outside `local` it is
+  always on, and the plane refuses to start with `HANGAR_ADMIN_AUTH=disabled`.
 - **tenant**: a tenant's own console credential, giving a read-only view of what that tenant is
   served and nothing else.
 - **operator**: a cluster's operator, authenticated by that cluster's enrolment token. Each token is
@@ -54,22 +54,25 @@ system beyond these.
 - **gateway**: a service principal for the gateway, configured as `HANGAR_GATEWAY_SERVICE_TOKEN`
   on both the plane and the gateway. It is accepted on exactly three routes,
   `GET /v1/gateway/tenants`, `GET /v1/endpoints/resolved` and `POST /v1/clusters/tunnel-auth`, and
-  has no admin rights.
+  has no admin rights. Outside `local`, an unset token means no gateway principal resolves at all.
 
 Outside `HANGAR_APP_ENV=local`, the plane refuses to start without the session signing secret and
-admin password hash (when admin auth is enabled), so a misconfigured deployment fails closed.
+the admin password hash, so a misconfigured deployment fails closed.
 
 ### Gateway listeners
 
 The gateway decides trust by which listener accepted a connection
 ([ADR 0016](docs/decisions/0016-the-listener-is-the-guard-tenant-identity-replaces-the-shared-token.md)):
 
-- **The internal listener** has no authentication by design. Reaching it is the proof of trust, so
-  it must never be exposed outside your own network. Run it as a ClusterIP Service with no ingress,
-  and restrict which pods can reach it with a NetworkPolicy.
+- **The internal listener** has no authentication by design. Reaching it is the proof of trust: it
+  resolves no tenant and checks no key, so a caller there can reach every enabled tenant's models,
+  including tenants that require an API key on the public listener. It must never be exposed outside
+  your own network. Run it as a ClusterIP Service with no ingress, and restrict which pods can reach
+  it with a NetworkPolicy.
 - **The public listener** (off unless `HANGAR_GATEWAY_PUBLIC_LISTEN` is set) identifies the tenant
   from the `Host` header and, for tenants that declare `auth: api_key`, requires one of that
-  tenant's keys. Another tenant's model reads as `404`.
+  tenant's keys. A tenant that declares `auth: none` gets `401` there unless
+  `HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH=true`. Another tenant's model reads as `404`.
 - **The tunnel listener** accepts agent dials. Each agent presents its cluster's enrolment token,
   which the gateway verifies with the plane before carrying any traffic.
 
@@ -88,8 +91,8 @@ These are known and documented rather than fixed. Take them into account when yo
   tenant's service report is built from. A label-enforcing write proxy is on the
   [roadmap](docs/roadmap.md).
 - **The gateway's internal listener needs a NetworkPolicy.** Without one, any pod in the cluster
-  that can reach the Service can send unauthenticated inference requests on behalf of any tenant
-  that declares `auth: none`.
+  that can reach the Service can send unauthenticated inference requests to every enabled tenant's
+  models, whatever auth those tenants declare.
 - **`compose.yml` is for local development only.** It runs with `HANGAR_APP_ENV=local`, which turns
   admin auth off and relaxes the credentials the plane requires at boot. Never expose it to a
   network.
