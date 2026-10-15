@@ -603,8 +603,8 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<
 // On a fresh session the handler's Resync runs here first, before any frame is applied, so the
 // snapshot the hub streams lands in the epoch Resync opens. It runs after the handshake rather
 // than inside it, under a deadline of its own, and with the writer already draining the queue:
-// inside the handshake it had ten seconds for the whole inventory, and every frame it produced
-// sat in the queue until it finished.
+// the handshake allows ten seconds, and a writer that has not started leaves every frame the
+// resync produces sitting in the queue.
 func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound, fresh bool) error {
 	if fresh {
 		resyncCtx, cancel := context.WithTimeout(ctx, resyncTimeout)
@@ -640,10 +640,9 @@ func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound, fresh bool
 
 // applyFrame hands one frame to the handler until it is applied, retrying a rejection in place.
 //
-// A rejection used to be recorded and left: the cursor stopped at the frame, every later frame was
-// applied but never acknowledged, and nothing retried it until the session happened to end for
-// some other reason. Now the frame is retried with backoff, and a frame still rejected after the
-// last attempt ends the session, so the resume replays it from the durable cursor.
+// A rejected frame cannot be skipped: the cursor stops at it and every later frame waits behind
+// it. So it is retried with backoff, and a frame still rejected after the last attempt ends the
+// session, so the resume replays it from the durable cursor.
 func (c *Client) applyFrame(ctx context.Context, e *Envelope) error {
 	delay := c.applyRetryMin
 	for attempt := 1; ; attempt++ {

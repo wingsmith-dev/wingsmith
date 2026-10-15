@@ -162,13 +162,8 @@ func (r rollout) message() string {
 // plane would then mark it ready and the gateway would prefer it, which is live traffic at a
 // deployment that has no worker.
 //
-// A disaggregated deployment is counted per role and the roles are summed, which is the change
-// this comment used to anticipate rather than describe. It used to say that a hand-written
-// topology's "prefill pods are not counted here", defending the shortfall as safe because "a
-// shortfall reads as degraded and still serves, where a surplus reads as ready and does not".
-// That defence held while nobody had declared the topology. It stops holding the moment the plane
-// renders the prefill component itself: an uncounted role is a role that can be entirely absent
-// while the deployment reports every replica ready.
+// A disaggregated deployment is counted per role and the roles are summed. An uncounted role is a
+// role that can be entirely absent while the deployment reports every replica ready.
 //
 // Per role and not in aggregate, and the difference is the whole point. A 1P:2D group with two
 // ready decode workers and no prefill has two of three workers ready — a shortfall, which reads
@@ -237,10 +232,9 @@ func (r *SyncedResourceReconciler) observeRollout(
 // one layer further on: there the frontend is deleted before it is applied, here it is applied and
 // never comes up, and both leave a healthy-looking deployment reachable by nothing.
 //
-// The case it was built for is the one the whole change was built for. A frontend image is not
-// always NVIDIA's — the Kimi K3 fix is a patched build in a private repository — and a private
-// pull with no credential in the workload namespace is an ImagePullBackOff for ever, on a pod
-// nothing here was reading.
+// A frontend image is not always NVIDIA's — a patched build can live in a private registry — and
+// a private pull with no credential in the workload namespace is an ImagePullBackOff for ever, on
+// a pod nothing else here reads.
 //
 // Silent unless a pod says something, and that restraint is deliberate in both directions. No
 // frontend pods at all is Dynamo not having derived them yet, and a pod merely starting is a pod

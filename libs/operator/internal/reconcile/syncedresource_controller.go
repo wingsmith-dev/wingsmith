@@ -220,8 +220,8 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 // in the other.
 //
 // The graph deployment watch is registered only when the cluster serves the Dynamo CRD. Watching
-// a kind the API server does not know fails the controller at startup, and the operator used to
-// crash-loop on a cluster without Dynamo instead of running everything else and saying what is
+// a kind the API server does not know fails the controller at startup, which would crash-loop the
+// operator on a cluster without Dynamo instead of running everything else and saying what is
 // missing. Installing Dynamo later takes an operator restart to start the watch; until then the
 // requeue floor is what notices a graph change.
 func (r *SyncedResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {

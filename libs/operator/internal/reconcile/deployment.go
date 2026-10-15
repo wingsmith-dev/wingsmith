@@ -166,11 +166,10 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// Nothing is written when what is running was already built from these inputs. The apply
 	// below is otherwise unconditional, and an unconditional apply makes every change to the
 	// renderer a fleet-wide reload: Dynamo hashes a component's whole pod template to name the
-	// DynamoComponentDeployment it creates, so a single byte of difference — on 2026-09-02 it was
-	// an ownership label nothing read, dropped when Recipe was deleted — abandons the running
-	// worker and starts a new one. Every model in the fleet reloaded its weights, and on a
-	// saturated cluster it deadlocked: the new pod cannot schedule until the old one releases the
-	// accelerators it is still holding.
+	// DynamoComponentDeployment it creates, so a single byte of difference — even a label nothing
+	// reads — abandons the running worker and starts a new one. Every model reloads its weights,
+	// and on a saturated cluster that deadlocks: the new pod cannot schedule until the old one
+	// releases the accelerators it is still holding.
 	//
 	// This is what the serving digest was for. Its definition is *would this produce the same
 	// running process*, computed by the plane over its own declaration, so a comparison against
@@ -253,12 +252,12 @@ func (r *SyncedResourceReconciler) afterApply(
 		return ctrl.Result{}, err
 	}
 
-	// Applied is a statement about a write, and the plane had nothing else — so a deployment
-	// that was serving read `placed · 0/0 ready` forever, which looks exactly like one that
-	// never came up. What is actually running is read back here and reported instead.
+	// Applied is a statement about a write, and on its own a serving deployment would read
+	// `placed · 0/0 ready`, which looks exactly like one that never came up. What is actually
+	// running is read back here and reported instead.
 	//
 	// A failure to read it is not a failure to reconcile: the apply succeeded. The plain
-	// conclusion is reported in its place, which is what the plane used to get every time.
+	// conclusion is reported in its place.
 	out, err := r.observeRollout(ctx, dep)
 	if err != nil {
 		r.Log.Warn("could not read back what is running", "deployment", dep.DeploymentID, "error", err)
@@ -595,12 +594,6 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 	return ctrl.Result{RequeueAfter: waitForDependency}, nil
 }
 
-// fail records a reconcile that cannot succeed by being retried.
-//
-// It returns no error for the same reason the adoption refusal does not: requeueing with backoff
-// and logging a failure forever describes a transient fault, and a payload that does not decode or
-// a serving block that names no image is not transient. The next write of desired state is what fixes it,
-// and that arrives as a new revision rather than as a retry.
 // immutableTopology reports whether an apply was refused because the graph already exists with a
 // different set of components.
 //
@@ -651,6 +644,12 @@ func clusterRejected(err error) bool {
 	return apierrors.IsInvalid(err) || apierrors.IsForbidden(err) || apierrors.IsBadRequest(err)
 }
 
+// fail records a reconcile that cannot succeed by being retried.
+//
+// It returns no error for the same reason the adoption refusal does not: requeueing with backoff
+// and logging a failure forever describes a transient fault, and a payload that does not decode or
+// a serving block that names no image is not transient. The next write of desired state is what
+// fixes it, and that arrives as a new revision rather than as a retry.
 func (r *SyncedResourceReconciler) fail(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(res.DeepCopy())
 	res.Status.Phase = "Failed"

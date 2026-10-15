@@ -40,10 +40,9 @@ const stallAfter = 15 * time.Minute
 // trouble is a diagnosis: the closed-set reason for it, and the message a person reads.
 //
 // Separate from `rollout` because it comes from somewhere else. A rollout is counted off the pods;
-// this is read off the objects between the apply and those pods, which is the whole region the
-// operator used to have no opinion about. A deployment with no pods and no trouble is starting up;
-// a deployment with no pods and trouble is broken, and until this existed the two reported the
-// same `placed · 0 of 1 replicas ready`.
+// this is read off the objects between the apply and those pods. A deployment with no pods and no
+// trouble is starting up; a deployment with no pods and trouble is broken, and without this the
+// two would report the same `placed · 0 of 1 replicas ready`.
 type trouble struct {
 	reason  string
 	code    string

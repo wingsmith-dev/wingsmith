@@ -307,10 +307,10 @@ type ServingSpec struct {
 	// FrontendImage is the runtime the OpenAI-compatible frontend for this model runs, when it
 	// must differ from the engine's.
 	//
-	// A field of its own rather than a reuse of EngineRuntimeImage, because the two are genuinely
-	// different builds: Kimi K3 on site-c serves through a patched frontend while its decode worker
-	// stays on NVIDIA's stock image, because both defects that made the model unusable are in
-	// the frontend binary and none is in the engine. Nil is the ordinary case and means the
+	// A field of its own rather than a reuse of EngineRuntimeImage, because the two can be
+	// genuinely different builds: a model can need a patched frontend while its workers stay on
+	// the stock engine image, when the defect is in the frontend binary and not in the engine.
+	// Nil is the ordinary case and means the
 	// cluster's own default, which is why this is a pointer — an empty string from a plane too
 	// old to send the field must not read as a deliberate blank image.
 	FrontendImage      *string           `json:"frontend_image"`
