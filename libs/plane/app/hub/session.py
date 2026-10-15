@@ -26,6 +26,7 @@ from msgspec import json as msgjson
 from app.auth import Principal
 from app.hub.sink import Sink
 from app.hub.sink import Liveness
+from app.hub.sink import ClaimLost
 from app.hub.sink import SinkFrame
 from app.hub.sink import MemorySink
 from app.hub.sink import DesiredSource
@@ -160,6 +161,12 @@ class SessionConfig:
     send_queue_size: int = 1024
     replay_capacity: int = 4096
     ownership_check_interval: float = 10.0
+    apply_retries: int = 2
+    """How many more times a frame the sink failed to apply is tried before the session closes."""
+    apply_retry_delay: float = 0.2
+    """The first wait between those tries; each one after doubles it."""
+    ownership_failures: int = 3
+    """Consecutive ownership polls that may fail to reach the database before the session gives up."""
     resync_interval: float = 900.0
     """How often a live session restreams the cluster's whole declared state.
 
@@ -279,12 +286,12 @@ class OperatorSession:
             await self._pump()
         finally:
             await self._close(1000, "")
-            await self._mark_disconnected()
             if self.state is not None:
                 self.live.unregister(self.state.cluster_id, self)
-                if self._synced:
-                    self.registry.disconnected(self.state.session_id)
-                else:
+                last = self.registry.disconnected(self.state.session_id)
+                if last:
+                    await self._mark_disconnected()
+                if last and not self._synced:
                     # A connection that never finished its snapshot or its replay leaves a session
                     # whose replay buffer holds part of a stream. Resuming it would deliver that
                     # part and nothing after it, so the next hello starts over instead.
@@ -392,7 +399,7 @@ class OperatorSession:
             return
         cluster_id = self._state.cluster_id
         try:
-            canonical = await self.sink.mark_connected(cluster_id, hello.operator_version)
+            canonical = await self.sink.mark_connected(cluster_id, hello.operator_version, self._state.session_id)
         except Exception:
             logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", cluster_id, exc_info=True)
             return
@@ -405,7 +412,7 @@ class OperatorSession:
         if self.state is None or not isinstance(self.sink, Liveness):
             return
         try:
-            await self.sink.mark_disconnected(self.state.cluster_id, self._close_reason)
+            await self.sink.mark_disconnected(self.state.cluster_id, self._close_reason, self.state.session_id)
         except Exception:
             logger.warning(
                 "hub.session.sync_state_failed phase=disconnect cluster=%s", self.state.cluster_id, exc_info=True
@@ -638,16 +645,43 @@ class OperatorSession:
     async def _on_frame(self, envelope: Envelope[Struct]) -> None:
         if not self._accept(envelope):
             return
-
-        try:
-            await self._dispatch(envelope)
-        except (ProtocolViolation, asyncio.CancelledError):
-            raise
-        except Exception:
-            logger.exception("hub.frame.not_applied type=%s seq=%s", envelope.type, envelope.seq)
-            return
-
+        await self._apply(envelope)
         await self._settle(envelope)
+
+    async def _apply(self, envelope: Envelope[Struct]) -> None:
+        """Hands one frame to the sink, retrying a failure a few times before giving the connection up.
+
+        A frame that cannot be applied cannot be skipped either. Its seq is already
+        accepted, so the frames behind it would apply while the acknowledgement stays
+        stuck at the hole until something reconnected — and nothing would. Closing is
+        that something: the operator resumes from the last acknowledged seq and sends
+        this frame again. A sink is expected to accept and discard a frame that could
+        never apply (PROTOCOL 6b), so what reaches here is worth another attempt.
+        """
+        delay = self.config.apply_retry_delay
+        attempt = 0
+        while True:
+            try:
+                await self._dispatch(envelope)
+                return
+            except (ProtocolViolation, asyncio.CancelledError):
+                raise
+            except ClaimLost:
+                raise Displaced(self._state.cluster_id) from None
+            except Exception as exc:
+                if attempt >= self.config.apply_retries:
+                    logger.exception("hub.frame.not_applied type=%s seq=%s", envelope.type, envelope.seq)
+                    raise ProtocolViolation(
+                        f"could not apply {envelope.type} seq {envelope.seq}; resume will replay it",
+                        code="unavailable",
+                        close_code=CLOSE_TRY_AGAIN_LATER,
+                    ) from exc
+                logger.warning(
+                    "hub.frame.retry type=%s seq=%s attempt=%s error=%s", envelope.type, envelope.seq, attempt + 1, exc
+                )
+            attempt += 1
+            await asyncio.sleep(delay)
+            delay *= 2
 
     async def _dispatch(self, envelope: Envelope[Struct]) -> None:
         payload = envelope.payload
@@ -669,11 +703,17 @@ class OperatorSession:
                 )
             case "resync.begin":
                 assert isinstance(payload, ResyncBegin)
-                await self.sink.begin_resync(cluster_id, payload.scope, envelope.reply_to or envelope.id)
+                await self.sink.begin_resync(
+                    cluster_id, payload.scope, envelope.reply_to or envelope.id, self._state.session_id
+                )
             case "stream.end":
                 assert isinstance(payload, StreamEnd)
                 await self.sink.end_resync(
-                    cluster_id, envelope.reply_to or envelope.id, payload.count, payload.complete
+                    cluster_id,
+                    envelope.reply_to or envelope.id,
+                    payload.count,
+                    payload.complete,
+                    self._state.session_id,
                 )
             case "operation.observed":
                 await self.sink.record_operation(self._sink_frame(envelope))
@@ -695,6 +735,7 @@ class OperatorSession:
             seq=envelope.seq,
             id=envelope.id,
             reply_to=envelope.reply_to,
+            session_id=self._state.session_id,
         )
 
     # ----------------------------------------------------------------- outbound
@@ -729,16 +770,46 @@ class OperatorSession:
         out from under this connection, is cut here within one interval rather than
         on whatever reconnect the operator happens to make next.
         """
+        failures = 0
         while True:
             await asyncio.sleep(self.config.ownership_check_interval)
             state = self.state
             if state is None:
                 continue
-            if not await self.claims.owns(state.cluster_id, state.session_id):
+            try:
+                owns = await self.claims.owns(state.cluster_id, state.session_id)
+                refusal = await self.standing.refusal(state.cluster_id, self.credential) if owns else None
+            except Exception as exc:
+                failures += 1
+                logger.warning(
+                    "hub.session.ownership_unknown cluster=%s failures=%s error=%s", state.cluster_id, failures, exc
+                )
+                if failures >= self.config.ownership_failures:
+                    raise ProtocolViolation(
+                        "cannot confirm this session still owns its cluster",
+                        code="unavailable",
+                        close_code=CLOSE_TRY_AGAIN_LATER,
+                    ) from exc
+                continue
+            failures = 0
+            if not owns:
                 raise Displaced(state.cluster_id)
-            refusal = await self.standing.refusal(state.cluster_id, self.credential)
             if refusal is not None:
                 raise self._refusal(state.cluster_id, refusal)
+            await self._touch()
+
+    async def _touch(self) -> None:
+        """Keeps `last_seen_at` moving while the session lives, which is what makes `reachable` mean now.
+
+        Also what repairs a `mark_connected` that failed: the stamp it carries says
+        the cluster is reachable.
+        """
+        if self.state is None or not isinstance(self.sink, Liveness):
+            return
+        try:
+            await self.sink.touch(self.state.cluster_id, self.state.session_id)
+        except Exception:
+            logger.warning("hub.session.sync_state_failed phase=touch cluster=%s", self.state.cluster_id, exc_info=True)
 
     async def send_desired(self, type_name: str, payload: Struct, reply_to: str | None = None) -> None:
         """Queues declared state for the operator. The seam live dispatch sends through.

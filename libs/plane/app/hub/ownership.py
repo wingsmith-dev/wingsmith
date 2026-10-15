@@ -2,11 +2,16 @@
 that no longer runs one replica.
 
 `SessionState` stays in memory and is not shared across pods. What does have to be
-shared is a single fact: exactly one session may be writing for a given `cluster_id`
-at any moment, or two pods can interleave writes to the same ingestion rows. This
-module is that fact's only home — a row per `cluster_id` in `hub_cluster_claim`,
-claimed atomically at `hello` and polled by the session that currently believes it
-holds it.
+shared is a single fact: which session's writes for a given `cluster_id` count, or
+two pods can interleave writes to the same ingestion rows. This module is that
+fact's only home — a row per `cluster_id` in `hub_cluster_claim`, claimed
+atomically at `hello` and polled by the session that currently believes it holds
+it.
+
+Two sessions can still be *connected* for one cluster at once, for up to one poll
+interval after a newer `hello`. What stops them both writing is the database sink,
+which reads this row under a share lock inside every write's own transaction and
+refuses the write of a session that no longer holds it (`DatabaseSink._holds`).
 
 Claiming is unconditional by design: a `hello` is, by construction, the newest claim
 attempt for its cluster, so there is nothing to compare against before overwriting.
@@ -21,12 +26,21 @@ row on an interval (`HUB_OWNERSHIP_CHECK_SECONDS`) and closes itself the moment 
 row names a different `session_id`. The peer reconnects, most likely to a different
 pod under a Kubernetes Service, and the hub there resyncs it from scratch — a
 `full_resync`, per PROTOCOL §4, is the correct and only consequence.
+
+Every poll that finds the session still the owner also stamps `heartbeat_at`. A hub
+that dies without closing leaves its claim behind, and the heartbeat is how the
+reactor tells such a row from a live one and removes it (`app.reactor.liveness`).
+
+No test runs two hub processes against one database. The fence and the poll are
+what make several replicas safe in principle; until that is exercised, run one.
 """
 
 from typing import Protocol
 from logging import getLogger
 
+from sqlalchemy import func
 from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert
@@ -58,8 +72,8 @@ class ClusterClaimRepository:
             set_={
                 "session_id": stmt.excluded.session_id,
                 "instance": stmt.excluded.instance,
-                "claimed_at": stmt.excluded.claimed_at,
-                "heartbeat_at": stmt.excluded.heartbeat_at,
+                "claimed_at": func.now(),
+                "heartbeat_at": func.now(),
             },
         ).returning(HubClusterClaim)
         result = await self.db.execute(stmt)
@@ -72,17 +86,19 @@ class ClusterClaimRepository:
         return result.scalar_one_or_none()
 
     async def touch(self, cluster_id: str, session_id: str) -> bool:
+        """Stamps the claim's heartbeat if `session_id` still holds it; returns whether it does.
+
+        One statement, so the check and the stamp cannot disagree. The heartbeat is
+        what lets a claim held by a hub that died without closing be told apart from a
+        live one (`app.reactor.liveness`).
+        """
         result = await self.db.execute(
-            select(HubClusterClaim).where(
-                HubClusterClaim.cluster_id == cluster_id,
-                HubClusterClaim.session_id == session_id,
-            )
+            update(HubClusterClaim)
+            .where(HubClusterClaim.cluster_id == cluster_id, HubClusterClaim.session_id == session_id)
+            .values(heartbeat_at=func.now())
+            .returning(HubClusterClaim.id)
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return False
-        await self.db.flush()
-        return True
+        return result.first() is not None
 
 
 class ClusterClaimService:
@@ -117,10 +133,10 @@ class ClusterClaimService:
         await self.db.commit()
 
     async def owns(self, cluster_id: str, session_id: str) -> bool:
-        """Whether `session_id` is still the row's current owner."""
-        row = await self.repo.get(await self._canonical(cluster_id))
+        """Whether `session_id` is still the row's current owner, heartbeating the claim if it is."""
+        held = await self.repo.touch(await self._canonical(cluster_id), session_id)
         await self.db.commit()
-        return row is not None and row.session_id == session_id
+        return held
 
 
 class ClaimStore(Protocol):

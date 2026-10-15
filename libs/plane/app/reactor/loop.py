@@ -1,7 +1,9 @@
 """The tick: hold the lease, evaluate, match, notify. One process at a time, fleet-wide.
 
-Three passes per tick, in this order and for a reason:
+The passes of one tick, in this order and for a reason:
 
+0. **Liveness.** Retire hub claims and `reachable` flags that no live session is
+   keeping fresh (`app.reactor.liveness`). Before conditions, which read them.
 1. **Conditions.** Recompute what is true and reconcile the open condition alerts
    against it. First because it is the pass that can resolve things, and an alert
    that recovered should not be notified as firing in the same tick.
@@ -42,6 +44,7 @@ from app.db.models import NotificationChannel
 
 from . import alerts as alert_store
 from . import notify
+from . import liveness
 from . import conditions
 from . import remote_write
 from .rules import event_intent
@@ -188,6 +191,13 @@ async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> boo
         if cursor is None:
             await db.rollback()
             return False
+        # First, so conditions read reachability as it is rather than as a dead hub left it. In a
+        # savepoint of its own, so a failure here costs this pass and never the alerting after it.
+        try:
+            async with db.begin_nested():
+                await liveness.sweep(db, moment)
+        except Exception:
+            logger.warning("reactor.liveness.failed", exc_info=True)
         await evaluate_conditions(db, moment)
         await drain_events(db, cursor, settings.REACTOR_EVENT_BATCH, moment)
         await db.commit()

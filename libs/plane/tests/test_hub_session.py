@@ -433,20 +433,68 @@ async def test_a_sequence_gap_closes_the_connection() -> None:
     await harness.stop()
 
 
-async def test_ack_is_contiguous_and_withheld_for_a_frame_that_did_not_apply() -> None:
-    harness = Harness(sink=MemorySink(fail_types={"node.event"}))
+FAST_RETRY = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, apply_retry_delay=0.001)
+
+
+async def test_a_frame_that_will_not_apply_closes_the_connection_so_resume_replays_it() -> None:
+    """Skipping it left the ack stuck at the hole with nothing that would ever reconnect."""
+    harness = Harness(sink=MemorySink(fail_types={"node.event"}), config=FAST_RETRY)
     await harness.start()
     await harness.hello()
 
     harness.connection.push(frame("device.observed", payload_of("device.observed"), seq=1))
     harness.connection.push(frame("node.event", payload_of("node.event"), seq=2))
     harness.connection.push(frame("device.observed", payload_of("device.observed"), seq=3))
-    await until(lambda: len(harness.sink.observed) == 2)
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
 
+    assert harness.connection.close_code == 1013
     assert harness.session.state is not None
     assert harness.session.state.ack_cursor == 1, "the cursor never advances past a hole"
-    assert len(harness.sink.observed) == 2, "later frames are still delivered in order"
+    assert len(harness.sink.observed) == 1, "nothing behind the hole is applied"
     assert harness.sink.events == []
+    await harness.stop()
+
+
+async def test_a_database_blink_is_retried_in_place() -> None:
+    harness = Harness(sink=MemorySink(transient={"node.event": 2}), config=FAST_RETRY)
+    await harness.start()
+    await harness.hello()
+
+    harness.connection.push(frame("node.event", payload_of("node.event"), seq=1))
+    await until(lambda: harness.session.state is not None and harness.session.state.ack_cursor == 1)
+
+    assert len(harness.sink.events) == 1
+    assert not harness.connection.closed.is_set()
+    await harness.stop()
+
+
+async def test_a_write_refused_for_a_lost_claim_closes_as_displaced() -> None:
+    sink = MemorySink()
+    harness = Harness(sink=sink)
+    await harness.start()
+    await harness.hello()
+    sink.claim_lost = True
+
+    harness.connection.push(frame("device.observed", payload_of("device.observed"), seq=1))
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+
+    assert harness.connection.close_code == 1013
+    assert harness.session.state is not None
+    assert harness.session.state.ack_cursor == 0
+    await harness.stop()
+
+
+async def test_frames_carry_the_session_their_writes_are_fenced_on() -> None:
+    harness = Harness()
+    await harness.start()
+    await harness.hello()
+
+    harness.connection.push(frame("device.observed", payload_of("device.observed"), seq=1))
+    await until(lambda: len(harness.sink.observed) == 1)
+
+    assert harness.session.state is not None
+    assert harness.sink.observed[0].session_id == harness.session.state.session_id
+    assert harness.sink.observed[0].cluster_id == CLUSTER
     await harness.stop()
 
 
@@ -780,6 +828,79 @@ async def test_a_session_that_lost_its_claim_stops_writing() -> None:
     await harness.stop()
 
 
+class FlakyClaims(MemoryClaimStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.failing = 0
+
+    async def owns(self, cluster_id: str, session_id: str) -> bool:
+        if self.failing:
+            self.failing -= 1
+            raise RuntimeError("database unreachable")
+        return await super().owns(cluster_id, session_id)
+
+
+async def test_an_ownership_poll_that_cannot_reach_the_database_keeps_the_session() -> None:
+    claims = FlakyClaims()
+    config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
+    harness = Harness(claims=claims, config=config)
+    await harness.start()
+    await harness.hello()
+
+    claims.failing = 2
+    await until(lambda: claims.failing == 0)
+    await until(lambda: len(harness.sink.touches) > 0)
+
+    assert not harness.connection.closed.is_set()
+    await harness.stop()
+
+
+async def test_an_ownership_poll_that_keeps_failing_gives_the_session_up() -> None:
+    claims = FlakyClaims()
+    config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
+    harness = Harness(claims=claims, config=config)
+    await harness.start()
+    await harness.hello()
+
+    claims.failing = 100
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert harness.connection.close_code == 1013
+    await harness.stop()
+
+
+async def test_a_live_session_keeps_its_cluster_seen() -> None:
+    config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
+    harness = Harness(config=config)
+    await harness.start()
+    await harness.hello()
+
+    await until(lambda: len(harness.sink.touches) >= 2)
+    assert harness.session.state is not None
+    assert harness.sink.touches[0] == (CLUSTER, harness.session.state.session_id)
+    await harness.stop()
+
+
+async def test_a_connection_closing_after_its_session_resumed_does_not_report_the_cluster_gone() -> None:
+    """A half-open socket noticed late used to mark unreachable a cluster its successor was serving."""
+    registry = SessionRegistry(replay_capacity=16)
+    sink = MemorySink()
+    first = Harness(registry=registry, sink=sink)
+    await first.start()
+    welcome = await first.hello()
+    await first.connection.next_of_type("stream.end")
+
+    second = Harness(registry=registry, sink=sink)
+    await second.start()
+    resumed = await second.hello(session_id=welcome["payload"]["session_id"], resume_from=2)
+    assert resumed["payload"]["full_resync"] is False
+
+    await first.stop()
+    assert sink.disconnections == []
+
+    await second.stop()
+    assert len(sink.disconnections) == 1
+
+
 # --------------------------------------------------------------------------- ttl reaper (ADR 0005)
 
 
@@ -1000,6 +1121,10 @@ def test_a_restarted_operator_is_not_read_as_a_duplicate() -> None:
     state.adopt(1)
     assert state.expected_seq == 1
     assert state.adopt_inbound is False
+    assert state.ack_cursor == 0, "the old cursor counts a stream the peer is no longer sending"
+
+    state.mark_applied(1)
+    assert state.ack_cursor == 1
 
 
 def test_an_operator_that_did_not_restart_keeps_its_place() -> None:

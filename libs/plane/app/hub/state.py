@@ -90,6 +90,7 @@ class SessionState:
         "_applied",
         "ack_cursor",
         "adopt_inbound",
+        "attached",
         "cluster_id",
         "connection_count",
         "expected_seq",
@@ -109,6 +110,13 @@ class SessionState:
         self._applied: set[int] = set()
         self.replay = ReplayBuffer(replay_capacity)
         self.connection_count = 0
+        self.attached = 0
+        """How many connections are attached to this session right now, on this process.
+
+        Usually one. Two for the moment a peer resumes before its previous connection has
+        finished closing — and that older connection's close must not report the cluster
+        gone while the newer one is serving it.
+        """
         self.idle_since: float | None = None
         """`time.monotonic()` of the moment the last connection detached.
 
@@ -142,8 +150,15 @@ class SessionState:
         self._applied.clear()
 
     def adopt(self, seq: int) -> None:
-        """Takes the peer's numbering as the expectation, for the first frame after a reconnect."""
+        """Takes the peer's numbering as the expectation, for the first frame after a reconnect.
+
+        The acknowledgement cursor moves with it. It counts the peer's stream, and a peer
+        that restarted is counting a new one: left where it was, every frame the hub sends
+        would acknowledge seqs the peer has not sent yet, and the peer would release from
+        its own replay buffer the frames it most needs kept.
+        """
         self.expected_seq = seq
+        self.ack_cursor = seq - 1
         self.adopt_inbound = False
         self._applied.clear()
 
@@ -186,14 +201,23 @@ class SessionRegistry:
         state = self._sessions.get(session_id)
         if state is not None:
             state.connection_count += 1
+            state.attached += 1
             state.idle_since = None
 
-    def disconnected(self, session_id: str) -> None:
-        """A connection detached from `session_id`. Starts the idle countdown at zero."""
+    def disconnected(self, session_id: str) -> bool:
+        """A connection detached from `session_id`. Returns whether it was the last one attached.
+
+        Only the last one starts the idle countdown, and only the last one may report the
+        cluster gone.
+        """
         state = self._sessions.get(session_id)
         if state is None:
-            return
+            return True
+        state.attached = max(0, state.attached - 1)
+        if state.attached:
+            return False
         state.idle_since = time.monotonic()
+        return True
 
     def reap(self, ttl: float) -> list[str]:
         """Drops every session idle for at least `ttl` seconds. Never one with a live connection.

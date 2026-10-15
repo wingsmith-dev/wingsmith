@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.hub.sink import ClaimLost
 from app.hub.sink import SinkFrame
 from app.db.engine import session_factory
 from app.db.models import Cluster
@@ -27,6 +28,7 @@ from app.db.models import Replica
 from app.db.models import Artifact
 from app.db.models import Allocation
 from app.db.models import Deployment
+from app.db.models import HubClusterClaim
 from app.ingestion import statements
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
@@ -197,6 +199,31 @@ class DatabaseSink:
         self._clusters[cluster_ref] = cluster_id
         return cluster_id
 
+    async def _holds(self, db: AsyncSession, cluster_id: UUID, session_id: str) -> bool:
+        """Whether `session_id` holds the cluster's claim, read under a share lock on the claim row.
+
+        The lock is what makes the answer last the whole transaction. A newer `hello`
+        claiming the cluster updates that row, so it waits for this write to commit,
+        and every write after the claim moved sees the new owner and is refused. That
+        is the single-writer guarantee ADR 0005 asks for; polling alone left a
+        displaced session writing for up to one poll interval.
+        """
+        owner = await db.scalar(
+            select(HubClusterClaim.session_id)
+            .join(Cluster, Cluster.uid == HubClusterClaim.cluster_id)
+            .where(Cluster.id == cluster_id)
+            .with_for_update(read=True, of=HubClusterClaim)
+        )
+        return owner == session_id
+
+    async def _fence(self, db: AsyncSession, cluster_id: UUID, frame_cluster: str, session_id: str | None) -> None:
+        """Refuses the write unless the session it arrived on still owns the cluster.
+
+        A frame with no session — a test, a caller outside the hub — is not fenced.
+        """
+        if session_id is not None and not await self._holds(db, cluster_id, session_id):
+            raise ClaimLost(frame_cluster)
+
     # ----------------------------------------------------------------- references
 
     async def _uid_ref(self, db: AsyncSession, model: Any, uid: str) -> UUID | None:
@@ -322,6 +349,7 @@ class DatabaseSink:
     async def _write(self, frame: SinkFrame) -> tuple[str, str] | None:
         async with self.sessions.begin() as db:
             cluster_id = await self._cluster_id(db, frame.cluster_id)
+            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
             tracked = await self._dispatch(db, cluster_id, frame)
             await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
             return tracked
@@ -473,6 +501,7 @@ class DatabaseSink:
         payload = frame.payload
         async with self.sessions.begin() as db:
             cluster_id = await self._cluster_id(db, frame.cluster_id)
+            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
             match frame.type:
                 case "node.event":
                     assert isinstance(payload, NodeEvent)
@@ -507,6 +536,7 @@ class DatabaseSink:
             return
         async with self.sessions.begin() as db:
             cluster_id = await self._cluster_id(db, frame.cluster_id)
+            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
             result = await db.execute(statements.update_operation(cluster_id, payload))
             if result.rowcount == 0:
                 logger.info(
@@ -528,11 +558,13 @@ class DatabaseSink:
 
     # ----------------------------------------------------------------- resync
 
-    async def begin_resync(self, cluster_id: str, scope: str, request_id: str) -> None:
+    async def begin_resync(self, cluster_id: str, scope: str, request_id: str, session_id: str | None = None) -> None:
         self._epochs[request_id] = ResyncEpoch(cluster_uid=cluster_id, scope=scope, request_id=request_id)
         logger.info("ingestion.resync.begin cluster=%s scope=%s request=%s", cluster_id, scope, request_id)
 
-    async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None:
+    async def end_resync(
+        self, cluster_id: str, request_id: str, count: int, complete: bool, session_id: str | None = None
+    ) -> None:
         epoch = self._epochs.pop(request_id, None)
         decision = decide(epoch, count, complete)
         if not decision.prune or epoch is None:
@@ -541,12 +573,13 @@ class DatabaseSink:
             )
             return
         if epoch.scope in DEMAND_SCOPES:
-            await self._prune_demand(cluster_id, epoch)
+            await self._prune_demand(cluster_id, epoch, session_id)
         if epoch.scope not in SUPPLY_SCOPES:
             return
 
         async with self.sessions.begin() as db:
             resolved = await self._cluster_id(db, cluster_id)
+            await self._fence(db, resolved, cluster_id, session_id)
             moment = now()
             going = (await db.execute(statements.doomed_nodes(resolved, epoch.present[NODE]))).all()
             leaving = (await db.execute(statements.doomed_workloads(resolved, epoch.present[WORKLOAD]))).all()
@@ -571,7 +604,7 @@ class DatabaseSink:
             workloads.rowcount,
         )
 
-    async def _prune_demand(self, cluster_id: str, epoch: ResyncEpoch) -> None:
+    async def _prune_demand(self, cluster_id: str, epoch: ResyncEpoch, session_id: str | None = None) -> None:
         """Forgets the replicas and allocations a complete demand snapshot did not name.
 
         The half that was missing, and the reason a paused workload kept holding
@@ -589,6 +622,7 @@ class DatabaseSink:
         """
         async with self.sessions.begin() as db:
             resolved = await self._cluster_id(db, cluster_id)
+            await self._fence(db, resolved, cluster_id, session_id)
             replicas = await db.execute(statements.prune_cluster_replicas(resolved, epoch.present[REPLICA]))
             allocations = await db.execute(statements.prune_cluster_allocations(resolved, epoch.present[ALLOCATION]))
         logger.info(
@@ -624,7 +658,9 @@ class DatabaseSink:
 
     # ----------------------------------------------------------------- liveness
 
-    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None:
+    async def mark_connected(
+        self, cluster_uid: str, operator_version: str, session_id: str | None = None
+    ) -> str | None:
         """The observed half of a cluster coming up. Never touches `Cluster.phase`.
 
         Returns the cluster's canonical uid, which the session needs and only a
@@ -641,27 +677,41 @@ class DatabaseSink:
                 "last_seen_at": moment,
                 "last_error": None,
             },
+            session_id,
         )
 
-    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
+    async def mark_disconnected(
+        self, cluster_uid: str, error: str | None = None, session_id: str | None = None
+    ) -> None:
+        """The observed half of a cluster going away, unless another session has already taken it over."""
         moment = now()
         await self._sync_state(
             cluster_uid,
             {"reachable": False, "disconnected_at": moment, "last_seen_at": moment, "last_error": error},
+            session_id,
         )
 
-    async def touch(self, cluster_uid: str) -> None:
-        await self._sync_state(cluster_uid, {"last_seen_at": now()})
+    async def touch(self, cluster_uid: str, session_id: str | None = None) -> None:
+        """Restates that the cluster is here. `reachable` too, so a failed `mark_connected` heals."""
+        await self._sync_state(cluster_uid, {"reachable": True, "last_seen_at": now()}, session_id)
 
-    async def _sync_state(self, cluster_uid: str, values: dict[str, Any]) -> str | None:
+    async def _sync_state(self, cluster_uid: str, values: dict[str, Any], session_id: str | None = None) -> str | None:
         """Writes one cluster's sync state and reports the uid of the row it wrote.
 
         The uid is returned rather than assumed because `cluster_uid` is a
         reference and may be either identity; callers that already hold a uid pay
         nothing for it beyond the row they were reading anyway.
+
+        Fenced on the claim when a session is named: liveness is the one fact a
+        displaced session is most likely to get wrong, because its last act is to
+        report the cluster it no longer serves as gone. Skipped silently rather
+        than raised — the session is closing either way.
         """
         async with self.sessions.begin() as db:
             cluster_id = await self._cluster_id(db, cluster_uid)
+            if session_id is not None and not await self._holds(db, cluster_id, session_id):
+                logger.info("ingestion.sync_state.fenced cluster=%s session=%s", cluster_uid, session_id)
+                return None
             await db.execute(statements.upsert_sync_state(cluster_id, values))
             return await db.scalar(select(Cluster.uid).where(Cluster.id == cluster_id))
 

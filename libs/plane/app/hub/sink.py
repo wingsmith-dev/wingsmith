@@ -29,6 +29,21 @@ class SinkFrame(Struct):
     seq: int | None = None
     id: str | None = None
     reply_to: str | None = None
+    session_id: str | None = None
+    """The hub session the frame arrived on. A sink that can fences its write on it (`ClaimLost`)."""
+
+
+class ClaimLost(Exception):
+    """The session a write was made for no longer holds its cluster's claim (ADR 0005).
+
+    Raised by a sink that checks the claim inside the write's own transaction, so a
+    displaced session cannot interleave a single row with the one that displaced it.
+    The session treats it as being displaced and closes; the write did not happen.
+    """
+
+    def __init__(self, cluster_id: str) -> None:
+        super().__init__(f"claim on {cluster_id} is held by another session")
+        self.cluster_id = cluster_id
 
 
 @runtime_checkable
@@ -51,11 +66,13 @@ class Sink(Protocol):
         """Records progress or the outcome of a long-running operation."""
         ...
 
-    async def begin_resync(self, cluster_id: str, scope: str, request_id: str) -> None:
+    async def begin_resync(self, cluster_id: str, scope: str, request_id: str, session_id: str | None = None) -> None:
         """Opens a snapshot for `scope`. Nothing is pruned until it is closed as complete."""
         ...
 
-    async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None:
+    async def end_resync(
+        self, cluster_id: str, request_id: str, count: int, complete: bool, session_id: str | None = None
+    ) -> None:
         """Closes a snapshot.
 
         `complete` is load-bearing: a truncated snapshot must leave local state untouched rather
@@ -73,7 +90,9 @@ class Liveness(Protocol):
     one fact about a cluster that no frame carries.
     """
 
-    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None:
+    async def mark_connected(
+        self, cluster_uid: str, operator_version: str, session_id: str | None = None
+    ) -> str | None:
         """The peer completed a handshake. `operator_version` comes off `hello`.
 
         Returns the cluster's canonical uid when it can, so a session can make
@@ -82,8 +101,22 @@ class Liveness(Protocol):
         """
         ...
 
-    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
-        """The peer is gone. `error` is why, when the hub was the one that closed."""
+    async def mark_disconnected(
+        self, cluster_uid: str, error: str | None = None, session_id: str | None = None
+    ) -> None:
+        """The peer is gone. `error` is why, when the hub was the one that closed.
+
+        Written only while `session_id` still holds the cluster's claim: a session that
+        was displaced must not report as gone a cluster its successor is serving.
+        """
+        ...
+
+    async def touch(self, cluster_uid: str, session_id: str | None = None) -> None:
+        """The peer is still here. Called on every ownership poll, so `last_seen_at` stays fresh.
+
+        Fenced on the claim like `mark_disconnected`. A cluster whose stamp goes stale is
+        one no hub is serving, whatever `reachable` last said.
+        """
         ...
 
 
@@ -120,20 +153,40 @@ class MemorySink:
     type is in the set raises, which is how a receiver says "I could not apply this".
     """
 
-    __slots__ = ("connections", "disconnections", "events", "fail_types", "observed", "operations", "resyncs")
+    __slots__ = (
+        "claim_lost",
+        "connections",
+        "disconnections",
+        "events",
+        "fail_types",
+        "observed",
+        "operations",
+        "resyncs",
+        "touches",
+        "transient",
+    )
 
-    def __init__(self, fail_types: set[str] | None = None) -> None:
+    def __init__(self, fail_types: set[str] | None = None, transient: dict[str, int] | None = None) -> None:
         self.observed: list[SinkFrame] = []
         self.events: list[SinkFrame] = []
         self.operations: list[SinkFrame] = []
         self.resyncs: list[tuple[str, str, str, int | None, bool | None]] = []
         self.connections: list[tuple[str, str]] = []
         self.disconnections: list[tuple[str, str | None]] = []
+        self.touches: list[tuple[str, str | None]] = []
         self.fail_types: set[str] = fail_types or set()
+        self.transient: dict[str, int] = dict(transient or {})
+        """Per type, how many more times to fail before applying: a database that blinked."""
+        self.claim_lost = False
 
     def _guard(self, frame: SinkFrame) -> None:
+        if self.claim_lost:
+            raise ClaimLost(frame.cluster_id)
         if frame.type in self.fail_types:
             raise RuntimeError(f"sink refused {frame.type}")
+        if self.transient.get(frame.type, 0) > 0:
+            self.transient[frame.type] -= 1
+            raise RuntimeError(f"sink could not reach its database for {frame.type}")
 
     async def apply_observed(self, frame: SinkFrame) -> None:
         self._guard(frame)
@@ -147,18 +200,27 @@ class MemorySink:
         self._guard(frame)
         self.operations.append(frame)
 
-    async def begin_resync(self, cluster_id: str, scope: str, request_id: str) -> None:
+    async def begin_resync(self, cluster_id: str, scope: str, request_id: str, session_id: str | None = None) -> None:
         self.resyncs.append(("begin", cluster_id, request_id, None, None))
 
-    async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None:
+    async def end_resync(
+        self, cluster_id: str, request_id: str, count: int, complete: bool, session_id: str | None = None
+    ) -> None:
         self.resyncs.append(("end", cluster_id, request_id, count, complete))
 
-    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None:
+    async def mark_connected(
+        self, cluster_uid: str, operator_version: str, session_id: str | None = None
+    ) -> str | None:
         self.connections.append((cluster_uid, operator_version))
         return cluster_uid
 
-    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
+    async def mark_disconnected(
+        self, cluster_uid: str, error: str | None = None, session_id: str | None = None
+    ) -> None:
         self.disconnections.append((cluster_uid, error))
+
+    async def touch(self, cluster_uid: str, session_id: str | None = None) -> None:
+        self.touches.append((cluster_uid, session_id))
 
 
 class NullSink:
@@ -174,13 +236,23 @@ class NullSink:
 
     async def record_operation(self, frame: SinkFrame) -> None: ...
 
-    async def begin_resync(self, cluster_id: str, scope: str, request_id: str) -> None: ...
+    async def begin_resync(
+        self, cluster_id: str, scope: str, request_id: str, session_id: str | None = None
+    ) -> None: ...
 
-    async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None: ...
+    async def end_resync(
+        self, cluster_id: str, request_id: str, count: int, complete: bool, session_id: str | None = None
+    ) -> None: ...
 
-    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None: ...
+    async def mark_connected(
+        self, cluster_uid: str, operator_version: str, session_id: str | None = None
+    ) -> str | None: ...
 
-    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None: ...
+    async def mark_disconnected(
+        self, cluster_uid: str, error: str | None = None, session_id: str | None = None
+    ) -> None: ...
+
+    async def touch(self, cluster_uid: str, session_id: str | None = None) -> None: ...
 
 
 class EmptyDesiredSource:

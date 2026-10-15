@@ -219,3 +219,44 @@ def test_more_specific_labels_win_field_by_field():
 def test_a_mute_anywhere_in_the_chain_mutes():
     assert tuning.resolve({}, {"hangar.io/alert": "off"}).muted
     assert tuning.resolve({"hangar.io/alert": "off"}, {}).muted
+
+
+# --------------------------------------------------------------------------- liveness
+
+
+def _sql(statement) -> str:
+    from sqlalchemy.dialects import postgresql
+
+    return str(statement.compile(dialect=postgresql.dialect()))
+
+
+def test_a_cluster_is_unheard_from_only_after_several_missed_polls(monkeypatch):
+    from app.config import settings
+    from app.reactor import liveness
+
+    monkeypatch.setattr(settings, "HUB_OWNERSHIP_CHECK_SECONDS", 30.0)
+    assert liveness.stale_after() == dt.timedelta(seconds=180)
+    monkeypatch.setattr(settings, "HUB_OWNERSHIP_CHECK_SECONDS", 1.0)
+    assert liveness.stale_after() == dt.timedelta(seconds=60), "a short poll interval does not make it twitchy"
+
+
+def test_an_abandoned_claim_is_judged_on_the_database_clock():
+    from app.reactor import liveness
+
+    sql = _sql(liveness.expire_claims(dt.timedelta(seconds=60)))
+    assert sql.startswith("DELETE FROM hub_cluster_claim")
+    assert "heartbeat_at < now() -" in sql
+
+
+def test_only_a_cluster_still_claimed_reachable_and_gone_quiet_is_marked_unreachable():
+    from app.reactor import liveness
+
+    moment = dt.datetime(2026, 10, 15, 12, 0, tzinfo=dt.UTC)
+    statement = liveness.unseen_clusters(moment, dt.timedelta(seconds=60))
+    sql = _sql(statement)
+    assert sql.startswith("UPDATE supply_cluster_sync_state SET")
+    assert "reachable=%(reachable)s" in sql
+    assert "reachable IS true" in sql
+    assert "last_seen_at IS NULL OR supply_cluster_sync_state.last_seen_at <" in sql
+    params = statement.compile().params
+    assert params["last_seen_at_1"] == moment - dt.timedelta(seconds=60)
