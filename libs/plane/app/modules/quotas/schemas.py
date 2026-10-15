@@ -89,10 +89,10 @@ class ResolvedLimitsSchema(Struct):
     outcome needs none of that arithmetic, and shipping it would let a gateway
     version drift the definition of a commercial commitment.
 
-    `limit_scope` is the one field that is not a number the gateway enforces but
-    an instruction for how to read the numbers beside it, and it has to travel
-    with them: `per_replica` means the numbers are this replica's, `divided`
-    means they are the fleet's and this replica enforces its share.
+    `limit_scope` is the one field that is not a limit but an instruction for how
+    to read the limits beside it, and it has to travel with them: `per_replica`
+    means the numbers are this replica's, `divided` means they are the fleet's and
+    this replica's share is a fraction of them.
     """
 
     committed_rpm: int | None
@@ -207,7 +207,8 @@ class ResolvedServingQuotaSchema(Struct):
     """What one endpoint's commitment means for a fleet of a stated size.
 
     `declared` is what was sold across the whole gateway fleet; `effective` is
-    what the replica at `replica_index` enforces once `limit_scope` is applied.
+    the share of it the replica at `replica_index` would hold once `limit_scope` is
+    applied. No gateway reads either yet.
     Under `per_replica` the two are equal by construction and every replica
     admits the whole number, so a fleet of R admits up to R times what was sold.
 

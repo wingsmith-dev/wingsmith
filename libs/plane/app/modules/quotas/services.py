@@ -224,14 +224,14 @@ class QuotaService:
 
 
 LIMIT_SCOPES = frozenset({"per_replica", "divided"})
-"""How a declared number is read by a fleet of gateway replicas.
+"""How a declared number would be read by a fleet of gateway replicas once one reads it.
 
-`per_replica` has every replica enforce the whole number, so R replicas admit up
-to R times what was sold. `divided` has each replica enforce its share, so an
-uneven connection balance refuses a caller who is inside the limit it bought.
-There is no shared counter and no coordination hop on the request path, which is
-what keeps the gateway's availability a function of its own process — so one of
-those two error directions is chosen rather than avoided.
+`per_replica` gives every replica the whole number, so R replicas would admit up
+to R times what was sold. `divided` gives each replica its share, so an
+uneven connection balance would refuse a caller who is inside the limit it bought.
+The design has no shared counter and no coordination hop on the request path, which
+keeps the gateway's availability a function of its own process, so one of those two
+error directions is chosen rather than avoided.
 """
 
 ON_EXCEED = frozenset({"reject", "queue"})
@@ -346,7 +346,7 @@ def declared_limits(quota: ServingQuota) -> ResolvedLimitsSchema:
 
 
 def effective_limits(quota: ServingQuota, replicas: int = 1, index: int = 0) -> ResolvedLimitsSchema:
-    """What the replica at `index` enforces, once `limit_scope` is applied.
+    """The share of the declared limits the replica at `index` would hold, once `limit_scope` is applied.
 
     Under `per_replica` this is the declared set unchanged — that is what the mode
     means — and the arithmetic below is skipped rather than run with a divisor of
@@ -493,7 +493,7 @@ def _table_revision(stamps: list[dt.datetime | None]) -> str:
     Two terms, because a maximum alone cannot see a deletion: removing a row
     removes a stamp, and unless that stamp happened to be the maximum across the
     whole table the value does not move. A withdrawn commitment would then sit
-    behind a `304` and go on being enforced by every replica — the asymmetry is
+    behind a `304` and go on being applied by every replica that reads it — the asymmetry is
     what makes it dangerous, since create and update move the maximum and only
     delete does not. The count moves on any disappearance, and the maximum still
     catches a simultaneous add and delete because the added row is freshly

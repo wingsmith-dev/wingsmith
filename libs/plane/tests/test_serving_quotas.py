@@ -1,4 +1,4 @@
-"""The second kind of quota: traffic, enforced in the gateway, measured nowhere here.
+"""The second kind of quota: traffic, declared here and not enforced by any gateway yet.
 
 Every test in this file is offline. That is not a limitation of the suite, it is
 the property under test — a serving quota is declared state and a resolution over
