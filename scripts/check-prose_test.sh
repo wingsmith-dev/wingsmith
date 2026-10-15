@@ -27,6 +27,8 @@ repo() {
   git -C "$dir" init -q
   git -C "$dir" config user.email test@example.com
   git -C "$dir" config user.name test
+  git -C "$dir" config commit.gpgsign false
+  git -C "$dir" config core.hooksPath /dev/null
   cp "$here/check-prose.sh" "$dir/scripts/"
   : >"$dir/scripts/prose-allowlist.txt"
   printf '%s\n' "$content" >"$dir/$path"
