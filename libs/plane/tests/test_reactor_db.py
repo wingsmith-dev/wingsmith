@@ -27,6 +27,13 @@ pytestmark = pytest.mark.database
 INSTANCE = "reactor-test"
 
 
+@pytest.fixture(autouse=True)
+def fresh_reactor_memory(monkeypatch):
+    """What the lease holder remembers between ticks, started empty for every test."""
+    monkeypatch.setattr(loop, "LATE", loop.LateCommits())
+    monkeypatch.setattr(loop, "LEDGER", loop.DeliveryLedger())
+
+
 async def connect(sessions, cluster: uuid.UUID, reachable: bool = True) -> None:
     """Marks the cluster active and its agent connected, the way enrolment and `hello` would.
 
@@ -347,6 +354,62 @@ async def test_a_failed_delivery_is_recorded_and_retried(sessions, cluster, monk
     rows = await fetch(sessions, "SELECT notify_error, notified_state FROM ops_alert")
     assert rows[0][0] == "ops: slack answered 404"
     assert rows[0][1] is None
+
+
+async def test_one_failing_channel_does_not_make_the_healthy_one_hear_it_twice(sessions, cluster, monkeypatch):
+    """A failure used to leave the whole alert due, and every channel was sent it again next tick."""
+    sent: list[str] = []
+
+    async def deliver(channel, message, timeout):
+        if channel.name == "broken":
+            raise loop.notify.DeliveryFailed("slack answered 404")
+        sent.append(channel.name)
+
+    monkeypatch.setattr(loop.notify, "deliver", deliver)
+    async with sessions.begin() as db:
+        for name in ("healthy", "broken"):
+            await db.execute(
+                text(
+                    "INSERT INTO ops_notification_channel (uid, name, kind, min_severity, config)"
+                    " VALUES (:uid, :name, 'slack', 'warning', '{\"webhook_url\": \"https://example.invalid/x\"}')"
+                ),
+                {"uid": ids.new_uid(ids.NOTIFICATION_CHANNEL), "name": name},
+            )
+    await connect(sessions, cluster, reachable=False)
+    async with sessions.begin() as db:
+        await db.execute(text("UPDATE supply_cluster_sync_state SET last_seen_at = now() - interval '2 days'"))
+
+    await tick(sessions, INSTANCE)
+    async with sessions.begin() as db:
+        await db.execute(text("UPDATE ops_alert SET first_seen_at = now() - interval '1 hour'"))
+    for _ in range(4):
+        await tick(sessions, INSTANCE)
+
+    assert sent == ["healthy"]
+
+
+async def test_an_event_committed_after_the_cursor_passed_its_seq_still_opens_an_alert(sessions, cluster):
+    """`seq` is taken at insert and seen at commit, and a slow transaction commits out of order."""
+
+    async def insert(seq: int, message: str) -> None:
+        async with sessions.begin() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO ops_event (seq, uid, cluster_id, type, severity, subject_type, message, occurred_at)"
+                    " VALUES (:seq, :uid, :cluster, 'replica.oom', 'error', 'replica', :message, now())"
+                ),
+                {"seq": seq, "uid": ids.new_uid(ids.EVENT), "cluster": cluster, "message": message},
+            )
+
+    await insert(900001, "first")
+    await insert(900003, "third")
+    await tick(sessions, INSTANCE)
+    assert len(await alert_rows(sessions, "replica.oom")) == 2
+
+    await insert(900002, "committed late")
+    await tick(sessions, INSTANCE)
+
+    assert len(await alert_rows(sessions, "replica.oom")) == 3
 
 
 async def test_the_evaluator_never_writes_declared_or_observed_state(sessions, cluster):

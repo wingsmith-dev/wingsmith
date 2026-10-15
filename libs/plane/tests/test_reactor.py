@@ -260,3 +260,73 @@ def test_only_a_cluster_still_claimed_reachable_and_gone_quiet_is_marked_unreach
     assert "last_seen_at IS NULL OR supply_cluster_sync_state.last_seen_at <" in sql
     params = statement.compile().params
     assert params["last_seen_at_1"] == moment - dt.timedelta(seconds=60)
+
+
+# --------------------------------------------------------------------------- event cursor and delivery
+
+
+def test_a_seq_the_cursor_stepped_over_is_watched_until_it_shows_up():
+    from app.reactor.loop import LateCommits
+
+    late = LateCommits(window=60)
+    moment = dt.datetime(2026, 10, 15, 12, 0, tzinfo=dt.UTC)
+    late.skipped(10, 15, {11, 12, 15}, moment)
+
+    assert late.due(moment) == [13, 14]
+    late.found({13})
+    assert late.due(moment) == [14]
+
+
+def test_a_watched_seq_that_never_commits_is_forgotten_after_the_window():
+    from app.reactor.loop import LateCommits
+
+    late = LateCommits(window=60)
+    moment = dt.datetime(2026, 10, 15, 12, 0, tzinfo=dt.UTC)
+    late.skipped(0, 3, {3}, moment)
+
+    assert late.due(moment + dt.timedelta(seconds=61)) == []
+    assert len(late) == 0
+
+
+def test_a_wrapped_identity_is_not_enumerated():
+    from app.reactor.loop import LateCommits
+
+    late = LateCommits(window=60)
+    late.skipped(0, 10**9, {10**9}, dt.datetime(2026, 10, 15, tzinfo=dt.UTC))
+    assert len(late) == 0
+
+
+def test_a_channel_that_took_the_message_is_not_sent_it_again():
+    from app.reactor.loop import DeliveryLedger
+
+    ledger = DeliveryLedger()
+    ledger.record("alr_1", "firing", "chn_ok")
+    assert ledger.told("alr_1", "firing", "chn_ok")
+    assert not ledger.told("alr_1", "resolved", "chn_ok"), "a new state is a new message"
+
+
+def test_a_failing_channel_backs_off_on_a_doubling_number_of_ticks():
+    from app.reactor.loop import DeliveryLedger
+
+    ledger = DeliveryLedger()
+    skipped = []
+    for _ in range(12):
+        if ledger.waiting("alr_1", "firing", "chn_bad"):
+            skipped.append(True)
+            continue
+        skipped.append(False)
+        ledger.failed("alr_1", "firing", "chn_bad")
+
+    attempts = [index for index, skip in enumerate(skipped) if not skip]
+    assert attempts == [0, 1, 3, 7]
+
+
+def test_settling_an_alert_forgets_its_channels():
+    from app.reactor.loop import DeliveryLedger
+
+    ledger = DeliveryLedger()
+    ledger.record("alr_1", "firing", "chn_ok")
+    ledger.failed("alr_1", "firing", "chn_bad")
+    ledger.settle("alr_1", "firing")
+    assert not ledger.told("alr_1", "firing", "chn_ok")
+    assert not ledger.waiting("alr_1", "firing", "chn_bad")

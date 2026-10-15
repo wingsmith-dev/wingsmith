@@ -11,7 +11,8 @@ The passes of one tick, in this order and for a reason:
    anything that matches. Second because an event that arrived during this tick's
    evaluation is better handled on the next one than half-handled on this one.
 3. **Notify.** Send what the first two passes made due, and advance the notified
-   marker only on success.
+   marker only once every channel has it. Checked against the lease before each
+   send, since a slow webhook can outlast it.
 4. **Remote-write auth.** Reconcile the central metrics store's htpasswd Secret
    against the registry (`app.reactor.remote_write`). Last because it is not part
    of alerting at all and must never delay it — it is here for the lease, which is
@@ -53,6 +54,115 @@ from .rules import event_intent
 logger = getLogger(__name__)
 
 LEASE = "default"
+
+LATE_COMMIT_SECONDS = 600.0
+"""How long a seq the cursor stepped over is watched for, in case its transaction commits late."""
+
+MAX_WATCHED_SEQS = 10_000
+
+MAX_SPAN = 100_000
+"""A step of the cursor wider than this is not read for holes. Only an identity that wrapped
+around takes one, and enumerating it would cost more than the events it could find."""
+
+
+class LateCommits:
+    """The seqs the event cursor stepped over without seeing, watched until they show up or expire.
+
+    `ops_event.seq` is assigned when a row is inserted and becomes visible when its
+    transaction commits, and the two orders disagree: a frame transaction that took
+    seq 50 and committed after another that took 51 is invisible when the reactor
+    reads 51 and moves its cursor past both. Read forward from the cursor alone,
+    50 is never read at all. Every seq the cursor skips is therefore remembered
+    here and looked up again on later ticks; a skipped seq is usually a rolled-back
+    transaction and simply expires.
+
+    In memory, because only the lease holder reads it and losing it on a failover
+    costs at most the events of one window that also committed late.
+    """
+
+    __slots__ = ("_watched", "cap", "window")
+
+    def __init__(self, window: float = LATE_COMMIT_SECONDS, cap: int = MAX_WATCHED_SEQS) -> None:
+        self.window = dt.timedelta(seconds=window)
+        self.cap = cap
+        self._watched: dict[int, dt.datetime] = {}
+
+    def skipped(self, after: int, through: int, seen: set[int], moment: dt.datetime) -> None:
+        """Remembers every seq in `(after, through]` the forward read did not return."""
+        if through <= after or through - after > MAX_SPAN:
+            return
+        for seq in range(after + 1, through):
+            if seq not in seen and len(self._watched) < self.cap:
+                self._watched.setdefault(seq, moment)
+
+    def due(self, moment: dt.datetime) -> list[int]:
+        """The seqs still worth looking up, after forgetting the ones watched for a whole window."""
+        for seq in [seq for seq, since in self._watched.items() if moment - since > self.window]:
+            del self._watched[seq]
+        return sorted(self._watched)
+
+    def found(self, seqs: set[int]) -> None:
+        for seq in seqs:
+            self._watched.pop(seq, None)
+
+    def __len__(self) -> int:
+        return len(self._watched)
+
+
+class DeliveryLedger:
+    """Which channels have been told about an alert's current state, and which are backing off.
+
+    `notified_state` on the alert says everything was told; it cannot say who was told
+    when only some channels answered. Without this, one failing channel made the next
+    tick resend to every healthy channel too, every minute, for as long as the broken
+    one stayed broken. A failing channel is retried on a doubling number of ticks, up
+    to `MAX_BACKOFF_TICKS`, rather than on every one.
+
+    In memory, like `LateCommits`: a failover costs at most one repeated message per
+    healthy channel for alerts that were mid-delivery.
+    """
+
+    __slots__ = ("_backoff", "_told")
+
+    MAX_BACKOFF_TICKS = 32
+
+    def __init__(self) -> None:
+        self._told: dict[tuple[str, str], set[str]] = {}
+        self._backoff: dict[tuple[str, str, str], tuple[int, int]] = {}
+
+    def told(self, alert: str, state: str, channel: str) -> bool:
+        return channel in self._told.get((alert, state), set())
+
+    def record(self, alert: str, state: str, channel: str) -> None:
+        self._told.setdefault((alert, state), set()).add(channel)
+        self._backoff.pop((alert, state, channel), None)
+
+    def waiting(self, alert: str, state: str, channel: str) -> bool:
+        """Whether a channel that failed is still sitting out ticks. Counts this tick off."""
+        key = (alert, state, channel)
+        entry = self._backoff.get(key)
+        if entry is None:
+            return False
+        failures, skip = entry
+        if skip <= 0:
+            return False
+        self._backoff[key] = (failures, skip - 1)
+        return True
+
+    def failed(self, alert: str, state: str, channel: str) -> None:
+        key = (alert, state, channel)
+        failures = self._backoff.get(key, (0, 0))[0] + 1
+        self._backoff[key] = (failures, min(2 ** (failures - 1) - 1, self.MAX_BACKOFF_TICKS))
+
+    def settle(self, alert: str, state: str) -> None:
+        """Forgets an alert state once every channel has it, or once it is no longer current."""
+        self._told.pop((alert, state), None)
+        for key in [key for key in self._backoff if key[:2] == (alert, state)]:
+            del self._backoff[key]
+
+
+LATE = LateCommits()
+LEDGER = DeliveryLedger()
 
 
 def now() -> dt.datetime:
@@ -102,25 +212,11 @@ async def evaluate_conditions(db: AsyncSession, moment: dt.datetime) -> None:
     await alert_store.apply_conditions(db, intents, moment)
 
 
-async def drain_events(db: AsyncSession, cursor: int, batch: int, moment: dt.datetime) -> int:
-    """Matches events from `cursor` forward, returning the new cursor.
-
-    The cursor advances to the last row *examined*, not the last row that produced
-    an alert — otherwise a quiet stretch of uninteresting events would be walked
-    again on every tick forever. It advances in the same transaction as the alerts
-    those events opened, so a crash replays the batch rather than skipping it, and
-    `apply_event` is idempotent precisely to make that replay harmless.
-    """
-    rows = await db.execute(
-        select(Event, Cluster.uid, Cluster.name)
-        .outerjoin(Cluster, Cluster.id == Event.cluster_id)
-        .where(Event.seq > cursor)
-        .order_by(Event.seq)
-        .limit(batch)
-    )
-    last = cursor
-    for event, _cluster_uid, cluster_name in rows.all():
-        last = event.seq
+async def _match(db: AsyncSession, rows, moment: dt.datetime) -> set[int]:
+    """Opens an alert for every row that warrants one, and returns the seqs it read."""
+    seen: set[int] = set()
+    for event, _cluster_uid, cluster_name in rows:
+        seen.add(event.seq)
         intent = event_intent(
             event_type=event.type,
             severity=event.severity,
@@ -133,6 +229,41 @@ async def drain_events(db: AsyncSession, cursor: int, batch: int, moment: dt.dat
         )
         if intent is not None:
             await alert_store.apply_event(db, intent, moment)
+    return seen
+
+
+def _events():
+    return select(Event, Cluster.uid, Cluster.name).outerjoin(Cluster, Cluster.id == Event.cluster_id)
+
+
+async def drain_events(
+    db: AsyncSession, cursor: int, batch: int, moment: dt.datetime, late: LateCommits | None = None
+) -> int:
+    """Matches events from `cursor` forward, returning the new cursor.
+
+    The cursor advances to the last row *examined*, not the last row that produced
+    an alert — otherwise a quiet stretch of uninteresting events would be walked
+    again on every tick forever. It advances in the same transaction as the alerts
+    those events opened, so a crash replays the batch rather than skipping it, and
+    `apply_event` is idempotent precisely to make that replay harmless.
+
+    Moving past a seq it did not see is not the same as having read it: the
+    transaction holding it may simply not have committed yet. Those seqs are
+    handed to `late` and read on the ticks that follow (`LateCommits`).
+    """
+    late = LATE if late is None else late
+    rows = (await db.execute(_events().where(Event.seq > cursor).order_by(Event.seq).limit(batch))).all()
+    seen = await _match(db, rows, moment)
+    last = max(seen) if seen else cursor
+    late.skipped(cursor, last, seen, moment)
+
+    waiting = late.due(moment)
+    if waiting:
+        found = (await db.execute(_events().where(Event.seq.in_(waiting)).order_by(Event.seq))).all()
+        recovered = await _match(db, found, moment)
+        late.found(recovered)
+        if recovered:
+            logger.info("reactor.events.late count=%d", len(recovered))
     if last != cursor:
         await db.execute(
             text("UPDATE ops_reactor_state SET last_event_seq = :seq WHERE name = :name"),
@@ -141,13 +272,31 @@ async def drain_events(db: AsyncSession, cursor: int, batch: int, moment: dt.dat
     return last
 
 
-async def send_pending(db: AsyncSession, timeout: float) -> None:
+async def holds_lease(db: AsyncSession, instance: str) -> bool:
+    """Whether `instance` still holds the lease right now, by the database's clock."""
+    held = await db.scalar(
+        text("SELECT holder = :instance AND lease_expires_at > now() FROM ops_reactor_state WHERE name = :name"),
+        {"instance": instance, "name": LEASE},
+    )
+    return bool(held)
+
+
+async def send_pending(
+    db: AsyncSession, timeout: float, instance: str | None = None, ledger: DeliveryLedger | None = None
+) -> None:
     """Delivers every alert whose state has not been announced, one channel at a time.
 
     Sequential rather than gathered. The volume is a handful of messages per tick
     even during an incident, and a burst of concurrent webhook posts is the fastest
     way to discover Slack's rate limit at exactly the moment the alerts matter.
+
+    Each alert's outcome is committed before the next is sent, and before each send
+    the lease is checked again: a slow webhook can take longer than the lease, and
+    a process that lost it while sending must not go on sending beside the new
+    holder. Delivery is tracked per channel (`DeliveryLedger`), so a channel that
+    already took a message is not sent it again because another one failed.
     """
+    ledger = LEDGER if ledger is None else ledger
     channels = (await db.execute(select(NotificationChannel).where(NotificationChannel.enabled.is_(True)))).scalars()
     configured = list(channels)
     due = await alert_store.due_for_notice(db)
@@ -159,26 +308,45 @@ async def send_pending(db: AsyncSession, timeout: float) -> None:
     for alert in due:
         if not alert_store.should_send(alert):
             alert.notified_state = alert.state
+            await db.commit()
             continue
         targets = notify.routed_to(configured, alert)
         if not targets:
             alert.notified_state = alert.state
             alert.notified_at = now()
+            await db.commit()
             continue
         message = notify.message_for(alert, names.get(alert.cluster_id))
         errors = []
+        pending = False
         for channel in targets:
+            if ledger.told(alert.uid, alert.state, channel.uid):
+                continue
+            if ledger.waiting(alert.uid, alert.state, channel.uid):
+                pending = True
+                continue
+            if instance is not None and not await holds_lease(db, instance):
+                logger.warning("reactor.notify.lease_lost instance=%s", instance)
+                await db.commit()
+                return
             try:
                 await notify.deliver(channel, message, timeout)
             except notify.DeliveryFailed as error:
+                ledger.failed(alert.uid, alert.state, channel.uid)
                 errors.append(f"{channel.name}: {error}")
                 logger.warning("reactor.notify.failed channel=%s alert=%s error=%s", channel.name, alert.uid, error)
-        if errors:
-            alert.notify_error = "; ".join(errors)
+                continue
+            ledger.record(alert.uid, alert.state, channel.uid)
+        if errors or pending:
+            if errors:
+                alert.notify_error = "; ".join(errors)
+            await db.commit()
             continue
         alert.notified_state = alert.state
         alert.notified_at = now()
         alert.notify_error = None
+        ledger.settle(alert.uid, alert.state)
+        await db.commit()
 
 
 async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> bool:
@@ -203,7 +371,7 @@ async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> boo
         await db.commit()
 
     async with sessions() as db:
-        await send_pending(db, settings.REACTOR_NOTIFY_TIMEOUT)
+        await send_pending(db, settings.REACTOR_NOTIFY_TIMEOUT, instance)
         await db.commit()
 
     async with sessions() as db:
