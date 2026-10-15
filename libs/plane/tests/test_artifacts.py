@@ -931,7 +931,7 @@ async def test_a_baseline_round_trips_through_create_list_update_and_delete():
     assert (await svc.list(artifact.uid)).items == []
 
 
-async def test_a_second_floor_for_one_dataset_and_metric_is_a_conflict_not_an_integrity_error():
+async def test_duplicate_baseline_is_a_conflict():
     """Two declared floors for one eval is two standards, and a verdict would grade against either."""
     svc = baseline_service()
     artifact = svc.repo.artifact

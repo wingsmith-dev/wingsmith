@@ -769,7 +769,7 @@ async def test_a_single_cluster_workload_reads_the_same_as_its_one_deployment():
     assert workload_backend.requests[0].scope.match == deployment_backend.requests[0].scope.match
 
 
-async def test_the_serving_family_falls_back_to_the_served_model_exactly_as_a_deployment_does():
+async def test_serving_family_falls_back_to_served_model():
     svc = workload_service([workload_row(labels={})], [cluster()], [])
     backend = SequenceBackend({})
     await workload_answer(svc, backend)

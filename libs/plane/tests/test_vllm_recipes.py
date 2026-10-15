@@ -228,7 +228,7 @@ def test_the_upstream_recipe_never_moves_the_plane_s_own_sizing():
     assert draft.serving.device_count == 1
 
 
-def test_a_sizing_that_disagrees_with_the_measurement_by_more_than_double_is_warned():
+def test_sizing_off_by_more_than_double_is_warned():
     """Our arithmetic and their measurement agreeing is the evidence that either is right."""
     ours = resolved(hf_model())
     assert not any("disagree" in note.message for note in ours.notes)

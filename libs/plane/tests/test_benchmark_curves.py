@@ -135,7 +135,7 @@ def test_a_run_that_failed_is_not_drawn_from_its_partial_summary():
     assert points[0].readings["ttft_p90_ms"].value is None
 
 
-def test_a_run_whose_harness_version_has_no_field_map_reads_nothing_and_claims_no_path():
+def test_unmapped_harness_version_reads_nothing():
     point = curves.points([run("bmk_0", 0, 8, p90=300.0, version="0.3.0")], curves.CONCURRENCY)[0]
     assert point.readings["ttft_p90_ms"] == curves.Value(None, "", "")
 
@@ -171,7 +171,7 @@ def test_the_knee_is_the_step_that_crossed_the_bands_ceiling():
     assert "between concurrency 32 and concurrency 64" in knee.reason
 
 
-def test_the_knee_is_read_along_the_load_and_not_along_the_order_the_steps_were_asked_for():
+def test_knee_is_read_in_load_order():
     """`_steps` preserves the caller's order, so step index is not load order."""
     points = curves.points(
         [run("bmk_0", 0, 16, p90=900.0), run("bmk_1", 1, 4, p90=200.0), run("bmk_2", 2, 64, p90=6400.0)],
@@ -191,7 +191,7 @@ def test_a_ramp_that_never_crossed_says_so_rather_than_naming_its_top_step():
     assert "concurrency 64" in knee.reason
 
 
-def test_a_ramp_that_started_above_the_ceiling_is_a_different_answer_from_one_that_never_crossed():
+def test_ramp_starting_above_ceiling_differs_from_never_crossing():
     knee = curves.knee(ramp((8, 6000.0), (16, 7000.0), (32, 8000.0)), CRITERIA)
     assert knee.found is False
     assert "already over" in knee.reason
@@ -216,7 +216,7 @@ def test_a_curve_whose_only_readable_steps_were_discarded_cannot_be_read():
     assert "a crossing needs at least two" in knee.reason
 
 
-def test_a_missing_reading_on_the_knee_metric_stops_the_walk_rather_than_skipping_the_step():
+def test_missing_knee_reading_stops_the_walk():
     points = curves.points(
         [run("bmk_0", 0, 8, p90=300.0), run("bmk_1", 1, 16), run("bmk_2", 2, 32, p90=9000.0)],
         curves.CONCURRENCY,
@@ -316,7 +316,7 @@ def test_a_knee_is_answered_against_the_criteria_version_it_is_asked_for():
         verdicts.resolve_criteria("acceptance-2099.1")
 
 
-def test_a_knee_is_always_an_object_and_names_its_method_and_metric_even_when_it_found_nothing():
+def test_knee_always_names_method_and_metric():
     knee = curves.knee([], CRITERIA)
     assert (knee.method, knee.metric) == (curves.FIRST_CROSSING, curves.KNEE_METRIC)
     assert knee.reason
@@ -348,7 +348,7 @@ def test_no_display_id_can_be_named_by_a_check_because_read_cannot_see_one():
             assert summaries.read(adapter, {"anything": 1}, field_id).value is None
 
 
-def test_the_per_stream_rate_stays_gradeable_and_the_aggregate_does_not_stand_in_for_it():
+def test_per_stream_rate_is_graded_not_aggregate():
     stripped = {"output_token_throughput": {"avg": 8000.0}}
     assert summaries.read(summaries.AIPERF_0_4, stripped, summaries.OUTPUT_SPEED_PER_STREAM).value is None
     assert summaries.show(summaries.AIPERF_0_4, stripped, summaries.OUTPUT_SPEED_PER_STREAM).value is None
@@ -424,7 +424,7 @@ async def test_a_curve_through_two_serving_configurations_names_neither():
     assert answer.serving_digest is None
 
 
-async def test_the_criteria_the_curve_was_read_against_is_on_the_answer_and_can_be_overridden():
+async def test_curve_reports_and_accepts_criteria():
     runs = [run("bmk_0", 0, 8, p90=300.0), run("bmk_1", 1, 16, p90=9000.0)]
     svc = service(request_row(), runs)
     assert (await svc.curve("bmr_0")).criteria_version == "acceptance-2026.1"

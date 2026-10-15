@@ -153,7 +153,7 @@ def test_the_datasets_the_standard_names_are_declared_once():
     }
 
 
-def test_a_misspelled_dataset_is_a_four_hundred_here_and_not_an_empty_results_block():
+def test_misspelled_dataset_is_refused():
     with pytest.raises(Invalid):
         harnesses.normalise(harnesses.EVALSCOPE, {"datasets": "mmlu-pro"}, harnesses.WORKLOAD)
 
@@ -281,7 +281,7 @@ def test_a_dataset_that_was_not_sat_is_not_applicable_rather_than_failed():
     assert verdict.outcome == verdicts.INCONCLUSIVE
 
 
-def test_a_score_against_a_different_metric_than_the_baseline_declares_is_inconclusive():
+def test_score_on_other_metric_is_inconclusive():
     graded = accuracy_facts(0.9)._replace(
         summary={"results": {"mmlu_pro": {"metric": "exact_match", "score": 0.9}}},
     )
@@ -310,7 +310,7 @@ def test_a_run_over_its_band_ceiling_fails():
     assert check(verdict, summaries.TTFT_P90).outcome == verdicts.FAIL
 
 
-def test_the_band_comes_from_the_declared_prompt_length_and_a_boundary_takes_the_stricter_side():
+def test_band_from_declared_prompt_length_boundary_is_stricter():
     tight = verdicts.verdict(facts(input_tokens=6 * 1024, summary=aiperf_summary(p50=2400.0)), CRITERIA)
     loose = verdicts.verdict(facts(input_tokens=6 * 1024 + 1, summary=aiperf_summary(p50=2400.0)), CRITERIA)
     assert check(tight, summaries.TTFT_P50).threshold == 2000.0
@@ -428,7 +428,7 @@ def test_a_discarded_warm_up_does_not_grade():
     assert verdicts.verdict(facts(discard=True), CRITERIA).outcome == verdicts.INCONCLUSIVE
 
 
-def test_a_harness_version_outside_every_declared_range_is_not_graded_against_a_map_for_another():
+def test_unmapped_harness_version_is_not_graded():
     assert summaries.adapter_for("aiperf", "0.3.9") is None
     assert summaries.adapter_for("aiperf", None) is None
     assert verdicts.verdict(facts(harness_version="0.3.9"), CRITERIA).outcome == verdicts.INCONCLUSIVE
@@ -526,7 +526,7 @@ def test_a_sweep_is_read_back_one_band_at_a_time():
     assert reports["16k_32k"].runs == 1
 
 
-def test_a_band_takes_the_worst_percentile_of_its_runs_because_percentiles_do_not_average():
+def test_band_takes_worst_percentile_of_its_runs():
     samples = [
         buckets.sample(run("bmk_1", 2000, p90=900.0, p50=400.0, avg=500.0)),
         buckets.sample(run("bmk_2", 4000, p90=4900.0, p50=2100.0, avg=1500.0)),
@@ -546,7 +546,7 @@ def test_a_bands_average_is_weighted_by_the_requests_behind_it():
     assert report.requests == 400
 
 
-def test_an_average_with_no_request_count_is_incomplete_rather_than_weighted_as_one():
+def test_average_without_request_count_is_incomplete():
     samples = [
         buckets.sample(run("bmk_1", 2000, p90=900.0, avg=1000.0, requests=100)),
         buckets.sample(run("bmk_2", 3000, p90=1200.0, avg=9000.0, requests=None)),

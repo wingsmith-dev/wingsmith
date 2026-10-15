@@ -541,7 +541,7 @@ def row(**kwargs) -> AlertThreshold:
     return AlertThreshold(**{**defaults, **kwargs})
 
 
-def test_the_schema_carries_the_rules_metric_and_comparison_so_a_client_need_not_know_them():
+def test_schema_carries_rule_metric_and_comparison():
     answer = service().schema(row())
     assert answer.metric == "inference.ttft"
     assert answer.comparison == ABOVE

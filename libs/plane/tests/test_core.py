@@ -308,7 +308,7 @@ def test_health_is_unaffected():
     assert response.json() == {"status": True}
 
 
-def test_a_slug_is_read_from_the_location_because_that_is_where_the_organisation_is():
+def test_slug_is_read_from_the_location():
     """`hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`, and this is the whole repair.
 
     Every artifact in the fleet was named `gpt-oss-20b`, `Kimi-K3`, `GLM-5.3-Flash` — bare, no
@@ -333,7 +333,7 @@ def test_a_pinned_revision_is_not_part_of_what_a_model_is_called():
     assert model_slug("hf://deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b") == ("deepseek-ai/deepseek-v4-flash-0731")
 
 
-def test_the_preferred_location_names_the_model_and_the_first_one_answers_otherwise():
+def test_preferred_location_names_the_model():
     from app.core.serving import artifact_slug
 
     class Loc:
