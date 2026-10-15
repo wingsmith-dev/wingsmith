@@ -27,6 +27,14 @@ export default defineConfig({
         "src/main.tsx",
         "src/components/ui/**",
       ],
+      // A floor, not a target: `test:coverage` fails if a change drops below it.
+      // Raise it when coverage rises.
+      thresholds: {
+        lines: 38,
+        statements: 38,
+        functions: 36,
+        branches: 75,
+      },
     },
   },
 })

@@ -16,14 +16,16 @@ pnpm lint           # ESLint
 pnpm format         # Prettier (format:check to verify)
 pnpm test           # Vitest, once
 pnpm test:watch
-pnpm test:coverage  # Vitest with V8 coverage
+pnpm test:coverage  # fails below the floor in vitest.config.ts
 ```
 
 From the repo root, `just setup` installs everything and `just dev` runs the plane in compose
 with this dev server beside it.
 
 Tests are `*.test.ts` / `*.test.tsx` beside the code they cover. Render components through
-`src/test/render.tsx`, which supplies the providers the app mounts at its root.
+`src/test/render.tsx`, which supplies the providers the app mounts at its root. Page tests
+render the whole app at a URL against the offline plane through `src/test/app.tsx`; name them
+in PascalCase (`OverviewPage.test.tsx`) so the router does not take them for routes.
 `vitest.config.ts` is separate from `vite.config.ts` because the router plugin in the latter
 rewrites `routeTree.gen.ts`, and a test run must not change a checked-in file.
 
