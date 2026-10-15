@@ -220,6 +220,81 @@ func TestFailedApplyDuringResyncNeverPrunes(t *testing.T) {
 	}
 }
 
+// TestARetriedFrameThatAppliesLeavesTheSnapshotWhole: the sync client retries a rejected frame in
+// place, so a frame that fails once and then applies is in the local view like any other, and the
+// snapshot it belongs to still prunes.
+func TestARetriedFrameThatAppliesLeavesTheSnapshotWhole(t *testing.T) {
+	ctx := context.Background()
+	failures := 1
+	funcs := interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if obj.GetName() == "brand-new" && failures > 0 {
+				failures--
+				return errors.New("apiserver timed out")
+			}
+			return c.Create(ctx, obj, opts...)
+		},
+	}
+	s, c := newStore(t, existing("keep-a", "stale"), &funcs)
+
+	if err := s.Resync(ctx); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+	if err := s.Handle(ctx, desired(t, "keep-a", 2)); err != nil {
+		t.Fatalf("handle keep-a: %v", err)
+	}
+	retried := desired(t, "brand-new", 3)
+	if err := s.Handle(ctx, retried); err == nil {
+		t.Fatal("first attempt should have been rejected")
+	}
+	if err := s.Handle(ctx, retried); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 2})); err != nil {
+		t.Fatalf("stream end: %v", err)
+	}
+
+	want := []string{"brand-new", "keep-a"}
+	if got := localNames(t, c); !equal(got, want) {
+		t.Fatalf("after a retried snapshot got %v, want %v", got, want)
+	}
+}
+
+// TestAFrameStillFailingAtStreamEndNeverPrunes: a retry of some other frame does not clear a
+// failure that never recovered.
+func TestAFrameStillFailingAtStreamEndNeverPrunes(t *testing.T) {
+	ctx := context.Background()
+	before := []string{"keep-a", "stale"}
+	funcs := interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if obj.GetName() == "broken" {
+				return errors.New("apiserver rejected create")
+			}
+			return c.Create(ctx, obj, opts...)
+		},
+	}
+	s, c := newStore(t, existing(before...), &funcs)
+
+	if err := s.Resync(ctx); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+	if err := s.Handle(ctx, desired(t, "broken", 2)); err == nil {
+		t.Fatal("broken frame applied")
+	}
+	for i, n := range []string{"keep-a", "fresh"} {
+		if err := s.Handle(ctx, desired(t, n, int64(i+3))); err != nil {
+			t.Fatalf("handle %s: %v", n, err)
+		}
+	}
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 2})); err != nil {
+		t.Fatalf("stream end: %v", err)
+	}
+	want := []string{"fresh", "keep-a", "stale"}
+	if got := localNames(t, c); !equal(got, want) {
+		t.Fatalf("pruned with a frame still failing: got %v, want %v", got, want)
+	}
+}
+
 // TestMalformedFrameDuringResyncNeverPrunes covers the undecodable-frame path, which is a
 // truncation of a different kind: the frame arrived but its contents were never counted.
 func TestMalformedFrameDuringResyncNeverPrunes(t *testing.T) {

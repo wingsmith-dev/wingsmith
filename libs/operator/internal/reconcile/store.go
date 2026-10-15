@@ -41,10 +41,22 @@ type desiredState struct {
 // It exists only in memory and only between Resync and the matching stream.end. That is
 // deliberate: the epoch is the authority for pruning, so losing it — to a crash, a disconnect, or
 // a truncated stream — can only ever result in no prune, never in a prune against a partial view.
+//
+// A failed apply is held against the frame's sequence number rather than the whole epoch, because
+// the sync client retries a rejected frame in place: one that fails and then applies leaves the
+// snapshot whole, and only one still failing at stream.end means the local view is missing
+// something. A frame with no sequence number cannot be matched to its retry, so its failure
+// poisons the epoch outright.
 type resyncEpoch struct {
 	present  map[string]struct{}
 	received int
+	failing  map[uint64]struct{}
 	poisoned bool
+}
+
+// spoiled reports whether a failed apply still stands against the snapshot.
+func (e *resyncEpoch) spoiled() bool {
+	return e.poisoned || len(e.failing) > 0
 }
 
 // Store is the seam between the two loops: it takes envelopes off the sync stream and writes them
@@ -96,14 +108,14 @@ func (s *Store) Handle(ctx context.Context, e *syncpkg.Envelope) error {
 func (s *Store) handleDesired(ctx context.Context, e *syncpkg.Envelope) error {
 	d, err := decodeDesired(e)
 	if err != nil {
-		s.poison()
+		s.fail(e)
 		return err
 	}
 	if err := s.apply(ctx, d); err != nil {
-		s.poison()
+		s.fail(e)
 		return err
 	}
-	s.record(d)
+	s.record(e, d)
 	return nil
 }
 
@@ -209,7 +221,7 @@ func (s *Store) releaseIfReadOnly(ctx context.Context, key types.NamespacedName)
 // mass-delete this guard exists to prevent.
 func (s *Store) Resync(ctx context.Context) error {
 	s.mu.Lock()
-	s.epoch = &resyncEpoch{present: map[string]struct{}{}}
+	s.epoch = &resyncEpoch{present: map[string]struct{}{}, failing: map[uint64]struct{}{}}
 	s.mu.Unlock()
 	s.Log.Info("resync epoch opened; awaiting full desired-state snapshot")
 	return s.setLossy(ctx, true)
@@ -236,7 +248,7 @@ func (s *Store) handleStreamEnd(ctx context.Context, e *syncpkg.Envelope) error 
 	}
 
 	switch {
-	case epoch.poisoned:
+	case epoch.spoiled():
 		s.Log.Warn("resync snapshot had a failed apply; leaving local state untouched")
 		return nil
 	case !end.Complete:
@@ -280,11 +292,14 @@ func (s *Store) prune(ctx context.Context, present map[string]struct{}) (int, er
 	return n, nil
 }
 
-func (s *Store) record(d desiredState) {
+func (s *Store) record(e *syncpkg.Envelope, d desiredState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.epoch == nil {
 		return
+	}
+	if e.Seq != nil {
+		delete(s.epoch.failing, *e.Seq)
 	}
 	s.epoch.received++
 	if !d.Deleted {
@@ -292,14 +307,18 @@ func (s *Store) record(d desiredState) {
 	}
 }
 
-// poison marks the open epoch unusable for pruning. An apply that failed means the local view is
-// missing something the snapshot contained, so absence from the local view is no longer evidence
-// of anything.
-func (s *Store) poison() {
+// fail records a frame of the open epoch that did not apply. Until a retry of it applies, the
+// local view is missing something the snapshot contained, so absence from the local view is no
+// longer evidence of anything.
+func (s *Store) fail(e *syncpkg.Envelope) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.epoch != nil {
+	switch {
+	case s.epoch == nil:
+	case e.Seq == nil:
 		s.epoch.poisoned = true
+	default:
+		s.epoch.failing[*e.Seq] = struct{}{}
 	}
 }
 
