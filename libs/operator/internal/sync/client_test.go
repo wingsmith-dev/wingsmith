@@ -782,6 +782,42 @@ func TestBackpressureHardLimitEndsTheSession(t *testing.T) {
 	}
 }
 
+// TestAReportIsAdmittedPastTheHardLimit: the hard limit refuses only what a later resync restates.
+// An operation's terminal report is restated by nothing, so refusing it would lose it for good.
+func TestAReportIsAdmittedPastTheHardLimit(t *testing.T) {
+	q := newSendQueue(1)
+	q.limit = 2
+	for i := 0; i < 2; i++ {
+		e := mustEnvelope(t, "node.observed", wire.NodeObserved{})
+		e.ReplyTo = replyTo("req")
+		if err := q.Push(&outbound{env: e, subject: string(rune('a' + i))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report := mustEnvelope(t, "operation.observed", wire.OperationObserved{OperationID: "opr_1", Phase: "succeeded"})
+	if err := q.Push(&outbound{env: report, subject: "opr_1"}); err != nil {
+		t.Fatalf("a terminal report must be admitted at the hard limit, got %v", err)
+	}
+	again := mustEnvelope(t, "operation.observed", wire.OperationObserved{OperationID: "opr_1", Phase: "failed"})
+	if err := q.Push(&outbound{env: again, subject: "opr_1"}); err != nil {
+		t.Fatal(err)
+	}
+	if q.Len() != 3 {
+		t.Fatalf("a second report on the same operation must replace the first, queue is %d", q.Len())
+	}
+	var last *outbound
+	for q.Len() > 0 {
+		item, err := q.Pop(context.Background())
+		if err != nil {
+			t.Fatalf("an admitted report must not end the session, got %v", err)
+		}
+		last = item
+	}
+	if last.env != again {
+		t.Fatal("the newest report on the operation must be the one sent")
+	}
+}
+
 func TestBackpressureDropsEventsFromTheTail(t *testing.T) {
 	q := newSendQueue(2)
 	for i := 1; i <= 4; i++ {

@@ -81,10 +81,13 @@ ends and the resume replays it.
 
 **Backpressure.** One queue sits between every producer and the single writer. Below its bound
 (`HANGAR_SEND_QUEUE_SIZE`) every frame is appended. Above it an event is dropped and counted, and
-an uncorrelated observation replaces the queued one for the same subject. Nothing else is dropped
-or evicted: stream openers and terminators, frames inside a resync stream, and operation and
-benchmark reports always go out. A hard limit of sixteen times the bound (at least 16384 frames)
-ends the session if it is ever reached.
+an uncorrelated observation replaces the queued one for the same subject. Nothing queued is
+evicted. A hard limit of sixteen times the bound (at least 16384 frames) refuses the frames a later
+resync restates (stream openers and terminators, frames inside a resync stream, replies) and ends
+the session; the frames already queued go out on the next one. Uncorrelated observations,
+operation and benchmark reports among them, are still admitted past the limit, one per subject,
+so a terminal report is not lost to backpressure. The queue is in memory, so a restart still loses
+whatever it held.
 
 ## Replicas and leader election
 

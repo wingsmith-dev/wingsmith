@@ -10,8 +10,9 @@ import (
 // ErrQueueClosed is returned once the queue has been closed.
 var ErrQueueClosed = errors.New("sync: send queue closed")
 
-// ErrQueueOverflow is returned when the queue is at its hard limit. The writer ends the session
-// when it sees it, because a frame the queue could not admit is one a stream or a reply is missing.
+// ErrQueueOverflow is returned when the queue is at its hard limit and the frame is one a later
+// resync restates: a frame of a correlated stream, a stream opener or terminator, or a reply. The
+// writer ends the session when it sees it.
 var ErrQueueOverflow = errors.New("sync: send queue at its hard limit")
 
 // minQueueLimit is the smallest hard limit, whatever the configured soft bound. It is sized for a
@@ -42,8 +43,12 @@ type outbound struct {
 //     carries something no later frame restates.
 //
 // Above the soft bound the queue grows only by frames that cannot be replaced, so its size is
-// bounded by the cluster's own inventory. The hard limit is the backstop: a Push that would pass
-// it fails, and the writer ends the session.
+// bounded by the cluster's own inventory. The hard limit is the backstop for the frames a later
+// resync restates — a correlated stream's, its opener and terminator, a reply — and a Push of one
+// of those past it fails, and the writer ends the session. An uncorrelated observation is still
+// admitted past the limit, because nothing restates it: an operation's or a benchmark's terminal
+// report is one, and so is the last reading of a device. It cannot grow the queue without bound
+// either, since each type and subject holds at most one place.
 type sendQueue struct {
 	mu         stdsync.Mutex
 	notify     chan struct{}
@@ -68,7 +73,7 @@ func newSendQueue(capacity int) *sendQueue {
 }
 
 // Push enqueues a frame, applying the §6 policy when the queue is past its soft bound. It never
-// blocks. It fails only on a closed queue or at the hard limit.
+// blocks. It fails only on a closed queue, or at the hard limit for a frame a resync restates.
 func (q *sendQueue) Push(item *outbound) error {
 	q.mu.Lock()
 	defer func() {
@@ -91,6 +96,8 @@ func (q *sendQueue) Push(item *outbound) error {
 			q.items[i] = item
 			return nil
 		}
+		q.items = append(q.items, item)
+		return nil
 	}
 	if len(q.items) >= q.limit {
 		q.overflowed = true
