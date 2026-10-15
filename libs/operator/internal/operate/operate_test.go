@@ -29,6 +29,9 @@ const testCluster = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 // allKinds is the allowlist of an operator configured to perform everything it implements.
 var allKinds = []string{KindCordon, KindDrain, KindBenchmark}
 
+// benchImages allowlists the harness image the test operations name.
+var benchImages = []string{"ghcr.io/hangar-dev/aiperf:0.4.1"}
+
 // recorder collects what the executor reported instead of sending it.
 type recorder struct {
 	mu     sync.Mutex
@@ -367,7 +370,7 @@ func laneExecutor(t *testing.T, probe *laneProbe, depth int, objects ...client.O
 		Allowed:        allKinds,
 		Log:            discardLogger(),
 		Render:         render.Options{Namespace: benchNS},
-		Benchmark:      render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000"},
+		Benchmark:      render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000", Images: benchImages},
 		Logs:           probe,
 		BenchmarkQueue: depth,
 	})

@@ -121,6 +121,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		LocalModelCacheDir:  cfg.LocalModelCacheDir,
 		CachePoolValue:      cfg.CachePoolValue,
 		CacheTaintKey:       cfg.CacheTaintKey,
+		CacheTaintValue:     cfg.CacheTaintValue,
 		PrefetchCPU:         cfg.PrefetchCPU,
 		PrefetchMemory:      cfg.PrefetchMemory,
 		PrefetchMemoryLimit: cfg.PrefetchMemoryLimit,

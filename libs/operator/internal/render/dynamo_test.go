@@ -108,7 +108,7 @@ func TestDynamoGraphDeploymentPod(t *testing.T) {
 	if v, ok := envValue(main, "HF_HOME"); !ok || v != "/models/hf" {
 		t.Fatalf("HF_HOME = %q, %v", v, ok)
 	}
-	if got := pod.NodeSelector["hangar.io/pool"]; got != "gpu" {
+	if got := pod.NodeSelector["hangar.dev/pool"]; got != "gpu" {
 		t.Fatalf("node selector pool = %q", got)
 	}
 
@@ -595,7 +595,7 @@ func TestTheFrontendIsKeptOffTheAcceleratorNodes(t *testing.T) {
 	}
 	// The worker still gets both, unchanged.
 	worker := componentPod(t, componentNamed(t, obj, WorkerComponent))
-	if worker.NodeSelector["hangar.io/pool"] != "gpu" || len(worker.Tolerations) != 1 {
+	if worker.NodeSelector["hangar.dev/pool"] != "gpu" || len(worker.Tolerations) != 1 {
 		t.Fatalf("the worker's scheduling changed: selector=%v tolerations=%v", worker.NodeSelector, worker.Tolerations)
 	}
 }

@@ -117,8 +117,13 @@ type Config struct {
 	// CachePoolValue and CacheTaintKey name the pool the weight prefetch job runs on and the
 	// taint that keeps everything else off it. Downloading weights is network and disk work, so
 	// it is deliberately not scheduled onto the accelerator pool where it would hold a GPU idle.
-	CachePoolValue string
-	CacheTaintKey  string
+	CachePoolValue  string
+	CacheTaintKey   string
+	CacheTaintValue string
+
+	// BenchmarkImages are the harness images a benchmark may run, matched exactly. The default
+	// is the harness images the plane pins; a cluster that wants another adds it here.
+	BenchmarkImages []string
 
 	// PrefetchCPU and PrefetchMemory are what one weight download asks the scheduler for. Empty
 	// takes the render's own default, which is sized to fit an ordinary node rather than a
@@ -337,6 +342,8 @@ func Load() (*Config, error) {
 		GPUPoolValue:          env("HANGAR_GPU_POOL_VALUE", "gpu"),
 		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.dev/cache"),
+		CacheTaintValue:       env("HANGAR_CACHE_TAINT_VALUE", ""),
+		BenchmarkImages:       envListOr("HANGAR_BENCHMARK_IMAGES", DefaultBenchmarkImages),
 		PrefetchCPU:           env("HANGAR_PREFETCH_CPU", ""),
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
@@ -484,6 +491,20 @@ func env(key, def string) string {
 
 // envList reads a comma-separated list, dropping blanks and surrounding space so that a
 // ConfigMap value written across a line, or with a trailing comma, means what it looks like.
+// DefaultBenchmarkImages are the harness images the plane pins for aiperf and evalscope.
+var DefaultBenchmarkImages = []string{
+	"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+	"ghcr.io/hangar-dev/evalscope:1.11.1",
+}
+
+// envListOr is envList with a default for an unset key.
+func envListOr(key string, def []string) []string {
+	if out := envList(key); out != nil {
+		return out
+	}
+	return append([]string(nil), def...)
+}
+
 func envList(key string) []string {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {

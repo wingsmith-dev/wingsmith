@@ -16,10 +16,10 @@ const prefetchImage = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1"
 func testOptions() Options {
 	return Options{
 		Namespace:      "dynamo",
-		PoolLabelKey:   "hangar.io/pool",
+		PoolLabelKey:   "hangar.dev/pool",
 		GPUPoolValue:   "gpu",
 		CachePoolValue: "cache",
-		CacheTaintKey:  "hangar.io/cache",
+		CacheTaintKey:  "hangar.dev/cache",
 		ModelCachePVC:  "model-cache",
 	}
 }
@@ -70,10 +70,10 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if pod.RestartPolicy != corev1.RestartPolicyOnFailure {
 		t.Fatalf("restart policy = %q", pod.RestartPolicy)
 	}
-	if got := pod.NodeSelector["hangar.io/pool"]; got != "cache" {
+	if got := pod.NodeSelector["hangar.dev/pool"]; got != "cache" {
 		t.Fatalf("node selector pool = %q, want the cache pool", got)
 	}
-	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "hangar.io/cache" {
+	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "hangar.dev/cache" {
 		t.Fatalf("tolerations = %+v", pod.Tolerations)
 	}
 	if len(pod.Volumes) != 1 || pod.Volumes[0].PersistentVolumeClaim == nil ||
@@ -520,5 +520,55 @@ func TestThePrefetchJobTakesTheEnginePullSecrets(t *testing.T) {
 	}
 	if len(bare.Spec.Template.Spec.ImagePullSecrets) != 0 {
 		t.Fatalf("imagePullSecrets = %v with none configured", bare.Spec.Template.Spec.ImagePullSecrets)
+	}
+}
+
+// The cache taint is tolerated whatever value the cluster gave it, or exactly the configured one,
+// and an unset key tolerates nothing rather than everything.
+func TestPrefetchToleratesTheCacheTaintByKey(t *testing.T) {
+	opts := testOptions()
+	job, err := PrefetchJob(hfArtifact(), prefetchImage, opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	tol := job.Spec.Template.Spec.Tolerations
+	if len(tol) != 1 || tol[0].Operator != corev1.TolerationOpExists || tol[0].Value != "" {
+		t.Errorf("tolerations = %+v, want Exists on the cache key", tol)
+	}
+
+	opts.CacheTaintValue = "dedicated"
+	job, err = PrefetchJob(hfArtifact(), prefetchImage, opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	tol = job.Spec.Template.Spec.Tolerations
+	if len(tol) != 1 || tol[0].Operator != corev1.TolerationOpEqual || tol[0].Value != "dedicated" {
+		t.Errorf("tolerations = %+v, want Equal on the configured value", tol)
+	}
+
+	opts.CacheTaintKey = ""
+	job, err = PrefetchJob(hfArtifact(), prefetchImage, opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if tol := job.Spec.Template.Spec.Tolerations; len(tol) != 0 {
+		t.Errorf("tolerations = %+v, want none without a key", tol)
+	}
+}
+
+func TestPrefetchRunsUnprivileged(t *testing.T) {
+	job, err := PrefetchJob(hfArtifact(), prefetchImage, testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	spec := job.Spec.Template.Spec
+	if spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken {
+		t.Error("the prefetch job mounts a service-account token")
+	}
+	if sc := spec.SecurityContext; sc == nil || sc.RunAsNonRoot == nil || !*sc.RunAsNonRoot {
+		t.Errorf("pod security context = %+v, want non-root", sc)
+	}
+	if csc := spec.Containers[0].SecurityContext; csc == nil || csc.AllowPrivilegeEscalation == nil || *csc.AllowPrivilegeEscalation {
+		t.Errorf("container security context = %+v, want no privilege escalation", csc)
 	}
 }

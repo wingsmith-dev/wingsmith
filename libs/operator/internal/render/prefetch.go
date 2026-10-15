@@ -213,14 +213,11 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 					// workers read it — so a private engine image is private here too,
 					// and without this the download fails on the pull with no clue
 					// that the credential exists one namespace over.
-					ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
-					NodeSelector:     map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
-					Tolerations: []corev1.Toleration{{
-						Key:      opts.CacheTaintKey,
-						Operator: corev1.TolerationOpEqual,
-						Value:    "true",
-						Effect:   corev1.TaintEffectNoSchedule,
-					}},
+					ImagePullSecrets:             imagePullSecrets(opts.EnginePullSecrets),
+					NodeSelector:                 map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
+					Tolerations:                  cacheTolerations(opts),
+					AutomountServiceAccountToken: ptr(false),
+					SecurityContext:              jobPodSecurityContext(),
 					Volumes: []corev1.Volume{{
 						Name: "model-cache",
 						VolumeSource: corev1.VolumeSource{
@@ -228,12 +225,16 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 						},
 					}},
 					Containers: []corev1.Container{{
-						Name:    "fetch",
-						Image:   image,
-						Command: []string{"python3", "-c"},
-						Args:    []string{command},
+						Name:            "fetch",
+						Image:           image,
+						Command:         []string{"python3", "-c"},
+						Args:            []string{command},
+						SecurityContext: jobContainerSecurityContext(),
 						Env: []corev1.EnvVar{
 							{Name: "HF_HOME", Value: HFHome},
+							// The image's own home may belong to another uid; this one is
+							// writable by anyone.
+							{Name: "HOME", Value: "/tmp"},
 							// Progress bars in a job log are noise that hides the
 							// lines worth reading. progressScript is what says how
 							// far the download has got instead.
@@ -252,6 +253,50 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 			},
 		},
 	}, nil
+}
+
+// cacheTolerations lets the prefetch job onto the cache pool's taint, whatever value the cluster
+// gave it. No key configured means no toleration: an empty key with Exists would tolerate every
+// taint on every node.
+func cacheTolerations(opts Options) []corev1.Toleration {
+	key := strings.TrimSpace(opts.CacheTaintKey)
+	if key == "" {
+		return nil
+	}
+	return []corev1.Toleration{taintToleration(key, opts.CacheTaintValue)}
+}
+
+// taintToleration tolerates a NoSchedule taint on key: any value when value is empty, or exactly
+// value when one is configured.
+func taintToleration(key, value string) corev1.Toleration {
+	if value = strings.TrimSpace(value); value != "" {
+		return corev1.Toleration{Key: key, Operator: corev1.TolerationOpEqual, Value: value, Effect: corev1.TaintEffectNoSchedule}
+	}
+	return corev1.Toleration{Key: key, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}
+}
+
+// jobUID is the user the benchmark and prefetch jobs run as. Fixed rather than taken from the
+// image, so runAsNonRoot holds for images whose USER is a name or root.
+const jobUID = 1000
+
+// jobPodSecurityContext is the pod-level context for the jobs this operator renders: non-root,
+// with the runtime's default seccomp profile, and a group that owns what they write.
+func jobPodSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
+		RunAsNonRoot:   ptr(true),
+		RunAsUser:      ptr(int64(jobUID)),
+		RunAsGroup:     ptr(int64(jobUID)),
+		FSGroup:        ptr(int64(jobUID)),
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
+// jobContainerSecurityContext drops every capability and privilege escalation.
+func jobContainerSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+	}
 }
 
 // prefetchResources is what one download asks the scheduler for.

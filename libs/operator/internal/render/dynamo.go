@@ -69,11 +69,13 @@ var GVK = schema.GroupVersionKind{Group: "nvidia.com", Version: "v1beta1", Kind:
 
 // Options are the per-cluster conventions the render needs and the plane does not declare.
 type Options struct {
-	Namespace          string
-	PoolLabelKey       string
-	GPUPoolValue       string
-	CachePoolValue     string
-	CacheTaintKey      string
+	Namespace      string
+	PoolLabelKey   string
+	GPUPoolValue   string
+	CachePoolValue string
+	CacheTaintKey  string
+	// CacheTaintValue is the value the cache pool's taint carries. Empty tolerates any value.
+	CacheTaintValue    string
 	ModelCachePVC      string
 	LocalModelCacheDir string
 	// JITCacheOptIn turns on keeping FlashInfer's compiled wrappers on the node. Off by default

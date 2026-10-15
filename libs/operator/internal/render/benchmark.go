@@ -1,7 +1,11 @@
 package render
 
 import (
+	"cmp"
+	"encoding/json"
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -43,6 +47,11 @@ type BenchmarkOptions struct {
 	// nothing at all.
 	CPU    string
 	Memory string
+
+	// Images are the harness images a run may use, matched exactly. A run naming any other
+	// image is refused, and an empty list refuses every run: the plane chooses the image, so
+	// this list is what bounds the code a benchmark can execute on the cluster.
+	Images []string
 }
 
 // Defaults for a load generator's request. Deliberately modest: no CPU limit is set anywhere
@@ -90,53 +99,28 @@ const benchmarkShell = "sh"
 // artifactDir is where the harness is told to write, inside the pod.
 const artifactDir = "/benchmark-artifacts"
 
-// genericScript runs a harness the operator has no arg-builder for and hands its output back
-// through the log, framed the same way aiperf's is.
-//
-// The command line is the plane's, shipped verbatim in `parameters["command"]`. The operator has
-// no opinion about its flags — it is not in a position to have one, because the harness behind it
-// is a pinned image whose CLI is the plane's problem to track. What the operator does own is the
-// readback. Two channels feed it:
-//
-//   - When `report_glob` is set the harness is one that writes its report to disk rather than
-//     printing it — EvalScope at 1.11 emits a human table on stdout and a per-dataset JSON under
-//     `work_dir/reports/<model>/<dataset>.json`. The glob is the plane's, and after the command
-//     finishes a small inline python merges every match into one `{reports: [<parsed>, ...]}`
-//     document and prints that. Python because the image already carries it for the harness
-//     itself, and because awk's idea of "JSON-aware" is not one.
-//   - Without `report_glob` the wrapper falls back to the last JSON-shaped block in stdout,
-//     which is the harness that prints its own report (none today, but the channel is cheap).
-//
-// Both paths land between the same sentinels and are read by the plane's `dataset_scores` the
-// same way. A run that produced no matching report prints `null`.
-//
-// `version_command` is the harness's own `--version` equivalent, supplied the same way; when it
-// is empty the version line records "unknown", which `extractVersion` already handles.
-const genericScript = `set -e
+// evalscopeScript runs EvalScope and hands its report back through the log, framed the same way
+// aiperf's is. EvalScope prints a human table on stdout and writes one JSON report per dataset
+// under its work dir; a short python step merges them into `{"reports": [...]}`.
+const evalscopeScript = `set -e
 %s
-export HANGAR_BENCHMARK_ENDPOINT=%s
-export HANGAR_BENCHMARK_MODEL=%s
-stdout_log=%s/stdout.log
-%s 2>&1 | tee "$stdout_log" || rc=$?
+evalscope eval %s 2>&1 | tee %s/stdout.log || rc=$?
 echo "%s"
-%s
+evalscope --version 2>/dev/null || echo "unknown"
 echo "%s"
-report_glob=%s
-if [ -n "$report_glob" ]; then
-  python3 - "$report_glob" <<'PYEOF'
+python3 - %s <<'PYEOF'
 import glob, json, sys
 hits = sorted(glob.glob(sys.argv[1]))
 reports = [json.load(open(p)) for p in hits]
-print(json.dumps({"reports": reports}))
+print(json.dumps({"reports": reports}) if reports else "null")
 PYEOF
-else
-  summary=$(awk '/^\{/{inblock=1; buf=""} inblock{buf=buf $0 "\n"} /^\}/{if(inblock){last=buf; inblock=0}} END{printf "%%s", last}' "$stdout_log")
-  if [ -n "$summary" ]; then printf "%%s\n" "$summary"; else echo 'null'; fi
-fi
 echo ""
 echo "%s"
 exit ${rc:-0}
 `
+
+// evalscopeReports is where EvalScope 1.11 writes its per-dataset reports under the work dir.
+const evalscopeReports = artifactDir + "/reports/*/*.json"
 
 // runCacheDir is a writable Hugging Face cache private to one run, used only when the shared one
 // cannot answer. It is an emptyDir, so it dies with the pod and nothing accumulates.
@@ -201,9 +185,15 @@ func hfCachePreamble(tokenizer string) string {
 // avoids a second download and works on a cluster with no egress. Read-only because a benchmark
 // has no business writing to the weights every replica is reading.
 func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options, bench BenchmarkOptions) (*batchv1.Job, error) {
-	image := parameters["image"]
+	image := strings.TrimSpace(parameters["image"])
 	if image == "" {
 		return nil, fmt.Errorf("benchmark %s names no harness image", benchmarkID)
+	}
+	if !slices.Contains(bench.Images, image) {
+		if len(bench.Images) == 0 {
+			return nil, fmt.Errorf("this cluster allows no benchmark images (HANGAR_BENCHMARK_IMAGES is empty), so not %q", image)
+		}
+		return nil, fmt.Errorf("benchmark image %q is not one this cluster allows (%s)", image, strings.Join(bench.Images, ", "))
 	}
 	if bench.Endpoint == "" {
 		return nil, fmt.Errorf("this cluster has no inference endpoint configured to benchmark against")
@@ -212,47 +202,43 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 	if model == "" {
 		return nil, fmt.Errorf("benchmark %s names no model to ask for", benchmarkID)
 	}
+	// The command line is built here from typed parameters, every value quoted. Free-form flags
+	// would put the plane's text on a shell inside the cluster.
+	if extra := strings.TrimSpace(parameters["extra"]); extra != "" {
+		return nil, fmt.Errorf("benchmark %s carries extra flags %q; this operator runs only the flags it builds itself", benchmarkID, extra)
+	}
 
 	harness := parameters["harness"]
+	preamble := hfCachePreamble(strings.TrimSpace(parameters["tokenizer"]))
 
 	var script string
 	switch harness {
 	case "aiperf":
 		script = fmt.Sprintf(
 			aiperfScript,
-			hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
+			preamble,
 			strings.Join(aiperfArgs(model, bench.Endpoint, parameters), " "),
 			VersionLine, artifactDir, SummaryBegin, SummaryEnd,
 		)
-	default:
-		command := strings.TrimSpace(parameters["command"])
-		if command == "" {
-			return nil, fmt.Errorf("this operator cannot render the %q harness without a command", harness)
-		}
-		version := strings.TrimSpace(parameters["version_command"])
-		if version == "" {
-			version = "echo unknown"
-		}
-		// The model the request body names is usually the same string the plane records as the
-		// run's model. When it is not — a deployment served under a slug whose underlying
-		// artifact answers to its HF repo id — the plane ships the body-facing name as
-		// `endpoint_model` and the operator substitutes that into the caller's command line.
-		bodyModel := strings.TrimSpace(parameters["endpoint_model"])
-		if bodyModel == "" {
-			bodyModel = model
+	case "evalscope":
+		// The request body names the model the frontend answers to, which the plane sends as
+		// `endpoint_model` when it differs from the served name.
+		bodyModel := cmp.Or(strings.TrimSpace(parameters["endpoint_model"]), model)
+		args, err := evalscopeArgs(bodyModel, bench.Endpoint, parameters)
+		if err != nil {
+			return nil, fmt.Errorf("benchmark %s: %w", benchmarkID, err)
 		}
 		script = fmt.Sprintf(
-			genericScript,
-			hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
-			shellQuote(bench.Endpoint),
-			shellQuote(bodyModel),
+			evalscopeScript,
+			preamble,
+			strings.Join(args, " "),
 			artifactDir,
-			command,
-			VersionLine, version,
-			SummaryBegin,
-			shellQuote(strings.TrimSpace(parameters["report_glob"])),
+			VersionLine, SummaryBegin,
+			shellQuote(evalscopeReports),
 			SummaryEnd,
 		)
+	default:
+		return nil, fmt.Errorf("this operator cannot render the %q harness", harness)
 	}
 
 	resources, err := benchmarkResources(bench)
@@ -284,9 +270,11 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					// Runs the engine image, so it needs whatever credential the
-					// engine needs.
+					RestartPolicy:                corev1.RestartPolicyNever,
+					AutomountServiceAccountToken: ptr(false),
+					SecurityContext:              jobPodSecurityContext(),
+					// A harness image may sit in the same private registry as the
+					// engine, so it gets the engine's pull credential.
 					ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
 					Volumes: []corev1.Volume{
 						{
@@ -308,12 +296,14 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 						},
 					},
 					Containers: []corev1.Container{{
-						Name:    "benchmark",
-						Image:   image,
-						Command: []string{benchmarkShell, "-c"},
-						Args:    []string{script},
+						Name:            "benchmark",
+						Image:           image,
+						Command:         []string{benchmarkShell, "-c"},
+						Args:            []string{script},
+						SecurityContext: jobContainerSecurityContext(),
 						Env: []corev1.EnvVar{
 							{Name: "HF_HOME", Value: sharedCacheDir},
+							{Name: "HOME", Value: runCacheDir},
 							{Name: "HF_HUB_DISABLE_PROGRESS_BARS", Value: "1"},
 							{Name: "HANGAR_BENCHMARK_ID", Value: benchmarkID},
 							{Name: "HANGAR_ARTIFACT_BASE", Value: bench.ArtifactBase},
@@ -356,10 +346,6 @@ func BenchmarkJobName(benchmarkID string) string {
 // `--tokenizer` is emitted only when the plane resolved one. AIPerf otherwise defaults it to
 // `--model`, which is the name the engine serves under and not a Hugging Face repository, so a
 // deployment served as `qwen3.8-27b` fails the tokenizer load before it sends a request.
-//
-// `extra` goes on last and unquoted, which makes it both the escape hatch for the long tail of
-// flags and the caller's problem if what they put in it is wrong. The alternative is enumerating
-// every flag AIPerf has, in two languages, forever.
 func aiperfArgs(model, endpoint string, parameters map[string]string) []string {
 	args := []string{
 		"--model", shellQuote(model),
@@ -382,10 +368,88 @@ func aiperfArgs(model, endpoint string, parameters map[string]string) []string {
 	if flagParam(parameters, "streaming", true) {
 		args = append(args, "--streaming")
 	}
-	if extra := strings.TrimSpace(parameters["extra"]); extra != "" {
-		args = append(args, extra)
-	}
 	return args
+}
+
+// evalscopeArgs turns the plane's parameter map into `evalscope eval`'s flags, every value quoted.
+//
+// It mirrors what the plane composes for EvalScope 1.11. The endpoint is the cluster-local one
+// with `/v1`, because EvalScope's OpenAI client takes a base URL.
+func evalscopeArgs(model, endpoint string, parameters map[string]string) ([]string, error) {
+	args := []string{
+		"--model", shellQuote(model),
+		"--api-url", shellQuote(strings.TrimSuffix(endpoint, "/") + "/v1"),
+		"--eval-type", "openai_api",
+		"--no-timestamp",
+		"--work-dir", artifactDir,
+	}
+
+	var datasets []string
+	for _, name := range strings.Split(parameters["datasets"], ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			datasets = append(datasets, name)
+		}
+	}
+	if len(datasets) > 0 {
+		args = append(args, "--datasets")
+		for _, name := range datasets {
+			args = append(args, shellQuote(name))
+		}
+	}
+	if limit := numberParam(parameters, "limit", 0); limit > 0 {
+		args = append(args, "--limit", strconv.Itoa(limit))
+	}
+	args = append(args, "--seed", strconv.Itoa(numberParam(parameters, "seed", 0)))
+	if repeats := numberParam(parameters, "repeats", 1); repeats != 1 {
+		args = append(args, "--repeats", strconv.Itoa(repeats))
+	}
+
+	generation, err := json.Marshal(map[string]any{
+		"temperature": floatParam(parameters, "temperature", 0),
+		"top_p":       floatParam(parameters, "top_p", 1),
+		"max_tokens":  numberParam(parameters, "max_output_tokens", 32768),
+	})
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "--generation-config", shellQuote(string(generation)))
+
+	fewShot := numberParam(parameters, "few_shot", 0)
+	revision := strings.TrimSpace(parameters["dataset_revision"])
+	if (fewShot > 0 || revision != "") && len(datasets) > 0 {
+		perDataset := map[string]map[string]any{}
+		for _, name := range datasets {
+			entry := map[string]any{}
+			if fewShot > 0 {
+				entry["few_shot_num"] = fewShot
+			}
+			if revision != "" {
+				entry["revision"] = revision
+			}
+			perDataset[name] = entry
+		}
+		body, err := json.Marshal(perDataset)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "--dataset-args", shellQuote(string(body)))
+	}
+
+	baseURL := strings.TrimSpace(parameters["judge_base_url"])
+	judgeModel := strings.TrimSpace(parameters["judge_model"])
+	if baseURL != "" && judgeModel != "" {
+		body, err := json.Marshal(map[string]any{
+			"base_url":    baseURL,
+			"model":       judgeModel,
+			"temperature": floatParam(parameters, "judge_temperature", 0),
+			"max_tokens":  numberParam(parameters, "judge_max_output_tokens", 4096),
+		})
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "--judge", shellQuote(string(body)))
+	}
+	return args, nil
 }
 
 // shellQuote makes a value safe inside the single-quoted context of the rendered script.
@@ -403,6 +467,15 @@ func stringParam(parameters map[string]string, key, def string) string {
 func numberParam(parameters map[string]string, key string, def int) int {
 	if raw, ok := parameters[key]; ok {
 		if v, err := strconv.Atoi(raw); err == nil && v >= 0 {
+			return v
+		}
+	}
+	return def
+}
+
+func floatParam(parameters map[string]string, key string, def float64) float64 {
+	if raw, ok := parameters[key]; ok {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 && !math.IsInf(v, 0) {
 			return v
 		}
 	}

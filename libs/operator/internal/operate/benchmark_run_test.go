@@ -134,7 +134,7 @@ func runBenchmark(t *testing.T, logs LogReader, op wire.OperationDesired, object
 		Allowed:   allKinds,
 		Log:       discardLogger(),
 		Render:    render.Options{Namespace: benchNS},
-		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000"},
+		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000", Images: benchImages},
 		Logs:      logs,
 	})
 	e.Bind(rec)
@@ -403,7 +403,7 @@ func TestAJobThatCannotBeReadFailsTheRun(t *testing.T) {
 		Allowed:   allKinds,
 		Log:       discardLogger(),
 		Render:    render.Options{Namespace: benchNS},
-		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend:8000"},
+		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend:8000", Images: benchImages},
 		Logs:      stubLogs{},
 	})
 	e.Bind(rec)
@@ -441,7 +441,7 @@ func TestABenchmarkDeadlineEndsTheWait(t *testing.T) {
 		Allowed:          allKinds,
 		Log:              discardLogger(),
 		Render:           render.Options{Namespace: benchNS},
-		Benchmark:        render.BenchmarkOptions{Endpoint: "http://frontend:8000"},
+		Benchmark:        render.BenchmarkOptions{Endpoint: "http://frontend:8000", Images: benchImages},
 		Logs:             stubLogs{out: framed("aiperf 0.4.1", `{"partial":true}`)},
 		BenchmarkTimeout: 50 * time.Millisecond,
 	})

