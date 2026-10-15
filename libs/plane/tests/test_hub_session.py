@@ -92,12 +92,21 @@ class FakeConnection:
         self._delivered.put_nowait(message)
 
     async def recv(self) -> str:
-        while True:
-            if not self.inbox.empty():
-                return self.inbox.get_nowait()
-            if self.closed.is_set():
-                raise ClosedError("closed")
-            await asyncio.sleep(0.0005)
+        if not self.inbox.empty():
+            return self.inbox.get_nowait()
+        if self.closed.is_set():
+            raise ClosedError("closed")
+        received = asyncio.ensure_future(self.inbox.get())
+        closed = asyncio.ensure_future(self.closed.wait())
+        try:
+            await asyncio.wait({received, closed}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            closed.cancel()
+            if not received.done():
+                received.cancel()
+        if received.done() and not received.cancelled():
+            return received.result()
+        raise ClosedError("closed")
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         if self.close_code is None:
@@ -471,10 +480,11 @@ async def test_a_duplicate_seq_is_dropped_silently() -> None:
     observed = payload_of("device.observed")
     harness.connection.push(frame("device.observed", observed, seq=1))
     harness.connection.push(frame("device.observed", observed, seq=1))
-    await until(lambda: harness.session.state is not None and harness.session.state.ack_cursor == 1)
-    await settle()
+    # Frames are handled in order, so once seq 2 is acked the duplicate has been dealt with.
+    harness.connection.push(frame("device.observed", observed, seq=2))
+    await until(lambda: harness.session.state is not None and harness.session.state.ack_cursor == 2)
 
-    assert len(harness.sink.observed) == 1
+    assert len(harness.sink.observed) == 2
     assert not harness.connection.closed.is_set()
     await harness.stop()
 
