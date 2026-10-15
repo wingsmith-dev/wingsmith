@@ -418,17 +418,18 @@ func newTunnels(addr, id string, replicas int, headerTimeout time.Duration, veri
 		slog.Warn("gateway: tunnel listener disabled, only clusters with a published serving address are reachable")
 		return nil, nil, nil
 	}
-	pool, err := tunnel.NewPool(tunnel.PoolConfig{Observer: recorder, ResponseHeaderTimeout: headerTimeout})
+	settings := tunnelSettingsFromEnv()
+	pool, err := tunnel.NewPool(settings.pool(tunnel.PoolConfig{Observer: recorder, ResponseHeaderTimeout: headerTimeout}))
 	if err != nil {
 		return nil, nil, err
 	}
-	listener, err := tunnel.NewListener(tunnel.ListenerConfig{
+	listener, err := tunnel.NewListener(settings.listener(tunnel.ListenerConfig{
 		Pool:      pool,
 		GatewayID: id,
 		Gateways:  replicas,
 		Verifier:  verifier,
 		Dials:     recorder,
-	})
+	}))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -537,9 +538,10 @@ func envBool(key string) bool {
 
 // serveTunnels binds the tunnel port and accepts dials until shutdown.
 //
-// Failing to bind is fatal by way of stop: a gateway that cannot be dialled by
-// any agent is a gateway that can serve nothing, and carrying on would mean
-// reporting unready forever while looking healthy in the logs.
+// Failing to bind at startup is fatal by way of stop: a gateway that cannot be
+// dialled by any agent is a gateway that can serve nothing, and carrying on
+// would mean reporting unready forever while looking healthy in the logs. Once
+// it is serving, a listener that fails is bound again instead; see keepServing.
 func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath, keyPath string, recorder *metrics.Recorder, stop func()) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -548,6 +550,7 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		return
 	}
 
+	wrap := func(ln net.Listener) net.Listener { return ln }
 	switch {
 	case (certPath == "") != (keyPath == ""):
 		// Half a TLS configuration is a misconfiguration, and the failure it
@@ -575,17 +578,22 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		// the handshake on this connection is hangar's own and HTTP/2 starts
 		// after it, so advertising h2 here would invite a TLS stack to hand the
 		// socket to an HTTP/2 client that expects to be the one dialling.
-		ln = tls.NewListener(ln, &tls.Config{GetCertificate: keypair.GetCertificate, MinVersion: tls.VersionTLS12})
+		tlsConfig := &tls.Config{GetCertificate: keypair.GetCertificate, MinVersion: tls.VersionTLS12}
+		wrap = func(ln net.Listener) net.Listener { return tls.NewListener(ln, tlsConfig) }
+		ln = wrap(ln)
 	default:
 		slog.Warn("gateway: tunnel listener is plaintext, TLS must be terminated in front of it", "addr", addr)
 	}
 
 	go func() {
 		slog.Info("gateway: tunnel listening", "addr", addr)
-		if err := listener.Serve(ctx, ln); err != nil {
-			slog.Error("gateway: tunnel listener stopped", "err", err)
-			stop()
-		}
+		keepServing(ctx, listener, ln, func() (net.Listener, error) {
+			next, err := net.Listen("tcp", addr)
+			if err != nil {
+				return nil, err
+			}
+			return wrap(next), nil
+		})
 	}()
 }
 

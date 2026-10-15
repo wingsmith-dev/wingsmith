@@ -331,6 +331,34 @@ answered by an image model, on the same line and in `hangar_gateway_generated_to
 
 No pricing, and nothing is added to the response body the caller sees.
 
+## Tunnel listener
+
+The tunnel port is open to the internet by design, so the listener limits what one dialler can
+cost it. Every value has a default in `libs/packages/tunnel`; set one only to change it.
+
+| Variable | What |
+|---|---|
+| `HANGAR_GATEWAY_TUNNEL_MAX_PER_CLUSTER` / `HANGAR_GATEWAY_TUNNEL_MAX` | tunnels one cluster may hold on a replica, and a replica across every cluster |
+| `HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES` | dials mid-handshake at once |
+| `HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE` | of those, from one address (an IPv6 address counts by its /64); `off` disables |
+| `HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES` | failed dials one address may make in a minute before its dials are refused as `throttled` without asking the plane; a token verified within the cache TTL still gets in; `off` disables |
+| `HANGAR_GATEWAY_TUNNEL_CACHE_TTL` / `HANGAR_GATEWAY_TUNNEL_CACHE_GRACE` | how long a verified token is reused without asking the plane (1m), and how long it survives a plane that cannot be reached (15m) |
+| `HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL` | how often an open tunnel's token is checked again (1m); it cannot be turned off |
+| `HANGAR_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT` | a tunnelled response body nobody reads for this long is closed (2m); `off` disables |
+
+The per-source limits key on the dial's address. Behind a Service or load balancer that rewrites
+it (`externalTrafficPolicy: Cluster`, an L7 proxy), every agent shares a few node addresses; keep
+the client address (`externalTrafficPolicy: Local`, a pass-through load balancer) or set both to
+`off`.
+
+A token revoked or rotated in the plane loses its open tunnels at the next re-verification, a
+little over two minutes with the defaults. Restarting the gateway replicas closes them at once:
+a new replica has nothing cached, so every agent redials and is checked afresh. Each check sends the
+agent's address to the plane, which charges a failed one to that address alone.
+
+A tunnel listener whose accept socket fails is bound again with a backoff. The process keeps
+running, so the tunnels already open keep serving.
+
 ## Failure behaviour
 
 - **The plane is down.** The table already loaded keeps serving. What it is built from changes on
