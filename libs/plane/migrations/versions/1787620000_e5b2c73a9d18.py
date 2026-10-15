@@ -4,6 +4,10 @@ Revision ID: e5b2c73a9d18
 Revises: 8f4ccc237d91
 Create Date: 2026-08-24 00:00:00.000000
 
+A workload with no deployment has nothing to take its name and shape from, so it
+cannot be carried over. The upgrade refuses and lists those workloads rather than
+deleting them. To drop them deliberately, rerun with
+`alembic -x drop_orphan_workloads=true upgrade head`.
 """
 from typing import Sequence
 from typing import Union
@@ -13,6 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from alembic import op
+from alembic import context
 
 
 revision: str = 'e5b2c73a9d18'
@@ -41,6 +46,13 @@ def upgrade() -> None:
         )
     ).scalars().all()
     if orphans:
+        drop = context.get_x_argument(as_dictionary=True).get("drop_orphan_workloads", "").lower() == "true"
+        if not drop:
+            raise RuntimeError(
+                f"cannot migrate: {len(orphans)} workload(s) have no deployment and cannot be carried over: "
+                f"{', '.join(orphans)}. Give them a deployment, or rerun with "
+                "`alembic -x drop_orphan_workloads=true upgrade head` to delete them."
+            )
         print(f"dropping {len(orphans)} workload(s) with no deployment: {', '.join(orphans)}")
         bind.execute(
             sa.text(
