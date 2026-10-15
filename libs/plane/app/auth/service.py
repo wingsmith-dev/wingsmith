@@ -8,8 +8,8 @@ commit, and revocation is a no-op on an already-revoked or unknown token.
 
 import time
 
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +55,7 @@ class AuthService:
         token, tenant = row[0], row[1]
         if token.revoked_at is not None or not tenant.enabled:
             return None
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         if token.last_used_at is None or (now - token.last_used_at).total_seconds() > TOUCH_INTERVAL_SECONDS:
             token.last_used_at = now
             await self.db.commit()
@@ -70,7 +70,7 @@ class AuthService:
             tenant_token_id=tenant_token_id,
             expires_at=datetime.fromtimestamp(
                 time.time() + settings.REFRESH_TTL_SECONDS,
-                tz=timezone.utc,
+                tz=UTC,
             ),
         )
         self.db.add(row)
@@ -91,7 +91,7 @@ class AuthService:
         row = result.scalar_one_or_none()
         if row is None:
             return None
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         if row.revoked_at is not None or row.replaced_by is not None:
             return None
         if row.expires_at <= now:
@@ -116,7 +116,7 @@ class AuthService:
             tenant_token_id=row.tenant_token_id,
             expires_at=datetime.fromtimestamp(
                 time.time() + settings.REFRESH_TTL_SECONDS,
-                tz=timezone.utc,
+                tz=UTC,
             ),
         )
         self.db.add(new_row)
@@ -133,5 +133,5 @@ class AuthService:
         result = await self.db.execute(select(AuthRefreshToken).where(AuthRefreshToken.token_hash == token_hash))
         row = result.scalar_one_or_none()
         if row is not None and row.revoked_at is None:
-            row.revoked_at = datetime.now(tz=timezone.utc)
+            row.revoked_at = datetime.now(tz=UTC)
             await self.db.commit()

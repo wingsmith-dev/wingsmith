@@ -15,7 +15,7 @@ import pytest
 
 from msgspec import json as msgjson
 
-from app.auth import STATIC_OPERATOR
+from app.auth import AuthManager
 from app.hub.sink import MemorySink
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
@@ -137,7 +137,7 @@ class Harness:
         self.claims = claims or MemoryClaimStore()
         self.session = OperatorSession(
             self.connection,
-            STATIC_OPERATOR,
+            AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="us-cluster-1"),
             registry=self.registry,
             sink=self.sink,
             config=config or SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64),

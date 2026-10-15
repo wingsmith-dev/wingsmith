@@ -19,7 +19,7 @@ import msgspec
 from litestar.di import Provide
 from litestar.testing import create_test_client
 
-from app.auth import STATIC_OPERATOR
+from app.auth import AuthManager
 from app.reactor import rules
 from app.reactor import conditions
 from app.core.ids import PREFIXES
@@ -589,7 +589,7 @@ def test_the_schema_survives_a_round_trip_through_the_wire():
 
 def test_the_rule_catalogue_answers_over_http():
     """No session anywhere in the path: the vocabulary is code, so listing it reads nothing."""
-    context = RequestContext(principal=STATIC_OPERATOR, db=None)
+    context = RequestContext(principal=AuthManager.admin_principal(), db=None)
     handlers = [AlertRuleRoutes]
     dependencies = {"context": Provide(lambda: context, sync_to_thread=False)}
     with create_test_client(route_handlers=handlers, dependencies=dependencies) as client:

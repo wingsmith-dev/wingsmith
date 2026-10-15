@@ -5,10 +5,11 @@ be told apart from a malformed token instead of silently failing signature
 verification.
 """
 
-LOCAL_OPERATOR_TOKEN = "hangar-local-operator-token"
-"""Fallback operator token used only when `APP_ENV == 'local'` and
-`OPERATOR_TOKEN` is unset. Everywhere else an unset token refuses to boot —
-see `app.config.settings.validate`.
+LOCAL_GATEWAY_SERVICE_TOKEN = "hangar-local-gateway-token"
+"""Fallback gateway service token, used only when `APP_ENV == 'local'` and
+`GATEWAY_SERVICE_TOKEN` is unset, so a fresh checkout's gateway can read the
+plane with no configuration. Outside `local` an unset token means no gateway
+principal resolves at all; nothing falls back to this value.
 """
 
 SESSION_PREFIX = "hgrs1"

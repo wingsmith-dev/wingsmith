@@ -112,15 +112,14 @@ class ClusterRoutes(Controller):
         It is a POST only because the credential being checked must not travel in
         a query string.
 
-        Operator principals only. The caller is the gateway, which terminates the
-        outbound tunnels serving agents dial and needs to know which cluster
-        is on the other end of one; it already holds an operator token to read the
-        routing table. An admin session is refused rather than accommodated — a
-        human credential that can turn tokens into identities is a credential that
-        can sweep for them, and no console screen asks this question.
+        The gateway principal only. The gateway terminates the outbound tunnels
+        serving agents dial and needs to know which cluster is on the other end
+        of one. An admin session is refused rather than accommodated — a human
+        credential that can turn tokens into identities is a credential that can
+        sweep for them, and no console screen asks this question.
         """
-        if context.principal.kind != "operator":
-            raise Forbidden("agent verification is for the gateway's operator principal only")
+        if context.principal.kind != "gateway":
+            raise Forbidden("agent verification is for the gateway's service credential only")
         return Response(await svc.verify_tunnel_token(data.token))
 
     @patch("/{ref:str}")

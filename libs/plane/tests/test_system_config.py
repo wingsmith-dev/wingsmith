@@ -20,7 +20,7 @@ from app.core.system_routes import effective_config
 
 
 SECRETS = {
-    "OPERATOR_TOKEN": "sentinel-operator-token-aaaa",
+    "GATEWAY_SERVICE_TOKEN": "sentinel-gateway-token-aaaa",
     "HF_TOKEN": "sentinel-hf-token-bbbb",
     "SESSION_SIGNING_SECRET": "sentinel-signing-secret-cccc",
     "DATABASE_URL": "postgresql+psycopg://dbuser:sentinel-db-password-dddd@db.internal:5433/hangar",
@@ -134,17 +134,17 @@ def test_auth_group_reduces_every_credential_to_a_boolean():
         "admin_password_hash_set": True,
         "session_signing_secret_set": True,
         "session_ttl_seconds": settings.SESSION_TTL_SECONDS,
-        "operator_token_set": True,
+        "gateway_service_token_set": True,
         "huggingface_token_set": True,
     }
 
 
 def test_unset_credentials_report_false_rather_than_an_empty_string(monkeypatch):
     monkeypatch.setattr(settings, "HF_TOKEN", "")
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "")
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "")
     auth = effective_config().auth
     assert auth.huggingface_token_set is False
-    assert auth.operator_token_set is False
+    assert auth.gateway_service_token_set is False
 
 
 def test_admin_auth_reports_the_resolved_mode_not_the_raw_setting(monkeypatch):
@@ -165,7 +165,7 @@ def test_no_configured_secret_appears_anywhere_in_the_response():
         response = client.get("/v1/system/config")
     raw = response.text
     for sentinel in (
-        SECRETS["OPERATOR_TOKEN"],
+        SECRETS["GATEWAY_SERVICE_TOKEN"],
         SECRETS["HF_TOKEN"],
         SECRETS["SESSION_SIGNING_SECRET"],
         "sentinel-db-password-dddd",
@@ -184,7 +184,7 @@ def test_no_configured_secret_appears_in_the_struct_before_serialisation():
     """The same assertion against `effective_config`, so the projection is covered
     even if a transport ever re-shapes the response."""
     raw = msgspec.json.encode(effective_config()).decode()
-    for sentinel in ("sentinel-db-password-dddd", "sentinel-metrics-token-eeee", SECRETS["OPERATOR_TOKEN"]):
+    for sentinel in ("sentinel-db-password-dddd", "sentinel-metrics-token-eeee", SECRETS["GATEWAY_SERVICE_TOKEN"]):
         assert sentinel not in raw
 
 
@@ -216,11 +216,11 @@ def test_config_accepts_an_admin_session_token(monkeypatch):
     assert response.status_code == 200
 
 
-def test_config_refuses_an_operator_token():
+def test_config_refuses_the_gateway_token():
     with TestClient(app=create_app()) as client:
         response = client.get(
             "/v1/system/config",
-            headers={"Authorization": f"Bearer {SECRETS['OPERATOR_TOKEN']}"},
+            headers={"Authorization": f"Bearer {SECRETS['GATEWAY_SERVICE_TOKEN']}"},
         )
     assert response.status_code == 403
     assert response.json()["code"] == "forbidden"

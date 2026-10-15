@@ -21,7 +21,7 @@ from msgspec import structs
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.auth import STATIC_OPERATOR
+from app.auth import AuthManager
 from app.hub.sink import SinkFrame
 from app.hub.state import new_id
 from app.hub.session import SessionConfig
@@ -991,7 +991,7 @@ async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, clust
     connection = FakeConnection()
     session = OperatorSession(
         connection,
-        STATIC_OPERATOR,
+        AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="alpha"),
         sink=sink,
         config=SessionConfig(ping_interval=60.0, liveness_timeout=120.0),
     )

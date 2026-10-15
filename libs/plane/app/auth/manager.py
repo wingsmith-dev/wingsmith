@@ -4,8 +4,12 @@
 and principal resolution. Every method is a staticmethod — nothing here holds
 state; the only inputs are the arguments and `settings`.
 
-The hub uses `resolve_operator` and `resolve_enrolment`; the HTTP API goes
-through `resolve_principal`, which tries each kind in turn.
+Four principal kinds exist (`app.auth.schemas`): `admin`, `tenant`, `operator`
+and `gateway`. The HTTP API resolves a bearer credential through
+`resolve_principal`, which only ever yields an admin, a tenant or the gateway.
+An operator principal comes from a per-cluster enrolment token, which the hub
+resolves against the database by its hash and binds with `operator_principal`;
+there is no shared operator credential.
 """
 
 import hmac
@@ -20,37 +24,41 @@ from app.config import settings
 from app.core.exceptions import NotAuthorized
 
 from .const import TENANT_PREFIX
-from .const import TENANT_API_KEY_PREFIX
 from .const import REFRESH_PREFIX
 from .const import SESSION_PREFIX
 from .const import ENROLMENT_PREFIX
-from .const import LOCAL_OPERATOR_TOKEN
+from .const import TENANT_API_KEY_PREFIX
 from .const import REMOTE_WRITE_BCRYPT_ROUNDS
+from .const import LOCAL_GATEWAY_SERVICE_TOKEN
+from .schemas import ADMIN
+from .schemas import TENANT
+from .schemas import GATEWAY
+from .schemas import OPERATOR
 from .schemas import Principal
 
 
+_LOCAL_SIGNING_SECRET = secrets.token_urlsafe(32)
+"""The per-process session key used under `APP_ENV=local` when none is configured."""
+
+
 class AuthManager:
-    """Credential verification and token operations for both principal kinds."""
+    """Credential verification and token operations for every principal kind."""
 
     @staticmethod
-    def operator_principal(
-        cluster_uid: str | None = None,
-        cluster_name: str | None = None,
-    ) -> Principal:
-        """The operator identity a hub session runs as.
+    def operator_principal(cluster_uid: str, cluster_name: str) -> Principal:
+        """The operator identity a hub session runs as, bound to one cluster.
 
-        Unbound (`cluster_uid is None`) is the legacy shared fleet token: the
-        session trusts whichever cluster the `hello` frame names, as it always
-        has. A bound principal comes from a per-cluster enrolment token —
-        `scope` carries the cluster's uid, and the handshake refuses a `hello`
-        that names a different cluster, so the token *is* the identity rather
-        than a fleet-wide pass.
+        Built only from a per-cluster enrolment token the hub has resolved by its
+        hash. `scope` carries the cluster's uid, and the handshake refuses a
+        `hello` that names a different cluster, so the token *is* the identity
+        rather than a fleet-wide pass. There is no unbound form.
         """
+        if not cluster_uid:
+            raise ValueError("an operator principal is always bound to a cluster")
         return Principal(
-            id="00000000-0000-0000-0000-000000000001",
-            kind="operator",
-            name=cluster_name or "operator",
-            scopes=("*",),
+            id=cluster_uid,
+            kind=OPERATOR,
+            name=cluster_name or cluster_uid,
             scope=cluster_uid,
         )
 
@@ -58,9 +66,21 @@ class AuthManager:
     def admin_principal(name: str = "admin") -> Principal:
         return Principal(
             id="00000000-0000-0000-0000-000000000002",
-            kind="admin",
+            kind=ADMIN,
             name=name,
-            scopes=("*",),
+        )
+
+    @staticmethod
+    def gateway_principal() -> Principal:
+        """The identity the inference gateway reads the plane as.
+
+        It may call three routes and nothing else (`app.core.context.GATEWAY_ROUTES`),
+        and holds no admin rights on the plane API.
+        """
+        return Principal(
+            id="00000000-0000-0000-0000-000000000003",
+            kind=GATEWAY,
+            name="gateway",
         )
 
     @staticmethod
@@ -69,14 +89,13 @@ class AuthManager:
 
         `scope` is the tenant's uid and is the whole of this principal's authority:
         it holds no wildcard, and every route outside the serving view refuses it
-        (`app.core.context.request_context`). The uid rather than the slug, because
-        a slug is a handle somebody reads and the scope is compared.
+        (`app.core.context.authorize`). The uid rather than the slug, because a
+        slug is a handle somebody reads and the scope is compared.
         """
         return Principal(
             id=tenant_uid,
-            kind="tenant",
+            kind=TENANT,
             name=slug,
-            scopes=("serving:read",),
             scope=tenant_uid,
         )
 
@@ -134,36 +153,39 @@ class AuthManager:
         return value or None
 
     @staticmethod
-    def effective_operator_token() -> str:
-        """The operator token this process actually checks against.
+    def effective_gateway_token() -> str:
+        """The gateway service token this process checks against, or empty for none.
 
-        Raises rather than falling back silently outside `local`; that path
-        should be unreachable in practice because `app.config.settings.validate`
-        refuses to boot first, but a library caller that skipped `validate`
-        must still fail closed rather than compare against an empty string.
+        `GATEWAY_SERVICE_TOKEN` when set; `LOCAL_GATEWAY_SERVICE_TOKEN` under
+        `APP_ENV=local` only. Empty anywhere else, which resolves no gateway
+        principal at all rather than matching an empty bearer.
         """
-        if settings.OPERATOR_TOKEN:
-            return settings.OPERATOR_TOKEN
+        if settings.GATEWAY_SERVICE_TOKEN:
+            return settings.GATEWAY_SERVICE_TOKEN
         if settings.APP_ENV == "local":
-            return LOCAL_OPERATOR_TOKEN
-        raise RuntimeError("OPERATOR_TOKEN is unset outside APP_ENV=local")
+            return LOCAL_GATEWAY_SERVICE_TOKEN
+        return ""
+
+    @staticmethod
+    def resolve_gateway(token: str | None) -> Principal | None:
+        """Resolves a bearer token to the gateway principal, constant-time, or `None`."""
+        expected = AuthManager.effective_gateway_token()
+        if not token or not expected:
+            return None
+        if hmac.compare_digest(token.encode(), expected.encode()):
+            return AuthManager.gateway_principal()
+        return None
 
     @staticmethod
     def resolve_operator(token: str | None) -> Principal | None:
-        """Resolves a bearer token to the *unbound* operator principal, constant-time.
+        """Always `None`: there is no shared operator credential to resolve.
 
-        This is the shared fleet token only (`OPERATOR_TOKEN`). Per-cluster
-        enrolment tokens are resolved against the database by the hub, not here,
-        because this seam is pure and has no session. Returns `None` rather than
-        raising so callers with different failure behaviour (hub closes the
-        socket, API tries an admin session next) can each decide what "no
-        operator match" means for them.
+        Every operator principal is bound to one cluster by its enrolment token,
+        which needs a database lookup this pure seam cannot do; the hub makes it
+        (`app.hub.server._resolve_connection`). Kept because the hub's pre-upgrade
+        check still calls it, so a token that is not enrolment-shaped is refused
+        before the handshake.
         """
-        if not token:
-            return None
-        expected = AuthManager.effective_operator_token()
-        if hmac.compare_digest(token.encode(), expected.encode()):
-            return AuthManager.operator_principal()
         return None
 
     @staticmethod
@@ -248,8 +270,24 @@ class AuthManager:
             return False
 
     @staticmethod
+    def signing_secret() -> str:
+        """The HMAC key session tokens are signed and verified with.
+
+        `SESSION_SIGNING_SECRET` when set. Under `APP_ENV=local` an unset secret
+        is a random key drawn once per process, so a developer's sessions end
+        when the process restarts and no constant anyone can read off GitHub ever
+        signs one. Anywhere else an unset secret raises: `validate` refuses to
+        boot first, and a caller that skipped it must still fail closed.
+        """
+        if settings.SESSION_SIGNING_SECRET:
+            return settings.SESSION_SIGNING_SECRET
+        if settings.APP_ENV == "local":
+            return _LOCAL_SIGNING_SECRET
+        raise RuntimeError("SESSION_SIGNING_SECRET is unset outside APP_ENV=local")
+
+    @staticmethod
     def _sign(payload: bytes) -> str:
-        secret = settings.SESSION_SIGNING_SECRET or LOCAL_OPERATOR_TOKEN
+        secret = AuthManager.signing_secret()
         digest = hmac.new(secret.encode(), payload, hashlib.sha256).digest()
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
@@ -331,16 +369,17 @@ class AuthManager:
     def resolve_principal(token: str | None) -> Principal:
         """Resolves a bearer token to a caller identity for the HTTP API.
 
-        Tries the operator token, then an admin session token. If neither
-        matches and admin auth is disabled (see `admin_auth_enabled`), the
-        caller is treated as the console/CLI operating behind a trusted
-        perimeter (no ingress, `kubectl port-forward` only) and resolves to an
-        admin principal. Otherwise raises `NotAuthorized` — this function never
-        returns a fabricated identity for a bad or missing credential.
+        Tries the gateway service token, then a session token (admin or tenant).
+        If neither matches and admin auth is disabled (see `admin_auth_enabled`,
+        allowed under `APP_ENV=local` only), the caller is treated as the
+        console/CLI on a developer's machine and resolves to an admin principal.
+        Otherwise raises `NotAuthorized` — this function never returns a
+        fabricated identity for a bad or missing credential, and never an
+        operator: operator credentials open hub sessions and nothing else.
         """
-        operator = AuthManager.resolve_operator(token)
-        if operator is not None:
-            return operator
+        gateway = AuthManager.resolve_gateway(token)
+        if gateway is not None:
+            return gateway
 
         if token:
             session = AuthManager.verify_session_token(token)
@@ -351,9 +390,3 @@ class AuthManager:
             return AuthManager.admin_principal()
 
         raise NotAuthorized("missing or invalid credentials")
-
-
-STATIC_OPERATOR = AuthManager.operator_principal()
-"""Convenience constant for tests and fixtures that need *an* operator
-principal without going through token resolution.
-"""

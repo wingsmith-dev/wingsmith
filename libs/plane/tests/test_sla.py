@@ -13,11 +13,13 @@ from unittest.mock import patch
 
 import pytest
 
+from app.auth import AuthManager
 from app.db.models import Endpoint
 from app.db.models import ServingQuota
-from app.core.context import _tenant_may
+from app.core.context import authorize
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
+from app.core.exceptions import Forbidden
 from app.modules.metrics import sources
 from app.modules.metrics.sla import Period
 from app.modules.metrics.sla import PeriodQuery
@@ -372,9 +374,8 @@ async def test_a_malformed_period_is_refused_before_anything_is_read():
 
 
 def test_a_tenant_reads_its_report_on_its_own_surface_and_nowhere_else():
-    def request(path):
-        return SimpleNamespace(method="GET", scope={"path": path})
-
-    assert _tenant_may(request("/v1/serving/models/kimi-k3/sla"))
-    assert not _tenant_may(request(f"/v1/metrics/endpoints/{ENDPOINT}/sla"))
-    assert not _tenant_may(request("/v1/tenants/globex/serving/models/kimi-k3/sla"))
+    tenant = AuthManager.tenant_principal(tenant_uid="ten_01m1yd", slug="globex")
+    authorize(tenant, "GET", "/v1/serving/models/{model}/sla")
+    for route in ("/v1/metrics/endpoints/{ref}/sla", "/v1/tenants/{tenant}/serving/models/{model}/sla"):
+        with pytest.raises(Forbidden):
+            authorize(tenant, "GET", route)

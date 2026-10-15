@@ -5,7 +5,7 @@ enrolment token to the gateway's tunnel listener, the gateway asks here, and an
 answer that is wrong in the permissive direction hands a stranger a cluster's
 identity on the data plane. So every path that must refuse has a test: a token
 nobody issued, the value a rotation replaced, a cluster somebody disabled, and a
-caller that is not the gateway.
+caller that is not the gateway principal.
 """
 
 import time
@@ -15,7 +15,6 @@ import pytest
 from litestar.di import Provide
 from litestar.testing import create_test_client
 
-from app.auth import STATIC_OPERATOR
 from app.auth import AuthManager
 from app.core.context import RequestContext
 from app.core.handlers import EXCEPTION_HANDLERS
@@ -77,7 +76,7 @@ def test_an_admin_principal_is_refused():
 
 def test_a_token_that_is_not_enrolment_shaped_is_refused_without_a_lookup():
     """`db=None` in the context is the assertion: nothing reached the database."""
-    with client(STATIC_OPERATOR) as http:
+    with client(AuthManager.gateway_principal()) as http:
         response = http.post("/clusters/tunnel-auth", json={"token": "some-fleet-token"})
     assert response.status_code == 401
     assert response.json()["code"] == "not_authorized"

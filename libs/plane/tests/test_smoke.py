@@ -1,6 +1,6 @@
 from litestar.testing import create_test_client
 
-from app.auth import STATIC_OPERATOR
+from app.auth import LOCAL_GATEWAY_SERVICE_TOKEN
 from app.auth import AuthManager
 from app.config import settings
 from app.core.routes import HealthRoutes
@@ -11,8 +11,9 @@ def test_settings_default_database_url() -> None:
     assert settings.DATABASE_URL.startswith("postgresql+psycopg://")
 
 
-def test_operator_token_resolves_to_the_operator_principal() -> None:
-    assert AuthManager.resolve_principal(settings.OPERATOR_TOKEN or "hangar-local-operator-token") == STATIC_OPERATOR
+def test_the_gateway_token_resolves_to_the_gateway_principal() -> None:
+    token = settings.GATEWAY_SERVICE_TOKEN or LOCAL_GATEWAY_SERVICE_TOKEN
+    assert AuthManager.resolve_principal(token) == AuthManager.gateway_principal()
 
 
 def test_no_token_resolves_under_local_defaults_because_admin_auth_is_disabled() -> None:

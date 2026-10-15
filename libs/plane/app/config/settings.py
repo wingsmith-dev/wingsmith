@@ -144,13 +144,21 @@ class Settings:
     """Key within it holding the htpasswd file. `users` is what Traefik's
     `basicAuth.secret` reads when the Secret is not of type `kubernetes.io/basic-auth`."""
 
-    OPERATOR_TOKEN: str = ""
-    """Bearer token cluster agents present to the hub and the API.
+    GATEWAY_SERVICE_TOKEN: str = ""
+    """Bearer token the inference gateway presents to the plane API.
 
-    No default outside `local`: an unset token in any other `APP_ENV` refuses to
-    boot rather than fall back to something guessable. In `local`, an unset
-    token resolves to `app.auth.const.LOCAL_OPERATOR_TOKEN` so a fresh checkout
-    still runs without any configuration.
+    It resolves to the `gateway` principal, which may read the routing table and
+    the tenant table and verify an agent's enrolment token, and nothing else — no
+    admin rights, no writes. Generate a long random value and give the same one
+    to the gateway as `HANGAR_GATEWAY_SERVICE_TOKEN`.
+
+    Unset outside `local` means no gateway principal resolves at all, which
+    fails closed: the gateway gets `401` until it is configured. In `local`, an
+    unset token resolves to `app.auth.const.LOCAL_GATEWAY_SERVICE_TOKEN` so a
+    fresh checkout's gateway runs without configuration.
+
+    Cluster operators never use this or any other shared token. Each cluster
+    holds its own enrolment token, minted by the plane at registration.
     """
 
     HF_TOKEN: str = ""
@@ -194,8 +202,9 @@ class Settings:
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
     to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see
     `app.auth.manager.AuthManager.admin_auth_enabled`. This is the one switch that turns admin
-    authentication on the HTTP API off entirely; it never affects the hub, whose
-    operator-token check cannot be disabled.
+    authentication on the HTTP API off entirely, and `validate` refuses `disabled`
+    outside `local`. It never affects the hub, whose enrolment-token check cannot
+    be disabled, nor the gateway, which still needs its own token.
     """
 
     ADMIN_PASSWORD_HASH: str = ""
@@ -362,9 +371,6 @@ def validate(s: "Settings") -> None:
 
     if s.APP_ENV == "local":
         return
-
-    if not s.OPERATOR_TOKEN:
-        raise RuntimeError("OPERATOR_TOKEN must be set when APP_ENV is not 'local'")
 
     if resolved_admin_auth(s) == "enabled":
         if not s.SESSION_SIGNING_SECRET:

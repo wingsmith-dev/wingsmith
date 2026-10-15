@@ -11,6 +11,7 @@ from app.auth import AuthManager
 from app.utils import logs
 from app.config import settings
 from app.core.params import reject_unknown_params
+from app.core.context import authenticate
 from app.core.context import request_context
 from app.core.handlers import EXCEPTION_HANDLERS
 from app.config.settings import validate
@@ -24,10 +25,10 @@ async def on_startup() -> None:
     if not AuthManager.admin_auth_enabled():
         logger.warning(
             "api.admin_auth_disabled *** ADMIN AUTHENTICATION IS DISABLED *** "
-            "every request to this API resolves to a full-scope admin principal "
-            "with no credential check. This is safe ONLY behind a perimeter with "
-            "no ingress (kubectl port-forward only). Set HANGAR_ADMIN_AUTH=enabled "
-            "and HANGAR_ADMIN_PASSWORD_HASH before this plane is ever exposed."
+            "every request to this API without a credential resolves to the admin "
+            "principal. This is allowed under APP_ENV=local only, on a developer's "
+            "machine. Set HANGAR_ADMIN_AUTH=enabled and HANGAR_ADMIN_PASSWORD_HASH "
+            "to sign in locally."
         )
 
 
@@ -57,8 +58,10 @@ def _openapi_config() -> OpenAPIConfig | None:
 def create_app() -> Litestar:
     """Builds the HTTP application.
 
-    Every handler gets a `context` dependency carrying the caller identity,
-    resolved through the single seam in `app.auth.manager.AuthManager.resolve_principal`.
+    `authenticate` guards every route: anything under `/v1` other than the auth
+    routes needs a credential whether or not its handler asks for `context`, and
+    each principal kind is held to the routes `app.core.context.authorize` allows
+    it. Handlers that want the caller take the `context` dependency.
     """
     validate(settings)
     logs.configure("api")
@@ -87,6 +90,7 @@ def create_app() -> Litestar:
         openapi_config=_openapi_config(),
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
+        guards=[authenticate],
         dependencies={"context": Provide(request_context)},
     )
     return routes.init_app(app)

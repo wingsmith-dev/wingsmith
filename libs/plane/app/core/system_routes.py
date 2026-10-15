@@ -15,8 +15,8 @@ nothing.
 
 Three rules follow from that:
 
-- A credential is never a value, only a boolean. `operator_token_set` says
-  whether the fleet token is configured and nothing else — not a prefix, not a
+- A credential is never a value, only a boolean. `gateway_service_token_set`
+  says whether the gateway's token is configured and nothing else — not a prefix, not a
   length, not a digest. Any of those three narrow a search for the real thing.
 - `DATABASE_URL` is reported in parts, never as a string. The driver, host, port
   and database name are what tell an operator the plane is pointed at the wrong
@@ -39,6 +39,7 @@ from urllib.parse import urlsplit
 from litestar import Controller
 from litestar import get
 
+from app.auth import ADMIN
 from app.config import settings
 from app.core.context import RequestContext
 from app.utils.schemas import Struct
@@ -141,7 +142,7 @@ class AuthConfigSchema(Struct):
     admin_password_hash_set: bool
     session_signing_secret_set: bool
     session_ttl_seconds: int
-    operator_token_set: bool
+    gateway_service_token_set: bool
     huggingface_token_set: bool
 
 
@@ -257,7 +258,7 @@ def effective_config() -> ConfigSchema:
             admin_password_hash_set=bool(settings.ADMIN_PASSWORD_HASH),
             session_signing_secret_set=bool(settings.SESSION_SIGNING_SECRET),
             session_ttl_seconds=settings.SESSION_TTL_SECONDS,
-            operator_token_set=bool(settings.OPERATOR_TOKEN),
+            gateway_service_token_set=bool(settings.GATEWAY_SERVICE_TOKEN),
             huggingface_token_set=bool(settings.HF_TOKEN),
         ),
         setup=SetupConfigSchema(
@@ -277,11 +278,12 @@ class SystemRoutes(Controller):
     def config(self, context: RequestContext) -> ConfigSchema:
         """The plane's effective non-secret configuration.
 
-        Admin only. A cluster agent authenticates with an operator token to
-        report state and read its own declared state; the plane's process
-        configuration is neither, and it is a human's diagnostic rather than
-        anything the reconcile loop consumes.
+        Admin only. The gateway's service credential reads the routing and
+        tenant tables, and the plane's process configuration is neither; it is a
+        human's diagnostic rather than anything a service consumes. The central
+        policy already refuses every other kind here, and this check keeps the
+        route closed if that policy is ever widened.
         """
-        if context.principal.kind != "admin":
+        if context.principal.kind != ADMIN:
             raise Forbidden("plane configuration is readable by an admin principal only")
         return effective_config()

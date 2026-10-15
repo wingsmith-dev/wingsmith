@@ -1,4 +1,4 @@
-"""Auth: the operator/admin seam in `app.auth.manager`, its wiring into the HTTP
+"""Auth: the principal seam in `app.auth.manager`, its wiring into the HTTP
 API (`app.core.context`, `app.auth.routes`) and the hub (`app.hub.server`).
 """
 
@@ -11,7 +11,7 @@ from websockets.exceptions import InvalidStatus
 from websockets.asyncio.client import connect
 
 from app.auth import LOGIN_GUESSES
-from app.auth import LOCAL_OPERATOR_TOKEN
+from app.auth import LOCAL_GATEWAY_SERVICE_TOKEN
 from app.auth import AuthManager
 from app.config import settings
 from app.api.app import create_app
@@ -29,7 +29,7 @@ PASSWORD = "correct horse battery staple"
 @pytest.fixture(autouse=True)
 def _reset_auth_settings(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "")
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "")
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "")
     monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", "")
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "")
     monkeypatch.setattr(settings, "SESSION_TTL_SECONDS", 900)
@@ -107,30 +107,46 @@ def test_session_token_signed_under_a_different_secret_is_rejected(monkeypatch):
     assert AuthManager.verify_session_token(token) is None
 
 
-# --- resolve_operator / resolve_principal ------------------------------------
+# --- resolve_gateway / resolve_principal -------------------------------------
 
 
-def test_resolve_operator_accepts_the_local_default_in_local_env(monkeypatch):
+def test_resolve_gateway_accepts_the_local_default_in_local_env(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "local")
-    assert AuthManager.resolve_operator(LOCAL_OPERATOR_TOKEN) is not None
-
-
-def test_resolve_operator_rejects_wrong_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    assert AuthManager.resolve_operator("some-other-token") is None
-
-
-def test_resolve_operator_rejects_no_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    assert AuthManager.resolve_operator(None) is None
-    assert AuthManager.resolve_operator("") is None
-
-
-def test_resolve_operator_accepts_the_configured_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    principal = AuthManager.resolve_operator("the-real-token")
+    principal = AuthManager.resolve_gateway(LOCAL_GATEWAY_SERVICE_TOKEN)
     assert principal is not None
-    assert principal.kind == "operator"
+    assert principal.kind == "gateway"
+
+
+def test_the_local_gateway_default_is_refused_outside_local(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    assert AuthManager.resolve_gateway(LOCAL_GATEWAY_SERVICE_TOKEN) is None
+
+
+def test_an_unset_gateway_token_outside_local_matches_nothing(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    assert AuthManager.resolve_gateway("") is None
+    assert AuthManager.resolve_gateway(None) is None
+
+
+def test_resolve_gateway_rejects_wrong_token(monkeypatch):
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "the-real-token")
+    assert AuthManager.resolve_gateway("some-other-token") is None
+
+
+def test_resolve_gateway_accepts_the_configured_token(monkeypatch):
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "the-real-token")
+    principal = AuthManager.resolve_gateway("the-real-token")
+    assert principal is not None
+    assert principal.kind == "gateway"
+
+
+def test_no_http_credential_resolves_to_an_operator(monkeypatch):
+    """Operator credentials open hub sessions and nothing else."""
+    monkeypatch.setattr(settings, "APP_ENV", "local")
+    token, _ = AuthManager.mint_enrolment_token()
+    for candidate in (token, LOCAL_GATEWAY_SERVICE_TOKEN, "hangar-local-operator-token", None):
+        assert AuthManager.resolve_principal(candidate).kind != "operator"
+    assert AuthManager.resolve_operator("hangar-local-operator-token") is None
 
 
 def test_resolve_principal_with_admin_auth_disabled_accepts_no_token():
@@ -157,10 +173,10 @@ def test_resolve_principal_accepts_a_session_token_regardless_of_admin_auth_mode
     assert principal.kind == "admin"
 
 
-def test_resolve_principal_prefers_operator_token_over_admin_bypass(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
-    principal = AuthManager.resolve_principal("op-token")
-    assert principal.kind == "operator"
+def test_resolve_principal_prefers_the_gateway_token_over_the_admin_bypass(monkeypatch):
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "gw-token")
+    principal = AuthManager.resolve_principal("gw-token")
+    assert principal.kind == "gateway"
 
 
 # --- admin auth mode resolution / settings.validate --------------------------
@@ -182,26 +198,20 @@ def test_admin_auth_explicit_flag_wins_over_the_default():
     assert resolved_admin_auth(s) == "disabled"
 
 
-def test_validate_refuses_to_boot_without_operator_token_outside_local():
-    s = Settings(APP_ENV="production", OPERATOR_TOKEN="")
-    with pytest.raises(RuntimeError):
-        validate(s)
-
-
 def test_validate_refuses_to_boot_admin_enabled_without_password_hash():
-    s = Settings(APP_ENV="production", OPERATOR_TOKEN="tok", ADMIN_AUTH="enabled", SESSION_SIGNING_SECRET="sig")
+    s = Settings(APP_ENV="production", ADMIN_AUTH="enabled", SESSION_SIGNING_SECRET="sig")
     with pytest.raises(RuntimeError):
         validate(s)
 
 
 def test_validate_refuses_to_boot_admin_enabled_without_signing_secret():
-    s = Settings(APP_ENV="production", OPERATOR_TOKEN="tok", ADMIN_AUTH="enabled", ADMIN_PASSWORD_HASH="hash")
+    s = Settings(APP_ENV="production", ADMIN_AUTH="enabled", ADMIN_PASSWORD_HASH="hash")
     with pytest.raises(RuntimeError):
         validate(s)
 
 
 def test_validate_passes_when_admin_auth_is_explicitly_disabled_outside_local():
-    s = Settings(APP_ENV="production", OPERATOR_TOKEN="tok", ADMIN_AUTH="disabled")
+    s = Settings(APP_ENV="production", ADMIN_AUTH="disabled")
     validate(s)
 
 
@@ -250,13 +260,22 @@ def test_wrong_token_is_401_when_admin_auth_is_enabled(monkeypatch):
     assert response.status_code == 401
 
 
-@pytest.mark.database
-def test_correct_operator_token_is_accepted(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
+def test_the_gateway_token_is_403_on_an_admin_route(monkeypatch):
+    monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "gw-token")
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
-        response = client.get("/v1/clusters", headers={"Authorization": "Bearer op-token"})
-    assert response.status_code == 200
+        response = client.get("/v1/clusters", headers={"Authorization": "Bearer gw-token"})
+    assert response.status_code == 403
+    assert response.json()["code"] == "forbidden"
+
+
+def test_an_enrolment_token_is_401_on_the_http_api(monkeypatch):
+    """A cluster's credential opens its hub session; on the API it is no credential at all."""
+    enable_admin_auth(monkeypatch)
+    token, _ = AuthManager.mint_enrolment_token()
+    with TestClient(app=create_app()) as client:
+        response = client.post("/v1/clusters/alpha/enrolment-token", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
 
 
 @pytest.mark.database
@@ -314,7 +333,6 @@ def test_a_correct_login_does_not_spend_the_budget(monkeypatch):
 def test_schema_is_not_served_outside_local(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     enable_admin_auth(monkeypatch)
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
     with TestClient(app=create_app()) as client:
         response = client.get("/schema/openapi.json")
     assert response.status_code == 404
@@ -390,23 +408,25 @@ def test_looks_like_enrolment_only_accepts_the_prefix():
 
 def test_bound_operator_principal_carries_the_cluster_in_scope():
     bound = AuthManager.operator_principal(cluster_uid="clu_123", cluster_name="ap")
+    assert bound.kind == "operator"
     assert bound.scope == "clu_123"
     assert bound.name == "ap"
-    assert AuthManager.operator_principal().scope is None
+
+
+def test_there_is_no_unbound_operator_principal():
+    with pytest.raises(ValueError):
+        AuthManager.operator_principal(cluster_uid="", cluster_name="ap")
 
 
 @pytest.mark.asyncio
-async def test_resolve_connection_returns_the_unbound_principal_for_the_fleet_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "fleet-token")
-    principal = await _resolve_connection("fleet-token")
-    assert principal is not None
-    assert principal.kind == "operator"
-    assert principal.scope is None
+async def test_resolve_connection_refuses_a_shared_fleet_token():
+    """Only a per-cluster enrolment token opens a hub session."""
+    assert await _resolve_connection("hangar-local-operator-token") is None
+    assert await _resolve_connection(LOCAL_GATEWAY_SERVICE_TOKEN) is None
 
 
 @pytest.mark.asyncio
-async def test_resolve_connection_refuses_a_token_that_is_neither_fleet_nor_enrolment(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "fleet-token")
+async def test_resolve_connection_refuses_a_token_that_is_not_enrolment_shaped():
     assert await _resolve_connection("random-garbage") is None
     assert await _resolve_connection(None) is None
 
@@ -427,7 +447,6 @@ async def _run_hub_and(port: int, coro):
 
 @pytest.mark.asyncio
 async def test_hub_rejects_a_missing_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "hub-secret")
     monkeypatch.setattr(settings, "HUB_PORT", 18801)
 
     async def attempt():
@@ -441,7 +460,6 @@ async def test_hub_rejects_a_missing_token(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_hub_rejects_a_wrong_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "hub-secret")
     monkeypatch.setattr(settings, "HUB_PORT", 18802)
 
     async def attempt():
@@ -457,23 +475,23 @@ async def test_hub_rejects_a_wrong_token(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_hub_accepts_the_correct_operator_token(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "hub-secret")
+async def test_hub_refuses_a_shared_fleet_token_before_the_upgrade(monkeypatch):
     monkeypatch.setattr(settings, "HUB_PORT", 18803)
 
     async def attempt():
-        async with connect(
-            f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}",
-            additional_headers={"Authorization": "Bearer hub-secret"},
-        ) as ws:
-            assert ws.state.value == 1
+        with pytest.raises(InvalidStatus) as excinfo:
+            async with connect(
+                f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}",
+                additional_headers={"Authorization": "Bearer hangar-local-operator-token"},
+            ):
+                pass
+        assert excinfo.value.response.status_code == 401
 
     await _run_hub_and(settings.HUB_PORT, attempt())
 
 
 @pytest.mark.asyncio
 async def test_hub_rejects_bad_tokens_even_when_admin_auth_is_disabled(monkeypatch):
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "hub-secret")
     monkeypatch.setattr(settings, "ADMIN_AUTH", "disabled")
     monkeypatch.setattr(settings, "HUB_PORT", 18804)
 

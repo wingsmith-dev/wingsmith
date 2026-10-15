@@ -15,19 +15,22 @@ from app.auth import AuthManager
 from app.config import settings
 from app.api.app import create_app
 from app.core.context import TENANT_SURFACE
-from app.core.context import _tenant_may
-from app.core.exceptions import NotFound
+from app.core.context import authorize
+from app.core.exceptions import Forbidden
 from app.modules.serving.services import ServingService
 
 
-def request(path: str, method: str = "GET") -> SimpleNamespace:
-    return SimpleNamespace(method=method, scope={"path": path})
+def _tenant_may(path: str, method: str = "GET") -> bool:
+    try:
+        authorize(AuthManager.tenant_principal(tenant_uid="ten_01m1yd", slug="globex"), method, path)
+    except Forbidden:
+        return False
+    return True
 
 
 @pytest.fixture(autouse=True)
 def _auth(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
-    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "")
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "test-signing-secret")
 
 
@@ -39,8 +42,8 @@ def tenant_session(uid: str = "ten_01m1yd", slug: str = "globex") -> str:
 
 
 def test_a_tenant_may_read_its_own_surface():
-    assert _tenant_may(request(f"{TENANT_SURFACE}"))
-    assert _tenant_may(request(f"{TENANT_SURFACE}/models/moonshotai/kimi-k3"))
+    assert _tenant_may(f"{TENANT_SURFACE}")
+    assert _tenant_may(f"{TENANT_SURFACE}/models/moonshotai/kimi-k3")
 
 
 @pytest.mark.parametrize(
@@ -48,30 +51,32 @@ def test_a_tenant_may_read_its_own_surface():
     ["/v1/clusters", "/v1/nodes", "/v1/endpoints", "/v1/endpoints/resolved", "/v1/tenants", "/v1/metrics/fleet"],
 )
 def test_a_tenant_may_not_read_anything_else(path):
-    assert not _tenant_may(request(path))
+    assert not _tenant_may(path)
 
 
 @pytest.mark.parametrize("method", ["POST", "PATCH", "DELETE", "PUT"])
 def test_a_tenant_may_not_write_even_on_its_own_surface(method):
     """Read-only is enforced by the method, so a write added later is refused by default."""
-    assert not _tenant_may(request(TENANT_SURFACE, method=method))
+    assert not _tenant_may(TENANT_SURFACE, method=method)
 
 
 def test_a_path_that_merely_starts_with_the_surface_word_is_not_the_surface():
-    assert not _tenant_may(request("/v1/serving-quotas"))
+    assert not _tenant_may("/v1/serving-quotas")
 
 
-def test_a_tenant_session_is_401_on_a_fleet_route():
+def test_a_tenant_session_is_403_on_a_fleet_route():
+    """Authenticated but out of scope is `403`; `401` would tell the console to sign in again."""
     with TestClient(app=create_app()) as client:
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {tenant_session()}"})
-    assert response.status_code == 401
+    assert response.status_code == 403
+    assert response.json()["code"] == "forbidden"
 
 
-def test_a_tenant_session_is_401_on_the_routing_table():
+def test_a_tenant_session_is_403_on_the_routing_table():
     """The resolved table names every cluster we run. It is the one read that would hurt most."""
     with TestClient(app=create_app()) as client:
         response = client.get("/v1/endpoints/resolved", headers={"Authorization": f"Bearer {tenant_session()}"})
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 # --- the session token ------------------------------------------------------
@@ -82,7 +87,6 @@ def test_a_tenant_session_resolves_to_a_tenant_principal():
     assert principal is not None
     assert principal.kind == "tenant"
     assert principal.scope == "ten_01m1yd"
-    assert "*" not in principal.scopes
 
 
 def test_a_tenant_session_carrying_no_scope_is_refused():
@@ -178,17 +182,17 @@ def test_the_admin_view_of_a_customer_is_outside_the_tenant_surface():
     query-parameter shape this replaced asked the same question at request time,
     on the one surface a tenant *can* reach.
     """
-    assert not _tenant_may(request("/v1/tenants/globex/serving"))
-    assert not _tenant_may(request("/v1/tenants/globex/serving/models/moonshotai/kimi-k3"))
+    assert not _tenant_may("/v1/tenants/globex/serving")
+    assert not _tenant_may("/v1/tenants/globex/serving/models/moonshotai/kimi-k3")
 
 
-def test_a_tenant_session_is_401_on_another_tenants_serving_view():
+def test_a_tenant_session_is_403_on_another_tenants_serving_view():
     with TestClient(app=create_app()) as client:
         response = client.get(
             "/v1/tenants/someone-else/serving",
             headers={"Authorization": f"Bearer {tenant_session()}"},
         )
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 def test_the_tenant_scoped_surface_takes_no_tenant_from_the_caller():

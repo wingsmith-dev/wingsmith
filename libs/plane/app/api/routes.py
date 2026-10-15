@@ -15,11 +15,11 @@ from app.modules.events.routes import EventRoutes
 from app.modules.quotas.routes import QuotaRoutes
 from app.modules.quotas.routes import ServingQuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
+from app.modules.gateway.routes import GatewayRoutes
 from app.modules.metrics.routes import MetricsRoutes
 from app.modules.serving.routes import ServingRoutes
 from app.modules.serving.routes import TenantServingRoutes
 from app.modules.tenants.routes import TenantRoutes
-from app.modules.gateway.routes import GatewayRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
 from app.modules.projects.routes import ProjectRoutes

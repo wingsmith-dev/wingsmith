@@ -255,7 +255,7 @@ def test_the_draft_is_read_as_a_serving_block_and_writes_nothing() -> None:
     sighting derives the same draft every time, and asking does not change it.
     """
     handler = DiscoveredWorkloadRoutes.draft_serving
-    assert handler.paths.pop().endswith("/serving-draft")
+    assert next(iter(handler.paths)).endswith("/serving-draft")
     assert handler.http_methods == {"GET"}
 
 
