@@ -91,14 +91,17 @@ class PoolRepository:
             query = query.where(Pool.labels[key].astext == value)
         return query
 
-    async def get(self, ref: str, cluster: str | None = None) -> Row | None:
+    async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
         """Resolves either an id or a name.
 
         A pool name is unique only within its cluster, so a bare name is
         ambiguous across clusters; `cluster` narrows it, and without it the first
         match wins the same way it does for any non-unique lookup.
         """
-        result = await self.db.execute(self.get_query(ref, cluster).limit(1))
+        query = self.get_query(ref, cluster).limit(1)
+        if lock:
+            query = query.with_for_update(of=Pool).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def cluster_by_ref(self, ref: str) -> Cluster | None:

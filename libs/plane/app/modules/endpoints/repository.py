@@ -172,8 +172,12 @@ class EndpointRepository:
         result = await self.db.execute(self.resolved_query(ref))
         return list(result.all())
 
-    async def get(self, ref: str) -> Row | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Row | None:
+        """`lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update(of=Endpoint).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def list(self, **kwargs) -> list[Row]:

@@ -785,7 +785,7 @@ class FakeCreateRepo:
         self.added = endpoint
         return endpoint
 
-    async def get(self, ref):
+    async def get(self, ref, lock=False):
         return _CreatedRow((self.added,))
 
     async def deployment_uids(self, ids):
@@ -1354,7 +1354,7 @@ class FakeUpdateRepo(FakeCreateRepo):
         self.endpoint = endpoint
         self.added = endpoint
 
-    async def get(self, ref):
+    async def get(self, ref, lock=False):
         return _CreatedRow((self.endpoint,))
 
 

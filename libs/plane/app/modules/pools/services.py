@@ -91,8 +91,8 @@ class PoolService:
             within_declared_bounds=within_bounds(membership.nodes_total, pool.min_nodes, pool.max_nodes),
         )
 
-    async def _one(self, ref: str, cluster: str | None = None) -> tuple[Pool, str]:
-        row = await self.repo.get(ref, cluster)
+    async def _one(self, ref: str, cluster: str | None = None, lock: bool = False) -> tuple[Pool, str]:
+        row = await self.repo.get(ref, cluster, lock=lock)
         if row is None:
             raise NotFound(f"no pool {ref!r}")
         return row[0], row.cluster_uid
@@ -160,7 +160,7 @@ class PoolService:
         return await self.get(pool.uid)
 
     async def update(self, ref: str, data: PoolUpdateRequest, if_match: str | None = None) -> PoolSchema:
-        pool, _ = await self._one(ref)
+        pool, _ = await self._one(ref, lock=True)
         if if_match is not None and if_match != _revision(pool):
             raise Conflict("pool changed since it was read", {"revision": _revision(pool)})
 

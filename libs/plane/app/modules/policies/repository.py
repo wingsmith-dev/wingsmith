@@ -102,8 +102,12 @@ class PolicyRepository:
         model = entry[0]
         return select(model).where(model.id.in_(ids))
 
-    async def get(self, ref: str) -> Policy | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Policy | None:
+        """`lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def list(self, **kwargs) -> list[Policy]:

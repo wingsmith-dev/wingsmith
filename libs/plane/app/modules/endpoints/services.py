@@ -584,8 +584,8 @@ class EndpointService:
             ids.extend(endpoint.failover_order)
         return ids
 
-    async def _one(self, ref: str):
-        row = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False):
+        row = await self.repo.get(ref, lock=lock)
         if row is None:
             raise NotFound(f"no endpoint {ref!r}")
         return row
@@ -741,7 +741,7 @@ class EndpointService:
         every insert before the deletes, so re-weighting a target the endpoint
         already has would collide with the row it is about to replace.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         endpoint = row[0]
         if if_match is not None and if_match != _revision(endpoint):
             raise Conflict("endpoint changed since it was read", {"revision": _revision(endpoint)})

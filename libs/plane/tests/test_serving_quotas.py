@@ -720,7 +720,7 @@ async def test_a_stale_if_match_is_a_conflict_and_touches_no_field():
     quota = FakeQuota(committed_rpm=1_000, created_at=EPOCH, updated_at=None)
     svc = service()
 
-    async def _one(ref):
+    async def _one(ref, lock=False):
         return FakeRow(quota, FakeEndpoint(), "prj_1", None, None)
 
     svc._one = _one

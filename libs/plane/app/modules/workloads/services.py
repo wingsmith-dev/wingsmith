@@ -40,11 +40,13 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.placement.locks import lock_placement
 from app.modules.placement.services import PlacementService
 from app.modules.placement.snapshot import PolicySnapshot
 from app.modules.placement.snapshot import CapacitySnapshot
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 from app.modules.placement.repository import SUBJECT_WORKLOAD
+from app.modules.deployments.repository import bump_generation
 
 from .views import UNITS
 from .views import _rollup
@@ -568,8 +570,8 @@ class WorkloadService:
             )
         return items
 
-    async def _one(self, ref: str, project: str | None = None):
-        found = await self.repo.matches(ref, project)
+    async def _one(self, ref: str, project: str | None = None, lock: bool = False):
+        found = await self.repo.matches(ref, project, lock=lock)
         if not found:
             raise NotFound(f"no workload {ref!r}")
         if len(found) > 1:
@@ -734,6 +736,7 @@ class WorkloadService:
         write, so this is the only expansion in the object's life that needs it. Every
         later one reads the attachment.
         """
+        await lock_placement(self.db, [workload.device_class])
         placement = PlacementService(self.db)
         snapshot = None
         if exclude is not None or extra_policies:
@@ -984,9 +987,9 @@ class WorkloadService:
         A serving change bumps every deployment's generation, because it is the one
         kind of write here that changes the process a cluster is running.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         deployments = [d[0] for d in deployment_rows]
         revision = _revision(workload, deployments)
         if if_match is not None and if_match != revision:
@@ -1018,7 +1021,7 @@ class WorkloadService:
         bumped = bool({"overrides", "adapter_artifacts", "labels", "serving"} & set(data.to_dict(exclude_unset=True)))
         if bumped:
             for deployment in deployments:
-                deployment.generation += 1
+                await bump_generation(self.db, deployment)
 
         try:
             for deployment in deployments:
@@ -1080,7 +1083,7 @@ class WorkloadService:
                 deployment.min_replicas = share.replicas
                 deployment.max_replicas = share.replicas
                 deployment.desired_replicas = share.replicas
-                deployment.generation += 1
+                await bump_generation(self.db, deployment)
                 await self._record(
                     deployment,
                     "scaled",
@@ -1144,7 +1147,7 @@ class WorkloadService:
         Absent parameters leave their bound alone. Sending only `desired` is the
         common case and must not silently widen or narrow the range around it.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
         min_scale = parameters.get("min", workload.min_scale)
         max_scale = parameters.get("max", workload.max_scale)
@@ -1157,7 +1160,7 @@ class WorkloadService:
         workload.min_scale = min_scale
         workload.max_scale = max_scale
         workload.desired_scale = desired
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         return await self._finish(await self._reconcile(workload, deployment_rows))
 
     async def set_paused(self, ref: str, paused: bool) -> dict:
@@ -1176,19 +1179,19 @@ class WorkloadService:
         the clusters never hear that the deployments are enabled again. The row read
         `enabled` while the cluster still had no copy of it.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
         if workload.paused == paused:
             return {"paused": paused, "unchanged": True}
         workload.paused = paused
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
 
         if paused:
             announcements = []
             for deployment_row in deployment_rows:
                 deployment = deployment_row[0]
                 deployment.enabled = False
-                deployment.generation += 1
+                await bump_generation(self.db, deployment)
                 await self._record(
                     deployment,
                     "paused",
@@ -1203,7 +1206,7 @@ class WorkloadService:
 
         for deployment_row in deployment_rows:
             deployment_row[0].enabled = True
-            deployment_row[0].generation += 1
+            await bump_generation(self.db, deployment_row[0])
         result = await self._reconcile(workload, deployment_rows)
         announced = {uid for _, uid, _ in result["_announce"]}
         result["_announce"].extend(
@@ -1234,7 +1237,7 @@ class WorkloadService:
         count at all — while changing which processes exist. The clusters would go on rendering
         the old topology against a digest that no longer describes it.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
         target = parameters.get("topology")
         current = workload.serving_topology or AGGREGATED
@@ -1299,10 +1302,10 @@ class WorkloadService:
         workload.max_scale = max_scale
         workload.desired_scale = desired
 
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         for deployment_row in deployment_rows:
             deployment = deployment_row[0]
-            deployment.generation += 1
+            await bump_generation(self.db, deployment)
             await self._record(
                 deployment,
                 "reshaped",
@@ -1341,13 +1344,13 @@ class WorkloadService:
         """
         if not cluster:
             raise Invalid("workload.drain needs a cluster", {"parameters": ["cluster"]})
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
         found = await self.repo.cluster_by_ref(cluster)
         if found is None:
             raise NotFound(f"no cluster {cluster!r}")
 
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         draining = [r for r in deployment_rows if r[0].cluster_id == found.id]
         if not draining:
             raise Invalid(
@@ -1381,9 +1384,9 @@ class WorkloadService:
         a thing that no longer exists. Ingestion writing them again before the
         cluster has caught up is a reconciliation lag, not a resurrection.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         workload = row[0]
-        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         deployments = [d[0] for d in deployment_rows]
         announcements = [(r.cluster_uid, r[0].uid, r[0].generation) for r in deployment_rows]
         for deployment in deployments:

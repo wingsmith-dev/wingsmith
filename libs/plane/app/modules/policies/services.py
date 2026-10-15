@@ -115,8 +115,8 @@ class PolicyService:
             items.append(self.schema(policy, attachments, cluster_uids))
         return items
 
-    async def _one(self, ref: str) -> Policy:
-        policy = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> Policy:
+        policy = await self.repo.get(ref, lock=lock)
         if policy is None:
             raise NotFound(f"no policy {ref!r}")
         return policy
@@ -209,7 +209,7 @@ class PolicyService:
         return await self.get(policy.uid)
 
     async def update(self, ref: str, data: PolicyUpdateRequest, if_match: str | None = None) -> PolicySchema:
-        policy = await self._one(ref)
+        policy = await self._one(ref, lock=True)
         if if_match is not None and if_match != _revision(policy):
             raise Conflict("policy changed since it was read", {"revision": _revision(policy)})
 

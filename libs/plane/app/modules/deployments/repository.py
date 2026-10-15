@@ -7,7 +7,9 @@ from sqlalchemy import Select
 from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.ids import is_uid
 from app.db.models import Cluster
@@ -29,6 +31,30 @@ equal to the string would have counted nothing, forever. A replica that is
 draining is still serving what it already accepted, which is why it is here and
 `terminated` is not.
 """
+
+
+async def bump_generation(db: AsyncSession, deployment: Deployment) -> int:
+    """Increments a deployment's generation in the database and returns the new value.
+
+    `UPDATE ... SET generation = generation + 1 RETURNING` rather than `+= 1` on the
+    loaded row, so two writers that both read generation n write n+1 and n+2 instead
+    of both writing n+1, which would leave a cluster that saw the first write
+    believing it is already current with the second. Pending column changes are
+    flushed first so they land in the same row version.
+    """
+    await db.flush()
+    row = (
+        await db.execute(
+            update(Deployment)
+            .where(Deployment.id == deployment.id)
+            .values(generation=Deployment.generation + 1)
+            .returning(Deployment.generation, Deployment.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+    ).one()
+    set_committed_value(deployment, "generation", row.generation)
+    set_committed_value(deployment, "updated_at", row.updated_at)
+    return row.generation
 
 
 class DeploymentRepository:
@@ -124,8 +150,12 @@ class DeploymentRepository:
             .group_by(Replica.deployment_id)
         )
 
-    async def get(self, ref: str, cluster: str | None = None) -> Row | None:
-        result = await self.db.execute(self.get_query(ref, cluster).limit(1))
+    async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
+        """`lock` holds the deployment row until the transaction ends, re-read, for a write."""
+        query = self.get_query(ref, cluster).limit(1)
+        if lock:
+            query = query.with_for_update(of=Deployment).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def sighting_fingerprint(self, cluster_id: UUID, workload_uid: str) -> str | None:

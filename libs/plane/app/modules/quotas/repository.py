@@ -34,6 +34,8 @@ class QuotaRepository:
     over an indexed partial set cannot drift.
     """
 
+    MODEL = Quota
+
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
@@ -104,8 +106,12 @@ class QuotaRepository:
             .group_by(Allocation.project_id, Allocation.cluster_id, Allocation.device_class)
         )
 
-    async def get(self, ref: str) -> Row | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Row | None:
+        """`lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update(of=self.MODEL).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def list(self, **kwargs) -> list[Row]:
@@ -153,6 +159,8 @@ class ServingQuotaRepository:
     metrics surface, so a `usage_query` on this class would have to invent its
     numbers or fetch them across the control plane.
     """
+
+    MODEL = ServingQuota
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -249,8 +257,12 @@ class ServingQuotaRepository:
             query = query.where(Endpoint.id.in_(self.workload_endpoints_query(workload)))
         return query
 
-    async def get(self, ref: str) -> Row | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Row | None:
+        """`lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update(of=self.MODEL).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def resolved(self, endpoint: str | None = None, workload: str | None = None) -> list[Row]:

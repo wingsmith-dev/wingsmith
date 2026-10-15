@@ -215,14 +215,21 @@ class WorkloadRepository:
             .group_by(Replica.deployment_id)
         )
 
-    async def matches(self, ref: str, project: str | None = None) -> list[Row]:
+    async def matches(self, ref: str, project: str | None = None, lock: bool = False) -> list[Row]:
         """Every workload a reference could mean, capped at two.
 
         A name is unique per project, so a bare name with no project filter can
         legitimately name several workloads. Two rows is enough to tell "one" from
         "more than one"; the caller asks for the full list only in the second case.
+
+        `lock` is for a write: the workload row is held until the transaction ends and
+        re-read under the lock, so a revision compared against `If-Match` or a total a
+        rescale starts from is the one no other writer can move underneath it.
         """
-        result = await self.db.execute(self.get_query(ref, project).limit(2))
+        query = self.get_query(ref, project).limit(2)
+        if lock:
+            query = query.with_for_update(of=Workload).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return list(result.all())
 
     async def candidates(self, name: str) -> list[Row]:
@@ -242,11 +249,18 @@ class WorkloadRepository:
         result = await self.db.execute(self.list_query(**kwargs))
         return list(result.all())
 
-    async def deployments(self, workload_ids: list) -> dict[UUID, list[Row]]:
+    async def deployments(self, workload_ids: list, lock: bool = False) -> dict[UUID, list[Row]]:
+        """The per-cluster deployments of a page of workloads, keyed by workload.
+
+        `lock` holds the deployment rows and re-reads them, for a write that moves them.
+        """
         grouped: dict[UUID, list[Row]] = {}
         if not workload_ids:
             return grouped
-        result = await self.db.execute(self.deployment_query(workload_ids))
+        query = self.deployment_query(workload_ids)
+        if lock:
+            query = query.with_for_update(of=Deployment).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         for row in result.all():
             grouped.setdefault(row[0].workload_id, []).append(row)
         return grouped

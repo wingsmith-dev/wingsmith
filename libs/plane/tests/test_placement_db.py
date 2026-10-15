@@ -11,6 +11,7 @@ caller that writes: creating a workload and letting placement expand it into dep
 """
 
 import uuid
+import asyncio
 
 import pytest
 
@@ -1050,6 +1051,46 @@ async def test_a_second_workload_does_not_land_on_capacity_the_first_was_already
     assert {w.deployments[0].cluster_name for w in (first, second)} == {"alpha", "beta"}
     assert first.scale.placed == 2
     assert second.scale.placed == 2
+
+
+async def test_concurrent_creates_do_not_both_take_the_last_devices(sessions) -> None:
+    """Two creates racing for one cluster's four devices: one places, the other waits and finds none.
+
+    Without the placement lock both read the cluster as empty before either writes, and
+    both write a deployment for capacity that exists once.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=4)
+
+    async def make(name: str):
+        async with sessions() as db:
+            return await WorkloadService(db).create(create(name=name))
+
+    first, second = await asyncio.gather(make("first"), make("second"))
+
+    assert sorted(w.scale.placed for w in (first, second)) == [0, 1]
+
+
+async def test_concurrent_creates_do_not_overspend_one_quota(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+    await seed_supply(sessions, "beta", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into bind_quota (uid, project_id, device_class, guaranteed_devices, limit_devices)"
+                " select :uid, id, :cls, 4, 4 from bind_project"
+            ),
+            {"uid": ids.new_uid(ids.QUOTA), "cls": DEVICE_CLASS},
+        )
+
+    async def make(name: str):
+        async with sessions() as db:
+            return await WorkloadService(db).create(create(name=name))
+
+    first, second = await asyncio.gather(make("first"), make("second"))
+
+    assert first.scale.placed + second.scale.placed == 1
 
 
 async def test_the_next_workload_is_told_the_devices_are_promised_and_not_missing(sessions) -> None:

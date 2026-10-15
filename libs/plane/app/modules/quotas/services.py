@@ -127,8 +127,8 @@ class QuotaService:
             over_limit=over_limit(quota.limit_devices, usage.allocated_devices),
         )
 
-    async def _one(self, ref: str) -> Row:
-        row = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> Row:
+        row = await self.repo.get(ref, lock=lock)
         if row is None:
             raise NotFound(f"no quota {ref!r}")
         return row
@@ -196,7 +196,7 @@ class QuotaService:
         return await self.get(quota.uid)
 
     async def update(self, ref: str, data: QuotaUpdateRequest, if_match: str | None = None) -> QuotaSchema:
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         quota: Quota = row[0]
         if if_match is not None and if_match != _revision(quota):
             raise Conflict("quota changed since it was read", {"revision": _revision(quota)})
@@ -555,8 +555,8 @@ class ServingQuotaService:
             standard=standard_of(quota.committed_rpm, quota.committed_tpm, objective),
         )
 
-    async def _one(self, ref: str) -> Row:
-        row = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> Row:
+        row = await self.repo.get(ref, lock=lock)
         if row is None:
             raise NotFound(f"no serving quota {ref!r}")
         return row
@@ -610,7 +610,7 @@ class ServingQuotaService:
         data: ServingQuotaUpdateRequest,
         if_match: str | None = None,
     ) -> ServingQuotaSchema:
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         quota: ServingQuota = row[0]
         if if_match is not None and if_match != _serving_revision(quota):
             raise Conflict(

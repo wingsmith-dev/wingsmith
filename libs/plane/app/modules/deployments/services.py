@@ -27,6 +27,7 @@ from .schemas import DeploymentAuthorityRequest
 from .schemas import DeploymentRoleObservedSchema
 from .schemas import DeploymentReplicaRollupSchema
 from .repository import DeploymentRepository
+from .repository import bump_generation
 
 
 PHASES = frozenset({"pending", "admitted", "placed", "running", "succeeded", "failed"})
@@ -106,8 +107,7 @@ def observed_roles(roles) -> list[DeploymentRoleObservedSchema] | None:
     if not roles:
         return None
     return [
-        DeploymentRoleObservedSchema(role=role["role"], desired=role["desired"], ready=role["ready"])
-        for role in roles
+        DeploymentRoleObservedSchema(role=role["role"], desired=role["desired"], ready=role["ready"]) for role in roles
     ]
 
 
@@ -224,8 +224,8 @@ class DeploymentService:
             status=status,
         )
 
-    async def _one(self, ref: str, cluster: str | None = None):
-        row = await self.repo.get(ref, cluster)
+    async def _one(self, ref: str, cluster: str | None = None, lock: bool = False):
+        row = await self.repo.get(ref, cluster, lock=lock)
         if row is None:
             raise NotFound(f"no deployment {ref!r}")
         return row
@@ -292,7 +292,7 @@ class DeploymentService:
         if data.authority not in AUTHORITIES:
             raise Invalid(f"unknown authority {data.authority!r}", {"allowed": sorted(AUTHORITIES)})
 
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         deployment = row[0]
         if deployment.authority == data.authority:
             return await self._render(row)
@@ -318,7 +318,7 @@ class DeploymentService:
             deployment.adopted_fingerprint = live
 
         deployment.authority = data.authority
-        deployment.generation += 1
+        await bump_generation(self.db, deployment)
         await self._record(
             deployment,
             "authority_changed",
@@ -338,7 +338,7 @@ class DeploymentService:
         statement left, and it is a declaration rather than an operation because it
         takes effect the moment the cluster reads it.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         deployment = row[0]
         revision = _revision(deployment)
         if if_match is not None and if_match != revision:
