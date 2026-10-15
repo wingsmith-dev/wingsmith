@@ -1,4 +1,5 @@
-import inspect
+import sys
+import subprocess
 
 from types import SimpleNamespace
 
@@ -6,7 +7,6 @@ import pytest
 
 from msgspec import structs
 
-from app.modules import placement
 from app.modules.placement import DeviceHold
 from app.modules.placement import ReservedUnit
 from app.modules.placement import QuotaSnapshot
@@ -63,10 +63,14 @@ def codes_for(decision, name):
 
 
 def test_placement_imports_no_database_or_api():
-    for module in (placement.engine, placement.snapshot, placement.decision):
-        source = inspect.getsource(module)
-        assert "app.db" not in source
-        assert "app.api" not in source
+    """Importing the pure half loads neither the models nor the API, checked in a clean interpreter."""
+    probe = (
+        "import sys\n"
+        "import app.modules.placement.engine, app.modules.placement.snapshot, app.modules.placement.decision\n"
+        "print(sorted(m for m in sys.modules if m == 'app.db' or m.startswith(('app.db.', 'app.api'))))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"
 
 
 def test_capacity_is_counted_from_free_devices_not_node_counts():
@@ -217,7 +221,8 @@ def test_cluster_scoped_quota_wins_over_the_global_one():
     assert verdict_for(place(request(1), snap), "iad-1").quota_headroom == 2
 
 
-def test_preemption_is_identified_and_never_performed():
+def test_a_preemptible_lower_priority_hold_is_not_counted_as_capacity():
+    """Nothing evicts, so a device another workload holds is never on offer, whatever its priority."""
     low = DeviceHold(workload="train_1", project="proj_b", priority_value=10, preemptible=True)
     devs = devices("c1", count=4) + [
         DeviceSnapshot(uid=f"held{i}", node="n1", device_class="h100", held_by=low) for i in range(4)
@@ -226,43 +231,15 @@ def test_preemption_is_identified_and_never_performed():
 
     decision = place(request(8, priority_value=100, preempts=True), snap)
 
-    assert decision.placed is True
-    assert decision.requires_preemption is True
-    assert [v.workload for v in decision.preemption.victims] == ["train_1"]
-    assert decision.preemption.devices_reclaimed == 4
-    assert "only if train_1" in decision.summary
+    assert decision.placed is False
+    assert decision.preemption is None
+    verdict = verdict_for(decision, "iad-1")
+    assert verdict.preemption is None
+    assert codes_for(decision, "iad-1") == [codes.INSUFFICIENT_CAPACITY]
+    assert verdict.reasons[0].detail["available_devices"] == 4
 
 
-def test_preemption_needs_both_a_preempting_priority_and_a_preemptible_victim():
-    pinned = DeviceHold(workload="serve_1", project="proj_b", priority_value=10, preemptible=False)
-    devs = devices("c1", count=4) + [
-        DeviceSnapshot(uid=f"held{i}", node="n1", device_class="h100", held_by=pinned) for i in range(4)
-    ]
-    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs),))
-
-    assert place(request(8, priority_value=100, preempts=True), snap).placed is False
-    assert place(request(8, priority_value=100, preempts=False), snap).placed is False
-
-
-def test_a_preemption_free_cluster_beats_one_needing_eviction():
-    low = DeviceHold(workload="train_1", project="proj_b", priority_value=10, preemptible=True)
-    busy = devices("c1", count=4) + [
-        DeviceSnapshot(uid=f"held{i}", node="n1", device_class="h100", held_by=low) for i in range(4)
-    ]
-    snap = CapacitySnapshot(
-        clusters=(
-            cluster("c1", "aaa-1", busy),
-            cluster("c2", "zzz-1", devices("c2", count=8)),
-        )
-    )
-
-    decision = place(request(8, priority_value=100, preempts=True), snap)
-
-    assert decision.cluster_name == "zzz-1"
-    assert decision.requires_preemption is False
-
-
-def test_a_gang_preemption_names_the_whole_victim_allocation():
+def test_a_single_domain_unit_is_not_placed_on_reclaimable_devices_in_its_domain():
     low = DeviceHold(workload="train_1", project="proj_b", priority_value=10, preemptible=True)
     doms = (nvlink("dom-a", "nvl-a"),)
     devs = devices("c1", count=2, domain="dom-a") + [
@@ -271,13 +248,24 @@ def test_a_gang_preemption_names_the_whole_victim_allocation():
     snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs, doms),))
 
     decision = place(
-        request(8, kind="gang", requires_single_domain=True, domain_kind="nvlink", priority_value=100, preempts=True),
+        request(8, requires_single_domain=True, domain_kind="nvlink", priority_value=100, preempts=True),
         snap,
     )
 
-    assert decision.placed is True
-    victim = decision.preemption.victims[0]
-    assert (victim.workload, victim.devices_in_scope, victim.devices_released) == ("train_1", 6, 6)
+    assert decision.placed is False
+    assert codes_for(decision, "iad-1") == [codes.INSUFFICIENT_CAPACITY]
+
+
+def test_expansion_does_not_count_reclaimable_devices():
+    low = DeviceHold(workload="train_1", project="proj_b", priority_value=10, preemptible=True)
+    devs = devices("a", count=2) + [
+        DeviceSnapshot(uid=f"held{i}", node="n0", device_class="h100", held_by=low) for i in range(6)
+    ]
+    decision = expand(
+        demand(desired_scale=4, priority_value=100, preempts=True), supply(cluster("clu_a", "iad-1", devs))
+    )
+    assert shares_of(decision) == {"iad-1": 1}
+    assert decision.shortfall == 3
 
 
 def test_a_gang_never_places_partially():
@@ -652,13 +640,138 @@ def test_a_scale_up_fills_the_cluster_already_running_before_reaching_for_anothe
     assert shares_of(decision) == {"sfo-1": 3}
 
 
-def test_a_pinned_cluster_is_the_only_candidate_and_is_not_checked_for_capacity():
+def test_a_pinned_cluster_is_the_only_candidate():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=4)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=4, pinned_cluster="clu_a"), snapshot)
+    assert shares_of(decision) == {"iad-1": 2}
+    assert decision.shortfall == 2
+
+
+def test_a_pin_at_a_cluster_with_no_capacity_places_nothing():
     snapshot = supply(
         cluster("clu_a", "iad-1", devices("a", count=0)),
         cluster("clu_b", "sfo-1", devices("b", count=8)),
     )
     decision = expand(demand(desired_scale=4, pinned_cluster="clu_a"), snapshot)
-    assert shares_of(decision) == {"iad-1": 4}
+    assert decision.shares == ()
+    assert decision.shortfall == 4
+
+
+@pytest.mark.parametrize(
+    ("pinned", "expected"),
+    [
+        (cluster("clu_a", "iad-1", devices("a", count=8), phase="draining"), codes.CLUSTER_PHASE),
+        (cluster("clu_a", "iad-1", devices("a", count=8), reachable=False), codes.CLUSTER_UNREACHABLE),
+    ],
+)
+def test_a_pinned_cluster_still_has_to_be_healthy(pinned, expected):
+    decision = expand(demand(desired_scale=1, pinned_cluster="clu_a"), supply(pinned))
+    assert decision.shares == ()
+    assert expected in codes_for(decision, "iad-1")
+
+
+def test_a_pinned_cluster_still_answers_to_a_deny_policy():
+    snapshot = CapacitySnapshot(
+        clusters=(cluster("clu_a", "iad-1", devices("a", count=8)),),
+        policies=(PolicySnapshot(name="no-iad", denied_clusters=("clu_a",)),),
+    )
+    decision = expand(demand(desired_scale=1, pinned_cluster="clu_a"), snapshot)
+    assert decision.shares == ()
+    assert codes.POLICY_CLUSTER_DENIED in codes_for(decision, "iad-1")
+
+
+def test_a_pinned_cluster_still_answers_to_quota():
+    snapshot = CapacitySnapshot(
+        clusters=(cluster("clu_a", "iad-1", devices("a", count=8)),),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=4),),
+    )
+    decision = expand(demand(desired_scale=4, pinned_cluster="clu_a"), snapshot)
+    assert shares_of(decision) == {"iad-1": 2}
+    assert decision.shortfall == 2
+
+
+def test_a_global_quota_is_spent_once_across_clusters():
+    snapshot = CapacitySnapshot(
+        clusters=(
+            cluster("clu_a", "iad-1", devices("a", count=8)),
+            cluster("clu_b", "sfo-1", devices("b", count=8)),
+        ),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=8),),
+    )
+    for strategy in ("pack", "spread"):
+        decision = expand(demand(desired_scale=8, strategy=strategy), snapshot)
+        assert decision.placed == 4, strategy
+        assert decision.shortfall == 4, strategy
+
+
+def test_a_global_quota_budget_is_shared_by_floors_and_fill():
+    snapshot = CapacitySnapshot(
+        clusters=(
+            cluster("clu_a", "iad-1", devices("a", count=8)),
+            cluster("clu_b", "sfo-1", devices("b", count=8)),
+        ),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=6),),
+    )
+    decision = expand(demand(desired_scale=4, cluster_floors={"clu_b": 2}), snapshot)
+    assert shares_of(decision) == {"iad-1": 1, "sfo-1": 2}
+    assert decision.shortfall == 1
+
+
+def test_a_cluster_scoped_quota_is_not_drawn_from_the_global_budget():
+    snapshot = CapacitySnapshot(
+        clusters=(
+            cluster("clu_a", "iad-1", devices("a", count=8)),
+            cluster("clu_b", "sfo-1", devices("b", count=8)),
+        ),
+        quotas=(
+            QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=4),
+            QuotaSnapshot(project="proj_a", device_class="h100", cluster="clu_b", limit_devices=8),
+        ),
+    )
+    decision = expand(demand(desired_scale=8, strategy="spread"), snapshot)
+    assert shares_of(decision) == {"iad-1": 2, "sfo-1": 4}
+
+
+def test_single_domain_units_are_counted_per_domain_not_per_cluster():
+    """Two domains of six hold two four-device units, not three."""
+    doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"))
+    devs = devices("a", count=6, domain="dom-a", prefix="x") + devices("a", count=6, domain="dom-b", prefix="y")
+    snapshot = supply(cluster("clu_a", "iad-1", devs, doms))
+    decision = expand(
+        demand(unit_device_count=4, desired_scale=3, requires_single_domain=True, domain_kind="nvlink"), snapshot
+    )
+    assert shares_of(decision) == {"iad-1": 2}
+    assert decision.shortfall == 1
+
+
+def test_tensor_groups_are_counted_on_free_devices_per_node():
+    """Two nodes with three free devices each hold two tensor-two groups' worth of room, not three."""
+    devs = devices("a", count=3, node="n0", prefix="x") + devices("a", count=3, node="n1", prefix="y")
+    snapshot = supply(cluster("clu_a", "iad-1", devs))
+    decision = expand(demand(unit_device_count=2, tensor_parallel=2, desired_scale=3), snapshot)
+    assert shares_of(decision) == {"iad-1": 2}
+    assert decision.shortfall == 1
+
+
+def test_free_devices_split_across_nodes_cannot_hold_a_tensor_group():
+    busy = DeviceHold(workload="other", project="proj_b", priority_value=0, preemptible=False)
+    n0 = devices("c1", count=1, node="n0", prefix="x") + [
+        DeviceSnapshot(uid=f"x-held{i}", node="n0", device_class="h100", held_by=busy) for i in range(3)
+    ]
+    n1 = devices("c1", count=1, node="n1", prefix="y") + [
+        DeviceSnapshot(uid=f"y-held{i}", node="n1", device_class="h100", held_by=busy) for i in range(3)
+    ]
+    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", n0 + n1),))
+
+    decision = place(request(2, tensor_parallel=2), snap)
+
+    assert decision.placed is False
+    reason = verdict_for(decision, "iad-1").reasons[0]
+    assert reason.code == codes.INSUFFICIENT_CAPACITY
+    assert reason.detail["tensor_groups_available"] == 0
 
 
 def test_a_paused_workload_keeps_its_deployments_at_a_share_of_zero():
@@ -885,7 +998,7 @@ def test_another_projects_reservation_does_not_touch_this_ones_quota():
     assert verdict_for(decision, "iad-1").quota_headroom == 8
 
 
-def test_a_reservation_is_not_preemptible():
+def test_a_reservation_is_not_reclaimable():
     """A promise is not a hold, so there is nothing to evict and nothing to reclaim."""
     snap = supply(cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6),)))
 
@@ -945,4 +1058,4 @@ def test_a_workload_never_preempts_itself():
     )
     decision = place(request(4, priority_value=100, preempts=True), snap)
     assert decision.placed is True
-    assert decision.requires_preemption is False
+    assert decision.preemption is None

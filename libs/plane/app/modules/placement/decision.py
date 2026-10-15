@@ -58,11 +58,11 @@ class PreemptionVictim(Verdict):
 
 
 class PreemptionPlan(Verdict):
-    """What would be evicted, identified but never performed.
+    """What would be evicted for a placement to fit. Reserved: placement never produces one.
 
-    Placement returns this and stops. Actually preempting is a caller's decision,
-    taken with a transaction open, which is exactly the thing this package does
-    not have.
+    Preemption is on the roadmap and not implemented. Nothing evicts a running
+    workload, so placement counts only free devices and every `preemption` field on
+    a decision is null. The shape stays so clients that read the field keep working.
     """
 
     victims: tuple[PreemptionVictim, ...]
@@ -101,8 +101,16 @@ class ClusterVerdict(Verdict):
     domain_free_devices: int = 0
     largest_domain_free_devices: int = 0
     fit_slack: int = 0
+    fit_units: int = 0
+    """How many whole copies of the request this cluster can take now, 0 when it is not feasible.
+
+    Counted on free devices net of reservations, packed into topology domains for a
+    single-domain unit and into nodes for a tensor group. Expansion splits on this
+    rather than on `available_devices`, which would count devices no unit can use.
+    """
     quota_headroom: int | None = None
     preemption: PreemptionPlan | None = None
+    """Always null: preemption is not implemented. See `PreemptionPlan`."""
 
 
 class PlacementDecision(Verdict):
@@ -119,11 +127,8 @@ class PlacementDecision(Verdict):
     cluster_name: str | None
     verdicts: tuple[ClusterVerdict, ...]
     preemption: PreemptionPlan | None = None
+    """Always null: preemption is not implemented. See `PreemptionPlan`."""
     summary: str = ""
-
-    @property
-    def requires_preemption(self) -> bool:
-        return self.preemption is not None and not self.preemption.empty
 
 
 class Share(Verdict):

@@ -441,16 +441,29 @@ async def test_the_reason_a_cluster_lost_survives_into_the_expansion(sessions) -
     assert shortage.detail["requested_devices"] == 4
 
 
-async def test_naming_a_cluster_skips_placement_entirely(sessions) -> None:
-    """The override is an override. An unreachable, empty cluster is still accepted."""
+async def test_naming_a_cluster_narrows_placement_to_it(sessions) -> None:
+    """A pin picks the cluster even when a roomier one exists."""
     await seed_demand(sessions)
-    await seed_supply(sessions, "manual", devices=0, phase="draining", reachable=False)
+    await seed_supply(sessions, "manual", devices=4)
+    await seed_supply(sessions, "roomy", devices=16)
 
     async with sessions() as db:
         workload = await WorkloadService(db).create(create(cluster="manual"))
 
     assert [d.cluster_name for d in workload.deployments] == ["manual"]
     assert workload.pinned_cluster_id is not None
+
+
+async def test_a_pin_at_a_cluster_that_cannot_take_it_places_nothing(sessions) -> None:
+    """A pinned cluster is checked for phase, reachability and capacity like any other."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "manual", devices=8, phase="draining", reachable=False)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(cluster="manual"))
+
+    assert workload.deployments == []
+    assert workload.phase == "pending"
 
 
 async def test_a_region_allow_list_narrows_placement_without_choosing_for_it(sessions) -> None:
@@ -520,12 +533,8 @@ async def test_the_constraint_a_workload_declared_survives_into_later_expansions
     assert sum(d.desired_replicas for d in after.deployments) == 2
 
 
-async def test_a_cluster_allow_list_still_checks_capacity_unlike_a_pin(sessions) -> None:
-    """The difference between `nodeSelector` and `nodeName`, in one assertion.
-
-    A pin at an empty cluster is accepted (`test_naming_a_cluster_skips_placement_entirely`).
-    An allow-list naming the same cluster is not: placement ran, found nothing, and said so.
-    """
+async def test_a_cluster_allow_list_still_checks_capacity(sessions) -> None:
+    """An allow-list naming an empty cluster places nothing: placement ran, found nothing, and said so."""
     await seed_demand(sessions)
     await seed_supply(sessions, "roomy", devices=8)
     await seed_supply(sessions, "empty", devices=0)

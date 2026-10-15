@@ -573,11 +573,10 @@ class WorkloadCreateRequest(Struct):
 
     `cluster` is optional, and an absent one is the normal case: placement picks,
     from the serving block's device shape, the project's quota, the policies attached
-    to the workload, and what the clusters currently report free. Naming one is an
-    override — a deliberate escape from the scheduler rather than the normal path —
-    and it still has to exist, but it is not checked for capacity. An operator who
-    names a cluster has said something placement is not entitled to overrule; a
-    named cluster also forces a single deployment.
+    to the workload, and what the clusters currently report free. Naming one narrows
+    the candidates to that cluster and forces a single deployment there; it is still
+    checked for phase, reachability, policy, quota and capacity, and a pin at a cluster
+    that cannot take the workload leaves it pending with that cluster's reasons.
 
     `min_scale` / `max_scale` / `desired_scale` are TOTALS across every cluster this
     workload may use. They are counted in replicas for `service`, ranks for `gang`,

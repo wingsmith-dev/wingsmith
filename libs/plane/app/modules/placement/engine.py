@@ -24,11 +24,8 @@ from .decision import POLICY_CLUSTER_NOT_ALLOWED
 from .decision import Share
 from .decision import Rejection
 from .decision import ClusterVerdict
-from .decision import PreemptionPlan
-from .decision import PreemptionVictim
 from .decision import ExpansionDecision
 from .decision import PlacementDecision
-from .snapshot import DeviceHold
 from .snapshot import ReservedUnit
 from .snapshot import QuotaSnapshot
 from .snapshot import DeviceSnapshot
@@ -72,7 +69,6 @@ def place(request: PlacementRequest, snapshot: CapacitySnapshot) -> PlacementDec
         cluster=winner.cluster,
         cluster_name=winner.cluster_name,
         verdicts=verdicts,
-        preemption=winner.preemption,
         summary=_fit_summary(request, winner),
     )
 
@@ -80,10 +76,10 @@ def place(request: PlacementRequest, snapshot: CapacitySnapshot) -> PlacementDec
 def _rank(verdict: ClusterVerdict) -> tuple:
     """The tiebreak, ordered so the same question always gets the same answer.
 
-    Preemption-free wins first, then the cheapest eviction, then the tightest
-    domain so large fabrics are kept whole, then the roomiest cluster, then the
-    most quota headroom, and finally the cluster name — which guarantees
-    determinism even when two clusters are identical in every other respect.
+    The tightest domain first so large fabrics are kept whole, then the roomiest
+    cluster, then the most quota headroom, and finally the cluster name — which
+    guarantees determinism even when two clusters are identical in every other
+    respect.
 
     Roomiest is measured on `available_devices` and not on `free_devices`, and that
     one word is what stops two workloads created back to back from landing on the
@@ -92,18 +88,14 @@ def _rank(verdict: ClusterVerdict) -> tuple:
 
     Tightness is scoped to a domain, and only to a domain. `fit_slack` measures
     the leftover in whatever the fit was made against: one topology domain for a
-    gang, the whole cluster for anything else. Ranking on the second sorts by
-    free devices ascending, so the fullest cluster that still fits always wins —
-    best-fit packing, which would drain one cluster before touching the next and
-    make the roomiest-cluster key below unreachable. A gang still wants the
-    smallest fabric that holds it, so the key stays for a domain fit and is
+    single-domain unit, the whole cluster for anything else. Ranking on the second
+    sorts by free devices ascending, so the fullest cluster that still fits always
+    wins — best-fit packing, which would drain one cluster before touching the next
+    and make the roomiest-cluster key below unreachable. A single-domain unit still
+    wants the smallest fabric that holds it, so the key stays for a domain fit and is
     dropped for an aggregate one.
     """
-    plan = verdict.preemption
     return (
-        plan is not None and not plan.empty,
-        plan.devices_reclaimed if plan else 0,
-        len(plan.victims) if plan else 0,
         verdict.fit_slack if verdict.domain else 0,
         -verdict.available_devices,
         -(verdict.quota_headroom if verdict.quota_headroom is not None else UNBOUNDED),
@@ -173,8 +165,8 @@ def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: Cap
         domain_free_devices=fit.domain_free,
         largest_domain_free_devices=fit.largest_domain_free,
         fit_slack=fit.slack,
+        fit_units=fit.units if not reasons else 0,
         quota_headroom=headroom,
-        preemption=fit.plan,
     )
 
 
@@ -308,6 +300,12 @@ def _free_for(device: DeviceSnapshot, workload: str) -> bool:
 def _headroom(quota: QuotaSnapshot | None, reserved: int, own: int = 0) -> int | None:
     """Devices the project may still take, or None when nothing caps it.
 
+    A quota here is a hard ceiling and nothing more. With over-quota enabled the
+    ceiling is `limit_devices`; with it disabled it is the lower of `limit_devices`
+    and `guaranteed_devices`. Nothing reserves `guaranteed_devices` for the project
+    against other projects, and `over_quota_weight` is recorded on the quota but not
+    read here: there is no fair-share division of spare capacity between projects.
+
     `allocated_devices` is the observed draw and `reserved` is the declared one that
     has not been observed yet. Both come off the cap, because a quota that only
     counts what a cluster has confirmed lets a project spend the same devices twice —
@@ -387,8 +385,8 @@ class _Supply:
     """What a cluster has to offer this request, net of what it already owes.
 
     Free and reserved are carried side by side rather than merged, because they are
-    not the same kind of number. A free device has an address: it can be named,
-    grouped by fabric, and preempted. A reservation has a count and a shape and no
+    not the same kind of number. A free device has an address: it can be named and
+    grouped by node or fabric. A reservation has a count and a shape and no
     address at all, because the cluster has not yet said which accelerators it will
     bind. `available` is the only figure a fit is decided on; the other two are what
     the operator is shown so the answer is legible.
@@ -417,10 +415,16 @@ class _Fit:
         self.domain_free: int = 0
         self.largest_domain_free: int = 0
         self.slack: int = 0
-        self.plan: PreemptionPlan | None = None
+        self.units: int = 0
 
 
 def _fit(request: PlacementRequest, cluster: ClusterSnapshot, supply: _Supply) -> _Fit:
+    """The capacity half of a verdict, counted on free devices and nothing else.
+
+    A device held by another workload is not capacity, whatever that workload's
+    priority: nothing evicts it, so counting it would place a workload onto devices
+    that will never be released for it.
+    """
     too_wide = _tensor_group_too_wide(request, cluster, supply.candidates)
     if too_wide is not None:
         fit = _Fit()
@@ -442,8 +446,8 @@ def _tensor_group_too_wide(
     fact about the hardware and not about how busy it is. A cluster of one-device
     machines does not become able to run a tensor-parallel-two replica when something
     else finishes, so reporting it as a capacity shortfall would send someone to wait
-    for a queue that will never clear — and preemption would be offered as the remedy
-    for a machine that is simply the wrong shape.
+    for a queue that will never clear. Whether the machines that are big enough have
+    the devices free together is the capacity question, and `_node_groups` asks it.
 
     The same judgement the operator makes in `reconcile.schedulable`, made here for the
     reason `DeviceSnapshot` already gives for duplicating `nodeUsable`: a plane that
@@ -473,42 +477,76 @@ def _tensor_group_too_wide(
     )
 
 
+def _node_groups(request: PlacementRequest, supply: _Supply) -> int | None:
+    """How many tensor groups the free devices can form, each inside one node.
+
+    None when the request has no tensor group to keep together. A reservation names
+    no node, so each pending unit is charged against the roomiest node still standing
+    — the pessimistic reading, for the reason `_burn` gives for fabrics.
+    """
+    want = max(request.tensor_parallel, 1)
+    if want < 2:
+        return None
+    room: dict[str, int] = {}
+    for device in supply.free:
+        room[device.node] = room.get(device.node, 0) + 1
+    for unit in sorted(supply.reserved, key=lambda u: (-u.devices, u.deployment or "")):
+        owed = unit.devices
+        while owed > 0 and room:
+            node = max(room, key=lambda k: (room[k], k))
+            if room[node] <= 0:
+                break
+            taken = min(room[node], owed)
+            room[node] -= taken
+            owed -= taken
+    return sum(count // want for count in room.values())
+
+
 def _fit_aggregate(request: PlacementRequest, cluster: ClusterSnapshot, supply: _Supply) -> _Fit:
+    """A unit that may spread over the cluster, with each tensor group inside one node."""
     fit = _Fit()
     domains = {d.uid: d for d in cluster.domains}
     fit.largest_domain_free = max(
         _burn(_group_by_domain(supply.free, domains, request.domain_kind), supply.reserved).values(), default=0
     )
-    needed = request.device_count
-    if supply.available >= needed:
-        fit.slack = supply.available - needed
+    needed = max(request.device_count, 1)
+    if supply.available < needed:
+        fit.reasons.append(_capacity_rejection(request, cluster, supply, needed))
         return fit
-    plan = _plan_preemption(request, supply.candidates, needed - supply.available)
-    if plan is not None:
-        fit.plan = plan
-        fit.slack = supply.available + plan.devices_reclaimed - needed
-        return fit
-    fit.reasons.append(
-        Rejection(
-            code=INSUFFICIENT_CAPACITY,
-            message=(
-                f"cluster {cluster.name} has {supply.available} available {request.device_class}"
-                f"{_owed_note(supply)}, {needed} requested{_atomic_note(request)}"
-            ),
-            detail={
-                "free_devices": len(supply.free),
-                "reserved_devices": supply.reserved_devices,
-                "available_devices": supply.available,
-                "requested_devices": needed,
-                "reclaimable_devices": len(_reclaimable(request, supply.candidates)),
-            },
-        )
-    )
+
+    fit.units = supply.available // needed
+    groups = _node_groups(request, supply)
+    if groups is not None:
+        want = max(request.tensor_parallel, 1)
+        per_unit = max(-(-needed // want), 1)
+        fit.units = min(fit.units, groups // per_unit)
+        if fit.units < 1:
+            fit.reasons.append(
+                Rejection(
+                    code=INSUFFICIENT_CAPACITY,
+                    message=(
+                        f"cluster {cluster.name} has {supply.available} available {request.device_class}"
+                        f"{_owed_note(supply)}, but room for {groups} tensor group(s) of {want} in one node, "
+                        f"{per_unit} requested{_atomic_note(request)}"
+                    ),
+                    detail={
+                        "free_devices": len(supply.free),
+                        "reserved_devices": supply.reserved_devices,
+                        "available_devices": supply.available,
+                        "requested_devices": needed,
+                        "tensor_parallel": want,
+                        "tensor_groups_available": groups,
+                        "tensor_groups_requested": per_unit,
+                    },
+                )
+            )
+            return fit
+    fit.slack = supply.available - needed
     return fit
 
 
 def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply: _Supply) -> _Fit:
-    """A gang lands inside one topology domain or it does not land.
+    """A single-domain unit lands inside one topology domain or it does not land.
 
     Aggregate capacity is not an answer here: eight devices spread over four
     nodes cannot serve a model that needs one NVLink fabric, which is why the
@@ -520,6 +558,9 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
     check runs against the burnt-down per-domain counts and the cluster total is
     checked separately — a request that clears one and not the other is rejected for
     the one it actually failed.
+
+    `units` counts whole copies of the request over the burnt-down domains, never
+    over the cluster total: two four-device units do not fit in two domains of six.
     """
     fit = _Fit()
     domains = {d.uid: d for d in cluster.domains}
@@ -527,53 +568,20 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
     all_by_domain = _group_by_domain(supply.candidates, domains, request.domain_kind)
     remaining = _burn(free_by_domain, supply.reserved)
     fit.largest_domain_free = max(remaining.values(), default=0)
-    needed = request.device_count
-
-    if supply.available >= needed:
-        exact = sorted((remaining.get(uid, 0), uid) for uid in all_by_domain if remaining.get(uid, 0) >= needed)
-        if exact:
-            size, uid = exact[0]
-            fit.domain = uid
-            fit.domain_identifier = domains[uid].identifier if uid in domains else uid
-            fit.domain_free = size
-            fit.slack = size - needed
-            return fit
-
-    best: tuple[tuple, str, PreemptionPlan] | None = None
-    for uid, group in sorted(all_by_domain.items()):
-        shortfall = needed - remaining.get(uid, 0)
-        plan = _plan_preemption(request, tuple(group), shortfall)
-        if plan is None or supply.available + plan.devices_reclaimed < needed:
-            continue
-        key = (plan.devices_reclaimed, len(plan.victims), uid)
-        if best is None or key < best[0]:
-            best = (key, uid, plan)
-    if best is not None:
-        _, uid, plan = best
-        fit.domain = uid
-        fit.domain_identifier = domains[uid].identifier if uid in domains else uid
-        fit.domain_free = remaining.get(uid, 0)
-        fit.plan = plan
-        fit.slack = fit.domain_free + plan.devices_reclaimed - needed
-        return fit
+    needed = max(request.device_count, 1)
 
     if supply.available < needed:
-        fit.reasons.append(
-            Rejection(
-                code=INSUFFICIENT_CAPACITY,
-                message=(
-                    f"cluster {cluster.name} has {supply.available} available {request.device_class}"
-                    f"{_owed_note(supply)}, {needed} requested{_atomic_note(request)}"
-                ),
-                detail={
-                    "free_devices": len(supply.free),
-                    "reserved_devices": supply.reserved_devices,
-                    "available_devices": supply.available,
-                    "requested_devices": needed,
-                    "reclaimable_devices": len(_reclaimable(request, supply.candidates)),
-                },
-            )
-        )
+        fit.reasons.append(_capacity_rejection(request, cluster, supply, needed))
+        return fit
+
+    exact = sorted((remaining.get(uid, 0), uid) for uid in all_by_domain if remaining.get(uid, 0) >= needed)
+    if exact:
+        size, uid = exact[0]
+        fit.domain = uid
+        fit.domain_identifier = domains[uid].identifier if uid in domains else uid
+        fit.domain_free = size
+        fit.slack = size - needed
+        fit.units = min(sum(count // needed for count in remaining.values()), supply.available // needed)
         return fit
 
     kind = request.domain_kind or "topology"
@@ -598,16 +606,32 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
     return fit
 
 
+def _capacity_rejection(request: PlacementRequest, cluster: ClusterSnapshot, supply: _Supply, needed: int) -> Rejection:
+    return Rejection(
+        code=INSUFFICIENT_CAPACITY,
+        message=(
+            f"cluster {cluster.name} has {supply.available} available {request.device_class}"
+            f"{_owed_note(supply)}, {needed} requested{_atomic_note(request)}"
+        ),
+        detail={
+            "free_devices": len(supply.free),
+            "reserved_devices": supply.reserved_devices,
+            "available_devices": supply.available,
+            "requested_devices": needed,
+        },
+    )
+
+
 def _burn(
     free_by_domain: dict[str, list[DeviceSnapshot]],
     reserved: tuple[ReservedUnit, ...],
 ) -> dict[str, int]:
     """Charge every pending fabric-bound unit to the roomiest domain still standing.
 
-    A reservation names no device, so which fabric a pending gang will take is not
+    A reservation names no device, so which fabric a pending unit will take is not
     knowable from here — the cluster has not chosen yet, and under rule 3 it is not
     ours to choose. Largest-first is the pessimistic reading and the only safe one:
-    if the biggest free fabric might be the one already spoken for, a gang that would
+    if the biggest free fabric might be the one already spoken for, a unit that would
     exactly fill it has to be told no. The alternative is placing it onto a cluster
     that refuses it the moment the earlier deployment binds, which is the bounce this
     whole mechanism exists to stop.
@@ -669,74 +693,11 @@ def _domain_of(uid: str | None, domains: dict[str, TopologyDomainSnapshot], kind
     return None
 
 
-def _reclaimable(request: PlacementRequest, devices: tuple[DeviceSnapshot, ...]) -> list[DeviceSnapshot]:
-    if not request.preempts:
-        return []
-    return [
-        d
-        for d in devices
-        if d.healthy
-        and d.allocatable
-        and d.held_by is not None
-        and d.held_by.workload != request.workload
-        and d.held_by.preemptible
-        and d.held_by.priority_value < request.priority_value
-    ]
-
-
-def _plan_preemption(
-    request: PlacementRequest, devices: tuple[DeviceSnapshot, ...], shortfall: int
-) -> PreemptionPlan | None:
-    """Name the workloads whose eviction would make this fit, cheapest first.
-
-    Victims are whole workloads, never individual devices: an allocation is the
-    unit of commitment, so taking one device from a gang costs the whole gang and
-    the plan says so.
-    """
-    if shortfall <= 0:
-        return None
-    scope = _reclaimable(request, devices)
-    if not scope:
-        return None
-    in_scope: dict[str, tuple[DeviceHold, list[DeviceSnapshot]]] = {}
-    for device in scope:
-        hold = device.held_by
-        if hold is None:
-            continue
-        in_scope.setdefault(hold.deployment or hold.workload, (hold, []))[1].append(device)
-    ordered = sorted(in_scope.items(), key=lambda item: (item[1][0].priority_value, len(item[1][1]), item[0]))
-    victims: list[PreemptionVictim] = []
-    reclaimed = 0
-    for _, (hold, held) in ordered:
-        if reclaimed >= shortfall:
-            break
-        victims.append(
-            PreemptionVictim(
-                workload=hold.workload,
-                deployment=hold.deployment,
-                project=hold.project,
-                priority_value=hold.priority_value,
-                devices_in_scope=len(held),
-                devices_released=len(held),
-            )
-        )
-        reclaimed += len(held)
-    if reclaimed < shortfall:
-        return None
-    return PreemptionPlan(victims=tuple(victims), devices_reclaimed=reclaimed)
-
-
 def _atomic_note(request: PlacementRequest) -> str:
     return " (all or nothing)" if request.all_or_nothing else ""
 
 
 def _fit_summary(request: PlacementRequest, winner: ClusterVerdict) -> str:
-    if winner.preemption is not None and not winner.preemption.empty:
-        names = ", ".join(v.workload for v in winner.preemption.victims)
-        return (
-            f"{request.workload} fits on {winner.cluster_name} only if {names} "
-            f"({winner.preemption.devices_reclaimed} devices) are preempted"
-        )
     owed = f" ({winner.reserved_devices} reserved elsewhere)" if winner.reserved_devices else ""
     return (
         f"{request.workload} placed on {winner.cluster_name}: "
@@ -761,9 +722,10 @@ def expand(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecis
     whole units each surviving cluster can hold.
 
     Splittability is a property of `kind` and is the one thing this branches on:
-    `service` and `task` fan out, `gang` is atomic and comes back with a single
-    share or with none at all. Nothing below a workload is entitled to read `kind`
-    (it is the supertype's, not theirs); expansion is above it.
+    a `service` fans out, and a `gang` is atomic and comes back with a single share
+    or with none at all. The API accepts only `service` today; the gang branch is the
+    engine's half of a workload kind that is on the roadmap. Nothing below a workload
+    is entitled to read `kind` (it is the supertype's, not theirs); expansion is above it.
 
     `pack` is the default because it makes an existing single-cluster workload
     re-expand onto the same single cluster: spreading is a thing you ask for, not
@@ -791,9 +753,10 @@ def expand(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecis
         )
 
     capacity = _capacity(demand, verdicts)
+    room = _Room(capacity, *_global_budget(unit, snapshot, by_uid))
     assigned: dict[str, int] = {}
-    remaining = _assign_floors(demand, by_uid, capacity, assigned, desired)
-    remaining = _fill(demand, by_uid, capacity, assigned, remaining)
+    remaining = _assign_floors(demand, by_uid, room, assigned, desired)
+    remaining = _fill(demand, by_uid, room, assigned, remaining)
 
     shares = tuple(
         Share(cluster=uid, cluster_name=by_uid[uid].cluster_name, replicas=count)
@@ -871,23 +834,24 @@ def _existing(demand: WorkloadDemand, by_uid: dict[str, ClusterVerdict]) -> list
 def _capacity(demand: WorkloadDemand, verdicts: tuple[ClusterVerdict, ...]) -> dict[str, int]:
     """How many whole units each candidate cluster can take.
 
-    A pin is an instruction rather than a hint: the named cluster is the only
-    candidate and it is not checked for capacity, which is the whole point of the
-    escape. Otherwise a candidate is a feasible verdict, and its ceiling is the
-    lower of what is available — free, less what the cluster already owes deployments
-    that have not bound yet, plus anything a preemption plan would reclaim — and what
-    the project has left under quota in that cluster.
+    A pin narrows the candidates to the named cluster and decides nothing else: the
+    pinned cluster is checked for health, policy, quota and capacity like any other,
+    and a pin at a cluster that cannot take the workload leaves it unplaced with the
+    cluster's own reasons, rather than writing a deployment nothing will run.
+
+    A candidate is a feasible verdict, and its ceiling is the lower of how many units
+    its free devices hold — net of what the cluster owes deployments that have not
+    bound yet, packed into topology domains and nodes the way `_fit` packs one — and
+    what the project has left under quota in that cluster.
     """
     unit = max(demand.unit_device_count, 1)
-    if demand.pinned_cluster is not None:
-        return {v.cluster: UNBOUNDED for v in verdicts if v.cluster == demand.pinned_cluster}
-
     capacity: dict[str, int] = {}
     for verdict in verdicts:
+        if demand.pinned_cluster is not None and verdict.cluster != demand.pinned_cluster:
+            continue
         if not verdict.feasible:
             continue
-        reclaimable = verdict.preemption.devices_reclaimed if verdict.preemption is not None else 0
-        fits = (verdict.available_devices + reclaimable) // unit
+        fits = verdict.fit_units
         if verdict.quota_headroom is not None:
             fits = min(fits, verdict.quota_headroom // unit)
         if fits > 0:
@@ -895,10 +859,54 @@ def _capacity(demand: WorkloadDemand, verdicts: tuple[ClusterVerdict, ...]) -> d
     return capacity
 
 
+def _global_budget(
+    unit: PlacementRequest, snapshot: CapacitySnapshot, by_uid: dict[str, ClusterVerdict]
+) -> tuple[frozenset[str], int | None]:
+    """The clusters a project-wide quota governs, and how many units it has left over all of them.
+
+    Every cluster's verdict carries the same global headroom, so a per-cluster ceiling
+    alone would let each of them spend it once: a quota of eight split over two
+    clusters with room for eight each would place sixteen. The budget is shared and
+    each unit placed on a governed cluster comes off it.
+    """
+    governed = frozenset(
+        c.uid
+        for c in snapshot.clusters
+        if (quota := _quota_for(unit, c, snapshot.quotas)) is not None and quota.cluster is None
+    )
+    headroom = next(
+        (by_uid[uid].quota_headroom for uid in sorted(governed) if uid in by_uid),
+        None,
+    )
+    if headroom is None:
+        return governed, None
+    return governed, headroom // max(unit.device_count, 1)
+
+
+class _Room:
+    """What each cluster can still take, with a global quota spent across all of them."""
+
+    def __init__(self, capacity: dict[str, int], governed: frozenset[str], budget: int | None) -> None:
+        self.capacity = capacity
+        self.governed = governed
+        self.budget = budget
+
+    def left(self, uid: str, assigned: dict[str, int]) -> int:
+        room = self.capacity.get(uid, 0) - assigned.get(uid, 0)
+        if self.budget is not None and uid in self.governed:
+            room = min(room, self.budget)
+        return max(room, 0)
+
+    def take(self, uid: str, count: int, assigned: dict[str, int]) -> None:
+        assigned[uid] = assigned.get(uid, 0) + count
+        if self.budget is not None and uid in self.governed:
+            self.budget -= count
+
+
 def _assign_floors(
     demand: WorkloadDemand,
     by_uid: dict[str, ClusterVerdict],
-    capacity: dict[str, int],
+    room: _Room,
     assigned: dict[str, int],
     desired: int,
 ) -> int:
@@ -914,12 +922,12 @@ def _assign_floors(
     for uid, floor in sorted(floors, key=lambda item: by_uid[item[0]].cluster_name):
         if remaining <= 0:
             break
-        take = min(floor, capacity.get(uid, 0), remaining)
+        take = min(floor, room.left(uid, assigned), remaining)
         if take <= 0:
             continue
         if not _admits(demand, assigned, uid):
             continue
-        assigned[uid] = assigned.get(uid, 0) + take
+        room.take(uid, take, assigned)
         remaining -= take
     return remaining
 
@@ -927,17 +935,17 @@ def _assign_floors(
 def _fill(
     demand: WorkloadDemand,
     by_uid: dict[str, ClusterVerdict],
-    capacity: dict[str, int],
+    room: _Room,
     assigned: dict[str, int],
     remaining: int,
 ) -> int:
     """The remainder, packed or spread, in whole units and in a fixed order."""
     if remaining <= 0:
         return max(remaining, 0)
-    ordered = _fill_order(demand, by_uid, capacity)
+    ordered = _fill_order(demand, by_uid, room.capacity)
     if demand.strategy == "spread":
-        return _fill_spread(demand, capacity, assigned, ordered, remaining)
-    return _fill_pack(demand, capacity, assigned, ordered, remaining)
+        return _fill_spread(demand, room, assigned, ordered, remaining)
+    return _fill_pack(demand, room, assigned, ordered, remaining)
 
 
 def _fill_order(demand: WorkloadDemand, by_uid: dict[str, ClusterVerdict], capacity: dict[str, int]) -> list[str]:
@@ -955,7 +963,7 @@ def _fill_order(demand: WorkloadDemand, by_uid: dict[str, ClusterVerdict], capac
 
 def _fill_pack(
     demand: WorkloadDemand,
-    capacity: dict[str, int],
+    room: _Room,
     assigned: dict[str, int],
     ordered: list[str],
     remaining: int,
@@ -965,17 +973,17 @@ def _fill_pack(
             break
         if not _admits(demand, assigned, uid):
             continue
-        take = min(remaining, capacity[uid] - assigned.get(uid, 0))
+        take = min(remaining, room.left(uid, assigned))
         if take <= 0:
             continue
-        assigned[uid] = assigned.get(uid, 0) + take
+        room.take(uid, take, assigned)
         remaining -= take
     return remaining
 
 
 def _fill_spread(
     demand: WorkloadDemand,
-    capacity: dict[str, int],
+    room: _Room,
     assigned: dict[str, int],
     ordered: list[str],
     remaining: int,
@@ -988,13 +996,11 @@ def _fill_spread(
     """
     order = {uid: i for i, uid in enumerate(ordered)}
     while remaining > 0:
-        eligible = [
-            uid for uid in ordered if capacity[uid] - assigned.get(uid, 0) > 0 and _admits(demand, assigned, uid)
-        ]
+        eligible = [uid for uid in ordered if room.left(uid, assigned) > 0 and _admits(demand, assigned, uid)]
         if not eligible:
             break
-        uid = min(eligible, key=lambda u: (-(capacity[u] - assigned.get(u, 0)), order[u]))
-        assigned[uid] = assigned.get(uid, 0) + 1
+        uid = min(eligible, key=lambda u: (-room.left(u, assigned), order[u]))
+        room.take(uid, 1, assigned)
         remaining -= 1
     return remaining
 
