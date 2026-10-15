@@ -1,10 +1,16 @@
-# The build context is `libs/`, not this directory: the image bakes the console bundle, and a
+# The build context is `libs/`, not this directory: the image can bake the console bundle, and a
 # context cannot reach above itself. Referenced as `plane/...` and `console/...` throughout.
 
-# The console is built here rather than shipped as its own image so the plane is one thing to
-# reach — see app/api/spa.py. `libs/console/Dockerfile` still builds the standalone nginx image
-# for the day the console wants an origin of its own; nothing in the default deployment uses it.
-FROM node:22.19.0-bookworm-slim AS console
+# CONSOLE=bundled (the default) builds the console and serves it from the API process, so the
+# plane is one thing to reach (see app/api/spa.py). CONSOLE=none skips the Node build and ships an
+# API-only image, which is what a deployment that serves the console elsewhere, or a dev loop
+# that runs the console dev server, wants.
+ARG CONSOLE=bundled
+
+FROM python:3.12.8-slim-bookworm AS console-none
+RUN mkdir -p /src/dist
+
+FROM node:22.19.0-bookworm-slim AS console-bundled
 WORKDIR /src
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -28,6 +34,8 @@ ARG VITE_API_MODE
 ARG VITE_API_PROJECT
 ARG VITE_READ_ONLY
 RUN pnpm run build
+
+FROM console-${CONSOLE} AS console
 
 FROM python:3.12.8-slim-bookworm AS build
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /bin/
