@@ -1,0 +1,4 @@
+.venv
+.local
+tests
+**/__pycache__

@@ -1,0 +1,26 @@
+# hgrconform as an image: the CLI, its committed profiles and video clips, and the two
+# dependencies pinned by uv.lock. Built from this directory:
+#
+#   docker build -t hgrconform libs/conformance
+#   docker run --rm -e HANGAR_API_KEY -v "$PWD/results:/work/.local/conformance" \
+#       hgrconform run example
+#
+# Runs are written under /work/.local/conformance, so mount that to keep them. A
+# profile outside the package is given by path; mount it too.
+#
+# Base pinned by digest, same Python as libs/plane and the vllm-bench image.
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
+
+RUN pip install --no-cache-dir uv==0.9.18
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY hgrconform ./hgrconform
+RUN uv sync --frozen --no-dev --no-editable
+
+ENV PATH=/app/.venv/bin:$PATH
+WORKDIR /work
+RUN chown 65532:65532 /work
+USER 65532:65532
+ENTRYPOINT ["hgrconform"]

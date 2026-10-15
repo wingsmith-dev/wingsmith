@@ -14,7 +14,17 @@ just conformance-diff                                        # re-diff the lates
 
 Outside the repository it installs as a normal package (`pip install ./libs/conformance`)
 and runs as `hgrconform run <profile>`; the committed profiles and video clips ship
-inside it.
+inside it. The `Dockerfile` here builds the same thing as an image whose entrypoint is
+`hgrconform`:
+
+```sh
+docker build -t hgrconform libs/conformance
+docker run --rm -e HANGAR_API_KEY -v "$PWD/results:/work/.local/conformance" hgrconform run example
+```
+
+The plane's benchmarks module names a `conformance` harness image too, but it does not
+drive this one yet: the parameters it offers and the pass/fail summary it reads are not
+what `hgrconform` takes or writes, so run it from the CLI or this image.
 
 It exists because an endpoint that serves somebody else's model is usually held to one
 sentence: **"consistent with the original model provider."** Not *correct*: consistent.
