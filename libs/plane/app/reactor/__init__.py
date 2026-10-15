@@ -6,7 +6,9 @@ here would be just as true of a control plane managing something other than GPUs
 
 Sits alongside `app/ingestion` in the layering: ingestion writes observed state,
 this reads it back against declared state and writes the one derived thing the
-plane produces. It never writes intent and never talks to a cluster.
+plane produces. It never talks to a cluster. The one intent it causes is a
+re-placement of a workload short of its scale, and that goes through the workload
+service exactly as a person's rescale would (`app.reactor.reconcile`).
 """
 
 from .loop import tick

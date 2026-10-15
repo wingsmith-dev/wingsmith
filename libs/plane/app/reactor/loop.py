@@ -14,9 +14,12 @@ The passes of one tick, in this order and for a reason:
    marker only once every channel has it. Checked against the lease before each
    send, since a slow webhook can outlast it.
 4. **Remote-write auth.** Reconcile the central metrics store's htpasswd Secret
-   against the registry (`app.reactor.remote_write`). Last because it is not part
-   of alerting at all and must never delay it — it is here for the lease, which is
+   against the registry (`app.reactor.remote_write`). After alerting because it is
+   not part of it and must never delay it — it is here for the lease, which is
    the only thing in the plane that guarantees one writer of that Secret.
+5. **Repair.** Every few minutes rather than every tick, time out operations past
+   their deadline and re-place workloads short of their scale
+   (`app.reactor.reconcile`). Last because it is the slowest and the least urgent.
 
 The lease is what makes step 3 safe. Conditions and events are idempotent by
 `dedupe_key` and two reactors would merely both write the same rows; two reactors
@@ -46,6 +49,7 @@ from app.db.models import NotificationChannel
 from . import alerts as alert_store
 from . import notify
 from . import liveness
+from . import reconcile
 from . import conditions
 from . import remote_write
 from .rules import event_intent
@@ -376,7 +380,24 @@ async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> boo
 
     async with sessions() as db:
         await remote_write.reconcile(db)
+
+    if reconcile.CADENCE.due():
+        await _repair(sessions, now())
     return True
+
+
+async def _repair(sessions: async_sessionmaker[AsyncSession], moment: dt.datetime) -> None:
+    """The slow pass (`app.reactor.reconcile`). Each half fails alone and costs nothing else."""
+    async with sessions() as db:
+        try:
+            await reconcile.time_out_operations(db, moment)
+        except Exception:
+            logger.warning("reactor.reconcile.operations_failed", exc_info=True)
+            await db.rollback()
+        try:
+            await reconcile.replace_short_workloads(db)
+        except Exception:
+            logger.warning("reactor.reconcile.workloads_failed", exc_info=True)
 
 
 async def reactor_loop(instance: str, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:

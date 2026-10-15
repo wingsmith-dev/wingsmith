@@ -786,6 +786,9 @@ def upsert_component_status(cluster_id: UUID, payload: ComponentObserved) -> Ins
     )
 
 
+TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
+
+
 def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
     """Applies observed progress to an operation the plane declared.
 
@@ -793,6 +796,10 @@ def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
     somebody, so ingestion may report on one but must never bring one into
     existence. `progress` is not written — there is no column for it, and a
     percentage between two phases is a measurement.
+
+    An operation that has ended stays ended. A replayed `running` arriving after
+    `succeeded`, or a cluster reporting on an operation the plane already timed
+    out, matches no row.
     """
     values: dict[str, Any] = {
         "phase": payload.phase,
@@ -803,7 +810,11 @@ def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
     }
     return (
         update(Operation)
-        .where(Operation.uid == payload.operation_id, Operation.cluster_id == cluster_id)
+        .where(
+            Operation.uid == payload.operation_id,
+            Operation.cluster_id == cluster_id,
+            Operation.phase.notin_(TERMINAL_OPERATION_PHASES),
+        )
         .values(**{key: value for key, value in values.items() if value is not None})
     )
 

@@ -330,3 +330,47 @@ def test_settling_an_alert_forgets_its_channels():
     ledger.settle("alr_1", "firing")
     assert not ledger.told("alr_1", "firing", "chn_ok")
     assert not ledger.waiting("alr_1", "firing", "chn_bad")
+
+
+# --------------------------------------------------------------------------- repair
+
+
+def test_a_short_workload_is_one_holding_fewer_managed_replicas_than_it_asks_for():
+    from app.reactor import reconcile
+
+    sql = _sql(reconcile.short_workloads())
+    assert "demand_workload.paused IS false" in sql
+    assert "demand_workload.desired_scale > coalesce(" in sql
+    assert "demand_deployment.authority = " in sql
+    assert "demand_workload.id NOT IN (SELECT demand_deployment.workload_id" in sql, "adopted workloads are left alone"
+
+
+def test_only_an_open_operation_past_a_deadline_it_has_is_timed_out():
+    from app.reactor import reconcile
+
+    statement = reconcile.expire_operations(dt.datetime(2026, 10, 15, tzinfo=dt.UTC))
+    sql = _sql(statement)
+    assert sql.startswith("UPDATE ops_operation SET")
+    assert "ops_operation.phase IN (" in sql
+    assert "ops_operation.deadline_at IS NOT NULL" in sql
+    assert "RETURNING ops_operation.uid" in sql
+    params = statement.compile().params
+    assert params["phase"] == "timed_out"
+
+
+def test_an_ended_operation_is_never_moved_by_a_later_report():
+    from app.ingestion import statements
+
+    from tests.test_ingestion import CLUSTER_ID
+    from tests.test_ingestion import payload
+
+    sql = _sql(statements.update_operation(CLUSTER_ID, payload("operation.observed")))
+    assert "ops_operation.phase NOT IN (" in sql
+
+
+def test_the_repair_pass_runs_on_its_own_slower_clock():
+    from app.reactor.reconcile import Cadence
+
+    cadence = Cadence(interval=3600)
+    assert cadence.due() is True
+    assert cadence.due() is False

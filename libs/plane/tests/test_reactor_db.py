@@ -6,6 +6,9 @@ hours. Each test here is one of the ways that silence was possible.
 """
 
 import uuid
+import datetime as dt
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,6 +35,9 @@ def fresh_reactor_memory(monkeypatch):
     """What the lease holder remembers between ticks, started empty for every test."""
     monkeypatch.setattr(loop, "LATE", loop.LateCommits())
     monkeypatch.setattr(loop, "LEDGER", loop.DeliveryLedger())
+    # The repair pass re-places workloads, and other suites leave workloads behind; only the
+    # tests about it run it.
+    monkeypatch.setattr(loop.reconcile, "CADENCE", SimpleNamespace(due=lambda: False))
 
 
 async def connect(sessions, cluster: uuid.UUID, reachable: bool = True) -> None:
@@ -521,3 +527,47 @@ async def test_a_label_can_change_the_severity_a_channel_routes_on(sessions, clu
     await tick(sessions, INSTANCE)
     rows = await alert_rows(sessions, "workload.stalled")
     assert rows[0].severity == "warning"
+
+
+async def test_an_operation_past_its_deadline_is_timed_out_and_stays_that_way(sessions, cluster):
+    """Nothing closed an operation whose cluster never answered; it stayed `running` for ever."""
+    from app.hub.sink import SinkFrame
+    from app.hub.state import new_id
+    from app.ingestion.sink import DatabaseSink
+
+    from tests.test_ingestion_db import payload
+
+    operation = "opr_01j9x2kkkkkkkkkkkkkkkkkkkz"
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by, phase,"
+                " deadline_at) VALUES (:uid, :cluster, 'drain', 'node', gen_random_uuid(), 'staff', 'running',"
+                " now() - interval '1 minute')"
+            ),
+            {"uid": operation, "cluster": cluster},
+        )
+
+    await loop._repair(sessions, dt.datetime.now(dt.UTC))
+
+    rows = await fetch(
+        sessions, "SELECT phase, finished_at IS NOT NULL FROM ops_operation WHERE uid = :u", {"u": operation}
+    )
+    assert rows == [("timed_out", True)]
+
+    await DatabaseSink(sessions).record_operation(
+        SinkFrame(
+            cluster_id=cluster_uid(),
+            type="operation.observed",
+            payload=payload("operation.observed", operation_id=operation, phase="running"),
+            id=new_id(),
+        )
+    )
+    rows = await fetch(sessions, "SELECT phase FROM ops_operation WHERE uid = :u", {"u": operation})
+    assert rows == [("timed_out",)], "a late report does not reopen an operation that ended"
+
+
+def cluster_uid() -> str:
+    from tests.conftest import CLUSTER
+
+    return CLUSTER

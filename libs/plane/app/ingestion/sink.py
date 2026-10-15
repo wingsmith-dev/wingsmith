@@ -78,9 +78,9 @@ its device, the release after the claim. Transient failures (a dropped connectio
 timeout, a serialisation conflict) are not in here and are retried by the session.
 """
 
-TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
-"""Restated rather than imported from `app.modules.operations`: ingestion must not depend on a
-module's service layer, and this is the one fact it needs from it."""
+TERMINAL_OPERATION_PHASES = statements.TERMINAL_OPERATION_PHASES
+"""Restated in `statements` rather than imported from `app.modules.operations`: ingestion must not
+depend on a module's service layer, and this is the one fact it needs from it."""
 
 SYNC_STAMP_SECONDS = 1.0
 """How often one cluster's frames restamp its sync-state row. Every frame used to, which made that
