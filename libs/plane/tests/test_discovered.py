@@ -6,10 +6,11 @@ and produces no declared state, which is what keeps a model's weights in VRAM wh
 an operator adds it to the inventory.
 """
 
-import ast
-import inspect
+import datetime as dt
 
 from uuid import UUID
+from types import SimpleNamespace
+from collections import namedtuple
 
 import pytest
 
@@ -22,6 +23,7 @@ from app.ingestion import statements
 from app.hub.messages import MESSAGE_TYPES
 from app.hub.messages import WorkloadDiscovered
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.modules.discovered import services
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
 from app.modules.discovered.schemas import PromoteRequest
@@ -32,48 +34,6 @@ from app.modules.discovered.repository import DiscoveredWorkloadRepository
 
 
 CLUSTER = UUID("11111111-1111-1111-1111-111111111111")
-
-
-def function_source(module, *path: str) -> str:
-    """The source of one function or method, docstring stripped.
-
-    Scoped to a single function on purpose. These tests assert that `track` and
-    `ignore` declare nothing, which is a claim about those code paths and not
-    about the module — `promote` lives beside them and is supposed to declare.
-    """
-    tree = ast.parse(inspect.getsource(module))
-    node: ast.AST = tree
-    for name in path:
-        node = next(
-            child
-            for child in ast.walk(node)
-            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == name
-        )
-    return ast.unparse(strip_docstrings(node))
-
-
-def strip_docstrings(node: ast.AST) -> ast.AST:
-    for child in ast.walk(node):
-        if isinstance(child, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
-            ast.get_docstring(child) is not None
-        ):
-            child.body = child.body[1:]
-    return node
-
-
-def code_of(module) -> str:
-    """A module's source with its docstrings removed.
-
-    These tests assert that a name does not appear, and a docstring explaining why
-    it does not appear would otherwise fail them.
-    """
-    tree = ast.parse(inspect.getsource(module))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
-            ast.get_docstring(node) is not None
-        ):
-            node.body = node.body[1:]
-    return ast.unparse(tree)
 
 
 def compiled(query) -> str:
@@ -106,16 +66,98 @@ def test_the_wire_type_is_registered() -> None:
     assert MESSAGE_TYPES["workload.discovered"] is WorkloadDiscovered
 
 
-def test_tracking_a_workload_declares_nothing() -> None:
+Row = namedtuple("Row", "DiscoveredWorkload cluster_uid cluster_name WorkloadAdoption project_uid deployment_uid")
+
+
+def sighted(replicas: int = 3, fingerprint: str = "sha256:abc", deployment_uid: str | None = None) -> Row:
+    """A sighting as the repository returns it, read by column name."""
+    workload = SimpleNamespace(
+        uid="dsw_01j9x2ffffffffffffffffffff",
+        cluster_id=CLUSTER,
+        name="llama",
+        namespace="serving",
+        kind="Deployment",
+        model="acme/llama",
+        images=["vllm/vllm-openai:v0.8.0"],
+        replicas_desired=replicas,
+        replicas_ready=replicas,
+        devices_per_replica=1,
+        devices_total=replicas,
+        node_uids=[],
+        labels={"app": "llama"},
+        spec={},
+        spec_fingerprint=fingerprint,
+        first_seen_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        observed_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        seq=1,
+    )
+    return Row(workload, "clu_1", "iad-1", None, None, deployment_uid)
+
+
+class SightingRepo:
+    """Answers the reads a decision or a promotion makes, and records every write."""
+
+    def __init__(self, row: Row) -> None:
+        self.row = row
+        self.decisions: list[dict] = []
+
+    async def get(self, ref, cluster=None):
+        return self.row
+
+    async def project_by_ref(self, ref):
+        return SimpleNamespace(id=UUID(int=7), uid="prj_1")
+
+    async def decide(self, values: dict) -> None:
+        self.decisions.append(values)
+        adoption = SimpleNamespace(
+            decision=values["decision"],
+            note=values.get("note"),
+            decided_by=values.get("decided_by"),
+            decided_at=values.get("decided_at"),
+        )
+        self.row = self.row._replace(WorkloadAdoption=adoption)
+
+    async def artifact_by_ref(self, ref):
+        return SimpleNamespace(uid="art_1", name="llama")
+
+    async def project_row(self, ref):
+        return SimpleNamespace(id=UUID(int=7), slug="acme", default_priority_class_id=UUID(int=9))
+
+
+class WriteLog:
+    """A session that refuses to be handed an object, so declaring anything fails the test."""
+
+    def __init__(self) -> None:
+        self.commits = 0
+
+    def add(self, obj) -> None:
+        raise AssertionError(f"declared {type(obj).__name__} while only deciding")
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+def service_over(row: Row) -> tuple[DiscoveredWorkloadService, SightingRepo, WriteLog]:
+    db = WriteLog()
+    svc = DiscoveredWorkloadService(db=db, principal="ops@example.com")
+    svc.repo = SightingRepo(row)
+    return svc, svc.repo, db
+
+
+@pytest.mark.parametrize("decision", ["tracked", "ignored"])
+async def test_tracking_a_workload_declares_nothing(decision) -> None:
     """The load-bearing test. Tracking writes a decision and no declared state.
 
     Promotion is the only path that creates a deployment, and it is a separate,
     explicitly gated call. Track and ignore construct nothing a reconciler could
     ever be handed.
     """
-    source = function_source(services, "DiscoveredWorkloadService", "decide")
-    assert "Deployment(" not in source
-    assert "Workload(" not in source
+    svc, repo, db = service_over(sighted())
+    result = await svc.decide("llama", decision, DecisionRequest(project="acme", note="seen"))
+    assert [d["decision"] for d in repo.decisions] == [decision]
+    assert repo.decisions[0]["project_id"] == UUID(int=7)
+    assert db.commits == 1
+    assert result.status == decision
 
 
 def test_the_desired_stream_never_reads_the_decision() -> None:
@@ -125,26 +167,74 @@ def test_the_desired_stream_never_reads_the_decision() -> None:
     never read the adoption table: a decision to track is not a declaration, so a
     tracked workload that was never promoted has nothing to stream.
     """
-    source = code_of(desired)
-    assert "WorkloadAdoption" not in source
+    assert not any(value is WorkloadAdoption for value in vars(desired).values())
 
 
-def test_a_promotion_adopts_the_scale_it_found() -> None:
+class AdoptionCapture:
+    """Stands in for `WorkloadService`, keeping what a promotion asked it to adopt."""
+
+    adopted: list[dict] = []
+
+    def __init__(self, db) -> None:
+        self.db = db
+
+    async def adopt(self, workload, deployment, artifact, **kwargs):
+        AdoptionCapture.adopted.append({"workload": workload, "deployment": deployment, **kwargs})
+        await kwargs["alongside"]()
+        return "adopted"
+
+
+@pytest.fixture
+def promotion(monkeypatch):
+    """A promotion with the serving gate stubbed out; that gate is tested with the workload service."""
+    AdoptionCapture.adopted = []
+    monkeypatch.setattr(services, "WorkloadService", AdoptionCapture)
+    monkeypatch.setattr(services, "serving_from_draft", lambda draft, artifact: SimpleNamespace())
+    monkeypatch.setattr(services, "check_serving_request", lambda serving, artifact: None)
+    monkeypatch.setattr(services, "apply_serving", lambda workload, serving, artifact, roles: None)
+
+    async def no_draft(self, row):
+        return None
+
+    monkeypatch.setattr(DiscoveredWorkloadService, "_draft", no_draft)
+    return AdoptionCapture.adopted
+
+
+async def test_a_promotion_adopts_the_scale_it_found(promotion) -> None:
     """Promotion must not decide the replica count.
 
     Taking it from the request would scale a live workload as a side effect of
     cataloguing it, which is the same class of accident as re-rendering its spec.
     """
-    source = function_source(services, "DiscoveredWorkloadService", "promote")
-    assert "workload.replicas_desired" in source
-    assert "data.replicas" not in source
-    assert "min_replicas=replicas" in source and "max_replicas=replicas" in source
+    svc, repo, _ = service_over(sighted(replicas=3))
+    request = PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc")
+    assert await svc.promote("llama", request) == "adopted"
+    (adopted,) = promotion
+    workload, deployment = adopted["workload"], adopted["deployment"]
+    assert (workload.min_scale, workload.max_scale, workload.desired_scale) == (3, 3, 3)
+    assert (deployment.min_replicas, deployment.max_replicas, deployment.desired_replicas) == (3, 3, 3)
+    assert workload.pinned_cluster_id == CLUSTER and workload.max_clusters == 1
+    assert (adopted["cluster_uid"], adopted["cluster_name"], adopted["project"]) == ("clu_1", "iad-1", "acme")
+    assert [d["decision"] for d in repo.decisions] == ["tracked"]
 
 
-def test_a_promotion_pins_the_digest_it_was_shown() -> None:
-    source = function_source(services, "DiscoveredWorkloadService", "promote")
-    assert "adopted_fingerprint=workload.spec_fingerprint" in source
-    assert "data.fingerprint != workload.spec_fingerprint" in source
+async def test_a_promotion_pins_the_digest_it_was_shown(promotion) -> None:
+    svc, _, _ = service_over(sighted(fingerprint="sha256:abc"))
+    await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+    assert promotion[0]["deployment"].adopted_fingerprint == "sha256:abc"
+
+    svc, repo, _ = service_over(sighted(fingerprint="sha256:new"))
+    with pytest.raises(Conflict):
+        await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+    assert len(promotion) == 1
+    assert repo.decisions == []
+
+
+async def test_a_promoted_sighting_is_not_promoted_twice(promotion) -> None:
+    svc, _, _ = service_over(sighted(deployment_uid="dep_01j9x2gggggggggggggggggggg"))
+    with pytest.raises(Conflict):
+        await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+    assert promotion == []
 
 
 def test_the_promote_request_cannot_ask_for_a_different_spec() -> None:
@@ -259,8 +349,30 @@ def test_the_draft_is_read_as_a_serving_block_and_writes_nothing() -> None:
     assert handler.http_methods == {"GET"}
 
 
-def test_the_repository_writes_only_the_decision_table() -> None:
-    source = inspect.getsource(DiscoveredWorkloadRepository)
-    assert "insert(WorkloadAdoption)" in source
-    assert "insert(DiscoveredWorkload)" not in source
-    assert "delete(DiscoveredWorkload)" not in source
+async def test_the_repository_writes_only_the_decision_table() -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+
+        async def flush(self) -> None:
+            pass
+
+    session = Session()
+    repo = DiscoveredWorkloadRepository(session)
+    await repo.decide({"cluster_id": CLUSTER, "workload_uid": "dsw_01j9x2ffffffffffffffffffff", "decision": "tracked"})
+    await repo.undecide("dsw_01j9x2ffffffffffffffffffff")
+    written = {statement.table.name for statement in session.statements}
+    assert written == {WorkloadAdoption.__tablename__}
+    assert not hasattr(repo, "add")
+
+
+@pytest.mark.parametrize("name", ["track_discovered", "restore_discovered", "ignore_discovered"])
+def test_a_decision_answers_200_because_it_creates_nothing(name) -> None:
+    assert getattr(DiscoveredWorkloadRoutes, name).status_code == 200
+
+
+def test_a_promotion_answers_201_because_it_creates_a_workload() -> None:
+    assert DiscoveredWorkloadRoutes.promote_discovered.status_code == 201

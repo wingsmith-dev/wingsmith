@@ -13,7 +13,6 @@ from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
-from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
@@ -45,9 +44,19 @@ class DiscoveredWorkloadRepository:
         `promoted` is not a stored status. It is the presence of a deployment
         pointing back at this sighting, which is one fact in one place rather than
         a column that has to be kept in agreement with the deployments table.
+
+        Rows are read by name: `DiscoveredWorkload`, `WorkloadAdoption`, `cluster_uid`,
+        `cluster_name`, `project_uid` and `deployment_uid`.
         """
         return (
-            select(DiscoveredWorkload, Cluster.uid, Cluster.name, WorkloadAdoption, Project.uid, Deployment.uid)
+            select(
+                DiscoveredWorkload,
+                Cluster.uid.label("cluster_uid"),
+                Cluster.name.label("cluster_name"),
+                WorkloadAdoption,
+                Project.uid.label("project_uid"),
+                Deployment.uid.label("deployment_uid"),
+            )
             .join(Cluster, DiscoveredWorkload.cluster_id == Cluster.id)
             .outerjoin(
                 WorkloadAdoption,
@@ -199,8 +208,3 @@ class DiscoveredWorkloadRepository:
             if found:
                 return found
         return None
-
-    async def add(self, workload: Workload, deployment: Deployment) -> None:
-        self.db.add(workload)
-        self.db.add(deployment)
-        await self.db.flush()

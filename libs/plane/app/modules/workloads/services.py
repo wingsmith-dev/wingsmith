@@ -6,7 +6,9 @@ from uuid import UUID
 from typing import NamedTuple
 from dataclasses import field
 from dataclasses import dataclass
+from collections.abc import Callable
 from collections.abc import Sequence
+from collections.abc import Awaitable
 
 import msgspec
 
@@ -1573,6 +1575,74 @@ class WorkloadService:
         if isinstance(parameters, WorkloadDrainParameters):
             return await self.change_drain(ref, parameters.cluster)
         raise Invalid(f"{operation_type} is not a workload operation", {"type": operation_type})
+
+    async def adopt(
+        self,
+        workload: Workload,
+        deployment: Deployment,
+        artifact: Artifact,
+        cluster_uid: str,
+        cluster_name: str,
+        project: str,
+        source: str,
+        alongside: Callable[[], Awaitable[None]] | None = None,
+    ) -> WorkloadSchema:
+        """Files a workload and its one deployment for something a cluster is already running.
+
+        The adoption half of `create`: no placement, because the workload is already where it
+        is, but the same revision, the same lifecycle events and the same announcement, so an
+        adopted workload's history and the cluster's stream look like any other's.
+
+        `alongside` runs inside the same transaction, before the commit. The discovered module
+        uses it to record its own decision about the sighting, so the workload and the record
+        of having adopted it land together or not at all.
+        """
+        try:
+            await self.repo.add(workload, [deployment])
+            # Revision 1 is what was already running, which is the one configuration on this
+            # object nobody chose. Filing it is what lets a later edit be compared against the
+            # thing the cluster was doing before the plane took an opinion.
+            await self.record_revision(workload, artifact, (), "promoted")
+            await self._trace(
+                workload,
+                "adopted",
+                f"{workload.name} was adopted from {source} on {cluster_name}",
+                {
+                    "source": source,
+                    "cluster": cluster_name,
+                    "artifact": artifact.uid,
+                    "serving_digest": workload.serving_digest or "",
+                    "desired_scale": str(workload.desired_scale),
+                },
+                cluster_id=deployment.cluster_id,
+            )
+            await self._record(
+                deployment,
+                "adopted",
+                f"{workload.name} was adopted on {cluster_name} serving {artifact.name}",
+                {
+                    "cluster": cluster_name,
+                    "artifact": artifact.uid,
+                    "serving_digest": workload.serving_digest or "",
+                    "workload_id": workload.uid,
+                    "desired_replicas": str(deployment.desired_replicas),
+                    "source": source,
+                },
+            )
+            if alongside is not None:
+                await alongside()
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            if violated(exc) == DEPLOYMENT_NAME_CONSTRAINT:
+                # Nothing chose this cluster, so trying again would collide again.
+                raise Conflict(
+                    f"{cluster_name} already has a deployment named {deployment.name!r}; adopt it under another name",
+                    {"name": deployment.name, "cluster": cluster_name},
+                ) from exc
+            raise _conflict(exc, workload.name, project) from exc
+        await self._announce(cluster_uid, deployment.uid, deployment.generation)
+        return await self.get(workload.uid)
 
     async def delete(self, ref: str) -> None:
         """Deletes the workload, every cluster's copy of it, and the placement policy created for it.

@@ -81,7 +81,7 @@ class DiscoveredWorkloadRoutes(Controller):
         """Reads the sighting as a proposed serving block for a workload. Writes nothing."""
         return Response(await svc.serving_draft(ref, cluster=cluster))
 
-    @post("/{ref:str}/track")
+    @post("/{ref:str}/track", status_code=200)
     async def track_discovered(
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: DecisionRequest
     ) -> Response[DiscoveredWorkloadSchema]:
@@ -108,14 +108,14 @@ class DiscoveredWorkloadRoutes(Controller):
         """
         await svc.dismiss(ref, data or DecisionRequest())
 
-    @post("/{ref:str}/restore")
+    @post("/{ref:str}/restore", status_code=200)
     async def restore_discovered(
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str
     ) -> Response[DiscoveredWorkloadSchema]:
         """Un-dismisses a workload, putting it back on the list."""
         return Response(await svc.restore(ref))
 
-    @post("/{ref:str}/ignore")
+    @post("/{ref:str}/ignore", status_code=200)
     async def ignore_discovered(
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: DecisionRequest
     ) -> Response[DiscoveredWorkloadSchema]:

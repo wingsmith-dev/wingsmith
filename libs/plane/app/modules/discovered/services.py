@@ -1,7 +1,6 @@
 import datetime as dt
 
 from sqlalchemy import Row
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import WORKLOAD
@@ -122,13 +121,13 @@ class DiscoveredWorkloadService:
         self.repo = DiscoveredWorkloadRepository(db)
 
     def schema(self, row: Row) -> DiscoveredWorkloadSchema:
-        workload: DiscoveredWorkload = row[0]
-        adoption = row[3]
-        deployment_uid = row[5]
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
+        adoption = row.WorkloadAdoption
+        deployment_uid = row.deployment_uid
         return DiscoveredWorkloadSchema(
             id=workload.uid,
-            cluster_id=row[1],
-            cluster_name=row[2],
+            cluster_id=row.cluster_uid,
+            cluster_name=row.cluster_name,
             namespace=workload.namespace,
             name=workload.name,
             kind=workload.kind,
@@ -143,7 +142,7 @@ class DiscoveredWorkloadService:
             status=self._status(adoption, deployment_uid),
             deployment_id=deployment_uid,
             spec_fingerprint=workload.spec_fingerprint,
-            project_id=row[4],
+            project_id=row.project_uid,
             note=adoption.note if adoption is not None else None,
             decided_by=adoption.decided_by if adoption is not None else None,
             decided_at=adoption.decided_at if adoption is not None else None,
@@ -192,21 +191,21 @@ class DiscoveredWorkloadService:
             status=status,
             search=search,
         )
-        kept, next_cursor = page(rows, size, lambda r: r[0].seq)
+        kept, next_cursor = page(rows, size, lambda r: r.DiscoveredWorkload.seq)
         items = [self.schema(row) for row in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def decide(self, ref: str, decision: str, data: DecisionRequest) -> DiscoveredWorkloadSchema:
         """Records what we decided about a sighting and nothing else."""
         row = await self._one(ref)
-        workload: DiscoveredWorkload = row[0]
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
 
         project_id = None
         if data.project is not None:
             found = await self.repo.project_by_ref(data.project)
             if found is None:
                 raise NotFound(f"no project {data.project!r}")
-            project_id = found[0]
+            project_id = found.id
 
         await self.repo.decide(
             {
@@ -237,11 +236,11 @@ class DiscoveredWorkloadService:
         to see what the deployment took ownership of.
         """
         row = await self._one(ref)
-        workload: DiscoveredWorkload = row[0]
-        if row[5] is not None:
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
+        if row.deployment_uid is not None:
             raise Conflict(
                 f"{workload.name!r} was promoted and is managed as a deployment now",
-                {"deployment": row[5]},
+                {"deployment": row.deployment_uid},
             )
         await self.repo.decide(
             {
@@ -265,10 +264,12 @@ class DiscoveredWorkloadService:
         opinion about it again.
         """
         row = await self._one(ref)
-        workload: DiscoveredWorkload = row[0]
-        adoption = row[3]
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
+        adoption = row.WorkloadAdoption
         if adoption is None or adoption.decision != DISMISSED:
-            raise Invalid(f"{workload.name!r} was not dismissed", {"status": self._status(adoption, row[5])})
+            raise Invalid(
+                f"{workload.name!r} was not dismissed", {"status": self._status(adoption, row.deployment_uid)}
+            )
         await self.repo.undecide(workload.uid)
         await self.db.commit()
         return await self.get(workload.uid)
@@ -291,7 +292,7 @@ class DiscoveredWorkloadService:
         shown and what an adoption declares are the same reading rather than two
         readings that have to agree.
         """
-        workload: DiscoveredWorkload = row[0]
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
         draft = derive(
             spec=workload.spec or {},
             labels=workload.labels or {},
@@ -338,11 +339,11 @@ class DiscoveredWorkloadService:
         by an identity this catalogue holds.
         """
         row = await self._one(ref)
-        workload: DiscoveredWorkload = row[0]
-        if row[5] is not None:
+        workload: DiscoveredWorkload = row.DiscoveredWorkload
+        if row.deployment_uid is not None:
             raise Conflict(
                 f"{workload.name!r} was already promoted",
-                {"deployment": row[5]},
+                {"deployment": row.deployment_uid},
             )
         if not workload.spec_fingerprint:
             raise Invalid(
@@ -414,12 +415,8 @@ class DiscoveredWorkloadService:
             adopted_name=workload.name,
             authority=OBSERVED,
         )
-        try:
-            await self.repo.add(deployment_workload, deployment)
-            # Revision 1 is what was already running, which is the one configuration on this
-            # object nobody chose. Filing it is what lets a later edit be compared against the
-            # thing the cluster was doing before the plane took an opinion.
-            await WorkloadService(self.db).record_revision(deployment_workload, artifact, (), "promoted")
+
+        async def record_tracked() -> None:
             await self.repo.decide(
                 {
                     "cluster_id": workload.cluster_id,
@@ -431,11 +428,17 @@ class DiscoveredWorkloadService:
                     "decided_at": dt.datetime.now(dt.UTC),
                 }
             )
-            await self.db.commit()
-        except IntegrityError as exc:
-            await self.db.rollback()
-            raise Conflict(f"a workload named {name!r} already exists in this project") from exc
-        return await WorkloadService(self.db).get(deployment_workload.uid)
+
+        return await WorkloadService(self.db).adopt(
+            deployment_workload,
+            deployment,
+            artifact,
+            cluster_uid=row.cluster_uid,
+            cluster_name=row.cluster_name,
+            project=project.slug,
+            source=workload.uid,
+            alongside=record_tracked,
+        )
 
     async def _priority_class_id(self, ref: str | None, project):
         """The project's default answers when the caller does not, as elsewhere."""
