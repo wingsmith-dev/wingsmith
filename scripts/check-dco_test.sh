@@ -48,7 +48,7 @@ expect refuse "a sign-off naming someone other than the author"
 git reset -q --hard HEAD~1
 
 commit -m "mentions it in the body" -m "We should add Signed-off-by: Dev <dev@example.com> later, says the text."
-expect refuse "a sign-off that is prose rather than a trailer"
+expect refuse "a sign-off in the prose of the body, not in a trailer"
 git reset -q --hard HEAD~1
 
 git checkout -q -b side

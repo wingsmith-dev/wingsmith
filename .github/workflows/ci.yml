@@ -137,8 +137,8 @@ jobs:
           for id in "${ids[@]}"; do deselect+=(--deselect "$id"); done
           echo "ids=${ids[*]}" >>"$GITHUB_OUTPUT"
           echo "deselect=${deselect[*]}" >>"$GITHUB_OUTPUT"
-      # The database fixture skips rather than fails when it cannot connect, which here would pass
-      # an empty suite. -rs lists every skip and the grep turns that one into a failure.
+      # The database fixture skips, and does not fail, when it cannot connect, which here would
+      # pass an empty suite. -rs lists every skip and the grep turns that one into a failure.
       - name: database suite
         env:
           DESELECT: ${{ steps.quarantine.outputs.deselect }}

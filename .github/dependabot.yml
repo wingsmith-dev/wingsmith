@@ -1,7 +1,7 @@
 version: 2
 
 # Weekly, with minor and patch bumps grouped per ecosystem so a week is one pull request per
-# ecosystem rather than one per dependency. Majors and security updates still come one by one.
+# ecosystem, not one per dependency. Majors and security updates still come one by one.
 updates:
   - package-ecosystem: gomod
     directories:
