@@ -464,8 +464,8 @@ conformance-test *args:
 chart-sync-crds:
     #!/usr/bin/env bash
     set -euo pipefail
-    rm -f {{_chart}}/crds/*.yaml
-    cp {{_operator}}/deploy/crd/hangar.dev_*.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/hangar.dev_streamcheckpoints.yaml {{_chart}}/crds/
     echo "synced CRDs into {{_chart}}/crds"
 
 # Subchart tarballs are not vendored; template checks for them regardless of condition, so a
