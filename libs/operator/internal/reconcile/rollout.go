@@ -342,7 +342,7 @@ func (r *SyncedResourceReconciler) observeAdoptedRollout(
 	if strings.ToLower(adopt.Kind) == "pod" {
 		var pod corev1.Pod
 		key := types.NamespacedName{Namespace: adopt.Namespace, Name: adopt.Name}
-		if err := r.Client.Get(ctx, key, &pod); err != nil {
+		if err := r.uncached().Get(ctx, key, &pod); err != nil {
 			return rollout{}, fmt.Errorf("get adopted pod %s/%s: %w", adopt.Namespace, adopt.Name, err)
 		}
 		return r.rolloutFrom([]corev1.Pod{pod}, dep, 1, "", ""), nil
@@ -354,7 +354,7 @@ func (r *SyncedResourceReconciler) observeAdoptedRollout(
 	}
 
 	var pods corev1.PodList
-	if err := r.Client.List(ctx, &pods,
+	if err := r.uncached().List(ctx, &pods,
 		client.InNamespace(adopt.Namespace),
 		client.MatchingLabelsSelector{Selector: selector},
 	); err != nil {
@@ -384,14 +384,14 @@ func (r *SyncedResourceReconciler) adoptedSelector(
 	switch strings.ToLower(adopt.Kind) {
 	case "deployment":
 		var d appsv1.Deployment
-		if err := r.Client.Get(ctx, key, &d); err != nil {
+		if err := r.uncached().Get(ctx, key, &d); err != nil {
 			return nil, 0, err
 		}
 		selector, err := metav1.LabelSelectorAsSelector(d.Spec.Selector)
 		return selector, replicaCount(d.Spec.Replicas), err
 	case "statefulset":
 		var s appsv1.StatefulSet
-		if err := r.Client.Get(ctx, key, &s); err != nil {
+		if err := r.uncached().Get(ctx, key, &s); err != nil {
 			return nil, 0, err
 		}
 		selector, err := metav1.LabelSelectorAsSelector(s.Spec.Selector)

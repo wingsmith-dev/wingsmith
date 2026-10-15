@@ -92,6 +92,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger) (*SyncedResourceReconciler, error) {
 	r := &SyncedResourceReconciler{
 		Client:    mgr.GetClient(),
+		Reader:    mgr.GetAPIReader(),
 		Scheme:    mgr.GetScheme(),
 		Log:       logger.With("controller", "syncedresource"),
 		Namespace: cfg.Namespace,

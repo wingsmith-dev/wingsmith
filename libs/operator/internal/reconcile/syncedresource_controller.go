@@ -42,6 +42,14 @@ type SyncedResourceReconciler struct {
 	Scheme *runtime.Scheme
 	Log    *slog.Logger
 
+	// Reader reads the API server directly, bypassing the manager's cache. Optional: left nil,
+	// Client is used, which is what the tests want.
+	//
+	// The cache holds two namespaces, this operator's and the workload namespace, and an adopted
+	// workload can live in any other. Read through the cache, it reads as unreadable rather than
+	// as what it is, and every adoption outside those two namespaces was refused.
+	Reader client.Reader
+
 	// Namespace is where the durable copies of declared state live.
 	Namespace string
 
@@ -406,25 +414,33 @@ func (r *SyncedResourceReconciler) reportAdopted(ctx context.Context, res *v1alp
 	r.reportRollout(res, dep, out)
 }
 
+// uncached is the reader for objects outside the namespaces the manager caches.
+func (r *SyncedResourceReconciler) uncached() client.Reader {
+	if r.Reader != nil {
+		return r.Reader
+	}
+	return r.Client
+}
+
 // liveFingerprint digests the pod template of the object named by an adoption, as it is right now.
 func (r *SyncedResourceReconciler) liveFingerprint(ctx context.Context, adopt *v1alpha1.AdoptRef) (string, error) {
 	key := types.NamespacedName{Namespace: adopt.Namespace, Name: adopt.Name}
 	switch strings.ToLower(adopt.Kind) {
 	case "deployment":
 		var d appsv1.Deployment
-		if err := r.Client.Get(ctx, key, &d); err != nil {
+		if err := r.uncached().Get(ctx, key, &d); err != nil {
 			return "", err
 		}
 		return workload.Fingerprint(&d.Spec.Template.Spec), nil
 	case "statefulset":
 		var s appsv1.StatefulSet
-		if err := r.Client.Get(ctx, key, &s); err != nil {
+		if err := r.uncached().Get(ctx, key, &s); err != nil {
 			return "", err
 		}
 		return workload.Fingerprint(&s.Spec.Template.Spec), nil
 	case "pod":
 		var p corev1.Pod
-		if err := r.Client.Get(ctx, key, &p); err != nil {
+		if err := r.uncached().Get(ctx, key, &p); err != nil {
 			return "", err
 		}
 		return workload.FingerprintPod(&p), nil

@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
@@ -290,5 +292,68 @@ func TestADriftedAdoptedWorkloadIsRequeuedAndNotReported(t *testing.T) {
 	}
 	if got.RequeueAfter != resyncAfterApply {
 		t.Fatalf("requeued after %v, want %v", got.RequeueAfter, resyncAfterApply)
+	}
+}
+
+// cachedNamespaces refuses a read outside the namespaces the manager caches, the way the real
+// cache does.
+type cachedNamespaces struct {
+	client.Client
+	allowed map[string]bool
+}
+
+func (c cachedNamespaces) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if key.Namespace != "" && !c.allowed[key.Namespace] {
+		return fmt.Errorf("unable to get %s: unknown namespace for the cache", key)
+	}
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+func (c cachedNamespaces) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	var lo client.ListOptions
+	lo.ApplyOptions(opts)
+	if !c.allowed[lo.Namespace] {
+		return fmt.Errorf("unable to list in %q: unknown namespace for the cache", lo.Namespace)
+	}
+	return c.Client.List(ctx, list, opts...)
+}
+
+// TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead: the manager caches the operator's and
+// the workload namespace only, and an adopted workload can be anywhere. The adoption check reads
+// the API server directly, so a workload in a third namespace is verified rather than refused.
+func TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead(t *testing.T) {
+	live := servingDeployment("ghcr.io/acme/vllm:0.9.1")
+	res := adoptedResource(workload.Fingerprint(&live.Spec.Template.Spec))
+
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	direct := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(res, live).WithStatusSubresource(res).Build()
+	cached := cachedNamespaces{Client: direct, allowed: map[string]bool{"hangar-system": true, "dynamo": true}}
+
+	for _, tc := range []struct {
+		name   string
+		reader client.Reader
+		want   string
+	}{
+		{"through the cache alone", nil, "AdoptionUnverified"},
+		{"through the API reader", direct, "Adopted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &SyncedResourceReconciler{Client: cached, Reader: tc.reader, Scheme: scheme, Log: slog.Default()}
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: res.Namespace, Name: res.Name}}
+			if _, err := r.Reconcile(context.Background(), req); err != nil {
+				t.Fatalf("reconcile: %v", err)
+			}
+			var out v1alpha1.SyncedResource
+			if err := direct.Get(context.Background(), req.NamespacedName, &out); err != nil {
+				t.Fatalf("get: %v", err)
+			}
+			if out.Status.Phase != tc.want {
+				t.Fatalf("phase is %q, want %q", out.Status.Phase, tc.want)
+			}
+		})
 	}
 }
