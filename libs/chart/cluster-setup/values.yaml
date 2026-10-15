@@ -71,6 +71,21 @@ pools:
   cacheValue: ""
   cacheTaintKey: ""
 
+# Where the operator renders models, and where the model cache and the
+# frontends live. Created by the chart and kept on `helm uninstall`, because
+# deleting it deletes every model on the cluster; set `create: false` to use a
+# namespace you manage yourself.
+#
+# `podSecurity` becomes the namespace's Pod Security Admission labels. Warn and
+# audit only: an engine on a fabric-attached pool can need capabilities the
+# baseline profile refuses, so enforcing is a per-cluster decision.
+workloadNamespace:
+  name: dynamo
+  create: true
+  podSecurity:
+    warn: baseline
+    audit: baseline
+
 modelCache:
   create: true
   pvcName: model-cache
@@ -181,7 +196,7 @@ operator:
     pullPolicy: Always
   leaderElection: true
   engine:
-    # Secrets in `dynamo` presented when pulling a workload's `engine_runtime_image`.
+    # Secrets in the workload namespace presented when pulling a workload's `engine_runtime_image`.
     # Empty for the NVIDIA runtime images, which are anonymous; set this when a
     # model needs a private build such as the GLM 5.3 runtime in GHCR.
     imagePullSecrets: []
@@ -285,7 +300,7 @@ frontend:
   # holds no model state — the workers do — so a replica is cheap and stateless.
   replicas: 2
 
-  # Secrets in the `dynamo` namespace the kubelet presents when pulling a
+  # Secrets in the workload namespace the kubelet presents when pulling a
   # frontend image. Empty for the NVIDIA runtime, which nvcr.io serves
   # anonymously.
   #
@@ -296,7 +311,8 @@ frontend:
   # `hangar-runtime/frontend/` builds it and it lands in a private GHCR repository,
   # which needs a credential where nvcr.io needs none.
   #
-  # Naming one here is also what renders the credential into `dynamo` at all: a
+  # Naming one here is also what renders the credential into the workload
+  # namespace at all: a
   # pull Secret is namespaced, and the copy the operator and agent use is in the
   # release namespace, where no frontend pod can read it.
   imagePullSecrets: []
@@ -388,7 +404,8 @@ serving:
     - websecure
   backend:
     service: ""
-    namespace: dynamo
+    # Empty means the workload namespace.
+    namespace: ""
     port: 8000
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
@@ -465,7 +482,7 @@ monitoring:
 
 # ── Third-party model pulls ───────────────────────────────────────────────────
 
-# Gated models and pull rate limits, in the `dynamo` namespace. `value` is
+# Gated models and pull rate limits, in the workload namespace. `value` is
 # required when `create` is true; an empty one is a Secret that looks configured
 # and fails on the first gated pull.
 hfToken:

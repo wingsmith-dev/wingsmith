@@ -11,7 +11,7 @@ data:
   HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
   HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
   HANGAR_NAMESPACE: {{ .Release.Namespace | quote }}
-  HANGAR_WORKLOAD_NAMESPACE: "dynamo"
+  HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
   HANGAR_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
 
   HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}

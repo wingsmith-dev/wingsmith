@@ -46,7 +46,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: hangar-agent
-  namespace: dynamo
+  namespace: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
@@ -58,7 +58,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: hangar-agent
-  namespace: dynamo
+  namespace: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 roleRef:
@@ -84,7 +84,7 @@ data:
   HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
   HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
   HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
-  HANGAR_WORKLOAD_NAMESPACE: "dynamo"
+  HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
 
   # One address. The agent redials it until it holds a tunnel to every gateway
   # replica, which it learns about from the handshake — see values.yaml for why

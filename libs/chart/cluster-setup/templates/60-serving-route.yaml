@@ -3,7 +3,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: hangar-serving
-  namespace: {{ .Values.serving.backend.namespace }}
+  namespace: {{ .Values.serving.backend.namespace | default (include "cluster-setup.workloadNamespace" .) }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 spec:
@@ -18,7 +18,7 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: hangar-serving
-  namespace: {{ .Values.serving.backend.namespace }}
+  namespace: {{ .Values.serving.backend.namespace | default (include "cluster-setup.workloadNamespace" .) }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 spec:

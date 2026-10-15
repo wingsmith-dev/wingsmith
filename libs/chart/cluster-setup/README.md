@@ -4,7 +4,7 @@ The tier-2 install that turns a cluster the cloud already prepared (GPUs
 schedulable, storage classes bound, a TLS edge) into one the hangar plane can
 manage. It installs, in one release:
 
-- the `dynamo` namespace and the shared `model-cache` PVC the operator mounts by name;
+- the workload namespace (`dynamo` by default) and the shared `model-cache` PVC the operator mounts by name, both kept on `helm uninstall`;
 - **dcgm-exporter** (subchart) — the exporter the operator scrapes for device identity;
 - the **Dynamo platform** (subchart) — operator, NATS, and the `DynamoGraphDeployment` CRD;
 - the **hangar operator** and its CRDs, RBAC, config, and Deployment;

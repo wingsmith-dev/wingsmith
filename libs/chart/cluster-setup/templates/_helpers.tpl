@@ -111,6 +111,11 @@ not in values (a Secret created out of band), which rolls nothing.
 {{- end -}}
 {{- end -}}
 
+{{/* The namespace the operator renders workloads into. */}}
+{{- define "cluster-setup.workloadNamespace" -}}
+{{- required "workloadNamespace.name is required" .Values.workloadNamespace.name -}}
+{{- end -}}
+
 {{/* Common labels on hangar-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
 app.kubernetes.io/name: hangar-operator

@@ -209,3 +209,47 @@ def test_metrics_agent_mounts_only_the_password_key(chart):
     agent = get(docs, "Deployment", "hangar-metrics-agent")
     (volume,) = [v for v in agent["spec"]["template"]["spec"]["volumes"] if v["name"] == "remote-write"]
     assert volume["secret"]["items"] == [{"key": "enrolment-token", "path": "enrolment-token"}]
+
+
+# ── workload namespace ───────────────────────────────────────────────────────
+
+
+def test_uninstall_keeps_the_workload_namespace_and_model_cache(chart):
+    docs = render(chart)
+    ns = get(docs, "Namespace", "dynamo")
+    pvc = get(docs, "PersistentVolumeClaim", "model-cache", "dynamo")
+    for obj in (ns, pvc):
+        assert obj["metadata"]["annotations"]["helm.sh/resource-policy"] == "keep"
+    assert ns["metadata"]["labels"]["pod-security.kubernetes.io/warn"] == "baseline"
+    assert "pod-security.kubernetes.io/enforce" not in ns["metadata"]["labels"]
+
+
+def test_workload_namespace_is_one_value_used_everywhere(chart):
+    docs = render(
+        chart,
+        **{
+            **AGENT_ON,
+            **MONITORING_ON,
+            "workloadNamespace.name": "models",
+            "hfToken.create": True,
+            "hfToken.value": "hf-test",
+            "frontend.mode": "shared",
+        },
+    )
+    text = yaml.safe_dump_all(docs)
+    assert "dynamo\n" not in text.replace("job_name: dynamo\n", "")
+    assert get(docs, "Namespace", "models")
+    assert get(docs, "PersistentVolumeClaim", "model-cache", "models")
+    assert get(docs, "Secret", "hf-token-secret", "models")
+    assert get(docs, "Role", "hangar-agent", "models")
+    assert get(docs, "DynamoGraphDeployment", "inference", "models")
+    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_WORKLOAD_NAMESPACE"] == "models"
+    assert get(docs, "ConfigMap", "hangar-agent")["data"]["HANGAR_WORKLOAD_NAMESPACE"] == "models"
+    scrape = get(docs, "ConfigMap", "hangar-metrics-agent")["data"]["prometheus.yml"]
+    assert "names: [\"dynamo\"]" not in scrape and "names: [\"models\"]" in scrape
+
+
+def test_existing_workload_namespace_is_not_created(chart):
+    docs = render(chart, **{"workloadNamespace.create": False})
+    assert find(docs, "Namespace", "dynamo") is None
+    assert get(docs, "PersistentVolumeClaim", "model-cache", "dynamo")

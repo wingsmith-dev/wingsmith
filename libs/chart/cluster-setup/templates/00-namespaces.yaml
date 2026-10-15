@@ -1,9 +1,21 @@
 {{- include "cluster-setup.validate" . -}}
+{{- if .Values.workloadNamespace.create }}
 # The namespace the operator renders DynamoGraphDeployments into. The release
 # namespace is left to `helm --create-namespace`.
+#
+# Kept on `helm uninstall`: it holds every model the plane placed here and the
+# model-weight cache, and deleting a namespace deletes all of it. Delete it by
+# hand once the cluster is really being retired. A later `helm install` under
+# the same release name and namespace adopts it again.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: dynamo
+  name: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
+    {{- range $mode, $level := .Values.workloadNamespace.podSecurity }}
+    pod-security.kubernetes.io/{{ $mode }}: {{ $level | quote }}
+    {{- end }}
+  annotations:
+    helm.sh/resource-policy: keep
+{{- end }}

@@ -50,7 +50,7 @@ apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:
   name: inference
-  namespace: dynamo
+  namespace: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 spec:
@@ -74,7 +74,7 @@ spec:
           {{- with .Values.frontend.imagePullSecrets }}
           # Only needed when the image above is not the anonymous nvcr.io default.
           # A pull Secret is namespaced and the kubelet reads it from the pod's own
-          # namespace, so this names one in `dynamo` and not the one in the release
+          # namespace, so this names one in the workload namespace and not the one in the release
           # namespace that the operator and agent ServiceAccounts carry.
           imagePullSecrets:
             {{- range . }}
