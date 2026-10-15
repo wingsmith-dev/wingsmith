@@ -119,8 +119,8 @@
               "unit": "requests/sec",
               "avg": 0.43
             },
-            "request_count": 100,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 100.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000001/",
           "error": null,
@@ -234,8 +234,8 @@
               "unit": "requests/sec",
               "avg": 0.84
             },
-            "request_count": 200,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 200.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000002/",
           "error": null,
@@ -349,8 +349,8 @@
               "unit": "requests/sec",
               "avg": 1.59
             },
-            "request_count": 400,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 400.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000003/",
           "error": null,
@@ -464,8 +464,8 @@
               "unit": "requests/sec",
               "avg": 2.79
             },
-            "request_count": 800,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 800.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000004/",
           "error": null,
@@ -579,8 +579,8 @@
               "unit": "requests/sec",
               "avg": 4.25
             },
-            "request_count": 1600,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 1600.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000005/",
           "error": null,
@@ -683,8 +683,8 @@
               "unit": "requests/sec",
               "avg": 5.15
             },
-            "request_count": 3200,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 3200.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000006/",
           "error": null,
@@ -798,8 +798,8 @@
               "unit": "requests/sec",
               "avg": 5.37
             },
-            "request_count": 3200,
-            "error_count": 0
+            "request_count": {"unit": "requests", "avg": 3200.0},
+            "error_request_count": null
           },
           "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000007/",
           "error": null,

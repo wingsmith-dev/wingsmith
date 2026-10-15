@@ -98,8 +98,8 @@
         "unit": "requests/sec",
         "avg": 3.16
       },
-      "request_count": 62,
-      "error_count": 0
+      "request_count": {"unit": "requests", "avg": 62.0},
+      "error_request_count": null
     },
     "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9x2mmmmmmmmmmmmmmmmmmmm/",
     "error": "the job hit its deadline after 62 of 100 requests; the summary covers those 62",

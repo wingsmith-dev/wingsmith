@@ -632,16 +632,16 @@ latency distributions — is telemetry: high volume, append-only, never joined. 
 cluster to object storage directly and `artifacts_uri` is the only part of it that comes here.
 
 **What the fixture holds is AIPerf's shape, described and not asserted.** The corpus needs one
-concrete `summary` to round-trip, so `benchmark.observed.json` carries the export AIPerf 0.4 writes
-to `profile_export_aiperf.json` — verbatim, the file the operator lifts out of the job's log between
-its own sentinels. AIPerf reports each distributional metric as an object of its own, keyed
+concrete `summary` to round-trip, so `benchmark.observed.json` carries one in the shape AIPerf
+writes to `profile_export_aiperf.json`, the file the operator lifts out of the job's log between its
+own sentinels (the plane's tests pin a recorded export as well). AIPerf reports each distributional metric as an object of its own, keyed
 `time_to_first_token`, `time_to_second_token`, `inter_token_latency`, `request_latency`,
 `input_sequence_length` and `output_sequence_length`, each carrying a `unit` and `avg`, `min`,
 `max`, `p50`, `p90`, `p95`, `p99` and `std`. The rates — `output_token_throughput`,
 `output_token_throughput_per_user`, `request_throughput` — carry a `unit` and at least an `avg`,
-and the counters `request_count` and `error_count` are bare numbers. None of that is a schema this
-protocol imposes: a receiver validating a `summary` against it would be asserting the union the
-paragraph above refuses. It is one producer's format, written down so a reader can be built against
+and so do the counters `request_count` and `error_request_count`, the latter `null` on a run with
+no failed requests. None of that is a schema this protocol imposes: a receiver validating a
+`summary` against it would be asserting the union the paragraph above refuses. It is one producer's format, written down so a reader can be built against
 something real rather than against an invention.
 
 A `summary` is a whole export, and a metric it could not compute is `null` or absent rather than
