@@ -313,11 +313,6 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
         engine=workload.engine,
         engine_runtime_version=workload.engine_runtime_version,
         engine_runtime_image=workload.engine_runtime_image,
-        # The same two values under the names an operator older than the rename reads. It
-        # is a silent stall rather than a rejected frame if it finds neither, so both
-        # spellings travel until no such operator is left.
-        engine_version=workload.engine_runtime_version,
-        engine_image=workload.engine_runtime_image,
         frontend_image=workload.frontend_image,
         engine_args=resolved_engine_args(workload, artifact),
         quantization=workload.quantization,

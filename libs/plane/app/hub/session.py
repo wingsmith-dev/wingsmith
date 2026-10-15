@@ -38,6 +38,7 @@ from app.hub.state import new_id
 from app.hub.dispatch import LiveSessions
 from app.hub.identity import instance_id
 from app.hub.messages import MESSAGE_TYPES
+from app.hub.messages import OPERATOR_MAJOR
 from app.hub.messages import ENVELOPE_VERSION
 from app.hub.messages import UNSEQUENCED_TYPES
 from app.hub.messages import Ack
@@ -50,6 +51,9 @@ from app.hub.messages import Envelope
 from app.hub.messages import StreamEnd
 from app.hub.messages import RawEnvelope
 from app.hub.messages import ResyncBegin
+from app.hub.messages import operator_release
+from app.hub.messages import supported_envelope
+from app.hub.messages import supported_operator
 from app.hub.standing import Standing
 from app.hub.standing import OpenStanding
 from app.hub.ownership import ClaimStore
@@ -445,6 +449,15 @@ class OperatorSession:
             raise ProtocolViolation(
                 f"hello cluster_id {hello.cluster_id!r} does not match the enrolment token's cluster"
             )
+        if not supported_operator(hello.operator_version):
+            raise Refused(
+                f"operator {hello.operator_version} is not on the {OPERATOR_MAJOR}.x line this plane speaks",
+                code="invalid",
+                close_code=CLOSE_PROTOCOL_ERROR,
+                retryable=False,
+            )
+        if operator_release(hello.operator_version) is None:
+            logger.info("hub.session.unreleased_operator cluster=%s version=%r", scope, hello.operator_version)
         return scope
 
     @staticmethod
@@ -941,8 +954,8 @@ class OperatorSession:
             envelope = msgjson.decode(data, type=RawEnvelope)
         except msgspec.DecodeError as exc:
             raise ProtocolViolation(f"undecodable frame: {exc}") from exc
-        if envelope.v != ENVELOPE_VERSION:
-            raise ProtocolViolation(f"unsupported envelope version {envelope.v}")
+        if not supported_envelope(envelope.v):
+            raise ProtocolViolation(f"unsupported envelope version {envelope.v}", retryable=False)
         return envelope
 
     def _decode(self, envelope: Envelope[Raw]) -> Envelope[Struct]:

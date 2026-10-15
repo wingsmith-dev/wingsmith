@@ -22,6 +22,39 @@ from msgspec import field
 
 
 ENVELOPE_VERSION = 1
+"""The envelope version this side writes."""
+
+MIN_ENVELOPE_VERSION = 1
+"""The oldest envelope version this side still reads. A peer one version ahead or behind during a
+rolling upgrade is read as long as it falls in `[MIN_ENVELOPE_VERSION, ENVELOPE_VERSION]`; widening
+the window is how a future version change is rolled out without a flag day."""
+
+OPERATOR_MAJOR = 0
+"""The operator release line this plane speaks to.
+
+An operator reports its version on `hello`. A release-shaped version (`0.4.2`, `v0.4.2`) outside
+this major is refused at the handshake, because a different major is free to change the meaning
+of a frame. A version that is not release-shaped — `dev`, a commit — is a build from source and is
+admitted, with a log line. The first tagged release is what sets a floor within the line.
+"""
+
+_RELEASE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+
+
+def supported_envelope(version: int) -> bool:
+    return MIN_ENVELOPE_VERSION <= version <= ENVELOPE_VERSION
+
+
+def operator_release(version: str) -> tuple[int, int, int] | None:
+    """`(major, minor, patch)` for a release-shaped operator version, else `None`."""
+    match = _RELEASE.match(version or "")
+    return None if match is None else (int(match[1]), int(match[2]), int(match[3]))
+
+
+def supported_operator(version: str) -> bool:
+    release = operator_release(version)
+    return release is None or release[0] == OPERATOR_MAJOR
+
 
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
@@ -79,8 +112,9 @@ class Hello(Struct):
     """
 
     cluster_id: str
-    operator_version: str
     lossy: bool
+    operator_version: str = ""
+    """Defaulted so a peer that omits it is still read; checked against `OPERATOR_MAJOR` at the handshake."""
     resume_from: int | None = None
     session_id: str | None = None
 
@@ -205,10 +239,10 @@ class NodeObserved(Struct):
     A machine's runtime, not a workload's: `ServingSpec.engine_runtime_image` is the
     Dynamo build the engine runs in, and this is what would start a container of it.
     """
-    operator_version: str
     device_ids: list[str]
     labels: dict[str, str]
     observed_at: str
+    operator_version: str = ""
     instance_type: str = ""
     cloud: str = ""
     zone: str = ""
@@ -495,17 +529,6 @@ class ServingSpec(Struct):
     resources: Resources
     digest: str
     overlay: Overlay = field(default_factory=Overlay)
-    engine_version: str = ""
-    """The same value as `engine_runtime_version`, under the name an older operator reads.
-
-    A cluster picks up a new operator on its own `helm upgrade`, so a new plane talks to
-    operators on both sides of the rename. One that read only the new keys would find
-    nothing, render no prefetch job, and leave the pods waiting on a download nobody
-    started — a silent stall rather than a rejected frame. Written by `serving_spec` and
-    read by nothing here. Delete both once no operator in the fleet is that old.
-    """
-    engine_image: str | None = None
-    """The same value as `engine_runtime_image`, under the name an older operator reads."""
 
     topology: Literal["aggregated", "disaggregated"] = "aggregated"
     """Whether prefill and decode are one process or two exchanging a KV cache.
@@ -764,13 +787,9 @@ class ReplicaObserved(Struct):
     engine_runtime_version: str = ""
     """A tag of the Dynamo runtime this replica started under, echoed from the deployment.
 
-    Defaulted rather than required so that an operator older than the rename, which sends
-    the value under `engine_version`, is not rejected outright — one missing required field
-    fails the whole frame, and the replica rollup for a plainly serving deployment would sit
-    at zero. Read through `runtime_version`, never directly.
+    Defaulted, so a frame without it still applies and the replica stores null: one
+    missing required field would fail the whole frame, and the replica rollup with it.
     """
-    engine_version: str = ""
-    """The same value under the name an operator older than the rename sends it as."""
     role: Literal["prefill", "decode"] | None = None
     """Which role of a disaggregated deployment this replica is, and `None` when it is not one.
 
@@ -780,11 +799,6 @@ class ReplicaObserved(Struct):
     keeps a worker that can change role at runtime a value that moves rather than a
     declaration that has to be revised.
     """
-
-    @property
-    def runtime_version(self) -> str:
-        """The new spelling when the operator sent one, else the old."""
-        return self.engine_runtime_version or self.engine_version
 
 
 class ReplicaEvent(Struct):

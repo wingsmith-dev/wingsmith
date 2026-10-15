@@ -491,7 +491,7 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
         # The cluster's own answer about a running pod, not the workload's declaration about
         # what should exist. Null from an aggregated deployment, which has one worker.
         "role": payload.role,
-        "engine_runtime_version": payload.runtime_version or None,
+        "engine_runtime_version": payload.engine_runtime_version or None,
         # The configuration this process actually started from, read off the annotation the
         # operator rendered it with. Empty from an operator too old to stamp one, and stored as
         # null rather than as the declared digest: "not known" and "up to date" are the two

@@ -318,6 +318,64 @@ def test_standing_is_judged_on_the_registry_row_and_the_token_the_session_opened
     assert judge("pending", "abc", None) is None
 
 
+# --------------------------------------------------------------------------- versions
+
+
+async def test_a_hello_from_before_operator_version_was_required_still_opens_a_session() -> None:
+    """The field was renamed once and a peer that omits it must not be refused for that alone."""
+    harness = Harness()
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "lossy": False}))
+
+    welcome = await harness.connection.next_of_type("welcome")
+    assert welcome["payload"]["full_resync"] is True
+    await harness.stop()
+
+
+@pytest.mark.parametrize("version", ["0.4.2", "v0.9.0", "0.1.0-rc.1", "dev", "3f9c2ab", ""])
+async def test_an_operator_on_the_supported_line_or_built_from_source_is_admitted(version: str) -> None:
+    harness = Harness()
+    await harness.start()
+    welcome = await harness.hello(operator_version=version)
+    assert welcome["type"] == "welcome"
+    await harness.stop()
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "v2.3.4"])
+async def test_an_operator_from_another_release_line_is_refused_for_good(version: str) -> None:
+    harness = Harness()
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": version, "lossy": False}))
+
+    error = await harness.connection.next_of_type("error")
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert error["payload"]["retryable"] is False, "redialling with the same build cannot succeed"
+    assert harness.connection.close_code == 1002
+    await harness.stop()
+
+
+async def test_an_envelope_version_outside_the_supported_range_is_refused() -> None:
+    harness = Harness()
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}, v=2))
+
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert harness.connection.close_code == 1002
+    assert harness.session.state is None
+    await harness.stop()
+
+
+def test_the_runtime_travels_under_one_name_only() -> None:
+    from msgspec.structs import fields
+
+    from app.hub.messages import ServingSpec
+    from app.hub.messages import ReplicaObserved
+
+    assert "engine_version" not in {f.name for f in fields(ServingSpec)}
+    assert "engine_image" not in {f.name for f in fields(ServingSpec)}
+    assert "engine_version" not in {f.name for f in fields(ReplicaObserved)}
+
+
 # --------------------------------------------------------------------------- resume
 
 
