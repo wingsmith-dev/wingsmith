@@ -107,6 +107,9 @@ type Config struct {
 	// BodyBudget bounds the request bytes buffered across every request at
 	// once. Nil is no bound. Share one across every listener on a replica.
 	BodyBudget *BodyBudget
+	// MediaURLs restricts which remote media a request may ask an engine to
+	// fetch. Nil allows every URL.
+	MediaURLs *MediaURLPolicy
 }
 
 // New builds the gateway handler.

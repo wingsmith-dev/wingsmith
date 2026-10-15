@@ -236,6 +236,9 @@ func main() {
 	readHeaderTimeout := envDurationDefault("HANGAR_GATEWAY_READ_HEADER_TIMEOUT", 10*time.Second)
 	bodyReadTimeout := envDurationDefault("HANGAR_GATEWAY_BODY_READ_TIMEOUT", 2*time.Minute)
 	writeIdleTimeout := envDurationDefault("HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT", 2*time.Minute)
+	// Hosts a request's remote media may be fetched from by an engine; unset
+	// allows every URL. See serving.MediaURLPolicy.
+	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("HANGAR_GATEWAY_MEDIA_URL_HOSTS"), ","))
 	drainDelay := envDurationDefault("HANGAR_GATEWAY_DRAIN_DELAY", 5*time.Second)
 	drainTimeout := envDurationDefault("HANGAR_GATEWAY_DRAIN_TIMEOUT", 20*time.Second)
 	tunnelDrainTimeout := envDurationDefault("HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT", 5*time.Second)
@@ -253,6 +256,7 @@ func main() {
 			BodyReadTimeout:  bodyReadTimeout,
 			WriteIdleTimeout: writeIdleTimeout,
 			BodyBudget:       bodyBudget,
+			MediaURLs:        mediaURLs,
 			// Off unless asked for: zero retention of request content.
 			LogUpstreamBodies: *logUpstreamBodies,
 			// The ClusterIP port with no ingress (docs/decisions/0016). The
@@ -297,6 +301,7 @@ func main() {
 				BodyReadTimeout:  bodyReadTimeout,
 				WriteIdleTimeout: writeIdleTimeout,
 				BodyBudget:       bodyBudget,
+				MediaURLs:        mediaURLs,
 				Zone:             serving.ZonePublic,
 				// A tenant declaring `auth: none` is refused here unless the
 				// operator opts in.

@@ -92,6 +92,7 @@ does not learn whether a tenant is enabled.
 | `HANGAR_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
 | `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
 | `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
+| `HANGAR_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows every URL. See [Remote media](#remote-media) |
 | `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | shutdown phases, default `5s` / `20s` / `5s`; see [Shutdown](#shutdown) |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
@@ -122,6 +123,19 @@ the in-flight cap to the edge's own concurrency, or set it to `0` there.
 
 These are protective limits. The serving quota an endpoint sells, which the plane publishes on the
 routing table as `limits`, is not enforced by the gateway yet.
+
+## Remote media
+
+A multimodal request can name its image, video or audio by URL, and the engine fetches it from
+inside the serving cluster, from a GPU node, with whatever that network can reach. By default the
+gateway forwards every URL. Set `HANGAR_GATEWAY_MEDIA_URL_HOSTS` and a request whose `messages` or
+`input` names a remote media URL off that list (or one that is not `http`/`https`) is refused with
+`400 media_url_not_allowed` before it leaves this hop; `data:` URLs carry bytes and always pass.
+The check decodes `messages` and `input` once per request, so it costs time on a large prompt.
+
+It does not replace the engine's own control (vLLM's `--allowed-media-domains`) or an egress
+NetworkPolicy on the worker namespace, which also cover traffic that did not come through this
+gateway. Use all three where tenants can send media URLs.
 
 ## Shutdown
 

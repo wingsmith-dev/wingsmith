@@ -75,6 +75,7 @@ func routingStages(cfg Config) []stage {
 		stageStripSteeringHints,
 		stageCheckPolicy,
 		stageRewritePolicy,
+		stageMediaURLs(cfg.MediaURLs),
 		stageMediaFacts,
 		stageCacheSalt,
 		stagePickUpstream,
