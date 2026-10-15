@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { formatError } from "@/lib/format"
+import { ACTIVATION_FOCUS, activationProps } from "@/lib/keyboard"
 import { cn } from "@/lib/utils"
 import { useArtifactFitment } from "@/modules/demand/queries"
 import type {
@@ -696,9 +697,11 @@ function FitRow({
   return (
     <>
       <tr
-        onClick={choosable ? () => pick() : undefined}
+        {...activationProps(choosable ? () => pick() : undefined)}
+        aria-selected={selecting ? !!selected : undefined}
         className={cn(
           "border-b last:border-0",
+          choosable && ACTIVATION_FOCUS,
           (!fit.fits || fit.supply_short) && "opacity-55",
           choosable && "cursor-pointer hover:bg-primary/5",
           selected && "bg-primary/10 hover:bg-primary/10",

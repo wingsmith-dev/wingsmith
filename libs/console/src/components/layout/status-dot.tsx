@@ -24,7 +24,7 @@ export function StatusDot({
       {pulse && (
         <span
           className={cn(
-            "absolute inline-flex size-full animate-ping rounded-full opacity-60",
+            "absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none",
             TONE_CLASS[tone]
           )}
         />

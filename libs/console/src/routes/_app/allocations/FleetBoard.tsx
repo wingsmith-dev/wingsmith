@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusDot } from "@/components/layout/status-dot"
+import { ACTIVATION_FOCUS, activationProps } from "@/lib/keyboard"
 import { cn } from "@/lib/utils"
 import { assignmentsOf, fabricHardware } from "@/modules/board/build"
 import {
@@ -574,7 +575,8 @@ function FabricRow({
   return (
     <div
       data-keeps-selection
-      onClick={onActivate}
+      {...activationProps(onActivate)}
+      aria-label={`${fabricHardware(fabric.device_classes)}, ${spec}`}
       onDragOver={(event) => {
         if (fit?.ok) event.preventDefault()
       }}
@@ -584,6 +586,7 @@ function FabricRow({
       }}
       className={cn(
         "flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 rounded-md px-2 py-1.5 transition-colors",
+        ACTIVATION_FOCUS,
         "hover:bg-accent/40",
         selected && "bg-accent/60",
         fit?.ok && "bg-emerald-500/5 ring-1 ring-emerald-500/40 ring-inset",

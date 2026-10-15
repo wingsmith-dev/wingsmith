@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { ACTIVATION_FOCUS, activationProps } from "@/lib/keyboard"
 import { cn } from "@/lib/utils"
 import { assignmentsOf } from "@/modules/board/build"
 import { brickColor } from "@/modules/board/palette"
@@ -326,9 +327,12 @@ function BrickRow({
           event.dataTransfer.setData("text/plain", brick.key)
           drag({ kind: "brick", brick })
         }}
-        onClick={() => arm(armed?.key === brick.key ? null : brick)}
+        {...activationProps(() => arm(armed?.key === brick.key ? null : brick))}
+        role="button"
+        aria-pressed={armed?.key === brick.key}
         className={cn(
           "flex min-w-0 cursor-grab items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-accent/50 active:cursor-grabbing",
+          ACTIVATION_FOCUS,
           armed?.key === brick.key &&
             "bg-primary/10 ring-1 ring-primary/40 ring-inset"
         )}

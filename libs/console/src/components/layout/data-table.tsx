@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table"
 import { TableLoading, TableMessage } from "./table-states"
 import { formatError } from "@/lib/format"
+import { ACTIVATION_FOCUS, activationProps } from "@/lib/keyboard"
 import { cn } from "@/lib/utils"
 
 export interface Column<T> {
@@ -88,12 +89,13 @@ export function DataTable<T>({
             {items?.map((row) => (
               <TableRow
                 key={rowKey(row)}
-                className={
-                  onRowClick
-                    ? "cursor-pointer hover:bg-accent/40"
-                    : "hover:bg-accent/40"
-                }
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cn(
+                  "hover:bg-accent/40",
+                  onRowClick && cn("cursor-pointer", ACTIVATION_FOCUS)
+                )}
+                {...activationProps(
+                  onRowClick ? () => onRowClick(row) : undefined
+                )}
               >
                 {columns.map((column) => (
                   <TableCell key={column.key} className={cellClass(column)}>
