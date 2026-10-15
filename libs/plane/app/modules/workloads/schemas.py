@@ -39,9 +39,8 @@ class ParallelismSchema(Struct):
 class CacheSchema(Struct):
     """KV and prefix cache configuration. Unrelated to the weight cache.
 
-    The weight cache is a declared warm-set per cluster with observed residency;
-    this is per-request attention state and is configuration on the workload. They
-    are two different things and do not share an object.
+    This is per-request attention state and is configuration on the workload. It has
+    nothing to do with where model weights are cached on a cluster's nodes.
     """
 
     kv_cache_dtype: str | None = None
@@ -449,9 +448,9 @@ class WorkloadRevisionSchema(Struct):
 class WorkloadScaleSchema(Struct):
     """Declared totals, and what the shares actually add up to.
 
-    `unit` is named by kind — `replicas` for service, `ranks` for gang, `completions`
-    for task — because the three numbers count different things and a bare integer in
-    a UI is unreadable without it. `placed` is the sum of the deployments' shares and
+    `unit` names what the numbers count, because a bare integer in a UI is unreadable
+    without it. Every workload today is a service and counts `replicas`; `ranks` and
+    `completions` are reserved for the gang and task kinds on the roadmap. `placed` is the sum of the deployments' shares and
     `ready` the sum of their observed ready counts; they are derived here and are the
     only place summing is legal.
     """
@@ -468,8 +467,6 @@ class WorkloadSchema(Struct):
     """A workload: what was asked for, and where it ended up.
 
     `deployments` is the per-cluster expansion, one row per cluster placement chose.
-    A `gang` workload always has exactly one; splitting a gang across clusters is
-    rejected at placement, not ranked down.
 
     `phase` is derived from the deployments and is not stored: `running` when every
     deployment is running, `failed` if any failed, otherwise the least advanced
@@ -583,6 +580,9 @@ class WorkloadCreateRequest(Struct):
 
     `kind` is `service`. `task` and `gang` are reserved for workload kinds on the
     roadmap and are refused at creation, because no operator renders them yet.
+
+    `preemptible` and `gang_size` are recorded and nothing acts on them yet: placement
+    never evicts a running workload to make room, and counts only free devices.
 
     `min_scale` / `max_scale` / `desired_scale` are TOTALS across every cluster this
     workload may use, counted in replicas.

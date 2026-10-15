@@ -14,11 +14,11 @@ class Snap(Struct, frozen=True, kw_only=True):
 
 
 class DeviceHold(Snap):
-    """Who currently owns a device, and whether that ownership can be taken away.
+    """Who currently owns a device.
 
-    Present only on committed devices. Priority and preemptibility ride along
-    because preemption has to be decided from the snapshot alone — going back to
-    look up the holder's priority class would be I/O.
+    Present only on committed devices, and a held device never counts as capacity.
+    The holder's priority and preemptibility are carried for reporting; nothing
+    evicts a holder, so placement does not weigh them.
     """
 
     workload: str

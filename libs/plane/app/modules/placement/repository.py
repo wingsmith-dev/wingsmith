@@ -145,10 +145,9 @@ class PlacementRepository:
     async def _devices(self, device_class: str) -> dict[UUID, list[DeviceSnapshot]]:
         """Every device of the class, with whoever holds it attached.
 
-        The hold is a left join rather than a second query because a device's
-        freedom and its holder's priority are the same question asked twice, and
-        answering them from two reads lets a preemption plan be computed against
-        a device that was released in between.
+        The hold is a left join rather than a second query, so a device's freedom
+        and its holder are read at the same moment and cannot disagree about a
+        device released in between.
         """
         rows = (
             await self.db.execute(

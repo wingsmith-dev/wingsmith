@@ -274,11 +274,10 @@ class PlacementService:
         return _single(await self.repo.projects_by_ref(ref), "project", ref)
 
     async def _priority(self, ref: str | None, project: Project) -> PriorityClass:
-        """Resolves priority the way the deployment service does, and for the same reason.
+        """Resolves priority the way the deployment service does.
 
-        A preview run at a different priority from the create it is previewing
-        would answer a question nobody asked: priority decides what this workload
-        may preempt, which is half of whether it fits.
+        A preview reports the priority class the create would record, so it resolves
+        the class the same way: the named one, else the project's default.
         """
         if ref is not None:
             found = await self.repo.priority_class_by_name(ref)
