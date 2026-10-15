@@ -26,6 +26,9 @@ import (
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	listenAddr := flag.String("listen", ":8080", "HTTP listen address")
 	planeURL := flag.String("plane-url", "", "hangar plane base URL (HANGAR_PLANE_URL env fallback)")
@@ -149,7 +152,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	slog.Info("gateway: starting", "version", version)
 	recorder := metrics.New()
+	recorder.BuildInfo(version)
 	planeClient := plane.New(*planeURL, planeToken, 5*time.Second)
 
 	// The tunnel pool and its listener, or neither. Assigned through an

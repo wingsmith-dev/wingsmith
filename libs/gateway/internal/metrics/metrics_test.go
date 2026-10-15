@@ -403,3 +403,11 @@ func TestHandlerServesTheExpositionFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildInfoCarriesTheVersion(t *testing.T) {
+	r, _ := testRecorder(t)
+	r.BuildInfo("v1.2.3")
+	if got := mustValue(t, r, "hangar_gateway_build_info", map[string]string{"version": "v1.2.3"}); got != 1 {
+		t.Fatalf("build info = %v, want 1", got)
+	}
+}

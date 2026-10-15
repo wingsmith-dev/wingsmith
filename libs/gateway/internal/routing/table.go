@@ -27,13 +27,14 @@ import (
 )
 
 // supportedPolicyVersion is the highest endpoint policy version this build
-// reads. It is duplicated from serving deliberately: routing reports what it
-// cannot enforce, serving enforces it, and neither should import the other.
+// reads. A table carrying a higher one is still enforced as far as it is
+// understood, and reported once per refresh below.
 //
-// 2 is the scoped-rule shape. 1 was a map of parameter names to constraints
-// plus a list of denial names, and this build no longer reads it — the plane
-// converts a stored v1 policy on the way out, so nothing on this side has to
-// carry two languages.
+// 2 is the scoped-rule shape: a list of rules, each with a route and a stream
+// mode it applies to, a key or a predicate it is about, and its terms. 1 was a
+// map of parameter names to constraints plus a list of denial names, and this
+// build no longer reads it — the plane converts a stored v1 policy on the way
+// out, so nothing on this side has to carry two languages.
 const supportedPolicyVersion = 2
 
 // ErrUnknownEndpoint is returned when no endpoint answers to a name.

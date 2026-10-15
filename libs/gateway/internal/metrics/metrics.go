@@ -82,13 +82,13 @@ type Recorder struct {
 	tunnelDials    *prometheus.CounterVec
 	tunnelCoverage *prometheus.GaugeVec
 
-	tableConfirmed  *prometheus.Gauge
 	tableRefreshes  *prometheus.CounterVec
 	tableRefreshOK  prometheus.Gauge
 	tableEndpoints  prometheus.Gauge
 	tableConfirmUnx prometheus.Gauge
 
 	tunnelCertExpiry prometheus.Gauge
+	buildInfo        *prometheus.GaugeVec
 
 	// confirmedAt is when the plane last told us the loaded table is current,
 	// as unix nanoseconds. Read at scrape time by the age gauge, so it is an
@@ -187,6 +187,11 @@ func New(opts ...Option) *Recorder {
 		Help: "Unix time at which the tunnel certificate currently loaded in this process expires. Every agent dial fails once it passes.",
 	})
 
+	r.buildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "hangar_gateway_build_info",
+		Help: "Always 1, labelled with the version this binary was built as.",
+	}, []string{"version"})
+
 	// Age is computed at scrape rather than stored, so it is right in the
 	// sample even if the process has been unable to refresh for an hour. It is
 	// the plain reading of the timestamp gauge beside it, kept because it is
@@ -209,7 +214,7 @@ func New(opts ...Option) *Recorder {
 		r.inFlight, r.upstreamUp,
 		r.tunnels, r.tunnelDials, r.tunnelCoverage,
 		r.tableRefreshes, r.tableRefreshOK, r.tableEndpoints, r.tableConfirmUnx, age,
-		r.tunnelCertExpiry,
+		r.tunnelCertExpiry, r.buildInfo,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -412,4 +417,12 @@ func (r *Recorder) TunnelCertificateExpiry(at time.Time) {
 		return
 	}
 	r.tunnelCertExpiry.Set(float64(at.Unix()))
+}
+
+// BuildInfo publishes the version this binary was built as.
+func (r *Recorder) BuildInfo(version string) {
+	if r == nil {
+		return
+	}
+	r.buildInfo.WithLabelValues(version).Set(1)
 }

@@ -10,18 +10,6 @@ import (
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 )
 
-// supportedPolicyVersion is the highest policy version this build understands.
-// A table carrying a higher one is enforced as far as it is understood and
-// reported once per refresh, in routing.
-//
-// 2 is the scoped-rule shape: a list of rules, each with a route and a stream
-// mode it applies to, a key or a predicate it is about, and its terms. 1 was a
-// map of parameter names to constraints plus a flat list of denial names, with
-// no way to say where a rule applied and no way to say what an absent field
-// should become. The plane converts a stored v1 policy on the way out, so only
-// one language reaches this file.
-const supportedPolicyVersion = 2
-
 // denials are the wire features a policy may refuse by name.
 //
 // These and `diagnoses` below are the gateway's built-in predicates. None of
