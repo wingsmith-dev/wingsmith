@@ -37,14 +37,18 @@ def _configured(monkeypatch):
     for name, value in SECRETS.items():
         monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("sentinel-password-gggg"))
-    monkeypatch.setattr(settings, "ADMIN_AUTH", "disabled")
+    monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
     monkeypatch.setattr(settings, "APP_ENV", "staging")
     yield
 
 
+def admin_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {AuthManager.issue_session_token('admin')}"}
+
+
 def body() -> dict:
     with TestClient(app=create_app()) as client:
-        response = client.get("/v1/system/config")
+        response = client.get("/v1/system/config", headers=admin_headers())
     assert response.status_code == 200
     return response.json()
 
@@ -130,7 +134,7 @@ def test_shared_url_is_empty_when_no_default_endpoint_is_configured(monkeypatch)
 def test_auth_group_reduces_every_credential_to_a_boolean():
     auth = body()["auth"]
     assert auth == {
-        "admin_auth": "disabled",
+        "admin_auth": "enabled",
         "admin_password_hash_set": True,
         "session_signing_secret_set": True,
         "session_ttl_seconds": settings.SESSION_TTL_SECONDS,
@@ -150,6 +154,15 @@ def test_unset_credentials_report_false_rather_than_an_empty_string(monkeypatch)
 def test_admin_auth_reports_the_resolved_mode_not_the_raw_setting(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "")
     assert effective_config().auth.admin_auth == "enabled"
+    monkeypatch.setattr(settings, "APP_ENV", "local")
+    assert effective_config().auth.admin_auth == "disabled"
+
+
+def test_the_api_host_is_reported_as_resolved(monkeypatch):
+    monkeypatch.setattr(settings, "API_HOST", "")
+    assert effective_config().api.host == "0.0.0.0"
+    monkeypatch.setattr(settings, "APP_ENV", "local")
+    assert effective_config().api.host == "127.0.0.1"
 
 
 # --- no secrets --------------------------------------------------------------
@@ -162,7 +175,8 @@ def test_no_configured_secret_appears_anywhere_in_the_response():
     the whole payload, so a secret smuggled in under any new key fails here.
     """
     with TestClient(app=create_app()) as client:
-        response = client.get("/v1/system/config")
+        response = client.get("/v1/system/config", headers=admin_headers())
+    assert response.status_code == 200
     raw = response.text
     for sentinel in (
         SECRETS["GATEWAY_SERVICE_TOKEN"],

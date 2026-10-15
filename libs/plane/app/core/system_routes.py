@@ -43,6 +43,7 @@ from app.auth import ADMIN
 from app.config import settings
 from app.core.context import RequestContext
 from app.utils.schemas import Struct
+from app.config.settings import api_host
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import Forbidden
 from app.modules.metrics import sources
@@ -224,7 +225,7 @@ def effective_config() -> ConfigSchema:
             log_format=settings.APP_LOG_FORMAT,
             allowed_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()],
         ),
-        api=ApiConfigSchema(host=settings.API_HOST, port=settings.API_PORT),
+        api=ApiConfigSchema(host=api_host(settings), port=settings.API_PORT),
         hub=HubConfigSchema(
             host=settings.HUB_HOST,
             port=settings.HUB_PORT,

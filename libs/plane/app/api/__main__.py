@@ -5,6 +5,7 @@ import argparse
 import uvicorn
 
 from app.config import settings
+from app.config.settings import api_host
 from app.api.app import create_app
 from app.api.app import on_startup
 from app.api.app import on_shutdown
@@ -19,7 +20,7 @@ async def _cycle() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="hangar-api")
-    parser.add_argument("--host", default=settings.API_HOST)
+    parser.add_argument("--host", default=api_host(settings))
     parser.add_argument("--port", type=int, default=settings.API_PORT)
     parser.add_argument("--reload", action="store_true")
     parser.add_argument("--check", action="store_true", help="build the app, run its hooks, exit")

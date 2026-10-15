@@ -16,8 +16,15 @@ else. It is deny-by-default per kind:
 
 A route is matched by its template (`/v1/clusters/{ref}`), not by the raw path,
 so a trailing slash or an encoded segment cannot route around a rule.
+
+Before any of that, a state-changing request from a browser must come from an
+origin the plane serves or lists in `ALLOWED_ORIGINS`, and any body must be JSON
+(`refuse_cross_site`). That is the CSRF defence, and it matters most under
+`ADMIN_AUTH=disabled` in `local`, where the browser's ambient access to
+`localhost` is the only credential there is.
 """
 
+from urllib.parse import urlsplit
 from collections.abc import AsyncGenerator
 
 from litestar import Request
@@ -30,8 +37,10 @@ from app.auth import TENANT
 from app.auth import GATEWAY
 from app.auth import Principal
 from app.auth import AuthManager
+from app.config import settings
 from app.db.session import provide_session
 from app.core.exceptions import Forbidden
+from app.core.exceptions import PlaneError
 from app.core.exceptions import NotAuthorized
 
 
@@ -81,6 +90,17 @@ reach a console response. Tunnel verification turns an enrolment token into a
 cluster identity; a human credential that can do that can sweep for tokens."""
 
 
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+class UnsupportedMediaType(PlaneError):
+    """A state-changing request whose body is not JSON. Every body this API reads
+    is JSON, and a form-encoded or plain-text body is what a cross-site form sends."""
+
+    code = "unsupported_media_type"
+    status = 415
+
+
 def _within(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
 
@@ -111,12 +131,43 @@ def authorize(principal: Principal, method: str, route: str) -> None:
     raise Forbidden("this credential does not reach the HTTP API")
 
 
+def _origin_allowed(origin: str, host: str) -> bool:
+    if origin in {o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()}:
+        return True
+    netloc = urlsplit(origin).netloc
+    return bool(netloc) and netloc == host
+
+
+def refuse_cross_site(connection: ASGIConnection) -> None:
+    """Refuses a state-changing request a browser sent from another site.
+
+    A browser always sends `Origin` on a cross-origin write; a request without
+    one comes from something that is not a browser (`hgr`, the gateway, `curl`)
+    and carries its own credential. With one, it must name an allowed origin or
+    the origin the plane itself is served from. Any body must be JSON, because
+    the bodies a cross-site form can send without a preflight are not.
+    """
+    if connection.scope.get("method", "GET") not in UNSAFE_METHODS:
+        return
+    origin = connection.headers.get("Origin")
+    if origin is not None and not _origin_allowed(origin, connection.headers.get("Host", "")):
+        raise Forbidden("cross-origin request refused", {"origin": origin})
+    has_body = connection.headers.get("Transfer-Encoding") or connection.headers.get("Content-Length", "0") != "0"
+    if not has_body:
+        return
+    media_type = connection.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise UnsupportedMediaType("request bodies must be application/json")
+
+
 async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
-    """App-wide guard: resolves and authorizes the caller of every non-public route.
+    """App-wide guard: refuses cross-site writes, then resolves and authorizes the
+    caller of every non-public route.
 
     The principal is left on `connection.state` for `request_context` to hand to
     the handler, so it is resolved once per request.
     """
+    refuse_cross_site(connection)
     route = route_of(connection)
     if is_public(route):
         return

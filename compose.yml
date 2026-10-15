@@ -33,8 +33,11 @@ x-plane: &plane
   environment: &plane-env
     HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@db:5442/hangar
     # Overrides the image's baked-in `production`. This file is the local stack, and `local` is
-    # what makes the operator token and the admin password optional — see config/settings.py.
+    # what makes the admin password and the session secret optional — see config/settings.py.
     HANGAR_APP_ENV: local
+    # `local` binds loopback by default, which inside a container is unreachable. The ports below
+    # are published on the host's loopback only, so this does not put the API on the network.
+    HANGAR_API_HOST: 0.0.0.0
     HANGAR_APP_LOG_FORMAT: console
   depends_on:
     db:
@@ -52,7 +55,7 @@ services:
       POSTGRES_DB: hangar
       PGPORT: "5442"
     ports:
-      - "5442:5442"
+      - "127.0.0.1:5442:5442"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -87,7 +90,7 @@ services:
     <<: *plane
     command: ["api", "--reload"]
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test:
         - CMD
@@ -106,7 +109,7 @@ services:
     <<: *plane
     command: ["hub"]
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
 
 volumes:
   db_data:

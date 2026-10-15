@@ -360,10 +360,13 @@ class AuthManager:
 
         `ADMIN_AUTH` unset resolves to `disabled` under `APP_ENV=local` and
         `enabled` everywhere else, matching `app.config.settings.resolved_admin_auth`.
-        Disabling it never touches the hub: `resolve_operator` has no such switch.
+        Outside `local` it is always on, whatever `ADMIN_AUTH` says: `validate`
+        refuses to boot on `disabled`, and a caller that skipped it still fails
+        closed here. Disabling it never touches the hub or the gateway token.
         """
-        mode = settings.ADMIN_AUTH or ("disabled" if settings.APP_ENV == "local" else "enabled")
-        return mode == "enabled"
+        if settings.APP_ENV != "local":
+            return True
+        return (settings.ADMIN_AUTH or "disabled") == "enabled"
 
     @staticmethod
     def resolve_principal(token: str | None) -> Principal:

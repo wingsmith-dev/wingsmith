@@ -18,6 +18,8 @@ from app.api.app import create_app
 from app.hub.server import serve_forever
 from app.hub.server import _resolve_connection
 from app.config.settings import Settings
+from app.config.settings import load
+from app.config.settings import api_host
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import NotAuthorized
@@ -193,9 +195,17 @@ def test_admin_auth_defaults_enabled_outside_local():
     assert resolved_admin_auth(s) == "enabled"
 
 
-def test_admin_auth_explicit_flag_wins_over_the_default():
-    s = Settings(APP_ENV="production", ADMIN_AUTH="disabled")
-    assert resolved_admin_auth(s) == "disabled"
+def test_admin_auth_explicit_flag_wins_over_the_default_in_local():
+    assert resolved_admin_auth(Settings(APP_ENV="local", ADMIN_AUTH="enabled")) == "enabled"
+
+
+def test_admin_auth_cannot_be_disabled_outside_local(monkeypatch):
+    assert resolved_admin_auth(Settings(APP_ENV="production", ADMIN_AUTH="disabled")) == "enabled"
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ADMIN_AUTH", "disabled")
+    assert AuthManager.admin_auth_enabled()
+    with pytest.raises(NotAuthorized):
+        AuthManager.resolve_principal(None)
 
 
 def test_validate_refuses_to_boot_admin_enabled_without_password_hash():
@@ -210,9 +220,49 @@ def test_validate_refuses_to_boot_admin_enabled_without_signing_secret():
         validate(s)
 
 
-def test_validate_passes_when_admin_auth_is_explicitly_disabled_outside_local():
-    s = Settings(APP_ENV="production", ADMIN_AUTH="disabled")
-    validate(s)
+def test_validate_refuses_to_boot_with_admin_auth_disabled_outside_local():
+    s = Settings(APP_ENV="production", ADMIN_AUTH="disabled", SESSION_SIGNING_SECRET="sig", ADMIN_PASSWORD_HASH="hash")
+    with pytest.raises(RuntimeError):
+        validate(s)
+
+
+def test_validate_refuses_to_boot_without_a_signing_secret_whatever_admin_auth_says():
+    with pytest.raises(RuntimeError):
+        validate(Settings(APP_ENV="production", ADMIN_PASSWORD_HASH="hash"))
+
+
+def test_validate_passes_outside_local_with_both_secrets():
+    validate(Settings(APP_ENV="production", SESSION_SIGNING_SECRET="sig", ADMIN_PASSWORD_HASH="hash"))
+
+
+# --- fail-closed defaults ----------------------------------------------------
+
+
+def test_no_session_is_signed_with_a_constant_outside_local(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    with pytest.raises(RuntimeError):
+        AuthManager.signing_secret()
+
+
+def test_the_local_signing_key_is_random_per_process(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "local")
+    secret = AuthManager.signing_secret()
+    assert secret == AuthManager.signing_secret()
+    assert len(secret) >= 32
+    assert "hangar" not in secret
+
+
+def test_the_api_binds_loopback_in_local_unless_told_otherwise():
+    assert api_host(Settings(APP_ENV="local")) == "127.0.0.1"
+    assert api_host(Settings(APP_ENV="local", API_HOST="0.0.0.0")) == "0.0.0.0"
+    assert api_host(Settings(APP_ENV="production")) == "0.0.0.0"
+
+
+def test_settings_read_only_prefixed_names():
+    loaded = load({"DATABASE_URL": "postgresql+psycopg://elsewhere/db", "APP_ENV": "production"})
+    assert loaded.DATABASE_URL == Settings().DATABASE_URL
+    assert loaded.APP_ENV == "local"
+    assert load({"HANGAR_APP_ENV": "production"}).APP_ENV == "production"
 
 
 def test_validate_is_frictionless_in_local_with_nothing_configured():
@@ -380,6 +430,47 @@ def test_cors_rejects_an_unconfigured_origin(monkeypatch):
             },
         )
     assert response.headers.get("access-control-allow-origin") != "https://evil.example.com"
+
+
+# --- cross-site writes ---------------------------------------------------
+
+
+def test_a_write_from_a_foreign_origin_is_refused(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
+    with TestClient(app=create_app()) as client:
+        response = client.post("/v1/projects", json={"name": "x"}, headers={"Origin": "https://evil.example.com"})
+    assert response.status_code == 403
+    assert response.json()["detail"] == {"origin": "https://evil.example.com"}
+
+
+def test_a_null_origin_is_refused():
+    with TestClient(app=create_app()) as client:
+        response = client.post("/v1/auth/login", json={"password": "x"}, headers={"Origin": "null"})
+    assert response.status_code == 403
+
+
+def test_a_write_from_an_allowed_or_the_serving_origin_passes_the_check(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
+    with TestClient(app=create_app()) as client:
+        for origin in ("https://console.example.com", f"http://{client.base_url.netloc.decode()}"):
+            response = client.post("/v1/auth/login", json={"password": "not it"}, headers={"Origin": origin})
+            assert response.status_code == 401, origin
+
+
+def test_a_write_with_a_non_json_body_is_415():
+    """A cross-site form can post `text/plain` without a preflight; nothing here reads it."""
+    with TestClient(app=create_app()) as client:
+        response = client.post("/v1/auth/login", content=b'{"password": "x"}', headers={"Content-Type": "text/plain"})
+    assert response.status_code == 415
+    assert response.json()["code"] == "unsupported_media_type"
+
+
+def test_a_bodiless_write_needs_no_content_type(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        response = client.post("/v1/clusters/alpha/enrolment-token")
+    assert response.status_code == 401
 
 
 # --- enrolment tokens ----------------------------------------------------

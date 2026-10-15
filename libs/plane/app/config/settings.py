@@ -17,8 +17,9 @@ _FALSE = {"0", "false", "no", "off"}
 class Settings:
     """Typed process configuration, loaded from the environment.
 
-    Every field is read from `HANGAR_<FIELD>` first and then from the bare
-    `<FIELD>` name, so standard variables such as `DATABASE_URL` work unprefixed.
+    Every field is read from `HANGAR_<FIELD>` and nowhere else. A bare
+    `DATABASE_URL` or `APP_ENV` left in a shell or a container by something
+    unrelated is never picked up.
     """
 
     APP_ENV: str = "local"
@@ -26,7 +27,12 @@ class Settings:
     APP_LOG_LEVEL: str = "INFO"
     APP_LOG_FORMAT: str = "console"
 
-    API_HOST: str = "0.0.0.0"
+    API_HOST: str = ""
+    """Address the HTTP API binds. Empty resolves to `127.0.0.1` under
+    `APP_ENV=local`, where admin auth may be off, and `0.0.0.0` everywhere else;
+    see `api_host`. A container that must listen on every interface in `local`
+    sets it explicitly, and publishes the port on the host's loopback only."""
+
     API_PORT: int = 8000
 
     HUB_HOST: str = "0.0.0.0"
@@ -211,9 +217,10 @@ class Settings:
     """Bcrypt hash of the admin password, e.g. `python -m app.auth.manager hash`."""
 
     SESSION_SIGNING_SECRET: str = ""
-    """HMAC key signing admin session tokens. Required outside `local` whenever
-    admin auth is enabled; subject to the same fail-closed rule as `OPERATOR_TOKEN`.
-    """
+    """HMAC key signing session tokens. Required outside `local`, where the plane
+    refuses to boot without it. Under `local`, an unset secret is a random key
+    drawn once per process (`app.auth.manager.AuthManager.signing_secret`), never
+    a constant."""
 
     SESSION_TTL_SECONDS: int = 900
     """Lifetime of a session token minted by `POST /v1/auth/login`."""
@@ -352,19 +359,31 @@ def _coerce(raw: str, target: Any) -> Any:
     return raw
 
 
+def api_host(s: "Settings") -> str:
+    """The effective `API_HOST`: loopback under `local` unless set explicitly."""
+    if s.API_HOST:
+        return s.API_HOST
+    return "127.0.0.1" if s.APP_ENV == "local" else "0.0.0.0"
+
+
 def resolved_admin_auth(s: "Settings") -> str:
-    """The effective `ADMIN_AUTH` mode after applying the `local`-only default."""
-    if s.ADMIN_AUTH:
-        return s.ADMIN_AUTH
-    return "disabled" if s.APP_ENV == "local" else "enabled"
+    """The effective `ADMIN_AUTH` mode: always `enabled` outside `local`, where
+    `disabled` is the default unless set."""
+    if s.APP_ENV != "local":
+        return "enabled"
+    return s.ADMIN_AUTH or "disabled"
 
 
 def validate(s: "Settings") -> None:
-    """Fails process boot on credentials that would otherwise fail open.
+    """Fails process boot on configuration that would otherwise fail open.
 
     Called once by each entrypoint (`app.api.app.create_app`, `app.hub.server.run`),
     never at import time, so tests can build arbitrary `Settings` without a live
     process refusing to start.
+
+    Outside `local`, admin auth is always on and both of its secrets are
+    required. `ADMIN_AUTH=disabled` is a developer convenience and nothing else:
+    there is no perimeter a deployed plane can rely on to make it safe.
     """
     if s.ADMIN_AUTH not in ("", "enabled", "disabled"):
         raise RuntimeError(f"ADMIN_AUTH must be 'enabled' or 'disabled', got {s.ADMIN_AUTH!r}")
@@ -372,13 +391,12 @@ def validate(s: "Settings") -> None:
     if s.APP_ENV == "local":
         return
 
-    if resolved_admin_auth(s) == "enabled":
-        if not s.SESSION_SIGNING_SECRET:
-            raise RuntimeError(
-                "SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local' and admin auth is enabled"
-            )
-        if not s.ADMIN_PASSWORD_HASH:
-            raise RuntimeError("ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local' and admin auth is enabled")
+    if s.ADMIN_AUTH == "disabled":
+        raise RuntimeError("ADMIN_AUTH=disabled is allowed only when APP_ENV is 'local'")
+    if not s.SESSION_SIGNING_SECRET:
+        raise RuntimeError("SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local'")
+    if not s.ADMIN_PASSWORD_HASH:
+        raise RuntimeError("ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local'")
 
 
 def load(env: dict[str, str] | None = None) -> Settings:
@@ -386,7 +404,7 @@ def load(env: dict[str, str] | None = None) -> Settings:
     source = os.environ if env is None else env
     values: dict[str, Any] = {}
     for spec in fields(Settings):
-        raw = source.get(f"{ENV_PREFIX}{spec.name}") or source.get(spec.name)
+        raw = source.get(f"{ENV_PREFIX}{spec.name}")
         if raw is None or raw == "":
             continue
         values[spec.name] = _coerce(raw, spec.type)
