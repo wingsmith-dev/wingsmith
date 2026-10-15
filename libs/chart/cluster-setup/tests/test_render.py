@@ -557,3 +557,15 @@ def test_frontend_preamble_switch_reaches_both_modes(chart):
     assert env_vars["DYN_STRIP_ANTHROPIC_PREAMBLE"] == "false"
     data = get(shared, "ConfigMap", "hangar-operator")["data"]
     assert data["HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE"] == "false"
+
+
+def test_image_digest_pins_the_build(chart):
+    digest = "sha256:" + "a" * 64
+    docs = render(chart, **{**AGENT_ON, "operator.image.digest": digest,
+                            "agent.image.repository": "registry.example.com/agent",
+                            "agent.image.tag": "custom"})
+    assert container(get(docs, "Deployment", "hangar-operator"), "operator")["image"] == \
+        "ghcr.io/hangar-dev/operator@" + digest
+    assert container(get(docs, "Deployment", "hangar-agent"), "agent")["image"] == \
+        "registry.example.com/agent:custom"
+    assert "sha256:" in refusal(chart, **{"operator.image.digest": "abc"})

@@ -1,13 +1,26 @@
-{{/* Operator image; tag falls back to the chart's appVersion. */}}
-{{- define "cluster-setup.operatorImage" -}}
-{{- $tag := .Values.operator.image.tag | default .Chart.AppVersion -}}
-{{- printf "%s:%s" .Values.operator.image.repository $tag -}}
+{{/*
+An image reference from {repository, tag, digest}: the digest when one is set,
+which pins the exact build whatever the tag now points at, and otherwise the tag,
+falling back to the chart's appVersion.
+*/}}
+{{- define "cluster-setup.image" -}}
+{{- $image := .image -}}
+{{- if $image.digest -}}
+{{- if not (hasPrefix "sha256:" $image.digest) -}}
+{{- fail (printf "image digest %q must start with sha256:" $image.digest) -}}
+{{- end -}}
+{{- printf "%s@%s" $image.repository $image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $image.repository ($image.tag | default .appVersion) -}}
+{{- end -}}
 {{- end -}}
 
-{{/* Serving agent image; tag falls back to the chart's appVersion. */}}
+{{- define "cluster-setup.operatorImage" -}}
+{{- include "cluster-setup.image" (dict "image" .Values.operator.image "appVersion" .Chart.AppVersion) -}}
+{{- end -}}
+
 {{- define "cluster-setup.servingAgentImage" -}}
-{{- $tag := .Values.agent.image.tag | default .Chart.AppVersion -}}
-{{- printf "%s:%s" .Values.agent.image.repository $tag -}}
+{{- include "cluster-setup.image" (dict "image" .Values.agent.image "appVersion" .Chart.AppVersion) -}}
 {{- end -}}
 
 {{/*

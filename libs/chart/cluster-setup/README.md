@@ -259,7 +259,8 @@ operator and serving-agent images default to that tag (`operator.image.tag`
 and `agent.image.tag` empty), with `pullPolicy: IfNotPresent`, so one chart
 version runs one build of each and a node never re-pulls a moving tag. Set a tag
 only to run a build of your own; a mismatched operator and chart is not a
-supported combination.
+supported combination. `operator.image.digest` and `agent.image.digest`
+(`sha256:...`) pin the exact build and take precedence over the tag.
 
 What the chart does pin:
 

@@ -210,6 +210,8 @@ operator:
     # Empty takes the chart's appVersion, so a chart version names one operator
     # build. Set it only to run a build of your own.
     tag: ""
+    # `sha256:...` pins the exact build and takes precedence over the tag.
+    digest: ""
     pullPolicy: IfNotPresent
   leaderElection: true
   # The operator's Prometheus metrics: controller-runtime's reconcile, work
@@ -252,6 +254,7 @@ agent:
     repository: ghcr.io/hangar-dev/agent
     # Empty takes the chart's appVersion, like the operator's.
     tag: ""
+    digest: ""
     pullPolicy: IfNotPresent
   gateway:
     # The gateway's tunnel address as `host:port` — TLS assumed, no scheme. One
