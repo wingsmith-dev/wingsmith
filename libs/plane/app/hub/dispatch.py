@@ -1,9 +1,10 @@
 """Live dispatch of declared state: the hub half of the `app.db.notify` channel.
 
-Every hub process listens, and every hub process sees every notification. Exactly
-one of them holds the claim on the named cluster (ADR 0005) and therefore has a
-live session to push down; the rest look the cluster up in their own in-process
-index, find nothing, and drop the hint on the floor. That is the whole of the
+Every hub process listens, and every hub process sees every notification. One of
+them holds the claim on the named cluster (ADR 0005) and therefore has a live
+session to push down — two, for at most one ownership poll after a displacement,
+and the displaced one's writes are refused — and the rest look the cluster up in
+their own in-process index, find nothing, and drop the hint on the floor. That is the whole of the
 fan-out design — no routing table, no directory, no second consensus problem
 beside the claim table — and it works because a notification is a wakeup rather
 than a message, so ignoring one costs nothing.
@@ -40,6 +41,10 @@ logger = getLogger(__name__)
 
 
 RETRY_DELAY_SECONDS = 5.0
+
+MAX_PENDING_HINTS = 10_000
+"""Hints waiting for dispatch across every cluster this process serves. Past it, a hint is dropped
+and the cluster's next periodic resync carries the change instead."""
 
 
 class Dispatchable(Protocol):
@@ -210,21 +215,97 @@ async def dispatch(
     return True
 
 
+class Dispatcher:
+    """Runs dispatch for many clusters at once, one cluster at a time each.
+
+    The listener used to render and send every hint inline, so one cluster whose
+    session was slow to drain — or whose render was slow to read — held up every
+    other cluster's changes behind it. Each cluster now has a worker of its own,
+    started when a hint arrives and gone when its queue is empty, so a cluster's
+    hints stay in order and no cluster waits on another's.
+
+    Hints are coalesced per object while they wait. A hint is a wakeup and the
+    renderer reads the row as it is when the worker gets to it, so a second hint
+    for an object already waiting adds nothing but a second identical send.
+    """
+
+    __slots__ = ("_pending", "_queued", "_workers", "live", "max_pending", "recorder", "renderer")
+
+    def __init__(
+        self,
+        live: LiveSessions,
+        renderer: Renderer,
+        recorder: Recorder | None = None,
+        max_pending: int = MAX_PENDING_HINTS,
+    ) -> None:
+        self.live = live
+        self.renderer = renderer
+        self.recorder = recorder
+        self.max_pending = max_pending
+        self._pending: dict[str, dict[tuple[str, str], DeclaredChange]] = {}
+        self._queued = 0
+        self._workers: dict[str, asyncio.Task[None]] = {}
+
+    def submit(self, change: DeclaredChange) -> None:
+        """Queues one hint. Never blocks and never raises: the listener must keep listening."""
+        if self.live.get(change.cluster_id) is None:
+            return
+        waiting = self._pending.setdefault(change.cluster_id, {})
+        key = (change.kind, change.uid)
+        if key in waiting:
+            waiting[key] = change
+            return
+        if self._queued >= self.max_pending:
+            logger.warning("hub.dispatch.dropped cluster=%s kind=%s uid=%s", change.cluster_id, change.kind, change.uid)
+            return
+        waiting[key] = change
+        self._queued += 1
+        if change.cluster_id not in self._workers:
+            self._workers[change.cluster_id] = asyncio.create_task(
+                self._drain(change.cluster_id), name=f"hub-dispatch-{change.cluster_id}"
+            )
+
+    async def _drain(self, cluster_id: str) -> None:
+        try:
+            while waiting := self._pending.get(cluster_id):
+                key = next(iter(waiting))
+                change = waiting.pop(key)
+                self._queued -= 1
+                try:
+                    await dispatch(change, self.live, self.renderer, self.recorder)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        "hub.dispatch.failed cluster=%s uid=%s", change.cluster_id, change.uid, exc_info=True
+                    )
+        finally:
+            dropped = self._pending.pop(cluster_id, {})
+            self._queued -= len(dropped)
+            self._workers.pop(cluster_id, None)
+
+    async def close(self) -> None:
+        workers = list(self._workers.values())
+        for worker in workers:
+            worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+        self._workers.clear()
+        self._pending.clear()
+        self._queued = 0
+
+
 async def _connect(dsn: str) -> Any:
     return await psycopg.AsyncConnection.connect(dsn, autocommit=True)
 
 
-async def _handle(payload: str, live: LiveSessions, renderer: Renderer, recorder: Recorder | None = None) -> None:
-    """Applies one notification. Nothing a single bad payload does may end the loop."""
+def _handle(payload: str, dispatcher: Dispatcher) -> None:
+    """Hands one notification to the dispatcher. Nothing a single bad payload does may end the loop."""
     try:
         change = decode(payload)
     except Exception:  # noqa: BLE001 - a hint nobody can read is a lost wakeup, never a stopped listener
         logger.warning("hub.dispatch.undecodable payload=%r", payload[:256])
         return
-    try:
-        await dispatch(change, live, renderer, recorder)
-    except Exception:
-        logger.warning("hub.dispatch.failed cluster=%s uid=%s", change.cluster_id, change.uid, exc_info=True)
+    dispatcher.submit(change)
 
 
 async def listen_loop(
@@ -248,21 +329,27 @@ async def listen_loop(
     the loop simply waits and reconnects instead of trying to replay the window it
     missed: there is nothing to replay from, and nothing that needs it.
     """
-    renderer = DatabaseRenderer() if renderer is None else renderer
-    recorder = DatabaseRecorder() if recorder is None else recorder
+    dispatcher = Dispatcher(
+        live,
+        DatabaseRenderer() if renderer is None else renderer,
+        DatabaseRecorder() if recorder is None else recorder,
+    )
     opener = _connect if connect is None else connect
     target = listen_dsn() if dsn is None else dsn
 
-    while True:
-        try:
-            connection = await opener(target)
-            async with connection:
-                await connection.execute(f"LISTEN {CHANNEL}")
-                logger.info("hub.dispatch.listening channel=%s", CHANNEL)
-                async for note in connection.notifies():
-                    await _handle(note.payload, live, renderer, recorder)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.warning("hub.dispatch.connection_lost", exc_info=True)
-        await asyncio.sleep(retry_delay)
+    try:
+        while True:
+            try:
+                connection = await opener(target)
+                async with connection:
+                    await connection.execute(f"LISTEN {CHANNEL}")
+                    logger.info("hub.dispatch.listening channel=%s", CHANNEL)
+                    async for note in connection.notifies():
+                        _handle(note.payload, dispatcher)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("hub.dispatch.connection_lost", exc_info=True)
+            await asyncio.sleep(retry_delay)
+    finally:
+        await dispatcher.close()

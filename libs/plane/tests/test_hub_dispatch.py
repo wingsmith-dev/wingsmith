@@ -16,6 +16,7 @@ from app.db.notify import CHANNEL
 from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import encode
+from app.hub.dispatch import Dispatcher
 from app.hub.dispatch import LiveSessions
 from app.hub.dispatch import DatabaseRenderer
 from app.hub.dispatch import dispatch
@@ -96,6 +97,12 @@ class FakeListenConnection:
         await asyncio.Event().wait()
 
 
+async def until(predicate, timeout: float = 1.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.001)
+
+
 def desired() -> DeploymentDesired:
     from tests.test_hub_session import desired_payload
 
@@ -163,6 +170,7 @@ async def test_the_listener_dispatches_what_arrives_on_the_channel() -> None:
         listen_loop(live, renderer=FakeRenderer(("deployment.desired", desired())), dsn="x", connect=connect)
     )
     await asyncio.wait_for(done.wait(), 1)
+    await until(lambda: session.sent)
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
 
@@ -185,6 +193,7 @@ async def test_a_garbled_payload_does_not_end_the_listener() -> None:
         listen_loop(live, renderer=FakeRenderer(("deployment.desired", desired())), dsn="x", connect=connect)
     )
     await asyncio.wait_for(done.wait(), 1)
+    await until(lambda: session.sent)
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
 
@@ -316,3 +325,62 @@ async def test_a_displaced_session_takes_only_its_own_aliases() -> None:
 
     assert live.get(CLUSTER) is new
     assert live.get(CLUSTER_NAME) is new
+
+
+# --------------------------------------------------------------------------- concurrency
+
+
+class SlowSession(FakeSession):
+    """A session whose send never finishes, the way one with a full outbound path behaves."""
+
+    async def send_desired(self, type_name: str, payload: Struct, reply_to: str | None = None) -> None:
+        await asyncio.Event().wait()
+
+
+async def test_a_slow_cluster_does_not_hold_up_another_clusters_changes() -> None:
+    live = LiveSessions()
+    stuck, healthy = SlowSession(), FakeSession()
+    live.register("clu_stuck", stuck)
+    live.register(CLUSTER, healthy)
+    dispatcher = Dispatcher(live, FakeRenderer(("deployment.desired", desired())))
+
+    dispatcher.submit(DeclaredChange(cluster_id="clu_stuck", kind="deployment", uid=DEPLOYMENT))
+    dispatcher.submit(change())
+
+    await until(lambda: healthy.sent)
+    await dispatcher.close()
+
+
+async def test_hints_for_one_object_waiting_together_are_sent_once() -> None:
+    live = LiveSessions()
+    session = FakeSession()
+    live.register(CLUSTER, session)
+    renderer = FakeRenderer(("deployment.desired", desired()))
+    dispatcher = Dispatcher(live, renderer)
+
+    for generation in range(5):
+        dispatcher.submit(DeclaredChange(cluster_id=CLUSTER, kind="deployment", uid=DEPLOYMENT, generation=generation))
+
+    await until(lambda: session.sent)
+    await dispatcher.close()
+    assert len(session.sent) == 1
+    assert renderer.calls[0].generation == 4, "the newest hint is the one that is rendered"
+
+
+async def test_a_hint_for_a_cluster_this_process_does_not_serve_starts_no_worker() -> None:
+    dispatcher = Dispatcher(LiveSessions(), FakeRenderer(None))
+    dispatcher.submit(change())
+    assert dispatcher._workers == {}
+
+
+async def test_hints_past_the_bound_are_dropped_rather_than_held() -> None:
+    live = LiveSessions()
+    live.register("clu_stuck", SlowSession())
+    dispatcher = Dispatcher(live, FakeRenderer(("deployment.desired", desired())), max_pending=2)
+
+    for index in range(5):
+        dispatcher.submit(DeclaredChange(cluster_id="clu_stuck", kind="deployment", uid=f"dep_{index}"))
+
+    assert dispatcher._queued <= 2
+    await dispatcher.close()
+    assert dispatcher._queued == 0

@@ -1051,13 +1051,28 @@ async def test_connecting_by_name_reports_back_the_canonical_uid(sessions, clust
     assert await sink.mark_connected("alpha", "0.4.2") == CLUSTER
 
 
-async def test_applying_frames_bumps_the_observed_generation(sessions, cluster) -> None:
+async def test_applying_frames_bumps_the_observed_generation(sessions, cluster, monkeypatch) -> None:
+    monkeypatch.setattr("app.ingestion.sink.SYNC_STAMP_SECONDS", 0.0)
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))
     await sink.apply_observed(observed("node.observed"))
 
     rows = await fetch(sessions, "SELECT observed_generation, last_sync_at IS NOT NULL FROM supply_cluster_sync_state")
     assert rows == [(2, True)]
+
+
+async def test_a_burst_of_frames_restamps_the_sync_row_once_and_still_counts_every_frame(
+    sessions, cluster, monkeypatch
+) -> None:
+    sink = DatabaseSink(sessions)
+    for _ in range(3):
+        await sink.apply_observed(observed("node.observed"))
+    assert await fetch(sessions, "SELECT observed_generation FROM supply_cluster_sync_state") == [(1,)]
+
+    monkeypatch.setattr("app.ingestion.sink.SYNC_STAMP_SECONDS", 0.0)
+    await sink.apply_observed(observed("node.observed"))
+
+    assert await fetch(sessions, "SELECT observed_generation FROM supply_cluster_sync_state") == [(4,)]
 
 
 # --------------------------------------------------------------------------- end to end

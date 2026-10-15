@@ -1006,6 +1006,18 @@ async def test_frames_outside_an_epoch_are_not_counted() -> None:
     assert open_epoch(sink, "req-5").received == 0
 
 
+async def test_a_burst_of_frames_restamps_the_sync_row_once() -> None:
+    """Every frame used to update one row, the hottest in the database during a snapshot."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    for _ in range(5):
+        await sink.apply_observed(observed_frame("node.observed"))
+
+    stamps = [s for s in sessions.executed if "supply_cluster_sync_state" in str(s)]
+    assert len(stamps) == 1
+    assert sink._stamps[CLUSTER_ID][1] == 4, "the frames since are counted into the next stamp"
+
+
 async def test_a_reply_cannot_reach_another_clusters_snapshot() -> None:
     sink = DatabaseSink(FakeSessions())
     await sink.begin_resync("clu_other", "supply", "req-x")

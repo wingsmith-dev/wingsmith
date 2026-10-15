@@ -11,6 +11,8 @@ it, so a method here either commits or raises — never logs and returns, which
 would acknowledge state that was never written.
 """
 
+import time
+
 from uuid import UUID
 from typing import Any
 from logging import getLogger
@@ -79,6 +81,10 @@ timeout, a serialisation conflict) are not in here and are retried by the sessio
 TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 """Restated rather than imported from `app.modules.operations`: ingestion must not depend on a
 module's service layer, and this is the one fact it needs from it."""
+
+SYNC_STAMP_SECONDS = 1.0
+"""How often one cluster's frames restamp its sync-state row. Every frame used to, which made that
+one row the hottest in the database during a snapshot of thousands of frames."""
 
 MAX_OPEN_EPOCHS = 4
 """Open snapshots one cluster may have at once. A peer only ever needs one; the rest are leaks."""
@@ -182,6 +188,8 @@ class DatabaseSink:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:
         self._sessions = sessions
+        self._stamps: dict[UUID, tuple[float, int]] = {}
+        """Per cluster, when its sync state was last stamped and how many frames have landed since."""
         self._epochs: dict[str, dict[str, tuple[str | None, ResyncEpoch]]] = {}
         """Open snapshots, by cluster and then by request, with the session each arrived on.
 
@@ -216,6 +224,22 @@ class DatabaseSink:
         if cluster_id is None:
             raise UnknownCluster(cluster_ref)
         return cluster_id
+
+    async def _stamp(self, db: AsyncSession, cluster_id: UUID) -> None:
+        """Records that a frame landed, writing the sync-state row at most once a `SYNC_STAMP_SECONDS`.
+
+        The frames in between are not lost from the count: the next write bumps
+        `observed_generation` by every one of them. `last_sync_at` lags by at most
+        the interval, which nothing reads at finer grain than seconds.
+        """
+        moment = time.monotonic()
+        last, pending = self._stamps.get(cluster_id, (float("-inf"), 0))
+        pending += 1
+        if moment - last < SYNC_STAMP_SECONDS:
+            self._stamps[cluster_id] = (last, pending)
+            return
+        await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=pending))
+        self._stamps[cluster_id] = (moment, 0)
 
     async def _enter(self, db: AsyncSession, cluster_ref: str, session_id: str | None) -> UUID:
         """Opens a write for one cluster: resolve it, serialise on it, and check the claim.
@@ -399,7 +423,7 @@ class DatabaseSink:
         async with self.sessions.begin() as db:
             cluster_id = await self._enter(db, frame.cluster_id, frame.session_id)
             tracked = await self._dispatch(db, cluster_id, frame)
-            await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
+            await self._stamp(db, cluster_id)
             return tracked
 
     async def _dispatch(self, db: AsyncSession, cluster_id: UUID, frame: SinkFrame) -> tuple[str, str] | None:
@@ -581,7 +605,7 @@ class DatabaseSink:
                 case _:
                     logger.debug("ingestion.event.unhandled type=%s", frame.type)
                     return
-            await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
+            await self._stamp(db, cluster_id)
 
     async def record_operation(self, frame: SinkFrame) -> None:
         """Records operation progress, discarding it the way `apply_observed` does when it can never apply."""
@@ -614,7 +638,7 @@ class DatabaseSink:
                         payload.failure.message if payload.failure else None,
                     )
                 )
-            await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
+            await self._stamp(db, cluster_id)
 
     # ----------------------------------------------------------------- resync
 

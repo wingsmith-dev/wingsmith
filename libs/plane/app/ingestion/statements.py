@@ -1372,19 +1372,21 @@ def prune_cluster_allocations(cluster_id: UUID, keep: set[str]) -> Delete:
     return delete(Allocation).where(Allocation.cluster_id == cluster_id, Allocation.uid.notin_(keep or {""}))
 
 
-def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: bool = False) -> Insert:
+def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: int = 0) -> Insert:
     """Writes the observed half of a cluster.
 
     `Cluster.phase` is declared and is never touched from here; the two halves
     have one writer each, which is the reason the split exists at all.
     `observed_generation` counts frames applied, so it is incremented on the
-    conflict path rather than taken from the insert values.
+    conflict path rather than taken from the insert values; `bump` is how many
+    frames this write accounts for (`True` is one).
     """
+    step = int(bump)
     insert_values: dict[str, Any] = {"cluster_id": cluster_id, **values}
-    if bump:
-        insert_values["observed_generation"] = 1
+    if step:
+        insert_values["observed_generation"] = step
     statement = pg_insert(ClusterSyncState).values(**insert_values)
     updates: dict[str, Any] = {key: statement.excluded[key] for key in values}
-    if bump:
-        updates["observed_generation"] = ClusterSyncState.observed_generation + 1
+    if step:
+        updates["observed_generation"] = ClusterSyncState.observed_generation + step
     return statement.on_conflict_do_update(index_elements=[ClusterSyncState.cluster_id], set_=updates)
