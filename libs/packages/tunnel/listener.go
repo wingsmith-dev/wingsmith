@@ -90,6 +90,10 @@ const (
 	// It is answered with this reason but is not a refusal and is not counted
 	// as one; see DuplicateObserver.
 	ReasonDuplicate = "duplicate"
+	// ReasonThrottled is a dial from a source that has failed too many
+	// handshakes or token checks recently, or that already has too many
+	// handshakes in progress. The plane is not asked about it.
+	ReasonThrottled = "throttled"
 )
 
 // DuplicateObserver is optionally implemented by a DialObserver to count dials
@@ -174,6 +178,19 @@ type ListenerConfig struct {
 	// MaxHandshakes bounds how many dials may be mid-handshake at once. Zero
 	// means DefaultMaxHandshakes.
 	MaxHandshakes int
+	// MaxHandshakesPerSource bounds how many of those may come from one source
+	// address. A dial past it is closed as soon as it is accepted. Zero means
+	// DefaultMaxHandshakesPerSource; negative turns the bound off.
+	MaxHandshakesPerSource int
+	// SourceFailures is how many dials from one source may fail the handshake
+	// or the token check within SourceFailureWindow before the rest are
+	// answered ReasonThrottled without a plane call. A token verified within
+	// CacheTTL still gets in. Zero means DefaultSourceFailures; negative turns
+	// the limit off.
+	SourceFailures int
+	// SourceFailureWindow is the window SourceFailures counts in. Zero means
+	// DefaultSourceFailureWindow.
+	SourceFailureWindow time.Duration
 	// Dials, when set, is told about refused dials.
 	Dials DialObserver
 	// Now replaces the clock. For tests.
@@ -190,8 +207,9 @@ type ListenerConfig struct {
 // Nothing in this file consults readiness, and the Service in front of this port
 // must publish not-ready addresses.
 type Listener struct {
-	cfg   ListenerConfig
-	cache *tokenCache
+	cfg     ListenerConfig
+	cache   *tokenCache
+	sources *sourceGuard
 
 	mu       sync.Mutex
 	ln       net.Listener
@@ -226,12 +244,22 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 	if cfg.ReverifyInterval == 0 {
 		cfg.ReverifyInterval = DefaultReverifyInterval
 	}
+	if cfg.MaxHandshakesPerSource == 0 {
+		cfg.MaxHandshakesPerSource = DefaultMaxHandshakesPerSource
+	}
+	if cfg.SourceFailures == 0 {
+		cfg.SourceFailures = DefaultSourceFailures
+	}
+	if cfg.SourceFailureWindow <= 0 {
+		cfg.SourceFailureWindow = DefaultSourceFailureWindow
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
 	return &Listener{
 		cfg:     cfg,
 		cache:   &tokenCache{ttl: cfg.CacheTTL, grace: cfg.CacheGrace, now: cfg.Now},
+		sources: newSourceGuard(cfg.MaxHandshakesPerSource, cfg.SourceFailures, cfg.SourceFailureWindow, cfg.Now),
 		stopped: make(chan struct{}),
 	}, nil
 }
@@ -296,13 +324,25 @@ func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
 			continue
 		}
 		delay = 0
+		source := sourceOf(conn.RemoteAddr())
+		if !l.sources.enter(source) {
+			<-slots
+			_ = conn.Close()
+			l.refuse(addrString(conn), ReasonThrottled, errors.New("too many handshakes in progress from this source"))
+			continue
+		}
 		l.handling.Add(1)
 		go func() {
 			defer l.handling.Done()
 			var once sync.Once
-			release := func() { once.Do(func() { <-slots }) }
+			release := func() {
+				once.Do(func() {
+					l.sources.leave(source)
+					<-slots
+				})
+			}
 			defer release()
-			l.handle(ctx, conn, release)
+			l.handle(WithDialSource(ctx, source), conn, release)
 		}()
 	}
 }
@@ -388,6 +428,8 @@ func (l *Listener) watchToken(ctx context.Context, conn *Conn, token string) {
 		case <-timer.C:
 		}
 
+		// ctx carries the dial's source, so the plane charges a refusal here to
+		// the agent's address and not to the budget every dial shares.
 		checkCtx, cancel := context.WithTimeout(ctx, l.cfg.HandshakeTimeout)
 		identity, err := l.resolve(checkCtx, token)
 		cancel()
@@ -432,10 +474,27 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	defer func() { _ = conn.SetDeadline(time.Time{}) }()
 
 	remote := addrString(conn)
+	source := DialSource(ctx)
 	hello, err := ReadHello(conn)
 	if err != nil {
+		l.sources.fail(source)
 		l.reject(conn, remote, ReasonHandshake, err)
 		return "", Hello{}, err
+	}
+
+	// A source that keeps failing is not let near the plane again until its
+	// window passes. Without this, anyone who can reach this port could spend
+	// the plane's failed-guess budget with junk tokens, and a re-verification
+	// that meets the spent budget cannot tell a revoked token from a busy plane.
+	// A token this listener verified within CacheTTL needs no plane call and
+	// still gets in, which covers an agent sharing an address with whoever is
+	// failing.
+	if l.sources.throttled(source) {
+		if _, fresh, ok := l.cache.lookup(hello.Token); !ok || !fresh {
+			err := errors.New("too many failed dials from this source")
+			l.reject(conn, remote, ReasonThrottled, err)
+			return "", Hello{}, err
+		}
 	}
 
 	identity, err := l.resolve(ctx, hello.Token)
@@ -443,6 +502,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 		reason := ReasonUnavailable
 		if errors.Is(err, ErrRejected) {
 			reason = ReasonUnauthorized
+			l.sources.fail(source)
 		}
 		l.reject(conn, remote, reason, err)
 		return "", Hello{}, err
@@ -458,6 +518,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	if hello.ClusterID != "" && !identity.claims(hello.ClusterID) {
 		err := fmt.Errorf("%w: token belongs to %s (%s), dial claimed %s",
 			ErrRejected, identity.ClusterID, identity.ClusterName, hello.ClusterID)
+		l.sources.fail(source)
 		l.reject(conn, remote, ReasonUnauthorized, err)
 		return "", Hello{}, err
 	}
@@ -553,7 +614,13 @@ func (l *Listener) reject(conn net.Conn, remote, reason string, err error) {
 }
 
 func (l *Listener) refuse(remote, reason string, err error) {
-	slog.Warn("gateway: tunnel dial refused", "remote", remote, "reason", reason, "err", err)
+	// A throttled source is one already logged failing; logging each of its
+	// dials again would let it fill the log instead.
+	level := slog.LevelWarn
+	if reason == ReasonThrottled {
+		level = slog.LevelDebug
+	}
+	slog.Log(context.Background(), level, "gateway: tunnel dial refused", "remote", remote, "reason", reason, "err", err)
 	if l.cfg.Dials != nil {
 		l.cfg.Dials.TunnelDialRejected(reason)
 	}
