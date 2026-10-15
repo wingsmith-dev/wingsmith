@@ -75,7 +75,7 @@ def leakage(session: Session) -> dict[str, Any]:
     whatever built it, and a response header is written by every hop on the path
     whether or not the status is an error. All four are checked here rather than
     split across probes, because the finding is the same finding wherever the
-    string turns up and a customer does not care which probe found it.
+    string turns up and a client does not care which probe found it.
 
     `where` names the request, and `in_headers` says whether it was a header rather
     than a body — the recorded exchange keeps no response headers, so a header leak
@@ -94,7 +94,7 @@ def leakage(session: Session) -> dict[str, Any]:
         session.get("/v1/models"),
         # A trailing slash. A framework answers this with a redirect whose Location
         # it builds from the Host header it was reached on, which is the address of
-        # the hop that dialled it and not one a customer may have.
+        # the hop that dialled it and not one a client may have.
         session.get("/v1/models/"),
         # Not part of the served API, and that is the point: if it answers at all,
         # it answers with whatever an internal probe was written to say.

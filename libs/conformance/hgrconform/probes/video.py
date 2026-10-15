@@ -1,8 +1,8 @@
 """Video input with real clips: whether the frames reach the model, and what they cost.
 
 `multimodal.video` sends four zero bytes and asks only whether a video part is routed.
-Once an endpoint does route video that stops being the question. What the checklist
-asks next needs a clip that decodes: whether the model saw it, whether a video beside
+Once an endpoint does route video that stops being the question. What is asked
+next needs a clip that decodes: whether the model saw it, whether a video beside
 an image is read in the order it was sent, what the clip costs in prompt tokens and
 how that cost moves with length, frame rate and size, what the endpoint does past its
 limits, and whether all of it streams.

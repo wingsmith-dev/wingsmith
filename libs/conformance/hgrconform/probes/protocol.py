@@ -1,7 +1,7 @@
 """Which of the three request protocols the endpoint answers.
 
-The checklist asks about the OpenAI Chat Completions API, the OpenAI Responses API
-and the Anthropic Messages API, each "consistent with the original model provider".
+The three are the OpenAI Chat Completions API, the OpenAI Responses API and the
+Anthropic Messages API, each answered the way the original model provider answers it.
 Not answering one is a legitimate result — most open-source servers answer only the
 first — so what is recorded is the status code, and the diff decides whether that
 matches what the provider does.

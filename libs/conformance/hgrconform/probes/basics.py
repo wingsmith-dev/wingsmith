@@ -1,7 +1,7 @@
 """Response correctness: the fields that must be there, and the ones that must not repeat.
 
-Three of the checklist's questions, and the first is the one that needs the raw text. "The
-response must not contain duplicate fields" is invisible to any client that parses
+Three probes, and the first is the one that needs the raw text. A response with a
+duplicated field is invisible to any client that parses
 JSON normally, because a repeated key is folded into one on the way in. The session
 keeps the duplicates; this reads them back.
 """

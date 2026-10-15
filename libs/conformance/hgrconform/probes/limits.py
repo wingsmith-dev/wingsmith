@@ -37,7 +37,7 @@ def _rate_limit_headers(headers: dict[str, str]) -> list[str]:
     """The names of the rate-limit headers, never their values.
 
     A remaining-quota value differs on every run and between any two endpoints. The
-    set of header names is the policy the supplier publishes, and that is stable.
+    set of header names is the policy the provider publishes, and that is stable.
     """
     return sorted(name.lower() for name in headers if RATE_LIMIT_HEADER.match(name.lower()))
 

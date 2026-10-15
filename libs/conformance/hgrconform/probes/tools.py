@@ -1,6 +1,6 @@
 """Tool calling: the protocol, the round trip, the identity of a call, and the two ways it goes wrong.
 
-Five of the checklist's questions land here, and they are not the same kind of question.
+Five questions land here, and they are not the same kind of question.
 Protocol and round trip are mechanical — either the endpoint accepts the four
 `tool_choice` modes and reassembles a streamed call correctly, or it does not.
 Parallel calls and hallucination are behavioural, and behaviour varies between two

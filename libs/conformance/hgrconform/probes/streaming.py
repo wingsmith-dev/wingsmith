@@ -1,7 +1,7 @@
 """Streaming: whether it is on by default, how it is turned on, and where `usage` lands.
 
 The third of these is the interesting one and the reason the session keeps chunks
-unmerged. The checklist asks that the *location* of the usage field — every chunk,
+unmerged. What is checked is whether the *location* of the usage field — every chunk,
 or only the last one — matches the original provider, and that is a question about
 the shape of the stream rather than about its contents. A client that accumulates
 deltas as they arrive has thrown the answer away before it can be asked.
