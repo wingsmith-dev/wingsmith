@@ -121,6 +121,15 @@ rules:
 - apiGroups:
   - nvidia.com
   resources:
+  - dynamocomponentdeployments
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - nvidia.com
+  resources:
   - dynamographdeployments
   verbs:
   - create
