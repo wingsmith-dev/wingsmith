@@ -558,7 +558,7 @@ func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Durati
 	step := a.Report.Step("waiting for " + ref)
 	last := ""
 	var op api.Operation
-	err := a.poll(every, func(ctx context.Context) (bool, error) {
+	expired, err := a.poll(every, func(ctx context.Context) (bool, error) {
 		var err error
 		op, err = a.Backend.Operation(ctx, ref)
 		if err != nil {
@@ -573,8 +573,9 @@ func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Durati
 	if err != nil {
 		e := errs.As(err)
 		step.Fail("%s", strings.ToLower(string(e.Code)))
-		if e.Code == errs.CodeTimeout && op.ID != "" {
+		if expired && op.ID != "" {
 			e = errs.New(errs.CodeTimeout, "operation %s was still %s after %s", op.ID, op.Phase, a.WaitTimeout).
+				WithCause(e.Cause).
 				WithFix("Keep watching", "hgr operation wait "+op.ID)
 		}
 		return e
@@ -595,37 +596,60 @@ func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Durati
 // the user interrupts. The wait has its own deadline, --wait-timeout, and each
 // call inside it still has the per-request --timeout: a drain can take an hour
 // and no single request should.
-func (a *App) poll(every time.Duration, check func(ctx context.Context) (bool, error)) error {
+//
+// One failed poll does not end the wait when the failure is one a retry can
+// get past (a request timing out, the plane unreachable, a 5xx, a 429): the
+// next poll is tried until the wait itself runs out. expired is true only when
+// --wait-timeout ran out, so a caller never reports a single slow request as
+// the whole wait.
+func (a *App) poll(every time.Duration, check func(ctx context.Context) (bool, error)) (expired bool, err error) {
 	waitCtx, cancel := context.WithTimeout(a.Ctx, a.WaitTimeout)
 	defer cancel()
+	var last error
 	for {
 		reqCtx, reqCancel := context.WithTimeout(waitCtx, a.Timeout)
 		done, err := check(reqCtx)
 		reqCancel()
 		if err != nil {
-			return a.waitError(waitCtx, err)
-		}
-		if done {
-			return nil
+			if a.Ctx.Err() != nil || waitCtx.Err() != nil || !transient(err) {
+				return a.waitError(waitCtx, err)
+			}
+			last = err
+		} else if done {
+			return false, nil
+		} else {
+			last = nil
 		}
 		select {
 		case <-waitCtx.Done():
-			return a.waitError(waitCtx, waitCtx.Err())
+			return a.waitError(waitCtx, last)
 		case <-time.After(every):
 		}
 	}
 }
 
+// transient is a poll failure the next poll may not meet.
+func transient(err error) bool {
+	x, _ := errs.Explain(errs.As(err).Code)
+	return x.TypicallyRetryable
+}
+
 // waitError tells an interrupt from the wait running out from a failed call.
-func (a *App) waitError(waitCtx context.Context, err error) error {
+// last, when the wait ran out, is the most recent failed poll, kept as the
+// cause.
+func (a *App) waitError(waitCtx context.Context, last error) (bool, error) {
 	switch {
 	case a.Ctx.Err() != nil:
-		return errs.New(errs.CodeInterrupted, "interrupted")
+		return false, errs.New(errs.CodeInterrupted, "interrupted")
 	case errors.Is(waitCtx.Err(), context.DeadlineExceeded):
-		return errs.New(errs.CodeTimeout, "still not finished after %s", a.WaitTimeout).
+		e := errs.New(errs.CodeTimeout, "still not finished after %s", a.WaitTimeout).
 			WithFix("Wait longer", "--wait-timeout 2h")
+		if last != nil {
+			e = e.WithCause("the last poll failed: " + errs.As(last).Message)
+		}
+		return true, e
 	}
-	return err
+	return false, last
 }
 
 func (a *App) emitOperation(cmd *cobra.Command, op api.Operation) error {

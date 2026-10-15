@@ -727,7 +727,7 @@ func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Durati
 	step := a.Report.Step("waiting for " + ref)
 	last := ""
 	var run api.BenchmarkRun
-	err := a.poll(every, func(ctx context.Context) (bool, error) {
+	expired, err := a.poll(every, func(ctx context.Context) (bool, error) {
 		var err error
 		run, err = a.Backend.Benchmark(ctx, ref)
 		if err != nil {
@@ -742,8 +742,9 @@ func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Durati
 	if err != nil {
 		e := errs.As(err)
 		step.Fail("%s", strings.ToLower(string(e.Code)))
-		if e.Code == errs.CodeTimeout && run.ID != "" {
+		if expired && run.ID != "" {
 			e = errs.New(errs.CodeTimeout, "benchmark %s was still %s after %s", run.ID, run.Phase, a.WaitTimeout).
+				WithCause(e.Cause).
 				WithFix("Keep watching", "hgr benchmark get "+run.ID)
 		}
 		return e
