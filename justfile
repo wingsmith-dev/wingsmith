@@ -464,8 +464,8 @@ conformance-test *args:
 chart-sync-crds:
     #!/usr/bin/env bash
     set -euo pipefail
-    cp {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml {{_chart}}/crds/
-    cp {{_operator}}/deploy/crd/hangar.dev_streamcheckpoints.yaml {{_chart}}/crds/
+    rm -f {{_chart}}/crds/*.yaml
+    cp {{_operator}}/deploy/crd/hangar.dev_*.yaml {{_chart}}/crds/
     echo "synced CRDs into {{_chart}}/crds"
 
 # Subchart tarballs are not vendored; template checks for them regardless of condition, so a
@@ -480,7 +480,11 @@ chart-lint:
          --set enrolmentToken.value=hgrtok_lint
          --set pools.labelKey=lint.example.com/pool --set pools.gpuValue=gpu
          --set pools.cacheValue=system
-         --set modelCache.storageClass=lint-models)
+         --set modelCache.storageClass=lint-models
+         # Only read with serving on, where the chart refuses a route with no auth middleware
+         # and, with network policy on, an ingress controller it does not know to let in.
+         --set 'serving.middlewares[0].name=lint-auth'
+         --set 'networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.kubernetes\.io/metadata\.name=traefik')
     helm lint {{_chart}} "${req[@]}"
     work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
     cp -r {{_chart}} "$work/chart"
@@ -491,9 +495,7 @@ chart-lint:
     helm template lint "$work/chart" -n hangar-system "${req[@]}" \
       --set hfToken.create=true --set hfToken.value=hf_lint \
       --set serving.enabled=true --set serving.host=lint.example.com \
-      --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend \
-      --set 'serving.middlewares[0].name=lint-auth' \
-      --set 'networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.kubernetes\.io/metadata\.name=traefik' >/dev/null
+      --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend >/dev/null
     # The frontend and the engine are configured separately, and either can pull a private runtime
     # image. In both cases the credential must be copied from the release namespace into the
     # workload namespace. The key is `frontend.imagePullSecrets` and not `operator.frontend.*`:

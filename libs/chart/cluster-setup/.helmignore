@@ -3,10 +3,10 @@
 *.local.yml
 .env
 .env.*
-.DS_Store
-# Anchored: a bare *.tgz also matched the subcharts `helm dependency build`
-# vendors into charts/, and the package then failed for missing dependencies.
-/*.tgz
+# The render tests run from the source tree; the package does not need them.
 tests/
 __pycache__/
 .pytest_cache/
+.DS_Store
+# Anchored: a bare *.tgz also drops the subchart archives `helm dependency build` puts in charts/.
+/*.tgz
