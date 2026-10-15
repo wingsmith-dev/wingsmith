@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -326,27 +327,28 @@ type Config struct {
 
 // Load reads configuration from the environment, applying defaults and validating the result.
 func Load() (*Config, error) {
+	var l loader
 	c := &Config{
 		ClusterID:             env("HANGAR_CLUSTER_ID", ""),
 		HubURL:                env("HANGAR_HUB_URL", ""),
 		EnrolmentToken:        env("HANGAR_ENROLMENT_TOKEN", ""),
 		TLSCAFile:             env("HANGAR_HUB_CA_FILE", ""),
-		TLSInsecureSkipVerify: envBool("HANGAR_HUB_INSECURE_SKIP_VERIFY", false),
+		TLSInsecureSkipVerify: l.bool("HANGAR_HUB_INSECURE_SKIP_VERIFY", false),
 		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
 		HealthAddr:            env("HANGAR_HEALTH_ADDR", ":8081"),
 		MetricsAddr:           env("HANGAR_METRICS_ADDR", "0"),
-		SendQueueSize:         envInt("HANGAR_SEND_QUEUE_SIZE", 1024),
-		HeartbeatInterval:     envDuration("HANGAR_HEARTBEAT_INTERVAL", 10*time.Second),
-		LivenessTimeout:       envDuration("HANGAR_LIVENESS_TIMEOUT", 30*time.Second),
-		ObserveInterval:       envDuration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
-		ObserveTimeout:        envDuration("HANGAR_OBSERVE_TIMEOUT", 60*time.Second),
-		ObserveStaleAfter:     envDuration("HANGAR_OBSERVE_STALE_AFTER", 5*time.Minute),
-		ResyncInterval:        envDuration("HANGAR_RESYNC_INTERVAL", 15*time.Minute),
-		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
-		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
-		ReadOnly:              envBool("HANGAR_READ_ONLY", false),
+		SendQueueSize:         l.int("HANGAR_SEND_QUEUE_SIZE", 1024),
+		HeartbeatInterval:     l.duration("HANGAR_HEARTBEAT_INTERVAL", 10*time.Second),
+		LivenessTimeout:       l.duration("HANGAR_LIVENESS_TIMEOUT", 30*time.Second),
+		ObserveInterval:       l.duration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
+		ObserveTimeout:        l.duration("HANGAR_OBSERVE_TIMEOUT", 60*time.Second),
+		ObserveStaleAfter:     l.duration("HANGAR_OBSERVE_STALE_AFTER", 5*time.Minute),
+		ResyncInterval:        l.duration("HANGAR_RESYNC_INTERVAL", 15*time.Minute),
+		BackoffMin:            l.duration("HANGAR_BACKOFF_MIN", time.Second),
+		BackoffMax:            l.duration("HANGAR_BACKOFF_MAX", 30*time.Second),
+		ReadOnly:              l.bool("HANGAR_READ_ONLY", false),
 		AllowedOperations:     envList("HANGAR_ALLOWED_OPERATIONS"),
-		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", true),
+		LeaderElection:        l.bool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
 		PoolLabelKey:          env("HANGAR_POOL_LABEL_KEY", "hangar.io/pool"),
@@ -360,36 +362,42 @@ func Load() (*Config, error) {
 		LocalModelCacheDir:    env("HANGAR_LOCAL_MODEL_CACHE_DIR", ""),
 		EnginePullSecrets:     envList("HANGAR_ENGINE_PULL_SECRETS"),
 
-		FrontendEnabled:                envBool("HANGAR_FRONTEND_ENABLED", false),
+		FrontendEnabled:                l.bool("HANGAR_FRONTEND_ENABLED", false),
 		FrontendImage:                  env("HANGAR_FRONTEND_IMAGE", ""),
-		FrontendReplicas:               envInt("HANGAR_FRONTEND_REPLICAS", 2),
+		FrontendReplicas:               l.int("HANGAR_FRONTEND_REPLICAS", 2),
 		FrontendPullSecrets:            envList("HANGAR_FRONTEND_PULL_SECRETS"),
 		FrontendCPU:                    env("HANGAR_FRONTEND_CPU", ""),
 		FrontendMemory:                 env("HANGAR_FRONTEND_MEMORY", ""),
 		FrontendMemoryLimit:            env("HANGAR_FRONTEND_MEMORY_LIMIT", ""),
-		FrontendAnthropicAPI:           envBool("HANGAR_FRONTEND_ANTHROPIC_API", true),
-		FrontendAnthropicStripPreamble: envBool("HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE", true),
-		FrontendGlobalDynamoNamespace:  envBool("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", true),
+		FrontendAnthropicAPI:           l.bool("HANGAR_FRONTEND_ANTHROPIC_API", true),
+		FrontendAnthropicStripPreamble: l.bool("HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE", true),
+		FrontendGlobalDynamoNamespace:  l.bool("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", true),
 
-		Multinode:             envBool("HANGAR_MULTINODE", false),
-		EFADevices:            envInt("HANGAR_EFA_DEVICES", 0),
+		Multinode:             l.bool("HANGAR_MULTINODE", false),
+		EFADevices:            l.int("HANGAR_EFA_DEVICES", 0),
 		FabricResource:        env("HANGAR_FABRIC_RESOURCE", ""),
 		NIXLBackends:          envList("HANGAR_NIXL_BACKENDS"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
-		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
+		BenchmarkTimeout:      l.duration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
 		BenchmarkCPU:          env("HANGAR_BENCHMARK_CPU", "500m"),
 		BenchmarkMemory:       env("HANGAR_BENCHMARK_MEMORY", "1Gi"),
 		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
-		DCGMTimeout:           envDuration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
+		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
 	if err != nil {
-		return nil, err
+		l.errs = append(l.errs, err)
 	}
 	c.LogLevel = lvl
+
+	// Every unreadable value is reported at once, and none falls back to its default: a
+	// HANGAR_READ_ONLY=yes that quietly meant false would start a read-write operator.
+	if err := errors.Join(l.errs...); err != nil {
+		return nil, err
+	}
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -489,37 +497,55 @@ func envList(key string) []string {
 	return out
 }
 
-func envBool(key string, def bool) bool {
+// loader reads typed values and collects every one it could not parse.
+type loader struct {
+	errs []error
+}
+
+// lookup returns a set, non-empty value. Empty is how a Helm template renders an omitted field.
+func lookup(key string) (string, bool) {
 	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
+	if !ok {
+		return "", false
+	}
+	v = strings.TrimSpace(v)
+	return v, v != ""
+}
+
+func (l *loader) bool(key string, def bool) bool {
+	v, ok := lookup(key)
+	if !ok {
 		return def
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s=%q is not a boolean; use true or false", key, v))
 		return def
 	}
 	return b
 }
 
-func envInt(key string, def int) int {
-	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
+func (l *loader) int(key string, def int) int {
+	v, ok := lookup(key)
+	if !ok {
 		return def
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s=%q is not an integer", key, v))
 		return def
 	}
 	return n
 }
 
-func envDuration(key string, def time.Duration) time.Duration {
-	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
+func (l *loader) duration(key string, def time.Duration) time.Duration {
+	v, ok := lookup(key)
+	if !ok {
 		return def
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
+		l.errs = append(l.errs, fmt.Errorf("%s=%q is not a duration such as 30s or 5m", key, v))
 		return def
 	}
 	return d

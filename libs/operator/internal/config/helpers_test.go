@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseLevelAcceptsTheNamesAndRejectsTheRest(t *testing.T) {
@@ -84,45 +85,57 @@ func TestEnvListIsNilWhenUnset(t *testing.T) {
 	}
 }
 
-// TestEnvBoolFallsBackRatherThanFlipping is the one that matters for safety: HANGAR_READ_ONLY set
-// to something unparseable must keep the default, not silently resolve to false and let an
-// operator that was meant to be read-only start writing.
-func TestEnvBoolFallsBackRatherThanFlipping(t *testing.T) {
+// TestLoaderBoolRefusesWhatItCannotRead is the one that matters for safety: HANGAR_READ_ONLY set
+// to something unparseable must stop the operator, not resolve to a default nobody chose.
+func TestLoaderBoolRefusesWhatItCannotRead(t *testing.T) {
 	cases := []struct {
 		raw  string
 		def  bool
 		want bool
+		ok   bool
 	}{
-		{"true", false, true},
-		{"false", true, false},
-		{"1", false, true},
-		{"0", true, false},
-		{"TRUE", false, true},
-		{"False", true, false},
-		{"t", false, true},
-		{"", true, true},
-		{"", false, false},
-		{"yes", true, true},
-		{"yes", false, false},
-		{"maybe", true, true},
-		{"maybe", false, false},
-		{" true ", true, true},
-		{" true ", false, false},
+		{"true", false, true, true},
+		{"false", true, false, true},
+		{"1", false, true, true},
+		{"0", true, false, true},
+		{"TRUE", false, true, true},
+		{"False", true, false, true},
+		{" true ", false, true, true},
+		{"", true, true, true},
+		{"", false, false, true},
+		{"yes", false, false, false},
+		{"maybe", true, true, false},
 	}
 	for _, c := range cases {
 		t.Setenv("HANGAR_TEST_BOOL", c.raw)
-		if got := envBool("HANGAR_TEST_BOOL", c.def); got != c.want {
-			t.Errorf("envBool(%q, default %v) = %v, want %v", c.raw, c.def, got, c.want)
+		var l loader
+		got := l.bool("HANGAR_TEST_BOOL", c.def)
+		if (len(l.errs) == 0) != c.ok {
+			t.Errorf("bool(%q) errors = %v, want ok=%v", c.raw, l.errs, c.ok)
+		}
+		if c.ok && got != c.want {
+			t.Errorf("bool(%q, default %v) = %v, want %v", c.raw, c.def, got, c.want)
 		}
 	}
 }
 
-func TestEnvBoolKeepsTheDefaultWhenUnset(t *testing.T) {
-	if !envBool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", true) {
+func TestLoaderBoolKeepsTheDefaultWhenUnset(t *testing.T) {
+	var l loader
+	if !l.bool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", true) || l.bool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", false) {
 		t.Error("an unset key did not keep its default")
 	}
-	if envBool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", false) {
-		t.Error("an unset key did not keep its default")
+	if len(l.errs) != 0 {
+		t.Errorf("an unset key is not an error: %v", l.errs)
+	}
+}
+
+func TestReadOnlyYesFailsStartup(t *testing.T) {
+	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
+	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/hub/sync")
+	t.Setenv("HANGAR_READ_ONLY", "yes")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "HANGAR_READ_ONLY") {
+		t.Fatalf("error = %v, want one naming HANGAR_READ_ONLY", err)
 	}
 }
 
@@ -139,23 +152,35 @@ func TestEnvTreatsAnEmptyValueAsUnset(t *testing.T) {
 	}
 }
 
-func TestEnvIntFallsBackOnAnythingItCannotRead(t *testing.T) {
+func TestLoaderIntAndDurationRefuseWhatTheyCannotRead(t *testing.T) {
 	cases := []struct {
 		raw  string
-		def  int
 		want int
+		ok   bool
 	}{
-		{"", 5, 5},
-		{"7", 5, 7},
-		{"0", 5, 0},
-		{"-1", 5, -1},
-		{"7.5", 5, 5},
-		{"seven", 5, 5},
+		{"", 5, true},
+		{"7", 7, true},
+		{"0", 0, true},
+		{"-1", -1, true},
+		{"7.5", 0, false},
+		{"seven", 0, false},
 	}
 	for _, c := range cases {
 		t.Setenv("HANGAR_TEST_INT", c.raw)
-		if got := envInt("HANGAR_TEST_INT", c.def); got != c.want {
-			t.Errorf("envInt(%q, default %d) = %d, want %d", c.raw, c.def, got, c.want)
+		var l loader
+		got := l.int("HANGAR_TEST_INT", 5)
+		if (len(l.errs) == 0) != c.ok {
+			t.Errorf("int(%q) errors = %v, want ok=%v", c.raw, l.errs, c.ok)
 		}
+		if c.ok && got != c.want {
+			t.Errorf("int(%q) = %d, want %d", c.raw, got, c.want)
+		}
+	}
+
+	t.Setenv("HANGAR_TEST_DURATION", "30")
+	var l loader
+	l.duration("HANGAR_TEST_DURATION", time.Second)
+	if len(l.errs) != 1 {
+		t.Errorf("a duration without a unit was accepted: %v", l.errs)
 	}
 }
