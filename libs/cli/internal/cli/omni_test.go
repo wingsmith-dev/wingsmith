@@ -49,10 +49,10 @@ func TestOmniBehaviour(t *testing.T) {
 
 func TestAnOmniWorkloadIsCreatedWithoutAContextLength(t *testing.T) {
 	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-	out, errOut, code := run(t, "workload", "create", "z-image-turbo",
-		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "--class", "h100-80gb-sxm",
+	out, errOut, code := run(t, "workload", "create", "flux-schnell",
+		"--artifact", "flux.1-schnell", "--project", "core", "--class", "h100-80gb-sxm",
 		"--engine", "omni", "--engine-runtime-version", "1.4.1",
-		"--output-modality", "image", "--sampling-default", "num_inference_steps=8", "-o", "json")
+		"--output-modality", "image", "--sampling-default", "num_inference_steps=4", "-o", "json")
 	if code != 0 {
 		t.Fatalf("create exit %d: %s %s", code, out, errOut)
 	}

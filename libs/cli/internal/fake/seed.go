@@ -694,6 +694,30 @@ func seed() *state {
 		},
 	)
 
+	// An image model, for the omni engine. It is seeded last so the ids above
+	// stay what the fixtures expect.
+	st.Artifacts = append(st.Artifacts, api.Artifact{
+		ID:             uid("art_"),
+		Digest:         "sha256:3c9e1d2f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f",
+		Name:           "flux.1-schnell",
+		Slug:           "black-forest-labs/flux.1-schnell",
+		Kind:           "weights",
+		Format:         strptr("safetensors"),
+		SizeBytes:      23_800_000_000,
+		Licence:        strptr("apache-2.0"),
+		ParameterCount: int64ptr(12_000_000_000),
+		Metadata:       map[string]any{"family": "flux"},
+		CreatedAt:      created,
+		Revision:       revision(created),
+		Locations: []api.ArtifactLocation{
+			{Scheme: "s3", URI: "s3://hangar-weights/flux.1-schnell", Region: strptr("us-east-1"), Preferred: true},
+		},
+		Upstream: api.ArtifactUpstream{
+			Provider: strptr("black-forest-labs"), ProviderModelID: strptr("FLUX.1-schnell"),
+			Licence: strptr("apache-2.0"), InputModalities: []string{"text"},
+		},
+	})
+
 	return st
 }
 

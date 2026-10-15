@@ -624,9 +624,9 @@ how a distilled model gets its step count, because omni defaults every model to
     --class h100-80 --context-length 8192 --scale 2
   hgr workload create assistant-tp8 --project core --artifact llama-3.1-70b-instruct \
     --class h100-80 --devices 8 --tensor-parallel 8 --context-length 32768
-  hgr workload create z-image-turbo --project core --artifact llama-3.1-70b-instruct \
+  hgr workload create flux-schnell --project core --artifact flux.1-schnell \
     --class h100-80 --engine omni --engine-runtime-version 1.4.1 \
-    --output-modality image --sampling-default num_inference_steps=8`,
+    --output-modality image --sampling-default num_inference_steps=4`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {
