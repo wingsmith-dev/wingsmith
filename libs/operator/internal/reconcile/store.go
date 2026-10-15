@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
@@ -191,26 +190,7 @@ func (s *Store) releaseIfReadOnly(ctx context.Context, key types.NamespacedName)
 	if !s.ReleaseFinalizers {
 		return nil
 	}
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var obj v1alpha1.SyncedResource
-		switch err := s.reader().Get(ctx, key, &obj); {
-		case apierrors.IsNotFound(err):
-			return nil
-		case err != nil:
-			return err
-		}
-		if obj.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(&obj, renderedFinalizer) {
-			return nil
-		}
-		patch := client.MergeFromWithOptions(obj.DeepCopy(), client.MergeFromWithOptimisticLock{})
-		controllerutil.RemoveFinalizer(&obj, renderedFinalizer)
-		if err := s.Client.Patch(ctx, &obj, patch); err != nil {
-			return err
-		}
-		s.Log.Warn("read-only: released a deleted declaration without tearing down what it rendered",
-			"name", key.Name)
-		return nil
-	})
+	return releaseFinalizer(ctx, s.Client, s.reader(), key, s.Log)
 }
 
 // Resync implements sync.Handler. The hub could not honour the resume point, so the local copy is

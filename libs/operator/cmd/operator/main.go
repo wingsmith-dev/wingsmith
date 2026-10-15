@@ -73,7 +73,14 @@ func run() error {
 	capabilities := &observe.Capability{}
 
 	var reconciler *reconcile.SyncedResourceReconciler
-	if !cfg.ReadOnly {
+	if cfg.ReadOnly {
+		// Read-only renders and tears down nothing, so the teardown finalizer an earlier
+		// read-write run added has nothing to remove it. This does, or a deleted declaration
+		// stays Terminating.
+		if err := reconcile.SetupReleaser(mgr, log); err != nil {
+			return err
+		}
+	} else {
 		reconciler, err = reconcile.SetupWithManager(mgr, cfg, log)
 		if err != nil {
 			return err

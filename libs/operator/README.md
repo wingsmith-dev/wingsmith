@@ -163,8 +163,10 @@ kubectl -n hangar-system get syncedresources -o name \
   | xargs -r -n1 kubectl -n hangar-system patch --type merge -p '{"metadata":{"finalizers":null}}'
 ```
 
-A read-only operator has no reconciler to tear anything down, so it removes the finalizer itself
-when a declaration is deleted and leaves anything rendered earlier in place.
+A read-only operator has no reconciler to tear anything down. It runs one small controller instead
+that removes the finalizer from any declaration being deleted, whether the hub deleted it or
+someone ran step 1 with kubectl, and leaves anything rendered by an earlier read-write run in
+place. Delete those graph deployments by label as above.
 
 ## Layout
 
