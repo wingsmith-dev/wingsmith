@@ -8,16 +8,22 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   leaks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: gitleaks
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 detect --source /repo --redact --no-banner
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba detect --source /repo --redact --no-banner
 
       # Fork PRs get no secrets; the push to main after merge still runs this.
       - name: denylist
