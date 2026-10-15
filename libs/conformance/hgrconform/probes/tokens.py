@@ -85,9 +85,7 @@ def usage(session: Session) -> dict[str, Any]:
         "status": response.status,
         "usage_present": isinstance(reported, dict),
         "usage_fields": fields,
-        "counts_positive": {
-            name: (isinstance(value, int) and value > 0) for name, value in counts.items()
-        },
+        "counts_positive": {name: (isinstance(value, int) and value > 0) for name, value in counts.items()},
         "counts": counts,
         "cached_tokens": response.at(session.profile.paths.cached_tokens),
     }

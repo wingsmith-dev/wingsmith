@@ -80,7 +80,6 @@ def _error_shape(response: Any) -> dict[str, Any]:
     }
 
 
-
 # The vocabulary a refusal collapses to. This is the key that rescues the video row.
 #
 # A stub payload makes the interesting difference invisible if only the status is
@@ -121,6 +120,7 @@ def _refusal_kind(response: Any) -> str:
     if any(needle in haystack for needle in PAYLOAD):
         return "payload_rejected"
     return "other"
+
 
 @probe(
     id="multimodal.image",

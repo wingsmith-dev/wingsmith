@@ -223,7 +223,7 @@ ARITHMETIC = "What is 17 * 24? Answer with the number only."
 @probe(
     id="thinking.template_kwargs",
     title="Whether the open-source thinking switch is honoured by an endpoint that speaks another dialect",
-    requirement="Whether thinking can be switched off the way open-source servers switch it, as the original provider has it",
+    requirement="Whether the open-source thinking switch turns thinking off, as the original provider has it",
     compare=("status", "reasoning_location", "suppressed", "precedence"),
 )
 def template_kwargs(session: Session) -> dict[str, Any]:
@@ -279,9 +279,7 @@ def template_kwargs(session: Session) -> dict[str, Any]:
                 **{TEMPLATE_KWARGS: {"thinking": False}},
             ),
         )
-        conflict_location = _location(
-            conflict.at(session.profile.paths.reasoning), conflict.at(CONTENT_PATH)
-        )
+        conflict_location = _location(conflict.at(session.profile.paths.reasoning), conflict.at(CONTENT_PATH))
         precedence = "vendor_field" if conflict_location != "absent" else "template_kwargs"
 
     return {

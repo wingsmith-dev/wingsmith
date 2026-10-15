@@ -655,9 +655,7 @@ def restraint(session: Session) -> dict[str, Any]:
     )
     unrelated_calls = _calls(unrelated.body)
     invented = [
-        name
-        for call in chat_calls + unrelated_calls
-        if (name := dig(call, "function.name")) and name not in declared
+        name for call in chat_calls + unrelated_calls if (name := dig(call, "function.name")) and name not in declared
     ]
 
     empty = session.post(
@@ -737,11 +735,7 @@ def allowed_tools(session: Session) -> dict[str, Any]:
     excerpts: dict[str, str] = {}
 
     for case, choice in cases.items():
-        permitted = {
-            entry["function"]["name"]
-            for entry in choice["allowed_tools"]["tools"]
-            if isinstance(entry, dict)
-        }
+        permitted = {entry["function"]["name"] for entry in choice["allowed_tools"]["tools"] if isinstance(entry, dict)}
         response = session.post(
             "/v1/chat/completions",
             session.body(

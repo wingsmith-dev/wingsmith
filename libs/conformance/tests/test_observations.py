@@ -64,9 +64,7 @@ def test_length_parameters_record_a_reasoning_only_response() -> None:
         "usage": {"completion_tokens": 12},
     }
     rejected = {"error": {"message": "unsupported", "type": "invalid_request_error"}}
-    observed = parameters(
-        StubSession([response(200, reasoning_only), response(200, visible), response(400, rejected)])
-    )
+    observed = parameters(StubSession([response(200, reasoning_only), response(200, visible), response(400, rejected)]))
 
     assert observed["visible_content"] == {
         "max_tokens": False,
