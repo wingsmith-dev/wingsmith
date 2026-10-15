@@ -39,7 +39,8 @@ func drainClient(refuse interceptor.Funcs, objects ...client.Object) client.Clie
 func runDrain(t *testing.T, c client.Client, op wire.OperationDesired) *recorder {
 	t.Helper()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), Allowed: allKinds})
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), Allowed: allKinds,
+		DrainTimeout: 300 * time.Millisecond, DrainRetry: 5 * time.Millisecond})
 	e.Bind(rec)
 
 	payload, err := json.Marshal(op)
@@ -286,5 +287,74 @@ func TestDrainFailsWhenPodsCannotBeListed(t *testing.T) {
 	}
 	if gone(t, c, "dynamo", "w0") {
 		t.Error("the pod was evicted despite the list failing")
+	}
+}
+
+// A disruption budget that refuses for a while and then relents is waited out, not reported as a
+// failed drain.
+func TestARefusedEvictionIsRetriedUntilTheBudgetAllowsIt(t *testing.T) {
+	refusals := 0
+	relenting := interceptor.Funcs{
+		SubResourceCreate: func(ctx context.Context, c client.Client, sub string, obj client.Object, subObj client.Object, opts ...client.SubResourceCreateOption) error {
+			if sub == "eviction" && refusals < 2 {
+				refusals++
+				return apierrors.NewTooManyRequests("disruption budget at its floor", 1)
+			}
+			return c.SubResource(sub).Create(ctx, obj, subObj, opts...)
+		},
+	}
+	c := drainClient(relenting, node("gpu-0", false), acceleratorPod("w0", "gpu-0"))
+	rec := runDrain(t, c, operation("drain", "gpu-0", nil))
+
+	if last := rec.last(); last.Phase != "succeeded" {
+		t.Fatalf("phase = %q (%+v), want succeeded after the budget relented", last.Phase, last.Failure)
+	}
+	if refusals != 2 {
+		t.Errorf("saw %d refusals, want the two the budget gave", refusals)
+	}
+	if !gone(t, c, "dynamo", "w0") {
+		t.Error("the pod survived the drain")
+	}
+}
+
+// An accepted eviction is not an empty node: the drain waits for the pod to exit.
+func TestADrainWaitsForEvictedPodsToExit(t *testing.T) {
+	lingering := interceptor.Funcs{
+		SubResourceCreate: func(context.Context, client.Client, string, client.Object, client.Object, ...client.SubResourceCreateOption) error {
+			return nil // accepted, but the pod never terminates
+		},
+	}
+	c := drainClient(lingering, node("gpu-0", false), acceleratorPod("w0", "gpu-0"))
+	rec := runDrain(t, c, operation("drain", "gpu-0", nil))
+
+	last := rec.last()
+	if last.Phase != "failed" || last.Failure == nil || !strings.Contains(last.Failure.Message, "had not exited") {
+		t.Fatalf("frame = %+v, want a failure saying the pod had not exited", last)
+	}
+	if last.Result["exiting_replicas"] != "1" {
+		t.Errorf("result = %v, want one pod still exiting", last.Result)
+	}
+}
+
+// Accelerator pods this operator did not place are left alone unless the drain is forced.
+func TestADrainLeavesUnmanagedAcceleratorPodsUnlessForced(t *testing.T) {
+	c := drainClient(interceptor.Funcs{},
+		node("gpu-0", false),
+		acceleratorPod("ours", "gpu-0"),
+		unmanagedAcceleratorPod("theirs", "gpu-0"),
+	)
+	rec := runDrain(t, c, operation("drain", "gpu-0", nil))
+	if last := rec.last(); last.Phase != "succeeded" || last.Result["unmanaged_accelerator_pods"] != "1" {
+		t.Fatalf("frame = %+v, want success reporting one unmanaged pod left", last)
+	}
+	if gone(t, c, "dynamo", "theirs") {
+		t.Error("the drain evicted a pod this operator did not place")
+	}
+
+	forced := operation("drain", "gpu-0", map[string]string{"force": "true"})
+	forced.OperationID = "opr_01j9x2forcedforcedforcedff"
+	runDrain(t, c, forced)
+	if !gone(t, c, "dynamo", "theirs") {
+		t.Error("a forced drain left an accelerator pod behind")
 	}
 }

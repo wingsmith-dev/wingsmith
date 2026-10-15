@@ -22,6 +22,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,6 +55,17 @@ const (
 // for a ramp far longer than any we run, and still bounded — an unbounded queue would turn a plane
 // that keeps asking into a cluster that keeps agreeing and never measures anything.
 const defaultBenchmarkQueue = 64
+
+// Drain defaults: how long a drain may take in all, and how often it retries a refused eviction
+// or checks that an evicted pod has exited. The retry interval doubles up to maxDrainRetry.
+const (
+	defaultDrainTimeout = 10 * time.Minute
+	defaultDrainRetry   = 2 * time.Second
+	maxDrainRetry       = 30 * time.Second
+)
+
+// maxCompleted bounds how many concluded operations are remembered for answering replays.
+const maxCompleted = 1024
 
 // Reporter is the half of the sync client this package needs.
 type Reporter interface {
@@ -95,10 +107,20 @@ type Executor struct {
 	// defaultBenchmarkQueue.
 	BenchmarkQueue int
 
+	// DrainTimeout bounds a drain that carries no deadline of its own, and DrainRetry is the
+	// first interval between retries of a refused eviction. Zero takes the defaults.
+	DrainTimeout time.Duration
+	DrainRetry   time.Duration
+
 	mu       stdsync.Mutex
 	reporter Reporter
 	running  map[string]struct{}
 	cancels  map[string]context.CancelFunc
+
+	// completed holds the terminal frame of each concluded operation, oldest first in
+	// completedOrder, so a replay is answered with the result rather than run again.
+	completed      map[string]wire.OperationObserved
+	completedOrder []string
 
 	lane      chan queued
 	laneCtx   context.Context
@@ -125,6 +147,7 @@ func New(e *Executor) *Executor {
 	e.Log = e.Log.With("component", "operate")
 	e.running = map[string]struct{}{}
 	e.cancels = map[string]context.CancelFunc{}
+	e.completed = map[string]wire.OperationObserved{}
 	depth := e.BenchmarkQueue
 	if depth <= 0 {
 		depth = defaultBenchmarkQueue
@@ -259,6 +282,11 @@ func (e *Executor) Handle(ctx context.Context, env *syncpkg.Envelope) error {
 	if err := json.Unmarshal(env.Payload, &op); err != nil {
 		return fmt.Errorf("decode %s: %w", env.Type, err)
 	}
+	if frame, done := e.concluded(op.OperationID); done {
+		e.Log.Info("operation already concluded; answering the replay with its result", "operation", op.OperationID)
+		e.send(op, frame)
+		return nil
+	}
 	if !e.claim(op.OperationID) {
 		e.Log.Info("operation already running; ignoring the replay", "operation", op.OperationID)
 		return nil
@@ -360,6 +388,41 @@ func (e *Executor) track(id string, parent context.Context) context.Context {
 	defer e.mu.Unlock()
 	e.cancels[id] = cancel
 	return ctx
+}
+
+// concluded returns the terminal frame of an operation this executor already finished.
+func (e *Executor) concluded(id string) (wire.OperationObserved, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	frame, ok := e.completed[id]
+	return frame, ok
+}
+
+// remember records a conclusion so a replay of the operation is answered rather than re-run.
+//
+// A retryable refusal is not remembered: it says "not now", and the plane asking again under the
+// same id is how it retries. The set is bounded, oldest first out; a replay older than that is
+// rare and the plane deduplicates conclusions on its side too.
+func (e *Executor) remember(id string, frame wire.OperationObserved) {
+	if frame.Phase != "succeeded" && frame.Phase != "failed" {
+		return
+	}
+	if frame.Failure != nil && frame.Failure.Retryable {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.completed == nil {
+		e.completed = map[string]wire.OperationObserved{}
+	}
+	if _, seen := e.completed[id]; !seen {
+		e.completedOrder = append(e.completedOrder, id)
+	}
+	e.completed[id] = frame
+	for len(e.completedOrder) > maxCompleted {
+		delete(e.completed, e.completedOrder[0])
+		e.completedOrder = e.completedOrder[1:]
+	}
 }
 
 // claim reports whether this operation is ours to start.
@@ -491,17 +554,16 @@ func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired) (map[st
 		"unschedulable": strconv.FormatBool(want)}, nil
 }
 
-// drain empties a node of the workloads this plane placed on it.
+// drain empties a node of the accelerator workloads this operator placed on it.
 //
 // Eviction rather than deletion, because eviction is the request the API server can refuse: a pod
-// covered by a disruption budget that is already at its floor stays put, and the drain waits
-// rather than taking the last replica of something down. Deleting would succeed every time and be
-// exactly the outage this operation exists to avoid causing.
+// covered by a disruption budget at its floor stays put. A refused eviction is retried with
+// backoff until the drain's deadline, and the drain then waits for every evicted pod to exit, so
+// success means the node is actually empty of them.
 //
-// Only pods holding accelerators are evicted. A drain here is a request to stop serving on a node,
-// not to empty it entirely — the agents, exporters and CSI drivers that make the node reportable
-// are the last things that should go, and taking them out would blind the plane to the drain it
-// just asked for.
+// Only Hangar-managed pods holding accelerators are evicted. Agents, exporters and CSI drivers stay
+// so the plane can still see the node, and accelerator pods this operator did not place stay unless
+// the operation sets `force=true`; how many were left is in the result.
 func (e *Executor) drain(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
 	node, err := e.node(ctx, op.Target)
 	if err != nil {
@@ -518,38 +580,123 @@ func (e *Executor) drain(ctx context.Context, op wire.OperationDesired) (map[str
 		return nil, fmt.Errorf("list pods on %s: %w", node.Name, err)
 	}
 
+	force := boolParam(op.Parameters, "force", false)
 	targets := make([]*corev1.Pod, 0, len(pods.Items))
+	unmanaged := 0
 	for i := range pods.Items {
-		if holdsAccelerator(&pods.Items[i]) {
-			targets = append(targets, &pods.Items[i])
-		}
-	}
-
-	grace := intParam(op.Parameters, "grace_period_seconds", 0)
-	evicted, remaining := 0, 0
-	for _, pod := range targets {
-		if err := e.evict(ctx, pod, grace); err != nil {
-			remaining++
-			e.Log.Warn("eviction refused", "pod", pod.Name, "node", node.Name, "error", err)
+		pod := &pods.Items[i]
+		if !holdsAccelerator(pod) {
 			continue
 		}
-		evicted++
-		e.report(op, running(op, time.Now().UTC(),
-			float64(evicted)/float64(len(targets)),
-			fmt.Sprintf("evicted %d of %d replicas", evicted, len(targets))))
+		if !force && !managedByHangar(pod) {
+			unmanaged++
+			continue
+		}
+		targets = append(targets, pod)
 	}
 
-	result := map[string]string{
-		"node":                node.Name,
-		"evicted_replicas":    strconv.Itoa(evicted),
-		"remaining_replicas":  strconv.Itoa(remaining),
-		"accelerator_pods":    strconv.Itoa(len(targets)),
-		"grace_period_second": strconv.Itoa(grace),
+	timeout := e.DrainTimeout
+	if timeout <= 0 {
+		timeout = defaultDrainTimeout
 	}
-	if remaining > 0 {
-		return result, fmt.Errorf("%d of %d pods could not be evicted", remaining, len(targets))
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	grace := intParam(op.Parameters, "grace_period_seconds", 0)
+	evicted := make([]*corev1.Pod, 0, len(targets))
+	pending := targets
+	retry := e.drainRetry()
+	for len(pending) > 0 {
+		var refusedPods []*corev1.Pod
+		for _, pod := range pending {
+			err := e.evict(ctx, pod, grace)
+			switch {
+			case err == nil, apierrors.IsNotFound(err):
+				evicted = append(evicted, pod)
+				e.report(op, running(op, time.Now().UTC(),
+					float64(len(evicted))/float64(len(targets)),
+					fmt.Sprintf("evicted %d of %d replicas", len(evicted), len(targets))))
+			case apierrors.IsTooManyRequests(err):
+				refusedPods = append(refusedPods, pod)
+				e.Log.Info("eviction refused by a disruption budget; will retry", "pod", pod.Name, "node", node.Name)
+			default:
+				return drainResult(node, targets, evicted, len(pending), unmanaged, grace, 0),
+					fmt.Errorf("evict %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+		}
+		pending = refusedPods
+		if len(pending) == 0 || !sleep(ctx, retry) {
+			break
+		}
+		retry = min(retry*2, maxDrainRetry)
+	}
+
+	exiting := e.awaitExit(ctx, evicted)
+	result := drainResult(node, targets, evicted, len(pending), unmanaged, grace, exiting)
+	if len(pending) > 0 {
+		return result, fmt.Errorf("%d of %d pods could not be evicted before the drain's deadline", len(pending), len(targets))
+	}
+	if exiting > 0 {
+		return result, fmt.Errorf("%d evicted pods had not exited before the drain's deadline", exiting)
 	}
 	return result, nil
+}
+
+func drainResult(node *corev1.Node, targets, evicted []*corev1.Pod, remaining, unmanaged, grace, exiting int) map[string]string {
+	return map[string]string{
+		"node":                       node.Name,
+		"evicted_replicas":           strconv.Itoa(len(evicted)),
+		"remaining_replicas":         strconv.Itoa(remaining),
+		"exiting_replicas":           strconv.Itoa(exiting),
+		"accelerator_pods":           strconv.Itoa(len(targets)),
+		"unmanaged_accelerator_pods": strconv.Itoa(unmanaged),
+		"grace_period_second":        strconv.Itoa(grace),
+	}
+}
+
+// awaitExit waits until every evicted pod is gone, or replaced by a new pod of the same name, and
+// returns how many were still there when ctx ended.
+func (e *Executor) awaitExit(ctx context.Context, evicted []*corev1.Pod) int {
+	waiting := evicted
+	poll := e.drainRetry()
+	for {
+		var still []*corev1.Pod
+		for _, pod := range waiting {
+			var current corev1.Pod
+			err := e.Client.Get(ctx, client.ObjectKeyFromObject(pod), &current)
+			if apierrors.IsNotFound(err) || (err == nil && current.UID != pod.UID) {
+				continue
+			}
+			still = append(still, pod)
+		}
+		if len(still) == 0 {
+			return 0
+		}
+		waiting = still
+		if !sleep(ctx, poll) {
+			return len(waiting)
+		}
+		poll = min(poll*2, maxDrainRetry)
+	}
+}
+
+func (e *Executor) drainRetry() time.Duration {
+	if e.DrainRetry > 0 {
+		return e.DrainRetry
+	}
+	return defaultDrainRetry
+}
+
+// sleep waits for d, and reports false if ctx ended first.
+func sleep(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (e *Executor) evict(ctx context.Context, pod *corev1.Pod, grace int) error {
@@ -583,18 +730,27 @@ func (e *Executor) node(ctx context.Context, target wire.OperationTarget) (*core
 	return nil, fmt.Errorf("no node in this cluster has id %s", target.ID)
 }
 
-// holdsAccelerator reports whether a pod is one this plane's workloads would be using devices for.
+// holdsAccelerator reports whether a running pod holds accelerators.
 func holdsAccelerator(pod *corev1.Pod) bool {
 	if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 		return false
 	}
 	for _, container := range pod.Spec.Containers {
-		if q, ok := container.Resources.Limits["nvidia.com/gpu"]; ok && !q.IsZero() {
+		if q, ok := container.Resources.Limits[render.GPUResource]; ok && !q.IsZero() {
 			return true
 		}
 	}
 	return false
 }
+
+// managedByHangar reports whether a pod was rendered by this operator. The render puts its
+// ownership labels on every pod template.
+func managedByHangar(pod *corev1.Pod) bool {
+	return pod.Labels[render.ManagedByLabel] == managedByOperator
+}
+
+// managedByOperator is the value render stamps on render.ManagedByLabel.
+const managedByOperator = "hangar-operator"
 
 // cordoning is the drain's first step expressed as the operation it already is.
 func cordoning(op wire.OperationDesired) wire.OperationDesired {
@@ -604,6 +760,11 @@ func cordoning(op wire.OperationDesired) wire.OperationDesired {
 }
 
 func (e *Executor) report(op wire.OperationDesired, payload wire.OperationObserved) {
+	e.remember(op.OperationID, payload)
+	e.send(op, payload)
+}
+
+func (e *Executor) send(op wire.OperationDesired, payload wire.OperationObserved) {
 	e.mu.Lock()
 	reporter := e.reporter
 	e.mu.Unlock()

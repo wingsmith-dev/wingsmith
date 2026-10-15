@@ -69,8 +69,15 @@ func node(name string, cordoned bool) *corev1.Node {
 }
 
 func acceleratorPod(name, nodeName string) *corev1.Pod {
+	pod := unmanagedAcceleratorPod(name, nodeName)
+	pod.Labels = map[string]string{render.ManagedByLabel: "hangar-operator"}
+	return pod
+}
+
+// unmanagedAcceleratorPod holds GPUs but was not placed by this operator.
+func unmanagedAcceleratorPod(name, nodeName string) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "dynamo"},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "dynamo", UID: types.UID("uid-" + name)},
 		Spec: corev1.PodSpec{
 			NodeName: nodeName,
 			Containers: []corev1.Container{{
@@ -641,8 +648,8 @@ func TestStepsStillWaitingWhenTheLaneStopsAreReported(t *testing.T) {
 func TestAReplayOfAQueuedBenchmarkIsDropped(t *testing.T) {
 	hold := make(chan struct{})
 	probe := &laneProbe{hold: hold}
-	objects := append(stepObjects(0), stepObjects(1)...)
-	e, _ := laneExecutor(t, probe, 0, objects...)
+	objects := append(append(stepObjects(0), stepObjects(1)...), stepObjects(2)...)
+	e, rec := laneExecutor(t, probe, 0, objects...)
 
 	submit(t, e, stepOperation(0))
 	waitFor(t, "the first step to reach the harness", func() bool {
@@ -653,12 +660,15 @@ func TestAReplayOfAQueuedBenchmarkIsDropped(t *testing.T) {
 	submit(t, e, stepOperation(1))
 	close(hold)
 
-	waitFor(t, "the queued step to run", func() bool {
-		order, _, _ := probe.seen()
-		return len(order) >= 2
+	// The lane is first in, first out, so once a step submitted after the replay has run, a
+	// queued replay would have run before it.
+	sentinel := stepOperation(2)
+	submit(t, e, sentinel)
+	waitFor(t, "the step after the replay to conclude", func() bool {
+		_, ok := concluded(rec, sentinel.OperationID)
+		return ok
 	})
-	time.Sleep(50 * time.Millisecond)
-	if order, _, _ := probe.seen(); len(order) != 2 {
+	if order, _, _ := probe.seen(); len(order) != 3 {
 		t.Errorf("the harness ran %v; a replay was queued as a second run", order)
 	}
 }
@@ -835,4 +845,58 @@ func TestACancellationIsNeverPassedToTheDesiredStateHandler(t *testing.T) {
 
 	// refusingHandler fails the test if the frame reaches it.
 	withdraw(t, e, "opr_nothing_here_holds_this")
+}
+
+// A concluded operation that arrives again is answered with its result, not performed twice.
+func TestAReplayOfAConcludedOperationIsAnsweredNotRerun(t *testing.T) {
+	op := operation("cordon", "gpu-0", nil)
+	rec, e := runOperation(t, op, node("gpu-0", false))
+	if rec.last().Phase != "succeeded" {
+		t.Fatalf("phase = %q, want succeeded", rec.last().Phase)
+	}
+
+	// Somebody uncordons the node by hand; a replay must not undo that.
+	var n corev1.Node
+	if err := e.Client.Get(context.Background(), types.NamespacedName{Name: "gpu-0"}, &n); err != nil {
+		t.Fatal(err)
+	}
+	n.Spec.Unschedulable = false
+	if err := e.Client.Update(context.Background(), &n); err != nil {
+		t.Fatal(err)
+	}
+	before := len(rec.phases())
+
+	payload, _ := json.Marshal(op)
+	if err := e.Handle(context.Background(), &syncpkg.Envelope{Type: TypeOperationDesired, Payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	phases := rec.phases()
+	if len(phases) != before+1 || phases[len(phases)-1] != "succeeded" {
+		t.Fatalf("phases after replay = %v, want exactly the recorded conclusion again", phases[before:])
+	}
+	if err := e.Client.Get(context.Background(), types.NamespacedName{Name: "gpu-0"}, &n); err != nil {
+		t.Fatal(err)
+	}
+	if n.Spec.Unschedulable {
+		t.Error("the replay cordoned the node again")
+	}
+}
+
+// The remembered set is bounded, and a retryable refusal is not remembered.
+func TestTheCompletedSetIsBoundedAndSkipsRetryableRefusals(t *testing.T) {
+	e := New(&Executor{Client: fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(), Log: discardLogger()})
+	t.Cleanup(e.Close)
+	for i := 0; i < maxCompleted+10; i++ {
+		e.remember(fmt.Sprintf("opr_%d", i), wire.OperationObserved{Phase: "succeeded"})
+	}
+	if _, ok := e.concluded("opr_0"); ok {
+		t.Error("the oldest conclusion was kept past the bound")
+	}
+	if _, ok := e.concluded(fmt.Sprintf("opr_%d", maxCompleted+9)); !ok {
+		t.Error("the newest conclusion was not kept")
+	}
+	e.remember("opr_full", wire.OperationObserved{Phase: "failed", Failure: &wire.OperationFailure{Code: "queue_full", Retryable: true}})
+	if _, ok := e.concluded("opr_full"); ok {
+		t.Error("a retryable refusal was remembered, so the retry would be answered with the refusal")
+	}
 }
