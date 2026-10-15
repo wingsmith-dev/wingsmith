@@ -44,7 +44,8 @@ system beyond these.
   no per-user accounts, SSO or audit trail by person. Admin auth can be turned off with
   `ADMIN_AUTH=disabled`, which makes every HTTP request an admin. Only do that for an API that is
   reachable solely through `kubectl port-forward`.
-- **tenant**: a tenant's own credential, limited to that tenant's own resources.
+- **tenant**: a tenant's own console credential, giving a read-only view of what that tenant is
+  served and nothing else.
 - **operator**: a cluster's operator, authenticated by that cluster's enrolment token. Each token is
   minted per cluster (`POST /v1/clusters/{ref}/enrolment-token`) and binds the session to that one
   cluster: an operator can only write observed state for the cluster its token names. Operator
