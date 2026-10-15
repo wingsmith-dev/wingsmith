@@ -45,6 +45,13 @@ const (
 	checkpointTimeout = 30 * time.Second
 )
 
+// resyncTimeout bounds the handler's Resync after the hub grants a fresh session.
+//
+// Its own deadline, not the handshake's. A resync reads the cluster and streams every object up,
+// and on a cluster of thousands of objects that takes longer than the ten seconds §1 allows for
+// hello and welcome.
+const resyncTimeout = 2 * time.Minute
+
 // loopDrainTimeout is how long a finished session waits for its own goroutines before redialling
 // without them.
 const loopDrainTimeout = 5 * time.Second
@@ -355,7 +362,8 @@ func (c *Client) session(ctx context.Context) error {
 	sessCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if err := c.handshake(sessCtx, conn); err != nil {
+	fresh, err := c.handshake(sessCtx, conn)
+	if err != nil {
 		return err
 	}
 
@@ -380,7 +388,7 @@ func (c *Client) session(ctx context.Context) error {
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- c.runProtected("apply", func() error { return c.applyLoop(sessCtx, apply) })
+		errCh <- c.runProtected("apply", func() error { return c.applyLoop(sessCtx, apply, fresh) })
 	}()
 	go func() {
 		defer wg.Done()
@@ -427,8 +435,9 @@ func (c *Client) awaitLoops(wg *stdsync.WaitGroup) {
 }
 
 // handshake sends hello from the durable cursor, waits for welcome, and replays anything the hub
-// has not acknowledged.
-func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
+// has not acknowledged. It reports whether the hub started a fresh session, which the apply loop
+// answers with a resync once the writer is running.
+func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
@@ -449,28 +458,28 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 
 	frame, err := newEnvelope(TypeHello, hello)
 	if err != nil {
-		return err
+		return false, err
 	}
 	frame.Ack = seqPtr(cursor.Seq)
 	if err := c.write(ctx, conn, frame); err != nil {
-		return fmt.Errorf("send hello: %w", err)
+		return false, fmt.Errorf("send hello: %w", err)
 	}
 
 	in, err := readEnvelope(ctx, conn)
 	if err != nil {
-		return fmt.Errorf("await welcome: %w", err)
+		return false, fmt.Errorf("await welcome: %w", err)
 	}
 	switch in.Type {
 	case TypeWelcome:
 	case TypeError:
-		return hubError(in)
+		return false, hubError(in)
 	default:
-		return fmt.Errorf("expected %s, got %s", TypeWelcome, in.Type)
+		return false, fmt.Errorf("expected %s, got %s", TypeWelcome, in.Type)
 	}
 
 	var welcome wire.Welcome
 	if err := json.Unmarshal(in.Payload, &welcome); err != nil {
-		return fmt.Errorf("decode welcome: %w", err)
+		return false, fmt.Errorf("decode welcome: %w", err)
 	}
 
 	fresh := welcome.FullResync || welcome.SessionID != cursor.SessionID
@@ -479,7 +488,7 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 		next.Seq = 0
 	}
 	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
-		return fmt.Errorf("save resume cursor: %w", err)
+		return false, fmt.Errorf("save resume cursor: %w", err)
 	}
 
 	c.mu.Lock()
@@ -494,9 +503,6 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 		c.replay.Reset()
 		c.log.Info("hub started a new session", "session_id", welcome.SessionID,
 			"full_resync", welcome.FullResync)
-		if err := c.safeResync(ctx); err != nil {
-			return fmt.Errorf("resync: %w", err)
-		}
 	}
 
 	c.replay.Ack(welcome.AckSeq)
@@ -506,12 +512,12 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 	}
 	for _, p := range pending {
 		if err := c.write(ctx, conn, p); err != nil {
-			return fmt.Errorf("replay frame %d: %w", *p.Seq, err)
+			return false, fmt.Errorf("replay frame %d: %w", *p.Seq, err)
 		}
 	}
 	c.log.Info("hub session established", "session_id", welcome.SessionID,
 		"full_resync", welcome.FullResync, "replayed", len(pending), "resume_from", next.Seq+1)
-	return nil
+	return fresh, nil
 }
 
 // inbound is one accepted frame on its way from the reader to the applier.
@@ -593,7 +599,21 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<
 // channel in front of it is bounded, so sustained slowness still reaches the reader in the end —
 // and when it does, the heartbeat's liveness timeout ends the session and the next resume replays
 // from the last checkpoint, which is the recoverable direction.
-func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound) error {
+//
+// On a fresh session the handler's Resync runs here first, before any frame is applied, so the
+// snapshot the hub streams lands in the epoch Resync opens. It runs after the handshake rather
+// than inside it, under a deadline of its own, and with the writer already draining the queue:
+// inside the handshake it had ten seconds for the whole inventory, and every frame it produced
+// sat in the queue until it finished.
+func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound, fresh bool) error {
+	if fresh {
+		resyncCtx, cancel := context.WithTimeout(ctx, resyncTimeout)
+		err := c.safeResync(resyncCtx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("resync: %w", err)
+		}
+	}
 	for {
 		var in inbound
 		select {

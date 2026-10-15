@@ -460,11 +460,12 @@ func TestPanickingHandlerIsSurvivedAndTheFrameAdvances(t *testing.T) {
 
 	// Ack is only visible on the hub via a carrier frame (mirroring
 	// TestAckAdvancesOnlyOnContiguousDurableApply): a bare TypeAck is unsequenced and the fake
-	// hub only records sequenced upward frames.
-	if err := c.Send("node.observed", "nod_1", wire.NodeObserved{NodeID: "nod_1"}); err != nil {
-		t.Fatal(err)
-	}
+	// hub only records sequenced upward frames. One is sent per poll, because the handler records
+	// frame 3 before the cursor moves past it and a single carrier can leave first.
 	eventually(t, 2*time.Second, "the panicked frame is acknowledged like any other", func() bool {
+		if err := c.Send("node.observed", "nod_1", wire.NodeObserved{NodeID: "nod_1"}); err != nil {
+			t.Fatal(err)
+		}
 		return h.highestAck() >= 3
 	})
 }
@@ -843,5 +844,74 @@ func TestNewEnvelopeIsContractShaped(t *testing.T) {
 	}
 	if string(e.Payload) != "{}" {
 		t.Errorf("payload must be an object, got %s", e.Payload)
+	}
+}
+
+// bulkResync streams a snapshot of n correlated frames through the client it is attached to,
+// the way the observer does on a fresh session.
+type bulkResync struct {
+	recorder
+	n        int
+	client   *Client
+	mu       stdsync.Mutex
+	deadline time.Duration
+}
+
+func (b *bulkResync) Resync(ctx context.Context) error {
+	if d, ok := ctx.Deadline(); ok {
+		b.mu.Lock()
+		b.deadline = time.Until(d)
+		b.mu.Unlock()
+	}
+	requestID, err := b.client.SendCorrelated(TypeResyncBegin, "", wire.ResyncBegin{Scope: "supply"}, "")
+	if err != nil {
+		return err
+	}
+	for i := 0; i < b.n; i++ {
+		subject := "nod_" + strings.Repeat("x", i%7) + string(rune('a'+i%26))
+		if _, err := b.client.SendCorrelated("node.observed", subject, wire.NodeObserved{NodeID: subject}, requestID); err != nil {
+			return err
+		}
+	}
+	_, err = b.client.SendCorrelated(TypeStreamEnd, "", wire.StreamEnd{Count: b.n, Complete: true}, requestID)
+	return err
+}
+
+func (b *bulkResync) budget() time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.deadline
+}
+
+// TestALargeResyncArrivesWholeAndOutsideTheHandshakeDeadline streams a 5000-object snapshot
+// through a queue whose soft bound is 16, which used to evict most of it, and checks the hub
+// receives the opener, every frame and the terminator, in order.
+func TestALargeResyncArrivesWholeAndOutsideTheHandshakeDeadline(t *testing.T) {
+	const n = 5000
+	h := newFakeHub(t)
+	handler := &bulkResync{n: n}
+	opts := testOptions(h)
+	opts.Handler = handler
+	opts.LivenessTimeout = 5 * time.Second
+	startTuned(t, opts, func(c *Client) { handler.client = c })
+
+	eventually(t, 10*time.Second, "the whole snapshot", func() bool { return len(h.upwardSeqs()) >= n+2 })
+
+	h.mu.Lock()
+	upward := append([]*Envelope(nil), h.upward...)
+	h.mu.Unlock()
+	if upward[0].Type != TypeResyncBegin {
+		t.Fatalf("the stream must open with %s, got %s", TypeResyncBegin, upward[0].Type)
+	}
+	if last := upward[n+1]; last.Type != TypeStreamEnd {
+		t.Fatalf("the stream must close with %s, got %s", TypeStreamEnd, last.Type)
+	}
+	for i, e := range upward[1 : n+1] {
+		if e.Type != "node.observed" || e.ReplyTo == nil || *e.ReplyTo != upward[0].ID {
+			t.Fatalf("frame %d is not part of the stream: %s reply_to=%v", i+1, e.Type, e.ReplyTo)
+		}
+	}
+	if got := handler.budget(); got <= handshakeTimeout {
+		t.Fatalf("resync must not run under the handshake deadline, it had %s", got)
 	}
 }
