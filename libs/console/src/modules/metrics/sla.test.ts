@@ -13,7 +13,7 @@ import type { SlaReport } from "./types"
 function report(over: Partial<SlaReport> = {}): SlaReport {
   return {
     endpoint: "end_1",
-    endpoint_name: "kimi-k3",
+    endpoint_name: "kimi-k2",
     period_start: "2026-09-01T00:00:00Z",
     period_end: "2026-10-01T00:00:00Z",
     partial: false,

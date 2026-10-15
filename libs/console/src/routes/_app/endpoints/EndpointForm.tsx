@@ -188,7 +188,7 @@ export function EndpointForm({
         label="Aliases"
         value={aliases}
         onChange={setAliases}
-        placeholder="moonshotai/kimi-k3"
+        placeholder="moonshotai/Kimi-K2-Instruct"
         hint="One per line. Other ids clients may send as `model`; they resolve to the slug and are never listed by /v1/models."
       />
 

@@ -1219,9 +1219,9 @@ export const deployments: Deployment[] = [
      * precisely.
      */
     id: uid("dep_"),
-    name: "kimi-k3-disagg",
+    name: "kimi-k2-disagg",
     workload_id: workloadIds.kimi,
-    workload_name: "kimi-k3-disagg",
+    workload_name: "kimi-k2-disagg",
     cluster_id: clusters[0].id,
     min_replicas: 2,
     max_replicas: 2,
@@ -1453,7 +1453,7 @@ export const workloads: Workload[] = [
    * and a group is three workers and twenty-four devices.
    */
   workload(workloadIds.kimi, {
-    name: "kimi-k3-disagg",
+    name: "kimi-k2-disagg",
     kind: "service",
     phase: "placed",
     project_id: projects[0].id,
@@ -1463,7 +1463,7 @@ export const workloads: Workload[] = [
     gang_size: 1,
     serving_digest: digest("d"),
     serving: serving.kimi,
-    served_model_name: "moonshotai/kimi-k3",
+    served_model_name: "moonshotai/Kimi-K2-Instruct",
     adapter_artifact_ids: [],
     overrides: {},
     labels: { tier: "prod" },

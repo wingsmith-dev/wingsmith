@@ -216,12 +216,12 @@ describe("offline fitment", () => {
   })
 
   it("answers a frontier model in nodes rather than refusing it", () => {
-    const kimi = {
+    const frontier = {
       ...llama,
       parameter_count: 2_800_000_000_000,
       metadata: { quantization: "fp8" },
     }
-    const result = fitment(kimi, deviceClasses(), {
+    const result = fitment(frontier, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -235,12 +235,12 @@ describe("offline fitment", () => {
   })
 
   it("treats an NVL72 rack as one node rather than nine chassis", () => {
-    const kimi = {
+    const frontier = {
       ...llama,
       parameter_count: 2_800_000_000_000,
       metadata: { quantization: "fp8" },
     }
-    const rack = fitment(kimi, deviceClasses(), {
+    const rack = fitment(frontier, deviceClasses(), {
       scope: "catalog",
       devices_per_node: 72,
       limit: 0,
