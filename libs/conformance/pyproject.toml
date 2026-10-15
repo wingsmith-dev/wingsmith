@@ -44,8 +44,6 @@ lines-between-types = 1
 known-first-party = ["hgrconform"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
-# The stub is deliberately dense: the point of it is that a conforming response and
-# its three planted defects sit close enough together to be read against each other.
-# Spread to our line length it becomes three screens and stops serving that purpose.
+# The stub builds its ids with %-formatting on purpose; it is a test fixture, not house style.
 [tool.ruff.lint.per-file-ignores]
-"tests/stub.py" = ["E501", "E401", "UP031", "I001"]
+"tests/stub.py" = ["UP031"]

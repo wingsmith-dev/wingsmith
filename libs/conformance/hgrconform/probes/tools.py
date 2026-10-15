@@ -7,10 +7,11 @@ Parallel calls and hallucination are behavioural, and behaviour varies between t
 honest runs of the same model.
 
 That difference decides what may be compared. `tool_choice: required` producing no
-call at all is a protocol defect and is comparable. *Which* of two equally valid
-tools the model picked for an ambiguous prompt is not, and appears only as evidence.
-The prompts here are therefore written to be as unambiguous as a prompt can be, so
-that what remains in `compare` is close to deterministic.
+call at all is a protocol defect and is comparable. Everything the model decides for
+itself is not: whether it calls a tool under `auto`, how many it calls, whether it
+calls one on small talk or invents one, and whether it used a result it was given.
+Each of those is a single sample of the model's judgement, two honest runs disagree
+on it, and it appears only as evidence.
 
 What is never compared is the argument text. Two endpoints serving one model will
 phrase `{"city": "Lisbon"}` and `{"city":"Lisbon"}` differently and mean the same
@@ -206,6 +207,11 @@ def _arguments(call: dict[str, Any]) -> tuple[bool, bool, str]:
     return True, True, ""
 
 
+def _contractual(per_mode: dict[str, Any]) -> dict[str, Any]:
+    """A per-mode map without `auto`, where the request leaves the outcome to the model."""
+    return {mode: value for mode, value in per_mode.items() if mode != "auto"}
+
+
 @probe(
     id="tools.protocol",
     title="The four tool_choice modes, and the structure of a returned call",
@@ -217,8 +223,8 @@ def protocol(session: Session) -> dict[str, Any]:
 
     `called` is a boolean per mode rather than a count, because the contract is about
     whether a call happened at all: `none` must not call, `required` and a named
-    choice must, and `auto` is the model's decision and is recorded but weakly
-    comparable.
+    choice must. `auto` leaves the call to the model, so what it did is recorded under
+    `auto_*` as evidence and kept out of the compared maps.
     """
     modes: dict[str, Any] = {
         "auto": "auto",
@@ -263,10 +269,13 @@ def protocol(session: Session) -> dict[str, Any]:
 
     return {
         "statuses": statuses,
-        "called": called,
-        "finish_reasons": finish,
+        "called": _contractual(called),
+        "finish_reasons": _contractual(finish),
         "call_fields": fields,
-        "arguments_valid": valid,
+        "arguments_valid": _contractual(valid),
+        "auto_called": called["auto"],
+        "auto_finish_reason": finish["auto"],
+        "auto_arguments_valid": valid["auto"],
         "tool_names": names,
         "problems": problems,
     }
@@ -346,7 +355,6 @@ def streaming(session: Session) -> dict[str, Any]:
         "status",
         "accepted",
         "has_content",
-        "used_result",
         "finish_reason",
         "minted_id_shape",
         "pairable_id",
@@ -356,7 +364,8 @@ def round_trip(session: Session) -> dict[str, Any]:
     """Feeds a fabricated result back and checks the model actually read it.
 
     The sentinel is a temperature no model would invent, so `used_result` is a real
-    observation rather than a coincidence. Whether the *first* turn produced a call
+    observation rather than a coincidence. It is still the model's answer, one sample
+    of it, so it is evidence and not compared; acceptance of the result is. Whether the *first* turn produced a call
     is not this probe's question — if it did not, the probe records that and stops,
     because a round trip with nothing to return is not a failure of the round trip.
 
@@ -575,15 +584,15 @@ def messages_id_uniqueness(session: Session) -> dict[str, Any]:
     id="tools.parallel",
     title="A prompt needing two independent tools, and how many calls come back",
     requirement="I. Tool Calling — sequential and parallel calls",
-    compare=("status", "call_shape", "distinct_tools"),
+    compare=("status",),
 )
 def parallel(session: Session) -> dict[str, Any]:
-    """Counts collapsed to a shape, because a count is not stable between honest runs.
+    """Whether the request is accepted, with what the model did with it as evidence.
 
     A model may answer this prompt with two calls in one turn, or with one call and
-    a plan to make the second next turn. Both are correct. What is comparable is the
-    coarse shape — none, one, or several — and whether the endpoint is structurally
-    capable of returning more than one call at a time.
+    a plan to make the second next turn. Both are correct, and which one a single
+    request gets is the model's choice, so the shape — none, one, or several — is
+    recorded but not compared. Only the status is.
     """
     response = session.post(
         "/v1/chat/completions",
@@ -611,14 +620,16 @@ def parallel(session: Session) -> dict[str, Any]:
     id="tools.restraint",
     title="Whether tools are called when no tool applies, and whether undeclared ones are invented",
     requirement="I. Tool Calling — robustness: no tool on casual conversation, no undefined functions",
-    compare=("status", "called_on_small_talk", "invented_function", "empty_tools_status"),
+    compare=("status", "empty_tools_status"),
 )
 def restraint(session: Session) -> dict[str, Any]:
-    """The two hallucination failures the standard names, plus the empty-tools edge case.
+    """The two hallucination failures, plus the empty-tools edge case.
 
-    `invented_function` is the one worth the trouble: an endpoint that returns a call
-    to a name that was never declared is broken in a way that passes every other
-    check here, because the call is well-formed JSON with a plausible name.
+    `invented_function` is the one worth reading: a call to a name that was never
+    declared passes every other check here, because it is well-formed JSON with a
+    plausible name. Both hallucination readings are one sample of the model's
+    judgement, so they are evidence for a person and not compared; what is compared is
+    how the endpoint answers the requests, including one that declares no tools.
     """
     declared = {WEATHER["function"]["name"], CLOCK["function"]["name"]}
 
@@ -754,7 +765,8 @@ def allowed_tools(session: Session) -> dict[str, Any]:
 
     return {
         "statuses": statuses,
-        "called": called,
+        "called": _contractual(called),
+        "auto_called": called["auto"],
         "restricted": restricted,
         "error_shape": shapes,
         "error_type": types,

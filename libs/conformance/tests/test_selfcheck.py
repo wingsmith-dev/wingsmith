@@ -2,18 +2,17 @@
 
 `test_noisy_twins_agree` is the one that matters. It runs the whole probe set against
 two endpoints that are conforming, identical in behaviour, and different in every way
-that does not matter — token counts, response ids, chunk counts, trailing whitespace.
-A probe that puts any of those in its `compare` tuple shows up here as a difference,
-and that is a defect: against real endpoints the same probe would report a difference
-on every run and the report would be noise.
+that does not matter — token counts, response ids, chunk counts, trailing whitespace,
+and the model's own single-sample decisions. A probe that puts any of those in its
+`compare` tuple shows up here as a difference, and that is a defect: against real
+endpoints the same probe would report a difference on every run and the report would
+be noise.
 
-The single expected difference is `tokens.prompt_accounting`, which compares reported
-prompt token counts on purpose. Two endpoints serving one model must tokenize
-identically, so there the count *is* the answer — and the noisy stub, which randomises
-it, is exactly the defect that probe exists to catch.
+The stub claims every modality, the Messages surface and a thinking switch, and the
+heavy probes run too, so no probe is left out of either check by a skip.
 
-`test_planted_defects_are_found` is the other direction: three specific defects, all
-three caught, and nothing else reported.
+`test_planted_defects_are_found` is the other direction: the leaky stub's defects are
+all caught, and nothing else is reported.
 """
 
 from __future__ import annotations
@@ -35,10 +34,13 @@ from hgrconform.store import Store
 from hgrconform.probes import registry
 from hgrconform.runner import run_probes
 from hgrconform.profile import Profile
+from hgrconform.profile import Thinking
+from hgrconform.probes.eos import MIN_SAMPLES
+from hgrconform.probes.eos import SAMPLES_ENV
 
 
 STUB = Path(__file__).parent / "stub.py"
-TOKENIZER_PROBE = "tokens.prompt_accounting"
+NEEDLES = ("hangar", "vllm")
 
 
 def _free_port() -> int:
@@ -77,12 +79,12 @@ def stub():
         process.wait(timeout=5)
 
 
-def _profile(name: str, url: str, needles: tuple[str, ...] = ()) -> Profile:
+def _profile(name: str, url: str) -> Profile:
     """The stub, described the way a committed profile describes a real endpoint.
 
-    It claims the Messages surface because the stub answers it, and a probe that
-    `requires` a protocol the profile does not claim is skipped rather than run —
-    which would leave the probes that ask about that surface untested here.
+    It claims everything the stub serves, because a probe that `requires` a capability
+    the profile does not claim is skipped rather than run, which would leave it out of
+    the self-check entirely.
     """
     return Profile(
         name=name,
@@ -90,18 +92,28 @@ def _profile(name: str, url: str, needles: tuple[str, ...] = ()) -> Profile:
         model="gpt-oss-120b",
         token_env="HGRCONFORM_TEST_TOKEN",
         context_window=4096,
+        modalities=("text", "image", "audio", "video"),
         protocols=("chat_completions", "messages"),
-        leak_needles=needles,
+        leak_needles=NEEDLES,
+        thinking=Thinking(syntax="chat_template", default_on=False, efforts=("low", "high")),
     )
 
 
-def _differences(tmp_path: Path, target: Profile, reference: Profile) -> list:
+def _all_probes() -> list[registry.Probe]:
     registry.load()
-    probes = registry.select()
+    return registry.select(skip_heavy=False)
+
+
+def _run(tmp_path: Path, target: Profile, reference: Profile) -> Store:
+    probes = _all_probes()
     store = Store(tmp_path, Run(run_id="test", started_at="", probe_ids=[p.id for p in probes]))
     run_probes(probes, target, "target", store, verbose=False)
     run_probes(probes, reference, "reference", store, verbose=False)
+    return store
 
+
+def _differences(store: Store) -> list:
+    probes = [registry.get(probe_id) for probe_id in store.run.probe_ids]
     found = []
     for probe in probes:
         here = store.run.endpoints["target"].facts[probe.id]
@@ -112,40 +124,49 @@ def _differences(tmp_path: Path, target: Profile, reference: Profile) -> list:
     return found
 
 
-def test_no_probe_raises(tmp_path, stub, monkeypatch):
-    """Every probe runs to completion against an endpoint that supports almost nothing."""
+@pytest.fixture(autouse=True)
+def _environment(monkeypatch):
     monkeypatch.setenv("HGRCONFORM_TEST_TOKEN", "stub")
-    registry.load()
-    probes = registry.select()
+    monkeypatch.setenv(SAMPLES_ENV, str(MIN_SAMPLES))
+
+
+def test_every_probe_runs_and_none_raises(tmp_path, stub):
+    """Every probe runs to completion, and none is skipped, against an endpoint that claims everything."""
+    probes = _all_probes()
     store = Store(tmp_path, Run(run_id="t", started_at="", probe_ids=[p.id for p in probes]))
     run_probes(probes, _profile("plain", stub("none")), "target", store, verbose=False)
 
-    errored = [fact.probe for fact in store.run.endpoints["target"].facts.values() if fact.status == "error"]
+    facts = store.run.endpoints["target"].facts.values()
+    errored = {fact.probe: fact.error.splitlines()[0] for fact in facts if fact.status == "error"}
+    skipped = {fact.probe: fact.notes for fact in facts if fact.status == "skipped"}
     assert not errored, f"probes raised: {errored}"
+    assert not skipped, f"probes skipped: {skipped}"
 
 
-def test_noisy_twins_agree(tmp_path, stub, monkeypatch):
+def test_noisy_twins_agree(tmp_path, stub):
     """Two honest endpoints differ only where a probe compares something it should not."""
-    monkeypatch.setenv("HGRCONFORM_TEST_TOKEN", "stub")
-    target = _profile("noisy-a", stub("noisy", seed=7))
-    reference = _profile("noisy-b", stub("noisy", seed=999))
+    store = _run(tmp_path, _profile("noisy-a", stub("noisy", seed=7)), _profile("noisy-b", stub("noisy", seed=1000)))
 
-    unexpected = [d for d in _differences(tmp_path, target, reference) if d.probe != TOKENIZER_PROBE]
+    unexpected = _differences(store)
     assert not unexpected, "compare keys holding run-varying data: " + ", ".join(
         f"{d.label} ({d.target!r} vs {d.reference!r})" for d in unexpected
     )
 
 
-def test_planted_defects_are_found(tmp_path, stub, monkeypatch):
-    """The three defects the leaky stub carries are all reported, and nothing else is."""
-    monkeypatch.setenv("HGRCONFORM_TEST_TOKEN", "stub")
-    target = _profile("leaky", stub("leaky"), needles=("hangar", "vllm"))
-    reference = _profile("clean", stub("none"))
+def test_planted_defects_are_found(tmp_path, stub):
+    """The defects the leaky stub carries are all reported, and nothing else is."""
+    store = _run(tmp_path, _profile("leaky", stub("leaky")), _profile("clean", stub("none")))
 
-    labels = {d.label for d in _differences(tmp_path, target, reference)}
-    assert "streaming.usage_location.usage_position" in labels
-    assert "structured.json_schema.schema_valid" in labels
+    labels = {d.label for d in _differences(store)}
     assert labels == {
         "streaming.usage_location.usage_position",
+        "video.streaming.usage_position",
         "structured.json_schema.schema_valid",
     }, f"unexpected differences: {labels}"
+
+    # Not diffed, because the reference cannot answer it, so checked on each side.
+    leaky = store.run.endpoints["target"].facts["errors.leakage"]
+    clean = store.run.endpoints["reference"].facts["errors.leakage"]
+    assert leaky.observed["leaked"] is True
+    assert set(leaky.observed["needles_found"]) == set(NEEDLES)
+    assert clean.observed["leaked"] is False

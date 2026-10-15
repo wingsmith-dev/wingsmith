@@ -17,8 +17,11 @@ clips that cost a different number of tokens differ for one reason.
 Prompt token counts are compared directly here, as in `tokens.prompt_accounting` and
 for the same reason: the bytes are fixed, and two endpoints serving one model must turn
 one clip into the same number of tokens. A difference is the defect, and needs no
-threshold to interpret. Everything generated stays out of `compare` except the two
-collapsed readings of the answer — was the colour named, which way was the motion.
+threshold to interpret. Everything generated stays out of `compare`, including the
+collapsed readings of an answer — was the colour named, which way was the motion,
+which item was read first. Each is one sample of the model's judgement, and two honest
+runs of one model disagree on a single sample often enough that comparing it reports
+noise. They stay in the observation as evidence that the frames arrived.
 """
 
 from __future__ import annotations
@@ -202,23 +205,15 @@ def _padded(data: bytes, mib: int) -> bytes:
     id="video.understanding",
     title="A real clip is accepted, and the answer names its colour and direction of motion",
     requirement="V. Multimodal Capability Support 3 — video input, and correct video understanding",
-    compare=(
-        "status",
-        "has_content",
-        "colour_recognised",
-        "direction",
-        "finish_reason",
-        "refusal_kind",
-        "error_shape",
-        "error_type",
-    ),
+    compare=("status", "has_content", "finish_reason", "refusal_kind", "error_shape", "error_type"),
     requires=("video",),
 )
 def understanding(session: Session) -> dict[str, Any]:
     """Acceptance and understanding of one clip, kept apart the way `multimodal.image` keeps them.
 
-    Colour proves a frame reached the model. Direction proves more than one did, and in
-    order: a single frame, or frames shuffled by a sampler, cannot answer it.
+    Colour suggests a frame reached the model. Direction suggests more than one did, and
+    in order: a single frame, or frames shuffled by a sampler, cannot answer it. Both are
+    evidence, not compared: see the module docstring.
     """
     data = BASE.read()
     response = session.post(
@@ -246,7 +241,7 @@ def understanding(session: Session) -> dict[str, Any]:
     id="video.order",
     title="An image and a video in one prompt, in both orders, and whether each is read where it was sent",
     requirement="V. Multimodal Capability Support 1, 3 — image and video input in one request",
-    compare=("statuses", "read_order", "refusal_kinds", "prompt_tokens"),
+    compare=("statuses", "refusal_kinds", "prompt_tokens"),
     requires=("image", "video"),
 )
 def order(session: Session) -> dict[str, Any]:
@@ -254,9 +249,9 @@ def order(session: Session) -> dict[str, Any]:
 
     The image is solid blue and the square in the video is red, so the order of the
     two colour words in the answer is the order in which the model received the items.
-    Prompt tokens are compared per order as well as the reading: an endpoint that
-    lays the items out in a different place in the prompt than the provider does can
-    still name both colours correctly, and only the count shows it.
+    That reading is evidence. What is compared is the prompt token count per order: an
+    endpoint that lays the items out in a different place in the prompt than the
+    provider does shows it in the count, on every run, whatever the model then says.
     """
     video = _video(BASE.read())
     layouts = {

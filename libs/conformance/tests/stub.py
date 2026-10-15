@@ -8,185 +8,356 @@ Three modes:
 
     QUIRK=none    conforming, and deterministic
     QUIRK=leaky   three planted defects — it names its own infrastructure in an error
-                  body, puts `usage` in every stream chunk instead of the last, and
-                  emits a field its declared JSON schema forbids
-    QUIRK=noisy   conforming, but varies token counts, ids, response ids, tool call
-                  ids and chunk counts on every call, the way a real endpoint does
+                  body and a header, puts `usage` in every stream chunk instead of the
+                  last, and emits a field its declared JSON schema forbids
+    QUIRK=noisy   conforming, but varies everything two honest endpoints serving one
+                  model may vary: ids, completion token counts, chunk counts, trailing
+                  whitespace, and the model's own decisions — whether it calls a tool
+                  when the choice is left to it, how many, whether it uses a tool
+                  result, and whether it reads an image or a video correctly
 
 `noisy` is the important one. Two `noisy` instances with different seeds are two
 honest endpoints that agree about everything a diff should care about and agree
 about nothing else. Any difference the runner reports between them is a probe
-comparing something it should not.
+comparing something it should not, and that includes a single sample of a model
+decision, which differs between two runs of one model as readily as an id does.
+
+Prompt token counts are a function of the request in every mode, because two
+endpoints serving one model tokenize one prompt identically. Completion counts are
+not, because where a model stops is its own decision.
+
+The stub serves enough of each surface for every probe to observe something: image,
+audio and video content parts (a real clip is accepted, four zero bytes are not),
+thinking switched by `chat_template_kwargs.thinking`, streamed tool calls, and the
+Anthropic Messages surface far enough to carry a tool conversation.
 """
-import os, sys, json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import os
+import sys
+import json
+import base64
+
+from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
 
 QUIRK = os.environ.get("QUIRK", "none")
 SEED = int(os.environ.get("SEED", "0"))
+NOISY = QUIRK == "noisy"
+LEAKY = QUIRK == "leaky"
+MODEL = "gpt-oss-120b"
+MAX_BODY = 32 * 1024 * 1024
 N = [SEED]
 
 
 def jitter(lo, hi):
-    """Deterministic per-process but varying per request, like a real endpoint."""
+    """Deterministic per process, varying per call, like a real endpoint."""
     N[0] = (N[0] * 1103515245 + 12345) & 0x7FFFFFFF
     return lo + N[0] % max(1, hi - lo)
 
 
-def tool_id(name):
-    """An opaque id that never repeats, which is what a conforming endpoint mints.
+def coin():
+    """A model decision: always yes in the deterministic modes, the seed's parity when noisy.
 
-    Two instances with different seeds mint different ids for the same call, so any
-    probe that compares an id rather than its shape shows up in the twins check.
+    Parity rather than a random draw, so that two noisy twins with seeds of different
+    parity decide every question differently. A compare key that depends on a decision
+    then shows up on every run of the self-check instead of on the runs where a draw
+    happened to differ.
     """
+    return not NOISY or SEED % 2 == 1
+
+
+def tool_id():
+    """An opaque id that never repeats, which is what a conforming endpoint mints."""
     return "chatcmpl-tool-%012x" % jitter(1, 2**40)
 
 
-def wanted_tool(body):
-    """The tool this request should be answered with, or None if it should not be.
-
-    Enough of `tool_choice` to be worth pointing a tool probe at: `none` suppresses
-    the call, a named choice picks that tool, and anything else takes the first tool
-    declared. A turn whose last message is a tool result answers in prose instead,
-    the way a model does once it has what it asked for.
-    """
-    tools = body.get("tools") or []
-    choice = body.get("tool_choice", "auto")
-    if not tools or choice == "none":
-        return None
-    if body["messages"] and body["messages"][-1].get("role") == "tool":
-        return None
-    named = (choice or {}).get("function", {}).get("name") if isinstance(choice, dict) else None
-    for tool in tools:
-        if tool.get("function", {}).get("name") == named:
-            return tool["function"]["name"]
-    return tools[0].get("function", {}).get("name")
+def error(message, kind="invalid_request_error", code=None):
+    return {"error": {"message": message, "type": kind, "code": code}}
 
 
-def returned_result(messages):
-    """The sentinel a tool result carried, so a round trip can be seen to have used it."""
+def text_of(content):
+    """The text of a message's content, whether it is a string or a list of parts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return ""
+
+
+def media_of(messages):
+    """The media parts of the last user message, in order, as (kind, payload) pairs."""
     for message in reversed(messages):
-        if message.get("role") == "tool":
-            try:
-                return json.loads(message.get("content") or "{}").get("temperature_c")
-            except json.JSONDecodeError:
-                return None
+        if message.get("role") == "user":
+            content = message.get("content")
+            if not isinstance(content, list):
+                return []
+            found = []
+            for part in content:
+                kind = part.get("type") if isinstance(part, dict) else None
+                if kind == "image_url":
+                    found.append(("image", part["image_url"].get("url", "")))
+                elif kind == "video_url":
+                    found.append(("video", part["video_url"].get("url", "")))
+                elif kind == "input_audio":
+                    found.append(("audio", part["input_audio"].get("data", "")))
+            return found
+    return []
+
+
+def decoded(url):
+    if not url.startswith("data:") or "," not in url:
+        return None
+    try:
+        return base64.b64decode(url.split(",", 1)[1])
+    except ValueError:
+        return None
+
+
+def refuse_media(media):
+    """The error a media part earns, or None when every part decodes."""
+    for kind, payload in media:
+        if kind == "audio":
+            return error("invalid audio payload: failed to load")
+        data = decoded(payload)
+        if data is None:
+            return error("fetching remote media is disabled")
+        if kind == "image" and not data.startswith(b"\x89PNG"):
+            return error("invalid image: failed to load")
+        if kind == "video" and data[4:8] != b"ftyp":
+            return error("invalid video: failed to load")
     return None
 
 
-class H(BaseHTTPRequestHandler):
-    def log_message(self, *a): pass
+def prompt_tokens(messages, media):
+    """The same count for the same request, whichever stub answers it."""
+    text = sum(len(text_of(message.get("content"))) for message in messages)
+    cost = 0
+    for kind, payload in media:
+        data = decoded(payload) or b""
+        cost += 64 if kind == "image" else min(1024, 32 + len(data) // 4096)
+    return 4 * len(messages) + text // 4 + cost
 
-    def _send(self, code, obj, ctype="application/json"):
-        raw = obj if isinstance(obj, bytes) else json.dumps(obj).encode()
+
+def answer(messages, media):
+    """What the model says. Every reading of a picture or a clip is a decision when noisy."""
+    prompt = text_of(messages[-1].get("content")).lower() if messages else ""
+    if messages[-1].get("role") == "tool":
+        used = coin()
+        try:
+            sentinel = json.loads(messages[-1].get("content") or "{}").get("temperature_c")
+        except json.JSONDecodeError:
+            sentinel = None
+        return f"It is {sentinel} degrees there." if used and sentinel is not None else "It is warm there."
+    if media:
+        kinds = [kind for kind, _ in media]
+        if "two media items" in prompt:
+            colours = ["blue" if kind == "image" else "red" for kind in kinds]
+            return ", ".join(colours if coin() else list(reversed(colours)))
+        if "which way" in prompt:
+            return "red, left-to-right" if coin() else "I cannot tell from these frames."
+        if "what colour" in prompt:
+            return "Red." if coin() else "It is too dark to tell."
+        return "A red square moves across a black background."
+    if any("remember" in text_of(message.get("content")).lower() for message in messages):
+        return "4173"
+    return "OK"
+
+
+def wanted_tools(body):
+    """The tools this request is answered with: a contract where the request sets one, a decision where it does not."""
+    tools = [tool["function"]["name"] for tool in body.get("tools") or [] if tool.get("function")]
+    choice = body.get("tool_choice", "auto")
+    messages = body.get("messages") or [{}]
+    if not tools or choice == "none" or messages[-1].get("role") == "tool":
+        return []
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        named = choice.get("function", {}).get("name")
+        return [named] if named in tools else []
+    if isinstance(choice, dict) and choice.get("type") == "allowed_tools":
+        mode = choice["allowed_tools"].get("mode", "auto")
+        return [tools[0]] if mode == "required" or coin() else []
+    if choice == "required":
+        return [tools[0]]
+    # `auto`: whether to call, how many, and which, are all the model's to decide.
+    prompt = text_of(messages[-1].get("content")).lower()
+    if "flight" in prompt:
+        return ["book_flight"] if NOISY and coin() else []
+    if "do not use any tool" in prompt:
+        return [tools[0]] if NOISY and coin() else []
+    if not coin():
+        return []
+    return tools[:2] if len(tools) > 1 and coin() else tools[:1]
+
+
+def reasoning_wanted(body):
+    kwargs = body.get("chat_template_kwargs") or {}
+    return kwargs.get("thinking") is True
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _headers(self, code, ctype):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(raw)))
-        if QUIRK == "leaky":
+        if LEAKY:
             self.send_header("X-Served-By", "hangar-gateway-7f9d")
+
+    def _send(self, code, obj):
+        raw = json.dumps(obj).encode()
+        self._headers(code, "application/json")
+        self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
 
+    def _event(self, obj):
+        self.wfile.write(f"data: {json.dumps(obj)}\n\n".encode())
+
     def do_GET(self):
         if self.path == "/v1/models":
-            return self._send(200, {"object": "list", "data": [{"id": "gpt-oss-120b", "object": "model", "owned_by": "hangar"}]})
-        return self._send(404, {"error": {"message": "not found", "type": "invalid_request_error", "code": "404"}})
+            owner = "hangar" if LEAKY else "stub"
+            return self._send(200, {"object": "list", "data": [{"id": MODEL, "object": "model", "owned_by": owner}]})
+        return self._send(404, error("not found", code="404"))
 
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if len(raw) > MAX_BODY:
+            return self._send(413, error("request body too large", code="payload_too_large"))
+        body = json.loads(raw or b"{}")
         auth = self.headers.get("Authorization", "")
 
         if not auth.startswith("Bearer ") or "invalid" in auth:
-            return self._send(401, {"error": {"message": "invalid api key", "type": "authentication_error", "code": "invalid_api_key"}})
-
+            return self._send(401, error("invalid api key", "authentication_error", "invalid_api_key"))
         if self.path == "/v1/responses":
-            return self._send(404, {"error": {"message": "unsupported", "type": "invalid_request_error"}})
+            return self._send(404, error("unsupported"))
         if self.path == "/v1/messages":
             return self._messages(body)
         if self.path != "/v1/chat/completions":
-            return self._send(404, {"error": {"message": "not found", "type": "invalid_request_error"}})
+            return self._send(404, error("not found"))
+        return self._chat(body)
 
+    def _chat(self, body):
         if "messages" not in body:
-            return self._send(400, {"error": {"message": "messages is required", "type": "invalid_request_error", "code": "missing_field"}})
-        if body.get("model") != "gpt-oss-120b":
-            msg = "unknown model" if QUIRK != "leaky" else "unknown model on hangar-gateway upstream vllm-0"
-            return self._send(404, {"error": {"message": msg, "type": "invalid_request_error", "code": "model_not_found"}})
+            return self._send(400, error("messages is required", code="missing_field"))
+        if body.get("model") != MODEL:
+            message = "unknown model on hangar-gateway upstream vllm-0" if LEAKY else "unknown model"
+            return self._send(404, error(message, code="model_not_found"))
         if isinstance(body.get("temperature"), (int, float)) and body["temperature"] > 2:
-            return self._send(400, {"error": {"message": "temperature out of range", "type": "invalid_request_error", "code": "bad_param"}})
+            return self._send(400, error("temperature out of range", code="bad_param"))
+
+        messages = body["messages"]
+        media = media_of(messages)
+        refused = refuse_media(media)
+        if refused:
+            return self._send(400, refused)
 
         limit = body.get("max_tokens") or body.get("max_completion_tokens") or 64
-        if body.get("max_output_tokens") and QUIRK == "leaky":
+        if body.get("max_output_tokens") and LEAKY:
             limit = 512
-
-        tool = wanted_tool(body)
-        if tool:
-            pt = 11 if QUIRK != "noisy" else jitter(9, 14)
-            ct = 9 if QUIRK != "noisy" else jitter(5, 15)
-            return self._send(200, {
-                "id": "chatcmpl-%d" % jitter(1, 10**6), "object": "chat.completion", "created": 1,
-                "model": "gpt-oss-120b",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": [
-                    {"id": tool_id(tool), "type": "function", "index": 0,
-                     "function": {"name": tool, "arguments": json.dumps({"city": "Lisbon"})}},
-                ]}, "finish_reason": "tool_calls"}],
-                "usage": {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct},
-            })
+        pt = prompt_tokens(messages, media)
+        reasoning = "Working it out step by step." if reasoning_wanted(body) else None
+        tools = wanted_tools(body)
+        if tools:
+            ct = 9 if not NOISY else jitter(5, 15)
+            usage = {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
+            calls = [
+                {
+                    "id": tool_id(),
+                    "type": "function",
+                    "index": index,
+                    "function": {"name": name, "arguments": json.dumps({"city": "Lisbon"})},
+                }
+                for index, name in enumerate(tools)
+            ]
+            if body.get("stream"):
+                return self._stream_calls(calls, usage, body)
+            message = {"role": "assistant", "content": None, "tool_calls": calls}
+            return self._complete(message, "tool_calls", usage)
 
         fmt = (body.get("response_format") or {}).get("type")
-        sentinel = returned_result(body["messages"])
         if fmt == "json_object":
             text = json.dumps({"city": "Lisbon", "population": 548703})
         elif fmt == "json_schema":
             payload = {"city": "Lisbon", "population": 548703, "coastal": True, "districts": ["Alfama", "Belem"]}
-            if QUIRK == "leaky":
+            if LEAKY:
                 payload["extra"] = "not in schema"
             text = json.dumps(payload)
-        elif sentinel is not None:
-            text = "It is %s degrees there." % sentinel
-        elif any("remember" in (m.get("content") or "").lower() for m in body["messages"]):
-            text = "4173"
         else:
-            text = "OK"
-
-        pt = 11 if QUIRK != "noisy" else jitter(9, 14)
-        ct = min(limit, 8) if QUIRK != "noisy" else min(limit, jitter(3, 12))
-        usage = {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
-        if QUIRK == "noisy":
+            text = answer(messages, media)
+        if NOISY:
             text = text + " " * jitter(0, 3)
 
+        ct = min(limit, 8) if not NOISY else min(limit, jitter(3, 12))
+        usage = {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
         if body.get("stream"):
-            include = (body.get("stream_options") or {}).get("include_usage")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
-            pieces = [text[:1], text[1:]] if QUIRK != "noisy" else [text[i:i+1] for i in range(len(text))] or [""]
-            for i, piece in enumerate(pieces):
-                chunk = {"id": "c%d" % jitter(1, 10**6), "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": ({"role": "assistant", "content": piece} if i == 0 else {"content": piece}), "finish_reason": None}]}
-                if QUIRK == "leaky" and include:
-                    chunk["usage"] = usage
-                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
-            final = {"id": "c%d" % jitter(1, 10**6), "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
-            if include and QUIRK != "leaky":
-                final["usage"] = usage
-            self.wfile.write(f"data: {json.dumps(final)}\n\n".encode())
-            self.wfile.write(b"data: [DONE]\n\n")
-            self.wfile.flush()
-            return
+            return self._stream_text(text, reasoning, usage, body)
+        message = {"role": "assistant", "content": text}
+        if reasoning:
+            message["reasoning_content"] = reasoning
+        return self._complete(message, "stop", usage)
 
-        return self._send(200, {
-            "id": "chatcmpl-%d" % jitter(1, 10**6), "object": "chat.completion", "created": 1,
-            "model": "gpt-oss-120b",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-            "usage": usage,
-        })
+    def _complete(self, message, finish, usage):
+        return self._send(
+            200,
+            {
+                "id": "chatcmpl-%d" % jitter(1, 10**6),
+                "object": "chat.completion",
+                "created": 1,
+                "model": MODEL,
+                "choices": [{"index": 0, "message": message, "finish_reason": finish}],
+                "usage": usage,
+            },
+        )
+
+    def _chunk(self, delta, finish=None):
+        return {
+            "id": "c%d" % jitter(1, 10**6),
+            "object": "chat.completion.chunk",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }
+
+    def _stream(self, deltas, finish, usage, body):
+        """Send deltas as chunks, then the final one. Where `usage` goes is the leaky defect."""
+        include = (body.get("stream_options") or {}).get("include_usage")
+        self._headers(200, "text/event-stream")
+        self.end_headers()
+        for delta in deltas:
+            chunk = self._chunk(delta)
+            if LEAKY and include:
+                chunk["usage"] = usage
+            self._event(chunk)
+        final = self._chunk({}, finish)
+        if include and not LEAKY:
+            final["usage"] = usage
+        self._event(final)
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+
+    def _stream_text(self, text, reasoning, usage, body):
+        pieces = [text[i : i + 1] for i in range(len(text))] if NOISY else [text[:1], text[1:]]
+        deltas = []
+        if reasoning:
+            deltas += [{"reasoning_content": word + " "} for word in reasoning.split()]
+        deltas += [{"content": piece} for piece in pieces or [""]]
+        deltas[0] = {"role": "assistant", **deltas[0]}
+        return self._stream(deltas, "stop", usage, body)
+
+    def _stream_calls(self, calls, usage, body):
+        deltas = [{"role": "assistant", "content": None}]
+        for call in calls:
+            arguments = call["function"]["arguments"]
+            half = len(arguments) // 2
+            head = {"index": call["index"], "id": call["id"], "type": "function"}
+            deltas.append({"tool_calls": [{**head, "function": {"name": call["function"]["name"], "arguments": ""}}]})
+            for piece in (arguments[:half], arguments[half:]):
+                deltas.append({"tool_calls": [{"index": call["index"], "function": {"arguments": piece}}]})
+        return self._stream(deltas, "tool_calls", usage, body)
 
     def _messages(self, body):
-        """The Anthropic Messages surface, far enough to carry a tool call and its result.
-
-        Only the block shapes a tool conversation needs: `tool_use` out, `tool_result`
-        in, and prose once a result has come back. Enough for a probe that asks what
-        this surface does with the identity of a call to have something to observe.
-        """
-        if body.get("model") != "gpt-oss-120b":
+        """The Anthropic Messages surface, far enough to carry a tool call and its result."""
+        if body.get("model") != MODEL:
             return self._send(404, {"type": "error", "error": {"type": "not_found_error", "message": "unknown model"}})
 
         messages = body.get("messages") or [{}]
@@ -196,22 +367,31 @@ class H(BaseHTTPRequestHandler):
         )
         tools = body.get("tools") or []
         choice = body.get("tool_choice") or {}
-        pt = 11 if QUIRK != "noisy" else jitter(9, 14)
-        ct = 9 if QUIRK != "noisy" else jitter(5, 15)
+        pt = 4 * len(messages) + sum(len(text_of(m.get("content"))) for m in messages) // 4
+        ct = 9 if not NOISY else jitter(5, 15)
 
         if tools and choice.get("type") != "none" and not answered:
             name = tools[0].get("name")
-            content = [{"type": "tool_use", "id": tool_id(name), "name": name, "input": {"city": "Lisbon"}}]
+            content = [{"type": "tool_use", "id": tool_id(), "name": name, "input": {"city": "Lisbon"}}]
             stop = "tool_use"
         else:
             content = [{"type": "text", "text": "OK"}]
             stop = "end_turn"
 
-        return self._send(200, {
-            "id": "msg_%d" % jitter(1, 10**6), "type": "message", "role": "assistant",
-            "model": "gpt-oss-120b", "content": content, "stop_reason": stop,
-            "stop_sequence": None, "usage": {"input_tokens": pt, "output_tokens": ct},
-        })
+        return self._send(
+            200,
+            {
+                "id": "msg_%d" % jitter(1, 10**6),
+                "type": "message",
+                "role": "assistant",
+                "model": MODEL,
+                "content": content,
+                "stop_reason": stop,
+                "stop_sequence": None,
+                "usage": {"input_tokens": pt, "output_tokens": ct},
+            },
+        )
 
 
-ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+if __name__ == "__main__":
+    ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()

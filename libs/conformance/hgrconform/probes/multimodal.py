@@ -126,18 +126,19 @@ def _refusal_kind(response: Any) -> str:
     id="multimodal.image",
     title="An image content part is accepted, and the answer depends on the pixels",
     requirement="V. Multimodal Capability Support 1 — image input, and correct image understanding",
-    compare=("status", "has_content", "colour_recognised", "finish_reason", "refusal_kind", "error_shape", "error_type"),
+    compare=("status", "has_content", "finish_reason", "refusal_kind", "error_shape", "error_type"),
     requires=("image",),
 )
 def image(session: Session) -> dict[str, Any]:
     """Acceptance and understanding, kept apart.
 
     `status` answers whether the content-part shape was accepted; `colour_recognised`
-    answers whether the pixels reached the model. The answer text itself stays out of
-    `compare`, because two endpoints that both see red will say so in different words
-    and a diff on the sentence would report every run as a difference. For the same
-    reason the recognition test matches a family of words rather than one: the
-    question is whether the image arrived, not which synonym the model reached for.
+    answers whether the pixels reached the model. Only the first is compared. Whether
+    the model named the colour is one sample of its judgement, and two honest runs of
+    one model disagree on a single sample often enough that a diff on it reports
+    noise; it is kept as evidence for a person reading the run. The recognition test
+    matches a family of words rather than one, so the evidence is about whether the
+    image arrived and not which synonym the model reached for.
     """
     body = session.body(
         max_tokens=16,
