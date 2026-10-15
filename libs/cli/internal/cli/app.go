@@ -496,8 +496,10 @@ func (a *App) Confirm(question string) error {
 }
 
 // rerun reconstructs the current invocation as a command the caller can paste.
+// Credentials in it are replaced, because the suggestion is printed, logged by
+// CI and pasted into chat.
 func rerun(extra ...string) string {
-	parts := append([]string{"hgr"}, os.Args[1:]...)
+	parts := append([]string{"hgr"}, redactArgs(os.Args[1:])...)
 	for _, f := range extra {
 		if !slices.Contains(parts, f) {
 			parts = append(parts, f)
@@ -507,6 +509,33 @@ func rerun(extra ...string) string {
 		parts[i] = shellQuote(p)
 	}
 	return strings.Join(parts, " ")
+}
+
+// secretFlags take a credential as their value.
+var secretFlags = []string{"--token", "--password"}
+
+// secretKeys are config keys whose value, on `hgr config set`, is a credential.
+var secretKeys = []string{"context.token", "context.refresh_token"}
+
+const redacted = "<redacted>"
+
+// redactArgs replaces every credential in an argument list: the value of a
+// secret flag in either spelling, and the value after a secret config key.
+func redactArgs(args []string) []string {
+	out := make([]string, len(args))
+	copy(out, args)
+	for i := 0; i < len(out); i++ {
+		a := out[i]
+		if name, _, ok := strings.Cut(a, "="); ok && slices.Contains(secretFlags, name) {
+			out[i] = name + "=" + redacted
+			continue
+		}
+		if (slices.Contains(secretFlags, a) || slices.Contains(secretKeys, a)) && i+1 < len(out) {
+			out[i+1] = redacted
+			i++
+		}
+	}
+	return out
 }
 
 func shellQuote(s string) string {

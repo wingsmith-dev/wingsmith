@@ -118,3 +118,35 @@ func TestInvocationMistakesAreUsageErrors(t *testing.T) {
 		t.Errorf("a bare noun prints its help and exits %d, want 0", code)
 	}
 }
+
+// A suggestion rebuilt from argv never repeats a credential that was on it.
+func TestRerunNeverEchoesACredential(t *testing.T) {
+	cases := [][]string{
+		{"cluster", "ls", "--token", "hgrs1_secret"},
+		{"cluster", "ls", "--token=hgrs1_secret"},
+		{"config", "set", "context.token", "hgrs1_secret"},
+		{"config", "set", "context.refresh_token", "hgrs1_secret"},
+		{"login", "--password", "hgrs1_secret"},
+	}
+	for _, args := range cases {
+		got := redactArgs(args)
+		joined := strings.Join(got, " ")
+		if strings.Contains(joined, "hgrs1_secret") {
+			t.Errorf("%v redacted to %q", args, joined)
+		}
+		if !strings.Contains(joined, redacted) {
+			t.Errorf("%v: nothing marked as redacted: %q", args, joined)
+		}
+	}
+	if got := strings.Join(redactArgs([]string{"cluster", "ls", "-o", "json"}), " "); got != "cluster ls -o json" {
+		t.Errorf("an argv with no credential changed: %q", got)
+	}
+
+	cfg := fresh(t)
+	t.Setenv("HANGAR_SERVER", "http://127.0.0.1:1")
+	_, errOut, _ := runWith(t, cfg, "cluster", "ls", "--token", "")
+	_, errOut2, _ := runWith(t, cfg, "--token=hgrs1_secret", "--server", "nope", "cluster", "ls")
+	if strings.Contains(errOut+errOut2, "hgrs1_secret") {
+		t.Errorf("an error suggestion echoed the token: %s %s", errOut, errOut2)
+	}
+}
