@@ -178,6 +178,10 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 	if image == "" {
 		return nil, fmt.Errorf("artifact %s has no image to fetch with", art.ArtifactID)
 	}
+	if !imageAllowed(image, opts.ImagePrefixes) {
+		return nil, fmt.Errorf("artifact %s: image %s is not under an allowed prefix (HANGAR_ALLOWED_IMAGE_PREFIXES: %s)",
+			art.ArtifactID, image, strings.Join(opts.ImagePrefixes, ", "))
+	}
 
 	command, err := prefetchCommand(art)
 	if err != nil {

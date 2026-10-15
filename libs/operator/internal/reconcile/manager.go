@@ -134,6 +134,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		FabricPrivileged:    cfg.FabricPrivileged,
 		NIXLBackends:        cfg.NIXLBackends,
 		EnginePullSecrets:   cfg.EnginePullSecrets,
+		ImagePrefixes:       cfg.AllowedImagePrefixes,
 
 		FrontendEnabled:         cfg.FrontendEnabled,
 		FrontendImage:           cfg.FrontendImage,

@@ -153,6 +153,11 @@ type Config struct {
 	// of UCX; an EFA fabric wants LIBFABRIC, since EFA is a libfabric provider.
 	NIXLBackends []string
 
+	// AllowedImagePrefixes are the registries or repositories engine, frontend and prefetch
+	// images must come from, matched at a path, tag or digest boundary. Empty, the default,
+	// allows any image the plane names.
+	AllowedImagePrefixes []string
+
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
 	// deployment's engine runtime image. Empty for public images.
 	EnginePullSecrets []string
@@ -280,6 +285,7 @@ func Load() (*Config, error) {
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
 		LocalModelCacheDir:    env("HANGAR_LOCAL_MODEL_CACHE_DIR", ""),
 		EnginePullSecrets:     envList("HANGAR_ENGINE_PULL_SECRETS"),
+		AllowedImagePrefixes:  envList("HANGAR_ALLOWED_IMAGE_PREFIXES"),
 
 		FrontendEnabled:                l.bool("HANGAR_FRONTEND_ENABLED", false),
 		FrontendImage:                  env("HANGAR_FRONTEND_IMAGE", ""),

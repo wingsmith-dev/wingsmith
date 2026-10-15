@@ -142,6 +142,12 @@ type Options struct {
 	AnthropicAPIEnabled    bool
 	AnthropicStripPreamble bool
 
+	// ImagePrefixes are the registries or repositories the images this operator renders must
+	// come from: engines, frontends and prefetch jobs, including any image an overlay names. Empty
+	// allows every image. The plane chooses those images, so this is the cluster's bound on what
+	// it can be told to run.
+	ImagePrefixes []string
+
 	// FrontendGlobalNamespace sets globalDynamoNamespace on every component of the graph, the
 	// workers as well as the frontend: a frontend in a narrower namespace than its workers would
 	// discover none of them. Nil means true, the shared Dynamo namespace. Only read when
@@ -447,6 +453,9 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		if err := checkFrontendSurvivedOverlay(obj, in); err != nil {
 			return nil, err
 		}
+	}
+	if err := checkImages(obj.Object, opts); err != nil {
+		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
 	}
 	return obj, nil
 }
