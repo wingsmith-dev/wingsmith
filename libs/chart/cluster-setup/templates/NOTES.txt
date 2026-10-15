@@ -3,7 +3,7 @@ hangar cluster-setup {{ .Chart.Version }} installed into {{ .Release.Namespace }
 Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
-Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
+Read-only  : {{ .Values.cluster.readOnly }}  (operations: {{ include "cluster-setup.operations" . | default "none" }})
 Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ include "cluster-setup.gatewayAddress" . }}
              frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else if eq .Values.frontend.mode "per-model" }}one per model, {{ .Values.frontend.replicas }} × {{ .Values.frontend.perModel.image | default "the model's own engine image" }}, rendered by the operator and found by label{{ else if eq .Values.frontend.mode "shared" }}one shared, {{ .Values.frontend.replicas }} × {{ .Values.frontend.shared.image.repository }}:{{ .Values.frontend.shared.image.tag }}, found by label in the `{{ include "cluster-setup.workloadNamespace" . }}` namespace{{ else }}discovered by label in the `{{ include "cluster-setup.workloadNamespace" . }}` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
 Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}

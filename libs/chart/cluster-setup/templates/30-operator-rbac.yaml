@@ -1,3 +1,9 @@
+{{- $workloads := include "cluster-setup.workloadNamespace" . -}}
+{{- $ops := splitList "," (include "cluster-setup.operations" .) -}}
+{{- $reconcile := not .Values.cluster.readOnly -}}
+{{- $benchmark := has "benchmark" $ops -}}
+{{- $cordon := or (has "cordon" $ops) (has "drain" $ops) -}}
+{{- $drain := has "drain" $ops -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -12,8 +18,25 @@ imagePullSecrets:
   - name: {{ . }}
 {{- end }}
 ---
-# Kept in step with libs/operator/deploy/rbac/role.yaml; read-only is behavioural,
-# not a permission switch, so the role is the same either way.
+# The operator's permissions, granted by scope and by what this cluster lets it
+# do. libs/operator/deploy/rbac/role.yaml is the union of everything the binary
+# can do, generated from its markers; this chart grants only the part a given
+# install needs:
+#
+#   always                     read nodes, pods, deployments and statefulsets
+#                              cluster-wide (observation), and write its own
+#                              state in the release namespace;
+#   readOnly: false            write DynamoGraphDeployments and prefetch Jobs in
+#                              the workload namespace (reconciliation);
+#   benchmark                  create benchmark Jobs, read their logs and find
+#                              the frontend Service, in the workload namespace;
+#   cordon or drain            patch nodes cluster-wide;
+#   drain                      evict pods cluster-wide.
+#
+# The last three follow `cluster.allowedOperations` on a read-only cluster and
+# are all on otherwise, because a managed cluster's operator performs every
+# operation the plane sends. A read-only cluster with no operations allowed gets
+# no write access to anything outside the release namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -22,56 +45,11 @@ metadata:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: [events]
-    verbs: [create, patch]
-  - apiGroups: [""]
-    resources: [nodes]
-    verbs: [get, list, patch, update, watch]
-  - apiGroups: [""]
-    resources: [pods, services]
+    resources: [nodes, pods]
     verbs: [get, list, watch]
-  - apiGroups: [""]
-    resources: [pods/eviction]
-    verbs: [create]
-  - apiGroups: [""]
-    resources: [pods/log]
-    verbs: [get]
   - apiGroups: [apps]
     resources: [deployments, statefulsets]
     verbs: [get, list, watch]
-  - apiGroups: [batch]
-    resources: [jobs]
-    verbs: [create, delete, get, list, watch]
-  - apiGroups: [batch]
-    resources: [jobs/status]
-    verbs: [get]
-  - apiGroups: [coordination.k8s.io]
-    resources: [leases]
-    verbs: [create, get, list, patch, update, watch]
-  - apiGroups: [nvidia.com]
-    resources: [dynamographdeployments]
-    verbs: [create, delete, get, list, patch, update, watch]
-  - apiGroups: [nvidia.com]
-    resources: [dynamographdeployments/status]
-    verbs: [get]
-  # Not an object this operator renders. It is where the Dynamo operator writes down that it
-  # could not do what a graph deployment asked, and the graph's own condition only names the
-  # child rather than repeating why. `delete` is here for one narrow reason: Dynamo creates one
-  # of these per spec hash and never collects the one it superseded, so an edited recipe leaves
-  # a crash-looping worker holding a full replica's worth of accelerators and the replacement
-  # can never schedule. See supersede.go for the guards on which one is removed.
-  - apiGroups: [nvidia.com]
-    resources: [dynamocomponentdeployments]
-    verbs: [delete, get, list, watch]
-  - apiGroups: [hangar.dev]
-    resources: [syncedresources]
-    verbs: [create, delete, get, list, patch, update, watch]
-  - apiGroups: [hangar.dev]
-    resources: [syncedresources/status]
-    verbs: [get, patch, update]
-  - apiGroups: [hangar.dev]
-    resources: [streamcheckpoints]
-    verbs: [create, get, list, patch, update, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -87,3 +65,143 @@ subjects:
   - kind: ServiceAccount
     name: hangar-operator
     namespace: {{ .Release.Namespace }}
+---
+# Its own state: the leader-election lease, the local copy of declared state and
+# the stream cursor. Written read-only or not; a read-only operator still stores
+# what the plane declares so that leaving read-only starts from a complete view.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [create, get, list, patch, update, watch]
+  - apiGroups: [hangar.dev]
+    resources: [syncedresources]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [hangar.dev]
+    resources: [syncedresources/status]
+    verbs: [get, patch, update]
+  - apiGroups: [hangar.dev]
+    resources: [streamcheckpoints]
+    verbs: [create, get, list, patch, update, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hangar-operator
+subjects:
+  - kind: ServiceAccount
+    name: hangar-operator
+    namespace: {{ .Release.Namespace }}
+{{- if or $reconcile $benchmark }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hangar-operator
+  namespace: {{ $workloads }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, delete, get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs/status]
+    verbs: [get]
+  {{- if $reconcile }}
+  - apiGroups: [nvidia.com]
+    resources: [dynamographdeployments]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [nvidia.com]
+    resources: [dynamographdeployments/status]
+    verbs: [get]
+  # Not an object this operator renders. It is where the Dynamo operator writes down that it
+  # could not do what a graph deployment asked, and the graph's own condition only names the
+  # child rather than repeating why. `delete` is here for one narrow reason: Dynamo creates one
+  # of these per spec hash and never collects the one it superseded, so an edited recipe leaves
+  # a crash-looping worker holding a full replica's worth of accelerators and the replacement
+  # can never schedule. See supersede.go for the guards on which one is removed.
+  - apiGroups: [nvidia.com]
+    resources: [dynamocomponentdeployments]
+    verbs: [delete, get, list, watch]
+  {{- end }}
+  {{- if $benchmark }}
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hangar-operator
+  namespace: {{ $workloads }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hangar-operator
+subjects:
+  - kind: ServiceAccount
+    name: hangar-operator
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if $cordon }}
+---
+# Cordon and drain act on whichever node the plane names, and a drain evicts
+# every accelerator pod on it in whatever namespace it runs, so neither can be
+# namespaced.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hangar-operator-nodes
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [patch, update]
+  {{- if $drain }}
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hangar-operator-nodes
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hangar-operator-nodes
+subjects:
+  - kind: ServiceAccount
+    name: hangar-operator
+    namespace: {{ .Release.Namespace }}
+{{- end }}

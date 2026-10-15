@@ -111,6 +111,40 @@ not in values (a Secret created out of band), which rolls nothing.
 {{- end -}}
 {{- end -}}
 
+{{/*
+`cluster.allowedOperations` as a clean comma-separated list, from either a
+string ("cordon, benchmark") or a YAML list. Unknown kinds are refused rather
+than passed on, because the RBAC below is derived from this list and a typo
+would otherwise grant nothing and fail only when the plane asks.
+*/}}
+{{- define "cluster-setup.allowedOperations" -}}
+{{- $raw := .Values.cluster.allowedOperations | default list -}}
+{{- if kindIs "string" $raw -}}{{- $raw = splitList "," $raw -}}{{- end -}}
+{{- $out := list -}}
+{{- range $raw -}}
+{{- $kind := trim (toString .) -}}
+{{- if $kind -}}
+{{- if not (has $kind (list "cordon" "drain" "benchmark")) -}}
+{{- fail (printf "cluster.allowedOperations names %q — the operations are cordon, drain and benchmark" $kind) -}}
+{{- end -}}
+{{- $out = append $out $kind -}}
+{{- end -}}
+{{- end -}}
+{{- join "," (uniq $out) -}}
+{{- end -}}
+
+{{/*
+The operations this operator will perform, which is what its RBAC is cut to:
+every kind on a managed cluster, and only the allowed ones on a read-only one.
+*/}}
+{{- define "cluster-setup.operations" -}}
+{{- if .Values.cluster.readOnly -}}
+{{- include "cluster-setup.allowedOperations" . -}}
+{{- else -}}
+cordon,drain,benchmark
+{{- end -}}
+{{- end -}}
+
 {{/* The namespace the operator renders workloads into. */}}
 {{- define "cluster-setup.workloadNamespace" -}}
 {{- required "workloadNamespace.name is required" .Values.workloadNamespace.name -}}

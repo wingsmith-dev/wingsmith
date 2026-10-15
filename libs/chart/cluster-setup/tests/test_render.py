@@ -253,3 +253,101 @@ def test_existing_workload_namespace_is_not_created(chart):
     docs = render(chart, **{"workloadNamespace.create": False})
     assert find(docs, "Namespace", "dynamo") is None
     assert get(docs, "PersistentVolumeClaim", "model-cache", "dynamo")
+
+
+# ── operator RBAC ────────────────────────────────────────────────────────────
+
+WRITE_VERBS = {"create", "update", "patch", "delete", "deletecollection"}
+
+
+def _operator_rules(docs: list[dict]) -> dict[tuple[str, str | None], list[dict]]:
+    """Every rule bound to the operator's ServiceAccount, keyed by role."""
+    bound = set()
+    for d in docs:
+        if d["kind"] in ("RoleBinding", "ClusterRoleBinding") and any(
+            s.get("name") == "hangar-operator" for s in d["subjects"]
+        ):
+            ns = d["metadata"].get("namespace")
+            bound.add((d["roleRef"]["kind"], d["roleRef"]["name"], ns))
+    out = {}
+    for kind, name, ns in bound:
+        role = get(docs, kind, name, ns)
+        out[(kind + "/" + name, ns)] = role["rules"]
+    return out
+
+
+def _grants(rules, resource: str, verb: str) -> bool:
+    return any(resource in r["resources"] and verb in r["verbs"] for r in rules)
+
+
+def test_default_is_read_only_with_no_operations(chart):
+    values = yaml.safe_load((chart / "values.yaml").read_text())
+    assert values["cluster"]["readOnly"] is True
+    assert values["cluster"]["allowedOperations"] == ""
+    docs = render(chart)
+    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_ALLOWED_OPERATIONS"] == ""
+
+
+def test_read_only_renders_no_write_rbac_outside_the_release_namespace(chart):
+    roles = _operator_rules(render(chart))
+    for (role, ns), rules in roles.items():
+        if ns == "hangar-system":
+            continue
+        for rule in rules:
+            assert not WRITE_VERBS & set(rule["verbs"]), (role, rule)
+
+
+def test_no_cluster_wide_write_and_leases_are_namespaced(chart):
+    roles = _operator_rules(render(chart, **{"cluster.readOnly": False}))
+    for (role, ns), rules in roles.items():
+        if role.startswith("ClusterRole/"):
+            for rule in rules:
+                writes = WRITE_VERBS & set(rule["verbs"])
+                assert not writes or set(rule["resources"]) <= {"nodes", "pods/eviction"}, rule
+            assert not _grants(rules, "leases", "update")
+            assert not _grants(rules, "jobs", "create")
+    assert _grants(roles[("Role/hangar-operator", "hangar-system")], "leases", "update")
+    assert _grants(roles[("Role/hangar-operator", "hangar-system")], "syncedresources", "update")
+
+
+def test_managed_cluster_gets_reconcile_and_every_operation(chart):
+    roles = _operator_rules(render(chart, **{"cluster.readOnly": False}))
+    workloads = roles[("Role/hangar-operator", "dynamo")]
+    assert _grants(workloads, "dynamographdeployments", "create")
+    assert _grants(workloads, "jobs", "create")
+    assert _grants(workloads, "pods/log", "get")
+    nodes = roles[("ClusterRole/hangar-operator-nodes", None)]
+    assert _grants(nodes, "nodes", "patch")
+    assert _grants(nodes, "pods/eviction", "create")
+
+
+@pytest.mark.parametrize(
+    "allowed, jobs, nodes, eviction",
+    [
+        ("benchmark", True, False, False),
+        ("cordon", False, True, False),
+        ("drain, benchmark", True, True, True),
+    ],
+)
+def test_read_only_operations_add_only_their_own_rbac(chart, allowed, jobs, nodes, eviction):
+    docs = render(chart, **{"cluster.allowedOperations": allowed.replace(",", "\\,")})
+    roles = _operator_rules(docs)
+    workloads = roles.get(("Role/hangar-operator", "dynamo"), [])
+    assert _grants(workloads, "jobs", "create") is jobs
+    assert not _grants(workloads, "dynamographdeployments", "create")
+    node_rules = roles.get(("ClusterRole/hangar-operator-nodes", None), [])
+    assert _grants(node_rules, "nodes", "patch") is nodes
+    assert _grants(node_rules, "pods/eviction", "create") is eviction
+    configured = get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_ALLOWED_OPERATIONS"]
+    assert configured == ",".join(k.strip() for k in allowed.split(","))
+
+
+def test_unknown_operation_is_refused(chart):
+    assert "cordon, drain and benchmark" in refusal(chart, **{"cluster.allowedOperations": "reboot"})
+
+
+def test_rbac_names_the_hangar_dev_group(chart):
+    roles = _operator_rules(render(chart))
+    groups = {g for rules in roles.values() for r in rules for g in r["apiGroups"]}
+    assert "hangar.dev" in groups
+    assert not any("placeholder" in g or g == "sync.hangar.dev" for g in groups)

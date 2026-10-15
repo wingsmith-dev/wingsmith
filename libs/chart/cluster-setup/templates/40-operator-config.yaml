@@ -15,7 +15,7 @@ data:
   HANGAR_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
 
   HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
-  HANGAR_ALLOWED_OPERATIONS: {{ .Values.cluster.allowedOperations | quote }}
+  HANGAR_ALLOWED_OPERATIONS: {{ include "cluster-setup.allowedOperations" . | quote }}
 
   HANGAR_POOL_LABEL_KEY: {{ required "pools.labelKey is required: name the label this cluster puts on its node pools. Left empty the operator falls back to its own default key and discovers no pools at all." .Values.pools.labelKey | quote }}
   HANGAR_GPU_POOL_VALUE: {{ required "pools.gpuValue is required: name the pool holding the GPU nodes." .Values.pools.gpuValue | quote }}

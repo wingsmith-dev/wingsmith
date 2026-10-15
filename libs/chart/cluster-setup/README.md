@@ -132,6 +132,29 @@ different numbers of replicas with nothing anywhere saying so.
 `serving.enabled` — the Traefik `IngressRoute` and its `Certificate` — is the older public-ingress
 path and stays as the fallback. It is off on every cluster we run.
 
+## Operator permissions
+
+The operator's RBAC is cut to what the install lets it do, so `cluster.readOnly`
+is a permission boundary and not only a setting the operator honours:
+
+| granted | when | scope |
+|---|---|---|
+| read nodes, pods, deployments, statefulsets | always | cluster |
+| write its own CRDs, lease and events | always | release namespace |
+| write DynamoGraphDeployments, prefetch Jobs; delete stale DynamoComponentDeployments | `readOnly: false` | workload namespace |
+| create benchmark Jobs, read their logs, list Services | `benchmark` allowed | workload namespace |
+| patch nodes | `cordon` or `drain` allowed | cluster |
+| evict pods | `drain` allowed | cluster |
+
+On a read-only cluster the operations come from `cluster.allowedOperations`
+(empty by default, so none); on a managed cluster all three are on. A read-only
+install with no operations has no write access outside the release namespace.
+
+What this does not bound: on a managed cluster the plane decides what runs in
+the workload namespace, including the engine and benchmark images, so whoever
+holds admin access to the plane can run code there. Treat plane admin as
+equivalent to write access to that namespace.
+
 ## Versioning
 
 The chart version is the compatibility unit: `appVersion` pins the operator

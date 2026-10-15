@@ -16,8 +16,16 @@ cluster:
   # cluster that omits it is the one blank cell in a fleet-wide breakdown.
   # Required with `monitoring.enabled`, ignored otherwise.
   region: ""
+  # Read-only installs the operator as an observer: it reports what the cluster
+  # has and writes nothing to it outside its own namespace, and the chart grants
+  # it no write RBAC there. Set false to let the plane manage this cluster.
   readOnly: true
-  allowedOperations: benchmark
+  # On a read-only cluster, the operations the plane may still ask for, as a
+  # comma-separated list of cordon, drain and benchmark. Each one adds only the
+  # RBAC it needs: benchmark creates Jobs in the workload namespace and reads
+  # their logs, cordon patches nodes, drain also evicts pods. Empty refuses all
+  # of them. Ignored when readOnly is false, where every operation is on.
+  allowedOperations: ""
   logLevel: info
   logFormat: json
 
