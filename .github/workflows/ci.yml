@@ -299,7 +299,14 @@ jobs:
       - run: uv tool install "rust-just==$JUST_VERSION"
       - run: uv sync --locked
         working-directory: libs/plane
-      - run: just interop
+      # The recipe passes with a note when the hub half of the harness is absent from a checkout;
+      # here that would be a green job that ran nothing, so the note fails it.
+      - name: just interop
+        run: |
+          just interop 2>&1 | tee "$RUNNER_TEMP/interop.log"
+          if grep -q '^interop: skipped' "$RUNNER_TEMP/interop.log"; then
+            echo "::error::the interop gate skipped; its hub script is missing"; exit 1
+          fi
 
   transit-smoke:
     runs-on: ubuntu-24.04
