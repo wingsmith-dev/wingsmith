@@ -411,26 +411,18 @@ class Artifact(BaseMixin):
     # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    """What a person calls these weights. `Kimi K3`, `DeepSeek V4 Flash`. Display only."""
+    """What a person calls these weights. `GPT-OSS 20B`, `Llama 3.1 70B Instruct`. Display only."""
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
-    """What a machine calls them: `moonshotai/kimi-k3`, lowercase, organisation and all.
+    """What a machine calls them: `openai/gpt-oss-20b`, lowercase, organisation and all.
 
-    Stored rather than derived, and that is the whole point of the column. This string used to be
-    reconstructed at read time from `name`, else a `hf:`-prefixed `digest`, else the workload's
-    name — three guesses in `app.core.serving`, none of which could produce the organisation,
-    because the organisation only ever existed in the location URI that nothing consulted. So
-    every model resolved to a bare `gpt-oss-20b` while its engine was started on
-    `--model openai/gpt-oss-20b`, and the gateway rewrote inbound requests to a string no frontend
-    had registered. Exactly one model served, and only because a person had typed the right answer
-    into an override by hand.
+    Stored rather than derived at read time, because the organisation only exists in the
+    location URI. Derived once, on the way in, from the artifact's preferred location:
+    `hf://openai/gpt-oss-20b` becomes `openai/gpt-oss-20b`. Lowercase because that is what a
+    caller types; the organisation is kept because a bare model name is not an id anybody can
+    look up.
 
-    Derived once, on the way in, from the artifact's preferred location: `hf://moonshotai/Kimi-K3`
-    becomes `moonshotai/kimi-k3`. Lowercase because that is what a caller types and what every
-    registry treats as canonical; the organisation is kept because a bare `kimi-k3` is not a model
-    id anybody can look up.
-
-    Not unique. Two artifacts may be the same repository at different revisions or quantisations —
-    identity is the digest, and it stays the digest. This is what the model is *called*.
+    Not unique. Two artifacts may be the same repository at different revisions or
+    quantisations; identity is the digest. This is what the model is *called*.
     """
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -536,18 +528,13 @@ class Workload(BaseMixin):
     A workload is not tied to a cluster. It names an artifact, declares how to serve it, and
     declares a kind, a priority and TOTAL scale across every cluster it is allowed to use;
     placement expands it into one `Deployment` per cluster, and each deployment carries that
-    cluster's share of the total. `kind` discriminates `service | task | gang`, and nothing below
-    this object is allowed to branch on it — preemption and quota stay one code path across
-    serving and batch. The only component entitled to read `kind` is the operator, when it
-    decides what Kubernetes object to render.
+    cluster's share of the total. `kind` discriminates `service | task | gang`; only `service` is
+    rendered and run today, and `task` and `gang` are on the roadmap. Nothing below this object
+    branches on `kind`; the operator is the only component entitled to read it, when it decides
+    what Kubernetes object to render.
 
-    The serving configuration lives here rather than on a `Recipe` of its own. The recipe was a
-    shared object whose sharing never paid: recipes were filtered and serialised per cluster, so
-    two deployments in two clusters were two frames either way, and the separate frame bought an
-    ordering rule, a `RecipeNotDeclared` pending reason and a resume race where a deployment
-    waited forever on a recipe it was never sent. What sharing did buy — not deploying the same
-    thing twice under two identities — is `serving_digest`, which is what the console was already
-    reconstructing by comparing eight fields to decide two recipes were the same one.
+    The serving configuration lives here rather than on a shared recipe object. What sharing a
+    recipe bought, not deploying the same thing twice under two identities, is `serving_digest`.
 
     `engine_args` and `imported_args` are the same shape and different in kind. `engine_args` is
     declared: somebody asserted it, and it renders onto the command line. `imported_args` is
@@ -566,9 +553,8 @@ class Workload(BaseMixin):
     H100, so a shape without a class is not a shape. Context length is here rather than on the
     artifact because it determines the footprint.
 
-    Splittability is a property of `kind`, not a field: `service` and `task` may fan out,
-    `gang` is atomic and always has exactly one deployment. The schema permits N; placement
-    constrains a gang to 1.
+    Splittability is a property of `kind`, not a field: `service` may fan out across clusters,
+    while placement keeps a `gang` inside one cluster and one topology domain.
 
     Admission is per-cluster and therefore lives on `Deployment`, not here. `started_at` and
     `finished_at` are rollups the plane derives from its deployments, never written by a cluster.
@@ -641,11 +627,8 @@ class Workload(BaseMixin):
     Separate from `engine_runtime_image` because a frontend and a worker are separately versioned
     binaries that only happen to be published from one repository. The worker loads the weights;
     the frontend tokenizes the request and registers the model, and the tables it needs to do that
-    are compiled into it. Kimi K3 is the case: a worker on the stock
-    `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1` served it, while every released
-    frontend refused the `kimi_k3` tiktoken type and answered `/v1/models` with an empty list. The
-    fix was a frontend build and nothing else. Folded into `engine_runtime_image`, that one model would
-    have moved the image every model on the cluster is served through.
+    are compiled into it. A model whose tokenizer only a newer frontend build understands needs a
+    different frontend and the same worker, and one field could not say that.
 
     Null is this workload declining to have an opinion, not an instruction to reuse
     `engine_runtime_image`. The operator resolves it against what that cluster runs its frontends on — a
@@ -810,13 +793,9 @@ class WorkloadRole(BaseMixin):
     model the moment somebody added one prefill worker — and those benchmarks are exactly what
     anyone choosing a ratio would be reading.
 
-    Not the digest, because the digest is not the mechanism that decides whether pods restart.
-    `renderIsCurrent` (`reconcile/deployment.go:272`) compares the generation as well, and any
-    declared change bumps that — so every scale in the system already fails the check and
-    re-applies, and re-applying is not reloading. What decides a restart is whether the applied
-    object changes a component's own spec and therefore renames the objects Dynamo derives from
-    it. Whether that renaming is per-component or graph-wide is still open, and it is answered on a
-    cluster, not here.
+    Whether pods restart is not decided by the digest. Any declared change bumps the
+    deployment's generation, so the operator re-applies; what decides a restart is whether the
+    applied object changes a component's own spec.
     """
     max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     """This role's `--max-num-batched-tokens`. Null inherits the workload's.
@@ -932,9 +911,11 @@ class Deployment(BaseMixin):
     is per-cluster and lives here, because a workload can be running in one region and queued on
     quota in another and there is no single phase that is true of both.
 
-    Deployments are disposable — recreated on every configuration bump, engine upgrade, and drain —
-    which is why the public name lives on `Endpoint` instead. You do not create one: placement
-    creates it when it expands a workload.
+    A configuration change, an engine upgrade or a new share updates the row in place and bumps
+    `generation`, which is what the operator re-reads. A drain, or a re-expansion that leaves this
+    cluster with no share, deletes the row. Deployments are therefore not stable handles, which is
+    why the public name lives on `Endpoint` instead. You do not create one: placement creates it
+    when it expands a workload.
 
     `adopted_workload_uid` is set when this deployment was promoted from a workload that was
     already running in the cluster (a `DiscoveredWorkload`, unrelated to the parent `Workload`
@@ -1220,9 +1201,10 @@ class Endpoint(BaseMixin):
     """The stable public name clients call. Plane-only — it never syncs to a cluster.
 
     Global where a deployment is per-cluster, and a contract where a deployment is
-    disposable. Keeping them separate is what allows weighted splits, canaries,
-    cross-cluster failover, and renaming without breaking clients; merging them
-    would give one globally unique record N cluster-side writers.
+    disposable. Keeping them separate is what allows weighted splits, canaries and
+    renaming without breaking clients; merging them would give one globally unique
+    record N cluster-side writers. `routing_strategy` and `failover_order` are stored
+    and returned, but automatic cross-cluster failover is on the roadmap, not built.
 
     `name` is globally unique, which makes this the only child object in the schema
     that reaches past its parent for uniqueness — `Workload` is unique on
@@ -1253,7 +1235,7 @@ class Endpoint(BaseMixin):
     because an endpoint exists so that deployments can be replaced without anybody noticing and
     renaming it spends exactly that."""
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
-    """The model id clients send. `moonshotai/kimi-k3`.
+    """The model id clients send. `openai/gpt-oss-20b`.
 
     Patchable where `name` is not, because `model` in an OpenAI request is a public contract: it
     wants to read as the model, not as whatever the endpoint was called when it was made, and it
@@ -1264,11 +1246,6 @@ class Endpoint(BaseMixin):
     Defaulted from the artifact's slug when a caller declares none, which is the case that should
     be normal: an endpoint in front of one model answers to that model's name, and saying so twice
     is how the two drift. Declaring one is then an alias and reads as a deliberate act.
-
-    There were three fields here — `name`, `model_slug` and `display_name` — plus a fourth,
-    `resolved_model_slug`, computed on the way out to paper over `model_slug` being nullable. Four
-    spellings of the same question, and the answer to `what does a client send` was none of them
-    on its own.
     """
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
@@ -1312,7 +1289,7 @@ class EndpointAlias(BaseMixin):
     some endpoint's slug, or a slug moved onto somebody's alias — is the service's to refuse,
     because the two live in different tables and no constraint spans them.
 
-    Stored lowercased, and resolved case-insensitively, so `Kimi-K3` and `kimi-k3` are not two
+    Stored lowercased, and resolved case-insensitively, so `GPT-OSS-20B` and `gpt-oss-20b` are not two
     routes somebody has to keep in step.
     """
 
@@ -1333,6 +1310,10 @@ class EndpointTarget(BaseMixin):
     The many-to-many between global names and per-cluster deployments. It exists
     as a table rather than as gateway configuration so that a canary or a
     weighted split is versioned and auditable like anything else.
+
+    `deployment_id` cascades: when a drain or a re-expansion deletes a deployment,
+    its targets go with it, and nothing retargets the endpoint at the deployment
+    that replaced it. Re-point the endpoint after moving a workload.
     """
 
     __tablename__ = "demand_endpoint_target"
@@ -1517,10 +1498,10 @@ class Project(BaseMixin):
 class Quota(BaseMixin):
     """A guaranteed device floor plus a fair share of otherwise-idle capacity.
 
-    Per project, per device class, optionally scoped to one cluster. Two numbers
-    rather than one cap: a hard limit leaves expensive silicon idle while someone
-    queues, and over-quota-with-preemption is the primitive that makes mixed
-    inference and training economics work at all.
+    Per project, per device class, optionally scoped to one cluster (`cluster_id`
+    null means fleet-wide). Two numbers rather than one cap, because a hard limit
+    leaves capacity idle while someone queues. Reclaiming over-quota capacity by
+    preemption is on the roadmap; today the floor and the share are admission inputs.
     """
 
     __tablename__ = "bind_quota"
@@ -1604,8 +1585,8 @@ class ServingQuota(BaseMixin):
     what was sold; `divided` has each enforce `limit / replicas`, so an uneven connection balance
     refuses callers who are inside the limit they were sold. There is no shared counter and no
     coordination hop in the request path, so one of those two error directions has to be chosen
-    rather than avoided. `per_replica` is the default because over-admission is a commercial leak
-    that shows up in the usage panel, while a spurious 429 is a visible breach of what we sold.
+    rather than avoided. `per_replica` is the default because over-admission shows up in the usage
+    panel, while a spurious 429 refuses a caller who was inside the committed limit.
     """
     success_rate_objective: Mapped[float | None] = mapped_column(Numeric(6, 5), nullable=True)
     availability_objective: Mapped[str] = mapped_column(
@@ -1618,11 +1599,11 @@ class ServingQuota(BaseMixin):
 
 
 class PriorityClass(BaseMixin):
-    """What preempts what. Referenced by every schedulable workload from day one.
+    """What would preempt what. Referenced by every schedulable workload.
 
-    Only two values are needed today; the point is that the reference exists now
-    so that preemption is a policy change later rather than a migration across
-    every workload. `value` is unique in the database and not merely checked in
+    Preemption itself is on the roadmap: placement can name the victims it would evict
+    (`PreemptionPlan`), but nothing evicts them yet. The reference exists now so that
+    turning it on is a policy change rather than a migration across every workload. `value` is unique in the database and not merely checked in
     the service: two classes at one number make eviction order depend on whatever
     the planner returns that day, and a service-level check alone loses that race
     between two concurrent writers.
@@ -1673,6 +1654,12 @@ class PolicyAttachment(BaseMixin):
     A polymorphic pair of `subject_type` and `subject_id` rather than four
     nullable foreign keys, because the set of attachable subjects is expected to
     grow and each addition would otherwise be a column.
+
+    The cost is that the database cannot enforce the reference: `subject_id` has no
+    foreign key, and deleting the tenant, project, endpoint or cluster it names
+    leaves the attachment behind. Readers join on `(subject_type, subject_id)` and
+    an attachment whose subject is gone matches nothing, so it is inert rather than
+    wrong; it stays until the policy is deleted or the attachment is removed.
     """
 
     __tablename__ = "bind_policy_attachment"
@@ -1697,7 +1684,7 @@ class Allocation(BaseMixin):
     device is what stops two live allocations claiming the same accelerator.
 
     `workload_id` names the global workload and `deployment_id` names its share in
-    this cluster. Preemption reasons about deployments — evicting "a workload" from
+    this cluster. A preemption plan reasons about deployments — evicting "a workload" from
     a cluster means evicting the deployment it has there — so the per-cluster
     identity is carried alongside the global one.
     """
@@ -1830,7 +1817,9 @@ class Operation(BaseMixin):
     upgrade — one table with a typed payload rather than a status column on each
     object acted upon. A status field cannot answer who did this, why, how long
     it has been stuck, or what happens at the deadline. `target_type` /
-    `target_id` are polymorphic because the set of targets spans four groups.
+    `target_id` are polymorphic because the set of targets spans four groups, so
+    `target_id` has no foreign key: an operation is a record of what was done and
+    outlives its target, and a `target_id` that no longer resolves is expected.
 
     `phase` is ingestion's and `cancel_requested_at` is the plane's, disjoint the
     way `Cluster.phase` and `ClusterSyncState` are: asking a running operation to
@@ -2021,6 +2010,11 @@ class Event(BaseMixin):
 
     State, not telemetry — discrete, low-volume, and worth joining against. Metric
     streams do not come through here and never enter Postgres.
+
+    `subject_type` / `subject_id` is polymorphic and has no foreign key, on purpose:
+    an event is history and must outlive the node, device or deployment it is about.
+    Nothing deletes events today, so the table grows until an operator prunes it by
+    `occurred_at`; the reactor only reads forward from its `last_event_seq` cursor.
     """
 
     __tablename__ = "ops_event"
@@ -2110,6 +2104,10 @@ class Credential(BaseMixin):
     Never cluster-admin — the plane holds no credential that can drive a cluster,
     which is the whole point of the agent dialling out. The secret material is
     stored by reference to an external secret store rather than inline.
+
+    `scope_type` / `scope_id` is polymorphic and has no foreign key; `scope_id` is
+    null for a fleet-scoped credential. Deleting the scoped object leaves the
+    credential row, which then applies to nothing until it is revoked or deleted.
     """
 
     __tablename__ = "ops_credential"
@@ -2223,7 +2221,7 @@ class Alert(BaseMixin):
 
     `dedupe_key` is the identity. One key is one ongoing problem however many
     times it is evaluated or re-reported, so a deployment that has been behind
-    for seventeen hours is one row with a rising `occurrences`, not a row per
+    for hours is one row with a rising `occurrences`, not a row per
     tick. It is unique, and a re-fire after a resolve reopens the same row rather
     than starting a second history of the same fact.
 
@@ -2390,8 +2388,7 @@ class ReactorState(BaseMixin):
 
     `last_event_seq` is the cursor into `ops_event.seq`. Events are matched into
     alerts from there forward, so a reactor that has been down comes back and
-    works through what it missed instead of skipping to now — the seventeen-hour
-    outage this was built for is exactly the case where the backlog is the story.
+    works through what it missed instead of skipping to now.
     """
 
     __tablename__ = "ops_reactor_state"
