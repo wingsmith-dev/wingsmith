@@ -339,10 +339,12 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 			return api.Workload{}, errs.New(errs.CodeConflict, "%q already exists in this project", req.Name)
 		}
 	}
+	// The plane refuses task and gang at creation: they are on the roadmap and
+	// nothing renders them.
 	kind := orElse(req.Kind, "service")
-	if kind == "gang" && req.MaxClusters != nil && *req.MaxClusters > 1 {
-		return api.Workload{}, errs.New(errs.CodeUsage,
-			"a gang cannot be split across clusters, so --max-clusters above 1 is not a thing it can do")
+	if kind != "service" {
+		return api.Workload{}, errs.New(errs.CodeInvalidState,
+			"%s workloads are not supported yet; only service workloads run today", kind)
 	}
 
 	target := ""

@@ -171,8 +171,8 @@ server.
   vocabulary match the plane, and a test compares the fake's output key-for-key against the
   fixtures in `internal/api/testdata`.
 - **Seeded, not random** — four clusters in every phase, including an unreachable one and one
-  that never connected, plus a cordoned node, an unhealthy device, a partially satisfied gang
-  and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
+  that never connected, plus a cordoned node, an unhealthy device, an allocation holding fewer
+  devices than it asked for and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
   and persists mutations, so create-then-poll workflows work offline.
 - **Failure injection** — `HANGAR_FAKE_FAIL=NOT_FOUND` (any code from `hgr explain`) makes every
   call fail with that code, which is how error paths and exit codes get tested.

@@ -328,8 +328,8 @@ cluster's share of the total. Serving one model in two regions is one workload
 with two deployments.
 
 Workloads are long-running inference services. Batch tasks and gang-scheduled
-jobs are on the roadmap; the kind field exists for them, but nothing runs them
-yet.`,
+jobs are on the roadmap: the kind field has room for them, and the plane
+refuses them at creation until something runs them.`,
 		example: `  hgr workload ls
   hgr workload ls --phase pending
   hgr workload get chat
@@ -370,7 +370,7 @@ yet.`,
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
 			f.byProject = true
-			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind: service|task|gang")
+			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind (service is the only kind that runs today)")
 			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by phase: pending|admitted|placed|running")
 			cmd.Flags().StringVar(&f.artifact, "artifact", "", "limit to one artifact")
 			cmd.Flags().StringVar(&f.class, "class", "", "limit to one device class")
@@ -562,14 +562,12 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		artifact      string
 		cluster       string
 		priorityClass string
-		kind          string
 		scale         int
 		minScale      int
 		maxScale      int
 		strategy      string
 		maxClusters   int
 		floors        []string
-		gangSize      int
 		preemptible   bool
 		adapters      []string
 		labels        []string
@@ -673,9 +671,6 @@ how a distilled model gets its step count, because omni defaults every model to
 				labelMap[k] = v
 			}
 
-			if kind == "gang" && !cmd.Flags().Changed("scale") {
-				scale = gangSize
-			}
 			if !cmd.Flags().Changed("min-scale") {
 				minScale = scale
 			}
@@ -731,10 +726,10 @@ how a distilled model gets its step count, because omni defaults every model to
 			req := api.WorkloadCreateRequest{
 				Serving: serving,
 				Name:    args[0], Project: project, Cluster: cluster,
-				PriorityClass: priorityClass, Kind: kind,
+				PriorityClass: priorityClass, Kind: "service",
 				MinScale: minScale, MaxScale: maxScale, DesiredScale: scale,
 				Strategy: strategy, ClusterFloors: clusterFloors,
-				Enabled: true, Preemptible: preemptible, GangSize: gangSize,
+				Enabled: true, Preemptible: preemptible, GangSize: 1,
 				AdapterArtifacts: adapters, Labels: labelMap,
 			}
 			if cmd.Flags().Changed("max-clusters") {
@@ -754,14 +749,12 @@ how a distilled model gets its step count, because omni defaults every model to
 	fl.StringVar(&artifact, "artifact", "", "the weights to run")
 	fl.StringVar(&cluster, "cluster", "", "pin to one cluster, overruling placement")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
-	fl.StringVar(&kind, "kind", "service", "service; task and gang are on the roadmap and nothing runs them yet")
 	fl.IntVar(&scale, "scale", 1, "total across every cluster it may use")
 	fl.IntVar(&minScale, "min-scale", 1, "lower bound on the total (default: --scale)")
 	fl.IntVar(&maxScale, "max-scale", 1, "upper bound on the total (default: --scale)")
 	fl.StringVar(&strategy, "strategy", "pack", "pack|spread")
 	fl.IntVar(&maxClusters, "max-clusters", 0, "cap how many clusters may hold a share")
 	fl.StringArrayVar(&floors, "floor", nil, "per-cluster minimum share (CLUSTER=N, repeatable)")
-	fl.IntVar(&gangSize, "gang-size", 1, "ranks that must be co-scheduled, for --kind gang (roadmap)")
 	fl.BoolVar(&preemptible, "preemptible", false, "may be evicted for something of higher priority")
 	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
 	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
