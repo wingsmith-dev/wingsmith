@@ -19,8 +19,10 @@ import os
 import sys
 import time
 import shlex
+import threading
 import subprocess
 
+from typing import TextIO
 from urllib import error as urlerror
 from urllib import request as urlrequest
 from pathlib import Path
@@ -39,8 +41,10 @@ from hgrbench.plan import sweep_specs
 from hgrbench.store import Store
 from hgrbench.store import Measurement
 from hgrbench.harnesses import registry
+from hgrbench.harnesses.base import REDACTED
 from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
+from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import HarnessError
 from hgrbench.harnesses.base import pull
 from hgrbench.harnesses.base import host_arch
@@ -248,28 +252,60 @@ class Runner:
             self.report_cell(measurement)
         return measurements
 
-    def execute(self, invocation, log: Path, timeout: int) -> tuple[int, float]:
-        """Run one container, and write a log the token cannot leak through.
+    def execute(self, invocation: Invocation, log: Path, timeout: int) -> tuple[int, float]:
+        """Run one container, writing a log the token cannot leak through as it goes.
 
-        The output is captured and redacted rather than streamed straight to the
-        file, because one of these harnesses echoes the whole command it spawns —
+        Each line is redacted on its way to the file rather than streamed straight
+        there, because one of these harnesses echoes the whole command it spawns —
         `--header "Authorization=Bearer <token>"` and all — to its own stdout. A log
         is a file somebody pastes into an issue.
+
+        A run that outlives `timeout` has its container killed by name, not just the
+        docker CLI that started it: killing the CLI leaves the load generator running
+        against the endpoint, into the next cell. What it wrote before then stays in
+        the log, which is the only account of why it hung.
         """
         clock = time.monotonic()
-        done = subprocess.run(
-            invocation.argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env={**os.environ, **invocation.env} if invocation.env else None,
-        )
-        elapsed = time.monotonic() - clock
-        body = (done.stdout or "") + (done.stderr or "")
-        if self.token:
-            body = body.replace(self.token, "$" + "HGR_BENCH_TOKEN")
-        log.write_text(invocation.display + "\n\n" + body)
-        return done.returncode, elapsed
+        with log.open("w") as sink:
+            sink.write(invocation.display + "\n\n")
+            sink.flush()
+            process = subprocess.Popen(
+                invocation.argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env={**os.environ, **invocation.env} if invocation.env else None,
+            )
+            reader = threading.Thread(target=self._drain, args=(process, sink), daemon=True)
+            reader.start()
+            try:
+                returncode = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                self.kill(invocation, process)
+                reader.join(timeout=30)
+                sink.write(f"\nhgrbench: timed out after {timeout}s; the container was killed\n")
+                raise
+            reader.join()
+        return returncode, time.monotonic() - clock
+
+    def _drain(self, process: subprocess.Popen[str], sink: TextIO) -> None:
+        assert process.stdout is not None
+        for line in process.stdout:
+            sink.write(self.redact(line))
+            sink.flush()
+
+    def redact(self, text: str) -> str:
+        return text.replace(self.token, REDACTED) if self.token else text
+
+    def kill(self, invocation: Invocation, process: subprocess.Popen[str]) -> None:
+        """Stop an overdue run: the container first, then the CLI that was waiting on it."""
+        if invocation.container:
+            subprocess.run(["docker", "kill", invocation.container], capture_output=True, text=True)
+        process.kill()
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self.say(f"  the docker CLI for {invocation.container or 'this run'} did not exit after a kill")
 
     def grade(self, measurement: Measurement) -> None:
         """Correct a status that the harness's exit code got wrong.
@@ -341,7 +377,10 @@ class Runner:
                         duration_seconds=float(self.cell_timeout(cell)),
                         command="",
                         artifacts_dir=str(self.store.cell_dir(cell)),
-                        notes=["the harness did not finish inside the timeout"],
+                        notes=[
+                            "the harness did not finish inside the timeout; its container was killed "
+                            "and what it printed until then is in harness.log"
+                        ],
                     )
                 )
             except HarnessError as exc:

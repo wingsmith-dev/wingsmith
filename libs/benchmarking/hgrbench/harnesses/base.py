@@ -25,6 +25,7 @@ in-container shell rather than by ours.
 from __future__ import annotations
 
 import json
+import uuid
 import shlex
 import subprocess
 
@@ -65,6 +66,8 @@ class Invocation:
     display: str
     env: dict[str, str] = field(default_factory=dict)
     """Set in the docker CLI's environment, for the `-e NAME` entries in `argv` to inherit."""
+    container: str = ""
+    """The `--name` the container runs under, so a run that overstays can be killed by it."""
 
 
 @dataclass
@@ -206,6 +209,7 @@ def docker_argv(
     entrypoint: str = "",
     args: list[str] | None = None,
     mount_hf_at: str = "/hf",
+    name: str = "",
 ) -> list[str]:
     """A `docker run` argv with the mounts and environment every harness wants.
 
@@ -216,6 +220,8 @@ def docker_argv(
     rather than on a missing file.
     """
     argv = ["docker", "run", "--rm"]
+    if name:
+        argv += ["--name", name]
     if ctx.platform:
         argv += ["--platform", ctx.platform]
     argv += ["-e", f"HF_HOME={mount_hf_at}"]
@@ -290,14 +296,21 @@ def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoin
     whole point.
     """
     secrets = with_token(ctx)
+    name = container_name()
     argv = docker_argv(
         ctx,
         mount_results_at=mount_results_at,
         inherit=tuple(secrets),
         entrypoint=entrypoint,
         args=["-c", script],
+        name=name,
     )
-    return Invocation(argv, redacted(argv, ctx.token), env=secrets)
+    return Invocation(argv, redacted(argv, ctx.token), env=secrets, container=name)
+
+
+def container_name() -> str:
+    """A name no other run on this daemon is using."""
+    return f"hgrbench-{uuid.uuid4().hex[:12]}"
 
 
 def read_json(path: Path) -> Any:
