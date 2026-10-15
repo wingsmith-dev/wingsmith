@@ -1,3 +1,6 @@
+import inspect
+import datetime as dt
+
 import yaml
 import pytest
 import msgspec
@@ -6,6 +9,7 @@ from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.clusters.schemas import ClusterRollupSchema
 from app.modules.clusters.schemas import ClusterCreateRequest
@@ -15,6 +19,7 @@ from app.modules.clusters.services import SetupValues
 from app.modules.clusters.services import ClusterService
 from app.modules.clusters.services import _rollup
 from app.modules.clusters.services import _hub_url
+from app.modules.clusters.services import _revision
 from app.modules.clusters.services import _setup_values
 from app.modules.clusters.services import _registry_host
 from app.modules.clusters.services import values_filename
@@ -473,3 +478,82 @@ async def test_a_cluster_cannot_take_a_route_segment_as_its_name(name):
     """`GET /v1/clusters/rollups` is the rollup list, so a cluster called that is unreachable by name."""
     with pytest.raises(Invalid):
         await ClusterService(db=None).create(ClusterCreateRequest(name=name, region="eu-west-1"))
+
+
+# --- delete ----------------------------------------------------------------------
+
+
+class DeletableCluster(FakeCluster):
+    def __init__(self) -> None:
+        super().__init__(name="alpha")
+        self.id = "row-id"
+        self.created_at = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+        self.updated_at = None
+
+
+class DeleteRepo(FakeClusterRepo):
+    def __init__(self, cluster, holds=None) -> None:
+        super().__init__(cluster)
+        self.held = holds or {"deployments": 0, "allocations": 0, "pinned_workloads": 0}
+        self.deleted = []
+
+    async def holds(self, cluster_id):
+        return self.held
+
+    async def delete(self, cluster):
+        self.deleted.append(cluster)
+
+
+def delete_service(holds=None):
+    cluster = DeletableCluster()
+    svc = ClusterService.__new__(ClusterService)
+    svc.db = FakeSession()
+    svc.repo = DeleteRepo(cluster, holds)
+    return svc, cluster
+
+
+async def test_a_delete_without_if_match_or_force_is_refused():
+    svc, cluster = delete_service()
+    with pytest.raises(Invalid) as refused:
+        await svc.delete("alpha")
+    assert refused.value.detail == {"revision": _revision(cluster)}
+    assert svc.repo.deleted == []
+
+
+async def test_a_delete_against_a_stale_revision_is_refused():
+    svc, _ = delete_service()
+    with pytest.raises(Conflict):
+        await svc.delete("alpha", if_match="12345")
+    assert svc.repo.deleted == []
+
+
+@pytest.mark.parametrize("held", ["deployments", "allocations", "pinned_workloads"])
+async def test_a_cluster_with_anything_bound_to_it_refuses_even_when_forced(held):
+    holds = {"deployments": 0, "allocations": 0, "pinned_workloads": 0, held: 2}
+    svc, _ = delete_service(holds)
+    with pytest.raises(Conflict) as refused:
+        await svc.delete("alpha", force=True)
+    assert refused.value.detail == holds
+    assert svc.repo.deleted == []
+
+
+async def test_an_empty_cluster_is_deleted_with_its_revision_or_with_force():
+    svc, cluster = delete_service()
+    await svc.delete("alpha", if_match=_revision(cluster))
+    assert svc.repo.deleted == [cluster]
+
+    svc, cluster = delete_service()
+    await svc.delete("alpha", force=True)
+    assert svc.repo.deleted == [cluster]
+
+
+def test_the_holds_query_counts_deployments_live_allocations_and_pins(repo):
+    text = sql(repo.holds_query("row-id"))
+    assert "count(demand_deployment.id)" in text
+    assert "bind_allocation.released_at IS NULL" in text
+    assert "demand_workload.pinned_cluster_id" in text
+
+
+def test_delete_route_takes_if_match_and_force():
+    parameters = set(inspect.signature(ClusterRoutes.delete_cluster.fn).parameters)
+    assert {"if_match", "force"} <= parameters

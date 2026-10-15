@@ -787,10 +787,31 @@ class ClusterService:
             raise Conflict("cluster conflicts with an existing one") from exc
         return await self.get(cluster.uid)
 
-    async def delete(self, ref: str) -> None:
+    async def delete(self, ref: str, if_match: str | None = None, force: bool = False) -> None:
+        """Removes a cluster's registry row, which takes its history with it.
+
+        Two guards, because the foreign keys cascade and nothing else would ask.
+        The caller must name the revision it looked at (`If-Match`) or say
+        `force`, so a delete aimed at what a stale screen showed is refused. And
+        a cluster that still has deployments, unreleased allocations or pinned
+        workloads refuses either way, `force` included: those are running
+        things, and the way to remove them is to drain the cluster first. The
+        refusal names each count.
+        """
         cluster = await self.repo.get(ref)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
+        if if_match is None and not force:
+            raise Invalid(
+                "deleting a cluster needs If-Match with its revision, or force=true",
+                {"revision": _revision(cluster)},
+            )
+        if if_match is not None and if_match != _revision(cluster):
+            raise Conflict("cluster changed since it was read", {"revision": _revision(cluster)})
+        holds = await self.repo.holds(cluster.id)
+        if any(holds.values()):
+            held = ", ".join(f"{count} {kind.replace('_', ' ')}" for kind, count in holds.items() if count)
+            raise Conflict(f"cluster {cluster.name!r} still has {held}; drain it first", holds)
         await self.repo.delete(cluster)
         await self.db.commit()
 

@@ -12,6 +12,8 @@ from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Cluster
+from app.db.models import Workload
+from app.db.models import Allocation
 from app.db.models import Credential
 from app.db.models import Deployment
 from app.db.models import ClusterServing
@@ -217,6 +219,31 @@ class ClusterRepository:
     async def clear_serving(self, serving: ClusterServing) -> None:
         await self.db.delete(serving)
         await self.db.flush()
+
+    def holds_query(self, cluster_id: UUID) -> Select:
+        """What still depends on a cluster: deployments on it, allocations it has
+        not released, and workloads pinned to it.
+
+        All three are counted rather than left to the foreign keys, because the
+        keys cascade (deployments, allocations) or quietly unpin (workloads),
+        and a delete would take them along without anyone having asked.
+        """
+        deployments = select(func.count(Deployment.id)).where(Deployment.cluster_id == cluster_id).scalar_subquery()
+        allocations = (
+            select(func.count(Allocation.id))
+            .where(Allocation.cluster_id == cluster_id, Allocation.released_at.is_(None))
+            .scalar_subquery()
+        )
+        pinned = select(func.count(Workload.id)).where(Workload.pinned_cluster_id == cluster_id).scalar_subquery()
+        return select(
+            deployments.label("deployments"),
+            allocations.label("allocations"),
+            pinned.label("pinned_workloads"),
+        )
+
+    async def holds(self, cluster_id: UUID) -> dict[str, int]:
+        row = (await self.db.execute(self.holds_query(cluster_id))).one()
+        return {key: int(value or 0) for key, value in row._mapping.items()}
 
     async def delete(self, cluster: Cluster) -> None:
         await self.db.delete(cluster)

@@ -131,8 +131,16 @@ class ClusterRoutes(Controller):
         return Response(await svc.update(ref, data, if_match=if_match))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_cluster(self, context: RequestContext, svc: ClusterService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_cluster(
+        self,
+        context: RequestContext,
+        svc: ClusterService,
+        ref: str,
+        if_match: str | None = Parameter(header="If-Match", default=None),
+        force: bool = False,
+    ) -> None:
+        """Needs `If-Match` or `force=true`, and refuses while anything is bound to the cluster."""
+        await svc.delete(ref, if_match=if_match, force=force)
 
     @put("/{ref:str}/serving")
     async def set_serving(

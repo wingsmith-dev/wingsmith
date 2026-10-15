@@ -288,7 +288,7 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
     assert patched.phase == "active"
     assert_patched(created, patched)
 
-    await service.delete(created.id)
+    await service.delete(created.id, if_match=patched.revision)
     assert (await service.list()).count == 0
 
 
