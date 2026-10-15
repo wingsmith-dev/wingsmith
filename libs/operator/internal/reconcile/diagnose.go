@@ -369,11 +369,12 @@ func containerTrouble(pod *corev1.Pod) *trouble {
 // for a model of hundreds of gigabytes read off network storage that takes longer than the window.
 // A process that hangs there is the readiness and startup probes' to kill, and a restart is then
 // reported as a crash loop. So Running pods are left out, and the stall is about the rest: one
-// replica loading must not hide another that never left Pending.
+// replica loading, or serving, must not hide another that never left Pending.
+//
+// With a replica already serving the deployment is degraded rather than failed, so a stuck pod
+// there is reported without failing it: under the `Progressing` reason its phase already implies,
+// with the pod named in the message.
 func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, pods []corev1.Pod, out rollout) *trouble {
-	if out.ready > 0 {
-		return nil
-	}
 	var stuck *corev1.Pod
 	running := 0
 	for i := range pods {
@@ -389,8 +390,20 @@ func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, pod
 			stuck = pod
 		}
 	}
-	if stuck == nil && running > 0 {
+	if stuck == nil && (running > 0 || out.ready > 0) {
 		return nil
+	}
+	if out.ready > 0 {
+		age := time.Since(stuck.CreationTimestamp.Time)
+		if age < stallAfter {
+			return nil
+		}
+		return &trouble{
+			reason: "Progressing",
+			code:   "Progressing",
+			message: fmt.Sprintf("%s has been %s for %s with nothing reporting why",
+				stuck.Name, phaseOf(stuck), age.Round(time.Minute)),
+		}
 	}
 
 	var graph unstructured.Unstructured

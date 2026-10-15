@@ -299,6 +299,44 @@ func TestAStuckPodBesideALoadingOneIsStillReported(t *testing.T) {
 	}
 }
 
+// A replica that is serving must not hide another stuck in Pending either. The deployment is
+// degraded rather than failed, so the stuck pod is named without failing it.
+func TestAStuckPodBesideAReadyOneIsReportedWithoutFailingTheDeployment(t *testing.T) {
+	const graph = "chat-iad"
+	r := diagnoser(t, graphObject(graph, stallAfter+time.Hour))
+	old := metav1.NewTime(time.Now().Add(-stallAfter - time.Hour))
+	ready := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-a", Namespace: testRender.Namespace, CreationTimestamp: old},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+		},
+	}
+	stuck := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-b", Namespace: testRender.Namespace, CreationTimestamp: old},
+		Status:     corev1.PodStatus{Phase: corev1.PodPending},
+	}
+
+	out := rollout{desired: 2, ready: 1}
+	out.trouble = r.diagnose(context.Background(), graph, []corev1.Pod{ready, stuck}, out)
+
+	if out.trouble == nil {
+		t.Fatal("a pod stuck in Pending beside a ready one went unreported")
+	}
+	if !strings.Contains(out.message(), "chat-iad-b has been Pending") {
+		t.Errorf("the message should name the stuck pod: %s", out.message())
+	}
+	if out.phase() != phaseDegraded {
+		t.Errorf("phase = %q, want %q while a replica serves", out.phase(), phaseDegraded)
+	}
+
+	recent := stuck
+	recent.CreationTimestamp = metav1.NewTime(time.Now().Add(-time.Minute))
+	if found := r.diagnose(context.Background(), graph, []corev1.Pod{ready, recent}, out); found != nil {
+		t.Fatalf("a pod one minute old beside a ready one was called stalled: %+v", found)
+	}
+}
+
 // A pod recreated recently has only been stuck since then, whatever the graph's age.
 func TestARecentlyRecreatedPendingPodIsNotYetStalled(t *testing.T) {
 	const graph = "chat-iad"
