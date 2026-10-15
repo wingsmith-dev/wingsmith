@@ -478,7 +478,7 @@ def test_network_policies_are_on_by_default(chart):
     assert {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "dynamo"}}} in nats["ingress"][0]["from"]
     operator = policies[("hangar-system", "hangar-operator")]["spec"]
     assert "from" not in operator["ingress"][0]
-    assert operator["ingress"][0]["ports"] == [{"port": "health", "protocol": "TCP"}]
+    assert {"port": "health", "protocol": "TCP"} in operator["ingress"][0]["ports"]
 
 
 def test_network_policies_can_be_turned_off(chart):
@@ -509,3 +509,26 @@ def test_serving_route_carries_its_middleware_and_needs_a_policy_peer(chart):
     peers = _policies(docs)[("dynamo", "hangar-inference-frontend")]["spec"]["ingress"][0]["from"]
     assert {"namespaceSelector": {"matchLabels": {"team": "edge"}}} in peers
     render(chart, **SERVING, **{"serving.allowUnauthenticated": True, "networkPolicy.enabled": False})
+
+
+# ── operator metrics ─────────────────────────────────────────────────────────
+
+
+def test_operator_metrics_are_on_and_reachable(chart):
+    docs = render(chart)
+    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_METRICS_ADDR"] == ":8080"
+    ports = container(get(docs, "Deployment", "hangar-operator"), "operator")["ports"]
+    assert {"name": "metrics", "containerPort": 8080} in ports
+    policy = _policies(docs)[("hangar-system", "hangar-operator")]["spec"]
+    assert {"port": "metrics", "protocol": "TCP"} in policy["ingress"][0]["ports"]
+    assert find(docs, "PodMonitor", "hangar-operator") is None
+
+
+def test_operator_metrics_off_and_pod_monitor(chart):
+    off = render(chart, **{"operator.metrics.enabled": False})
+    assert get(off, "ConfigMap", "hangar-operator")["data"]["HANGAR_METRICS_ADDR"] == "0"
+    docs = render(chart, **{"operator.metrics.podMonitor.enabled": True,
+                            "operator.metrics.podMonitor.labels.release": "kps"})
+    monitor = get(docs, "PodMonitor", "hangar-operator", "hangar-system")
+    assert monitor["metadata"]["labels"]["release"] == "kps"
+    assert monitor["spec"]["podMetricsEndpoints"][0]["port"] == "metrics"

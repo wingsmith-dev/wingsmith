@@ -19,6 +19,8 @@ data:
   HANGAR_NAMESPACE: {{ .Release.Namespace | quote }}
   HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
   HANGAR_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
+  # "0" is the operator's own off switch.
+  HANGAR_METRICS_ADDR: {{ ternary (printf ":%v" .Values.operator.metrics.port) "0" .Values.operator.metrics.enabled | quote }}
 
   HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
   HANGAR_ALLOWED_OPERATIONS: {{ include "cluster-setup.allowedOperations" . | quote }}

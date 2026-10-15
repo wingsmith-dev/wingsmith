@@ -154,6 +154,34 @@ the workload namespace, including the engine and benchmark images, so whoever
 holds admin access to the plane can run code there. Treat plane admin as
 equivalent to write access to that namespace.
 
+## Operator metrics
+
+`operator.metrics.enabled` (on by default) serves Prometheus metrics on
+`:8080/metrics` in the operator pod. Set `operator.metrics.podMonitor.enabled`
+to have a Prometheus Operator scrape it; the bundled metrics agent does not.
+
+The operator registers no series of its own yet. What it exposes are
+controller-runtime's standard families:
+
+| series | labels | what it says |
+|---|---|---|
+| `controller_runtime_reconcile_total` | `controller`, `result` | reconciles, by outcome |
+| `controller_runtime_reconcile_errors_total` | `controller` | reconciles that returned an error |
+| `controller_runtime_terminal_reconcile_errors_total` | `controller` | errors that will not be retried |
+| `controller_runtime_reconcile_panics_total` | `controller` | reconciles that panicked |
+| `controller_runtime_reconcile_time_seconds` | `controller` | reconcile latency (histogram) |
+| `controller_runtime_max_concurrent_reconciles`, `controller_runtime_active_workers` | `controller` | worker capacity and use |
+| `workqueue_depth`, `workqueue_adds_total`, `workqueue_retries_total` | `name`, `controller` | queue size and churn |
+| `workqueue_queue_duration_seconds`, `workqueue_work_duration_seconds` | `name`, `controller` | time waiting and time working (histograms) |
+| `workqueue_unfinished_work_seconds`, `workqueue_longest_running_processor_seconds` | `name`, `controller` | stuck work |
+| `rest_client_requests_total` | `code`, `method`, `host` | Kubernetes API calls |
+| `leader_election_master_status` | `name` | 1 on the replica holding the lease |
+| `go_*`, `process_*` | | Go runtime and process |
+
+A read-only operator runs no reconciler, so the `controller_runtime_*` families
+are absent there. Hub-session health is not a metric yet; it is the operator's
+readiness (`/readyz`), and the plane reports it per cluster.
+
 ## Versioning
 
 The chart follows SemVer, and `appVersion` always equals `version`. The

@@ -216,6 +216,19 @@ operator:
     tag: ""
     pullPolicy: IfNotPresent
   leaderElection: true
+  # The operator's Prometheus metrics: controller-runtime's reconcile, work
+  # queue, API client and leader-election series (README, Operator metrics).
+  # Plain HTTP on `port`, reachable in-cluster. `podMonitor` renders a
+  # PodMonitor for a cluster running the Prometheus Operator; the bundled
+  # metrics agent does not scrape the operator.
+  metrics:
+    enabled: true
+    port: 8080
+    podMonitor:
+      enabled: false
+      interval: 30s
+      # Extra labels, for a Prometheus that selects PodMonitors by label.
+      labels: {}
   engine:
     # Secrets in the workload namespace presented when pulling a workload's `engine_runtime_image`.
     # Empty for the NVIDIA runtime images, which are anonymous; set this when a

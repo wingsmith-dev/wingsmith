@@ -49,6 +49,10 @@ spec:
           ports:
             - name: health
               containerPort: 8081
+            {{- if .Values.operator.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.operator.metrics.port }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -81,3 +85,24 @@ spec:
             name: hangar-hub-ca
       {{- end }}
       terminationGracePeriodSeconds: 30
+{{- if and .Values.operator.metrics.enabled .Values.operator.metrics.podMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+    {{- with .Values.operator.metrics.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hangar-operator
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.operator.metrics.podMonitor.interval }}
+{{- end }}

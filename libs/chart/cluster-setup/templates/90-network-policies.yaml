@@ -17,6 +17,10 @@ spec:
     - ports:
         - port: health
           protocol: TCP
+        {{- if .Values.operator.metrics.enabled }}
+        - port: metrics
+          protocol: TCP
+        {{- end }}
 {{- if .Values.agent.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
