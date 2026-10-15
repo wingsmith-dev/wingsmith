@@ -122,13 +122,53 @@ PHASES = frozenset({"pending", "admitted", "placed", "running", "succeeded", "fa
 MANAGED = "managed"
 
 
+WORKLOAD_NAME_CONSTRAINT = "uq_demand_workload_project_name"
+POLICY_NAME_CONSTRAINT = "bind_policy_name_key"
+DEPLOYMENT_NAME_CONSTRAINT = "uq_demand_deployment_cluster_name"
+
+
+def violated(exc: IntegrityError) -> str | None:
+    """The name of the constraint an integrity error broke, read off the driver's error."""
+    cause = getattr(exc.orig, "__cause__", None)
+    name = getattr(cause, "constraint_name", None) or getattr(exc.orig, "constraint_name", None)
+    if name:
+        return str(name)
+    text = str(exc.orig)
+    for known in (WORKLOAD_NAME_CONSTRAINT, POLICY_NAME_CONSTRAINT, DEPLOYMENT_NAME_CONSTRAINT):
+        if known in text:
+            return known
+    return None
+
+
+def _conflict(exc: IntegrityError, name: str, project: str | None) -> Conflict:
+    """A conflict that says which name collided, rather than blaming the workload's for all of them."""
+    constraint = violated(exc)
+    if constraint == POLICY_NAME_CONSTRAINT:
+        policy = constraint_name(name)
+        return Conflict(
+            f"a policy named {policy!r} already exists, and it is the name this workload's placement constraint "
+            "would take",
+            {"policy": policy},
+        )
+    if constraint == DEPLOYMENT_NAME_CONSTRAINT:
+        return Conflict(
+            f"a cluster placement chose already has a deployment named {name!r}; try again",
+            {"name": name},
+        )
+    if constraint == WORKLOAD_NAME_CONSTRAINT:
+        where = f" in {project!r}" if project else ""
+        return Conflict(f"workload {name!r} already exists{where}", {"name": name})
+    return Conflict("workload conflicts with an existing one", {"constraint": constraint})
+
+
 def constraint_name(workload_name: str) -> str:
     """The name of the policy a workload's own allow-list becomes.
 
     Derived from the workload rather than random so that the policies list reads as a
     list of intentions instead of a list of identifiers, and so a second workload of the
     same name in another project collides loudly — `Policy.name` is globally unique, and
-    a silent second constraint sharing one name would be worse than the conflict.
+    a silent second constraint sharing one name would be worse than the conflict. The
+    conflict names the policy, not the workload, so the caller knows which name to change.
     """
     return f"{workload_name}{CONSTRAINT_SUFFIX}"
 
@@ -155,6 +195,19 @@ def _reshape_unavailability(before_devices: int, after_devices: int) -> dict:
     }
 
 
+def placement_shape(workload: Workload, roles: Sequence[WorkloadRole]) -> tuple:
+    """What placement reads to size and fit one unit of a workload. A change to any of it re-places."""
+    return (
+        workload.device_class,
+        workload.device_count,
+        workload.device_memory_mib_min,
+        workload.tensor_parallel,
+        workload.requires_single_topology_domain,
+        workload.topology_domain_kind,
+        group_devices(workload.device_count, roles),
+    )
+
+
 class Announcement(NamedTuple):
     """One deployment a committed write changed, and the generation the cluster should read."""
 
@@ -178,6 +231,13 @@ class WorkloadChange:
 
     def touch(self, cluster_uid: str, deployment: Deployment) -> None:
         self.announcements.append(Announcement(cluster_uid, deployment.uid, deployment.generation))
+
+    def merge(self, other: WorkloadChange) -> None:
+        """Takes another change's announcements, the later generation winning for a deployment both touched."""
+        latest = {a.uid: a for a in self.announcements}
+        latest.update({a.uid: a for a in other.announcements})
+        self.announcements = list(latest.values())
+        self.placed = other.placed
 
     def touch_rest(self, deployment_rows: list) -> None:
         """Announces every deployment in `deployment_rows` this change has not already announced."""
@@ -877,6 +937,13 @@ class WorkloadService:
             else None
         )
 
+        if constraint is not None and await self.repo.policy_by_name(constraint.name) is not None:
+            raise Conflict(
+                f"a policy named {constraint.name!r} already exists, and it is the name this workload's "
+                "placement constraint would take; delete or rename that policy, or name the workload differently",
+                {"policy": constraint.name},
+            )
+
         workload = Workload(
             uid=new_uid(WORKLOAD),
             name=data.name,
@@ -887,7 +954,7 @@ class WorkloadService:
             max_scale=data.max_scale,
             desired_scale=data.desired_scale,
             strategy=data.strategy,
-            cluster_floors=data.cluster_floors,
+            cluster_floors=await self._cluster_floors(data.cluster_floors),
             max_clusters=data.max_clusters,
             pinned_cluster_id=None if pinned is None else pinned.id,
             gang_size=data.gang_size,
@@ -987,13 +1054,13 @@ class WorkloadService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict(f"workload {data.name!r} already exists in {project.slug!r}") from exc
+            raise _conflict(exc, data.name, data.project) from exc
 
         for row in (await self.repo.deployments([workload.id])).get(workload.id, []):
             await self._announce(row.cluster_uid, row[0].uid, row[0].generation)
         return await self.get(workload.uid)
 
-    async def _apply_serving_patch(self, workload: Workload, patch: WorkloadServingUpdate) -> None:
+    async def _apply_serving_patch(self, workload: Workload, patch: WorkloadServingUpdate) -> list[WorkloadRole]:
         """Merges a serving patch onto the stored configuration and rewrites the columns.
 
         The whole configuration is validated, not the fields the caller named, so a
@@ -1034,6 +1101,26 @@ class WorkloadService:
         roles = await self.repo.replace_roles(workload, roles)
         apply_serving(workload, request, artifact, roles)
         await self.record_revision(workload, artifact, roles, "updated")
+        return roles
+
+    async def _cluster_floors(self, floors: dict[str, int]) -> dict[str, int]:
+        """Per-cluster minimums keyed by cluster uid, refused when a count is negative or a cluster unknown.
+
+        Resolved at write time so the stored map is keyed the way placement reads it. A
+        name that matched nothing used to be stored as written and then silently ignored
+        by every expansion, which reads as a floor that was honoured.
+        """
+        resolved: dict[str, int] = {}
+        for ref, count in floors.items():
+            if count < 0:
+                raise Invalid("a cluster floor cannot be negative", {"cluster": ref, "floor": count})
+            cluster = await self.repo.cluster_by_ref(ref)
+            if cluster is None:
+                raise NotFound(f"no cluster {ref!r}", {"cluster_floors": floors})
+            if cluster.uid in resolved:
+                raise Invalid(f"cluster {ref!r} has two floors", {"cluster_floors": floors})
+            resolved[cluster.uid] = count
+        return resolved
 
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """A partial update of what was asked for, globally.
@@ -1044,8 +1131,21 @@ class WorkloadService:
         are declared here and take effect at the next expansion rather than
         reshuffling a running workload the moment they are written.
 
-        A serving change bumps every deployment's generation, because it is the one
-        kind of write here that changes the process a cluster is running.
+        The name is fixed. Every deployment and the workload's placement policy are
+        named after it, and a cluster knows the deployment by that name; renaming would
+        either leave them behind or replace every running copy. A patch restating the
+        current name is accepted.
+
+        A serving change that moves what one unit needs from placement — device class,
+        count or memory floor, tensor degree, topology domain, or the role weights of a
+        disaggregated group — is placed again in this same write. If the new shape
+        places fewer units than are placed now, the patch is refused and nothing
+        changes. Flipping between aggregated and disaggregated is `workload.reshape`,
+        because the unit the scale numbers count changes with it.
+
+        Deployment generations move only when something a cluster renders moved: the
+        serving digest, the shape, the overrides, the adapters or the labels. A patch
+        to a field nothing renders restarts nothing.
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
@@ -1057,13 +1157,34 @@ class WorkloadService:
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         note = fields.pop("note", UNSET)
+        if "name" in fields:
+            name = fields.pop("name")
+            if name != workload.name:
+                raise Invalid(
+                    "a workload's name cannot change: its deployments and placement policy are named after "
+                    "it; create a new workload under the new name",
+                    {"name": workload.name, "requested": name},
+                )
         if "strategy" in fields and fields["strategy"] not in STRATEGIES:
             raise Invalid(f"unknown strategy {fields['strategy']!r}", {"allowed": sorted(STRATEGIES)})
         if fields.get("max_clusters") is not None and fields.get("max_clusters", 1) < 1:
             raise Invalid("max_clusters must be at least 1", {"max_clusters": fields["max_clusters"]})
+        if "cluster_floors" in fields:
+            fields["cluster_floors"] = await self._cluster_floors(fields["cluster_floors"])
 
+        roles = await self.repo.roles_of(workload)
+        before_shape = placement_shape(workload, roles)
+        before_digest = workload.serving_digest
         if "serving" in fields:
-            await self._apply_serving_patch(workload, fields.pop("serving"))
+            patch = fields.pop("serving")
+            current = workload.serving_topology or AGGREGATED
+            if patch.topology is not UNSET and (patch.topology.serving_topology or AGGREGATED) != current:
+                raise Invalid(
+                    "changing between aggregated and disaggregated serving is the workload.reshape operation: "
+                    "the unit the scale counts changes with it",
+                    {"serving_topology": current, "requested": patch.topology.serving_topology},
+                )
+            roles = await self._apply_serving_patch(workload, patch)
         if "priority_class" in fields:
             name = fields.pop("priority_class")
             found = await self.repo.priority_class_by_name(name)
@@ -1078,30 +1199,48 @@ class WorkloadService:
         if note is not UNSET:
             await self._note(workload, note)
 
-        bumped = bool({"overrides", "adapter_artifacts", "labels", "serving"} & set(data.to_dict(exclude_unset=True)))
-        if bumped:
-            for deployment in deployments:
-                await bump_generation(self.db, deployment)
-
+        reshaped = placement_shape(workload, roles) != before_shape
+        declared = set(data.to_dict(exclude_unset=True))
+        rendered = (
+            workload.serving_digest != before_digest
+            or reshaped
+            or bool({"overrides", "adapter_artifacts", "labels"} & declared)
+        )
+        change = WorkloadChange()
+        name = workload.name
         try:
-            for deployment in deployments:
+            for deployment, deployment_row in zip(deployments, deployment_rows, strict=True):
+                if rendered:
+                    await bump_generation(self.db, deployment)
                 await self._record(
                     deployment,
                     "updated",
                     f"{workload.name} was updated",
                     {
-                        "fields": ", ".join(sorted(data.to_dict(exclude_unset=True))),
+                        "fields": ", ".join(sorted(declared)),
                         "workload_id": workload.uid,
                         "generation": str(deployment.generation),
                     },
                 )
+                if rendered:
+                    change.touch(deployment_row.cluster_uid, deployment)
+            if reshaped and not workload.paused:
+                placed = sum(d.desired_replicas for d in deployments)
+                replaced = await self._reconcile(workload, deployment_rows)
+                if (replaced.placed or 0) < min(placed, workload.desired_scale):
+                    await self.db.rollback()
+                    raise Conflict(
+                        f"the new shape places {replaced.placed or 0} of the {placed} units placed now; "
+                        "nothing was changed",
+                        {"placed": placed, "would_place": replaced.placed or 0, "summary": replaced.result["summary"]},
+                    )
+                change.merge(replaced)
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict("workload conflicts with an existing one") from exc
+            raise _conflict(exc, name, None) from exc
 
-        for deployment, deployment_row in zip(deployments, deployment_rows, strict=True):
-            await self._announce(deployment_row.cluster_uid, deployment.uid, deployment.generation)
+        await self.announce(change)
         return await self.get(workload.uid)
 
     async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> WorkloadChange:
@@ -1436,11 +1575,15 @@ class WorkloadService:
         raise Invalid(f"{operation_type} is not a workload operation", {"type": operation_type})
 
     async def delete(self, ref: str) -> None:
-        """Deletes the workload and every cluster's copy of it.
+        """Deletes the workload, every cluster's copy of it, and the placement policy created for it.
 
         Replicas cascade too, and that is correct: they are a cluster's report about
         a thing that no longer exists. Ingestion writing them again before the
         cluster has caught up is a reconciliation lag, not a resurrection.
+
+        Attachments naming the workload go with it, and so does the policy `create`
+        wrote from `allowed_regions` / `allowed_clusters` while nothing else is
+        attached to it.
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
@@ -1460,6 +1603,7 @@ class WorkloadService:
             f"{workload.name} was deleted from {len(deployments)} cluster(s)",
             {"deployments": str(len(deployments))},
         )
+        await self.repo.detach(workload, SUBJECT_WORKLOAD, constraint_name(workload.name))
         await self.repo.delete(workload, deployments)
         await self.db.commit()
         for cluster_uid, uid, generation in announcements:

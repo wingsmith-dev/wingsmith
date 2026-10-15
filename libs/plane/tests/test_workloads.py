@@ -447,3 +447,96 @@ async def test_a_kind_no_operator_renders_is_refused_at_creation(kind):
     )
     with pytest.raises(Invalid, match="not supported yet"):
         await WorkloadService(db=None).create(data)
+
+
+class _Driver(Exception):
+    def __init__(self, constraint_name):
+        super().__init__(f"duplicate key value violates unique constraint {constraint_name!r}")
+        self.constraint_name = constraint_name
+
+
+def _integrity(constraint_name):
+    from sqlalchemy.exc import IntegrityError
+
+    orig = Exception("wrapped")
+    orig.__cause__ = _Driver(constraint_name)
+    return IntegrityError("insert", {}, orig)
+
+
+def test_a_policy_name_collision_is_reported_as_the_policy_not_the_workload():
+    from app.modules.workloads.services import _conflict
+
+    conflict = _conflict(_integrity("bind_policy_name_key"), "llama", "core")
+    assert "policy named 'llama-placement'" in str(conflict)
+    assert "workload" in str(_conflict(_integrity("uq_demand_workload_project_name"), "llama", "core"))
+    assert "deployment named 'llama'" in str(_conflict(_integrity("uq_demand_deployment_cluster_name"), "llama", None))
+
+
+def test_the_constraint_name_is_found_in_the_message_when_the_driver_carries_no_attribute():
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.workloads.services import violated
+
+    exc = IntegrityError("insert", {}, Exception('violates unique constraint "bind_policy_name_key"'))
+    assert violated(exc) == "bind_policy_name_key"
+
+
+def test_the_placement_shape_moves_with_what_placement_reads_and_nothing_else():
+    from types import SimpleNamespace
+
+    from app.db.models import WorkloadRole
+    from app.modules.workloads.services import placement_shape
+
+    def workload(**kw):
+        base = {
+            "device_class": "h100",
+            "device_count": 8,
+            "device_memory_mib_min": 0,
+            "tensor_parallel": 8,
+            "requires_single_topology_domain": False,
+            "topology_domain_kind": None,
+            "capabilities": {},
+            "cpu_cores": 8,
+        }
+        return SimpleNamespace(**(base | kw))
+
+    same = placement_shape(workload(), ())
+    assert placement_shape(workload(capabilities={"tool_calling_supported": True}, cpu_cores=16), ()) == same
+    assert placement_shape(workload(device_count=16), ()) != same
+    assert placement_shape(workload(device_class="h200"), ()) != same
+    assert placement_shape(workload(tensor_parallel=4), ()) != same
+    roles = [WorkloadRole(role="prefill", weight=1), WorkloadRole(role="decode", weight=2)]
+    heavier = [WorkloadRole(role="prefill", weight=1), WorkloadRole(role="decode", weight=3)]
+    assert placement_shape(workload(), roles) != placement_shape(workload(), heavier)
+
+
+class _Clusters:
+    def __init__(self, *uids):
+        from types import SimpleNamespace
+
+        self.known = {uid: SimpleNamespace(uid=f"clu_{uid}") for uid in uids}
+
+    async def cluster_by_ref(self, ref):
+        return self.known.get(ref)
+
+
+async def test_cluster_floors_are_keyed_by_cluster_id_and_refuse_what_they_cannot_honour():
+    from app.core.exceptions import NotFound
+    from app.modules.workloads.services import WorkloadService
+
+    service = WorkloadService(db=None)
+    service.repo = _Clusters("iad", "sfo")
+    assert await service._cluster_floors({"iad": 2, "sfo": 0}) == {"clu_iad": 2, "clu_sfo": 0}
+    with pytest.raises(NotFound):
+        await service._cluster_floors({"nowhere": 1})
+    with pytest.raises(Invalid):
+        await service._cluster_floors({"iad": -1})
+
+
+def test_cluster_floors_must_be_whole_numbers():
+    import msgspec
+
+    from app.modules.workloads.schemas import WorkloadUpdateRequest
+
+    with pytest.raises(msgspec.ValidationError):
+        msgspec.convert({"cluster_floors": {"iad": "two"}}, WorkloadUpdateRequest)

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Device
+from app.db.models import Policy
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
@@ -26,6 +27,7 @@ from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import AllocationDevice
 from app.db.models import DeploymentStatus
+from app.db.models import PolicyAttachment
 from app.db.models import WorkloadRevision
 from app.core.filters import ref_ids
 
@@ -491,6 +493,53 @@ class WorkloadRepository:
             await self.db.delete(deployment)
         await self.db.delete(workload)
         await self.db.flush()
+
+    async def policy_by_name(self, name: str) -> Policy | None:
+        result = await self.db.execute(select(Policy).where(Policy.name == name))
+        return result.scalar_one_or_none()
+
+    async def detach(self, workload: Workload, subject_type: str, generated: str) -> list[str]:
+        """Removes every policy attachment naming this workload, and the policy created for it.
+
+        `subject_id` is polymorphic and has no foreign key, so nothing cascades: without
+        this a deleted workload leaves attachments pointing at a row that is gone, and
+        its own placement policy holding a name the next workload of that name needs.
+        The generated policy is deleted only while this workload is its sole subject;
+        one somebody has since attached elsewhere is theirs now and is left in place.
+        """
+        attached = (
+            (
+                await self.db.execute(
+                    select(PolicyAttachment).where(
+                        PolicyAttachment.subject_type == subject_type,
+                        PolicyAttachment.subject_id == workload.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        policy_ids = {a.policy_id for a in attached}
+        for attachment in attached:
+            await self.db.delete(attachment)
+        await self.db.flush()
+        removed: list[str] = []
+        if not policy_ids:
+            return removed
+        policies = (
+            (await self.db.execute(select(Policy).where(Policy.id.in_(policy_ids), Policy.name == generated)))
+            .scalars()
+            .all()
+        )
+        for policy in policies:
+            others = await self.db.scalar(
+                select(func.count(PolicyAttachment.id)).where(PolicyAttachment.policy_id == policy.id)
+            )
+            if not others:
+                removed.append(policy.uid)
+                await self.db.delete(policy)
+        await self.db.flush()
+        return removed
 
     async def clusters_by_uid(self, uids: list[str]) -> dict[str, Cluster]:
         if not uids:

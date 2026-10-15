@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from app.core import ids
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.modules.clusters.services import ClusterService
 from app.modules.placement.schemas import PlacementShapeRequest
 from app.modules.placement.schemas import PlacementPreviewRequest
@@ -1154,3 +1155,87 @@ async def test_scaling_up_does_not_move_a_workload_off_its_own_reservation(sessi
         after = await WorkloadService(db).get(workload.id)
     assert [d.cluster_name for d in after.deployments] == ["first"]
     assert after.scale.placed == 3
+
+
+def reshaped(device_count: int):
+    from app.modules.workloads.schemas import WorkloadServingUpdate
+    from app.modules.workloads.schemas import WorkloadUpdateRequest
+
+    return WorkloadUpdateRequest(
+        serving=WorkloadServingUpdate(shape=ShapeSchema(device_class=DEVICE_CLASS, device_count=device_count))
+    )
+
+
+async def test_a_shape_patch_is_placed_again_in_the_same_write(sessions) -> None:
+    """Doubling the devices per replica moves the share to the cluster that can hold it."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "small", devices=4)
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create())
+    assert [d.cluster_name for d in workload.deployments] == ["small"]
+
+    await seed_supply(sessions, "large", devices=8)
+    async with sessions() as db:
+        after = await WorkloadService(db).update(workload.id, reshaped(8))
+
+    assert [d.cluster_name for d in after.deployments] == ["large"]
+    assert after.serving.shape.device_count == 8
+
+
+async def test_a_shape_patch_that_cannot_be_placed_is_refused_and_changes_nothing(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "only", devices=4)
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create())
+
+    async with sessions() as db:
+        with pytest.raises(Conflict):
+            await WorkloadService(db).update(workload.id, reshaped(8))
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert after.serving.shape.device_count == 4
+    assert [d.cluster_name for d in after.deployments] == ["only"]
+    assert after.deployments[0].generation == workload.deployments[0].generation
+
+
+async def test_a_rename_is_refused_and_restating_the_name_is_not(sessions) -> None:
+    from app.modules.workloads.schemas import WorkloadUpdateRequest
+
+    await seed_demand(sessions)
+    await seed_supply(sessions, "only", devices=4)
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create())
+
+    async with sessions() as db:
+        with pytest.raises(Invalid):
+            await WorkloadService(db).update(workload.id, WorkloadUpdateRequest(name="renamed"))
+    async with sessions() as db:
+        same = await WorkloadService(db).update(workload.id, WorkloadUpdateRequest(name=workload.name))
+    assert same.name == workload.name
+
+
+async def test_deleting_a_workload_removes_the_placement_policy_created_for_it(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+    async with sessions() as db:
+        await WorkloadService(db).delete(workload.id)
+
+    assert await fetch(sessions, "select name from bind_policy") == []
+    assert await fetch(sessions, "select id from bind_policy_attachment") == []
+
+
+async def test_a_policy_name_collision_names_the_policy(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
+    async with sessions.begin() as db:
+        await db.execute(
+            text("insert into bind_policy (uid, name) values (:uid, 'llama-prod-placement')"),
+            {"uid": ids.new_uid(ids.POLICY)},
+        )
+
+    async with sessions() as db:
+        with pytest.raises(Conflict, match="policy named 'llama-prod-placement'"):
+            await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))

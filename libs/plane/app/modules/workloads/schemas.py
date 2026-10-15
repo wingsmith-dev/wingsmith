@@ -501,7 +501,7 @@ class WorkloadSchema(Struct):
     overrides: dict
     labels: dict
     strategy: str
-    cluster_floors: dict
+    cluster_floors: dict[str, int]
     max_clusters: int | None
     pinned_cluster_id: str | None
     scale: WorkloadScaleSchema
@@ -615,7 +615,7 @@ class WorkloadCreateRequest(Struct):
     max_scale: int = 1
     desired_scale: int = 1
     strategy: str = "pack"
-    cluster_floors: dict = {}
+    cluster_floors: dict[str, int] = {}
     max_clusters: int | None = None
     enabled: bool = True
     preemptible: bool = False
@@ -642,6 +642,9 @@ class WorkloadUpdateRequest(Struct):
     change to the workload. The digest is recomputed from what the write left behind
     and never taken from the caller.
 
+    `name` is accepted only when it restates the current name: deployments and the
+    workload's placement policy are named after it, so a rename is a new workload.
+
     `cluster` is absent by design — a deployment is workload × cluster, so moving one
     is a re-expansion and `workload.drain` owns it. Scale is absent too: changing it is
     long-running and can sit pending on quota forever, so it is the `workload.scale`
@@ -657,7 +660,7 @@ class WorkloadUpdateRequest(Struct):
     preemptible: bool | UnsetType = UNSET
     deadline_at: dt.datetime | None | UnsetType = UNSET
     strategy: str | UnsetType = UNSET
-    cluster_floors: dict | UnsetType = UNSET
+    cluster_floors: dict[str, int] | UnsetType = UNSET
     max_clusters: int | None | UnsetType = UNSET
     note: str | None | UnsetType = UNSET
     """Why this change, written at the moment somebody still knows.
