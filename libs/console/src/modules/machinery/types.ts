@@ -8,19 +8,21 @@ export interface OperationTarget {
   id: string
 }
 
-/** Every operation type the plane accepts, and the id prefix its target carries. */
+/**
+ * The operation types something can carry out, and the id prefix each target
+ * carries: node cordon and drain run in the cluster's operator, and the
+ * workload operations run in the plane. The plane accepts more types than these
+ * (a reboot, a device reset, a cache warm, a roll, a component upgrade), but no
+ * operator performs them yet, so offering them would only create operations
+ * that fail.
+ */
 export const OPERATION_TYPES = {
   "node.drain": "nod_",
   "node.cordon": "nod_",
   "node.uncordon": "nod_",
-  "node.reboot": "nod_",
-  "device.reset": "dev_",
-  "cache.warm": "art_",
-  "deployment.roll": "dep_",
   "workload.scale": "wkl_",
   "workload.pause": "wkl_",
   "workload.drain": "wkl_",
-  "component.upgrade": "cmp_",
 } as const
 
 export type OperationType = keyof typeof OPERATION_TYPES
@@ -30,14 +32,9 @@ export const OPERATION_TARGET_KINDS = {
   "node.drain": "node",
   "node.cordon": "node",
   "node.uncordon": "node",
-  "node.reboot": "node",
-  "device.reset": "device",
-  "cache.warm": "artifact",
-  "deployment.roll": "deployment",
   "workload.scale": "workload",
   "workload.pause": "workload",
   "workload.drain": "workload",
-  "component.upgrade": "component",
 } as const satisfies Record<OperationType, string>
 
 const ID_PATTERN = /^[a-z]{3}_[0-9a-z]{26}$/

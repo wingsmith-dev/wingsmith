@@ -17,9 +17,6 @@ export interface OperationContext {
 type Predicate = (context: OperationContext) => string | null
 
 const LABELS: Partial<Record<OperationType, string>> = {
-  "cache.warm": "Warm cache",
-  "component.upgrade": "Upgrade",
-  "deployment.roll": "Roll",
   "workload.scale": "Scale",
   "workload.pause": "Pause",
   "workload.drain": "Drain a cluster",
@@ -30,10 +27,6 @@ const PREDICATES: Partial<Record<OperationType, Predicate>> = {
   "node.cordon": (context) => (context.cordoned ? "already cordoned" : null),
   "node.uncordon": (context) =>
     context.cordoned === false ? "not cordoned" : null,
-  "node.reboot": (context) =>
-    context.cordoned === false ? "cordon the node first" : null,
-  "device.reset": (context) =>
-    context.allocated ? "a live allocation holds this device" : null,
   "workload.pause": (context) => (context.paused ? "already paused" : null),
 }
 

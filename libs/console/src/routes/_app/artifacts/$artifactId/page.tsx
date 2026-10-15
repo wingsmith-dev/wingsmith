@@ -10,7 +10,6 @@ import {
 } from "@/components/layout/status-dot"
 import { ArtifactFitmentPanel } from "@/components/demand/artifact-fitment"
 import { RefreshSourceButton } from "@/components/demand/artifact-refresh"
-import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -129,11 +128,6 @@ export function ArtifactDetailPage() {
                 Delete
               </Button>
               <RefreshSourceButton artifact={artifact} />
-              <NewOperationDialog
-                defaultType="cache.warm"
-                defaultTarget={artifact.id}
-                trigger={<Button variant="outline">Warm</Button>}
-              />
             </div>
           )
         }
@@ -300,7 +294,7 @@ function FilesPanel({ artifact }: { artifact: Artifact }) {
   )
 }
 
-/** The workloads serving these weights, which is what a recipe list used to be. */
+/** The workloads serving these weights. */
 function ServedByPanel({
   artifactId,
   workloads,

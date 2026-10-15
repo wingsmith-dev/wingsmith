@@ -4,7 +4,6 @@ import { MetricsSection } from "@/components/metrics/metrics-section"
 import { PageHeader } from "@/components/layout/page-header"
 import { RefreshButton } from "@/components/layout/refresh-button"
 import { StatusLabel } from "@/components/layout/status-dot"
-import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { NewBenchmarkDialog } from "@/components/benchmarks/new-benchmark"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -100,13 +99,6 @@ export function DeploymentDetailPage() {
                 deployment={deployment.id}
                 stayOnPage
                 trigger={<Button variant="outline">Run benchmark</Button>}
-              />
-            )}
-            {deployment && (
-              <NewOperationDialog
-                defaultType="deployment.roll"
-                defaultTarget={deployment.id}
-                trigger={<Button variant="outline">Roll</Button>}
               />
             )}
             <Button asChild variant="outline">

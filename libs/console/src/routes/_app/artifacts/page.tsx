@@ -6,7 +6,6 @@ import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { ResourceIcon } from "@/components/layout/resource-icon"
 import { StatusLabel, type StatusTone } from "@/components/layout/status-dot"
-import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -162,15 +161,6 @@ function columns(
       align: "right",
       cell: (artifact) => (
         <div className="flex items-center justify-end gap-1">
-          <NewOperationDialog
-            defaultType="cache.warm"
-            defaultTarget={artifact.id}
-            trigger={
-              <Button size="sm" variant="ghost" className="font-mono text-2xs">
-                warm
-              </Button>
-            }
-          />
           <RowActions
             actions={[
               { label: "Edit", onSelect: () => onEdit(artifact) },
