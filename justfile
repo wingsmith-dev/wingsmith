@@ -81,7 +81,7 @@ dev:
     docker compose up -d --build --wait
     (cd {{_console}} && pnpm dev)
 
-# Put in what the product cannot create itself: tenants  [--demo for a whole worked world]
+# Create the tenants every other flow starts from, over the API  [--demo for a worked world on the fake fleet]
 seed *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -93,7 +93,9 @@ reseed:
     set -euo pipefail
     docker compose up -d --wait db
     docker compose exec -T db psql -U hangar -d hangar -p 5442 -c 'drop schema public cascade; create schema public;'
-    (cd {{_plane}} && uv run alembic upgrade head && uv run python ../../dev/seed.py)
+    docker compose run --rm migrate
+    docker compose up -d --wait api hub
+    (cd {{_plane}} && uv run python ../../dev/seed.py)
 
 # Run the fake operators: three clusters of hardware waiting to be enrolled  [--register to skip the screen]
 fleet *args:

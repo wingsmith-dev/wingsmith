@@ -1,187 +1,213 @@
 """Fills a local Hangar with something to look at.
 
-Declared objects go in over the public API. Observed objects go in the only way
-observed objects can: over the hub, as a cluster reporting what it sees. Nothing
-here reaches into the database, so what the console renders is what the real
-write paths produce.
+Everything goes in over the public API, and observed state comes from the fake fleet
+(`dev/fleet.py`), each cluster connecting to the hub with its own enrolment token. Nothing here
+reaches into the database, so what the console renders is what the real write paths produce.
+
+    just seed            # the tenants every other flow starts from
+    just seed --demo     # plus clusters, pools, quotas, weights, workloads and an endpoint
+
+`--demo` registers the fleet's clusters and then waits for them to report, because creating a
+workload places it there and then against the clusters that are reachable and hold free devices.
+Run `just fleet` in another terminal, before or after; the workloads go in once every cluster is
+connected. The fleet has to stay up afterwards for the clusters to stay reachable.
 """
+
+from __future__ import annotations
 
 import os
-import json
+import sys
 import time
-import random
-import asyncio
 import hashlib
 import argparse
-import contextlib
 import urllib.error
-import urllib.request
 
 from typing import Any
+from collections import defaultdict
 
-import websockets
-
-
-API = os.environ.get("HANGAR_API", "http://localhost:8000")
-HUB = os.environ.get("HANGAR_HUB", "ws://localhost:8001/v1/hub/sync")
-
-OPERATOR_TOKEN = os.environ.get("HANGAR_OPERATOR_TOKEN", "hangar-local-operator-token")
-"""`app.core.auth.LOCAL_OPERATOR_TOKEN` — what the hub accepts when APP_ENV is `local`.
-
-The hub's operator-token check has no disable switch, so an unauthenticated seeder is a 401
-before the upgrade rather than a cluster that connects and says nothing.
-"""
-
-HUB_HEADERS = {"Authorization": f"Bearer {OPERATOR_TOKEN}"}
-
-ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
+from fleet import API
+from fleet import FLEET
+from fleet import ApiError
+from fleet import ClusterSpec
+from fleet import call
+from fleet import registration
 
 
-def uid(prefix: str, key: str | None = None) -> str:
-    """A 30-character prefixed id. With a key it is stable, so re-seeding converges."""
-    if key is None:
-        body = "".join(random.choice(ALPHABET) for _ in range(26))
-    else:
-        digest = hashlib.sha256(key.encode()).digest()
-        value = int.from_bytes(digest[:16], "big")
-        body = ""
-        for _ in range(26):
-            body = ALPHABET[value % 32] + body
-            value //= 32
-    return f"{prefix}{body}"
-
-
-def now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+WAIT_SECONDS = float(os.environ.get("HANGAR_SEED_WAIT", "300"))
+"""How long `--demo` waits for the fleet to connect before giving up."""
 
 
 def post(path: str, body: dict[str, Any]) -> dict[str, Any] | None:
-    request = urllib.request.Request(
-        f"{API}/v1{path}",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    """Creates one object. An existing one (409) is fine, so re-seeding converges.
+
+    Anything else non-2xx stops the seed. Carrying on past a refused cluster or artifact only
+    moves the failure to whatever depends on it, where it reads as something else.
+    """
+    label = body.get("name") or body.get("slug") or ""
     try:
-        with urllib.request.urlopen(request) as response:
-            payload = json.loads(response.read())
-            print(f"  + {path} {body.get('name') or body.get('slug') or ''}")
-            return payload
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode()
-        if error.code == 409 and "conflict" in detail:
-            print(f"  = {path} {body.get('name') or body.get('slug') or ''} (exists)")
+        payload = call("POST", path, body)
+    except ApiError as error:
+        if error.status == 409:
+            print(f"  = {path} {label} (exists)")
             return None
-        print(f"  ! {path} {error.code} {detail[:300]}")
-        return None
+        raise
+    print(f"  + {path} {label}")
+    return payload
 
 
-CLUSTERS = [
-    {
-        "name": "eu-west-1a",
-        "display_name": "Dublin A",
-        "region": "eu-west-1",
-        "zone": "eu-west-1a",
-        "residency": "eu",
-        "phase": "active",
-        "labels": {"tier": "production", "fabric": "nvlink"},
-        "capabilities": {"mig": "true", "rdma": "true"},
-    },
-    {
-        "name": "us-east-2b",
-        "display_name": "Ohio B",
-        "region": "us-east-2",
-        "zone": "us-east-2b",
-        "residency": "us",
-        "phase": "active",
-        "labels": {"tier": "production"},
-        "capabilities": {"mig": "false", "rdma": "true"},
-    },
-    {
-        "name": "lab-1",
-        "display_name": "Research Lab",
-        "region": "eu-central-1",
-        "zone": "eu-central-1c",
-        "residency": "eu",
-        "phase": "active",
-        "labels": {"tier": "research"},
-        "capabilities": {},
-    },
+# ── What goes in ──────────────────────────────────────────────────────────────
+
+TENANTS = [("acme", "Acme"), ("globex", "Globex")]
+
+PRIORITY_CLASSES = [
+    # name, value, preemptible, preempts, default
+    ("interactive", 1000, False, True, False),
+    ("standard", 500, False, False, True),
+    ("batch", 100, True, False, False),
 ]
 
-POOLS = [
-    ("eu-west-1a", "h100-sxm-8x", "h100-80gb-sxm", 8, 2, 12),
-    ("eu-west-1a", "l40s-4x", "l40s-48gb-pcie", 4, 1, 8),
-    ("us-east-2b", "h200-sxm-8x", "h200-141gb-sxm", 8, 1, 6),
-    ("lab-1", "a100-pcie-4x", "a100-40gb-pcie", 4, 1, 4),
+PROJECTS = [
+    # tenant, slug, name, default priority class
+    ("acme", "acme-research", "Acme Research", "interactive"),
+    ("acme", "acme-serving", "Acme Serving", "standard"),
+    ("acme", "acme-batch", "Acme Batch", "batch"),
 ]
 
-NODES = {
-    "eu-west-1a": [
-        (f"gpu-h100-a-0{i}", "h100-sxm-8x", "h100-80gb-sxm", "NVIDIA H100 80GB HBM3", 81559, 8) for i in range(1, 4)
+QUOTAS = [
+    # project, device class, cluster (None for any), guaranteed, limit
+    ("acme-research", "h100-80gb-sxm", "eu-west-1a", 8, 16),
+    ("acme-research", "l40s-48gb-pcie", "eu-west-1a", 4, 4),
+    ("acme-serving", "h100-80gb-sxm", "eu-west-1a", 16, 16),
+    ("acme-serving", "h200-141gb-sxm", "us-east-2b", 8, 16),
+    ("acme-batch", "a100-40gb-pcie", None, 4, 4),
+]
+
+ARTIFACTS = [
+    # name, Hugging Face repository, size in bytes, parameters, licence
+    ("llama-3.1-70b-instruct", "meta-llama/Llama-3.1-70B-Instruct", 141_000_000_000, 70_553_706_496, "llama-3.1"),
+    ("mixtral-8x7b-instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1", 93_000_000_000, 46_702_792_704, "apache-2.0"),
+    ("qwen2.5-7b-instruct", "Qwen/Qwen2.5-7B-Instruct", 15_200_000_000, 7_615_616_512, "apache-2.0"),
+]
+
+WORKLOADS = [
+    # name, pinned cluster, artifact, device class, tensor parallel, context, project, priority,
+    # desired, min, max
+    #
+    # `cluster` left out is the normal case: the plane picks. `qwen-dev` names one, so the
+    # declared-cluster path is exercised too rather than only the derived one.
+    ("llama-70b-prod", None, "llama-3.1-70b-instruct", "h100-80gb-sxm", 8, 131072, "acme-serving", "standard", 2, 1, 2),
+    ("mixtral-prod", None, "mixtral-8x7b-instruct", "h200-141gb-sxm", 4, 32768, "acme-serving", "standard", 1, 1, 3),
+    (
+        "qwen-dev",
+        "eu-west-1a",
+        "qwen2.5-7b-instruct",
+        "l40s-48gb-pcie",
+        1,
+        32768,
+        "acme-research",
+        "interactive",
+        1,
+        0,
+        2,
+    ),
+]
+
+ENGINE_RUNTIME_VERSION = "1.4.1"
+
+
+def pools(fleet: list[ClusterSpec]) -> list[dict[str, Any]]:
+    """One pool per cluster and node pool the fleet reports, sized from its nodes."""
+    nodes: dict[tuple[str, str], list[Any]] = defaultdict(list)
+    for spec in fleet:
+        for node in spec.nodes:
+            nodes[(spec.name, node.pool)].append(node)
+    return [
+        {
+            "cluster": cluster,
+            "name": pool,
+            "device_class": members[0].device_class,
+            "devices_per_node": members[0].devices,
+            "min_nodes": len(members),
+            "max_nodes": len(members) * 2,
+            "labels": {"fabric": "nvlink" if members[0].nvlink else "pcie"},
+            "enabled": True,
+        }
+        for (cluster, pool), members in nodes.items()
     ]
-    + [("gpu-l40s-a-01", "l40s-4x", "l40s-48gb-pcie", "NVIDIA L40S", 46068, 4)],
-    "us-east-2b": [
-        (f"gpu-h200-b-0{i}", "h200-sxm-8x", "h200-141gb-sxm", "NVIDIA H200 141GB HBM3e", 143771, 8) for i in range(1, 3)
-    ],
-    "lab-1": [("gpu-a100-lab-01", "a100-pcie-4x", "a100-40gb-pcie", "NVIDIA A100-PCIE-40GB", 40536, 4)],
-}
+
+
+def artifact(name: str, repository: str, size: int, parameters: int, licence: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "digest": "sha256:" + hashlib.sha256(name.encode()).hexdigest(),
+        "kind": "weights",
+        "format": "safetensors",
+        "size_bytes": size,
+        "parameter_count": parameters,
+        "licence": licence,
+        # The location is where the model id the endpoint answers to is read from.
+        "locations": [{"scheme": "hf", "uri": f"hf://{repository}", "preferred": True}],
+    }
+
+
+def workload(
+    name: str,
+    cluster: str | None,
+    weights: str,
+    device_class: str,
+    tensor: int,
+    context: int,
+    project: str,
+    priority: str,
+    desired: int,
+    lo: int,
+    hi: int,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "cluster": cluster,
+        "project": project,
+        "priority_class": priority,
+        "kind": "service",
+        "desired_scale": desired,
+        "min_scale": lo,
+        "max_scale": hi,
+        "enabled": True,
+        "labels": {"env": "prod" if "prod" in name else "dev"},
+        "serving": {
+            "artifact": weights,
+            "engine": "vllm",
+            "engine_runtime_version": ENGINE_RUNTIME_VERSION,
+            "shape": {
+                "device_class": device_class,
+                "device_count": tensor,
+                "requires_single_topology_domain": tensor > 1,
+                "topology_domain_kind": "nvlink" if tensor > 1 else None,
+            },
+            "parallelism": {"tensor": tensor},
+            "context_length": context,
+            "dtype": "bfloat16",
+            "cache": {"prefix_cache_enabled": True},
+        },
+    }
+
+
+# ── Steps ─────────────────────────────────────────────────────────────────────
 
 
 def seed_tenants() -> None:
-    """Inserts tenants directly.
-
-    `libs/packages/contract/API.md` §6 has no `/v1/tenants` collection, so a tenant cannot be
-    created over the API and a fresh database can hold no projects at all.
-    """
-    import asyncio as _asyncio
-
-    from sqlalchemy import select
-
-    from app.core.ids import new_uid
-    from app.db.engine import session_factory
-    from app.db.models import Tenant
-
-    async def _insert() -> None:
-        async with session_factory()() as db:
-            for slug, name in [("acme", "Acme"), ("globex", "Globex")]:
-                existing = await db.scalar(select(Tenant).where(Tenant.slug == slug))
-                if existing is not None:
-                    print(f"  = tenant {slug} (exists)")
-                    continue
-                db.add(Tenant(uid=new_uid("ten_"), slug=slug, name=name, enabled=True))
-                print(f"  + tenant {slug}")
-            await db.commit()
-
-    _asyncio.run(_insert())
+    for slug, name in TENANTS:
+        post("/tenants", {"slug": slug, "name": name, "enabled": True})
 
 
-def seed_declared() -> dict[str, str]:
+def seed_declared(fleet: list[ClusterSpec]) -> None:
     print("declared:")
-    seed_tenants()
-    for cluster in CLUSTERS:
-        post("/clusters", cluster)
+    for spec in fleet:
+        post("/clusters", registration(spec))
+    for body in pools(fleet):
+        post("/pools", body)
 
-    for cluster, name, device_class, per_node, lo, hi in POOLS:
-        post(
-            "/pools",
-            {
-                "cluster": cluster,
-                "name": name,
-                "device_class": device_class,
-                "devices_per_node": per_node,
-                "min_nodes": lo,
-                "max_nodes": hi,
-                "labels": {"fabric": "nvlink" if per_node == 8 else "pcie"},
-                "enabled": True,
-            },
-        )
-
-    for name, value, preemptible, preempts, default in [
-        ("interactive", 1000, False, True, False),
-        ("standard", 500, False, False, True),
-        ("batch", 100, True, False, False),
-    ]:
+    for name, value, preemptible, preempts, default in PRIORITY_CLASSES:
         post(
             "/priority-classes",
             {
@@ -194,22 +220,13 @@ def seed_declared() -> dict[str, str]:
             },
         )
 
-    for tenant, slug, name, priority in [
-        ("acme", "acme-research", "Acme Research", "interactive"),
-        ("acme", "acme-serving", "Acme Serving", "standard"),
-        ("acme", "acme-batch", "Acme Batch", "batch"),
-    ]:
+    for tenant, slug, name, priority in PROJECTS:
         post(
             "/projects",
             {"tenant": tenant, "slug": slug, "name": name, "default_priority_class": priority, "enabled": True},
         )
 
-    for project, device_class, cluster, guaranteed, limit in [
-        ("acme-research", "h100-80gb-sxm", "eu-west-1a", 8, 24),
-        ("acme-serving", "h100-80gb-sxm", "eu-west-1a", 16, 32),
-        ("acme-serving", "h200-141gb-sxm", "us-east-2b", 8, 16),
-        ("acme-batch", "a100-40gb-pcie", None, 4, 8),
-    ]:
+    for project, device_class, cluster, guaranteed, limit in QUOTAS:
         post(
             "/quotas",
             {
@@ -223,51 +240,8 @@ def seed_declared() -> dict[str, str]:
             },
         )
 
-    artifacts = [
-        ("llama-3.1-70b-instruct", "safetensors", 141_000_000_000, 70_553_706_496, "llama-3.1"),
-        ("mixtral-8x7b-instruct", "safetensors", 93_000_000_000, 46_702_792_704, "apache-2.0"),
-        ("qwen2.5-7b-instruct", "safetensors", 15_200_000_000, 7_615_616_512, "apache-2.0"),
-    ]
-    for name, fmt, size, params, licence in artifacts:
-        post(
-            "/artifacts",
-            {
-                "name": name,
-                "digest": "sha256:" + hashlib.sha256(name.encode()).hexdigest(),
-                "kind": "weights",
-                "format": fmt,
-                "size_bytes": size,
-                "parameter_count": params,
-                "licence": licence,
-                "metadata": {"source": "huggingface"},
-            },
-        )
-
-    recipes = [
-        ("llama-70b-h100-tp8", "llama-3.1-70b-instruct", "h100-80gb-sxm", 8, 131072, "fp8"),
-        ("mixtral-h200-tp4", "mixtral-8x7b-instruct", "h200-141gb-sxm", 4, 32768, None),
-        ("qwen-7b-l40s-tp1", "qwen2.5-7b-instruct", "l40s-48gb-pcie", 1, 32768, None),
-    ]
-    for name, artifact, device_class, tp, context, quant in recipes:
-        post(
-            "/recipes",
-            {
-                "name": name,
-                "artifact": artifact,
-                "engine": "vllm",
-                "engine_runtime_version": "1.4.1",
-                "device_class": device_class,
-                "context_length": context,
-                "tensor_parallel": tp,
-                "device_count": tp,
-                "quantization": quant,
-                "dtype": "bfloat16",
-                "prefix_cache_enabled": True,
-                "requires_single_topology_domain": tp > 1,
-                "topology_domain_kind": "nvlink" if tp > 1 else None,
-                "labels": {"engine": "vllm"},
-            },
-        )
+    for row in ARTIFACTS:
+        post("/artifacts", artifact(*row))
 
     post(
         "/policies",
@@ -276,219 +250,41 @@ def seed_declared() -> dict[str, str]:
             "description": "Keep regulated tenants inside the EU",
             "allowed_regions": ["eu-west-1", "eu-central-1"],
             "allowed_residencies": ["eu"],
-            "allowed_device_classes": [],
-            "allowed_clusters": [],
-            "denied_clusters": [],
             "enabled": True,
         },
     )
 
-    ids: dict[str, str] = {}
-    with urllib.request.urlopen(f"{API}/v1/clusters?limit=100") as response:
-        for item in json.loads(response.read())["items"]:
-            ids[item["name"]] = item["id"]
-    return ids
 
-
-class Reporter:
-    """A cluster telling the hub what it sees, over the real protocol."""
-
-    def __init__(self, cluster_id: str) -> None:
-        self.cluster_id = cluster_id
-        self.seq = 0
-        self.ack = 0
-
-    def frame(self, type_name: str, payload: dict[str, Any]) -> str:
-        self.seq += 1
-        return json.dumps(
-            {
-                "v": 1,
-                "type": type_name,
-                "id": uid("")[:26],
-                "ts": now(),
-                "seq": self.seq,
-                "ack": self.ack,
-                "payload": payload,
-            }
-        )
-
-    def hello(self, operator_version: str = "0.0.0-seed") -> str:
-        return json.dumps(
-            {
-                "v": 1,
-                "type": "hello",
-                "id": uid("")[:26],
-                "ts": now(),
-                "payload": {"cluster_id": self.cluster_id, "operator_version": operator_version, "lossy": True},
-            }
-        )
-
-    async def run(self, socket: Any, name: str) -> None:
-        await socket.send(self.hello())
-        welcome = json.loads(await socket.recv())
-        self.ack = welcome.get("seq") or 0
-
-        for frame in self.supply(name):
-            await socket.send(frame)
-        await asyncio.sleep(2.0)
-        print(f"  + {name}: reported")
-
-    def supply(self, name: str) -> list[str]:
-        """Every observed frame describing one cluster's supply, in stream order."""
-        frames: list[str] = []
-        for node_name, pool, device_class, model, memory, count in NODES[name]:
-            node_id = uid("nod_", f"{name}/{node_name}")
-            device_ids = [uid("dev_", f"{name}/{node_name}/{i}") for i in range(count)]
-            frames.append(
-                self.frame(
-                    "node.observed",
-                    {
-                        "node_id": node_id,
-                        "cluster_id": self.cluster_id,
-                        "name": node_name,
-                        "pool": pool,
-                        "membership": "joined",
-                        "ready": True,
-                        "cordoned": node_name.endswith("03"),
-                        "conditions": [
-                            {
-                                "type": "memory_pressure",
-                                "status": "false",
-                                "reason": "sufficient_memory",
-                                "message": "node has sufficient memory available",
-                                "since": now(),
-                            }
-                        ],
-                        "kernel_version": "6.8.0-45-generic",
-                        "driver_version": "570.86.15",
-                        "runtime_version": "containerd://1.7.27",
-                        "operator_version": "0.0.0-seed",
-                        "device_ids": device_ids,
-                        "labels": {"pool": pool},
-                        "observed_at": now(),
-                    },
-                )
-            )
-            for index, device_id in enumerate(device_ids):
-                unhealthy = node_name.endswith("02") and index == 3
-                frames.append(
-                    self.frame(
-                        "device.observed",
-                        {
-                            "device_id": device_id,
-                            "node_id": node_id,
-                            "cluster_id": self.cluster_id,
-                            "uuid": "GPU-" + hashlib.sha256(device_id.encode()).hexdigest()[:32],
-                            "index": index,
-                            "model": model,
-                            "device_class": device_class,
-                            "memory_total_mb": memory,
-                            "health": "degraded" if unhealthy else "healthy",
-                            "ecc": {
-                                "mode_enabled": True,
-                                "volatile_corrected": index * 3,
-                                "volatile_uncorrected": 1 if unhealthy else 0,
-                                "aggregate_uncorrected": 1 if unhealthy else 0,
-                                "retired_pages": 0,
-                                "remapped_rows_pending": 0,
-                                "remapped_rows_failed": 0,
-                            },
-                            "throttled": unhealthy,
-                            "throttle_reasons": ["hw_slowdown"] if unhealthy else [],
-                            "mig": {"enabled": False, "profile": None, "instances": []},
-                            "observed_at": now(),
-                        },
-                    )
-                )
-            frames.append(
-                self.frame(
-                    "node.event",
-                    {
-                        "node_id": node_id,
-                        "cluster_id": self.cluster_id,
-                        "event": "cordoned" if node_name.endswith("03") else "joined",
-                        "reason": "maintenance" if node_name.endswith("03") else "registered",
-                        "message": f"{node_name} reported by the seed",
-                        "occurred_at": now(),
-                    },
-                )
-            )
-            if node_name.endswith("02"):
-                frames.append(
-                    self.frame(
-                        "device.event",
-                        {
-                            "device_id": device_ids[3],
-                            "node_id": node_id,
-                            "cluster_id": self.cluster_id,
-                            "event": "degraded",
-                            "reason": "ecc_uncorrected",
-                            "message": "uncorrected ECC error on device 3",
-                            "occurred_at": now(),
-                        },
-                    )
-                )
-            if count == 8:
-                frames.append(
-                    self.frame(
-                        "topology.observed",
-                        {
-                            "domain_id": uid("tpd_", f"{name}/{node_name}/nvlink"),
-                            "cluster_id": self.cluster_id,
-                            "kind": "nvlink",
-                            "node_ids": [node_id],
-                            "spans_nodes": False,
-                            "device_ids": device_ids,
-                            "observed_at": now(),
-                        },
-                    )
-                )
-
-        return frames
+def wait_for_fleet(names: list[str], timeout: float = WAIT_SECONDS) -> None:
+    """Blocks until every named cluster is reachable, or exits saying how to fix it."""
+    deadline = time.monotonic() + timeout
+    said = False
+    while True:
+        items = call("GET", "/clusters?limit=100")["items"]
+        reachable = {item["name"] for item in items if item.get("reachable")}
+        missing = [name for name in names if name not in reachable]
+        if not missing:
+            return
+        if time.monotonic() >= deadline:
+            raise SystemExit(f"the fleet did not connect within {timeout:.0f}s: {', '.join(missing)} unreachable")
+        if not said:
+            print(f"waiting for {', '.join(missing)} to connect; run `just fleet` in another terminal")
+            said = True
+        time.sleep(2)
 
 
 def seed_demand() -> None:
-    """Workloads and the endpoint in front of them, created once supply is live.
-
-    Separate from `seed_declared` because of an ordering the object model dictates: creating a
-    workload expands it into deployments there and then, and expansion places against clusters
-    that are reachable and hold free devices. Declared before any cluster has reported, every
-    workload lands with zero shares and the seeded world has no deployments in it.
-    """
     print("demand:")
-    # Workloads, not deployments: a deployment is a workload's share of one cluster and is
-    # created by placement expanding the workload, which is why `POST /deployments` is a 405.
-    # `cluster` left out is the normal case — the plane picks. `qwen-dev` names one, so the
-    # declared-cluster path is exercised too rather than only the derived one.
-    workloads = [
-        ("llama-70b-prod", None, "llama-70b-h100-tp8", "acme-serving", "standard", 2, 1, 4),
-        ("mixtral-prod", None, "mixtral-h200-tp4", "acme-serving", "standard", 1, 1, 3),
-        ("qwen-dev", "eu-west-1a", "qwen-7b-l40s-tp1", "acme-research", "interactive", 1, 0, 2),
-    ]
-    for name, cluster, recipe, project, priority, desired, lo, hi in workloads:
-        post(
-            "/workloads",
-            {
-                "name": name,
-                "cluster": cluster,
-                "recipe": recipe,
-                "project": project,
-                "priority_class": priority,
-                "kind": "service",
-                "desired_scale": desired,
-                "min_scale": lo,
-                "max_scale": hi,
-                "enabled": True,
-                "labels": {"env": "prod" if "prod" in name else "dev"},
-            },
-        )
+    # Workloads, not deployments: a deployment is a workload's share of one cluster, created by
+    # placement expanding the workload and named after it.
+    for row in WORKLOADS:
+        post("/workloads", workload(*row))
 
     post(
         "/endpoints",
         {
             "name": "chat",
             "project": "acme-serving",
-            "display_name": "Chat completions",
             "visibility": "public",
             "routing_strategy": "weighted",
             "enabled": True,
@@ -497,41 +293,31 @@ def seed_demand() -> None:
     )
 
 
-async def seed_observed(ids: dict[str, str]) -> None:
-    print("observed:")
-    async with contextlib.AsyncExitStack() as stack:
-        for name, cluster_id in ids.items():
-            if name not in NODES:
-                continue
-            socket = await stack.enter_async_context(websockets.connect(HUB, additional_headers=HUB_HEADERS))
-            await Reporter(cluster_id).run(socket, name)
-        # Held open on purpose: `reachable` is cleared when the socket drops, and placement
-        # refuses an unreachable cluster before it looks at capacity.
-        seed_demand()
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        prog="seed",
-        description="structure only by default: what the product itself cannot create",
-    )
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="seed", description="fill a local Hangar over its API")
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="also fill in a whole worked world — clusters, quotas, artifacts, recipes, workloads",
+        help="also register the fake fleet's clusters and create pools, quotas, weights, workloads "
+        "and an endpoint; needs `just fleet` running",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    # Tenants and nothing else, because a tenant is the one object with no create route
-    # (`contract/API.md` §6 has no `/v1/tenants`), so a fresh database can hold no projects and
-    # every other flow is blocked behind it. Everything past this point is a flow worth walking
-    # by hand: register the cluster, create the artifact, write the recipe, run the workload.
+    # Tenants by default, because a project needs one and every other flow needs a project.
+    # Everything past this is a flow worth walking by hand in the console.
     print("structure:")
-    seed_tenants()
-
-    if args.demo:
-        ids = seed_declared()
-        asyncio.run(seed_observed(ids))
+    try:
+        seed_tenants()
+        if args.demo:
+            seed_declared(FLEET)
+            wait_for_fleet([spec.name for spec in FLEET])
+            seed_demand()
+    except ApiError as error:
+        print(f"seed: {error}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as error:
+        print(f"seed: cannot reach the API at {API} ({error.reason}); `just dev-up` starts it", file=sys.stderr)
+        return 1
 
     print("done")
     return 0

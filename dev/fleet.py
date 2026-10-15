@@ -50,6 +50,14 @@ import websockets
 API = os.environ.get("HANGAR_API", "http://localhost:8000")
 HUB = os.environ.get("HANGAR_HUB", "ws://localhost:8001/v1/hub/sync")
 
+API_TOKEN = os.environ.get("HANGAR_API_TOKEN", "")
+"""An admin session token, sent to the API as a bearer when set.
+
+The compose stack runs with `APP_ENV=local`, which turns admin auth off, so locally this is
+empty. Against a plane with admin auth on, sign in and export the session token here. The hub
+never sees it: each cluster connects with its own enrolment token, minted below.
+"""
+
 OPERATOR_VERSION = "0.0.0-fake"
 
 HEARTBEAT_SECONDS = float(os.environ.get("HANGAR_FLEET_HEARTBEAT", "10"))
@@ -159,11 +167,23 @@ FLEET: list[ClusterSpec] = [
 # ── The API, as a person using the console would ──────────────────────────────
 
 
+class ApiError(RuntimeError):
+    """A non-2xx answer from the API, with the status kept so a caller can tell 409 apart."""
+
+    def __init__(self, method: str, path: str, status: int, detail: str) -> None:
+        super().__init__(f"{method} {path} -> {status} {detail[:300]}")
+        self.status = status
+        self.detail = detail
+
+
 def call(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    headers = {"Content-Type": "application/json"}
+    if API_TOKEN:
+        headers["Authorization"] = f"Bearer {API_TOKEN}"
     request = urllib.request.Request(
         f"{API}/v1{path}",
         data=None if body is None else json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method=method,
     )
     try:
@@ -171,7 +191,7 @@ def call(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
             raw = response.read()
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f"{method} {path} -> {error.code} {error.read().decode()[:200]}") from error
+        raise ApiError(method, path, error.code, error.read().decode()) from error
 
 
 def registered(name: str) -> dict[str, Any] | None:
@@ -633,25 +653,26 @@ class Agent:
 # ── Entry ─────────────────────────────────────────────────────────────────────
 
 
+def registration(spec: ClusterSpec) -> dict[str, Any]:
+    """The `POST /v1/clusters` body that registers this cluster."""
+    return {
+        "name": spec.name,
+        "display_name": spec.name,
+        "region": spec.region,
+        "zone": spec.zone,
+        "residency": spec.residency,
+        "phase": "active",
+        "labels": {"fake": "true"},
+        "capabilities": {"rdma": "true"},
+    }
+
+
 def register(spec: ClusterSpec) -> None:
     """Registers the cluster, for when walking the screen by hand is not the point."""
     if registered(spec.name) is not None:
         print(f"  {spec.name}: already registered")
         return
-    call(
-        "POST",
-        "/clusters",
-        {
-            "name": spec.name,
-            "display_name": spec.name,
-            "region": spec.region,
-            "zone": spec.zone,
-            "residency": spec.residency,
-            "phase": "active",
-            "labels": {"fake": "true"},
-            "capabilities": {"rdma": "true"},
-        },
-    )
+    call("POST", "/clusters", registration(spec))
     print(f"  {spec.name}: registered")
 
 
