@@ -25,7 +25,8 @@ app/
 ├── modules/        one package per object in the model; placement lives here too
 ├── ingestion/      observed-state writes from the hub
 ├── integrations/   outbound third parties — Hugging Face artifact resolution
-├── core/           auth seam, request context, exceptions, health routes
+├── auth/           principals, credentials, sessions, the auth routes, `python -m app.auth hash`
+├── core/           request context and the auth guard, exceptions, throttles, health routes
 ├── db/             engine, declarative base, session provider, LISTEN/NOTIFY
 ├── config/         typed settings loaded from the environment
 └── utils/          msgspec Struct base, logging setup
@@ -34,9 +35,15 @@ tests/
 ```
 
 `app/modules/` is the only place allowed to write declared state; `app/ingestion/` is the only one
-allowed to write observed state. `app/modules/placement/` writes nothing — it takes a snapshot and
-returns a decision. A module whose object is **observed** (nodes, devices, topology domains,
-replicas, allocations, events) is read-only: its service has no write methods at all.
+allowed to write observed state. Placement's decision code (`engine`, `snapshot`, `decision`)
+writes nothing — it takes a snapshot and returns a decision. A module whose object is **observed**
+(nodes, devices, topology domains, allocations, events) is read-only: its service has no write
+methods at all.
+
+Most modules have the same five files — `routes`, `schemas`, `services` (owns the commit),
+`repository` (flushes only) and `depends` — and the exceptions are listed in
+`app/modules/__init__.py`: `metrics` has no repository, and `tenants`, `serving` and `metrics`
+issue some reads straight from their services.
 
 ## Running
 
@@ -76,15 +83,15 @@ back to `$HOSTNAME` and then a random id.
 
 ## Configuration
 
-Environment only, typed by `app/config/settings.py`. Each field reads `HANGAR_<NAME>` first and
-then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
+Environment only, typed by `app/config/settings.py`. Each field reads `HANGAR_<NAME>` and nothing
+else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 
 | Variable | Default |
 |---|---|
-| `APP_ENV` | `local` |
+| `APP_ENV` | `local` (the image bakes `production`) |
 | `APP_DEBUG` | `false` |
 | `APP_LOG_LEVEL` / `APP_LOG_FORMAT` | `INFO` / `console` (`json` in production) |
-| `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` |
+| `API_HOST` / `API_PORT` | unset — `127.0.0.1` when `APP_ENV=local`, `0.0.0.0` otherwise / `8000` |
 | `HUB_HOST` / `HUB_PORT` / `HUB_PATH` | `0.0.0.0` / `8001` / `/v1/hub/sync` |
 | `HUB_INSTANCE_ID` | unset — falls back to `$HOSTNAME`, then a random id |
 | `HUB_SESSION_TTL_SECONDS` | `600` |
@@ -98,38 +105,69 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | `METRICS_SOURCES` | unset — `default=<url>\|token=...`; the per-cluster label is `Cluster.metrics_label` |
 | `METRICS_TIMEOUT` / `METRICS_WINDOW` / `METRICS_STEP` | `5` / `5m` / `60s` |
 | `METRICS_REMOTE_WRITE_URL` | unset — where the fleet pushes; rendered into the setup values. Empty renders `monitoring.enabled: false` |
-| `REMOTE_WRITE_AUTH_ENABLED` | `false` — whether the reactor reconciles the write ingress's htpasswd Secret (ADR 0012) |
-| `REMOTE_WRITE_AUTH_NAMESPACE` / `REMOTE_WRITE_AUTH_SECRET` / `REMOTE_WRITE_AUTH_KEY` | `platform` / `prom-remote-write-auth` / `users` |
+| `REMOTE_WRITE_AUTH_ENABLED` | `false` — optional: keep an htpasswd Secret for a basic-auth write receiver (ADR 0012) |
+| `REMOTE_WRITE_AUTH_NAMESPACE` / `REMOTE_WRITE_AUTH_SECRET` / `REMOTE_WRITE_AUTH_KEY` | unset / `prom-remote-write-auth` / `users` |
+| `SETUP_CHART_REF` / `SETUP_CHART_VERSION` / `SETUP_CHART_PRIVATE` | `oci://ghcr.io/hangar-dev/charts/cluster-setup` / unset / `false` |
+| `BENCHMARK_CONFORMANCE_IMAGE` / `BENCHMARK_EVALSCOPE_IMAGE` | `ghcr.io/hangar-dev/conformance:0.1.0` / `ghcr.io/hangar-dev/evalscope:1.11.1` |
 | `HF_TOKEN` | unset |
-| `OPERATOR_TOKEN` | unset — falls back to `hangar-local-operator-token` only when `APP_ENV=local` |
-| `ADMIN_AUTH` | unset — resolves to `disabled` when `APP_ENV=local`, `enabled` otherwise |
-| `ADMIN_PASSWORD_HASH` | unset |
-| `SESSION_SIGNING_SECRET` | unset — required outside `local` when admin auth is enabled |
-| `SESSION_TTL_SECONDS` | `900` |
+| `GATEWAY_SERVICE_TOKEN` | unset — falls back to `hangar-local-gateway-token` only when `APP_ENV=local` |
+| `ADMIN_AUTH` | unset — `disabled` when `APP_ENV=local`; always `enabled` otherwise |
+| `ADMIN_PASSWORD_HASH` | unset — required outside `local` |
+| `SESSION_SIGNING_SECRET` | unset — required outside `local`; a random per-process key in `local` |
+| `SESSION_TTL_SECONDS` / `REFRESH_TTL_SECONDS` | `900` / `604800` (absolute session lifetime) |
+| `TRUSTED_PROXIES` | unset — proxies whose `X-Forwarded-For` is believed when charging failed sign-ins |
 | `ALLOWED_ORIGINS` | `http://localhost:5273,http://127.0.0.1:5273` |
 
 The default database URL matches `compose.yml` at the repo root.
 
 ## Auth
 
-Two principal kinds, resolved through one seam: `resolve_principal` in `app/core/auth.py`.
+Hangar is single-operator software: there is one admin identity, and every person signed in as
+admin can do everything. There are no per-user accounts, roles or scopes. What there is instead is
+four principal kinds (`app/auth/schemas.py`), each held to a fixed set of routes in one place,
+`authorize` in `app/core/context.py`:
 
-- **operator** — cluster agents, a static bearer token compared with `hmac.compare_digest`. The
-  hub only ever accepts this; it has no disable switch.
-- **admin** — humans (console, `hgr`), who `POST /v1/auth/login` with a password and get back a
-  short-lived signed session token to use as the bearer credential on every subsequent request.
-  The password itself is never sent again.
+| Kind | Credential | Reaches |
+|---|---|---|
+| `admin` | a session from `POST /v1/auth/login` with the admin password | every route except the gateway's |
+| `tenant` | a session from `POST /v1/auth/login` with a tenant's console token (`hgrt1.`) | `GET /v1/serving/...` only |
+| `gateway` | `GATEWAY_SERVICE_TOKEN`, a static bearer | `GET /v1/gateway/tenants`, `GET /v1/endpoints/resolved`, `POST /v1/clusters/tunnel-auth` |
+| `operator` | the cluster's own enrolment token (`hgro1.`), minted at registration | the hub only, bound to that one cluster; never the HTTP API |
 
-Outside `APP_ENV=local`, an unset `OPERATOR_TOKEN` refuses to boot rather than accept anything.
-Admin auth on the HTTP API can be turned off with `ADMIN_AUTH=disabled` for a day-1 deployment
-behind a perimeter with no ingress (`kubectl port-forward` only) — every request then resolves to
-an admin principal, and the process logs a warning naming that assumption on every startup. Every
-handler receives a `context` carrying the resolved identity, so no route is written without one.
+There is no shared operator token. Each cluster's enrolment token is stored as a hash and resolves
+to an operator principal bound to that cluster, and the hub refuses a `hello` that names any other.
+Rotating it (`POST /v1/clusters/{ref}/enrolment-token`) is an admin action.
 
-Generate a password hash for `ADMIN_PASSWORD_HASH`:
+Authentication is an app-wide guard, so a handler written without a `context` parameter is still
+authenticated. Everything under `/v1` needs a credential except `/v1/auth/login`, `/v1/auth/refresh`
+and `/v1/auth/logout`; `/health`, the OpenAPI schema at `/schema` and the console's files are
+public. A missing or unknown credential is `401`; a valid credential of the wrong kind is `403`.
+`tests/test_route_auth.py` walks every registered route and checks both.
+
+**Sessions.** Login returns a short-lived access token (`hgrs1.`, `SESSION_TTL_SECONDS`) and a
+refresh token (`hgrr1.`). Refreshing rotates both atomically; presenting a refresh token that was
+already rotated ends the whole session. A session lasts at most `REFRESH_TTL_SECONDS` from sign-in,
+however often it is refreshed. The guard checks the session on every request, so
+`POST /v1/auth/logout` with `{"refresh_token": ...}`, a revoked tenant token or a disabled tenant ends
+access on the next request. Changing `ADMIN_PASSWORD_HASH` ends every admin session.
+
+**Failed sign-ins** are budgeted per caller address and account (`app/core/throttle.py`), so one
+caller spending its budget locks out itself, not the operator. Behind a proxy, set `TRUSTED_PROXIES`
+or every caller shares the proxy's budget.
+
+**Cross-site writes.** A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is neither the plane's
+own nor in `ALLOWED_ORIGINS` is `403`, and a request body that is not JSON is `415`.
+
+**Local mode.** Under `APP_ENV=local`, `ADMIN_AUTH` defaults to `disabled`: a request with no
+credential resolves to the admin principal, the API binds `127.0.0.1`, and the process logs a
+warning at startup. Outside `local` the plane refuses to boot with `ADMIN_AUTH=disabled`, without
+`SESSION_SIGNING_SECRET`, or without `ADMIN_PASSWORD_HASH`. Keep the admin API off the public
+internet anyway: one password is one password.
+
+Generate `ADMIN_PASSWORD_HASH` (prompts twice; `--stdin` reads one line from a pipe):
 
 ```bash
-uv run python -c "from app.core.auth import hash_password; print(hash_password('your password'))"
+uv run python -m app.auth hash
 ```
 
 ## Migrations
@@ -146,7 +184,6 @@ uv run alembic upgrade head
 ```bash
 uv run ruff check .
 uv run ruff format .
-uv run mypy app
 uv run pytest                       # the default suite
 uv run pytest -m database           # needs Postgres; `just test-db` starts one
 ```
