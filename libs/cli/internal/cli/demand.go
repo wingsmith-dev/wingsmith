@@ -398,6 +398,7 @@ nothing runs them yet.`,
 			kv.Add("kind", wl.Kind)
 			kv.Add("phase", phaseColor(s, wl.Phase))
 			kv.Add("artifact", wl.Serving.ArtifactID)
+			kv.Add("served model", orDash(wl.ServedModelName))
 			kv.Add("project", wl.ProjectID)
 			kv.Add("priority class", wl.PriorityClass)
 			kv.Add("preemptible", boolWord(wl.Preemptible))
@@ -535,6 +536,7 @@ func writeServing(app *App, w io.Writer, s ui.Style, wl api.Workload) {
 	kv.Add("dtype", orDash(str(sv.Dtype)))
 	kv.Addf("parallelism", "tensor %d · pipeline %d · expert %d",
 		sv.Parallelism.Tensor, sv.Parallelism.Pipeline, sv.Parallelism.Expert)
+	kv.Add("topology", topologySummary(sv.Topology))
 	kv.Addf("context", "%d", sv.ContextLength)
 	kv.Add("max batch tokens", num(sv.MaxBatchTokens))
 	kv.Render(w)
@@ -1219,6 +1221,7 @@ behind it are disposable; the endpoint is the contract.`,
 			fmt.Fprintf(w, "%s %s\n", s.Bold(e.Name), s.Dim(e.ID))
 			kv := app.KV()
 			kv.Add("slug", e.Slug)
+			kv.Add("aliases", orDash(strings.Join(e.Aliases, ", ")))
 			kv.Add("project", e.ProjectID)
 			kv.Add("visibility", e.Visibility)
 			kv.Add("routing", e.RoutingStrategy)
@@ -1392,4 +1395,14 @@ func waitingOn(s ui.Style, d api.Deployment) string {
 		return "-"
 	}
 	return s.Amber(*d.Status.Reason)
+}
+
+// topologySummary is "aggregated" or the roles and their weights, e.g.
+// "disaggregated · prefill 1 · decode 3".
+func topologySummary(t api.ServingTopology) string {
+	parts := []string{orDash(t.ServingTopology)}
+	for _, r := range t.Roles {
+		parts = append(parts, fmt.Sprintf("%s %d", r.Role, r.Weight))
+	}
+	return strings.Join(parts, " · ")
 }

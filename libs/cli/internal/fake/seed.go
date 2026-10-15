@@ -421,7 +421,7 @@ func seed() *state {
 	st.Endpoints = append(st.Endpoints, api.Endpoint{
 		ID: chatEndpoint, Name: "chat", Slug: "meta-llama/llama-3.3-70b-instruct", ProjectID: projectID,
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
-		Aliases: []string{"chat"},
+		Aliases: []string{"llama-3.3-70b"},
 		Targets: []api.EndpointTarget{
 			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
 			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},
