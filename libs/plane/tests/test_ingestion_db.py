@@ -29,6 +29,7 @@ from app.hub.session import OperatorSession
 from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
+from app.ingestion.desired import format_ts
 from app.ingestion.desired import stream_desired
 from app.modules.events.repository import EventRepository
 from app.modules.allocations.services import AllocationService
@@ -252,14 +253,18 @@ async def test_a_frame_keyed_by_an_unknown_name_is_still_refused(sessions, clust
         await sink.apply_observed(observed("node.observed", cluster_uid="not-a-cluster"))
 
 
-async def test_applying_one_frame_twice_concurrently_is_idempotent(sessions, cluster) -> None:
+@pytest.mark.parametrize("attempt", range(5))
+async def test_applying_one_frame_twice_concurrently_is_idempotent(sessions, cluster, attempt) -> None:
+    """Both arrive before either commits; the second used to fail on `uid` instead of updating.
+
+    Deterministic because the sink serialises a cluster's writes: whichever way the two
+    transactions interleave, the second one starts after the first has committed. Run a
+    few times so an interleaving the lock did not cover would show up as a failure.
+    """
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))
 
-    await asyncio.gather(
-        sink.apply_observed(observed("device.observed")),
-        sink.apply_observed(observed("device.observed")),
-    )
+    await asyncio.gather(*(sink.apply_observed(observed("device.observed")) for _ in range(4)))
 
     rows = await fetch(sessions, "SELECT count(*) FROM supply_device")
     assert rows == [(1,)]
@@ -1113,6 +1118,10 @@ async def test_a_workloads_timeline_reaches_the_download_it_is_blocked_on(sessio
             resident=False,
             nodes=[],
             reason="NoRuntimeImage",
+            # The timeline only reaches artifact events since the workload was created, so the
+            # weights' history from before it does not read as its own. The fixture's timestamp
+            # is a fixed date in the past, which that bound correctly leaves out.
+            observed_at=format_ts(None),
         )
     )
 
@@ -1122,6 +1131,24 @@ async def test_a_workloads_timeline_reaches_the_download_it_is_blocked_on(sessio
         kinds = [row[0].type for row in result.all()]
 
     assert "cache.absent" in kinds, "the workload's timeline does not reach the weights it waits on"
+
+
+async def test_a_workloads_timeline_leaves_out_downloads_from_before_it_existed(sessions, cluster) -> None:
+    """The weights outlive every workload that loads them; their past is not this workload's story."""
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(
+        observed(
+            "cache.observed", artifact_id="art_bench", state="absent", nodes=[], observed_at="2020-01-01T00:00:00.000Z"
+        )
+    )
+
+    async with sessions() as db:
+        repo = EventRepository(db)
+        result = await db.execute(repo.list_query(limit=50, subject=SEEDED_WORKLOAD))
+        kinds = [row[0].type for row in result.all()]
+
+    assert "cache.absent" not in kinds
 
 
 async def test_a_workloads_timeline_reaches_its_deployments(sessions, cluster) -> None:

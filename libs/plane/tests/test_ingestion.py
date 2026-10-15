@@ -68,6 +68,13 @@ def scalar_params(params: dict[str, Any]) -> set[Any]:
 # --------------------------------------------------------------------------- upserts
 
 
+def test_a_clusters_writes_are_serialised_on_a_lock_of_their_own() -> None:
+    """Two concurrent inserts of one device both pass the arbiter and the second fails on `uid`."""
+    sql, params = compile_sql(statements.serialise_cluster(CLUSTER_ID))
+    assert "pg_advisory_xact_lock(hashtextextended(" in sql
+    assert f"hangar.ingestion:{CLUSTER_ID}" in scalar_params(params)
+
+
 def test_node_upsert_targets_the_natural_key() -> None:
     sql, _ = compile_sql(statements.upsert_node(CLUSTER_ID, payload("node.observed")))
     assert "INSERT INTO supply_node" in sql

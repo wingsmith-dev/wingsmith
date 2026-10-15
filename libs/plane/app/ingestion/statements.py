@@ -148,6 +148,12 @@ def cluster_ref_clause(ref: str):
     return (Cluster.uid if is_uid(ref) else Cluster.name) == ref
 
 
+def serialise_cluster(cluster_id: UUID) -> Select:
+    """Takes the transaction-scoped advisory lock that orders every ingestion write for one cluster."""
+    key = func.hashtextextended(literal(f"hangar.ingestion:{cluster_id}"), 0)
+    return select(func.pg_advisory_xact_lock(key))
+
+
 def cluster_ref(ref: str):
     return select(Cluster.id).where(cluster_ref_clause(ref)).scalar_subquery()
 

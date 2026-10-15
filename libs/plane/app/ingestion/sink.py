@@ -166,7 +166,6 @@ class DatabaseSink:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:
         self._sessions = sessions
-        self._clusters: dict[str, UUID] = {}
         self._epochs: dict[str, ResyncEpoch] = {}
 
     # ----------------------------------------------------------------- sessions
@@ -178,25 +177,39 @@ class DatabaseSink:
         return self._sessions
 
     async def _cluster_id(self, db: AsyncSession, cluster_ref: str) -> UUID:
-        """Resolves a wire cluster id to a primary key, memoised for the process.
+        """Resolves a wire cluster id to a primary key, in the write's own transaction.
 
         Accepts either a uid or a name, the same way the REST layer does — an
         operator is configured by hand, long before anyone has read back the uid
         the plane minted, and a name someone chose is the only identity a cluster
         has at that point.
 
-        Safe to cache either way: both are immutable once set, so the only way it
-        goes stale is a cluster being deleted, which takes its observed rows with
-        it by cascade.
+        Not cached. A cluster that is deleted and registered again under the same
+        name has a new primary key, and a process that remembered the old one wrote
+        every frame against a row that no longer existed until it restarted. One
+        indexed lookup per frame is the price of never being wrong about it.
         """
-        cached = self._clusters.get(cluster_ref)
-        if cached is not None:
-            return cached
         result = await db.execute(select(Cluster.id).where(statements.cluster_ref_clause(cluster_ref)))
         cluster_id = result.scalar_one_or_none()
         if cluster_id is None:
             raise UnknownCluster(cluster_ref)
-        self._clusters[cluster_ref] = cluster_id
+        return cluster_id
+
+    async def _enter(self, db: AsyncSession, cluster_ref: str, session_id: str | None) -> UUID:
+        """Opens a write for one cluster: resolve it, serialise on it, and check the claim.
+
+        Serialised per cluster with a transaction-scoped advisory lock. The upserts
+        below are idempotent one at a time, but an `ON CONFLICT` names one arbiter,
+        and an observed table has two unique keys — the natural key and the
+        cluster-minted `uid`. Two transactions inserting the same object at once
+        both pass the arbiter's check, and the second fails on the other key
+        instead of updating. One cluster's frames normally arrive on one session
+        in order, so the lock costs nothing then; it is there for a replay
+        overlapping a live frame, or a displaced session's last write.
+        """
+        cluster_id = await self._cluster_id(db, cluster_ref)
+        await db.execute(statements.serialise_cluster(cluster_id))
+        await self._fence(db, cluster_id, cluster_ref, session_id)
         return cluster_id
 
     async def _holds(self, db: AsyncSession, cluster_id: UUID, session_id: str) -> bool:
@@ -348,8 +361,7 @@ class DatabaseSink:
 
     async def _write(self, frame: SinkFrame) -> tuple[str, str] | None:
         async with self.sessions.begin() as db:
-            cluster_id = await self._cluster_id(db, frame.cluster_id)
-            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
+            cluster_id = await self._enter(db, frame.cluster_id, frame.session_id)
             tracked = await self._dispatch(db, cluster_id, frame)
             await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
             return tracked
@@ -500,8 +512,7 @@ class DatabaseSink:
     async def record_event(self, frame: SinkFrame) -> None:
         payload = frame.payload
         async with self.sessions.begin() as db:
-            cluster_id = await self._cluster_id(db, frame.cluster_id)
-            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
+            cluster_id = await self._enter(db, frame.cluster_id, frame.session_id)
             match frame.type:
                 case "node.event":
                     assert isinstance(payload, NodeEvent)
@@ -535,8 +546,7 @@ class DatabaseSink:
             logger.debug("ingestion.operation.unhandled type=%s", frame.type)
             return
         async with self.sessions.begin() as db:
-            cluster_id = await self._cluster_id(db, frame.cluster_id)
-            await self._fence(db, cluster_id, frame.cluster_id, frame.session_id)
+            cluster_id = await self._enter(db, frame.cluster_id, frame.session_id)
             result = await db.execute(statements.update_operation(cluster_id, payload))
             if result.rowcount == 0:
                 logger.info(
@@ -578,8 +588,7 @@ class DatabaseSink:
             return
 
         async with self.sessions.begin() as db:
-            resolved = await self._cluster_id(db, cluster_id)
-            await self._fence(db, resolved, cluster_id, session_id)
+            resolved = await self._enter(db, cluster_id, session_id)
             moment = now()
             going = (await db.execute(statements.doomed_nodes(resolved, epoch.present[NODE]))).all()
             leaving = (await db.execute(statements.doomed_workloads(resolved, epoch.present[WORKLOAD]))).all()
@@ -621,8 +630,7 @@ class DatabaseSink:
         plane converges on it, from any starting state and after any outage.
         """
         async with self.sessions.begin() as db:
-            resolved = await self._cluster_id(db, cluster_id)
-            await self._fence(db, resolved, cluster_id, session_id)
+            resolved = await self._enter(db, cluster_id, session_id)
             replicas = await db.execute(statements.prune_cluster_replicas(resolved, epoch.present[REPLICA]))
             allocations = await db.execute(statements.prune_cluster_allocations(resolved, epoch.present[ALLOCATION]))
         logger.info(
