@@ -147,11 +147,14 @@ class ResourcesSchema(Struct):
 
 
 class OverlaySchema(Struct):
-    """Passthrough for what the plane deliberately does not model.
+    """Overrides for what the plane deliberately does not model, inside an allowlist.
 
     `pod_spec` merges over the rendered pod with strategic-merge semantics;
     `dynamo` merges over the rendered graph deployment, where maps merge and
-    lists replace.
+    lists replace. Both are checked against the keys in
+    `app.modules.workloads.validation` before anything is stored: scheduling,
+    container args, env, resources and probes are allowed; security contexts, host
+    namespaces, volumes and service accounts are refused.
     """
 
     pod_spec: dict = {}

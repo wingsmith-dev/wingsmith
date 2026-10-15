@@ -609,6 +609,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
     for role in declared_roles(data.topology):
         check_retention(role.engine_args, f"the {role.role} role")
     check_overlay_retention(msgspec.to_builtins(data.overlay))
+    check_overlay(data.overlay.pod_spec, data.overlay.dynamo)
 
 
 def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, gang_size: int) -> None:
@@ -642,3 +643,106 @@ def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, g
                 "max_scale": max_scale,
             },
         )
+
+
+POD_OVERLAY_KEYS = frozenset(
+    {
+        "containers",
+        "nodeSelector",
+        "tolerations",
+        "affinity",
+        "topologySpreadConstraints",
+        "terminationGracePeriodSeconds",
+        "imagePullSecrets",
+    }
+)
+"""The PodSpec fields an overlay may set: where the pod schedules and how its containers run.
+
+An allowlist because the overlay is merged over the rendered pod by an operator that
+runs with cluster privileges, and anything not named here — `securityContext`,
+`hostNetwork`, `hostPID`, `hostIPC`, `volumes`, `serviceAccountName`, `initContainers`,
+`priorityClassName`, `nodeName` — is either a way off the node's isolation or a way
+around a decision the plane makes itself.
+"""
+
+CONTAINER_OVERLAY_KEYS = frozenset(
+    {
+        "name",
+        "args",
+        "command",
+        "env",
+        "resources",
+        "ports",
+        "readinessProbe",
+        "livenessProbe",
+        "startupProbe",
+        "imagePullPolicy",
+        "workingDir",
+    }
+)
+"""The container fields an overlay may set. No `securityContext`, `volumeMounts`, `envFrom` or `image`.
+
+`image` is a declared, hashed column of its own (`engine_runtime_image`), and an overlay
+that swapped it would run a process the digest does not describe.
+"""
+
+DYNAMO_OVERLAY_KEYS = frozenset({"annotations", "components", "envs"})
+"""The graph-spec fields an overlay may set: the rollout annotations, the component list, shared env."""
+
+COMPONENT_OVERLAY_KEYS = frozenset(
+    {"name", "type", "replicas", "globalDynamoNamespace", "multinode", "envs", "resources", "podTemplate"}
+)
+"""The fields of one hand-written graph component, which is what replacing `components` means."""
+
+POD_TEMPLATE_OVERLAY_KEYS = frozenset({"metadata", "spec"})
+POD_METADATA_OVERLAY_KEYS = frozenset({"labels", "annotations"})
+
+
+def _refuse_keys(value: object, allowed: frozenset[str], where: str) -> dict:
+    if not isinstance(value, dict):
+        raise Invalid(f"{where} must be an object", {"at": where})
+    unknown = sorted(str(key) for key in value if key not in allowed)
+    if unknown:
+        raise Invalid(
+            f"{where} may not set {', '.join(unknown)}: the overlay is limited to {', '.join(sorted(allowed))}",
+            {"at": where, "refused": unknown, "allowed": sorted(allowed)},
+        )
+    return value
+
+
+def _check_pod(pod: object, where: str) -> None:
+    pod = _refuse_keys(pod, POD_OVERLAY_KEYS, where)
+    containers = pod.get("containers", [])
+    if not isinstance(containers, list):
+        raise Invalid(f"{where}.containers must be a list", {"at": f"{where}.containers"})
+    for index, container in enumerate(containers):
+        _refuse_keys(container, CONTAINER_OVERLAY_KEYS, f"{where}.containers[{index}]")
+
+
+def check_overlay(pod_spec: dict, dynamo: dict) -> None:
+    """Refuses an overlay that reaches past what the plane lets a workload override.
+
+    The pod overlay is checked against `POD_OVERLAY_KEYS` and every container in it
+    against `CONTAINER_OVERLAY_KEYS`. The graph overlay is checked against
+    `DYNAMO_OVERLAY_KEYS`, and a hand-written component's pod template against the
+    same pod rules, because replacing `components` replaces the pods it renders.
+    """
+    if pod_spec:
+        _check_pod(pod_spec, "overlay.pod_spec")
+    if not dynamo:
+        return
+    graph = _refuse_keys(dynamo, DYNAMO_OVERLAY_KEYS, "overlay.dynamo")
+    components = graph.get("components", [])
+    if not isinstance(components, list):
+        raise Invalid("overlay.dynamo.components must be a list", {"at": "overlay.dynamo.components"})
+    for index, component in enumerate(components):
+        where = f"overlay.dynamo.components[{index}]"
+        component = _refuse_keys(component, COMPONENT_OVERLAY_KEYS, where)
+        template = component.get("podTemplate")
+        if template is None:
+            continue
+        template = _refuse_keys(template, POD_TEMPLATE_OVERLAY_KEYS, f"{where}.podTemplate")
+        if "metadata" in template:
+            _refuse_keys(template["metadata"], POD_METADATA_OVERLAY_KEYS, f"{where}.podTemplate.metadata")
+        if "spec" in template:
+            _check_pod(template["spec"], f"{where}.podTemplate.spec")

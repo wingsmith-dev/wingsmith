@@ -1648,3 +1648,50 @@ def test_hashing_an_unrendered_field_as_unset_keeps_every_other_digest_where_it_
     workload = a_workload()
     apply_serving(workload, a_request(), artifact, ())
     assert workload.serving_digest == serving_digest(workload, artifact, ())
+
+
+@pytest.mark.parametrize(
+    "overlay",
+    [
+        OverlaySchema(pod_spec={"hostNetwork": True}),
+        OverlaySchema(pod_spec={"hostPID": True}),
+        OverlaySchema(pod_spec={"securityContext": {"runAsUser": 0}}),
+        OverlaySchema(pod_spec={"volumes": [{"name": "root", "hostPath": {"path": "/"}}]}),
+        OverlaySchema(pod_spec={"serviceAccountName": "cluster-admin"}),
+        OverlaySchema(pod_spec={"containers": [{"name": "main", "securityContext": {"privileged": True}}]}),
+        OverlaySchema(
+            pod_spec={"containers": [{"name": "main", "volumeMounts": [{"name": "root", "mountPath": "/h"}]}]}
+        ),
+        OverlaySchema(pod_spec={"containers": [{"name": "main", "image": "somewhere/else:latest"}]}),
+        OverlaySchema(dynamo={"pvcs": [{"name": "x"}]}),
+        OverlaySchema(dynamo={"components": [{"name": "Worker", "extraPodSpec": {"hostNetwork": True}}]}),
+        OverlaySchema(
+            dynamo={"components": [{"name": "Worker", "podTemplate": {"spec": {"hostIPC": True}}}]},
+        ),
+    ],
+)
+def test_an_overlay_outside_the_allowlist_is_refused(overlay):
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(overlay=overlay), an_artifact())
+
+
+def test_an_overlay_inside_the_allowlist_is_accepted():
+    overlay = OverlaySchema(
+        pod_spec={
+            "nodeSelector": {"pool": "a"},
+            "tolerations": [{"key": "gpu", "operator": "Exists"}],
+            "containers": [{"name": "main", "env": [{"name": "NCCL_DEBUG", "value": "INFO"}], "args": ["--x"]}],
+        },
+        dynamo={
+            "annotations": {"nvidia.com/deployment-strategy": "Recreate"},
+            "components": [
+                {
+                    "name": "Frontend",
+                    "type": "frontend",
+                    "replicas": 1,
+                    "podTemplate": {"metadata": {"labels": {"a": "b"}}, "spec": {"containers": [{"name": "main"}]}},
+                }
+            ],
+        },
+    )
+    check_serving_request(a_request(overlay=overlay), an_artifact())
