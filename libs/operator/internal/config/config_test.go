@@ -111,7 +111,7 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
 	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")
 	t.Setenv("HANGAR_FRONTEND_ENABLED", "true")
-	t.Setenv("HANGAR_FRONTEND_IMAGE", "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2")
+	t.Setenv("HANGAR_FRONTEND_IMAGE", "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.2")
 	t.Setenv("HANGAR_FRONTEND_REPLICAS", "3")
 	t.Setenv("HANGAR_ENGINE_PULL_SECRETS", "ghcr-engine, ghcr-mirror")
 	t.Setenv("HANGAR_FRONTEND_PULL_SECRETS", "ghcr-hangar, ghcr-mirror")

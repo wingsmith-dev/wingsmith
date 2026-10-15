@@ -302,8 +302,8 @@ func dcgmInventoryFor(host string, n int) *DCGMInventory {
 
 // TestMissingGPUCountLabelIsNotAWarning: a node group installed without GFD's labels takes its
 // device count from DCGM on every pass for as long as it exists. That is the supported path, so it
-// must not shout — the site-b operator emitted this WARN twice every thirty seconds and buried the
-// reconcile lines. The count itself must still be right.
+// must not shout — a WARN twice every thirty seconds buries the reconcile lines. The count itself
+// must still be right.
 func TestMissingGPUCountLabelIsNotAWarning(t *testing.T) {
 	const name = "ip-10-5-103-180.eu-north-1.compute.internal"
 	node := gpuNode(name, map[string]string{}, nil, true, false)

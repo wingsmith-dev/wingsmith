@@ -600,10 +600,10 @@ func TestTheFrontendIsKeptOffTheAcceleratorNodes(t *testing.T) {
 	}
 }
 
-// A frontend image is not always the engine image: the Kimi K3 fix is a patched frontend beside a
-// stock worker, because both defects are in the frontend binary.
+// A frontend image is not always the engine image: a model may need a patched frontend beside a
+// stock worker when its defects are in the frontend binary.
 func TestTheFrontendImageIsResolvedMostSpecificFirst(t *testing.T) {
-	const patched = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+	const patched = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.2"
 	const clusterDefault = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
 
 	cases := []struct {
@@ -885,10 +885,9 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 // an input to a name, and changing it renames every component in the fleet, which Dynamo answers
 // by abandoning the running one and starting a replacement that reloads the model's weights.
 //
-// That is exactly what happened on 2026-09-02. Deleting Recipe removed `hangar.dev/recipe` from
-// `ownershipLabels`, no code anywhere read it, and every decode worker on every cluster rolled.
-// On site-c, which was full, the roll deadlocked: the replacement could not schedule until the
-// original released its eight cards, and the original was not going anywhere.
+// Removing a label nothing read once rolled every decode worker on every cluster, and on a full
+// cluster the roll deadlocked: the replacement could not schedule until the original released its
+// cards, and the original was not going anywhere.
 //
 // The reconciler no longer applies a graph deployment whose inputs are unchanged, so a set edited
 // here reaches only workloads whose declaration moves afterwards. This test is the second half of
@@ -924,7 +923,8 @@ func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 	}
 }
 
-// The regression that took Kimi K3 off the fleet, pinned at the layer that caused it.
+// A frontend that cannot open the worker's model path serves nothing, pinned at the layer that
+// causes it.
 //
 // `modelRef` points --model at the snapshot directory, which is the only form every engine reads
 // the same way. That string is also the identity of the model card the worker publishes, and the
@@ -1232,8 +1232,8 @@ func TestEachRolesPodsCarryTheirRole(t *testing.T) {
 
 // The warm path, which is three flags and easy to get silently wrong.
 //
-// Measured on site-a on 2026-09-08: a 30k-token conversation growing 1.3k a turn held a 96.4% prefix
-// cache hit rate against one prefill worker. That reuse is what these flags protect, and each of
+// A long conversation that grows each turn hits the prefix cache on a warm prefill worker. That
+// reuse is what these flags protect, and each of
 // them fails silently on its own — as a cold cache and a latency nobody can attribute, never as an
 // error.
 func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
@@ -1292,9 +1292,8 @@ func TestPrefixCachingIsUnchangedForAnAggregatedWorker(t *testing.T) {
 
 // The frontend routes by KV whatever the topology, because it is the worker count and not the
 // topology that breaks round-robin. Gated on disaggregation, this left every multi-replica
-// aggregated model in the fleet routing cache-blind: measured on four B300s serving Kimi-K3, one
-// replica at 86% KV usage and a 35.7s TTFT beside an idle one, and `router_kv_hit_rate` with 1701
-// routed requests and zero observations.
+// aggregated model routing cache-blind: one replica saturated beside an idle one, and a KV hit
+// rate with no observations.
 func routerMode(t *testing.T, in Inputs) string {
 	t.Helper()
 	spec, err := frontendPodSpec(in, frontendOptions())
@@ -1622,7 +1621,7 @@ func TestOffloadPoolBoundsWorkerMemory(t *testing.T) {
 // A worker that advertises the node-local mirror publishes a path the frontend must be able to
 // open. If it cannot, it reads the path as a Hugging Face repo id, is answered 404, and publishes
 // no model card at all — so a fleet of healthy workers serves an empty model list while every
-// probe passes. That happened on site-d on 2026-09-09 and voided a whole rung.
+// probe passes.
 func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
 	in := testInputs()
 	// A pinned source, because only a pinned revision resolves to a snapshot directory — which is
@@ -1689,8 +1688,8 @@ func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
 	}
 }
 
-// The ladder established that aggregated is the faster topology for K3, and the offload tier was
-// written for disaggregated prefill. A tier that only works in the arm we are not shipping is not
+// Aggregated serving can be the faster topology for a model, and the offload tier was written for
+// disaggregated prefill. A tier that only works in the arm we are not shipping is not
 // a tier, so an aggregated worker gets one too — standing alone, because there is no second worker
 // to move a cache to and so nothing to compose with.
 func TestOffloadTierReachesAnAggregatedWorker(t *testing.T) {
@@ -1740,9 +1739,8 @@ func TestOffloadTierReachesAnAggregatedWorker(t *testing.T) {
 }
 
 // A worker that does not ask for EFA does not get /dev/infiniband, and NIXL then moves the KV
-// cache over TCP without saying so. The whole disaggregation arm of the K3 benchmark ran that
-// way — ~300MB/s and 6.1s per transfer — while the nodes advertised 16 idle fabric adapters.
-// Nothing in a health check, a probe, or an engine log reports it, so it is asserted here.
+// cache over TCP without saying so, at a fraction of the fabric's speed. Nothing in a health check,
+// a probe, or an engine log reports it, so it is asserted here.
 func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	const efa = corev1.ResourceName("vpc.amazonaws.com/efa")
 
@@ -1875,19 +1873,19 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 // FlashInfer's own path carries its version and the CUDA arch, so two images shipping the same
 // release land in the same directory and one reads back a host wrapper the other compiled.
 func TestJITCacheSlugSeparatesImages(t *testing.T) {
-	a := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
-	b := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa5")
+	a := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
+	b := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.5")
 	if a == "" || b == "" {
 		t.Fatalf("slugs = %q, %q; a versioned tag is keyable", a, b)
 	}
 	if a == b {
 		t.Errorf("two image tags share the directory %q", a)
 	}
-	if !strings.HasPrefix(a, "1.4.0-patched.1-efa4-") {
+	if !strings.HasPrefix(a, "1.4.0-efa.4-") {
 		t.Errorf("slug = %q, want the tag readable at the front of it", a)
 	}
 
-	same := jitCacheSlug("quay.io/other/vllm-runtime:1.4.0-patched.1-efa4")
+	same := jitCacheSlug("quay.io/other/vllm-runtime:1.4.0-efa.4")
 	if same == a {
 		t.Errorf("two registries share the directory %q", a)
 	}
@@ -1912,7 +1910,7 @@ func TestJITCacheSlugRefusesMovingTags(t *testing.T) {
 // cluster with no node-local disk: that worker starts as it always did, slowly.
 func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
 
 	bare, err := podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{})
 	if err != nil {
@@ -1934,7 +1932,7 @@ func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 	if !strings.HasPrefix(base, jitCacheRoot+"/") {
 		t.Fatalf("workspace base = %q, want it under %q", base, jitCacheRoot)
 	}
-	if !strings.Contains(base, "1.4.0-patched.1-efa4") {
+	if !strings.Contains(base, "1.4.0-efa.4") {
 		t.Errorf("workspace base = %q, want the image tag in it", base)
 	}
 	// The base is under the hostPath mount, so the worker has to carry that mount for the path
@@ -1958,7 +1956,7 @@ func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 // gain a cache would run its KV path on the slow fallback and report success.
 func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
 	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true, JITCacheOptIn: true}
 
 	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
@@ -1979,7 +1977,7 @@ func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 // so the default has to be the shape that was measured, not the newer one.
 func TestJITCacheIsOptIn(t *testing.T) {
 	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
 	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true}
 
 	spec, err := podSpec(in, opts, workerRole{Role: "decode"})

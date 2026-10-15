@@ -64,8 +64,8 @@ func TestAnUndeclaredRouterRendersTheFrontendItAlwaysDid(t *testing.T) {
 	}
 }
 
-// The four settings the site-d benchmark runs on, rendered in the order and the spelling they were
-// hand-patched onto that frontend, so declaring them renders the template already running.
+// Each declared router setting renders after the mode, in a fixed order and spelling, so the same
+// declaration always renders the same template.
 func TestADeclaredRouterRendersEachSettingAfterTheMode(t *testing.T) {
 	in := disaggInputs()
 	in.Deployment.Serving.Router = useRouter()
@@ -100,7 +100,7 @@ func TestADeclaredModeReplacesTheDefault(t *testing.T) {
 }
 
 // The router is the frontend's business alone. A worker whose template moved because a router
-// setting did is a weight reload, which on site-d is ten minutes to three and a half hours a worker.
+// setting did is a weight reload, which on a large model is tens of minutes a worker.
 func TestARouterChangeNeverReachesTheWorkers(t *testing.T) {
 	for name, base := range map[string]Inputs{"aggregated": testInputs(), "disaggregated": disaggInputs()} {
 		withRouter := base
