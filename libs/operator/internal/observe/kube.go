@@ -253,10 +253,9 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 // somebody has to decide which is lying, so it stays a WARN. Falling back for a missing label is
 // not a surprise at all — it is the supported path this function is written to take, and whether
 // a node group carries GFD's labels is a permanent property of how it was installed, not an event.
-// On site-b the WARN fired for both GPU nodes on every observation pass, once per thirty seconds
-// forever, and buried the reconcile lines under a fact that was true, unchanging, and unactionable;
-// a warning that fires in a cluster's steady state is weather, not signal. It is Debug now, beside
-// the scrape line in Discover that already reports device provenance at that level.
+// A WARN here would fire on every observation pass for as long as the node group exists, burying
+// the lines worth reading, so it is Debug, beside the scrape line in Discover that already reports
+// device provenance at that level.
 //
 // Debug rather than once-per-node-when-it-changes: the change worth catching is a node's device
 // count moving, and that is visible in the snapshot itself, which the plane diffs. Remembering the

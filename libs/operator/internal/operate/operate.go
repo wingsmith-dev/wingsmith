@@ -52,7 +52,7 @@ const (
 //
 // A ramp is the case this depth is for: one request becomes a step per concurrency level, all of
 // them arriving within a second of each other, and every one of them has to be kept. Deep enough
-// for a ramp far longer than any we run, and still bounded — an unbounded queue would turn a plane
+// for a long ramp, and still bounded — an unbounded queue would turn a plane
 // that keeps asking into a cluster that keeps agreeing and never measures anything.
 const defaultBenchmarkQueue = 64
 

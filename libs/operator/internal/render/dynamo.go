@@ -1,14 +1,9 @@
 // Package render turns declared domain objects into the Kubernetes objects that serve them.
 //
-// This is the only package in the operator that knows what a DynamoGraphDeployment is, and the
-// only one that knows what a vLLM flag looks like. Everything upstream of it deals in the domain
-// — deployments, their serving configuration, artifacts — which is rule 2 of the design: the wire
-// format is our objects, and the mapping to Kubernetes lives here and nowhere else.
-//
-// The rendered object is built as unstructured rather than against NVIDIA's Go types. Vendoring
-// their API module to write four nested fields would tie this operator's build to their release
-// cadence for no benefit, and the object is applied server-side anyway, where the API server does
-// the validating.
+// This is the only package in the operator that knows what a DynamoGraphDeployment is or what a
+// vLLM flag looks like; everything upstream deals in deployments, serving blocks and artifacts.
+// Objects are built as unstructured rather than against NVIDIA's Go types, so the build does not
+// track their release cadence, and they are applied server-side where the API server validates.
 package render
 
 import (
@@ -77,24 +72,16 @@ type Options struct {
 	CacheTaintValue    string
 	ModelCachePVC      string
 	LocalModelCacheDir string
-	// JITCacheOptIn turns on keeping FlashInfer's compiled wrappers on the node. Off by default
-	// and opt-in per cluster, because the feature buys startup time and is under suspicion of
-	// costing steady-state throughput: a 2P:2D fleet measured 6.68 req/s without it and 4.79
-	// with it, on otherwise byte-identical renders. Until that is attributed, a cluster that has
-	// not asked for it renders as it did before -- as uid 1000, with no FLASHINFER_WORKSPACE_BASE.
+	// JITCacheOptIn keeps FlashInfer's compiled wrappers on the node. Off by default: it saves
+	// startup time and is suspected of costing steady-state throughput.
 	JITCacheOptIn       bool
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
 
-	// MultinodeEnabled says whether this cluster can run a replica that spans machines.
-	//
-	// A per-cluster fact rather than a plane decision, and a hard one: a multi-node replica is a
-	// leader-worker group, and Dynamo renders one only where Grove or LeaderWorkerSet is
-	// installed. Without them the CRD accepts the field and produces a single pod asking for a
-	// fraction of the devices the engine was told to expect, which starts and then hangs in
-	// collective initialisation. Refusing is the only honest behaviour, so this defaults off and
-	// a cluster turns it on when it has installed the thing that makes it true.
+	// MultinodeEnabled says whether this cluster can run a replica that spans machines, which
+	// needs Grove or LeaderWorkerSet. Without them Dynamo renders one pod holding a fraction of
+	// the devices, which hangs in collective initialisation, so the render refuses instead.
 	MultinodeEnabled bool
 
 	// GPUTolerationKey and GPUTolerationValue are the taint GPU workers tolerate. An empty key
@@ -129,54 +116,34 @@ type Options struct {
 	// deployment nor the cluster names a frontend image, they run that same engine image.
 	EnginePullSecrets []string
 
-	// FrontendEnabled renders a frontend beside the worker, one per model.
-	//
-	// Off by default, and that default is the migration control rather than an opinion. Every
-	// cluster we run today is served by one frontend the chart installs, and with this false the
-	// rendered object is byte-identical to what that arrangement has always produced — so the
-	// operator can ship before any cluster has moved, and a cluster moves by setting one value.
-	// It is the only flag here whose false case has to stay exactly as it was.
+	// FrontendEnabled renders a frontend beside the worker, one per model. With it false the
+	// rendered object is exactly what a cluster-wide frontend arrangement expects.
 	FrontendEnabled bool
 
 	// FrontendImage is this cluster's default frontend runtime, used when the deployment names
-	// none.
-	//
-	// A per-cluster fact for the same reason the pool labels are: the plane says which model to
-	// serve, and which build of the frontend a cluster happens to run is local. Empty falls back
-	// to the serving block's engine image, which is right often enough — the Dynamo runtime
-	// carries the frontend and the engines in one image — and wrong exactly when the frontend
-	// needs a patch the engine does not, which is what ServingSpec.FrontendImage exists for.
+	// none. Empty falls back to the serving block's engine image.
 	FrontendImage string
 
-	// FrontendReplicas is how many frontend pods one model gets. Two by default, so that a
-	// rollout does not take the model's only frontend with it: the frontend holds no weights, so
-	// a second replica costs a few hundred megabytes and buys the model an upgrade that is not
-	// an outage.
+	// FrontendReplicas is how many frontend pods one model gets. Two by default, so a rollout is
+	// not an outage.
 	FrontendReplicas int
 
 	// FrontendPullSecrets are Secrets in the workload namespace the kubelet presents when
-	// pulling FrontendImage.
-	//
-	// A frontend image does not have to be public: the Kimi K3 fix is a patched runtime in a
-	// private GHCR repository, and a private pull with no credential is an ImagePullBackOff rather
-	// than an error anything reports upward. A pull Secret is namespaced and the kubelet reads it
-	// from the pod's own namespace, so these name Secrets in the namespace this operator renders
-	// into, not in its own.
+	// pulling FrontendImage, for a frontend image in a private registry.
 	FrontendPullSecrets []string
 
 	// FrontendCPU, FrontendMemory and FrontendMemoryLimit are what one frontend pod asks for.
-	// Empty takes the render's own defaults, which are what the cluster frontend has been
-	// observed to run inside. No CPU limit is ever set: the frontend holds streams open and
-	// copies every token of every response, so throttling it is latency on the data path.
+	// Empty takes the render's defaults. No CPU limit is set: throttling the frontend is latency
+	// on the data path.
 	FrontendCPU         string
 	FrontendMemory      string
 	FrontendMemoryLimit string
 
 	// AnthropicAPIEnabled serves the Anthropic Messages API (`/v1/messages`) beside the OpenAI
-	// one, and AnthropicStripPreamble drops the Claude Code billing preamble from the system
-	// prompt. Both are additive — a route that did not exist before, and a prompt that starts
-	// the same way every time, which is a prompt the prefix cache can hit — and both are set as
-	// environment rather than arguments because DynamoGraphDeployment owns the command line.
+	// one. AnthropicStripPreamble removes a client-injected system-prompt prefix that varies per
+	// request and carries no instructions for the model, so requests from the same client share a
+	// prefix the cache can hit. Both are environment because Dynamo owns the frontend's command
+	// line.
 	AnthropicAPIEnabled    bool
 	AnthropicStripPreamble bool
 
@@ -216,26 +183,12 @@ const (
 
 // The rollout strategy Dynamo reads off `spec.annotations` of the graph deployment.
 //
-// Rendered as constants because the numbers below are the only ones that work on a cluster with
-// no spare cards, and every cluster we run is one: a GPU node group is bought for the workload
-// that sits on it, so the spare capacity a rolling update needs is capacity nobody bought.
-// Dynamo's own defaults are 25%/25% (`dgd_worker_rollout_reconciler.go`), which at our counts
-// round to surge 1 / unavailable 0 and deadlock — the new generation's pods sit `Pending` on
-// `Insufficient nvidia.com/gpu` while the old generation is held open because unavailable 0
-// forbids scaling it down. Nothing times out. It was observed live on `site-a`, and surge 0 with
-// unavailable 1 was verified there to roll in place, one worker at a time, without the total
-// replica count across generations ever exceeding desired.
-//
-// Rendered for aggregated deployments as well as disaggregated ones, against §3.4's rule that an
-// aggregated render must not move: four aggregated replicas on four nodes have exactly the same
-// zero spare cards as a 2P:2D group does, so scoping this to disaggregation would leave the
-// deadlock in place for the shape most of the fleet is actually in. The move is a one-time cost
-// on the next re-apply and a permanent removal of a hang.
-//
-// A constant and not a declared field, because there is no rollout block on the wire and the
-// proposed one (`docs/wip-api-gaps.md` item 20) would be an operator-visible knob whose only safe
-// value is this one. When a cluster with spare capacity exists, that plan makes it declared;
-// until then a field would only offer a way to reinstate the deadlock.
+// Dynamo's defaults (25%/25%) round to surge 1 / unavailable 0 at small replica counts, which
+// deadlocks on a GPU pool with no spare cards: the new pod is Pending on `Insufficient
+// nvidia.com/gpu` while the old one may not be scaled down. Surge 0, unavailable 1 rolls in place,
+// one worker at a time. Rendered for aggregated deployments too, since they have the same zero
+// spare cards. A constant rather than a declared field because it is the only safe value until a
+// cluster with spare capacity needs another.
 const (
 	MaxSurgeAnnotation       = "nvidia.com/deployment-rolling-update-max-surge"
 	MaxUnavailableAnnotation = "nvidia.com/deployment-rolling-update-max-unavailable"
@@ -423,17 +376,10 @@ func roleComponent(role string) (component, kind string, err error) {
 
 // DynamoGraphDeployment renders one deployment into the object that serves it.
 //
-// The graph holds the model's worker and, where the cluster has opted in, the frontend that model
-// is served through. One frontend per model rather than one per cluster, because a frontend is a
-// binary and that binary has to tokenize and register every model reaching it: on 2026-09-01 a
-// model arrived on site-c that the cluster's frontend could not tokenize, and the only way to serve
-// it was to change the image every other model on that cluster was served through. A frontend per
-// model turns a fleet event into one deployment's business.
-//
-// Nothing has to route on the request body for this to work, which is what the earlier argument
-// for the singleton assumed. The gateway has already resolved which deployment a request belongs
-// to before it forwards it, so it forwards that deployment id and the in-cluster agent picks the
-// frontend by label. No frontend is chosen by asking anything what models it serves.
+// The graph holds the model's workers and, where the cluster has opted in, the frontend the model
+// is served through: one per model, so a model that needs a different frontend build is that
+// deployment's business alone. The gateway has already resolved a request to a deployment, and
+// the in-cluster agent picks the frontend by label, so nothing routes on the request body.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
 	roles, err := WorkerRoles(in.Deployment)
 	if err != nil {
@@ -489,10 +435,9 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			},
 		},
 		"spec": map[string]any{
-			// Set here on the first render rather than patched onto a running graph. Dynamo
-			// propagates `spec.annotations` into every worker pod template and hashes the
-			// template, so arriving late costs a full weight reload — twenty-two minutes a worker
-			// on a checkpoint the size of K3's.
+			// Set on the first render rather than patched on later: Dynamo copies
+			// `spec.annotations` into every worker pod template and hashes it, so arriving late
+			// costs a full weight reload.
 			"annotations": rolloutStrategy(),
 			"components":  components,
 		},
@@ -518,62 +463,32 @@ func Name(id string) string {
 // maxWorkloadName bounds the rendered name so the objects Dynamo derives from it stay inside the
 // 63 byte limit their own names are held to.
 //
-// The number that matters is not the graph deployment's own name — it has 253 bytes to spend —
-// but the DynamoComponentDeployment Dynamo names after it, whose name is also the value of the
-// `nvidia.com/selector` label on the Deployment underneath. A label value is 63 bytes, so a graph
-// name that fits perfectly well produces a child the API server refuses:
+// The binding limit is the DynamoComponentDeployment Dynamo names after the graph, whose name is
+// also the value of the `nvidia.com/selector` label on the Deployment beneath it: a label value is
+// 63 bytes, and a child over it is refused by the API server on an object this operator never
+// reads, leaving the deployment at 0 ready replicas with no reason given.
 //
-//	Deployment.apps "<40 chars>-vllmdecodeworker-bb8c5a8c" is invalid:
-//	spec.selector.matchLabels: must be no more than 63 bytes
-//
-// A constant 40 was three over, and the failure landed on an object this operator does not own and
-// never read — so the deployment reported `placed · 0 of 1 replicas ready` for as long as it
-// existed, with no pod ever created and nothing anywhere saying why.
-//
-// **Chosen, not derived, and that is the correction.** This was `maxObjectNameBytes` minus a
-// `max()` over the suffixes of whatever components happened to exist, which made the bound a
-// function of the component list: adding `VllmPrefillWorker` — one byte longer than
-// `VllmDecodeWorker` — moved it from 37 to 36 and silently renamed any deployment whose slug was
-// exactly 37 bytes. A rename is a delete and recreate, so that is a weight reload on every
-// cluster, caused by adding a component those deployments do not even render. The bound would
-// have moved again for image serving (plan 05), and again after that.
-//
-// So it is a number now, with room under it, and `TestComponentBudget` is what holds the
-// components to it rather than the other way round. Queried against production on 2026-09-08
-// before taking it: ten deployments, longest rendered name 22 bytes, none at 36 or above. The
-// one-time rename this could have cost was therefore zero, and it was taken while exactly one
-// topology existed. Do not re-derive this from the component list; add a component that fits.
+// A chosen number, not one derived from the component list: deriving it made adding a component
+// shorten the bound and rename (and reload) every deployment at the old length.
+// `TestComponentBudget` holds the components to it instead. Do not re-derive it.
 const maxWorkloadName = 32
 
-// componentNameBudget is what a component name may spend, and the whole of the contract this
-// file now keeps with itself.
-//
-// `maxObjectNameBytes - maxWorkloadName` is 31, which a suffix spends as a dash, the component
-// name lowercased, a dash, and the eight character spec hash — leaving 21 bytes for the name.
-// `VllmPrefillWorker` is 17, the longest this renderer emits, so there are four characters of
-// slack; `OmniComponent`, plan 05's image and video worker, spends 10. A component past this is a compile-time test
-// failure with a name in it, which is the failure this indirection exists to produce: the
-// alternative was a bound that moved under the components and took running deployments with it.
+// componentNameBudget is what a component name may spend: what is left of the 63 bytes after the
+// workload name, two dashes and the eight-character spec hash. `VllmPrefillWorker` (17) is the
+// longest this renderer emits; a component past the budget fails `TestComponentBudget`.
 const componentNameBudget = maxObjectNameBytes - maxWorkloadName - len("-") - len("-") - len(specHashPlaceholder)
 
 // maxObjectNameBytes is the label-value limit the derived name is actually held to.
 const maxObjectNameBytes = 63
 
-// specHashPlaceholder stands in for the hash Dynamo derives for a worker component. Only its
-// length is used; the value is never rendered.
+// specHashPlaceholder stands in for the hash Dynamo derives for worker components. Only its
+// length is used.
 //
-// One hash per graph and not one per component, which is the opposite of what this constant's
-// name suggests and was measured rather than read: `ComputeDGDWorkersSpecHash` hashes every worker
-// component of a DGD together, so both roles of one deployment carry the same eight characters.
-// Verified on `cluster-site-a` on 2026-09-08 — a two-role graph named its objects
-// `disagg-probe-vllmprefillworker-33e29a11` and `disagg-probe-vllmdecodeworker-33e29a11`. It is
-// also what pairs the roles at runtime: the same hash goes into `DYN_NAMESPACE_WORKER_SUFFIX`,
-// both workers resolve to the runtime namespace `dynamo-33e29a11`, and the frontend matches
-// prefill to decode on exactly that namespace. Rendering the two roles as two graphs would put
-// them in two namespaces and disaggregation would silently stop happening.
-//
-// Replicas are excluded from that hash — `spec.Replicas = nil` before hashing, upstream — which
-// is what makes a ratio change cost nothing.
+// Dynamo's `ComputeDGDWorkersSpecHash` hashes every worker component of a graph together, so both
+// roles of a disaggregated deployment carry the same suffix and resolve to the same runtime
+// namespace, which is how the frontend pairs prefill with decode. Rendering the roles as two
+// graphs would put them in two namespaces and quietly stop disaggregation. Replicas are excluded
+// from the hash, so a ratio change costs nothing.
 const specHashPlaceholder = "00000000"
 
 // WorkloadName is the object name one deployment renders under.
@@ -770,7 +685,7 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 //
 // The frontend materializes a model card by opening the path the worker advertised. Once the
 // worker advertises the node-local mirror, the frontend has to be able to open that same string --
-// but the frontend runs on ordinary nodes with no mirror on them and no reason to hold 1.4 TB it
+// but the frontend runs on ordinary nodes with no mirror on them and no reason to hold weights it
 // will never read. `ignore_weights` is already true on its side; the tokenizer and the configs are
 // all it wants, and they are a few megabytes.
 //
@@ -784,7 +699,7 @@ DST="$2"
 mkdir -p "$DST"
 # Everything a tokenizer or a config might be, and nothing that could be a tensor. Listing what to
 # take rather than what to skip: a new weight file extension would otherwise be copied by default,
-# and 1.4 TB into an emptyDir fills the node's disk rather than failing honestly.
+# and a model's weights in an emptyDir fill the node's disk rather than failing honestly.
 # -type l as well as -type f, and cp -L: in a huggingface_hub cache every entry in a snapshot
 # directory is a symlink into ../../blobs/, so -type f alone matches nothing and stages an empty
 # directory -- which fails exactly like having no directory at all, only later and more quietly.
@@ -793,7 +708,7 @@ find "$SRC" -maxdepth 1 \( -type f -o -type l \) \
   -exec cp -L {} "$DST/" \;
 staged=$(ls -1 "$DST" | wc -l)
 if [ "$staged" -eq 0 ]; then
-  # Loudly, because the quiet version of this failure is what cost a benchmark rung: the frontend
+  # Loudly, because the quiet version of this failure is worse: the frontend
   # comes up, passes every probe, and serves an empty model list. A pod that will not start is a
   # far cheaper way to learn that the source layout is not what this script assumed.
   echo "staged no metadata from $SRC; refusing to start a frontend that would serve nothing" >&2
@@ -954,18 +869,10 @@ func jitCacheEnabled(opts Options, image string) bool {
 	return opts.JITCacheOptIn && opts.LocalModelCacheDir != "" && jitCacheSlug(image) != ""
 }
 
-// jitCacheEnv moves FlashInfer's workspace off the container's ephemeral layer.
-//
-// FLASHINFER_WORKSPACE_BASE is the whole of the surface. FlashInfer reads it once, at import, and
-// derives everything below it -- `<base>/.cache/flashinfer/<version>/<arch>/cached_ops` is where
-// the wrappers land, and the version and the arch are its own idea rather than ours. The cubin
-// and AOT roots answer to separate variables, and both are already answered by the
-// flashinfer-cubin and flashinfer-jit-cache packages baked into the image, so neither is set.
-//
-// What this is worth: a Kimi-K3 worker spends 245 seconds of a 648-second start JIT-compiling one
-// MoE wrapper, single-threaded, with all eight tensor-parallel ranks blocked on its file lock.
-// The cubins are in the image and the AOT wheel is installed; this is the host FFI wrapper, and
-// it is the same wrapper on every start of the same image.
+// jitCacheEnv moves FlashInfer's workspace off the container's ephemeral layer, so a host FFI
+// wrapper compiled on one start of an image is reused on the next instead of being rebuilt with
+// every tensor-parallel rank blocked on its lock. FLASHINFER_WORKSPACE_BASE is read once, at
+// import; FlashInfer derives the version and architecture directories below it.
 func jitCacheEnv(opts Options, image string) []corev1.EnvVar {
 	if !jitCacheEnabled(opts, image) {
 		return nil
@@ -973,26 +880,13 @@ func jitCacheEnv(opts Options, image string) []corev1.EnvVar {
 	return []corev1.EnvVar{{Name: "FLASHINFER_WORKSPACE_BASE", Value: jitCacheRoot + "/" + jitCacheSlug(image)}}
 }
 
-// workerSecurityContext is fabricSecurityContext, plus root when the worker writes to the node.
+// workerSecurityContext is fabricSecurityContext, plus root when the worker keeps its JIT cache on
+// the node.
 //
-// Root is here for one reason and it is worth writing down, because the alternative looks obvious
-// and does not work. FlashInfer calls os.makedirs on its workspace at *import* time, before vLLM
-// starts and with nothing to catch the error. The workspace is under /models-local, which is a
-// hostPath: the kubelet creates it root-owned 0755 and the node's copy of the weights is written
-// into it by a root init container. fsGroup does not apply to hostPath volumes, so the pod's
-// fsGroup: 1000 leaves that directory root-owned no matter what it says, and a worker running as
-// the image's uid 1000 gets a PermissionError on import -- in every rank, before it has logged
-// anything, as a crash loop rather than a slow start. Root is what makes the directory writable
-// without a second privileged step in front of the worker.
-//
-// The concession is smaller than it reads. These pods already run privileged wherever a cluster
-// has declared a fabric, they own their whole node, and they run nothing but an inference engine.
-// The two writable mounts are that hostPath, whose contents are already root-written, and the EFS
-// claim, which is mounted through an access point that forces every operation to uid 1000
-// whatever the caller is -- so nothing on the shared filesystem changes hands.
-//
-// Applied only where the cache is actually kept. A cluster with no node-local disk renders the
-// container it always did, as uid 1000.
+// FlashInfer creates its workspace at import, and the workspace is under a hostPath the kubelet
+// creates root-owned; fsGroup does not apply to hostPath volumes, so a non-root worker crash-loops
+// on a PermissionError before logging anything. Applied only where the cache is kept; every other
+// worker renders as the image's own user.
 func workerSecurityContext(opts Options, image string) *corev1.SecurityContext {
 	sc := fabricSecurityContext(opts)
 	if !jitCacheEnabled(opts, image) {
@@ -1005,31 +899,14 @@ func workerSecurityContext(opts Options, image string) *corev1.SecurityContext {
 	return sc
 }
 
-// workerProbes replace Dynamo's defaults, which destroy a busy worker rather than a broken one.
+// workerProbes replace Dynamo's defaults, which kill a busy worker rather than a broken one.
 //
-// Dynamo renders liveness as failureThreshold 1, timeoutSeconds 4, periodSeconds 5: a single
-// missed four-second check and the kubelet sends SIGKILL. That is not a hypothetical. On
-// 2026-09-09 it ended a benchmark rung mid-ramp -- both prefill workers killed at concurrency 96,
-// the two steps above it recording "All 1500 inference request(s) failed" because there was
-// nothing behind the frontend, and twenty-five minutes of weight loading spent per kill.
-//
-// What makes zero tolerance the wrong setting here is what /live actually answers. The workers run
-// with DYN_SYSTEM_USE_ENDPOINT_HEALTH_STATUS=["generate"], so the endpoint reports the health of
-// the generate endpoint rather than the liveness of the process, and it returns 503 while the
-// worker is merely not accepting -- which is also what it does for the whole of a model load. A
-// saturated worker and a hung one are indistinguishable through that hole, and the default
-// resolves the ambiguity by killing both.
-//
-// So the two probes are given different jobs, which is the distinction Kubernetes already draws
-// and Dynamo's defaults collapse. Readiness stays quick, because taking a saturated worker out of
-// rotation is cheap and reversible and the router will simply send the next request elsewhere.
-// Liveness is slow, because the only thing it can do is destroy a process that holds a 1.4 TB
-// model. Three minutes before a restart still catches a genuinely wedged worker far sooner than
-// the reload it triggers, and it no longer confuses load for death.
-//
-// The startup probe is left to Dynamo. It already tolerates the load -- it is the reason a
-// twenty-minute start is not a crash loop -- and overriding a probe that works to no purpose is
-// how a render acquires a field nobody can later explain.
+// Dynamo renders liveness with failureThreshold 1 and a four-second timeout, and the workers'
+// /live reports the generate endpoint's health, which is 503 both while a worker is saturated and
+// while it loads. One slow answer under load would SIGKILL a worker holding a multi-hundred-GB
+// model. Readiness stays quick, since leaving rotation is cheap and reversible; liveness allows
+// three minutes, which still catches a wedged worker long before the reload it causes. The
+// startup probe is left to Dynamo.
 func workerProbes() (liveness, readiness *corev1.Probe) {
 	probe := func(path string, period, timeout, threshold int32) *corev1.Probe {
 		return &corev1.Probe{
@@ -1333,16 +1210,10 @@ const (
 
 // frontendComponent renders the frontend this model is served through.
 //
-// The pod template carries ownershipLabels, and that is the load-bearing part rather than the
-// bookkeeping it looks like. Dynamo copies a component's pod-template labels onto the Service it
-// derives — verified on site-c, where the worker Service carries every one of them — and
-// `hangar.dev/deployment-id` on that Service is the entire key by which the in-cluster agent
-// picks this frontend for a request the gateway has already resolved to this deployment. Without
-// the labels here the Service is anonymous and the deployment is reachable by nothing.
-//
-// globalDynamoNamespace is a setting rather than a constant, for the reason on
-// Options.FrontendGlobalNamespace: today every frontend and every worker on a cluster share one
-// Dynamo namespace, and whether that can be narrowed needs a cluster experiment nobody has run.
+// The pod template carries ownershipLabels, and that is load-bearing: Dynamo copies a component's
+// pod-template labels onto the Service it derives, and `hangar.dev/deployment-id` on that Service
+// is how the in-cluster agent finds this frontend for a request already resolved to this
+// deployment. Without them the deployment is reachable by nothing.
 func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 	pod, err := frontendPodSpec(in, opts)
 	if err != nil {
@@ -1375,40 +1246,16 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 
 // frontendPodSpec is what one frontend pod is.
 //
-// Deliberately not podSpec. That function puts the accelerator node selector and the
-// `nvidia.com/gpu` toleration on everything it renders, which is right for an engine and wrong
-// here twice over: a frontend that tolerates the GPU taint schedules onto an accelerator node to
-// hold no weights, occupying a machine whose whole value is the cards in it. Left alone it lands
-// on ordinary nodes without being told to, because the GPU pool is tainted and this pod says
-// nothing about tolerating it.
+// Not podSpec: the GPU node selector and toleration belong on the engine, and a frontend that
+// tolerated the GPU taint could occupy an accelerator node while holding no weights. No command
+// or arguments either: Dynamo derives the frontend's command line from `type: frontend`, so its
+// settings are environment. The serving block's pod overlay is not applied, because it is written
+// about the engine container and both are called `main`.
 //
-// No command and no arguments either. DynamoGraphDeployment derives the frontend's command line
-// from `type: frontend`, so every flag worth setting is set as environment instead — which is why
-// the Anthropic options below are `DYN_*` variables and not arguments.
-//
-// The serving block's pod overlay is deliberately not applied here. It merges by container name and both
-// containers are called `main`, so laying it over this one would put the engine's volumes, its
-// Hugging Face cache mount and its device requests onto a process that wants none of them — an
-// overlay written about the engine, silently applied to something else.
-//
-// The model cache is the one thing it does share with the engine, read-only, and it is not an
-// optimisation. `modelRef` points --model at the snapshot directory rather than the repo id,
-// because a directory is the only form every engine reads the same way — GLM-5.3-Flash's processor
-// opens `<--model>/processor_config.json` itself and dies on a repo id. That string is also the
-// identity of the model card the worker publishes, and the frontend resolves the card to build its
-// tokenizer and prompt formatter. So the reference the worker needs is a path, and a frontend with
-// no filesystem cannot follow it: it falls through to huggingface.co, asks for a repo whose name is
-// an absolute path, and is answered 404. It then serves nothing, while listening, passing its
-// readiness probe and reporting every count complete.
-//
-// A frontend on 1.4.1 never notices, because that worker serves its own card files over HTTP from
-// `:9090/v1/metadata` — but that route is a property of one runtime version, not of the wire, and
-// every runtime we patch ourselves is a coin flip on carrying it. Mounting the cache makes the path
-// form true for any runtime instead of hoping for the route.
-//
-// Read-only because a frontend has no business writing to the volume the prefetch job owns, and 30
-// MB of metadata per model is what it comes for — `tokenizer.json` alone is 28 MB on gpt-oss-120b,
-// against 240 GB of weights it will never open.
+// The model cache is mounted read-only because the worker advertises its model as a path (see
+// modelRef) and the frontend resolves the model card from that same path to build its tokenizer.
+// A frontend that cannot open it asks huggingface.co for a repo named after the path, gets a 404
+// and serves an empty model list while passing every probe.
 func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	image, err := frontendImage(in, opts)
 	if err != nil {
@@ -1486,8 +1333,7 @@ const DefaultRouterMode = "kv"
 
 // OmniRouterMode is the default for an omni deployment instead. A diffusion request has no prefix
 // to reuse and an omni worker publishes no KV events, and Dynamo 1.5.0's image path through a
-// `kv` frontend fails every request at 0 ms with "KV routing should not call generate on
-// PushRouter" — observed on one of z-image-turbo's two frontends on site-a.
+// `kv` frontend fails every request with "KV routing should not call generate on PushRouter".
 const OmniRouterMode = "round-robin"
 
 // routerModes is every `DYN_ROUTER_MODE` a deployment may declare: Dynamo 1.5.0's `--router-mode`
@@ -1503,30 +1349,16 @@ var routerQueuePolicies = map[string]bool{"fcfs": true, "wspt": true}
 
 // frontendRouterEnv is the router configuration a frontend is started with, as environment.
 //
-// `DYN_ROUTER_MODE` is always rendered, and `kv` when nothing is declared. Upstream's default is
-// round-robin and the operator used to set nothing, which is invisible at one worker and badly wrong
-// at the second: alternate turns of one conversation land on a worker that has never seen it and
-// re-prefill the whole context. Measured on four B300s serving Kimi-K3 at ~30k context: one replica
-// at 86% KV usage and a 35.7s TTFT beside an idle one, and a fleet prefix hit rate of 56% against
-// the 94.5% one replica reaches alone. It is not gated on topology or on `Replicas > 1`: it is the
-// worker count that breaks round-robin, and a mode that moved with an autoscaled count would roll
-// the frontend on a scale event. With one registered worker the KV router picks the only candidate,
-// and `DYN_ROUTER_MIN_INITIAL_WORKERS` defaults to 0, so it gates nothing at startup either.
+// `DYN_ROUTER_MODE` is always rendered, `kv` when nothing is declared. Upstream's default is
+// round-robin, which at two or more workers sends alternate turns of a conversation to a worker
+// that has never seen it, re-prefilling the whole context and halving the fleet's prefix hit rate.
+// It does not depend on the replica count, since a mode that moved with an autoscaled count would
+// roll the frontend on a scale event. With one worker the KV router picks the only candidate.
 //
-// Every other variable is rendered only when declared, in a fixed order, so a deployment that
-// declares none renders byte-identically to one from before the block existed. Dynamo hashes the
-// frontend's pod template, and an added variable is a rolled frontend.
-//
-// Environment and not arguments because the frontend has no argument list to join: `type: frontend`
-// makes Dynamo derive `python3 -m dynamo.frontend` with nothing after it, and each of these flags
-// reads its `DYN_ROUTER_*` variable as its default (`dynamo/common/configuration/groups`).
-//
-// KV mode is half of a pair. The other half is `kvEventsConfig` on the worker: without the events,
-// KV mode indexes an empty tree and silently degrades to load balancing.
-//
-// The plane has already refused anything outside what Dynamo accepts. The checks here are the last
-// cheap ones, because a bad value is a frontend that exits at startup rather than an error somebody
-// can read on the deployment.
+// The other variables render only when declared, in a fixed order, because Dynamo hashes the
+// frontend's pod template and an added variable rolls the frontend. KV mode is half of a pair; the
+// other half is `kvEventsConfig` on the worker. The plane has already refused values Dynamo would
+// reject; these checks are the last cheap ones.
 func frontendRouterEnv(router *wire.RouterSpec, omni bool) ([]corev1.EnvVar, error) {
 	mode := DefaultRouterMode
 	if omni {
@@ -1602,14 +1434,9 @@ func imagePullSecrets(groups ...[]string) []corev1.LocalObjectReference {
 	return refs
 }
 
-// frontendImage resolves which runtime the frontend runs, most specific first.
-//
-// This deployment's own declaration wins because a frontend image is not always the engine image:
-// on site-c the Kimi K3 frontend runs a patched build from a private registry while its decode worker
-// stays on NVIDIA's stock one, because both defects that made the model unusable are in the
-// frontend binary. The cluster default is next, and the engine image is the last resort — right
-// often enough, since the Dynamo runtime carries the frontend and the engines together, and the
-// only honest answer when nothing else has been said.
+// frontendImage resolves which runtime the frontend runs, most specific first: the deployment's
+// own frontend image (a model may need a patched frontend beside a stock worker), then the
+// cluster default, then the engine image, which usually carries the frontend too.
 func frontendImage(in Inputs, opts Options) (string, error) {
 	serving := in.Deployment.Serving
 	if serving.FrontendImage != nil {
@@ -1822,14 +1649,9 @@ func IsOmni(dep wire.DeploymentDesired) bool {
 
 // OmniComponent is the Dynamo component name for a vLLM-Omni worker, and `worker` its type.
 //
-// A diffusion worker has no prefill/decode split, so the two constants that name a
-// disaggregation role do not describe it. `type` is not decorative — Dynamo derives port mapping,
-// frontend detection and the `nvidia.com/dynamo-component-type` label from it — and `worker` is
-// what the hand-built graph on site-a ran with on 2026-09-23 and registered with the frontend.
-//
-// Nothing outside this file matches on a worker's component name: the agent's resolver and the
-// benchmark executor look up `Frontend`, and the rollout reader and supersede pruning take the
-// name from `WorkerRoles`, so they follow this constant rather than assuming the vLLM one.
+// A diffusion worker has no prefill/decode split. `type` is not decorative: Dynamo derives port
+// mapping, frontend detection and the `nvidia.com/dynamo-component-type` label from it. Nothing
+// outside this file matches on a worker's component name, so other code follows this constant.
 const (
 	OmniComponent = "OmniWorker"
 	omniType      = "worker"
@@ -1859,10 +1681,9 @@ const (
 // omniStageConfig is the stage-config file for a deployment that declares a diffusion block, or
 // "" when it declares none and omni's own defaults stand.
 //
-// JSON, which YAML parses, so the file needs no YAML encoder here. The fixed parts are what worked
-// by hand on site-a: one stage, synchronous chunks, the multiprocessing executor, one sequence at a
-// time. `devices` is every device the pod holds, counted from zero, because that is how the
-// container sees them.
+// JSON, which YAML parses. The fixed parts are one stage, synchronous chunks, the multiprocessing
+// executor and one sequence at a time; `devices` is every device the pod holds, counted from zero,
+// because that is how the container sees them.
 func omniStageConfig(in Inputs) (string, error) {
 	d := in.Deployment.Serving.Diffusion
 	if d == nil || (d.ModelClassName == "" && len(d.DefaultSamplingParams) == 0) {
@@ -1915,12 +1736,10 @@ func omniStageContainer(image, config string) corev1.Container {
 
 // omniArgs is the omni worker's command line.
 //
-// Its own list rather than engineArgs with flags removed, because the two programs share almost
-// nothing: `dynamo.vllm.omni` takes none of the KV, context or prefix-cache flags the chat worker
-// is built around, and exits on any of them. What it does take was established by hand on site-a:
-// the model, the served name, the output modality, the media URL, the stage-config path, and
-// `--quantization`. engine_args is laid over last, as everywhere else, so `--vae-use-tiling` is
-// `{"vae-use-tiling": ""}`.
+// Its own list rather than engineArgs with flags removed: `dynamo.vllm.omni` takes none of the KV,
+// context or prefix-cache flags the chat worker is built around, and exits on any of them. It
+// takes the model, the served name, the output modality, the media URL, the stage-config path and
+// `--quantization`. engine_args is laid over last, as everywhere else.
 func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 	modality := in.Deployment.Serving.OutputModality
 	if modality != OutputImage && modality != OutputVideo {
@@ -1967,32 +1786,19 @@ func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 	return args, nil
 }
 
-// kvTransferConfig is how the two roles move a KV cache between them.
-//
-// One constant and not a per-role value, because it is the same string on both sides —
-// `kv_role: kv_both` on prefill and on decode alike. That is not a simplification: the transfer
-// mechanism is a property of the topology rather than of the role, which is why it is derived from
-// the topology here and refused from a role's own arguments.
-//
-// NixlConnector is what every published vLLM disaggregated recipe in the corpus uses, and it is
-// what was exercised end to end on `cluster-site-a` on 2026-09-08: prefill and decode on
-// two separate nodes, `NIXL compatibility check passed`, and the KV cache moving between them over
-// ordinary VPC networking. Whether it pays for itself over EFA at TP8 is a different question and
-// this constant does not answer it.
+// kvTransferConfig is how the two roles move a KV cache between them: NixlConnector, with
+// `kv_role: kv_both` on prefill and decode alike. The transfer mechanism is a property of the
+// topology rather than of a role, which is why it is derived here and refused from a role's own
+// arguments.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
 // nixlBackendsFragment is the `backends` entry for a NixlConnector's extra config, or "" to let
 // vLLM choose.
 //
-// vLLM defaults this to `["UCX"]` (nixl/base_worker.py:261), and on EC2 that is the wrong plugin.
-// NIXL ships `libplugin_UCX.so` and `libplugin_LIBFABRIC.so` side by side; EFA is a libfabric
-// provider, and UCX reaches it only through a path that does not perform. Measured on this
-// cluster with all 16 EFA interfaces mounted into the container and UCX still selected: 5.6-5.9s
-// per transfer at 220MB each, about 39MB/s -- indistinguishable from the TCP numbers taken before
-// the devices existed. Mounting the fabric is necessary and not sufficient; something has to ask
-// for the plugin that speaks to it.
-//
-// Empty keeps vLLM's default, so a cluster with no fabric renders exactly what it did before.
+// vLLM defaults to `["UCX"]`. On an EFA fabric that is the wrong plugin: EFA is a libfabric
+// provider, and UCX reaches it only through a path that moves KV no faster than TCP. Mounting the
+// fabric is necessary and not sufficient; NIXL has to be told to use LIBFABRIC. Empty keeps vLLM's
+// default, so a cluster with no fabric renders as before.
 func nixlBackendsFragment(opts Options) string {
 	if len(opts.NIXLBackends) == 0 {
 		return ""
@@ -2042,27 +1848,15 @@ func offloadTier(in Inputs) (gib int, on bool) {
 
 // roleKVTransferConfig is the connector stack for one role.
 //
-// Without the tier, both roles get NixlConnector and this is the constant above.
+// Without the offload tier, both roles get NixlConnector. With it, prefill gets vLLM's
+// `MultiConnector` wrapping `OffloadingConnector` and `NixlConnector`, and decode is left alone:
+// prefill is the only role whose cache can be hit, since the next turn resends this turn's
+// context, and decode never prefills.
 //
-// With it, **prefill** gets vLLM's own `MultiConnector` wrapping `OffloadingConnector` and
-// `NixlConnector`, and **decode** is left alone. That asymmetry is the point rather than an
-// omission: prefill is the only role whose cache can be hit, because turn N+1 resends turn N's
-// context, and decode never prefills. Offloading decode's blocks would spend host bandwidth
-// writing what nothing reads. `OffloadingConnector` defaults `offload_prompt_only` to true
-// (kv_offload/base.py:511), which is the same judgement made one layer down.
-//
-// This is vLLM's `MultiConnector` and deliberately not Dynamo's `PdConnector`. `PdConnector`
-// restricts its first connector to `[DynamoConnector, LMCacheConnectorV1, FlexKVConnectorV1]`,
-// none of which implement `SupportsHMA` -- which K3 requires, because its SSM layers need the
-// hybrid KV cache manager. Using it would mean patching the Dynamo runtime to widen that list.
-// `MultiConnector` has no such list: it asserts only that every child supports HMA
-// (multi_connector.py:187-194), and `OffloadingConnector`, `NixlConnector` and `MultiConnector`
-// itself all do. So the tier costs no runtime patch at all.
-//
-// `blocks_per_chunk` is left at its default of 1 rather than set through `block_size`. The two are
-// mutually exclusive and `block_size` is in *tokens* that must divide the engine's block size
-// exactly (offloading/config.py:59-88); since nothing here sets `--block-size`, naming a chunk
-// size would be asserting a relationship to a default we do not control.
+// vLLM's `MultiConnector` rather than Dynamo's `PdConnector`, because `PdConnector` limits its
+// first connector to ones without hybrid KV cache manager support, which models with SSM layers
+// require. `blocks_per_chunk` is left at its default because `block_size` must divide the
+// engine's block size, which nothing here sets.
 func roleKVTransferConfig(in Inputs, opts Options, role workerRole) string {
 	gib, on := offloadTier(in)
 	if !on || role.Role != "prefill" {
@@ -2079,15 +1873,9 @@ func roleKVTransferConfig(in Inputs, opts Options, role workerRole) string {
 
 // aggregatedKVTransferConfig is the offload tier on a worker that has no role.
 //
-// An aggregated worker prefills and decodes in one process, so there is no second worker to
-// move a cache to and no transport connector to compose with -- `OffloadingConnector` stands
-// alone rather than under a `MultiConnector`. That also means an aggregated deployment renders
-// no `kv-transfer-config` at all unless the tier is on, which is why this returns "" rather
-// than a constant: the flag's absence is the normal case.
-//
-// This exists because the tier was written for disaggregated prefill and then the ladder
-// established that aggregated is the faster topology for this model. A cache tier that only
-// works in the arm we are not shipping is not a cache tier.
+// An aggregated worker prefills and decodes in one process, so `OffloadingConnector` stands alone
+// with no transport to compose with, and an aggregated deployment renders no
+// `kv-transfer-config` at all unless the tier is on.
 func aggregatedKVTransferConfig(in Inputs) string {
 	gib, on := offloadTier(in)
 	if !on {
@@ -2103,33 +1891,18 @@ func aggregatedKVTransferConfig(in Inputs) string {
 // kvEventsConfig makes a worker publish which blocks it holds, which is what the frontend indexes
 // to route a conversation back to the worker that already prefilled it.
 //
-// Explicit rather than implied, and that is the trap this constant exists to avoid.
-// `create_kv_events_config` upstream returns nil unless this is set — enabling prefix caching is
-// not enough — so a frontend in KV mode with no events subscribes to a stream nobody publishes,
-// every worker scores zero overlap, and the router degrades to load balancing while still
-// reporting itself as a KV router. It fails as a silently cold cache rather than as an error.
-//
-// That was read off the runtime image rather than the flag's help text, because the two disagree
-// and the help text is the one that misleads. `python3 -m dynamo.vllm --help` documents only the
-// decode exemption, which reads as "every other worker publishes by default"; the function itself
-// (`dynamo/vllm/args.py:409`) returns None down the fall-through path when no config was passed.
-// Confirmed on the live aggregated `model-a` worker, which logged
-// `Using kv_events_config ... None (use_kv_events=False)` while serving.
+// Explicit, because upstream's `create_kv_events_config` returns nil unless it is set: enabling
+// prefix caching is not enough, whatever the flag's help text suggests. A KV-mode frontend with no
+// events scores every worker at zero overlap and degrades to load balancing while still reporting
+// itself as a KV router.
 const kvEventsConfig = `{"publisher":"zmq","topic":"kv-events","endpoint":"tcp://*:20080","enable_kv_cache_events":true}`
 
 // publishesKVEvents says whether this role should advertise the blocks it holds.
 //
-// Mirrors upstream's own rule in `create_kv_events_config` rather than inventing one: a worker
-// publishes when it prefills and when its prefix cache is on. Both conditions matter and the
-// second is not decoration — upstream drops the config on a worker with prefix caching disabled,
-// so rendering the flag there would change the worker's argument list, and therefore its spec
-// hash and its name, to buy a value the engine then discards.
-//
-// Aggregated workers are included, which is the fix. An aggregated worker prefills — it just
-// decodes too — so it has exactly the prefix cache the router wants to find, and leaving it out
-// is what left every multi-replica aggregated model in the fleet routing cache-blind. The
-// disaggregated decode role stays excluded: it never prefills, has no prefix cache worth
-// advertising, and upstream refuses the config there anyway.
+// Mirrors upstream's rule: a worker publishes when it prefills and its prefix cache is on.
+// Aggregated workers prefill too, so they publish; leaving them out leaves multi-replica
+// aggregated models routing cache-blind. A disaggregated decode role never prefills and upstream
+// refuses the config there.
 func publishesKVEvents(in Inputs, role workerRole) bool {
 	if role.Role == "decode" {
 		return false

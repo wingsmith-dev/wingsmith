@@ -68,8 +68,8 @@ type DCGMDevice struct {
 
 // DCGMInventory is one scrape, indexed by the host names a node might be known by.
 //
-// The exporter's Hostname is whatever the node calls itself, which in the reference fleet is the
-// Kubernetes node name but is not guaranteed to be anywhere: the index therefore holds both the
+// The exporter's Hostname is whatever the node calls itself, which is usually the Kubernetes node
+// name but is not guaranteed to be: the index therefore holds both the
 // full name and the segment before the first dot, and a node is looked up by its name and by its
 // kubernetes.io/hostname label under the same two spellings.
 type DCGMInventory struct {

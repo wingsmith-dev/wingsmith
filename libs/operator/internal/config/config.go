@@ -58,27 +58,20 @@ type Config struct {
 	// the connection dead and redialling. It must exceed HeartbeatInterval.
 	LivenessTimeout time.Duration
 
-	// ObserveInterval is how often the operator re-reads its own cluster's supply and sends
-	// what changed. It is a resolution knob, not a correctness one: the observed stream is
-	// full-object and resync fills any hole, so a slower interval only ages the hub's view.
+	// ObserveInterval is how often the operator re-reads its cluster's supply and sends what
+	// changed. A slower interval only ages the hub's view; resync fills any hole.
 	ObserveInterval time.Duration
 
-	// ObserveTimeout bounds a single discovery. It must exceed nothing in particular, but a
-	// value below ObserveInterval means a slow cluster read is reported as a failure rather
-	// than simply arriving late.
+	// ObserveTimeout bounds a single discovery.
 	ObserveTimeout time.Duration
 
-	// ObserveStaleAfter is how long the readiness probe tolerates a loop that has stopped
-	// observing before it reports the operator unready.
-	//
-	// A wedged observation loop is otherwise undetectable from outside: the process does not
-	// exit, the hub session stays up on its own goroutine, and the plane keeps serving the last
-	// projection as current. Failing readiness is what turns that into a restart.
+	// ObserveStaleAfter is how long readiness tolerates an observation loop that has stopped.
+	// A wedged loop is otherwise invisible: the hub session stays up and the plane keeps
+	// serving the last projection as current. Failing readiness turns it into a restart.
 	ObserveStaleAfter time.Duration
 
-	// ResyncInterval is how often the operator restates its whole observed inventory unprompted.
-	// It is the only thing that retires an object the cluster has stopped reporting, so it is
-	// the upper bound on how long a departed node lingers in the plane.
+	// ResyncInterval is how often the operator restates its whole observed inventory. It is what
+	// retires an object the cluster stopped reporting.
 	ResyncInterval time.Duration
 
 	// BackoffMin and BackoffMax bound the reconnect backoff.
@@ -103,20 +96,17 @@ type Config struct {
 	// Namespace is where the operator stores CRDs and its leader-election lease.
 	Namespace string
 
-	// WorkloadNamespace is where rendered inference workloads go. It is separate from Namespace
-	// so that a cluster admin can keep the operator's own state away from what it renders.
+	// WorkloadNamespace is where rendered inference workloads go, kept apart from Namespace.
 	WorkloadNamespace string
 
-	// PoolLabelKey and GPUPoolValue name the node label that selects accelerator nodes. This is
-	// a per-cluster convention rather than anything the plane declares: the plane chooses the
-	// cluster and the device class, and how this cluster happens to label its GPU nodes is a
-	// local fact the operator is configured with.
+	// PoolLabelKey and GPUPoolValue name the node label that selects accelerator nodes. How a
+	// cluster labels its pools is a local fact, not something the plane declares.
 	PoolLabelKey string
 	GPUPoolValue string
 
-	// CachePoolValue and CacheTaintKey name the pool the weight prefetch job runs on and the
-	// taint that keeps everything else off it. Downloading weights is network and disk work, so
-	// it is deliberately not scheduled onto the accelerator pool where it would hold a GPU idle.
+	// CachePoolValue, CacheTaintKey and CacheTaintValue name the pool weight prefetch jobs run
+	// on and the taint that keeps other work off it. An empty value tolerates any value of the
+	// key. Downloading is network and disk work, kept off the accelerator pool.
 	CachePoolValue  string
 	CacheTaintKey   string
 	CacheTaintValue string
@@ -125,20 +115,15 @@ type Config struct {
 	// is the harness images the plane pins; a cluster that wants another adds it here.
 	BenchmarkImages []string
 
-	// PrefetchCPU and PrefetchMemory are what one weight download asks the scheduler for. Empty
-	// takes the render's own default, which is sized to fit an ordinary node rather than a
-	// dedicated cache one.
+	// PrefetchCPU, PrefetchMemory and PrefetchMemoryLimit size one weight download. Empty takes
+	// the render's defaults.
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
 
-	// Multinode says whether this cluster can run a replica that spans machines.
-	//
-	// Off by default, and the default is the safe one. A multi-node replica is a leader-worker
-	// group, which Dynamo renders only where Grove or LeaderWorkerSet is installed; neither is
-	// installed by the chart at its own defaults. Turning this on without them produces a single
-	// pod holding a fraction of the devices the engine expects, which hangs in collective
-	// initialisation rather than failing. A cluster sets it once it has installed one of them.
+	// Multinode says whether this cluster can run a replica that spans machines. It needs Grove
+	// or LeaderWorkerSet installed; without them Dynamo renders a single pod holding a fraction of
+	// the devices, which hangs in collective initialisation. Off by default.
 	Multinode bool
 
 	// GPUTolerationKey and GPUTolerationValue are the taint GPU workers tolerate. The key
@@ -162,152 +147,86 @@ type Config struct {
 	// whose GPU memory registration needs it, and false otherwise.
 	FabricPrivileged bool
 
-	// NIXLBackends names the NIXL plugins the KV connector registers, comma-separated. Empty
-	// keeps vLLM's default of UCX. On EC2 this wants LIBFABRIC: EFA is a libfabric provider, and
-	// with UCX selected the KV cache moved at ~39MB/s even with all 16 interfaces mounted.
+	// NIXLBackends names the NIXL plugins the KV connector registers. Empty keeps vLLM's default
+	// of UCX; an EFA fabric wants LIBFABRIC, since EFA is a libfabric provider.
 	NIXLBackends []string
 
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
-	// deployment's EngineRuntimeImage. Empty for the anonymous NVIDIA runtime; set on clusters
-	// that run private engine builds such as the GLM 5.3 runtime in GHCR.
-	//
-	// Keeps its name and its HANGAR_ENGINE_PULL_SECRETS env var through the rename of
-	// engine_version to engine_runtime_version: no version is involved, `engine` is still a
-	// real concept, and renaming a Helm value would silently drop the credential on any
-	// cluster that had set it -- an ImagePullBackOff bought for nothing.
+	// deployment's engine runtime image. Empty for public images.
 	EnginePullSecrets []string
 
-	// FrontendEnabled renders one OpenAI-compatible frontend per model, beside the worker in the
-	// same graph, instead of relying on the single frontend `cluster-setup` installs.
-	//
-	// Off by default, and the default is the migration control rather than a preference. With it
-	// off the operator renders exactly what it always did, byte for byte, so this binary can
-	// reach every cluster before any cluster changes shape; a cluster moves when somebody sets
-	// this, and moves back by unsetting it. The reason to move is that a frontend is a binary
-	// which must tokenize and register every model reaching it, so one per cluster makes the
-	// image a fleet-wide lowest common denominator — and one model that needs a newer or patched
-	// build makes the whole fleet's frontend that model's problem.
+	// FrontendEnabled renders one OpenAI-compatible frontend per model in the model's own graph,
+	// instead of relying on a single cluster-wide frontend. A frontend must tokenize every model
+	// it serves, so one per model keeps a model that needs a different build from becoming every
+	// model's problem. Off by default.
 	FrontendEnabled bool
 
 	// FrontendImage is this cluster's default frontend runtime. Empty falls back to the serving
-	// block's engine image, which is usually the same build — the Dynamo runtime carries the
-	// frontend and the engines together — and a deployment that needs a different one says so
-	// itself.
+	// block's engine image, which usually carries the frontend too.
 	FrontendImage string
 
-	// FrontendReplicas is how many pods one model's frontend runs. Two, so that a rollout does
-	// not take the model's only frontend with it: the frontend holds no weights, so the second
-	// replica is cheap and the outage it avoids is not.
+	// FrontendReplicas is how many pods one model's frontend runs. Two, so a rollout does not
+	// take the model's only frontend with it.
 	FrontendReplicas int
 
 	// FrontendPullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling
-	// FrontendImage. Empty for the nvcr.io default, which is served anonymously.
-	//
-	// It exists because a frontend image is not always NVIDIA's: the Kimi K3 fix is a patched
-	// runtime in a private GHCR repository, and a private pull with no credential is an
-	// ImagePullBackOff that nothing reports upward. A pull Secret is namespaced and the kubelet
-	// reads it from the pod's own namespace, so these name Secrets where the workloads are, not
-	// where this operator is.
+	// FrontendImage, for a frontend image in a private registry.
 	FrontendPullSecrets []string
 
 	// FrontendCPU, FrontendMemory and FrontendMemoryLimit are what one frontend pod requests.
-	// Empty takes the render's defaults, sized to what the cluster frontend has been observed to
-	// run inside. No CPU limit is ever set: the frontend copies every token of every response,
-	// so throttling it is latency on the data path.
+	// Empty takes the render's defaults. No CPU limit is set: throttling the frontend is latency
+	// on the data path.
 	FrontendCPU         string
 	FrontendMemory      string
 	FrontendMemoryLimit string
 
 	// FrontendAnthropicAPI serves the Anthropic Messages API (`/v1/messages`) beside the OpenAI
-	// surface, and FrontendAnthropicStripPreamble drops the Claude Code billing preamble from
-	// the system prompt. Both default on, matching the chart: the first because a cluster
-	// without it cannot be used by Anthropic-protocol clients at all and the alternative is a
-	// translating proxy per client, the second because a prompt that starts the same way every
-	// time is a prompt the prefix cache can hit.
+	// one. FrontendAnthropicStripPreamble removes a client-injected system-prompt prefix that
+	// varies per request and carries no instructions, so prompts from the same client share a
+	// cacheable prefix. Both default on, matching the chart.
 	FrontendAnthropicAPI           bool
 	FrontendAnthropicStripPreamble bool
 
-	// FrontendGlobalDynamoNamespace puts the rendered frontend in the shared Dynamo namespace,
-	// which is what every frontend and every worker on every cluster we run does today.
-	//
-	// On by default because that is the observed behaviour and not because it is settled.
-	// Whether a frontend can be narrowed to its own model's workers is unresolved and needs an
-	// experiment on a live cluster; this exists so that the answer is a value somebody sets on
-	// one cluster rather than a change to the renderer.
+	// FrontendGlobalDynamoNamespace puts every component of a graph, frontend and workers, in
+	// the shared Dynamo namespace. On by default; off narrows each graph to its own namespace.
 	FrontendGlobalDynamoNamespace bool
 
-	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
-	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
-	// anywhere (ADR 0007). It is read cluster-locally and only for identity; the measurements on
-	// those same series are telemetry and never enter the sync stream. Empty, the default,
-	// disables the scrape, leaving discovery on the annotation and synthetic-id fallbacks; where
-	// the exporter runs is a fact about the cluster, so the chart supplies it.
+	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, scraped for device identity
+	// only: the accelerator UUID Kubernetes does not carry (ADR 0007). Empty, the default,
+	// disables the scrape and discovery falls back to annotated or synthetic ids.
 	DCGMEndpoint string
 
 	// DCGMSelector overrides the labels used to find the exporter pods behind DCGMEndpoint.
 	// Empty means `app.kubernetes.io/name=<service>`, taken from the endpoint's own host.
 	DCGMSelector string
 
-	// DCGMTimeout bounds one scrape. It is short on purpose: an exporter that is slow must not
-	// hold up an observation tick, because a late snapshot ages every node the plane can see.
+	// DCGMTimeout bounds one scrape, short so a slow exporter cannot hold up an observation.
 	DCGMTimeout time.Duration
 
-	// ModelCachePVC is the shared volume holding downloaded weights, mounted at /models so that
-	// replicas of one model pull it once between them rather than once each.
+	// ModelCachePVC is the shared volume holding downloaded weights, mounted at /models.
 	ModelCachePVC string
 
-	// LocalModelCacheDir is a directory on the node's own disk to mirror the weights into, or
-	// empty to read them from the shared volume as before.
-	//
-	// The shared volume is the right place to *keep* weights and the wrong place to *load* them
-	// from. Measured on a p6-b300.48xlarge reading Kimi-K3 over EFS: 1.47 GB/s per node, with
-	// half of each NFS READ's latency spent queued on the client rather than waiting on the
-	// server. Four nodes loading at once cost 19% over one loading alone, which says the ceiling
-	// is per-client and not the filesystem — so it is not a ceiling more replicas can share
-	// their way out of, and 1.4 TB against it is ~16 minutes of a GPU node doing nothing.
-	//
-	// Off unless a cluster names a path, because it is only worth anything where the node has a
-	// disk large enough to hold a model, and that is a fact about the machine that nothing here
-	// can see. A cluster that sets it and cannot honour it still serves: the mirror is a cache,
-	// and `localizeContainer` falls back to the shared path rather than failing the pod.
+	// LocalModelCacheDir is a directory on the node's own disk to mirror weights into before a
+	// worker loads them, or empty to load from the shared volume. A shared network volume is the
+	// place to keep weights, and its per-client throughput makes it a slow place to load them
+	// from. A node that cannot hold the copy falls back to the shared path.
 	LocalModelCacheDir string
 
-	// InferenceEndpoint is the in-cluster URL of the shared OpenAI-compatible frontend, which is
-	// what a benchmark points its load at.
-	//
-	// A per-cluster convention rather than anything the plane declares, for the same reason the
-	// pool labels are: the plane says which deployment to measure and the model name to ask for,
-	// and how this cluster happens to expose its frontend is a local fact. It is also the line
-	// rule 4 draws — the load is generated inside the cluster and aimed at a cluster-local
-	// address, so no inference traffic crosses the control plane even while it is being measured.
-	//
-	// Empty is the normal setting, and it means the operator finds the frontend by asking the
-	// cluster for the Service that selects Dynamo's Frontend component. This used to default to
-	// `dynamo-frontend`, a name no cluster we run actually uses, so every benchmark failed on a
-	// DNS error that named the address and not the setting behind it. Set this only when a
-	// cluster fronts its models with something Dynamo did not label.
+	// InferenceEndpoint is the in-cluster URL a benchmark aims its load at. Empty, the normal
+	// setting, finds the Service selecting Dynamo's Frontend component; set it only when the
+	// frontend is something Dynamo did not label. The load stays inside the cluster.
 	InferenceEndpoint string
 
-	// BenchmarkArtifactBase is where a run's raw per-request records are written, as a URI
-	// prefix. Those records are telemetry — one row per request, never joined — so they go to
-	// object storage directly and only the URI travels the sync stream. Empty leaves them in the
-	// job's pod and reports no URI, which is the default because it needs no credentials.
+	// BenchmarkArtifactBase is a URI prefix for a run's raw per-request records. Empty leaves
+	// them in the job's pod and reports no URI.
 	BenchmarkArtifactBase string
 
-	// BenchmarkTimeout bounds a run that reported no deadline of its own. A load generator that
-	// wedged against an endpoint which stopped answering would otherwise hold its operation open
-	// forever.
+	// BenchmarkTimeout bounds a run that carried no deadline of its own.
 	BenchmarkTimeout time.Duration
 
-	// BenchmarkCPU and BenchmarkMemory are what one run's load generator requests. They are
-	// per-cluster because the right answer depends on what the cluster has spare: the defaults
-	// are small enough to schedule onto a modest node pool, which is the behaviour a cluster
-	// that has never thought about this should get.
-	//
-	// No CPU limit is ever set, so the request is a floor and not a cap — a run bursts into
-	// whatever the node has idle. Raising the request is how you stop a high-concurrency run
-	// from being co-scheduled with work that starves it, which matters because a load generator
-	// short of CPU does not fail, it reports latency that is its own rather than the engine's.
+	// BenchmarkCPU and BenchmarkMemory are what one run's load generator requests. No CPU limit
+	// is set, so the request is a floor: raise it where a high-concurrency run would otherwise
+	// be starved and report its own latency as the engine's.
 	BenchmarkCPU    string
 	BenchmarkMemory string
 }

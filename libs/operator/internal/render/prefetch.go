@@ -46,8 +46,8 @@ const (
 // The ceiling is deliberately not derived from the request. What a download needs reserved and
 // what it may peak at are different facts: it is placed on how little it needs to start, and it
 // peaks on dirty page cache, because pages written to the shared NFS volume are charged to this
-// cgroup until writeback flushes them to EFS — and EFS writeback is slower than the pull filling
-// it. Deriving one from the other made the ceiling follow the request down and the job was OOM
+// cgroup until writeback flushes them to the network volume, which can be slower than the pull
+// filling it. Deriving one from the other made the ceiling follow the request down and the job was OOM
 // killed part-way through a large model.
 const (
 	defaultPrefetchCPU         = "500m"

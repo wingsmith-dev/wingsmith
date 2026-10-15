@@ -184,31 +184,15 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 
 // frontendEndpoint finds the OpenAI-compatible frontend to aim a run at.
 //
-// Configuration used to carry this, with a default of `dynamo-frontend`, and that default was
-// wrong on every cluster we run: one names its frontend after the graph it serves
-// (`qwen3-8-27b-agg-frontend`), another after the shared graph that fronts three models
-// (`inference-frontend-frontend`). A name nobody has is worse than no name, because it fails as a
-// DNS error inside the load generator — `Name or service not known` — which reads like a broken
-// cluster rather than a setting nobody set.
+// Frontend Service names vary between clusters, so the operator selects on Dynamo's own component
+// label instead of guessing a name. `HANGAR_INFERENCE_ENDPOINT` wins when it is set.
 //
-// So the operator asks the cluster instead, which is the one thing it is for. The selector is
-// Dynamo's own component label, and it is a selector rather than a name because the name is the
-// part that varies. `HANGAR_INFERENCE_ENDPOINT` still wins when it is set: a cluster that fronts
-// its models with something Dynamo did not label has said so, and this lookup is not entitled to
-// overrule it.
-//
-// Which frontend, when there is more than one, is answered by the deployment id rather than
-// guessed. Dynamo copies a component's pod-template labels onto the Service it derives — verified
-// on site-c — so a frontend this operator rendered for one deployment carries that deployment's id,
-// and the run aims at the frontend the model is actually served through. That is not merely a
-// tie-break added for plurality: it is better than what a single shared frontend could give,
-// because a measurement taken through a process shared with every other model on the cluster
-// carries their queueing as if it were this model's.
-//
-// The unlabelled single frontend is the fallback and stays exactly as it was, because that is
-// what the chart installs and what every cluster runs today. The refusal survives for the case it
-// was written for and no wider: several frontends, none of them this deployment's, where picking
-// one would attribute a measurement to a deployment the load never reached.
+// With several frontends, the deployment id decides: Dynamo copies a component's pod-template
+// labels onto the Service it derives, so a frontend rendered for one deployment carries its id,
+// and the run measures the frontend the model is actually served through. A single unlabelled
+// frontend, which the chart's shared mode installs, is the fallback. Several frontends with none
+// belonging to this deployment is refused, since picking one would attribute a measurement to a
+// deployment the load never reached.
 func (e *Executor) frontendEndpoint(ctx context.Context, deploymentID string) (string, error) {
 	var services corev1.ServiceList
 	if err := e.Client.List(ctx, &services, client.InNamespace(e.Render.Namespace)); err != nil {
