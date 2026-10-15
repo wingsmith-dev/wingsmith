@@ -6,8 +6,9 @@ import (
 )
 
 // SyncedResourceSpec is the durable local copy of one piece of desired state received from the
-// hub. The payload is held opaquely on purpose: the operator skeleton must persist and reconcile
-// desired state without knowing the domain schema, which another track defines.
+// hub. The payload is held as it arrived rather than as typed fields: the wire schema evolves with
+// the plane, and the CRD stays a faithful copy of what the plane said rather than this operator's
+// reading of it.
 type SyncedResourceSpec struct {
 	// Kind is the domain object kind as named on the wire.
 	// +kubebuilder:validation:MinLength=1
@@ -72,7 +73,7 @@ type SyncedResourceStatus struct {
 	ObservedRevision int64 `json:"observedRevision,omitempty"`
 
 	// Phase is a coarse reconcile outcome. It is not an operation: long-running, failable work
-	// is modelled separately by the object-model track.
+	// such as a drain or a benchmark travels as an operation frame and never lands here.
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
@@ -88,7 +89,9 @@ type SyncedResourceStatus struct {
 // +kubebuilder:printcolumn:name="Revision",type=integer,JSONPath=`.spec.revision`
 // +kubebuilder:printcolumn:name="Observed",type=integer,JSONPath=`.status.observedRevision`
 
-// SyncedResource is the single placeholder CRD for this skeleton.
+// SyncedResource is one declared object from the plane — a deployment, an artifact, a cache or a
+// cluster component — held in the cluster so the operator keeps reconciling it through a
+// control-plane outage.
 type SyncedResource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

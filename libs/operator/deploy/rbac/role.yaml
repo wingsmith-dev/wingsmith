@@ -79,6 +79,46 @@ rules:
   - update
   - watch
 - apiGroups:
+  - hangar.dev
+  resources:
+  - streamcheckpoints
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - hangar.dev
+  resources:
+  - syncedresources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - hangar.dev
+  resources:
+  - syncedresources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - nvidia.com
+  resources:
+  - dynamocomponentdeployments
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
   - nvidia.com
   resources:
   - dynamographdeployments
@@ -96,34 +136,3 @@ rules:
   - dynamographdeployments/status
   verbs:
   - get
-- apiGroups:
-  - placeholder.hangar.dev
-  resources:
-  - syncedresources
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - placeholder.hangar.dev
-  resources:
-  - syncedresources/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - sync.hangar.dev
-  resources:
-  - streamcheckpoints
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch

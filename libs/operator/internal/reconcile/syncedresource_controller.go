@@ -106,8 +106,8 @@ func (r *SyncedResourceReconciler) multinodeEnabled() bool {
 	return r.Capabilities != nil && r.Capabilities.Multinode()
 }
 
-// +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=hangar.dev,resources=syncedresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;patch;update

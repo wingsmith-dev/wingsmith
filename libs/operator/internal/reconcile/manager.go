@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/hangar-dev/hangar/libs/operator/api"
 	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/config"
@@ -58,7 +59,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 		Scheme:                  scheme,
 		Metrics:                 metricsserver.Options{BindAddress: cfg.MetricsAddr},
 		LeaderElection:          cfg.LeaderElection,
-		LeaderElectionID:        "hangar-operator.placeholder.hangar.dev",
+		LeaderElectionID:        "hangar-operator." + api.Group,
 		LeaderElectionNamespace: cfg.Namespace,
 		// Both namespaces, not one. Declared state lives in the operator's own namespace and
 		// what it renders lives in the workload namespace, and the reconciler reads back what

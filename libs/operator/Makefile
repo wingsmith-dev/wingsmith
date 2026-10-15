@@ -19,6 +19,13 @@ manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=deploy/crd
 	$(CONTROLLER_GEN) rbac:roleName=hangar-operator paths=./... output:rbac:artifacts:config=deploy/rbac
 
+.PHONY: verify-manifests
+verify-manifests: generate manifests
+	@git diff --exit-code -- api deploy/crd deploy/rbac || \
+		{ echo "generated code, CRDs or RBAC are stale: run 'make generate manifests' and commit the result" >&2; exit 1; }
+	@untracked="$$(git ls-files --others --exclude-standard -- api deploy/crd deploy/rbac)"; \
+		if [ -n "$$untracked" ]; then echo "untracked generated files: $$untracked" >&2; exit 1; fi
+
 .PHONY: build
 build:
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BIN)/operator ./cmd/operator

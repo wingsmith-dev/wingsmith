@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: streamcheckpoints.sync.hangar.dev
+  name: streamcheckpoints.hangar.dev
 spec:
-  group: sync.hangar.dev
+  group: hangar.dev
   names:
     kind: StreamCheckpoint
     listKind: StreamCheckpointList

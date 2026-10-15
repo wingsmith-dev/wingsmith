@@ -23,8 +23,8 @@ const DefaultName = "stream"
 // A CRD was chosen over a ConfigMap for three reasons. It lives beside the CRDs as PROTOCOL.md §4
 // requires, so a single RBAC rule and a single backup covers desired state and the cursor that
 // indexes it. It carries an OpenAPI schema, so a malformed or hand-edited cursor is rejected by
-// the API server rather than decoded into a plausible-looking wrong number. And it has its own
-// API group, so the operator can be granted write access to its cursor without being granted
+// the API server rather than decoded into a plausible-looking wrong number. And it is a resource
+// of its own, so the operator can be granted write access to its cursor without being granted
 // write access to ConfigMaps — a permission that in most clusters is a lateral move.
 //
 // The client must be uncached. The cursor is read during startup before the manager's cache has
@@ -40,7 +40,7 @@ type CRDStore struct {
 	last   State
 }
 
-// +kubebuilder:rbac:groups=sync.hangar.dev,resources=streamcheckpoints,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=hangar.dev,resources=streamcheckpoints,verbs=get;list;watch;create;update;patch
 
 var _ Store = (*CRDStore)(nil)
 

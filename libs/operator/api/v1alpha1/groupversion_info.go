@@ -1,26 +1,27 @@
-// Package v1alpha1 contains the operator's placeholder API types.
+// Package v1alpha1 contains SyncedResource, the operator's durable local copy of the desired state
+// the plane sends down the hub stream.
 //
-// The group is deliberately namespaced under placeholder.hangar.dev rather than the real
-// hangar.dev group so that this skeleton cannot collide with the domain object model, which
-// is owned by a separate track. Every type here is expected to be deleted wholesale once the
-// real CRD field sets land.
+// v1alpha1 has no conversion webhook and no stored-version migration. A change to the schema or
+// the group before the first stable version means reinstalling the CRD (see the operator README).
 //
 // +kubebuilder:object:generate=true
-// +groupName=placeholder.hangar.dev
+// +groupName=hangar.dev
 package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
+
+	"github.com/hangar-dev/hangar/libs/operator/api"
 )
 
 var (
-	// GroupVersion is the group/version for the placeholder API.
-	GroupVersion = schema.GroupVersion{Group: "placeholder.hangar.dev", Version: "v1alpha1"}
+	// GroupVersion is the group/version of SyncedResource.
+	GroupVersion = schema.GroupVersion{Group: api.Group, Version: "v1alpha1"}
 
-	// SchemeBuilder registers the placeholder types with a runtime scheme.
+	// SchemeBuilder registers the types in this package with a runtime scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 
-	// AddToScheme adds the placeholder types to a runtime scheme.
+	// AddToScheme adds the types in this package to a runtime scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
