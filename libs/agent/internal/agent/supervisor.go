@@ -16,8 +16,10 @@ import (
 )
 
 // DialFunc opens an authenticated tunnel to the gateway and reports which replica answered.
-// Dialler.Dial is one; a test supplies its own.
-type DialFunc func(ctx context.Context, target string) (net.Conn, Peer, error)
+// covered names the replicas already at quota, so one of them can answer tunnel.ErrDuplicate with
+// its Peer instead of accepting a tunnel that would be closed. Dialler.Dial is one; a test
+// supplies its own.
+type DialFunc func(ctx context.Context, target string, covered []string) (net.Conn, Peer, error)
 
 // Server is the HTTP/2 end that runs on a dialled connection. tunnel.Connector is the one there
 // is; the interface exists so this package does not have to build one to be tested.
@@ -55,8 +57,9 @@ type SupervisorConfig struct {
 // mean editing the values of every cluster in the fleet.
 //
 // So it redials the one address until every replica has answered. Each accepted handshake names the
-// replica that took it and says how many there are; a dial that lands on a replica already at quota
-// is closed and retried, which is ordinary and not a failure. That is the pattern Konnectivity,
+// replica that took it and says how many there are. Every dial lists the replicas already at quota,
+// and one of those that answers says so instead of accepting; that is retried, and is ordinary and
+// not a failure. That is the pattern Konnectivity,
 // Teleport and ngrok each arrived at independently, and the reason it is the handshake that carries
 // the number rather than a call to the plane is that a cluster must be able to recover its own data
 // path while the control plane is down.
@@ -183,7 +186,14 @@ func (s *Supervisor) hold(ctx context.Context) {
 		if s.cfg.Metrics != nil {
 			s.cfg.Metrics.dialled()
 		}
-		conn, peer, err := s.cfg.Dial(ctx, s.cfg.Gateway)
+		conn, peer, err := s.cfg.Dial(ctx, s.cfg.Gateway, s.covered())
+		if errors.Is(err, tunnel.ErrDuplicate) {
+			s.observe(peer)
+			attempt++
+			wait = s.backoff(attempt)
+			s.landedOnCovered(peer.ID, wait)
+			continue
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -208,18 +218,13 @@ func (s *Supervisor) hold(ctx context.Context) {
 		claimed, forgotten := s.claim(peer.ID)
 		s.forget(forgotten)
 		if !claimed {
-			// The load balancer sent this dial to a replica that already has its quota. Entirely
-			// ordinary — it is picking without knowing what this agent holds — so it is counted
-			// separately from a failure and retried, and the backoff climbs only so that a stale
-			// replica count cannot turn into a hot loop.
+			// Another worker filled this replica's quota while this dial was in flight, so the
+			// covered list it carried was out of date. Same ending as a duplicate the gateway
+			// answered.
 			_ = conn.Close()
 			attempt++
 			wait = s.backoff(attempt)
-			if s.cfg.Metrics != nil {
-				s.cfg.Metrics.duplicate(peer.ID)
-			}
-			s.log.Debug("agent: dial landed on a replica already covered",
-				"gateway", peer.ID, "retry_in", wait)
+			s.landedOnCovered(peer.ID, wait)
 			continue
 		}
 
@@ -253,6 +258,30 @@ func (s *Supervisor) hold(ctx context.Context) {
 		wait = s.backoff(attempt)
 		log.Info("agent: tunnel closed", "lasted", lasted.Round(time.Millisecond), "retry_in", wait, "err", err)
 	}
+}
+
+// landedOnCovered records a dial that reached a replica already at quota. The load balancer picks
+// without knowing what this agent holds, so this is ordinary: counted apart from failures, and
+// retried with a backoff that climbs only so a stale replica count cannot become a hot loop.
+func (s *Supervisor) landedOnCovered(id string, wait time.Duration) {
+	if s.cfg.Metrics != nil {
+		s.cfg.Metrics.duplicate(id)
+	}
+	s.log.Debug("agent: dial landed on a replica already covered", "gateway", id, "retry_in", wait)
+}
+
+// covered lists the replicas that already have their quota of tunnels from this agent.
+func (s *Supervisor) covered() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []string
+	for id, live := range s.live {
+		if live >= s.cfg.ConnsPerGateway {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // retire reports whether this worker is surplus and should stop.
@@ -482,11 +511,14 @@ func (s *Supervisor) Ready() error {
 
 // classifyDial buckets a dial failure for the metric. A rejected token is the one worth separating:
 // it does not heal on its own, and it is the difference between "the gateway is not there" and "the
-// gateway does not believe this cluster is who it says it is".
+// gateway does not believe this cluster is who it says it is". A gateway that could not reach the
+// plane to check the token is not that, and is counted as refused.
 func classifyDial(err error) string {
 	switch {
 	case errors.Is(err, tunnel.ErrRejected):
 		return reasonUnauthorized
+	case errors.Is(err, tunnel.ErrRefused):
+		return reasonRefused
 	case errors.Is(err, tunnel.ErrHandshake):
 		return reasonHandshake
 	default:

@@ -22,7 +22,7 @@ func TestDialPresentsTheEnrolmentToken(t *testing.T) {
 		t.Fatalf("NewDialler: %v", err)
 	}
 
-	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	conn, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestDialRejectedTokenIsRejected(t *testing.T) {
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	_, _, err := dialler.Dial(context.Background(), tr.addr)
+	_, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if !errors.Is(err, tunnel.ErrRejected) {
 		t.Fatalf("Dial error = %v, want tunnel.ErrRejected", err)
 	}
@@ -74,7 +74,7 @@ func TestDialAcceptsTheUidWhenItClaimedTheName(t *testing.T) {
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	conn, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err != nil {
 		t.Fatalf("a dial claiming the cluster's name was refused: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestDialRefusesAClusterTheGatewayDisagreesWith(t *testing.T) {
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	_, _, err := dialler.Dial(context.Background(), tr.addr)
+	_, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err == nil {
 		t.Fatal("Dial accepted a tunnel for another cluster")
 	}
@@ -123,7 +123,7 @@ func TestDialGarbageAnswerIsAHandshakeFailure(t *testing.T) {
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	_, _, err = dialler.Dial(context.Background(), ln.Addr().String())
+	_, _, err = dialler.Dial(context.Background(), ln.Addr().String(), nil)
 	if !errors.Is(err, tunnel.ErrHandshake) {
 		t.Fatalf("Dial error = %v, want tunnel.ErrHandshake", err)
 	}
@@ -144,7 +144,7 @@ func TestDialLeavesTheConnectionAtTheFirstByte(t *testing.T) {
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	conn, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestDialClearsTheHandshakeDeadline(t *testing.T) {
 	cfg.HandshakeTimeout = 30 * time.Millisecond
 	dialler, _ := NewDialler(cfg)
 
-	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	conn, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestDialOverTLSVerifiesAgainstTheConfiguredCA(t *testing.T) {
 		t.Fatalf("NewDialler: %v", err)
 	}
 
-	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	conn, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestDialOverTLSRefusesAnUnknownCertificate(t *testing.T) {
 	cfg.TLSServerName = "gateway.hangar.test"
 	dialler, _ := NewDialler(cfg)
 
-	_, _, err := dialler.Dial(context.Background(), tr.addr)
+	_, _, err := dialler.Dial(context.Background(), tr.addr, nil)
 	if err == nil {
 		t.Fatal("Dial succeeded against a certificate no CA vouches for")
 	}
@@ -267,4 +267,46 @@ func readFull(conn net.Conn, buf []byte) error {
 		}
 	}
 	return conn.SetReadDeadline(time.Time{})
+}
+
+// A gateway that could not reach the plane has not refused this cluster's credential, and counting
+// it as unauthorized sent people to check Secrets during a control-plane outage.
+func TestAnUnreachablePlaneIsRefusedNotUnauthorized(t *testing.T) {
+	tr := startGateway(t, &gateway{reject: tunnel.ReasonUnavailable})
+
+	cfg := dialConfig(tr.addr)
+	cfg.TLSEnabled = false
+	dialler, _ := NewDialler(cfg)
+
+	_, _, err := dialler.Dial(context.Background(), tr.addr, nil)
+	if errors.Is(err, tunnel.ErrRejected) {
+		t.Fatalf("Dial error = %v, an unreachable plane read as a rejected token", err)
+	}
+	if got := classifyDial(err); got != reasonRefused {
+		t.Errorf("classifyDial = %q, want %q", got, reasonRefused)
+	}
+}
+
+// The covered list rides on the hello, and a replica that is on it answers with its identity and
+// the replica count rather than a tunnel.
+func TestADialToACoveredReplicaReturnsItsPeer(t *testing.T) {
+	tr := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 3, accepted: func(net.Conn) {}})
+
+	cfg := dialConfig(tr.addr)
+	cfg.TLSEnabled = false
+	dialler, _ := NewDialler(cfg)
+
+	conn, peer, err := dialler.Dial(context.Background(), tr.addr, []string{"hangar-gateway-0"})
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if !errors.Is(err, tunnel.ErrDuplicate) {
+		t.Fatalf("Dial error = %v, want tunnel.ErrDuplicate", err)
+	}
+	if peer.ID != "hangar-gateway-0" || peer.Total != 3 {
+		t.Errorf("peer = %+v, want hangar-gateway-0 of 3", peer)
+	}
+	if got := tr.lastHello(t).Covered; len(got) != 1 || got[0] != "hangar-gateway-0" {
+		t.Errorf("hello carried covered = %v", got)
+	}
 }

@@ -109,7 +109,7 @@ func TestSupervisorReadinessFollowsTheTunnels(t *testing.T) {
 	var mu sync.Mutex
 	var opened []net.Conn
 
-	dial := func(ctx context.Context, target string) (net.Conn, Peer, error) {
+	dial := func(ctx context.Context, target string, _ []string) (net.Conn, Peer, error) {
 		if !reachable.Load() {
 			return nil, Peer{}, errors.New("connection refused")
 		}
@@ -225,7 +225,7 @@ func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 	}); got < 1 {
 		t.Errorf("duplicates for gateway-0 = %v, want at least the one that was rejected", got)
 	}
-	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake} {
+	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake, reasonRefused} {
 		if got := counterValue(t, metrics, "hangar_agent_dial_failures_total",
 			map[string]string{"reason": reason}); got != 0 {
 			t.Errorf("dial failures for %s = %v, want 0 — a duplicate is not a failure", reason, got)
@@ -257,7 +257,7 @@ func TestSupervisorReportsPartialCoverage(t *testing.T) {
 // that was rejected belongs to no replica, because the gateway's answer is what names one.
 func TestARefusedTokenIsCountedAsUnauthorized(t *testing.T) {
 	server := &blockingServer{}
-	gw := startGateway(t, &gateway{reject: "unknown cluster credential"})
+	gw := startGateway(t, &gateway{reject: tunnel.ReasonUnauthorized})
 
 	metrics := NewMetrics()
 	supervisor, stop := runSupervisor(t, gw.addr, server, metrics)
@@ -399,7 +399,7 @@ func TestSupervisorDrainsInFlightRequests(t *testing.T) {
 }
 
 func TestNewSupervisorRefusesAnUnusableConfig(t *testing.T) {
-	nothing := func(context.Context, string) (net.Conn, Peer, error) { return nil, Peer{}, nil }
+	nothing := func(context.Context, string, []string) (net.Conn, Peer, error) { return nil, Peer{}, nil }
 	base := SupervisorConfig{Gateway: "gw:9443", Dial: nothing, Server: &blockingServer{}}
 
 	noGateway := base
@@ -422,7 +422,7 @@ func TestNewSupervisorRefusesAnUnusableConfig(t *testing.T) {
 func TestBackoffIsBounded(t *testing.T) {
 	s, err := NewSupervisor(SupervisorConfig{
 		Gateway:    "gw:9443",
-		Dial:       func(context.Context, string) (net.Conn, Peer, error) { return nil, Peer{}, nil },
+		Dial:       func(context.Context, string, []string) (net.Conn, Peer, error) { return nil, Peer{}, nil },
 		Server:     &blockingServer{},
 		BackoffMin: 100 * time.Millisecond,
 		BackoffMax: time.Second,

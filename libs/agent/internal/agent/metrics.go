@@ -33,9 +33,12 @@ type Metrics struct {
 
 // Reasons a dial failed, as the `reason` label on hangar_agent_dial_failures_total.
 const (
-	reasonDial          = "dial"
-	reasonUnauthorized  = "unauthorized"
-	reasonHandshake     = "handshake"
+	reasonDial         = "dial"
+	reasonUnauthorized = "unauthorized"
+	reasonHandshake    = "handshake"
+	// reasonRefused is a gateway that answered and turned the dial away for a reason that is
+	// not the credential: the plane was unreachable, or it is at its tunnel limit.
+	reasonRefused       = "refused"
 	labelGateway        = "gateway"
 	metricsRegistryPath = "/metrics"
 )
@@ -73,7 +76,7 @@ func NewMetrics() *Metrics {
 	// readable if it is its own series.
 	m.duplicates = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "hangar_agent_dial_duplicates_total",
-		Help: "Dials closed because the replica that answered already had its quota of tunnels.",
+		Help: "Dials answered by a replica that already had its quota of tunnels.",
 	}, []string{labelGateway})
 	m.established = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "hangar_agent_tunnels_established_total",
@@ -94,7 +97,7 @@ func NewMetrics() *Metrics {
 	m.registry.MustRegister(m.expected, m.tunnels, m.up, m.attempts, m.failures, m.duplicates,
 		m.established, m.closed, m.sessions)
 	m.attempts.Add(0)
-	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake} {
+	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake, reasonRefused} {
 		m.failures.WithLabelValues(reason).Add(0)
 	}
 	return m

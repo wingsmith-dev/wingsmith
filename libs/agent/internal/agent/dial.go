@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -78,7 +79,10 @@ func NewDialler(cfg *Config) (*Dialler, error) {
 //
 // The returned connection carries no deadline: tunnel.Handshake clears its own, and a deadline left
 // on a tunnel would sever whatever generation was running when it expired.
-func (d *Dialler) Dial(ctx context.Context, target string) (net.Conn, Peer, error) {
+//
+// covered is sent in the hello. When the replica that answers is one of them the dial ends with
+// tunnel.ErrDuplicate and the Peer it named, so the caller still learns the replica count.
+func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (net.Conn, Peer, error) {
 	raw, err := d.dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return nil, Peer{}, fmt.Errorf("agent: dial %s: %w", target, err)
@@ -96,10 +100,15 @@ func (d *Dialler) Dial(ctx context.Context, target string) (net.Conn, Peer, erro
 		Token:     d.token,
 		ClusterID: d.clusterID,
 		Agent:     d.agent,
+		Covered:   covered,
 	})
 	if err != nil {
 		_ = conn.Close()
-		return nil, Peer{}, fmt.Errorf("agent: handshake with %s: %w", target, err)
+		var peer Peer
+		if errors.Is(err, tunnel.ErrDuplicate) {
+			peer = peerFrom(accept, target)
+		}
+		return nil, peer, fmt.Errorf("agent: handshake with %s: %w", target, err)
 	}
 
 	// The gateway's answer is the authority on which cluster this token belongs to, and it

@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -127,11 +128,12 @@ func (tr *gateway) handle(conn net.Conn) {
 	accepted, reject, clusterID, clusterName, token := tr.accepted, tr.reject, tr.clusterID, tr.clusterName, tr.token
 	tr.mu.Unlock()
 
+	message := reject
 	if token != "" && hello.Token != token {
-		reject = "unknown cluster credential"
+		reject, message = tunnel.ReasonUnauthorized, "unknown cluster credential"
 	}
 	if reject != "" {
-		_ = tunnel.WriteAccept(conn, tunnel.Accept{Error: reject})
+		_ = tunnel.WriteAccept(conn, tunnel.Accept{Reason: reject, Error: message})
 		_ = conn.Close()
 		return
 	}
@@ -139,6 +141,14 @@ func (tr *gateway) handle(conn net.Conn) {
 		clusterID = hello.ClusterID
 	}
 	id, replicas := tr.identity()
+	// What the real listener does for a replica the agent says it already covers.
+	if id != "" && slices.Contains(hello.Covered, id) {
+		_ = tunnel.WriteAccept(conn, tunnel.Accept{
+			Reason: tunnel.ReasonDuplicate, Error: tunnel.ReasonDuplicate, GatewayID: id, Gateways: replicas,
+		})
+		_ = conn.Close()
+		return
+	}
 	if err := tunnel.WriteAccept(conn, tunnel.Accept{
 		OK:          true,
 		ClusterID:   clusterID,
