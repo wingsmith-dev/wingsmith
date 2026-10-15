@@ -45,6 +45,21 @@ RESERVED_SLUGS = frozenset({"admin"})
 holding it could never sign in as itself."""
 
 
+def needs_key(ingress: str, auth: str, host: str | None) -> bool:
+    """Whether the public listener must check a key for this tenant.
+
+    True for every `api_key` tenant, and for an `auth: none` tenant the public
+    listener can reach (a host, or `ingress: public`) unless the plane's
+    operator opted in with `TENANT_ALLOW_PUBLIC_NO_AUTH`. The gateway feed
+    sends `auth: api_key` for the second kind, so a row stored before the
+    create/update check existed is held to a key too rather than grandfathered.
+    """
+    if auth == "api_key":
+        return True
+    public = ingress == "public" or bool(host)
+    return public and not settings.TENANT_ALLOW_PUBLIC_NO_AUTH
+
+
 def _check_ingress_auth(ingress: str, auth: str, host: str | None) -> None:
     """Refuses a tenant the public listener would serve with no key check.
 
@@ -59,8 +74,7 @@ def _check_ingress_auth(ingress: str, auth: str, host: str | None) -> None:
         raise Invalid(f"ingress must be one of {INGRESS_VALUES}, got {ingress!r}")
     if auth not in AUTH_VALUES:
         raise Invalid(f"auth must be one of {AUTH_VALUES}, got {auth!r}")
-    public = ingress == "public" or bool(host)
-    if public and auth == "none" and not settings.TENANT_ALLOW_PUBLIC_NO_AUTH:
+    if auth == "none" and needs_key(ingress, auth, host):
         raise Invalid(
             "a tenant reachable on the public listener needs auth 'api_key'",
             {"ingress": ingress, "host": host, "setting": "HANGAR_TENANT_ALLOW_PUBLIC_NO_AUTH"},
@@ -152,7 +166,8 @@ class TenantService:
         trust = {key: fields.get(key, getattr(tenant, key)) for key in ("ingress", "auth", "host")}
         # Checked only when the patch changes how the tenant is trusted, so a tenant
         # left public with no key from before this rule can still be renamed or
-        # switched off, and only fixing it is in the way of anything else.
+        # switched off. It does not serve keyless meanwhile: the gateway feed
+        # reports it as `api_key` (see `needs_key`).
         if any(trust[key] != getattr(tenant, key) for key in trust):
             _check_ingress_auth(trust["ingress"], trust["auth"], trust["host"])
         for field, value in fields.items():

@@ -2,8 +2,10 @@ import datetime as dt
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.models import Tenant
 from app.db.models import TenantAPIKey
+from app.modules.tenants.services import needs_key
 
 from .schemas import GatewayTenantSchema
 from .schemas import GatewayTenantTableSchema
@@ -45,7 +47,11 @@ class GatewayService:
             slug=tenant.slug,
             enabled=tenant.enabled,
             ingress=tenant.ingress,
-            auth=tenant.auth,
+            # A stored `none` the public listener can reach goes out as
+            # `api_key`, so a tenant from before the create-time check is not
+            # an open proxy. The gateway then wants a key the tenant may not
+            # have minted yet, which is the point.
+            auth="api_key" if needs_key(tenant.ingress, tenant.auth, tenant.host) else tenant.auth,
             host=tenant.host,
             key_hashes=[key.key_hash for key in tenant.api_keys if key.revoked_at is None],
         )
@@ -70,4 +76,10 @@ class GatewayService:
             stamps.extend(_stamp(key) for key in tenant.api_keys)
             if tenant.enabled:
                 items.append(self._tenant_schema(tenant))
-        return GatewayTenantTableSchema(revision=_revision_of(stamps), tenants=items)
+        revision = _revision_of(stamps)
+        if settings.TENANT_ALLOW_PUBLIC_NO_AUTH:
+            # The opt-in changes what `auth` this table reports without moving
+            # any row's stamp; a distinct revision keeps a gateway holding the
+            # other table from being told `304`.
+            revision += "-open"
+        return GatewayTenantTableSchema(revision=revision, tenants=items)

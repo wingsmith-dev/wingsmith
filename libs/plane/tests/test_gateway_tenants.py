@@ -3,6 +3,7 @@ import datetime as dt
 
 import pytest
 
+from app.config import settings
 from app.modules.gateway.routes import GatewayRoutes
 from app.modules.gateway.services import GatewayService
 
@@ -142,3 +143,35 @@ async def test_disabling_a_tenant_moves_the_revision():
     ).resolve_tenants()
     assert after.revision != before.revision
     assert [row.id for row in after.tenants] == ["ten_1"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ingress", "host"),
+    [("public", None), ("internal", "globex.hangar.dev"), ("public", "globex.hangar.dev")],
+)
+async def test_a_reachable_tenant_stored_without_auth_is_fed_as_api_key(monkeypatch, ingress, host):
+    """A row from before the create-time check must not stay an open proxy on the public listener."""
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    tenant = FakeTenant(ingress=ingress, auth="none", host=host)
+    table = await resolution([tenant]).resolve_tenants()
+    assert table.tenants[0].auth == "api_key"
+
+
+@pytest.mark.asyncio
+async def test_an_internal_tenant_without_a_host_keeps_auth_none(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    table = await resolution([FakeTenant(ingress="internal", auth="none")]).resolve_tenants()
+    assert table.tenants[0].auth == "none"
+
+
+@pytest.mark.asyncio
+async def test_the_opt_in_feeds_auth_none_under_its_own_revision(monkeypatch):
+    """Flipping the setting moves no row stamp, so the revision has to differ or the gateway sees a 304."""
+    tenant = FakeTenant(ingress="public", auth="none", host="globex.hangar.dev")
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    closed = await resolution([tenant]).resolve_tenants()
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", True)
+    opened = await resolution([tenant]).resolve_tenants()
+    assert opened.tenants[0].auth == "none"
+    assert opened.revision != closed.revision
