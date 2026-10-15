@@ -172,7 +172,13 @@ func mediaRefs(path string, body []byte) []string {
 	for _, field := range []string{"messages", "input"} {
 		_, spans, ok := topLevelValues(body, field)
 		if !ok {
-			return nil
+			// Structure the scan does not take on: decode instead of skipping
+			// the check.
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(body, &fields) == nil {
+				refs = appendPartRefs(refs, fields[field], 0)
+			}
+			continue
 		}
 		for _, at := range spans {
 			refs = appendPartRefs(refs, body[at.start:at.end], 0)
