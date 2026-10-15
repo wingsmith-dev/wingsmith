@@ -64,9 +64,11 @@ LATE_COMMIT_SECONDS = 600.0
 
 MAX_WATCHED_SEQS = 10_000
 
-MAX_SPAN = 100_000
-"""A step of the cursor wider than this is not read for holes. Only an identity that wrapped
-around takes one, and enumerating it would cost more than the events it could find."""
+MAX_GAP = 1_000
+"""How far below a seq the read did see a hole is still watched. A transaction that commits late
+took its seq at about the same time as rows that are already visible, so it sits just below
+one of them; the rest of a wider hole (a reset cursor, a wrapped identity, a large rollback)
+is not enumerated, since it would cost more than the events it could find."""
 
 
 class LateCommits:
@@ -92,12 +94,20 @@ class LateCommits:
         self._watched: dict[int, dt.datetime] = {}
 
     def skipped(self, after: int, through: int, seen: set[int], moment: dt.datetime) -> None:
-        """Remembers every seq in `(after, through]` the forward read did not return."""
-        if through <= after or through - after > MAX_SPAN:
+        """Remembers the seqs in `(after, through]` the forward read did not return.
+
+        Hole by hole, between consecutive seqs it did return (and the old cursor), and
+        for each only the `MAX_GAP` seqs just below the seq that closes it.
+        """
+        if through <= after:
             return
-        for seq in range(after + 1, through):
-            if seq not in seen and len(self._watched) < self.cap:
+        below = after
+        for top in sorted(seq for seq in seen if after < seq <= through):
+            for seq in range(max(below + 1, top - MAX_GAP), top):
+                if len(self._watched) >= self.cap:
+                    return
                 self._watched.setdefault(seq, moment)
+            below = top
 
     def due(self, moment: dt.datetime) -> list[int]:
         """The seqs still worth looking up, after forgetting the ones watched for a whole window."""

@@ -288,12 +288,36 @@ def test_a_watched_seq_that_never_commits_is_forgotten_after_the_window():
     assert len(late) == 0
 
 
-def test_a_wrapped_identity_is_not_enumerated():
+def test_a_wide_step_watches_only_the_seqs_just_below_the_ones_it_saw():
+    from app.reactor.loop import MAX_GAP
     from app.reactor.loop import LateCommits
 
     late = LateCommits(window=60)
-    late.skipped(0, 10**9, {10**9}, dt.datetime(2026, 10, 15, tzinfo=dt.UTC))
-    assert len(late) == 0
+    moment = dt.datetime(2026, 10, 15, tzinfo=dt.UTC)
+    late.skipped(0, 10**9, {10**9}, moment)
+    assert late.due(moment) == list(range(10**9 - MAX_GAP, 10**9))
+
+
+def test_a_reset_cursor_still_watches_the_holes_between_the_seqs_it_read():
+    """From cursor 0 over a long log: the hole between two seen seqs is what a late commit leaves."""
+    from app.reactor.loop import LateCommits
+
+    late = LateCommits(window=60)
+    moment = dt.datetime(2026, 10, 15, tzinfo=dt.UTC)
+    late.skipped(0, 900003, {900001, 900003}, moment)
+
+    due = late.due(moment)
+    assert 900002 in due
+    assert 900001 not in due
+    assert min(due) > 0, "the hole below the first seen seq is bounded, not enumerated from zero"
+
+
+def test_the_watch_list_stops_at_its_cap():
+    from app.reactor.loop import LateCommits
+
+    late = LateCommits(window=60, cap=5)
+    late.skipped(0, 100, {100}, dt.datetime(2026, 10, 15, tzinfo=dt.UTC))
+    assert len(late) == 5
 
 
 def test_a_channel_that_took_the_message_is_not_sent_it_again():
