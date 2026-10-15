@@ -1,0 +1,424 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GO_VERSION: "1.25"
+  UV_VERSION: "0.9.18"
+  JUST_VERSION: "1.58.0"
+  HELM_VERSION: "v3.22.0"
+  GOLANGCI_LINT_VERSION: "v2.14.0"
+
+jobs:
+  go:
+    name: go (${{ matrix.module }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - libs/operator
+          - libs/cli
+          - libs/gateway
+          - libs/agent
+          - libs/packages/tunnel
+          - libs/transit
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/**/go.sum
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+      # The e2e and interop suites sit behind build tags, so a plain vet never compiles them.
+      - name: go vet
+        run: go vet -tags e2e,interop ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: ${{ matrix.module }}
+          args: --config=${{ github.workspace }}/.github/linters/.golangci.yml
+      - name: go test -race
+        run: go test -race ./...
+
+  plane:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: libs/plane
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-dependency-glob: libs/plane/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run pytest -m 'not database'
+
+  plane-db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hangar
+          POSTGRES_PASSWORD: hangar
+          POSTGRES_DB: hangar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hangar -d hangar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
+      HANGAR_TEST_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-dependency-glob: libs/plane/uv.lock
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - run: uv sync --locked
+        working-directory: libs/plane
+      # Every migration from an empty database, then the models against what they built, then the
+      # newest migration back out and in again.
+      - name: migrations
+        working-directory: libs/plane
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade -1
+          uv run alembic upgrade head
+      - name: quarantine list
+        id: quarantine
+        run: |
+          mapfile -t ids < <(grep -v -e '^[[:space:]]*$' -e '^#' scripts/plane-db-quarantine.txt || true)
+          deselect=()
+          for id in "${ids[@]}"; do deselect+=(--deselect "$id"); done
+          echo "ids=${ids[*]}" >>"$GITHUB_OUTPUT"
+          echo "deselect=${deselect[*]}" >>"$GITHUB_OUTPUT"
+      # The database fixture skips rather than fails when it cannot connect, which here would pass
+      # an empty suite. -rs lists every skip and the grep turns that one into a failure.
+      - name: database suite
+        env:
+          DESELECT: ${{ steps.quarantine.outputs.deselect }}
+        run: |
+          # shellcheck disable=SC2086 # one word per pytest argument
+          just test-db -rs $DESELECT | tee "$RUNNER_TEMP/test-db.log"
+          if grep -q 'no database at' "$RUNNER_TEMP/test-db.log"; then
+            echo "::error::the database suite skipped for want of a database"; exit 1
+          fi
+      - name: quarantined tests (not required)
+        if: steps.quarantine.outputs.ids != ''
+        continue-on-error: true
+        env:
+          IDS: ${{ steps.quarantine.outputs.ids }}
+        run: |
+          # shellcheck disable=SC2086 # one word per node id
+          just test-db $IDS
+
+  console:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: libs/console
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: libs/console/.nvmrc
+          package-manager-cache: false
+      # pnpm at the version package.json's packageManager names.
+      - run: corepack enable && pnpm --version
+      - id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('libs/console/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+
+  python-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-dependency-glob: libs/conformance/uv.lock
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - run: uv sync --locked
+        working-directory: libs/conformance
+      - name: conformance self-check
+        run: just conformance-test
+      # hgrbench has no dependencies and no test suite; it must at least load its plans and
+      # harnesses on a stock python3.
+      - name: benchmark runner loads
+        run: |
+          just bench-plans
+          just bench-harnesses
+
+  chart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - run: just chart-lint
+      - run: scripts/chart-kubeconform.sh
+
+  generated:
+    name: generated code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/operator/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - name: regenerate deepcopy, CRDs and RBAC
+        run: make -C libs/operator generate manifests
+      - name: copy the CRDs into the chart
+        run: just chart-sync-crds
+      - name: nothing changed
+        run: |
+          paths=(libs/operator/api libs/operator/deploy libs/chart/cluster-setup/crds)
+          if [ -n "$(git status --porcelain -- "${paths[@]}")" ]; then
+            git status --short -- "${paths[@]}"
+            git diff -- "${paths[@]}"
+            echo "::error::generated code is stale; run 'make -C libs/operator generate manifests' and 'just chart-sync-crds' and commit the result"
+            exit 1
+          fi
+
+  transit-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/**/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - run: just transit-smoke
+
+  # Against a real API server and garbage collector, so only after merge and on demand: a kind
+  # cluster is the slowest thing here and a pull request learns the same from the unit suites.
+  e2e:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/operator/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          version: v0.33.0
+          kubectl_version: v1.37.0
+          config: dev/kind-cluster.yaml
+          cluster_name: hangar
+      - run: just e2e
+
+  prose:
+    name: prose guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Not required yet: the tree still holds hits that the scrub in flight removes. Drop this line
+    # once a run on main is green.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/check-prose_test.sh
+      - run: scripts/check-prose.sh tree
+
+  scripts:
+    name: guard scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck scripts/*.sh .githooks/*
+      - run: scripts/check-dco_test.sh
+
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: every commit signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-dco.sh "$BASE" "$HEAD"
+
+  images:
+    name: image (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: plane
+            context: libs
+            file: libs/plane/Dockerfile
+          - image: console
+            context: libs/console
+            file: libs/console/Dockerfile
+          - image: operator
+            context: libs/operator
+            file: libs/operator/Dockerfile
+          - image: agent
+            context: libs
+            file: libs/agent/Dockerfile
+          - image: gateway
+            context: libs
+            file: libs/gateway/Dockerfile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: false
+          build-args: VERSION=ci-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  vulncheck:
+    name: vulncheck (${{ matrix.module }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Reports known vulnerabilities in reachable code; Dependabot opens the bumps. Not required, so
+    # a disclosure against a dependency does not block unrelated changes.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - libs/operator
+          - libs/cli
+          - libs/gateway
+          - libs/agent
+          - libs/packages/tunnel
+          - libs/transit
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/**/go.sum
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
