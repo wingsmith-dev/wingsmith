@@ -252,34 +252,6 @@ func TestDynamoGraphDeploymentRequiresEngineRuntimeImage(t *testing.T) {
 	}
 }
 
-// A plane older than the engine_version -> engine_runtime_version rename sends the two values
-// under their old names. Reading only the new keys would leave the deployment with no image, and
-// that failure is silent on the cluster: no prefetch job is rendered and the pods wait forever on
-// a download nobody started. So the old spelling is still read, and read only as a fallback.
-func TestAPlaneThatPredatesTheRenameStillNamesAnImage(t *testing.T) {
-	in := testInputs()
-	legacy := "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1"
-	in.Deployment.Serving.EngineRuntimeImage = nil
-	in.Deployment.Serving.EngineRuntimeVersion = ""
-	in.Deployment.Serving.LegacyEngineImage = &legacy
-	in.Deployment.Serving.LegacyEngineVersion = "1.3.1"
-
-	if got := in.Deployment.Serving.RuntimeVersion(); got != "1.3.1" {
-		t.Fatalf("runtime version = %q, want the legacy value", got)
-	}
-	if _, err := DynamoGraphDeployment(in, testOptions()); err != nil {
-		t.Fatalf("legacy image should render: %v", err)
-	}
-
-	// And the new spelling wins whenever both are present, so a plane that sends both -- which
-	// every plane does for one release -- is read as the new one.
-	current := "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
-	in.Deployment.Serving.EngineRuntimeImage = &current
-	if got := in.Deployment.Serving.RuntimeImage(); got == nil || *got != current {
-		t.Fatalf("runtime image = %v, want the new spelling to win", got)
-	}
-}
-
 // The engine must resolve the same commit the prefetch downloaded, or it re-resolves the branch
 // head against the shared cache and pulls a second copy of the weights. A pinned source says so by
 // naming the snapshot directory itself, which is the one form every engine reads the same way.

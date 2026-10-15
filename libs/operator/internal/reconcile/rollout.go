@@ -514,14 +514,11 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 			Ready:                ready,
 			Engine:               engine,
 			EngineRuntimeVersion: runtimeVersion,
-			// The same value under the name a plane that predates the rename requires. Sent as
-			// well as, never instead of; drop it once no such plane is running.
-			LegacyEngineVersion: runtimeVersion,
-			ServingDigest:       dep.Serving.Digest,
-			RestartCount:        restarts(pod),
-			ObservedGeneration:  dep.Generation,
-			StartedAt:           startedAt(pod),
-			ObservedAt:          now,
+			ServingDigest:        dep.Serving.Digest,
+			RestartCount:         restarts(pod),
+			ObservedGeneration:   dep.Generation,
+			StartedAt:            startedAt(pod),
+			ObservedAt:           now,
 		})
 	}
 	return out

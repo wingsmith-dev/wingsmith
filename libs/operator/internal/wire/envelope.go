@@ -16,9 +16,19 @@ import (
 	"regexp"
 )
 
-// EnvelopeVersion is the current envelope version. It is bumped only for changes to the
+// EnvelopeVersion is the envelope version this side sends. It is bumped only for changes to the
 // envelope itself, never for payloads.
 const EnvelopeVersion = 1
+
+// MinEnvelopeVersion is the oldest envelope version this side still reads. PROTOCOL §9 gives a
+// version change a period in which both are spoken, and a receiver that accepted exactly one
+// version would turn that period into an outage.
+const MinEnvelopeVersion = 1
+
+// SupportedEnvelope reports whether a received envelope version is one this side reads.
+func SupportedEnvelope(v int) bool {
+	return v >= MinEnvelopeVersion && v <= EnvelopeVersion
+}
 
 // TimestampPattern matches the only accepted timestamp form: RFC 3339, UTC, milliseconds.
 var TimestampPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`)

@@ -304,16 +304,6 @@ type ServingSpec struct {
 	// EngineRuntimeImage is the whole address when the plane pins one instead of deriving it.
 	EngineRuntimeImage *string `json:"engine_runtime_image"`
 
-	// LegacyEngineVersion and LegacyEngineImage are what a plane that predates the rename sends.
-	//
-	// A cluster picks up a new operator on its own helm upgrade, so it meets planes on both sides
-	// of this change, and reading only the new keys would leave a deployment with no image: the
-	// operator renders no prefetch job and the pods wait forever on a download nobody started.
-	// Read through RuntimeVersion and RuntimeImage, never directly. Delete both once no plane in
-	// the fleet sends the old spelling.
-	LegacyEngineVersion string  `json:"engine_version,omitempty"`
-	LegacyEngineImage   *string `json:"engine_image,omitempty"`
-
 	// FrontendImage is the runtime the OpenAI-compatible frontend for this model runs, when it
 	// must differ from the engine's.
 	//
@@ -444,28 +434,18 @@ type RoleSpec struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 }
 
-// RuntimeVersion is the Dynamo runtime tag this deployment asks for.
-//
-// The new spelling wins and the old one is the fallback, so a cluster reads a plane on either
-// side of the rename. Empty from both means the plane pinned an image instead, which
-// RuntimeImage answers.
+// RuntimeVersion is the Dynamo runtime tag this deployment asks for. Empty means the plane pinned
+// an image instead, which RuntimeImage answers.
 func (s ServingSpec) RuntimeVersion() string {
-	if v := strings.TrimSpace(s.EngineRuntimeVersion); v != "" {
-		return v
-	}
-	return strings.TrimSpace(s.LegacyEngineVersion)
+	return strings.TrimSpace(s.EngineRuntimeVersion)
 }
 
 // RuntimeImage is the image the engine worker runs, or nil when the plane declared none.
-//
-// Same precedence as RuntimeVersion, and for the same reason: reading only the new key against an
-// older plane yields nil, and a deployment with no image gets no prefetch job and waits on a
-// download nobody was told to start.
 func (s ServingSpec) RuntimeImage() *string {
-	if s.EngineRuntimeImage != nil && strings.TrimSpace(*s.EngineRuntimeImage) != "" {
-		return s.EngineRuntimeImage
+	if s.EngineRuntimeImage == nil || strings.TrimSpace(*s.EngineRuntimeImage) == "" {
+		return nil
 	}
-	return s.LegacyEngineImage
+	return s.EngineRuntimeImage
 }
 
 // PlacementConstraints is the device shape and placement rules a deployment binds against.
@@ -541,9 +521,9 @@ type DeploymentDesired struct {
 	Lifecycle     string `json:"lifecycle"`
 	PriorityClass string `json:"priority_class"`
 	// MinReplicas is this cluster's share of the workload's total scale, never the total, and
-	// it is the number that is actually rendered. MaxReplicas is a ceiling for an autoscaler
-	// that does not exist yet and nothing reads it. Neither may be summed with, or derived
-	// from, anything outside this frame.
+	// it is the number that is actually rendered. MaxReplicas is reserved for an autoscaler on
+	// the roadmap; nothing reads it today. Neither may be summed with, or derived from, anything
+	// outside this frame.
 	MinReplicas int `json:"min_replicas"`
 	MaxReplicas int `json:"max_replicas"`
 	// RoleReplicas is the absolute worker count for each role of a disaggregated deployment,
@@ -718,14 +698,11 @@ type ReplicaObserved struct {
 	Ready                bool     `json:"ready"`
 	Engine               string   `json:"engine"`
 	EngineRuntimeVersion string   `json:"engine_runtime_version"`
-	// LegacyEngineVersion carries the same value under the name a plane that predates the rename
-	// requires. Sent as well as, never instead of; delete once no such plane is running.
-	LegacyEngineVersion string  `json:"engine_version"`
-	ServingDigest       string  `json:"serving_digest"`
-	RestartCount        int     `json:"restart_count"`
-	ObservedGeneration  int64   `json:"observed_generation"`
-	StartedAt           *string `json:"started_at,omitempty"`
-	ObservedAt          string  `json:"observed_at"`
+	ServingDigest        string   `json:"serving_digest"`
+	RestartCount         int      `json:"restart_count"`
+	ObservedGeneration   int64    `json:"observed_generation"`
+	StartedAt            *string  `json:"started_at,omitempty"`
+	ObservedAt           string   `json:"observed_at"`
 	// Role is `prefill` or `decode` for a replica of a disaggregated deployment, and empty for
 	// an aggregated one.
 	//

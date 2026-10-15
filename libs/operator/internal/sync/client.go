@@ -872,8 +872,9 @@ func readEnvelope(ctx context.Context, conn *websocket.Conn) (*Envelope, error) 
 	if err := json.Unmarshal(b, &e); err != nil {
 		return nil, fmt.Errorf("decode envelope: %w", err)
 	}
-	if e.V != wire.EnvelopeVersion {
-		return nil, fmt.Errorf("unsupported envelope version %d", e.V)
+	if !wire.SupportedEnvelope(e.V) {
+		return nil, fmt.Errorf("unsupported envelope version %d; this operator reads %d to %d",
+			e.V, wire.MinEnvelopeVersion, wire.EnvelopeVersion)
 	}
 	return &e, nil
 }
