@@ -60,14 +60,17 @@ export function ClustersPage() {
 
   const confirmDelete = () => {
     if (!deleting) return
-    remove.mutate(deleting.id, {
-      onSuccess: () => {
-        toast.success("Cluster deleted", { description: deleting.name })
-        setDeleting(null)
-      },
-      onError: (error) =>
-        toast.error(formatError(error, "Could not delete cluster")),
-    })
+    remove.mutate(
+      { ref: deleting.id, revision: deleting.revision },
+      {
+        onSuccess: () => {
+          toast.success("Cluster deleted", { description: deleting.name })
+          setDeleting(null)
+        },
+        onError: (error) =>
+          toast.error(formatError(error, "Could not delete cluster")),
+      }
+    )
   }
 
   return (

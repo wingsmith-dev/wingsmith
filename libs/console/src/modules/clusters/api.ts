@@ -69,8 +69,15 @@ export function clearClusterServing(ref: string): Promise<void> {
   return api.delete<void>(`/clusters/${encodeURIComponent(ref)}/serving`)
 }
 
-export function deleteCluster(ref: string): Promise<void> {
-  return api.delete<void>(`/clusters/${encodeURIComponent(ref)}`)
+/**
+ * Sends the revision the caller looked at: the plane refuses a cluster delete
+ * without `If-Match` (or `force`), and refuses one with deployments,
+ * allocations or pinned workloads still bound to it either way.
+ */
+export function deleteCluster(ref: string, revision: string): Promise<void> {
+  return api.delete<void>(`/clusters/${encodeURIComponent(ref)}`, {
+    ifMatch: revision,
+  })
 }
 
 /** The `helm` install of the cluster-setup chart, with a per-cluster values block. */

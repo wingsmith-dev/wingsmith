@@ -135,7 +135,8 @@ export function useIssueClusterEnrolmentToken() {
 export function useDeleteCluster() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (ref: string) => deleteCluster(ref),
+    mutationFn: ({ ref, revision }: { ref: string; revision: string }) =>
+      deleteCluster(ref, revision),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["clusters"] })
       client.invalidateQueries({ queryKey: ["pools"] })
