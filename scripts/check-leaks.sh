@@ -3,7 +3,7 @@
 #
 #   check-leaks.sh staged     lines added in the index (pre-commit)
 #   check-leaks.sh message F  a commit message file (commit-msg)
-#   check-leaks.sh tree       every tracked file (CI)
+#   check-leaks.sh tree       every tracked file (pre-commit and CI)
 #
 # The denylist names things that must never appear here, so it cannot live here either.
 # It is read from $HANGAR_DENYLIST, default ~/.config/hangar-oss/denylist, one
@@ -48,7 +48,7 @@ case "$mode" in
     hits="$(
       {
         git ls-files
-        git ls-files -z | xargs -0 grep -d skip -nEIi -f "$patterns" -- || true
+        git grep -nIiE -f "$patterns" || true
       } | grep -Ei -f "$patterns" || true
     )"
     ;;
