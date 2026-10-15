@@ -15,6 +15,7 @@ import msgspec
 
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
+from app.db.models import Workload
 from app.core.exceptions import Invalid
 from app.modules.workloads.views import UNITS
 from app.modules.workloads.views import _revision
@@ -89,18 +90,24 @@ def test_update_request_leaves_absent_fields_unset():
     assert data.to_dict(exclude_unset=True) == {"labels": {"team": "search"}}
 
 
-def test_scale_is_an_operation_and_not_a_field_write():
-    fields = WorkloadUpdateRequest.__struct_fields__
-    assert "desired_scale" not in fields
-    assert "min_scale" not in fields
-    assert "max_scale" not in fields
+def patch(body: bytes, type_=None):
+    return msgspec.json.decode(body, type=type_ or WorkloadUpdateRequest)
+
+
+@pytest.mark.parametrize("field", ["desired_scale", "min_scale", "max_scale"])
+def test_scale_is_an_operation_and_not_a_field_write(field):
+    with pytest.raises(msgspec.ValidationError, match=field):
+        patch(b'{"%s": 3}' % field.encode())
 
 
 def test_a_workload_cannot_be_moved_between_clusters_by_patch():
-    """A deployment is workload × cluster, so moving one is a re-expansion, not a field write."""
-    fields = WorkloadUpdateRequest.__struct_fields__
-    assert "cluster" not in fields
-    assert "serving_digest" not in fields, "the digest is derived from the write, never taken from a caller"
+    """A deployment is workload × cluster, so moving one is a re-expansion, not a field write.
+
+    The digest is derived from the write and never taken from a caller.
+    """
+    for body in (b'{"cluster": "iad-1"}', b'{"serving_digest": "sha256:0"}'):
+        with pytest.raises(msgspec.ValidationError):
+            patch(body)
 
 
 def test_the_weights_a_workload_serves_cannot_be_repointed_by_a_patch():
@@ -109,9 +116,10 @@ def test_the_weights_a_workload_serves_cannot_be_repointed_by_a_patch():
     That is a new workload, and it is cheap. `artifact` is therefore absent from the
     patch while every other part of the serving block is present.
     """
-    fields = WorkloadServingUpdate.__struct_fields__
-    assert "artifact" not in fields
-    assert "engine" in fields and "shape" in fields
+    with pytest.raises(msgspec.ValidationError, match="artifact"):
+        patch(b'{"artifact": "llama-8b"}', WorkloadServingUpdate)
+    data = patch(b'{"engine": "sglang", "shape": {"device_class": "h200"}}', WorkloadServingUpdate)
+    assert data.to_dict(exclude_unset=True) == {"engine": "sglang", "shape": ShapeSchema(device_class="h200")}
 
 
 def test_a_revision_snapshot_decodes_as_a_patch_because_the_two_structs_agree():
@@ -145,9 +153,10 @@ def test_a_serving_patch_leaves_absent_fields_unset():
 
 def test_device_class_is_required_at_the_request_boundary_too():
     """A shape without a class is not a shape, and the struct says so before a validator does."""
-    assert "device_class" in ShapeSchema.__struct_fields__
     with pytest.raises(TypeError):
         ShapeSchema()
+    with pytest.raises(msgspec.ValidationError, match="device_class"):
+        patch(b'{"shape": {"device_count": 2}}', WorkloadServingUpdate)
     with pytest.raises(TypeError):
         WorkloadServingRequest(artifact="a", engine="vllm", engine_runtime_version="0.6", context_length=8192)
 
@@ -159,8 +168,9 @@ def test_device_class_cannot_be_cleared_by_a_patch():
     that named half of it would leave the rest at its defaults rather than at what
     was stored, and the caller could not tell which it got.
     """
-    assert WorkloadServingUpdate.__annotations__["shape"] == ShapeSchema | msgspec.UnsetType
-    assert ShapeSchema.__annotations__["device_class"] is str
+    for body in (b'{"shape": null}', b'{"shape": {"device_class": null}}'):
+        with pytest.raises(msgspec.ValidationError):
+            patch(body, WorkloadServingUpdate)
 
 
 def test_context_length_lives_on_the_serving_block_and_not_on_a_catalog_entry():
@@ -310,9 +320,10 @@ def test_the_served_weights_are_loaded_with_the_page_and_not_labelled_field_by_f
     time that order changes. `Workload.artifact` is `lazy="noload"`, so the page
     loads it explicitly rather than one round trip per row.
     """
-    query = sql(repo.list_query(limit=10))
-    assert "demand_artifact" not in query
-    assert "selectinload(Workload.artifact)" in inspect.getsource(WorkloadRepository)
+    query = repo.list_query(limit=10)
+    assert "demand_artifact" not in sql(query)
+    loads = [(load.path[1], load.strategy) for option in query._with_options for load in option.context]
+    assert loads == [(Workload.artifact.property, (("lazy", "selectin"),))]
 
 
 def test_the_artifact_tag_is_a_nullable_addition_that_replaces_nothing():

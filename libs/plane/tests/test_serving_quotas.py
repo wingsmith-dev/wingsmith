@@ -590,15 +590,13 @@ def test_the_resolution_is_not_paginated():
 
 
 def test_no_handler_here_reads_a_measurement():
-    for name in (
-        "list_serving_quotas",
-        "get_serving_quota",
-        "create_serving_quota",
-        "update_serving_quota",
-        "resolve_serving_quotas",
-    ):
-        source = inspect.getsource(getattr(ServingQuotaRoutes, name).fn)
-        assert "metrics" not in source.lower().replace("metrics surface", "")
+    """The quotas package holds nothing from the metrics package, so no handler can read one."""
+    import importlib
+
+    for name in ("routes", "services", "repository", "depends", "schemas"):
+        module = importlib.import_module(f"app.modules.quotas.{name}")
+        held = {getattr(value, "__module__", None) or getattr(value, "__name__", "") for value in vars(module).values()}
+        assert not [m for m in held if isinstance(m, str) and m.startswith("app.modules.metrics")], name
 
 
 # --- the service, against a repository that is not a database -----------------

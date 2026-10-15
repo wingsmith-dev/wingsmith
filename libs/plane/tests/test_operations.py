@@ -14,6 +14,7 @@ from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.modules.operations.routes import OperationRoutes
 from app.modules.workloads.schemas import WorkloadPauseParameters
 from app.modules.workloads.schemas import WorkloadScaleParameters
@@ -329,23 +330,87 @@ def test_create_accepts_an_idempotency_key_header():
     assert parameter.default.header == "Idempotency-Key"
 
 
-def test_cancellation_returns_the_operation_rather_than_deleting_it():
-    doc = OperationRoutes.cancel_operation.fn.__doc__ or ""
-    assert "not deletion" in doc
+class CancelSession:
+    """A session with no `delete`, so a cancellation that removed the row would fail here."""
+
+    def __init__(self) -> None:
+        self.executed = []
+        self.commits = 0
+
+    async def execute(self, statement):
+        self.executed.append(statement)
+
+    async def commit(self) -> None:
+        self.commits += 1
 
 
-def test_the_plane_and_ingestion_write_disjoint_cancel_fields():
-    """The plane stamps `cancel_requested_at`; only ingestion moves `phase`.
+class CancelRepo:
+    def __init__(self, operation) -> None:
+        self.operation = operation
 
-    Except while the operation is still `pending`, where nothing has reported on
-    it and there is no writer to race.
-    """
-    from app.modules.operations.services import OperationService
+    async def get(self, ref):
+        return (self.operation,)
 
-    source = inspect.getsource(OperationService.cancel)
-    assert "cancel_requested_at" in source
-    assert source.count('operation.phase = "cancelled"') == 1
-    assert "if operation.phase == PENDING:" in source
+    async def cluster_uid(self, cluster_id):
+        return CLUSTER_UID
+
+
+def cancelling(operation) -> tuple[OperationService, CancelSession, list]:
+    db = CancelSession()
+    svc = OperationService(db=db)
+    svc.repo = CancelRepo(operation)
+    announced: list = []
+
+    async def announce(cluster_uid, uid):
+        announced.append((cluster_uid, uid))
+
+    async def get(ref):
+        return operation
+
+    svc._announce = announce
+    svc.get = get
+    return svc, db, announced
+
+
+def test_cancellation_answers_200_with_the_operation_rather_than_204():
+    assert OperationRoutes.cancel_operation.status_code == 200
+
+
+async def test_cancelling_a_pending_operation_finishes_it_here_and_tells_no_cluster():
+    """Nothing was ever sent, so there is no writer to race and nothing to withdraw."""
+    operation = _operation(phase="pending", cluster_id=1)
+    svc, db, announced = cancelling(operation)
+
+    assert await svc.cancel(operation.uid) is operation
+    assert operation.phase == "cancelled"
+    assert operation.cancel_requested_at is not None
+    assert operation.finished_at == operation.cancel_requested_at
+    assert len(db.executed) == 1, "the benchmark run following the operation is closed with it"
+    assert db.commits == 1
+    assert announced == []
+
+
+async def test_cancelling_a_running_operation_asks_the_cluster_and_leaves_the_phase_to_it():
+    """The plane stamps `cancel_requested_at`; the phase is ingestion's to move."""
+    operation = _operation(phase="running", cluster_id=1)
+    svc, db, announced = cancelling(operation)
+
+    await svc.cancel(operation.uid)
+    assert operation.phase == "running"
+    assert operation.cancel_requested_at is not None
+    assert db.executed == []
+    assert db.commits == 1
+    assert announced == [(CLUSTER_UID, operation.uid)]
+
+
+async def test_a_finished_operation_cannot_be_cancelled():
+    operation = _operation(phase="succeeded")
+    svc, db, announced = cancelling(operation)
+
+    with pytest.raises(Conflict):
+        await svc.cancel(operation.uid)
+    assert operation.cancel_requested_at is None
+    assert db.commits == 0 and announced == []
 
 
 def test_a_qualified_target_filter_compiles_to_the_name_column(repo):
