@@ -318,15 +318,45 @@ jobs:
     name: prose guard
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    # Not required yet: the tree still holds hits that the scrub in flight removes. Drop this line
-    # once a run on main is green.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - run: scripts/check-prose_test.sh
-      - run: scripts/check-prose.sh tree
+      # The names check reads a private list. Fork pull requests get no secrets and skip it; the
+      # push to main after the merge still runs it.
+      - name: private denylist
+        env:
+          PROSE_DENYLIST: ${{ secrets.HANGAR_PROSE_DENYLIST }}
+        run: |
+          if [ -z "$PROSE_DENYLIST" ]; then
+            echo "::notice::HANGAR_PROSE_DENYLIST unavailable, the names check is skipped"
+            exit 0
+          fi
+          printf '%s\n' "$PROSE_DENYLIST" >"$RUNNER_TEMP/prose-denylist"
+          echo "HANGAR_PROSE_DENYLIST=$RUNNER_TEMP/prose-denylist" >>"$GITHUB_ENV"
+      # Required: what a change adds is held to every check, tics included.
+      - name: what this change adds
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) scripts/check-prose.sh range "$PR_BASE" "$PR_HEAD" ;;
+            push)
+              if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]; then
+                scripts/check-prose.sh range "$PUSH_BEFORE" "$GITHUB_SHA"
+              fi
+              ;;
+            *) echo "nothing added to check on $EVENT" ;;
+          esac
+      # A report, not a gate, until the existing text is clean: a hit here does not fail the run.
+      - name: whole tree
+        continue-on-error: true
+        run: scripts/check-prose.sh tree
 
   scripts:
     name: guard scripts
