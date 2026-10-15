@@ -81,17 +81,33 @@ def test_wire_parameters_are_strings_go_can_parse():
     assert all(isinstance(value, str) for value in flattened.values())
 
 
-def test_every_harness_declares_the_image_that_carries_it():
+def test_every_harness_declares_where_its_image_comes_from():
     for harness in harnesses.HARNESSES.values():
-        assert harness.image, harness.name
+        assert bool(harness.pinned_image) != bool(harness.image_setting), harness.name
         assert harness.parameters, harness.name
 
 
-def test_every_harness_image_is_pinned_rather_than_floating():
+def test_a_pinned_harness_image_is_a_version_rather_than_floating():
     """A run whose tool moves under it is not comparable to the run before it."""
     for harness in harnesses.HARNESSES.values():
-        assert not harness.image.endswith(":latest"), harness.name
-        assert ":" in harness.image.rsplit("/", 1)[-1], harness.name
+        if harness.pinned_image:
+            assert not harness.pinned_image.endswith(":latest"), harness.name
+            assert ":" in harness.pinned_image.rsplit("/", 1)[-1], harness.name
+
+
+def test_a_harness_image_comes_from_its_setting(monkeypatch):
+    monkeypatch.setattr(
+        harnesses.settings, "BENCHMARK_EVALSCOPE_IMAGE", "registry.example/evalscope:1.11.1", raising=False
+    )
+    assert harnesses.resolve_image(harnesses.EVALSCOPE, None) == "registry.example/evalscope:1.11.1"
+
+
+def test_an_unconfigured_harness_image_is_refused_with_the_setting_to_fill(monkeypatch):
+    monkeypatch.setattr(harnesses.settings, "BENCHMARK_CONFORMANCE_IMAGE", "", raising=False)
+    with pytest.raises(Invalid) as caught:
+        harnesses.resolve_image(harnesses.CONFORMANCE, None)
+    assert caught.value.detail == {"harness": "conformance", "setting": "HANGAR_BENCHMARK_CONFORMANCE_IMAGE"}
+    assert harnesses.resolve_image(harnesses.CONFORMANCE, "registry.example/conformance:0.1.0")
 
 
 def test_an_omitted_image_falls_back_to_the_harness_pin():

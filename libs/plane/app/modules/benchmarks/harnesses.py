@@ -26,6 +26,7 @@ import math
 from typing import Any
 from typing import NamedTuple
 
+from app.config import settings
 from app.core.exceptions import Invalid
 
 
@@ -64,15 +65,27 @@ class Parameter(NamedTuple):
 
 
 class Harness(NamedTuple):
-    """A harness, the levels it grades at, its knobs, and the image that carries it."""
+    """A harness, the levels it grades at, its knobs, and the image that carries it.
+
+    The image is either pinned here (`pinned_image`, for a public upstream image) or read from
+    the plane setting named by `image_setting`, for images an operator builds and hosts.
+    """
 
     name: str
     wire: str
-    image: str
     levels: tuple[str, ...]
     parameters: tuple[Parameter, ...]
     description: str
     max_probes: int | None = None
+    pinned_image: str = ""
+    image_setting: str = ""
+
+    @property
+    def image(self) -> str:
+        """The default image for a run, or empty when its setting is unset."""
+        if self.image_setting:
+            return str(getattr(settings, self.image_setting, "") or "").strip()
+        return self.pinned_image
 
 
 DATASETS: tuple[str, ...] = (
@@ -99,7 +112,7 @@ against it has no declared baseline to be graded against.
 AIPERF = Harness(
     name="aiperf",
     wire="aiperf",
-    image="nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    pinned_image="nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     levels=(DEPLOYMENT, WORKLOAD),
     description="NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
     parameters=(
@@ -126,7 +139,7 @@ AIPERF = Harness(
 CONFORMANCE = Harness(
     name="conformance",
     wire="conformance",
-    image="ghcr.io/hangar-dev/conformance:0.1.0",
+    image_setting="BENCHMARK_CONFORMANCE_IMAGE",
     levels=(ENDPOINT, DEPLOYMENT),
     max_probes=200,
     description="Protocol, auth, error-shape and routing probes against a serving surface.",
@@ -163,18 +176,16 @@ gateway fault is told from an engine fault, and that is the first question asked
 endpoint probe fails. `failover_probe` is endpoint-only: below the endpoint there is
 nothing to fail over to.
 
-We own and pin the image. A probe suite is a statement of *our* contract, and vendoring
-somebody else's opinion of what an OpenAI-compatible endpoint does and then grading
-ourselves against it inverts the relationship. `max_probes` caps the enumerated failure
-list, so it has a stated ceiling even in a total outage — the per-probe record itself is
-telemetry and goes to object storage behind `artifacts_uri`, never onto the summary.
+The image is built from `libs/conformance` and named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE`.
+`max_probes` caps the enumerated failure list, so it has a stated ceiling even in a total outage;
+the per-probe record goes to object storage behind `artifacts_uri`, never onto the summary.
 """
 
 
 EVALSCOPE = Harness(
     name="evalscope",
     wire="evalscope",
-    image="ghcr.io/hangar-dev/evalscope:1.11.1",
+    image_setting="BENCHMARK_EVALSCOPE_IMAGE",
     levels=(WORKLOAD, DEPLOYMENT, ENDPOINT),
     description="Accuracy and reasoning evaluation over an OpenAI-compatible surface.",
     parameters=(
@@ -224,12 +235,9 @@ HARNESSES: dict[str, Harness] = {
 }
 """Every harness this plane can run.
 
-vLLM's `benchmark_serving.py` and `lm_eval` are the next two, and they arrive as
-entries here plus a case in the operator's dispatcher. `lm_eval` arrives under its
-own name and never as an alias of `evalscope`: two harnesses that grade the same
-exam differently are two comparison groups, and `harness` plus `harness_version`
-is what keeps them apart. Nothing else in this module is harness-specific, which is
-the point of the table.
+A new harness is an entry here plus a case in the operator's dispatcher. Two harnesses that grade
+the same exam differently are separate entries, never aliases: `harness` plus `harness_version`
+is what keeps their results apart.
 """
 
 DEFAULT_HARNESS = AIPERF.name
@@ -390,22 +398,22 @@ def _coerce(harness: Harness, parameter: Parameter, value: Any) -> Any:
 
 
 def resolve_image(harness: Harness, supplied: str | None) -> str:
-    """The image a run will actually pull, which is the harness default unless asked otherwise.
+    """The image a run will pull: the caller's, else the harness default.
 
-    The default here is a pin, not a floating tag, so a table of runs stays
-    comparable and a harness release cannot change what a rerun measures. An
-    override exists because that pin will always trail the registry, and waiting
-    for a plane deploy to try a newer AIPerf is a poor reason not to measure.
-
-    Only the reference's shape is checked. Whether the image exists is the
-    registry's answer and the plane cannot have it; a wrong one surfaces as a
-    pull failure on the run, which is where a wrong image belongs.
+    Only the reference's shape is checked; a missing image surfaces as a pull failure on the run.
+    A harness whose image setting is unset is refused unless the caller names an image.
     """
-    if supplied is None:
-        return harness.image
-    image = supplied.strip()
+    image = (supplied or "").strip()
     if not image:
-        return harness.image
+        image = harness.image
+        if not image:
+            variable = f"HANGAR_{harness.image_setting}"
+            raise Invalid(
+                f"the {harness.name} harness has no image configured; set {variable} on the plane"
+                " or pass `image` with the request",
+                {"harness": harness.name, "setting": variable},
+            )
+        return image
     if len(image) > 512 or any(c.isspace() for c in image):
         raise Invalid("benchmark image is not a valid image reference", {"image": supplied})
     return image
