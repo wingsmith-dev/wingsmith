@@ -532,3 +532,24 @@ func (s *blockingServer) sever() error {
 	}
 	return nil
 }
+
+// The replica count comes from the far end of a socket, so it is bounded: a gateway reporting
+// thousands would otherwise have this agent start thousands of dial loops.
+func TestTheReportedReplicaCountIsClamped(t *testing.T) {
+	server := &blockingServer{}
+	gw := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 100000, accepted: func(net.Conn) {}})
+
+	supervisor, stop := runSupervisor(t, gw.addr, server, NewMetrics())
+	defer stop()
+
+	eventually(t, "the count to be observed", func() bool { return supervisor.Expected() > 1 })
+	if got := supervisor.Expected(); got != maxGatewayReplicas {
+		t.Errorf("Expected = %d, want it clamped to %d", got, maxGatewayReplicas)
+	}
+	supervisor.mu.Lock()
+	workers := supervisor.workers
+	supervisor.mu.Unlock()
+	if workers > maxGatewayReplicas {
+		t.Errorf("%d dial loops running, want at most %d", workers, maxGatewayReplicas)
+	}
+}

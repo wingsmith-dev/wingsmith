@@ -298,6 +298,12 @@ func (s *Supervisor) retire() bool {
 	return true
 }
 
+// maxGatewayReplicas caps the replica count a handshake can ask this agent to cover. Each replica
+// costs ConnsPerGateway goroutines and sockets, and the number arrives from the far end of a network
+// connection; a gateway that reports thousands is misconfigured, and following it would exhaust
+// this pod rather than cover anything.
+const maxGatewayReplicas = 64
+
 // observe records what a handshake said about the size of the gateway.
 //
 // The number is taken from the latest accepted handshake and is not held at a high-water mark. A
@@ -306,6 +312,11 @@ func (s *Supervisor) retire() bool {
 // only changes by restarting the replicas, so the last handshake is always with a replica that
 // survived the change.
 func (s *Supervisor) observe(peer Peer) {
+	if peer.Total > maxGatewayReplicas {
+		s.log.Warn("agent: gateway reported more replicas than this agent will cover, clamping",
+			"gateway", peer.ID, "reported", peer.Total, "covering", maxGatewayReplicas)
+		peer.Total = maxGatewayReplicas
+	}
 	s.mu.Lock()
 	previous := s.desired
 	s.desired = peer.Total
