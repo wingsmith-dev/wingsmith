@@ -710,8 +710,8 @@ type wireError struct {
 }
 
 // planeCodes maps the plane's error vocabulary onto the CLI's. The plane's
-// `invalid` is a category error rather than a validation failure and answers
-// 409, so it maps to INVALID_STATE and not USAGE.
+// `invalid` (422) is a well-formed request the plane refuses rather than a
+// malformed one, so it maps to INVALID_STATE and not USAGE.
 var planeCodes = map[string]errs.Code{
 	"not_found":       errs.CodeNotFound,
 	"conflict":        errs.CodeConflict,
