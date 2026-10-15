@@ -83,6 +83,19 @@ const (
 	ReasonAdopt = "adopt"
 )
 
+// ErrListenerClosed is returned by Serve on a listener that has been shut down
+// or closed.
+var ErrListenerClosed = errors.New("tunnel: listener closed")
+
+// DefaultMaxHandshakes bounds how many dials may be mid-handshake at once.
+//
+// The listener is reachable from outside by design and a dial costs nothing to
+// open, so without a bound a flood of connections that never speak holds a
+// goroutine and a descriptor each until the handshake timeout. Past the bound
+// the accept loop waits; the kernel's backlog holds the dials, and an agent's
+// own dial timeout decides how long it waits.
+const DefaultMaxHandshakes = 128
+
 // DefaultCacheTTL is how long a verified token is reused without asking the
 // plane again.
 const DefaultCacheTTL = 5 * time.Minute
@@ -125,6 +138,9 @@ type ListenerConfig struct {
 	// CacheGrace is how long a verified token survives a plane that cannot be
 	// reached. Zero means DefaultCacheGrace.
 	CacheGrace time.Duration
+	// MaxHandshakes bounds how many dials may be mid-handshake at once. Zero
+	// means DefaultMaxHandshakes.
+	MaxHandshakes int
 	// Dials, when set, is told about refused dials.
 	Dials DialObserver
 	// Now replaces the clock. For tests.
@@ -148,6 +164,9 @@ type Listener struct {
 	ln       net.Listener
 	closing  bool
 	handling sync.WaitGroup
+	// stopped closes when the listener stops accepting. It wakes an accept loop
+	// waiting for a handshake slot and cancels handshakes still in progress.
+	stopped chan struct{}
 }
 
 // NewListener builds the listener. It does not bind: the caller supplies the
@@ -168,12 +187,16 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 	if cfg.CacheGrace <= 0 {
 		cfg.CacheGrace = DefaultCacheGrace
 	}
+	if cfg.MaxHandshakes <= 0 {
+		cfg.MaxHandshakes = DefaultMaxHandshakes
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
 	return &Listener{
-		cfg:   cfg,
-		cache: &tokenCache{ttl: cfg.CacheTTL, grace: cfg.CacheGrace, now: cfg.Now},
+		cfg:     cfg,
+		cache:   &tokenCache{ttl: cfg.CacheTTL, grace: cfg.CacheGrace, now: cfg.Now},
+		stopped: make(chan struct{}),
 	}, nil
 }
 
@@ -182,37 +205,99 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 // ctx bounds handshakes and the plane calls inside them. It does not abort
 // tunnels that are already adopted: cancelling it stops new dials, and Shutdown
 // is what drains the live ones.
+//
+// An Accept error the network marks temporary — out of file descriptors, a
+// connection reset before it was accepted — is waited out with a backoff, as
+// net/http does. Returning on one would take down a listener every agent
+// depends on over a condition that clears by itself.
 func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
 	l.mu.Lock()
 	if l.closing {
 		l.mu.Unlock()
 		_ = ln.Close()
-		return ErrConnectorClosed
+		return ErrListenerClosed
 	}
 	l.ln = ln
 	l.mu.Unlock()
 
+	// Handshakes in progress end when the listener stops, not only when ctx does.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-l.stopped:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	slots := make(chan struct{}, l.cfg.MaxHandshakes)
+	var delay time.Duration
 	for {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return nil
+		}
 		conn, err := ln.Accept()
 		if err != nil {
-			l.mu.Lock()
-			closing := l.closing
-			l.mu.Unlock()
-			if closing || ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+			<-slots
+			if l.isClosing() || ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			return err
+			if !temporary(err) {
+				return err
+			}
+			delay = nextAcceptDelay(delay)
+			slog.Warn("gateway: tunnel accept failed, retrying", "err", err, "retry_in", delay)
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			}
+			continue
 		}
+		delay = 0
 		l.handling.Add(1)
 		go func() {
 			defer l.handling.Done()
-			l.handle(ctx, conn)
+			var once sync.Once
+			release := func() { once.Do(func() { <-slots }) }
+			defer release()
+			l.handle(ctx, conn, release)
 		}()
 	}
 }
 
-// handle authenticates one dial and hands it to the pool.
-func (l *Listener) handle(ctx context.Context, conn net.Conn) {
+func (l *Listener) isClosing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.closing
+}
+
+// temporary reports whether an Accept error is one to wait out.
+func temporary(err error) bool {
+	var t interface{ Temporary() bool }
+	return errors.As(err, &t) && t.Temporary()
+}
+
+// nextAcceptDelay is net/http's accept backoff: 5ms doubling to a second.
+func nextAcceptDelay(delay time.Duration) time.Duration {
+	if delay == 0 {
+		return 5 * time.Millisecond
+	}
+	delay *= 2
+	if delay > time.Second {
+		delay = time.Second
+	}
+	return delay
+}
+
+// handle authenticates one dial and hands it to the pool. release gives back
+// the handshake slot, and is called as soon as the dial is a tunnel or is gone.
+func (l *Listener) handle(ctx context.Context, conn net.Conn, release func()) {
 	remote := addrString(conn)
 	handshakeCtx, cancel := context.WithTimeout(ctx, l.cfg.HandshakeTimeout)
 	defer cancel()
@@ -225,6 +310,7 @@ func (l *Listener) handle(ctx context.Context, conn net.Conn) {
 
 	// Adopt closes the connection itself on failure, and owns it from here.
 	adopted, err := l.cfg.Pool.Adopt(handshakeCtx, clusterID, conn)
+	release()
 	if err != nil {
 		l.refuse(remote, ReasonAdopt, err)
 		return
@@ -392,6 +478,9 @@ func (l *Listener) Close() error {
 
 func (l *Listener) stopAccepting() {
 	l.mu.Lock()
+	if !l.closing {
+		close(l.stopped)
+	}
 	l.closing = true
 	ln := l.ln
 	l.mu.Unlock()
