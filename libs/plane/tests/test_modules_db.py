@@ -405,8 +405,10 @@ async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSessi
     engine = create_async_engine(database, poolclass=NullPool)
     monkeypatch.setattr("app.hub.server.session_factory", lambda: async_sessionmaker(engine, expire_on_commit=False))
     try:
-        principal = await _resolve_connection(issued.enrolment_token)
-        assert principal is not None
+        resolved = await _resolve_connection(issued.enrolment_token)
+        assert resolved is not None
+        principal, digest = resolved
+        assert digest == AuthManager.hash_enrolment_token(issued.enrolment_token)
         assert principal.scope == created.id
         assert principal.name == "alpha"
 

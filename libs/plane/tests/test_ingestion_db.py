@@ -26,6 +26,7 @@ from app.hub.state import new_id
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
 from app.hub.messages import MESSAGE_TYPES
+from app.hub.ownership import DatabaseClaimStore
 from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.desired import format_ts
@@ -1079,7 +1080,11 @@ async def test_a_burst_of_frames_restamps_the_sync_row_once_and_still_counts_eve
 
 
 async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, cluster) -> None:
-    """The wiring of part one: a real session, a real sink, real rows."""
+    """The wiring of part one: a real session, a real sink, real rows.
+
+    Opened the only way the hub opens one, with the cluster's own enrolment token,
+    and claimed in the database, since every write the sink makes is fenced on that claim.
+    """
     sink = DatabaseSink(sessions)
     connection = FakeConnection()
     session = OperatorSession(
@@ -1087,6 +1092,7 @@ async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, clust
         AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="alpha"),
         sink=sink,
         config=SessionConfig(ping_interval=60.0, liveness_timeout=120.0),
+        claims=DatabaseClaimStore(sessions),
     )
     task = asyncio.create_task(session.run())
 
