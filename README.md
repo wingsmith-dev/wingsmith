@@ -151,8 +151,9 @@ scripts/             repository checks
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, commit conventions and the DCO sign-off
-every commit needs. Much of the code was written with AI coding assistants; every change goes
-through maintainer review, the test suites and CI. Participation is governed by the
+every commit needs. Much of the code was written with AI coding assistants under a single
+maintainer, and the history before the public release was not reviewed by a second person; the test
+suites are the main check on it. Participation is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Report security problems privately, as described in [SECURITY.md](SECURITY.md), not in an issue.

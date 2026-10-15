@@ -36,8 +36,9 @@ its layout and how to run it on its own.
 | `just interop` | the real Go operator client against the real Python hub | nothing beyond `just setup` |
 | `just check` | all of the above, in order | Docker |
 
-Run `just check` before you open a pull request. If you cannot run the database suite locally, say
-so in the pull request and CI will run it. `just chart-lint` covers the Helm chart, and `just e2e`
+Run `just check` before you open a pull request. CI runs the same checks on every pull request
+(`.github/workflows/ci.yml`), including the database suite against a Postgres service, so if you
+cannot run that suite locally, say so in the pull request and rely on CI for it. `just chart-lint` covers the Helm chart, and `just e2e`
 runs the reconciler against a real API server; point it at a local kind cluster, never at one
 serving traffic.
 
@@ -51,8 +52,8 @@ otherwise have the right to submit it under the project's license (Apache-2.0).
 git commit -s -m "fix(gateway): ..."
 ```
 
-`-s` adds the line using your configured `user.name` and `user.email`. CI checks that every commit
-in a pull request carries a sign-off matching its author. To fix a branch that is missing them:
+`-s` adds the line using your configured `user.name` and `user.email`. The `dco` job in CI refuses
+a pull request with a commit that has no sign-off matching its author. To fix a branch that is missing them:
 
 ```sh
 git rebase --signoff main
@@ -126,7 +127,8 @@ Decisions that shape the system are recorded in [`docs/decisions/`](docs/decisio
 - Describe what changed in behaviour and how you checked it. The template asks for this.
 - Add or update tests for every behaviour change, and update the README or docs a change makes
   wrong.
-- CI must be green: format, lint, tests, the leak checks and the DCO check.
+- CI must be green: format, lint and tests for every module, the database suite, the leak checks
+  and the DCO check.
 - A maintainer reviews every pull request (see [`.github/CODEOWNERS`](.github/CODEOWNERS)). Expect
   questions about why, not just what; the answers often belong in the commit message.
 - Maintainers merge. History on `main` is kept as committed, so a clean series of commits matters
@@ -134,8 +136,10 @@ Decisions that shape the system are recorded in [`docs/decisions/`](docs/decisio
 
 ## How this code is written
 
-Much of the code in this repository was written with AI coding assistants. Every change, whoever or
-whatever wrote it, goes through the same gates: review by a maintainer, the test suites, and CI.
+Much of the code in this repository was written with AI coding assistants, under a single
+maintainer. The history before the public release was not reviewed by a second person; the test
+suites were the main check on it, and they still are. From here on, changes arrive as pull requests
+that CI tests and a maintainer reviews, whoever or whatever wrote them.
 
 ## License
 
