@@ -19,6 +19,7 @@ from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import DeploymentStatus
 from app.db.models import DiscoveredWorkload
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -151,12 +152,17 @@ class DeploymentRepository:
         )
 
     async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
-        """`lock` holds the deployment row until the transaction ends, re-read, for a write."""
-        query = self.get_query(ref, cluster).limit(1)
+        """By id, or by name narrowed by `cluster`.
+
+        A workload expanded onto three clusters has three deployments of one name, so a
+        bare name that matches more than one is refused rather than resolved to any of
+        them. `lock` holds the deployment row until the transaction ends, re-read, for a write.
+        """
+        query = self.get_query(ref, cluster).limit(2)
         if lock:
             query = query.with_for_update(of=Deployment).execution_options(populate_existing=True)
         result = await self.db.execute(query)
-        return result.first()
+        return at_most_one(list(result.all()), "deployment", ref, "use its id or name a cluster")
 
     async def sighting_fingerprint(self, cluster_id: UUID, workload_uid: str) -> str | None:
         """What the cluster currently reports the adopted object is running.

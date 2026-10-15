@@ -11,6 +11,7 @@ from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.supply import free_device_sum
+from app.core.lookup import at_most_one
 
 
 def _cluster_column(ref: str):
@@ -94,15 +95,15 @@ class PoolRepository:
     async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
         """Resolves either an id or a name.
 
-        A pool name is unique only within its cluster, so a bare name is
-        ambiguous across clusters; `cluster` narrows it, and without it the first
-        match wins the same way it does for any non-unique lookup.
+        A pool name is unique only within its cluster, so a bare name is ambiguous
+        across clusters; `cluster` narrows it, and a name that still matches two pools
+        is refused rather than resolved to either.
         """
-        query = self.get_query(ref, cluster).limit(1)
+        query = self.get_query(ref, cluster).limit(2)
         if lock:
             query = query.with_for_update(of=Pool).execution_options(populate_existing=True)
         result = await self.db.execute(query)
-        return result.first()
+        return at_most_one(list(result.all()), "pool", ref, "use its id or name a cluster")
 
     async def cluster_by_ref(self, ref: str) -> Cluster | None:
         result = await self.db.execute(select(Cluster).where(_cluster_column(ref) == ref))

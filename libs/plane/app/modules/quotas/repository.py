@@ -18,6 +18,7 @@ from app.db.models import Deployment
 from app.db.models import ServingQuota
 from app.db.models import EndpointTarget
 from app.db.models import AllocationDevice
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -132,8 +133,8 @@ class QuotaRepository:
         }
 
     async def project_by_ref(self, ref: str) -> Project | None:
-        result = await self.db.execute(select(Project).where(Project.id.in_(_project_ids(ref))).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Project).where(Project.id.in_(_project_ids(ref))).limit(2))
+        return at_most_one(list(result.scalars()), "project", ref)
 
     async def cluster_by_ref(self, ref: str) -> Cluster | None:
         result = await self.db.execute(select(Cluster).where(Cluster.id.in_(ref_ids(Cluster, ref))))

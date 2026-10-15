@@ -66,10 +66,14 @@ class PoolRoutes(Controller):
         svc: PoolService,
         ref: str,
         data: PoolUpdateRequest,
+        cluster: str | None = None,
         if_match: str | None = Parameter(header="If-Match", default=None),
     ) -> Response[PoolSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match))
+        return Response(await svc.update(ref, data, if_match=if_match, cluster=cluster))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_pool(self, context: RequestContext, svc: PoolService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_pool(
+        self, context: RequestContext, svc: PoolService, ref: str, cluster: str | None = None
+    ) -> None:
+        """`cluster` narrows a pool name, which is unique only within one cluster."""
+        await svc.delete(ref, cluster=cluster)

@@ -26,7 +26,11 @@ class PoolSchema(Struct):
     """Declared spec and observed membership side by side, never merged.
 
     The declared half is the provisioning intent — device class, shape, and the
-    node bounds a scaling loop reads. The observed half is `membership`.
+    node bounds. The observed half is `membership`.
+
+    `min_nodes` and `max_nodes` are informational. Nothing in Hangar adds or removes
+    nodes to meet them; they are compared against membership to answer
+    `within_declared_bounds`, and node autoscaling is on the roadmap.
     `within_declared_bounds` is computed here rather than left to each client,
     because both the console and `hgr` need the same answer to "is this pool
     outside what we asked for" and two clients deriving it independently is two

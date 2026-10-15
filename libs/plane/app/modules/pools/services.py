@@ -159,8 +159,10 @@ class PoolService:
             raise Conflict(f"pool {data.name!r} already exists in {data.cluster!r}") from exc
         return await self.get(pool.uid)
 
-    async def update(self, ref: str, data: PoolUpdateRequest, if_match: str | None = None) -> PoolSchema:
-        pool, _ = await self._one(ref, lock=True)
+    async def update(
+        self, ref: str, data: PoolUpdateRequest, if_match: str | None = None, cluster: str | None = None
+    ) -> PoolSchema:
+        pool, _ = await self._one(ref, cluster, lock=True)
         if if_match is not None and if_match != _revision(pool):
             raise Conflict("pool changed since it was read", {"revision": _revision(pool)})
 
@@ -181,7 +183,7 @@ class PoolService:
             raise Conflict("pool conflicts with an existing one") from exc
         return await self.get(pool.uid)
 
-    async def delete(self, ref: str) -> None:
+    async def delete(self, ref: str, cluster: str | None = None) -> None:
         """Refuses while the pool still has nodes in it.
 
         `Node.pool_id` is `ON DELETE SET NULL`, so deleting a populated pool
@@ -190,7 +192,7 @@ class PoolService:
         reasoning about have no pool to explain them, so an occupied pool is a
         `Conflict` and draining it is the caller's job first.
         """
-        pool, _ = await self._one(ref)
+        pool, _ = await self._one(ref, cluster, lock=True)
         rollup = await self.repo.membership([pool.id])
         nodes = _membership(rollup.get(pool.id)).nodes_total
         if nodes:

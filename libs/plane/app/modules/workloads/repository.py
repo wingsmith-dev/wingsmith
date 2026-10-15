@@ -29,6 +29,7 @@ from app.db.models import AllocationDevice
 from app.db.models import DeploymentStatus
 from app.db.models import PolicyAttachment
 from app.db.models import WorkloadRevision
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -292,9 +293,7 @@ class WorkloadRepository:
     async def artifacts_by_ref(self, refs: list[str]) -> list[Artifact]:
         found: list[Artifact] = []
         for ref in refs:
-            column = Artifact.uid if is_uid(ref) else Artifact.name
-            result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
-            artifact = result.scalar_one_or_none()
+            artifact = await self.artifact_by_ref(ref)
             if artifact is not None:
                 found.append(artifact)
         return found
@@ -305,9 +304,10 @@ class WorkloadRepository:
         return result.scalar_one_or_none()
 
     async def artifact_by_ref(self, ref: str) -> Artifact | None:
+        """By id or by name. Artifact names are not unique, so a name two artifacts share is refused."""
         column = Artifact.uid if is_uid(ref) else Artifact.name
-        result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Artifact).where(column == ref).limit(2))
+        return at_most_one(list(result.scalars()), "artifact", ref)
 
     async def artifact_of(self, workload: Workload) -> Artifact | None:
         """The artifact a workload serves, by primary key.
@@ -320,9 +320,10 @@ class WorkloadRepository:
         return await self.db.get(Artifact, workload.artifact_id)
 
     async def project_by_ref(self, ref: str) -> Project | None:
+        """By id or by slug. A slug is unique per tenant, so one two tenants share is refused."""
         column = Project.uid if is_uid(ref) else Project.slug
-        result = await self.db.execute(select(Project).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Project).where(column == ref).limit(2))
+        return at_most_one(list(result.scalars()), "project", ref)
 
     async def priority_class_by_name(self, name: str) -> PriorityClass | None:
         result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name).limit(1))

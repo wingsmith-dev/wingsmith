@@ -624,19 +624,30 @@ class EndpointService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def _resolve(
-        self, targets: list[EndpointTargetRequest], failover: list[str]
+        self, targets: list[EndpointTargetRequest], failover: list[str], tenant_id: UUID | None
     ) -> tuple[list[EndpointTarget], list[UUID]]:
         """Turns target and failover references into rows and an ordered id array.
+
+        Targets resolve inside the endpoint's tenant, and a bare deployment name that
+        matches deployments in more than one cluster is refused with the candidates
+        rather than resolved to the oldest of them.
 
         The failover order is resolved against the target set rather than against
         every deployment there is: an endpoint that fails over to something it
         does not route to is a routing table with a hole in it.
         """
         refs = [t.deployment for t in targets]
-        found = await self.repo.deployments_by_ref(refs)
-        missing = [ref for ref in refs if ref not in found]
+        matches = await self.repo.deployments_by_ref(refs, tenant_id)
+        missing = [ref for ref in refs if ref not in matches]
         if missing:
             raise NotFound("unknown deployment", {"missing": sorted(set(missing))})
+        ambiguous = {ref: sorted(d.uid for d in rows) for ref, rows in matches.items() if len(rows) > 1}
+        if ambiguous:
+            raise Invalid(
+                "a deployment name matches deployments in more than one cluster; name the one you mean by id",
+                {"ambiguous": ambiguous},
+            )
+        found = {ref: rows[0] for ref, rows in matches.items()}
 
         rows = [
             EndpointTarget(
@@ -694,7 +705,7 @@ class EndpointService:
         project = await self.repo.project_by_ref(data.project)
         if project is None:
             raise NotFound(f"no project {data.project!r}")
-        targets, failover_order = await self._resolve(data.targets, data.failover_order)
+        targets, failover_order = await self._resolve(data.targets, data.failover_order, project.tenant_id)
 
         # Defaulted from the weights behind the first target, then from the endpoint's own name.
         #
@@ -759,7 +770,8 @@ class EndpointService:
             if targets is UNSET:
                 raise Invalid("failover order can only be changed alongside the targets it orders")
             check_targets(targets)
-            rows, order = await self._resolve(targets, fields.pop("failover_order", []))
+            tenant_id = await self.repo.tenant_of(endpoint.project_id)
+            rows, order = await self._resolve(targets, fields.pop("failover_order", []), tenant_id)
             endpoint.targets = []
             await self.db.flush()
             endpoint.targets = rows

@@ -19,6 +19,7 @@ from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
 from app.db.models import WorkloadAdoption
 from app.db.models import DiscoveredWorkload
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -62,12 +63,13 @@ class DiscoveredWorkloadRepository:
         )
 
     async def get(self, ref: str, cluster: str | None = None) -> Row | None:
+        """By id, or by name narrowed by `cluster`. A name seen in two places is refused, never picked."""
         column = DiscoveredWorkload.uid if is_uid(ref) else DiscoveredWorkload.name
         query = self._base().where(column == ref)
         if cluster is not None:
             query = query.where(DiscoveredWorkload.cluster_id.in_(ref_ids(Cluster, cluster)))
-        result = await self.db.execute(query)
-        return result.first()
+        result = await self.db.execute(query.limit(2))
+        return at_most_one(list(result.all()), "discovered workload", ref, "use its id or name a cluster")
 
     def query(
         self,
@@ -105,8 +107,10 @@ class DiscoveredWorkloadRepository:
         return list(result.all())
 
     async def project_by_ref(self, ref: str) -> Row | None:
-        result = await self.db.execute(ref_ids(Project, ref).with_only_columns(Project.id, Project.uid))
-        return result.first()
+        result = await self.db.execute(
+            ref_ids(Project, ref, "slug").with_only_columns(Project.id, Project.uid).limit(2)
+        )
+        return at_most_one(list(result.all()), "project", ref)
 
     async def decide(self, values: dict) -> None:
         """Upserts the decision. One decision per workload, last one wins."""
@@ -131,8 +135,8 @@ class DiscoveredWorkloadRepository:
     async def artifact_by_ref(self, ref: str) -> Artifact | None:
         """The weights a promotion says it is adopting, by id or by name."""
         column = Artifact.uid if is_uid(ref) else Artifact.name
-        result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Artifact).where(column == ref).limit(2))
+        return at_most_one(list(result.scalars()), "artifact", ref)
 
     async def priority_class_by_name(self, name: str):
         result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name))
@@ -150,8 +154,8 @@ class DiscoveredWorkloadRepository:
     async def project_row(self, ref: str) -> Project | None:
         """A project is named by its slug, not by its display name, as everywhere else."""
         column = Project.uid if is_uid(ref) else Project.slug
-        result = await self.db.execute(select(Project).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Project).where(column == ref).limit(2))
+        return at_most_one(list(result.scalars()), "project", ref)
 
     async def device_class_of(self, node_uids: Sequence[str]) -> str | None:
         """The class of accelerator the workload is actually running on.

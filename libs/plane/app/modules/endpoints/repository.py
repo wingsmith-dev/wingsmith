@@ -20,6 +20,7 @@ from app.db.models import ServingQuota
 from app.db.models import EndpointAlias
 from app.db.models import ClusterServing
 from app.db.models import EndpointTarget
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -192,28 +193,43 @@ class EndpointRepository:
         return {row.id: row.uid for row in result.all()}
 
     async def project_by_ref(self, ref: str) -> Project | None:
+        """By id or by slug. A slug is unique per tenant, so one two tenants share is refused."""
         column = Project.uid if is_uid(ref) else Project.slug
-        result = await self.db.execute(select(Project).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Project).where(column == ref).limit(2))
+        return at_most_one(list(result.scalars()), "project", ref)
 
-    async def deployments_by_ref(self, refs: list[str]) -> dict[str, Deployment]:
-        """Resolves target references, keyed by the reference the caller used.
+    async def deployments_by_ref(self, refs: list[str], tenant_id: UUID | None) -> dict[str, list[Deployment]]:
+        """Every deployment each target reference could mean, inside one tenant, in one query.
 
-        A deployment name is unique only within a cluster, so a bare name can
-        name more than one row. Endpoints are global and have no cluster to
-        narrow it with, which is why an ambiguous name is the caller's problem to
-        avoid by passing an id — the oldest match wins otherwise.
+        Scoped to the tenant that owns the endpoint: an endpoint routes to deployments
+        of its own tenant's workloads, so a reference to anyone else's is not found
+        rather than quietly routed to. A deployment name is unique only within a
+        cluster, so a bare name can still match several rows here; the caller refuses
+        that instead of choosing one.
         """
-        found: dict[str, Deployment] = {}
-        for ref in refs:
-            column = Deployment.uid if is_uid(ref) else Deployment.name
-            result = await self.db.execute(
-                select(Deployment).where(column == ref).order_by(Deployment.seq.asc()).limit(1)
-            )
-            deployment = result.scalar_one_or_none()
-            if deployment is not None:
-                found[ref] = deployment
+        if not refs:
+            return {}
+        uids = [ref for ref in refs if is_uid(ref)]
+        names = [ref for ref in refs if not is_uid(ref)]
+        query = (
+            select(Deployment)
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Project, Workload.project_id == Project.id)
+            .where(Deployment.uid.in_(uids) | Deployment.name.in_(names))
+            .order_by(Deployment.seq.asc())
+        )
+        if tenant_id is not None:
+            query = query.where(Project.tenant_id == tenant_id)
+        rows = (await self.db.execute(query)).scalars().all()
+        found: dict[str, list[Deployment]] = {}
+        for deployment in rows:
+            for ref in (deployment.uid, deployment.name):
+                if ref in refs:
+                    found.setdefault(ref, []).append(deployment)
         return found
+
+    async def tenant_of(self, project_id: UUID) -> UUID | None:
+        return await self.db.scalar(select(Project.tenant_id).where(Project.id == project_id))
 
     async def artifact_slug(self, deployment_id: UUID) -> str:
         """The model id the weights behind one deployment answer to.

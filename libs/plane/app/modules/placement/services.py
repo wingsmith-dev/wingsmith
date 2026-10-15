@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Project
 from app.db.models import Workload
 from app.db.models import PriorityClass
+from app.core.lookup import at_most_one
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 
@@ -46,11 +47,10 @@ the first person to paste it into a lookup would get a 404 and a wasted hour.
 
 
 def _single[T](found: list[T], kind: str, ref: str) -> T:
-    if not found:
+    one = at_most_one(found, kind, ref)
+    if one is None:
         raise NotFound(f"no {kind} {ref!r}")
-    if len(found) > 1:
-        raise Invalid(f"{ref!r} names more than one {kind}; use its id", {"ref": ref, "kind": kind})
-    return found[0]
+    return one
 
 
 class ShapeSource(Protocol):

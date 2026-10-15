@@ -770,12 +770,15 @@ class FakeCreateRepo:
         self.replaced = (endpoint, aliases)
 
     async def project_by_ref(self, ref):
-        return SimpleNamespace(id=uuid.uuid4(), uid="prj_1")
+        return SimpleNamespace(id=uuid.uuid4(), uid="prj_1", tenant_id=uuid.uuid4())
 
-    async def deployments_by_ref(self, refs):
+    async def deployments_by_ref(self, refs, tenant_id):
         if self.deployment is None:
             return {}
-        return {ref: self.deployment for ref in refs}
+        return {ref: [self.deployment] for ref in refs}
+
+    async def tenant_of(self, project_id):
+        return uuid.uuid4()
 
     async def artifact_slug(self, deployment_id):
         return self.artifact_slug_value
@@ -1455,3 +1458,34 @@ async def test_adding_an_alias_moves_the_revision_the_gateway_polls():
         [tunnelled_row(endpoint=FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"]))]
     ).resolved()
     assert before.revision != after.revision
+
+
+class _TwoClusters(FakeCreateRepo):
+    async def deployments_by_ref(self, refs, tenant_id):
+        self.tenant_asked = tenant_id
+        return {
+            ref: [SimpleNamespace(id=uuid.uuid4(), uid="dep_a"), SimpleNamespace(id=uuid.uuid4(), uid="dep_b")]
+            for ref in refs
+        }
+
+
+@pytest.mark.asyncio
+async def test_a_target_name_two_clusters_share_is_refused_rather_than_resolved_to_the_oldest():
+    repo = _TwoClusters()
+    with pytest.raises(Invalid) as raised:
+        await creating(repo).create(EndpointCreateRequest(name="chat", project="acme", targets=[target("serve-a")]))
+    assert raised.value.detail["ambiguous"] == {"serve-a": ["dep_a", "dep_b"]}
+
+
+@pytest.mark.asyncio
+async def test_targets_resolve_inside_the_endpoints_tenant():
+    repo = _TwoClusters()
+    project = await repo.project_by_ref("acme")
+    repo.project_by_ref = lambda ref: _value(project)
+    with pytest.raises(Invalid):
+        await creating(repo).create(EndpointCreateRequest(name="chat", project="acme", targets=[target("serve-a")]))
+    assert repo.tenant_asked == project.tenant_id
+
+
+async def _value(value):
+    return value

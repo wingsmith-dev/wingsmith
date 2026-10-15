@@ -145,11 +145,61 @@ def test_class_filter_is_exposed_as_class_not_device_class():
     assert parameter.default.query == "class"
 
 
-def test_delete_refuses_while_membership_is_non_empty():
+class _Result:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class _Db:
+    def __init__(self, rows):
+        self.rows = rows
+        self.deleted = []
+
+    async def execute(self, query):
+        return _Result(self.rows)
+
+    async def delete(self, row):
+        self.deleted.append(row)
+
+    async def flush(self):
+        return None
+
+    async def commit(self):
+        return None
+
+
+class _Row(tuple):
+    cluster_uid = "clu_a"
+
+
+async def test_delete_refuses_while_membership_is_non_empty():
+    from types import SimpleNamespace
+
+    from app.core.exceptions import Conflict
     from app.modules.pools.services import PoolService
 
-    doc = PoolService.delete.__doc__ or ""
-    assert "Refuses" in doc
+    pool = SimpleNamespace(id="p1")
+    db = _Db([_Row((pool,))])
+    service = PoolService(db)
+
+    async def membership(ids):
+        return {"p1": {"nodes_total": 3}}
+
+    service.repo.membership = membership
+    with pytest.raises(Conflict):
+        await service.delete("h100-a")
+    assert db.deleted == []
+
+
+async def test_a_pool_name_two_clusters_share_is_refused_rather_than_picked():
+    from types import SimpleNamespace
+
+    repo = PoolRepository(_Db([_Row((SimpleNamespace(id="p1"),)), _Row((SimpleNamespace(id="p2"),))]))
+    with pytest.raises(Invalid, match="name a cluster"):
+        await repo.get("h100-a")
 
 
 def test_bad_label_selector_is_rejected_before_it_reaches_sql():

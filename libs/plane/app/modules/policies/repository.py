@@ -12,6 +12,7 @@ from app.db.models import Project
 from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import PolicyAttachment
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -93,7 +94,7 @@ class PolicyRepository:
             return None
         model, name_column, _ = entry
         column = model.uid if is_uid(ref) else getattr(model, name_column)
-        return select(model).where(column == ref).limit(1)
+        return select(model).where(column == ref).limit(2)
 
     def subjects_query(self, subject_type: str, ids: list) -> Select | None:
         entry = SUBJECTS.get(subject_type)
@@ -128,7 +129,7 @@ class PolicyRepository:
         if query is None:
             return None
         result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        return at_most_one(list(result.scalars()), subject_type, ref)
 
     async def subjects(self, subject_type: str, ids: list) -> dict:
         """Public references for a batch of subjects of one type."""
