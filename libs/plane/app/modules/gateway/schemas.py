@@ -20,9 +20,9 @@ class GatewayTenantSchema(Struct):
 
 
 class GatewayTenantTableSchema(Struct):
-    """Every tenant, resolved for the gateway. Unpaginated, like the routing
-    table it sits beside — a caller that holds this in memory needs the whole
-    thing or none of it."""
+    """Every enabled tenant, resolved for the gateway. Unpaginated, like the
+    routing table it sits beside — a caller that holds this in memory needs the
+    whole thing or none of it. A disabled tenant is absent, not flagged."""
 
     revision: str
     tenants: list[GatewayTenantSchema]

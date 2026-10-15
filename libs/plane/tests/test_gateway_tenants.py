@@ -119,3 +119,26 @@ async def test_deleting_a_tenant_moves_the_revision():
 async def test_an_empty_fleet_resolves_a_stable_value():
     table = await resolution([]).resolve_tenants()
     assert (table.revision, table.tenants) == ("0-0", [])
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_tenant_is_left_out_of_the_feed():
+    """The gateway never reads `enabled`, so a disabled tenant in the feed kept serving."""
+    table = await resolution(
+        [
+            FakeTenant(uid="ten_1", host="acme.hangar.dev", api_keys=[FakeKey(key_hash="a")]),
+            FakeTenant(uid="ten_2", enabled=False, host="globex.hangar.dev", api_keys=[FakeKey(key_hash="g")]),
+        ]
+    ).resolve_tenants()
+    assert [row.id for row in table.tenants] == ["ten_1"]
+
+
+@pytest.mark.asyncio
+async def test_disabling_a_tenant_moves_the_revision():
+    before = await resolution([FakeTenant(uid="ten_1"), FakeTenant(uid="ten_2")]).resolve_tenants()
+    stamp = EPOCH + dt.timedelta(hours=1)
+    after = await resolution(
+        [FakeTenant(uid="ten_1"), FakeTenant(uid="ten_2", enabled=False, updated_at=stamp)]
+    ).resolve_tenants()
+    assert after.revision != before.revision
+    assert [row.id for row in after.tenants] == ["ten_1"]

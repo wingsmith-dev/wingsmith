@@ -51,11 +51,16 @@ class GatewayService:
         )
 
     async def resolve_tenants(self) -> GatewayTenantTableSchema:
-        """Host→tenant and hash→key, in one read.
+        """Host→tenant and hash→key, in one read, for enabled tenants only.
 
-        A revoked key's stamp still feeds the table's revision even though its
-        hash is dropped from the payload — see `GatewayTenantSchema` — so the
-        moment of revocation is never missed behind a `304`.
+        A disabled tenant is left out of the payload rather than sent with
+        `enabled: false`, because the gateway's public listener resolves a host
+        and checks a key without reading that flag: left in, a switched-off
+        tenant kept serving. Out, its host is unknown and its keys match nothing.
+
+        Its stamp still feeds the revision, as a revoked key's does — see
+        `GatewayTenantSchema` — so disabling or re-enabling a tenant is never
+        missed behind a `304`.
         """
         tenants = await self.repo.tenants()
         stamps: list[dt.datetime | None] = []
@@ -63,5 +68,6 @@ class GatewayService:
         for tenant in tenants:
             stamps.append(_stamp(tenant))
             stamps.extend(_stamp(key) for key in tenant.api_keys)
-            items.append(self._tenant_schema(tenant))
+            if tenant.enabled:
+                items.append(self._tenant_schema(tenant))
         return GatewayTenantTableSchema(revision=_revision_of(stamps), tenants=items)
