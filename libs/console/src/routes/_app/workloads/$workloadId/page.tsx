@@ -96,7 +96,6 @@ import { toast } from "sonner"
 import { LoadCurvePanel } from "@/components/benchmarks/curve"
 import { useWorkbenchCurve } from "@/modules/benchmarks/queries"
 import { WorkloadRevisions } from "@/components/demand/workload-revisions"
-import { EconomicsTab, EconomicsTabContent } from "./Economics"
 import {
   EditCapabilitiesDialog,
   EditDetailsDialog,
@@ -341,7 +340,6 @@ export function WorkloadDetailPage() {
             <ViewTab value="workbench" icon={IconFlask}>
               Workbench
             </ViewTab>
-            <EconomicsTab />
             <ViewTab value="placement" icon={IconCpu}>
               Placement
             </ViewTab>
@@ -653,8 +651,6 @@ export function WorkloadDetailPage() {
                 />
               )}
             </TabsContent>
-
-            <EconomicsTabContent workload={workload} />
 
             {/* ---- Workbench ---------------------------------------- */}
             <TabsContent value="workbench" className="space-y-4">

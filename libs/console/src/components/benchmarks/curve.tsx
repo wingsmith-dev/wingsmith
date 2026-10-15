@@ -691,11 +691,6 @@ function StepTable({ curve }: { curve: BenchmarkCurve }) {
 
 /* ---- local chrome ----------------------------------------------------- */
 
-/**
- * The page's own panel, copied rather than imported for the reason
- * `Economics.tsx` copies it: `page.tsx` is 2,400 lines held by other work, and
- * this arrives there as one import and one tag.
- */
 function Panel({
   title,
   badge,
