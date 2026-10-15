@@ -24,6 +24,9 @@ _bench_py := "PYTHONPATH=" + _bench + " uv run --no-project --python 3.12"
 _kind_config := "dev/kind-cluster.yaml"
 _kind_name   := "hangar"
 
+# Shared refusals for the cluster and release recipes; see the script's header.
+_guards := "dev/guards.sh"
+
 # Where images and the chart are published. Override with HANGAR_REGISTRY / HANGAR_CHART_OCI to
 # publish somewhere of your own; the chart's image defaults name the first.
 registry  := env_var_or_default("HANGAR_REGISTRY", "ghcr.io/hangar-dev")
@@ -285,23 +288,40 @@ interop *args:
 # deleted within a second by a real cluster. Anything whose correctness depends on what
 # Kubernetes *does* to an object after it is written belongs here.
 #
-# Uses whatever cluster the current kubecontext names. It creates and deletes its own
-# namespaces and briefly patches one node's labels and allocatable, restoring both — so point it
-# at a local cluster (`just cluster-up`), never at one serving traffic.
+# It creates and deletes its own namespaces and briefly patches one node's labels and
+# allocatable, restoring both. So it runs against the current context only when that is a kind
+# cluster (`just cluster-up`); any other context has to be named in HANGAR_E2E_CONTEXT. The Go test
+# is handed a kubeconfig holding that one context, so it cannot wander onto another.
+#
+# The DynamoGraphDeployment CRD is a test stub. It is installed only where the real one is absent,
+# and removed again when the run ends.
 
 # Run the reconciler against a real API server, with a real garbage collector
 e2e *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    context="$(kubectl config current-context 2>/dev/null || true)"
-    if [ -z "$context" ]; then
-      echo "error: no current kubecontext — 'just cluster-up' for a local one" >&2
-      exit 1
+    context="$({{_guards}} e2e-context)"
+    kube=(kubectl --context "$context")
+    stub={{_operator}}/deploy/crd/testing_dynamographdeployments.yaml
+    work="$(mktemp -d)"
+    installed=""
+    cleanup() {
+      if [ -n "$installed" ]; then
+        "${kube[@]}" delete --ignore-not-found --wait=false -f "$stub" >/dev/null || true
+      fi
+      rm -rf "$work"
+    }
+    trap cleanup EXIT
+    "${kube[@]}" config view --minify --flatten >"$work/kubeconfig"
+    echo "running against '${context}': this patches a node and creates namespaces"
+    "${kube[@]}" apply -f {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml
+    if "${kube[@]}" get crd dynamographdeployments.nvidia.com >/dev/null 2>&1; then
+      echo "dynamographdeployments.nvidia.com is already installed; leaving it as it is"
+    else
+      "${kube[@]}" apply -f "$stub"
+      installed=1
     fi
-    echo "running against '${context}' — this patches a node and creates namespaces"
-    kubectl apply -f {{_operator}}/deploy/crd/placeholder.hangar.dev_syncedresources.yaml
-    kubectl apply -f {{_operator}}/deploy/crd/testing_dynamographdeployments.yaml
-    (cd {{_operator}} && go test -tags e2e -count=1 -timeout 600s ./internal/reconcile/ -run E2E {{args}})
+    (cd {{_operator}} && KUBECONFIG="$work/kubeconfig" go test -tags e2e -count=1 -timeout 600s ./internal/reconcile/ -run E2E {{args}})
 
 # ── Gate ──────────────────────────────────────────────────────────────────────
 
