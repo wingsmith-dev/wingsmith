@@ -1,6 +1,7 @@
 import {
   IconChartHistogram,
   IconActivity,
+  IconBell,
   IconBuildingBank,
   IconBolt,
   IconBox,
@@ -44,6 +45,7 @@ export type ResourceKind =
   | "allocation"
   | "event"
   | "discovered"
+  | "alert"
 
 /**
  * One icon per kind of thing, resolved in one place. A node is the same glyph in
@@ -72,4 +74,5 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   allocation: IconLayoutGrid,
   event: IconTimelineEvent,
   discovered: IconRadar2,
+  alert: IconBell,
 }

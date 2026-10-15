@@ -1,4 +1,4 @@
-import { ErrorScreen } from "@/components/layout/error-screen"
+import { ErrorScreen, NotFoundScreen } from "@/components/layout/error-screen"
 import { Toaster } from "@/components/ui/sonner"
 import { useAuthStore } from "@/modules/auth/store"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
@@ -12,7 +12,13 @@ import { TanStackRouterDevtools } from "@tanstack/router-devtools"
 
 function RootErrorComponent({ error }: { error: unknown }) {
   const router = useRouter()
-  return <ErrorScreen error={error} reset={() => router.invalidate()} />
+  return (
+    <ErrorScreen
+      error={error}
+      reset={() => router.invalidate()}
+      className="min-h-svh bg-background"
+    />
+  )
 }
 
 export const Route = createRootRoute({
@@ -22,6 +28,9 @@ export const Route = createRootRoute({
     throw redirect({ to: isAuthenticated ? "/overview" : "/login" })
   },
   errorComponent: RootErrorComponent,
+  notFoundComponent: () => (
+    <NotFoundScreen className="min-h-svh bg-background" />
+  ),
   component: RootComponent,
 })
 

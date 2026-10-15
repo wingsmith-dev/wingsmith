@@ -41,7 +41,7 @@ function LoginPage() {
     setError(null)
     try {
       await signIn(tenant ? password.trim() : password, slug.trim() || "admin")
-      navigate({ to: tenant ? "/serving" : "/clusters" })
+      navigate({ to: tenant ? "/serving" : "/overview" })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sign in failed.")
       setPassword("")

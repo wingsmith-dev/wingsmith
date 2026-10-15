@@ -11,7 +11,13 @@ import {
 
 function AppErrorComponent({ error }: { error: unknown }) {
   const router = useRouter()
-  return <ErrorScreen error={error} reset={() => router.invalidate()} />
+  return (
+    <ErrorScreen
+      error={error}
+      reset={() => router.invalidate()}
+      className="min-h-svh bg-background"
+    />
+  )
 }
 
 /**

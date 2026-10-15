@@ -10,13 +10,13 @@ export interface Operator {
 }
 
 /**
- * The plane issues one session token for one shared admin password
- * (`POST /v1/auth/login`), so there is no per-person identity to show yet. This
- * stands in for one in the chrome rather than pretending the token names a user.
+ * Human access is a single operator: the plane issues one admin session for one
+ * admin password (`POST /v1/auth/login`), so there is no per-person identity to
+ * show. This names the role in the chrome rather than inventing a user.
  */
 const ADMIN_OPERATOR: Operator = {
   id: "op_admin",
-  email: "admin@hangar.local",
+  email: "",
   name: "Admin",
 }
 

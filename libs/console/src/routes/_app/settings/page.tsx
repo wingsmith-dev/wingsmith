@@ -987,6 +987,7 @@ function PlanePanel() {
 /** Who the plane thinks you are, and the way out. */
 function AccessSection() {
   const operator = useAuthStore((s) => s.operator)
+  const kind = useAuthStore((s) => s.kind)
   const signOut = useSignOut()
 
   return (
@@ -998,8 +999,14 @@ function AccessSection() {
       <div className="space-y-4">
         <FieldGrid>
           <Field label="Name">{operator?.name ?? "—"}</Field>
-          <Field label="Email">{operator?.email ?? "—"}</Field>
+          <Field label="Access">{kind === "tenant" ? "Tenant" : "Admin"}</Field>
         </FieldGrid>
+        {kind === "admin" && (
+          <p className="text-2xs text-muted-foreground">
+            The console has one admin login, set on the plane. Everyone who
+            signs in as admin shares it and has full access.
+          </p>
+        )}
         <button
           onClick={signOut}
           className="text-xs text-destructive hover:underline"

@@ -54,6 +54,7 @@ const overviewItems: NavItem[] = [
 const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
   { label: "Workloads", to: "/workloads", kind: "workload" },
+  { label: "Deployments", to: "/deployments", kind: "deployment" },
   { label: "Artifacts", to: "/artifacts", kind: "artifact" },
 ]
 
@@ -61,6 +62,7 @@ const fleetItems: NavItem[] = [
   { label: "Clusters", to: "/clusters", kind: "cluster" },
   { label: "Nodes", to: "/nodes", kind: "node" },
   { label: "Devices", to: "/devices", kind: "device" },
+  { label: "Pools", to: "/pools", kind: "pool" },
   { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]
 
@@ -79,10 +81,12 @@ const accessItems: NavItem[] = [
 /**
  * What the plane was asked to do and what came back. Workbench sits with
  * Operations and Events rather than beside the serving objects: a run is
- * imperative and has a lifecycle of its own, which is the thing these three
- * have in common and the thing an object list does not.
+ * imperative and has a lifecycle of its own, which is the thing these have in
+ * common and the thing an object list does not. Alerts lead, because a firing
+ * one is the reason to open this group at all.
  */
 const activityItems: NavItem[] = [
+  { label: "Alerts", to: "/alerts", kind: "alert" },
   { label: "Workbench", to: "/workbench", kind: "benchmark" },
   { label: "Operations", to: "/operations", kind: "operation" },
   { label: "Events", to: "/events", kind: "event" },
@@ -184,11 +188,16 @@ export function ConsoleSidebar({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={operator?.email ?? "Sign out"}
+              tooltip={operator ? `Sign out ${operator.name}` : "Sign out"}
               onClick={signOut}
             >
               <IconLogout />
-              <span className="truncate">{operator?.email ?? "Sign out"}</span>
+              <span className="truncate">Sign out</span>
+              {operator && (
+                <span className="ml-auto truncate text-2xs text-muted-foreground">
+                  {operator.name}
+                </span>
+              )}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
