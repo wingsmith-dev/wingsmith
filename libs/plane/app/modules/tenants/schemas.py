@@ -61,11 +61,15 @@ class TenantSchema(Struct):
 
 
 class TenantCreateRequest(Struct):
+    """A new tenant. `auth` defaults to `api_key`: a tenant that wants no key
+    check says so, and if it is reachable on the public listener the plane
+    must also allow that (`TENANT_ALLOW_PUBLIC_NO_AUTH`)."""
+
     slug: Slug
     name: Name
     enabled: bool = True
     ingress: Ingress = "internal"
-    auth: Auth = "none"
+    auth: Auth = "api_key"
     host: Host | None = None
 
 

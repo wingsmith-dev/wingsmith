@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthManager
+from app.config import settings
 from app.core.ids import TENANT
 from app.core.ids import TENANT_TOKEN
 from app.core.ids import TENANT_API_KEY
@@ -44,13 +45,26 @@ RESERVED_SLUGS = frozenset({"admin"})
 holding it could never sign in as itself."""
 
 
-def _check_ingress_auth(ingress: str, auth: str) -> None:
-    """Field-level shape only. Whether `public` + `none` makes sense is the
-    tenant's call, not this service's."""
+def _check_ingress_auth(ingress: str, auth: str, host: str | None) -> None:
+    """Refuses a tenant the public listener would serve with no key check.
+
+    The gateway's public listener finds a tenant by its `host`, whatever
+    `ingress` says, and checks a key only when `auth` is `api_key`. So a tenant
+    with a host, or one declared `public`, and `auth: none` is inference for
+    anyone who finds the name. That is refused unless the plane's operator has
+    opted in with `TENANT_ALLOW_PUBLIC_NO_AUTH`. `none` on an internal tenant
+    with no host is fine: there the listener itself is the proof (ADR 0016).
+    """
     if ingress not in INGRESS_VALUES:
         raise Invalid(f"ingress must be one of {INGRESS_VALUES}, got {ingress!r}")
     if auth not in AUTH_VALUES:
         raise Invalid(f"auth must be one of {AUTH_VALUES}, got {auth!r}")
+    public = ingress == "public" or bool(host)
+    if public and auth == "none" and not settings.TENANT_ALLOW_PUBLIC_NO_AUTH:
+        raise Invalid(
+            "a tenant reachable on the public listener needs auth 'api_key'",
+            {"ingress": ingress, "host": host, "setting": "HANGAR_TENANT_ALLOW_PUBLIC_NO_AUTH"},
+        )
 
 
 class TenantService:
@@ -110,7 +124,7 @@ class TenantService:
             raise Invalid("name is required")
         if data.slug in RESERVED_SLUGS:
             raise Invalid(f"{data.slug!r} is a reserved slug", {"reserved": sorted(RESERVED_SLUGS)})
-        _check_ingress_auth(data.ingress, data.auth)
+        _check_ingress_auth(data.ingress, data.auth, data.host)
         tenant = Tenant(
             uid=new_uid(TENANT),
             slug=data.slug,
@@ -135,7 +149,12 @@ class TenantService:
             raise Conflict("tenant changed since it was read", {"revision": _revision(tenant)})
 
         fields = data.to_dict(exclude_unset=True)
-        _check_ingress_auth(fields.get("ingress", tenant.ingress), fields.get("auth", tenant.auth))
+        trust = {key: fields.get(key, getattr(tenant, key)) for key in ("ingress", "auth", "host")}
+        # Checked only when the patch changes how the tenant is trusted, so a tenant
+        # left public with no key from before this rule can still be renamed or
+        # switched off, and only fixing it is in the way of anything else.
+        if any(trust[key] != getattr(tenant, key) for key in trust):
+            _check_ingress_auth(trust["ingress"], trust["auth"], trust["host"])
         for field, value in fields.items():
             setattr(tenant, field, value)
 

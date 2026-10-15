@@ -6,6 +6,8 @@ type: nothing in the API could make the first one. The collection is the fix, an
 these hold its shape to what the model already says a tenant is.
 """
 
+import datetime as dt
+
 import pytest
 import msgspec
 
@@ -13,6 +15,7 @@ from litestar.di import Provide
 from litestar.testing import create_test_client
 
 from app.auth import AuthManager
+from app.config import settings
 from app.core.ids import TENANT
 from app.core.ids import new_uid
 from app.core.context import RequestContext
@@ -23,6 +26,7 @@ from app.modules.tenants.schemas import TenantSchema
 from app.modules.tenants.schemas import TenantCreateRequest
 from app.modules.tenants.schemas import TenantUpdateRequest
 from app.modules.tenants.services import TenantService
+from app.modules.tenants.services import _check_ingress_auth
 from app.modules.tenants.repository import TenantRepository
 from app.modules.tenants.repository import tenant_ids
 
@@ -141,3 +145,87 @@ def test_a_malformed_slug_is_a_400_over_http():
     ) as http:
         response = http.post("/tenants", json={"slug": "Acme Corp", "name": "Acme"})
     assert response.status_code == 400
+
+
+# --- who the public listener may serve without a key -----------------------------
+
+
+def test_a_new_tenant_is_key_checked_unless_it_says_otherwise():
+    assert TenantCreateRequest(slug="acme", name="Acme").auth == "api_key"
+    assert decode({"slug": "acme", "name": "Acme"}).auth == "api_key"
+
+
+@pytest.mark.parametrize(
+    ("ingress", "host"),
+    [("public", None), ("internal", "acme.hangar.example.com"), ("public", "acme.hangar.example.com")],
+)
+async def test_a_public_tenant_with_no_key_check_is_refused(ingress, host, monkeypatch):
+    """The public listener resolves a tenant by host and skips the key check for `none`."""
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    with pytest.raises(Invalid) as refused:
+        await TenantService(db=None).create(
+            TenantCreateRequest(slug="acme", name="Acme", ingress=ingress, auth="none", host=host)
+        )
+    assert refused.value.detail["setting"] == "HANGAR_TENANT_ALLOW_PUBLIC_NO_AUTH"
+
+
+def test_a_public_tenant_with_no_key_check_is_allowed_only_by_opting_in(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", True)
+    _check_ingress_auth("public", "none", "acme.hangar.example.com")
+
+
+def test_an_internal_tenant_with_no_host_needs_no_key(monkeypatch):
+    """There the listener is the proof (ADR 0016)."""
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    _check_ingress_auth("internal", "none", None)
+    _check_ingress_auth("public", "api_key", "acme.hangar.example.com")
+
+
+class FakeTenantRow:
+    def __init__(self, tenant) -> None:
+        self.tenant = tenant
+        self.project_count = 0
+
+    def __getitem__(self, index):
+        return self.tenant
+
+
+class FakeTenant:
+    def __init__(self, **fields) -> None:
+        self.ingress = "internal"
+        self.auth = "none"
+        self.host = None
+        self.name = "Acme"
+        self.enabled = True
+        self.created_at = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+        self.updated_at = None
+        self.__dict__.update(fields)
+
+
+class Unreachable:
+    async def flush(self):
+        raise AssertionError("refused before writing")
+
+
+def update_service(tenant) -> TenantService:
+    svc = TenantService(db=Unreachable())
+
+    async def get(ref):
+        return FakeTenantRow(tenant)
+
+    svc.repo.get = get
+    return svc
+
+
+async def test_giving_a_keyless_tenant_a_host_is_refused(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    svc = update_service(FakeTenant())
+    with pytest.raises(Invalid):
+        await svc.update("acme", TenantUpdateRequest(host="acme.hangar.example.com"))
+
+
+async def test_dropping_the_key_check_on_a_public_tenant_is_refused(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
+    svc = update_service(FakeTenant(ingress="public", auth="api_key", host="acme.hangar.example.com"))
+    with pytest.raises(Invalid):
+        await svc.update("acme", TenantUpdateRequest(auth="none"))

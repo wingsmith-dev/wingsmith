@@ -310,6 +310,14 @@ class Settings:
     secret is rendered as a blank for a read-only token issued to that cluster
     alone, which is the recommended setup when the images are private."""
 
+    TENANT_ALLOW_PUBLIC_NO_AUTH: bool = False
+    """Allow a tenant on the gateway's public listener (a host set, or ingress
+    `public`) to declare `auth: none`.
+
+    Off by default, because such a tenant is unauthenticated inference for anyone
+    who finds its host. Turn it on only for a deployment whose public listener is
+    itself behind something that authenticates callers."""
+
     TUNNEL_GATEWAY: str = ""
     """The gateway address a cluster's agent dials, `host:port`, written into the
     setup values.
