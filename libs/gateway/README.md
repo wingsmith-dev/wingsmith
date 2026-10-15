@@ -127,8 +127,10 @@ in flight (default 1024), and, when `HANGAR_GATEWAY_TENANT_RPS` is set, a token-
 A tenant over either gets `429 rate_limited` with `Retry-After`, counted as the `rate_limited`
 outcome rather than as a failure of this hop. On the public listener the tenant is the host's and
 the check runs before the body is read; on the internal listener it is the endpoint's owner, which
-is known only once the body names a model. The limits are per replica, so the fleet-wide figure is
-the per-replica value times the replica count.
+is known only once the body names a model, so there the buffer budget
+(`HANGAR_GATEWAY_MAX_BUFFERED_BYTES`) is what bounds bodies before the tenant check. The limits are
+per tenant, not per key: every key belongs to one tenant, and a tenant's keys share its allowance.
+They are per replica, so the fleet-wide figure is the per-replica value times the replica count.
 
 On the internal listener an operator's edge is usually one tenant carrying every customer, so size
 the in-flight cap to the edge's own concurrency, or set it to `0` there.
