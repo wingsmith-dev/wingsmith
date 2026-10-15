@@ -28,10 +28,11 @@ class DiscoveredWorkloadRoutes(Controller):
     anything to a cluster.
 
     `promote` is the one that does, and it is the only write in this controller
-    that produces declared state. It returns a deployment rather than a workload
-    because that is what it made: from here the object is managed through
-    `/v1/deployments` like any other, with the difference that the cluster will
-    refuse to reconcile it if what is running stops matching what we adopted.
+    that produces declared state. It creates a workload pinned to the sighting's
+    cluster plus its one deployment there, and returns the workload. From then on
+    both are managed through `/v1/workloads` and `/v1/deployments` like any other,
+    except that the cluster refuses to reconcile the deployment if what is running
+    stops matching what was adopted.
     """
 
     tags = ["Discovered"]
