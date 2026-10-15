@@ -295,11 +295,11 @@ func (s setTarget) URLFor(deploymentID string) (*url.URL, error) {
 // header naming one is noise on its side of the hop.
 func TestTheHeaderPicksTheFrontendAndNeverReachesIt(t *testing.T) {
 	shared, sharedSeen := namedFrontend(t, "shared")
-	kimi, kimiSeen := namedFrontend(t, "kimi")
+	chat, chatSeen := namedFrontend(t, "chat")
 
 	handler := NewHandler(setTarget{
 		shared:       targetFor(t, shared).url,
-		byDeployment: map[string]*url.URL{"dep_01j9x2": targetFor(t, kimi).url},
+		byDeployment: map[string]*url.URL{"dep_01j9x2": targetFor(t, chat).url},
 	}, 0)
 
 	for _, tc := range []struct {
@@ -311,8 +311,8 @@ func TestTheHeaderPicksTheFrontendAndNeverReachesIt(t *testing.T) {
 		{
 			name:       "the deployment's own frontend",
 			deployment: "dep_01j9x2",
-			want:       "kimi",
-			seen:       kimiSeen,
+			want:       "chat",
+			seen:       chatSeen,
 		},
 		{
 			name:       "a deployment this cluster renders no frontend for falls back",

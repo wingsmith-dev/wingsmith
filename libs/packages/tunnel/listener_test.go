@@ -166,12 +166,12 @@ func TestAnAcceptedDialIsToldWhichReplicaAndHowMany(t *testing.T) {
 func TestAnAgentClaimingTheClusterNameIsAcceptedAndKeyedOnTheUid(t *testing.T) {
 	verifier := &stubVerifier{
 		clusters: map[string]string{"tok-ap": "clu_ap"},
-		names:    map[string]string{"tok-ap": "cluster-a"},
+		names:    map[string]string{"tok-ap": "cluster-alpha"},
 	}
 	pool, _, addr := startListener(t, ListenerConfig{Verifier: verifier})
 
 	accept, err := dialConnector(t, addr,
-		Hello{Token: "tok-ap", ClusterID: "cluster-a"}, echoHandler("pong"))
+		Hello{Token: "tok-ap", ClusterID: "cluster-alpha"}, echoHandler("pong"))
 	if err != nil {
 		t.Fatalf("an agent claiming the cluster's name was refused: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestAnAgentClaimingTheClusterNameIsAcceptedAndKeyedOnTheUid(t *testing.T) {
 		t.Fatalf("ClusterID = %q, want the uid", accept.ClusterID)
 	}
 	eventually(t, 5*time.Second, "the tunnel keyed on the uid", func() bool { return pool.Live("clu_ap") == 1 })
-	if got := pool.Live("cluster-a"); got != 0 {
+	if got := pool.Live("cluster-alpha"); got != 0 {
 		t.Fatalf("the pool holds %d tunnels under the name; it must key on the uid alone", got)
 	}
 }

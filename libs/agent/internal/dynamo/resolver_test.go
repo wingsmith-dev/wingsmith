@@ -259,7 +259,7 @@ func deploymentFrontend(name, deploymentID string, ports ...corev1.ServicePort) 
 func TestEachDeploymentsFrontendIsFoundByItsLabel(t *testing.T) {
 	resolver, err := New(Config{Namespace: testNamespace, Services: services(t,
 		frontendService("inference-frontend"),
-		deploymentFrontend("kimi-k3-site-c-frontend", "dep_01j9x2"),
+		deploymentFrontend("chat-model-frontend", "dep_01j9x2"),
 		deploymentFrontend("qwen3-32b-frontend", "dep_01k4b7"),
 	)})
 	if err != nil {
@@ -270,7 +270,7 @@ func TestEachDeploymentsFrontendIsFoundByItsLabel(t *testing.T) {
 	}
 
 	for deployment, want := range map[string]string{
-		"dep_01j9x2": "http://kimi-k3-site-c-frontend.hangar-serving.svc.cluster.local:8000",
+		"dep_01j9x2": "http://chat-model-frontend.hangar-serving.svc.cluster.local:8000",
 		"dep_01k4b7": "http://qwen3-32b-frontend.hangar-serving.svc.cluster.local:8000",
 		// A deployment this cluster renders no frontend for, and a request that
 		// names none at all, both land on the shared frontend. That fallback is
@@ -377,7 +377,7 @@ func TestOneSharedFrontendAnswersEveryDeployment(t *testing.T) {
 // the wrong one.
 func TestADeploymentWithNoFrontendAndNoFallbackIsItsOwnRefusal(t *testing.T) {
 	resolver, err := New(Config{Namespace: testNamespace, Services: services(t,
-		deploymentFrontend("kimi-k3-site-c-frontend", "dep_01j9x2"),
+		deploymentFrontend("chat-model-frontend", "dep_01j9x2"),
 	)})
 	if err != nil {
 		t.Fatalf("new: %v", err)
@@ -519,7 +519,7 @@ func TestAFailedLookupKeepsThePerDeploymentFrontendsToo(t *testing.T) {
 	ctx := context.Background()
 	client := fake.NewClientset(
 		frontendService("inference-frontend"),
-		deploymentFrontend("kimi-k3-site-c-frontend", "dep_01j9x2"),
+		deploymentFrontend("chat-model-frontend", "dep_01j9x2"),
 	)
 	resolver, err := New(Config{Namespace: testNamespace, Services: client.CoreV1().Services(testNamespace)})
 	if err != nil {
@@ -540,7 +540,7 @@ func TestAFailedLookupKeepsThePerDeploymentFrontendsToo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URLFor after a failed refresh: %v", err)
 	}
-	if kept.Host != "kimi-k3-site-c-frontend.hangar-serving.svc.cluster.local:8000" {
+	if kept.Host != "chat-model-frontend.hangar-serving.svc.cluster.local:8000" {
 		t.Fatalf("host = %q, want the deployment's own frontend", kept.Host)
 	}
 }

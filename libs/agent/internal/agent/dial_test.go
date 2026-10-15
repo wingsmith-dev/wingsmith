@@ -67,10 +67,10 @@ func TestDialRejectedTokenIsRejected(t *testing.T) {
 // to recognise it. Every other test here let the fake gateway echo the claim, which is the one
 // answer a real gateway never gives.
 func TestDialAcceptsTheUidWhenItClaimedTheName(t *testing.T) {
-	tr := startGateway(t, &gateway{clusterID: "clu_ap", clusterName: "cluster-a"})
+	tr := startGateway(t, &gateway{clusterID: "clu_ap", clusterName: "cluster-alpha"})
 
 	cfg := dialConfig(tr.addr)
-	cfg.ClusterID = "cluster-a"
+	cfg.ClusterID = "cluster-alpha"
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
@@ -79,7 +79,7 @@ func TestDialAcceptsTheUidWhenItClaimedTheName(t *testing.T) {
 		t.Fatalf("a dial claiming the cluster's name was refused: %v", err)
 	}
 	_ = conn.Close()
-	if got := tr.lastHello(t).ClusterID; got != "cluster-a" {
+	if got := tr.lastHello(t).ClusterID; got != "cluster-alpha" {
 		t.Fatalf("claimed %q, want the name the chart configures", got)
 	}
 }
