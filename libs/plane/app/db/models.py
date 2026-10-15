@@ -1322,7 +1322,7 @@ class EndpointAlias(BaseMixin):
     endpoint_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    alias: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    alias: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
     endpoint: Mapped[Endpoint] = relationship("Endpoint", back_populates="aliases", lazy="noload")
 
@@ -1451,7 +1451,7 @@ class TenantToken(BaseMixin):
     tenant_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     """sha256 of the plaintext, which is shown once at mint and is not recoverable."""
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1483,7 +1483,7 @@ class TenantAPIKey(BaseMixin):
     tenant_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     """sha256 of the plaintext, which is shown once at mint and is not recoverable."""
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1578,7 +1578,6 @@ class ServingQuota(BaseMixin):
         ForeignKey("demand_endpoint.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
-        index=True,
     )
     committed_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     committed_tpm: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
