@@ -29,10 +29,17 @@ class ClusterRepository:
     def _base(self) -> Select:
         return select(Cluster).options(selectinload(Cluster.sync_state), selectinload(Cluster.serving))
 
-    async def get(self, ref: str) -> Cluster | None:
-        """Resolves either an id or a name. Prefixes are the client's problem."""
+    async def get(self, ref: str, lock: bool = False) -> Cluster | None:
+        """Resolves either an id or a name. Prefixes are the client's problem.
+
+        `lock` holds the cluster row until the transaction ends, so an If-Match check
+        and the write it guards see the same revision.
+        """
         column = Cluster.uid if is_uid(ref) else Cluster.name
-        result = await self.db.execute(self._base().where(column == ref))
+        query = self._base().where(column == ref)
+        if lock:
+            query = query.with_for_update(of=Cluster).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def by_token_hash(self, token_hash: str) -> Cluster | None:

@@ -50,8 +50,12 @@ class TenantRepository:
             query = query.where(Tenant.name.ilike(f"%{search}%"))
         return query
 
-    async def get(self, ref: str) -> Row | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Row | None:
+        """`lock` holds the tenant row until the transaction ends, so an If-Match check and the write it guards agree."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update(of=Tenant).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def list(self, **kwargs) -> list[Row]:

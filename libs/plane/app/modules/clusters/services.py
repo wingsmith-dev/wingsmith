@@ -811,7 +811,7 @@ class ClusterService:
         return await self.get(cluster.uid)
 
     async def update(self, ref: str, data: ClusterUpdateRequest, if_match: str | None = None) -> ClusterSchema:
-        cluster = await self.repo.get(ref)
+        cluster = await self.repo.get(ref, lock=True)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
         if if_match is not None and if_match != _revision(cluster):

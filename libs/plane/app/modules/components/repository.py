@@ -8,6 +8,7 @@ from app.core.ids import is_uid
 from app.db.models import Cluster
 from app.db.models import Component
 from app.db.models import ComponentStatus
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -77,9 +78,17 @@ class ComponentRepository:
             ComponentStatus.observed_version != Component.desired_version,
         )
 
-    async def get(self, ref: str, cluster: str | None = None) -> Row | None:
-        result = await self.db.execute(self.get_query(ref, cluster).limit(1))
-        return result.first()
+    async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
+        """The one component `ref` names; a name two clusters share is refused unless `cluster` narrows it.
+
+        `lock` holds the component row until the transaction ends, so an If-Match check
+        and the write it guards see the same revision.
+        """
+        query = self.get_query(ref, cluster).limit(2)
+        if lock:
+            query = query.with_for_update(of=Component).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
+        return at_most_one(list(result.all()), "component", ref, "use its id or name a cluster")
 
     async def list(self, **kwargs) -> list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))

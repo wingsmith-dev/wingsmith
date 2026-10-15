@@ -490,8 +490,8 @@ class ArtifactService:
             upstream=_upstream(artifact),
         )
 
-    async def _one(self, ref: str) -> tuple[Artifact, str | None, str | None]:
-        row = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> tuple[Artifact, str | None, str | None]:
+        row = await self.repo.get(ref, lock=lock)
         if row is None:
             raise NotFound(f"no artifact {ref!r}")
         return row[0], row.base_uid, row.project_uid
@@ -706,7 +706,7 @@ class ArtifactService:
         deletes, so keeping a location while changing its region would collide with
         the row it is about to replace.
         """
-        artifact, _, _ = await self._one(ref)
+        artifact, _, _ = await self._one(ref, lock=True)
         if if_match is not None and if_match != _revision(artifact):
             raise Conflict("artifact changed since it was read", {"revision": _revision(artifact)})
 
@@ -815,8 +815,8 @@ class ArtifactBaselineService:
             raise NotFound(f"no artifact {ref!r}")
         return row[0]
 
-    async def _one(self, artifact: Artifact, baseline: str) -> ArtifactBaseline:
-        row = await self.repo.baseline(artifact.id, baseline)
+    async def _one(self, artifact: Artifact, baseline: str, lock: bool = False) -> ArtifactBaseline:
+        row = await self.repo.baseline(artifact.id, baseline, lock=lock)
         if row is None:
             raise NotFound(f"no baseline {baseline!r} on artifact {artifact.uid!r}")
         return row
@@ -896,7 +896,7 @@ class ArtifactBaselineService:
         declared this floor, and an edit does not transfer the assertion.
         """
         artifact = await self._artifact(ref)
-        row = await self._one(artifact, baseline)
+        row = await self._one(artifact, baseline, lock=True)
         if if_match is not None and if_match != _revision(row):
             raise Conflict("baseline changed since it was read", {"revision": _revision(row)})
 

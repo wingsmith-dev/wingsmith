@@ -81,8 +81,12 @@ class ArtifactRepository:
             query = query.where(Artifact.metadata_[key].astext == value)
         return query
 
-    async def get(self, ref: str) -> Row | None:
-        result = await self.db.execute(self.get_query(ref).limit(1))
+    async def get(self, ref: str, lock: bool = False) -> Row | None:
+        """`lock` holds the artifact row until the transaction ends, so an If-Match check and the write it guards agree."""
+        query = self.get_query(ref).limit(1)
+        if lock:
+            query = query.with_for_update(of=Artifact).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.first()
 
     async def list(self, **kwargs) -> list[Row]:
@@ -170,8 +174,11 @@ class ArtifactRepository:
         result = await self.db.execute(self.baseline_list_query(**kwargs))
         return list(result.scalars().all())
 
-    async def baseline(self, artifact_id: UUID, ref: str) -> ArtifactBaseline | None:
-        result = await self.db.execute(self.baseline_query(artifact_id, ref).limit(1))
+    async def baseline(self, artifact_id: UUID, ref: str, lock: bool = False) -> ArtifactBaseline | None:
+        query = self.baseline_query(artifact_id, ref).limit(1)
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     def fleet_classes_query(self) -> Select:

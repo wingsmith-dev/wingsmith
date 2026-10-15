@@ -104,8 +104,8 @@ class TenantService:
     def _row(self, row: Row) -> TenantSchema:
         return self.schema(row[0], row.project_count)
 
-    async def _one(self, ref: str) -> Row:
-        row = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> Row:
+        row = await self.repo.get(ref, lock=lock)
         if row is None:
             raise NotFound(f"no tenant {ref!r}")
         return row
@@ -157,7 +157,7 @@ class TenantService:
         return await self.get(tenant.uid)
 
     async def update(self, ref: str, data: TenantUpdateRequest, if_match: str | None = None) -> TenantSchema:
-        row = await self._one(ref)
+        row = await self._one(ref, lock=True)
         tenant: Tenant = row[0]
         if if_match is not None and if_match != _revision(tenant):
             raise Conflict("tenant changed since it was read", {"revision": _revision(tenant)})

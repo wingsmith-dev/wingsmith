@@ -98,8 +98,8 @@ class ComponentService:
     def _row_schema(self, row: Row) -> ComponentSchema:
         return self.schema(row[0], row.cluster_uid, row[1])
 
-    async def _one(self, ref: str, cluster: str | None = None) -> Row:
-        row = await self.repo.get(ref, cluster)
+    async def _one(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row:
+        row = await self.repo.get(ref, cluster, lock=lock)
         if row is None:
             raise NotFound(f"no component {ref!r}")
         return row
@@ -169,7 +169,7 @@ class ComponentService:
         cluster says otherwise. That gap is the rollout, and it is meant to be
         visible.
         """
-        row = await self._one(ref, cluster)
+        row = await self._one(ref, cluster, lock=True)
         component = row[0]
         if if_match is not None and if_match != _revision(component):
             raise Conflict("component changed since it was read", {"revision": _revision(component)})

@@ -359,7 +359,7 @@ class FakeRepo:
         self.added = artifact
         return artifact
 
-    async def get(self, ref: str):
+    async def get(self, ref: str, lock: bool = False):
         return FakeRow(self.added)
 
 
@@ -600,7 +600,7 @@ class RefreshRepo:
         """What the fleet actually holds. `None` is a plane with no cluster enrolled yet."""
         return self.largest_device_mib
 
-    async def get(self, ref: str):
+    async def get(self, ref: str, lock: bool = False):
         return FakeRow(self.artifact)
 
     async def artifact_by_digest(self, digest: str):
@@ -854,7 +854,7 @@ class FakeBaselineRepo:
         self.rows: list[ArtifactBaseline] = []
         self.next_seq = 1000
 
-    async def get(self, ref: str):
+    async def get(self, ref: str, lock: bool = False):
         if ref in {self.artifact.uid, self.artifact.name}:
             return FakeRow(self.artifact)
         return None
@@ -871,7 +871,7 @@ class FakeBaselineRepo:
         self.rows.append(baseline)
         return baseline
 
-    async def baseline(self, artifact_id, ref: str):
+    async def baseline(self, artifact_id, ref: str, lock: bool = False):
         for row in self.rows:
             if row.artifact_id == artifact_id and row.uid == ref:
                 return row
@@ -1081,7 +1081,7 @@ class FitmentRepo:
         self.fleet = fleet if fleet is not None else [FleetRow("h100-80gb-sxm", 81559, 16, 16, 2)]
         self.domains = domains or {}
 
-    async def get(self, ref: str):
+    async def get(self, ref: str, lock: bool = False):
         return FakeRow(self.artifact)
 
     async def fleet_classes(self):

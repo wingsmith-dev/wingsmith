@@ -51,8 +51,12 @@ class PriorityClassRepository:
     def workload_count_query(self, priority_class_id: UUID) -> Select:
         return select(func.count(Workload.id)).where(Workload.priority_class_id == priority_class_id)
 
-    async def get(self, ref: str) -> PriorityClass | None:
-        result = await self.db.execute(self.get_query(ref))
+    async def get(self, ref: str, lock: bool = False) -> PriorityClass | None:
+        """`lock` holds the row until the transaction ends, so an If-Match check and the write it guards agree."""
+        query = self.get_query(ref)
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def list(self, **kwargs) -> list[PriorityClass]:

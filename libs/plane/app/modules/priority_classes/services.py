@@ -52,8 +52,8 @@ class PriorityClassService:
             revision=_revision(priority_class),
         )
 
-    async def _one(self, ref: str) -> PriorityClass:
-        found = await self.repo.get(ref)
+    async def _one(self, ref: str, lock: bool = False) -> PriorityClass:
+        found = await self.repo.get(ref, lock=lock)
         if found is None:
             raise NotFound(f"no priority class {ref!r}")
         return found
@@ -115,7 +115,7 @@ class PriorityClassService:
     async def update(
         self, ref: str, data: PriorityClassUpdateRequest, if_match: str | None = None
     ) -> PriorityClassSchema:
-        priority_class = await self._one(ref)
+        priority_class = await self._one(ref, lock=True)
         if if_match is not None and if_match != _revision(priority_class):
             raise Conflict("priority class changed since it was read", {"revision": _revision(priority_class)})
 

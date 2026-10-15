@@ -699,7 +699,7 @@ class BaselineRepo:
         self.artifact = artifact
         self.rows = []
 
-    async def get(self, ref: str):
+    async def get(self, ref: str, lock: bool = False):
         return ArtifactRow(self.artifact) if ref == self.artifact.uid else None
 
     async def add_baseline(self, baseline):
@@ -710,7 +710,7 @@ class BaselineRepo:
         self.rows.append(baseline)
         return baseline
 
-    async def baseline(self, artifact_id, ref: str):
+    async def baseline(self, artifact_id, ref: str, lock: bool = False):
         return next((row for row in self.rows if row.uid == ref), None)
 
 
