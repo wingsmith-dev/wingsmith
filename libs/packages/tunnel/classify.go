@@ -176,7 +176,7 @@ func Classify(err error) Fault {
 		return FaultSaturated
 	}
 
-	if errors.Is(err, context.Canceled) || isRequestCanceled(err) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, ErrBodyIdle) || isRequestCanceled(err) {
 		return FaultCanceled
 	}
 	if errors.Is(err, context.DeadlineExceeded) || isNetTimeout(err) {

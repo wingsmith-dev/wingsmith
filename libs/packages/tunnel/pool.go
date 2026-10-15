@@ -43,6 +43,22 @@ var ErrNoCluster = errors.New("tunnel: request carries no cluster")
 // caller's own cap means it should never be reachable from the gateway.
 var ErrBodyTooLarge = errors.New("tunnel: request body too large to keep replayable")
 
+// ErrBodyIdle means a response body went unread for longer than the pool's
+// BodyIdleTimeout and was closed to give its flow-control window back to the
+// tunnel. The caller had stopped reading, so this is the caller's ending, not
+// the cluster's.
+var ErrBodyIdle = errors.New("tunnel: response body unread past the idle timeout")
+
+// DefaultBodyIdleTimeout is how long a response body may sit unread before the
+// pool closes it.
+//
+// Unread response bytes hold the connection's flow-control window, and the
+// window is shared by every stream on the tunnel: a caller that stops reading,
+// and a gateway write to it that blocks, would otherwise freeze generation for
+// every other request to the cluster on that tunnel. A Read waiting for the
+// cluster's next token does not count as idle — only time between Reads does.
+const DefaultBodyIdleTimeout = 2 * time.Minute
+
 // ErrPoolClosed means the pool has been shut down or closed and adopts nothing
 // more.
 var ErrPoolClosed = errors.New("tunnel: pool closed")
@@ -121,6 +137,9 @@ type PoolConfig struct {
 	// MaxTunnels caps the tunnels this replica holds across every cluster. Zero
 	// means DefaultMaxTunnels.
 	MaxTunnels int
+	// BodyIdleTimeout closes a response body nobody has read from for this long.
+	// Zero means DefaultBodyIdleTimeout; negative turns it off.
+	BodyIdleTimeout time.Duration
 }
 
 // DefaultResponseHeaderTimeout is how long a cluster gets to produce a response
@@ -217,6 +236,9 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 	}
 	if cfg.MaxTunnels <= 0 {
 		cfg.MaxTunnels = DefaultMaxTunnels
+	}
+	if cfg.BodyIdleTimeout == 0 {
+		cfg.BodyIdleTimeout = DefaultBodyIdleTimeout
 	}
 
 	// MaxConcurrentStreams is deliberately absent. It is a server setting: x/net's
@@ -518,6 +540,7 @@ func (t *clusterTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	for attempt := 1; ; attempt++ {
 		resp, err := t.pool.t2.RoundTrip(clone)
 		if err == nil {
+			watchIdle(resp, t.pool.cfg.BodyIdleTimeout)
 			return resp, nil
 		}
 		if first == nil {
@@ -848,4 +871,76 @@ func (p *Pool) Close() error {
 		_ = conn.Close()
 	}
 	return nil
+}
+
+// watchIdle closes a response body that goes unread for longer than timeout.
+//
+// A 101 is left alone: its body is the upgraded connection, and a proxy reaches
+// for its Write method.
+func watchIdle(resp *http.Response, timeout time.Duration) {
+	if timeout <= 0 || resp.Body == nil || resp.Body == http.NoBody || resp.StatusCode == http.StatusSwitchingProtocols {
+		return
+	}
+	body := &idleBody{body: resp.Body, timeout: timeout}
+	body.timer = time.AfterFunc(timeout, body.expire)
+	resp.Body = body
+}
+
+// idleBody is a response body with an idle timer that runs only between Reads.
+type idleBody struct {
+	body    io.ReadCloser
+	timeout time.Duration
+	timer   *time.Timer
+
+	mu      sync.Mutex
+	reading bool
+	expired bool
+	closed  bool
+}
+
+func (b *idleBody) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	if b.expired {
+		b.mu.Unlock()
+		return 0, ErrBodyIdle
+	}
+	b.reading = true
+	b.timer.Stop()
+	b.mu.Unlock()
+
+	n, err := b.body.Read(p)
+
+	b.mu.Lock()
+	b.reading = false
+	expired := b.expired
+	if err == nil && !b.closed && !expired {
+		b.timer.Reset(b.timeout)
+	}
+	b.mu.Unlock()
+	if expired && err != nil {
+		return n, ErrBodyIdle
+	}
+	return n, err
+}
+
+func (b *idleBody) Close() error {
+	b.mu.Lock()
+	b.closed = true
+	b.timer.Stop()
+	b.mu.Unlock()
+	return b.body.Close()
+}
+
+// expire closes the body if nobody is reading it. Closing an HTTP/2 response
+// body resets the stream and hands its unread bytes back to the connection's
+// window, which is what frees the other streams on the tunnel.
+func (b *idleBody) expire() {
+	b.mu.Lock()
+	if b.reading || b.closed {
+		b.mu.Unlock()
+		return
+	}
+	b.expired = true
+	b.mu.Unlock()
+	_ = b.body.Close()
 }

@@ -40,15 +40,18 @@ type Limits struct {
 
 // DefaultLimits are what a tunnel uses when nothing overrides it.
 //
-// The windows are deliberately far below x/net's client-side 1 GiB connection
-// default. One tunnel multiplexes every request to a cluster, so the connection
-// window is memory the gateway may be asked to hold per cluster, and a
-// completion response is small — tokens arrive as they are generated and the
-// gateway forwards each one immediately.
+// The connection window is sixteen stream windows, and that ratio is the point.
+// A response the gateway has not forwarded holds its share of the connection
+// window until somebody reads it, so with the connection window only a few
+// stream windows wide, a few callers that stop reading stall every other stream
+// on the tunnel. Sixteen buys room for that while the pool's body idle timeout
+// cuts the stuck streams loose, and it stays far below x/net's client-side
+// 1 GiB default: one tunnel multiplexes every request to a cluster, so the
+// connection window is memory the gateway may be asked to hold per tunnel.
 func DefaultLimits() Limits {
 	return Limits{
 		MaxConcurrentStreams: 256,
-		ConnWindow:           16 << 20,
+		ConnWindow:           64 << 20,
 		StreamWindow:         4 << 20,
 		MaxReadFrameSize:     1 << 20,
 		ReadIdleTimeout:      15 * time.Second,
