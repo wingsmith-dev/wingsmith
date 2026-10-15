@@ -235,7 +235,7 @@ function nodeItems(nodes: SupplyNode[]): AttentionItem[] {
 }
 
 /**
- * Workloads a cluster was already running when we arrived and nobody has ruled
+ * Workloads a cluster was already running when it was connected and nobody has ruled
  * on. Neutral rather than warn: it is a decision waiting, not a fault.
  */
 function discoveredItems(discovered: DiscoveredWorkload[]): AttentionItem[] {

@@ -232,8 +232,8 @@ function ReadOnlyNotice() {
 /**
  * The width control, in the thing whose width it controls.
  *
- * It used to sit in every page's header, which put a chrome control in front of
- * the page's own name on every route. Here it collapses to an icon with the two
+ * Not in the page header, where it would put a chrome control in front of the
+ * page's own name on every route. Here it collapses to an icon with the two
  * items under it and stays reachable at that width.
  *
  * Not rendered on mobile: there the sidebar is a sheet that is either open or

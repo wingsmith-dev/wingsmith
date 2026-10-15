@@ -33,7 +33,7 @@ import { TenantServed } from "./Served"
  * what fills the lead row — `MetricsPanel` gives one lead metric the whole width,
  * which turns a sparkline into a stripe across an empty card.
  *
- * How much of us they are holding, how long they wait for a first token, and how
+ * How much capacity they are holding, how long they wait for a first token, and how
  * fast it comes out once it does. The rest are tiles below.
  */
 const TRAFFIC_LEAD = [

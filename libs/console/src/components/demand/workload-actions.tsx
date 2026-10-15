@@ -334,10 +334,9 @@ export function ReshapeWorkloadDialog({
             : "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-warning"
         }
       >
-        Every replica is replaced and every process reloads its weights, at
-        about twenty minutes each. The rollout wants both generations resident
-        at once and a small fleet cannot hold them, so expect the model to be
-        down for the reload rather than rolled through it.
+        Every replica is replaced and every process reloads its weights. A
+        rolling update needs room for both generations at once; without spare
+        devices for that, expect the model to be down while it reloads.
         {armed ? " Press the button again to proceed." : ""}
       </p>
     </FormDialog>

@@ -21,9 +21,9 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 /**
  * The first step of adoption: which weights this workload is serving.
  *
- * A serving block must point at an artifact, and a cluster running something we
- * never declared has none — which is why adopting one used to dead-end on a form
- * asking for an artifact nobody had created. The step exists to create it from
+ * A serving block must point at an artifact, and a workload Hangar never declared
+ * has none, so adoption would otherwise dead-end on a form asking for an
+ * artifact nobody had created. The step exists to create it from
  * the same reading, and to say plainly what that reading is worth: the digest is
  * `--model` as someone typed it, not a hash of any bytes, so the artifact is
  * written unverified and stays that way until something resolves the weights.

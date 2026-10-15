@@ -23,7 +23,7 @@ const ENFORCEMENT: Record<
   },
   disclosure: {
     label: "disclosure",
-    hint: "Documented and enforced by nothing, in any configuration. Do not repeat it to a customer as a limit.",
+    hint: "Documented and enforced by nothing, in any configuration. Do not present it to a tenant as a limit.",
     className: "border-amber-500/40 bg-amber-500/10 text-warning",
   },
   conditional: {

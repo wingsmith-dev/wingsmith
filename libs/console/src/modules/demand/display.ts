@@ -177,9 +177,9 @@ const PHASE_STEPS: Record<string, LifecycleStep> = {
  * Both halves, because neither answers alone.
  *
  * `reason` is the precise one and is preferred, but it goes stale in one direction the
- * phase does not: everything the operator reports after applying used to carry
- * `Applied`, so a reason-only reading pinned a serving deployment to "Applied" while
- * the counts underneath it said otherwise.
+ * phase does not: an operator that keeps reporting `Applied` after applying would pin a
+ * serving deployment to "Applied" under a reason-only reading while the counts
+ * underneath it said otherwise.
  */
 export function lifecycleStepFor(
   phase: string,
@@ -338,7 +338,11 @@ export function deploymentOperationalStatus(
   }
   if (!observed) {
     if (deployment.admission_phase === "pending") {
-      return operational("pending", deployment.admission_reason ?? null, placement)
+      return operational(
+        "pending",
+        deployment.admission_reason ?? null,
+        placement
+      )
     }
     return operational("starting", null, placement)
   }
@@ -644,7 +648,7 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
     },
     auth_mode: {
       enforcement: "disclosure",
-      note: "A fact about the system in front of us, under every capability. The gateway's identity mode is process-wide and cannot express a per-endpoint one.",
+      note: "A property of the gateway, shared by every capability. The gateway's identity mode is process-wide and cannot express a per-endpoint one.",
     },
     error_shape: {
       enforcement: "disclosure",

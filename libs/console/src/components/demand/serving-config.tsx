@@ -340,9 +340,9 @@ function EditIcon({ label, onClick }: { label: string; onClick: () => void }) {
 /**
  * The declared serving block: what the engine is told to do with a request.
  *
- * One card, not half of a pair. It used to be rendered beside Capabilities by a
- * component that also drew the resolved command line, which made the layout of
- * three unrelated things one component's business instead of the page's.
+ * One card, not half of a pair: the page decides where it sits relative to
+ * Capabilities and the resolved command line, not a component that draws all
+ * three.
  */
 export function ServingBehaviourCard({
   serving,

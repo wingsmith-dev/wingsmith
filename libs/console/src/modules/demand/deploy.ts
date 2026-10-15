@@ -37,10 +37,10 @@ export const DEFAULT_ENGINE = "vllm"
  * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases — `1.4.1` —
  * while vLLM's own versions are `0.x`. The two count in different sequences.
  *
- * Never seeded from the recipe's `engine_version_min`, which is vLLM's number. This
- * code used to do exactly that, and it made upstream evidence actively harmful: a model
- * the corpus covered was pinned to `vllm-runtime:0.28.0`, an address that has never
- * existed, while a model it did not cover fell through to `latest` and served. The vLLM
+ * Never seeded from the recipe's `engine_version_min`, which is vLLM's number. Doing so
+ * would make upstream evidence actively harmful: a model the corpus covered would be
+ * pinned to a `vllm-runtime` tag that has never existed, while a model it did not cover
+ * would fall through to `latest` and serve. The vLLM
  * floor is shown beside the field as the claim it is, and no field carries it.
  *
  * `latest` is the honest stand-in for the tag: it says "whatever the plane is

@@ -27,12 +27,11 @@ const PRESENCE = [
 ]
 
 /**
- * What hardware exists, and how much of it we have.
+ * What hardware exists, and how much of it the fleet has.
  *
  * The two halves are deliberately in one table rather than two pages. A class
- * with no devices is something we could take delivery of; a class with devices
- * and no catalog entry is something we are already running and have never
- * named. Splitting them would hide the second behind a filter nobody sets.
+ * with no devices is known but absent from the fleet; a class with devices and
+ * no catalog entry is already running and has never been named. Splitting them would hide the second behind a filter nobody sets.
  */
 export function DeviceClassesPage() {
   const search = useSearch({ from: "/_app/device-classes" })

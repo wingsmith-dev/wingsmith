@@ -31,7 +31,7 @@ const LABEL: Record<ServedModelState, string> = {
  */
 const EXPLAIN: Record<ServedModelState, string> = {
   serving: "Requests are being answered.",
-  degraded: "Nothing is answering this model right now. We are on it.",
+  degraded: "Nothing is answering this model right now.",
   paused: "Turned off. It will answer again when it is turned back on.",
 }
 

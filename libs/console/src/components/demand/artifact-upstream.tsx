@@ -74,7 +74,7 @@ export function UpstreamFields({
     <DeclaredSection
       title="Upstream"
       kind="asserted"
-      hint="What the publisher states, not what we measured and not what we configured. Nothing here reaches a cluster; the gap between it and what we serve is what conformance reports."
+      hint="What the publisher states, not what was measured or configured. Nothing here reaches a cluster; the gap between it and what is served is what conformance reports."
     >
       <FormGrid>
         <TextField

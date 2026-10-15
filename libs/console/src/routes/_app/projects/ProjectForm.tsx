@@ -21,10 +21,10 @@ const UNSET = "__none__"
 /**
  * The tenant is picked, and the form says so when there is nothing to pick.
  *
- * It used to be a free-text slug resolved on write, from when the API had no
- * tenant collection: on an empty plane every value anyone could type was a
- * `404`, so the first project could not be created and nothing downstream that
- * needs one — promoting a discovered workload, most of all — could be either.
+ * A free-text slug resolved on write would fail on an empty plane: every value
+ * anyone could type would be a `404`, so the first project could not be
+ * created, and nothing downstream that needs one (promoting a discovered
+ * workload, most of all) could be either.
  */
 export function ProjectForm({
   open,

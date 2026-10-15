@@ -462,7 +462,7 @@ function PolicyRow({ entry }: { entry: Policy }) {
  *
  * Metrics sources lead because they are the reason this section exists. A
  * mis-set `HANGAR_METRICS_SOURCES` silences a cluster's panels without failing
- * anything, and finding that out used to mean reading a ConfigMap in the
+ * anything, and finding that out otherwise means reading a ConfigMap in the
  * cluster. Everything below it is the same class of question — which database,
  * which hub URL, which operator image — answered before somebody has to guess.
  *

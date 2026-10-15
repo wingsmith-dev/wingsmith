@@ -142,11 +142,9 @@ export function useDeploymentEvents(
  * Everything that has happened to one workload, its deployments, its replicas
  * and the weights they load — newest first.
  *
- * A workload id used to return nothing at all: no writer files an event whose
- * subject is a workload, so the page that most needed a timeline was the one
- * page guaranteed to show an empty one. The plane now expands a `wkl_` subject
- * over the whole tree, so this is the same call it always was and only the
- * answer changed.
+ * No writer files an event whose subject is a workload; the plane expands a
+ * `wkl_` subject over the whole tree, so asking for the workload returns the
+ * events of everything under it.
  *
  * Polled while the workload is not yet serving, for the same reason the
  * deployment timeline is: that is when it is moving and when somebody is

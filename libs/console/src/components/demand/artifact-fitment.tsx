@@ -35,22 +35,22 @@ import { useState } from "react"
  * The scope switch is labelled by the question, not by the filter.
  *
  * `fleet` and `catalog` are two different questions that happen to be answered with
- * the same table, and calling them "our hardware" and "all hardware" made the second
- * read as a wider view of the first. It is not: a fit on a card we own none of is a
- * procurement answer, and nothing in the second list is deployable today.
+ * the same table, and labelling them as a narrow and a wide filter would make the
+ * second read as a wider view of the first. It is not: a fit on a class the fleet has
+ * none of needs hardware first, and nothing in the second list is deployable today.
  */
 const SCOPES: { value: FitmentScope; label: string; caption: string }[] = [
   {
     value: "fleet",
-    label: "What we can run",
+    label: "Fleet",
     caption:
-      "Only classes a cluster has reported. A row that does not fit here is a dead end.",
+      "Only classes a cluster has reported. A row that does not fit here cannot be deployed.",
   },
   {
     value: "catalog",
-    label: "What we'd need",
+    label: "Catalog",
     caption:
-      "Every class we know how to name. A fit on hardware we own none of is what to go and buy.",
+      "Every known class, including ones no cluster has reported. A fit here needs hardware the fleet does not have.",
   },
 ]
 
@@ -74,7 +74,7 @@ const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
 /**
  * Halvings down from the artifact's declared window, which is the plane's default.
  *
- * `current` is folded in because this list is no longer the only way the window gets
+ * `current` is folded in because this list is not the only way the window gets
  * set. The Params step edits the same value, and a window typed there — or one the
  * plane reduced a fit to — is rarely a halving of the declared maximum. A Select whose
  * value is absent from its own options renders empty, which reads as "no window
@@ -101,9 +101,9 @@ function formatTokens(value: number): string {
 /**
  * A fit is four states, not two.
  *
- * `supply_short` comes first because this column is read as "can we run it", and
- * under "What we can run" a green dot beside a row needing sixty-four cards we own
- * five of is the one answer that is confidently wrong. The arithmetic still fits;
+ * `supply_short` comes first because this column is read as "can it run", and
+ * under the Fleet scope a green dot beside a row needing sixty-four cards when the
+ * fleet has five is the one answer that is confidently wrong. The arithmetic still fits;
  * the fleet does not, and the row says which.
  *
  * `reduced` is a fit that had to cut the window, and flattening it into a failure
@@ -176,7 +176,7 @@ function MemoryBar({ fit }: { fit: ArtifactFit }) {
 }
 
 /**
- * What we own of a class, which is a different question from whether it fits.
+ * How much of a class the fleet has, which is a different question from whether it fits.
  *
  * Not a placement verdict: allocatable devices say nothing about whether
  * `device_count` of them share one topology domain, and placement preview is the
@@ -243,15 +243,15 @@ function Terms({
 /**
  * Two different questions wearing one table.
  *
- * `explore` is the artifact page: what could these weights run on, including hardware we
- * do not own, and each row offers to go and deploy it. Nothing is selected, because
+ * `explore` is the artifact page: what could these weights run on, including hardware the
+ * fleet does not have, and each row offers to go and deploy it. Nothing is selected, because
  * nothing is being assembled — a row is a link out.
  *
  * `select` is step two of the deploy flow, where the table is a control. A row is not an
  * action there, it is the answer to "which device class and how many", so it selects and
- * stays selected. Procurement is not on the menu either: the "what we'd need" scope asks
- * what to go and buy, and a deploy that cannot happen on hardware we own is not a row
- * worth offering halfway through creating a workload.
+ * stays selected. The Catalog scope is not on the menu either: it asks what hardware
+ * would be needed, and a deploy that cannot happen on the fleet is not a row worth
+ * offering halfway through creating a workload.
  */
 export type FitmentMode = "explore" | "select"
 
@@ -275,7 +275,7 @@ export function ArtifactFitmentPanel({
    * Drop the card chrome and the title, for a caller that is already a card and has
    * already asked the question. Nested cards read as a box inside a box, and inside the
    * deploy flow the step heading has said "how to serve it" — repeating "Fitment"
-   * underneath it names the mechanism where the question used to be.
+   * underneath it would name the mechanism instead of the question.
    */
   bare?: boolean
   mode?: FitmentMode
@@ -675,11 +675,10 @@ function FitRow({
   /**
    * Every row is choosable, including the ones the sizing does not like.
    *
-   * It used to gate on `fits`, which made an estimate the final word on what an
-   * operator is allowed to run. It is not the final word and it is not always right —
-   * it read gemma-4-26b at 122 GiB by charging a full 131k window to fifty-one layers
-   * that hold a thousand tokens, and every row that would have served it was greyed
-   * out and unclickable. The failure modes are not symmetric: a shape the estimate
+   * Gating on `fits` would make an estimate the final word on what an operator is
+   * allowed to run. It is not the final word and it is not always right: a model with
+   * sliding-window layers can be charged a full window on layers that hold a thousand
+   * tokens, and every row that would have served it would be greyed out. The failure modes are not symmetric: a shape the estimate
    * was wrong to allow is a worker that OOMs and says so, and a shape it was wrong to
    * refuse is a model nobody can deploy and no way to find out why.
    *

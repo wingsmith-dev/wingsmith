@@ -10,10 +10,10 @@ import { DISCOVERY_STATUSES } from "@/modules/discovered/types"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 
 /**
- * The import surface. Every cluster we adopt was already running something, and
+ * The import surface. Every cluster Hangar adopts was already running something, and
  * until someone decides what to do with each of those workloads they are real
  * GPUs held by objects the plane does not know about. A sighting is observed and
- * the decision beside it is ours, so nothing on this page changes a cluster
+ * the decision beside it is the operator's, so nothing on this page changes a cluster
  * except promotion.
  */
 export function DiscoveredPage() {
@@ -36,7 +36,7 @@ export function DiscoveredPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Discovered"
-        description="observed · what the clusters were already running when we got there"
+        description="observed · workloads running on the clusters that Hangar did not create"
       />
 
       <div className="space-y-4 p-4">
@@ -78,7 +78,7 @@ export function DiscoveredPage() {
           columns={workloadColumns()}
           list={list}
           rowKey={(workload) => workload.id}
-          empty="The clusters report nothing running that we did not declare."
+          empty="The clusters report nothing running that Hangar did not declare."
         />
       </div>
     </div>

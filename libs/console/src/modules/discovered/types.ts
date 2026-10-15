@@ -1,7 +1,7 @@
 /**
- * A workload the cluster was already running when we arrived. The sighting is
- * observed — ingestion is its only writer — and the decision we record beside it
- * is ours. The two are joined on read, which is why `status` is on this object
+ * A workload the cluster was already running when it was connected. The sighting
+ * is observed — ingestion is its only writer — and the decision recorded beside it
+ * is the operator's. The two are joined on read, which is why `status` is on this object
  * but nothing writes it directly.
  */
 export interface DiscoveredWorkload {

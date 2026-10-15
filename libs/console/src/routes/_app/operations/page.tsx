@@ -145,7 +145,7 @@ export function OperationsPage() {
             </p>
           </TabsContent>
 
-          {/* EVENTS — everything that happened, whether we asked for it or not. */}
+          {/* EVENTS — everything that happened, whether the plane asked for it or not. */}
           <TabsContent value="events" className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <FilterSelect
@@ -176,9 +176,9 @@ export function OperationsPage() {
             />
 
             <p className="px-1 text-2xs text-muted-foreground">
-              Events tagged with an operation id came from something we
-              initiated. Untagged ones — a lost heartbeat, an ECC error — are
-              the cluster telling us something on its own.
+              Events tagged with an operation id came from an operation the
+              plane started. Untagged ones, such as a lost heartbeat or an ECC
+              error, are reported by the cluster on its own.
             </p>
           </TabsContent>
         </Tabs>

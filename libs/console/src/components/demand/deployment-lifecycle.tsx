@@ -43,8 +43,8 @@ export function DeploymentLifecycle({
 
   // A step is settled only when the deployment is resting on it. `Serving` reached while
   // replicas are still filling in is the state a rolling update passes through and the one a
-  // crash-looping replica sits in, and drawing it the same green as a finished rollout is how
-  // the strip used to report a half-dead deployment as healthy.
+  // crash-looping replica sits in, and drawing it the same green as a finished rollout would
+  // report a half-dead deployment as healthy.
   const settled = current === "serving" && !degraded && !failed
 
   return (

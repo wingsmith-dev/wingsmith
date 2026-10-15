@@ -1,7 +1,7 @@
 /** What a tenant is served, as the tenant is allowed to see it. */
 export interface ServedModel {
   id: string
-  /** Our internal handle. Shown small, beside the model id, for support. */
+  /** The plane's internal handle. Shown small, beside the model id, for support. */
   name: string
   /** The string a client sends as `model`. This is the name that matters here. */
   model: string

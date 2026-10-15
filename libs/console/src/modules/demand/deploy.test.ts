@@ -214,10 +214,10 @@ describe("derivedServingRequest", () => {
   it("never pins the runtime tag to the engine version the corpus names", () => {
     /**
      * engine_version_min is vLLM's number and engine_runtime_version is a tag of the
-     * Dynamo runtime image. Seeding one from the other is what this used to do, and it
-     * made upstream evidence actively harmful: a model the corpus covered resolved to
-     * vllm-runtime:0.9.1, an address nobody publishes, while a model it did not cover
-     * fell through to latest and served.
+     * Dynamo runtime image. Seeding one from the other would make upstream evidence
+     * actively harmful: a model the corpus covered would resolve to vllm-runtime:0.9.1,
+     * an address nobody publishes, while a model it did not cover would fall through to
+     * latest and serve.
      */
     const request = derivedServingRequest(artifact, footprint, {
       defaults,

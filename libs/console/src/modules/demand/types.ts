@@ -131,8 +131,8 @@ export interface ArtifactUsage {
  *
  * `fleet` is *what can I run right now* — every class a cluster has reported, where
  * a no-fit row is a dead end. `catalog` is *what hardware would I need* — every
- * class the contract table names as well, where a fit on a class we own none of is
- * a procurement answer rather than a deployable one.
+ * class the contract table names as well, where a fit on a class the fleet has none
+ * of needs hardware first rather than being deployable.
  */
 export const FITMENT_SCOPES = ["fleet", "catalog"] as const
 
@@ -196,7 +196,7 @@ export interface ArtifactFit {
   node_count: number
   /**
    * How big one node was taken to be. Read from the fleet's observed topology for a class
-   * we run, assumed otherwise. Eight on an HGX board, seventy-two on a GB300 NVL72 — the
+   * the fleet has, assumed otherwise. Eight on an HGX board, seventy-two on a GB300 NVL72 — the
    * interconnect is what makes a node a node, and the rack has one.
    */
   devices_per_node: number
@@ -353,8 +353,8 @@ export interface ServingDefaults {
  * `UpstreamDeploymentSchema` — what the corpus's own rules render for one node shape.
  *
  * A large model has no single tested parallelism, it has one per node it can run
- * on, so this is a list rather than a number. Nothing here is a fact about our
- * fleet: it says the layout works, not that we own such a node.
+ * on, so this is a list rather than a number. Nothing here is a fact about the
+ * fleet: it says the layout works, not that the fleet has such a node.
  */
 export interface UpstreamDeployment {
   hardware: string
@@ -372,14 +372,14 @@ export interface UpstreamDeployment {
  *
  * Kept apart from `ServingDefaults` on purpose. That is the plane's own arithmetic
  * over `config.json`; this is a third party's measurement of a different question —
- * not "what do these weights need" but "what did this configuration do when we
- * served it". Merging them would produce a form where no field can say where its
+ * not "what do these weights need" but "what did this configuration do when it
+ * was served". Merging them would produce a form where no field can say where its
  * number came from, and the numbers do not always agree.
  *
  * Every field is a claim, and the two URIs are how it is read back, which is why
  * the console shows the attribution beside any value it seeds from here.
  * `verified_hardware` names the node shapes the publisher ran on — evidence the
- * configuration works, and no evidence at all that we own such a node.
+ * configuration works, and no evidence at all that the fleet has such a node.
  */
 export interface UpstreamServing {
   source: string
@@ -665,8 +665,8 @@ export interface ServingOverlay {
  *
  * Everything an engine is told, and nothing about how much of it runs or where.
  * There is no object behind it and no id to point at: two workloads configured
- * the same way carry the same `serving_digest`, and that is the whole of what
- * used to be recipe reuse.
+ * the same way carry the same `serving_digest`, and that is how a configuration
+ * is reused.
  *
  * `serving` inside `serving` is not a slip and is not a name this console chose.
  * The outer block is the whole configuration; the inner one is the typed
@@ -927,9 +927,9 @@ export interface Workload {
   /**
    * The model id the engine registers under. Read from the artifact's slug, never declared here.
    *
-   * Reported and not accepted. A workload used to carry a nullable override of this and the plane
-   * resolved between the two, which is how the id a client sends and the id a frontend registered
-   * came apart. What a *client* sends is still changeable — that is the endpoint's `slug`.
+   * Reported and not accepted. A per-workload override that the plane resolved against this
+   * would let the id a client sends and the id a frontend registered come apart. What a *client*
+   * sends is still changeable — that is the endpoint's `slug`.
    */
   served_model_name: string
   overrides: Record<string, unknown>

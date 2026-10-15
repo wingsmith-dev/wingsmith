@@ -176,9 +176,9 @@ function Steps({ current }: { current: Step }) {
  * one: the weights are registered, and then the adoption carries the serving
  * block inline the way a create does.
  *
- * The first step is why this exists. A serving block needs an artifact, a
- * workload we never declared has none, and the form used to dead-end asking for
- * one that nobody had created.
+ * The first step is why this exists. A serving block needs an artifact, and a
+ * workload Hangar never declared has none, so without it the form would
+ * dead-end asking for one that nobody had created.
  */
 export function ServingDraftDialog({
   workload,

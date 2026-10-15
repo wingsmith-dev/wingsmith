@@ -116,9 +116,8 @@ import {
  * Scale, pause and drain are operations and are fired as operations: each one
  * gets an id and a phase and shows up under Lifecycle, because "the plane
  * accepted the intent" and "the capacity exists" are different facts and only
- * the second one is what was asked. The Scale card is gone — scaling lives in
- * the Deployments panel header and the actions menu now — but the operation is
- * unchanged.
+ * the second one is what was asked. Scaling is reached from the Deployments
+ * panel header and the actions menu.
  *
  * The page is split into six views — overview, performance, workbench,
  * placement, lifecycle, logs. Events, operations, the endpoints routing to the
@@ -546,9 +545,7 @@ export function WorkloadDetailPage() {
                           A client sends the endpoint's slug; the gateway
                           rewrites it to this. The two are equal unless somebody
                           published an alias, and saying which is which here is
-                          the point — this panel used to say "Model ID" for a
-                          value that was one of three fields depending on what
-                          had been declared where. */}
+                          the point. */}
                       <Field label="Engine serves as">
                         <span className="font-mono">
                           {workload.served_model_name || "—"}
@@ -937,9 +934,9 @@ function ViewTab({
 /**
  * Which part of the workload is open for editing.
  *
- * The whole declared object used to be one dialog off the header. It is six
- * questions, each answered by the panel that displays it, and only four of them
- * roll the replicas — which is a distinction a single form cannot make.
+ * Not one dialog for the whole declared object: it is six questions, each
+ * answered by the panel that displays it, and only four of them roll the
+ * replicas, which is a distinction a single form cannot make.
  */
 type EditSection =
   | null
@@ -1006,9 +1003,8 @@ function EditButton({
 /**
  * The four facts the page is opened for, on one line above everything else.
  *
- * They used to be spread over a floating status row and the first two cards of
- * a seven-card column, which meant the answer to "is this healthy, and how big
- * is it" was assembled by reading. One strip, one row, no cards inside a card.
+ * One strip, one row, no cards inside a card, so "is this healthy, and how big
+ * is it" is answered at a glance rather than assembled by reading.
  */
 function Vitals({
   workload,

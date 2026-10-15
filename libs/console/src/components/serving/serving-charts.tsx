@@ -160,7 +160,7 @@ export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
         title="Time to first token"
         series={ttft}
         unit="seconds"
-        note="Measured from the front door, so it excludes your network to us — a client-side TTFT is this plus the round trip."
+        note="Measured at the gateway, so it excludes the network between you and the gateway. A client-side TTFT is this plus the round trip."
       />
       <Panel
         title="Cached input"
@@ -173,7 +173,7 @@ export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
         className="lg:col-span-2"
         series={latency}
         unit="seconds"
-        note="End to end, as the front door measured it — your network to us is not included."
+        note="End to end, as the gateway measured it. The network between you and the gateway is not included."
       />
     </div>
   )

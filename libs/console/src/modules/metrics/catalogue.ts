@@ -415,7 +415,7 @@ const SERVING: MetricDefinition[] = [
     family: "serving",
     group: "throughput",
     scale: "invariant",
-    note: "Cached input over input, off the usage object we return — the figure a caller can reconcile against their own prompt_tokens_details.cached_tokens.",
+    note: "Cached input over input, off the usage object the gateway returns — the figure a caller can reconcile against their own prompt_tokens_details.cached_tokens.",
   },
   {
     name: "serving.requests_in_flight",
