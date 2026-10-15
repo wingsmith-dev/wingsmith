@@ -9,16 +9,20 @@ rather than a silent zero.
 The plane's benchmarks module reads AIPerf with the same idea, in
 `libs/plane/app/modules/benchmarks/summaries.py`. The two are separate copies on
 purpose: this package has no dependencies and runs from a checkout without the
-plane installed, so it cannot import the plane's module. What they share is the
-contract, and it has to be kept in step by hand:
+plane installed, so it cannot import the plane's module. What they share is a
+contract, and nothing but review keeps the two copies to it:
 
 - the field ids (`ttft.p90`, `request.errors`, ...) mean the same number in both
   places, so a local finding and a cluster benchmark can be put in one sentence;
-- the AIPerf paths are the same paths, so a correction to one (the error count
-  read from `error_request_count`, for instance) is made in both in one change.
+- the AIPerf paths are the same paths, and a path that a harness leaves out on
+  purpose means the same thing in both. AIPerf writes `error_request_count` only
+  when a request failed, so its absence from an otherwise complete export is zero
+  failures, not a missing reading. A copy that reads it as missing reports a gap
+  on every clean run, and the two disagree on the same file.
 
 `tests/test_metrics.py` pins the paths read here against a fixture of each
-harness's export, so a drift on this side fails a test rather than a chart.
+harness's export, two of them captured from AIPerf itself, so a drift on this side
+fails a test rather than a chart. Nothing pins the plane's copy from here.
 
 Three facts about these three harnesses make the map non-trivial, and each is why
 `Field` carries what it carries:
