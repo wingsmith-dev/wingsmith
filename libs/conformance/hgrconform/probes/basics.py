@@ -1,6 +1,6 @@
 """Response correctness: the fields that must be there, and the ones that must not repeat.
 
-Three rows of the standard, and the first is the one that needs the raw text. "The
+Three of the checklist's questions, and the first is the one that needs the raw text. "The
 response must not contain duplicate fields" is invisible to any client that parses
 JSON normally, because a repeated key is folded into one on the way in. The session
 keeps the duplicates; this reads them back.
@@ -18,7 +18,7 @@ from hgrconform.probes.registry import probe
 @probe(
     id="basics.completion",
     title="A minimal chat completion returns the required fields, non-empty",
-    requirement="I. Response Correctness 1-2 — no duplicate fields; key fields returned and not empty",
+    requirement="A completion returns its key fields, populated, with no duplicated JSON keys",
     compare=("status", "finish_reason", "has_content", "usage_fields", "duplicate_keys", "top_level_fields"),
 )
 def completion(session: Session) -> dict[str, Any]:
@@ -44,10 +44,7 @@ def completion(session: Session) -> dict[str, Any]:
 @probe(
     id="basics.multi_turn",
     title="A three-turn conversation stays coherent and terminates normally",
-    requirement=(
-        "I. Multi-Turn Conversation Support — context retained, no empty or garbled output, "
-        "correct finish_reason"
-    ),
+    requirement="Earlier turns are carried: no empty or garbled output, and a correct finish_reason",
     compare=("status", "finish_reason", "has_content", "recalled"),
 )
 def multi_turn(session: Session) -> dict[str, Any]:
@@ -78,7 +75,7 @@ def multi_turn(session: Session) -> dict[str, Any]:
 @probe(
     id="basics.models",
     title="The model list, and whether the model under test is in it",
-    requirement="I. Protocol Support — /v1/models, and what the endpoint claims about the model",
+    requirement="/v1/models lists the served model, and what it claims about it",
     compare=("status", "model_listed", "model_fields"),
 )
 def models(session: Session) -> dict[str, Any]:

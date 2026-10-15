@@ -1,6 +1,6 @@
 """Which of the three request protocols the endpoint answers.
 
-The standard asks about the OpenAI Chat Completions API, the OpenAI Responses API
+The checklist asks about the OpenAI Chat Completions API, the OpenAI Responses API
 and the Anthropic Messages API, each "consistent with the original model provider".
 Not answering one is a legitimate result — most open-source servers answer only the
 first — so what is recorded is the status code, and the diff decides whether that
@@ -18,7 +18,7 @@ from hgrconform.probes.registry import probe
 @probe(
     id="protocol.surfaces",
     title="Status codes for /v1/chat/completions, /v1/responses and /v1/messages",
-    requirement="I. Protocol Support 1-3 — OpenAI Chat Completions, OpenAI Responses, Anthropic Messages",
+    requirement="The three API surfaces: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages",
     compare=("chat_completions", "responses", "messages", "answers"),
 )
 def surfaces(session: Session) -> dict[str, Any]:
@@ -27,7 +27,7 @@ def surfaces(session: Session) -> dict[str, Any]:
     Sending a chat-completions body to all three would tell us only that two of them
     reject malformed input. Each request here is the minimal valid one for its own
     API, so a 404 means the route is absent and a 400 means the route exists and
-    disagreed with us — a distinction the standard cares about.
+    disagreed with us — a distinction a caller cares about.
     """
     chat = session.post("/v1/chat/completions", session.body(max_tokens=8))
 

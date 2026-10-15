@@ -110,7 +110,7 @@ def tool_use(use_id: str, name: str = "get_weather") -> dict[str, Any]:
 
 
 def test_id_uniqueness_records_a_counter_that_resets_every_turn() -> None:
-    """The Dynamo kimi_k3 parser's shape: unique inside one response, identical across three."""
+    """A per-response counter: unique inside one response, identical across three."""
     turns = [response(200, tool_call("get_weather:0")) for _ in range(3)]
     observed = id_uniqueness(StubSession(turns))
 

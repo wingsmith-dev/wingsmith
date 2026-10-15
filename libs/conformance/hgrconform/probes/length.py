@@ -1,4 +1,4 @@
-"""Output length control, in the three spellings the standard names.
+"""Output length control, in its three common spellings.
 
 `max_tokens`, `max_completion_tokens` and `max_output_tokens` are the same idea in
 three API generations, and an endpoint can accept a parameter without honouring it.
@@ -22,16 +22,16 @@ PROMPT = "Count slowly from one to two hundred, one number per line."
 @probe(
     id="length.parameters",
     title="Which output-length parameters are accepted, and which are honoured",
-    requirement="I. Output Length Control 1-3 — max_tokens, max_completion_tokens, max_output_tokens",
+    requirement="Output length control through max_tokens, max_completion_tokens and max_output_tokens",
     compare=("accepted", "honoured", "finish_reasons", "visible_content", "reasoning_only"),
 )
 def parameters(session: Session) -> dict[str, Any]:
     """Accepted and honoured are separate observations, because they differ in practice.
 
     An endpoint that ignores an unknown parameter returns 200 and a long answer; one
-    that rejects it returns 400. Both are legitimate behaviours and the standard only
-    asks that ours matches the original provider's — so both are recorded, and
-    neither is judged here.
+    that rejects it returns 400. Both are legitimate behaviours and the question is
+    only whether this endpoint behaves as the original provider does, so both are
+    recorded and neither is judged here.
     """
     accepted: dict[str, int] = {}
     honoured: dict[str, bool] = {}
@@ -64,7 +64,7 @@ def parameters(session: Session) -> dict[str, Any]:
 @probe(
     id="length.context_overflow",
     title="What happens when the request exceeds the context window",
-    requirement="I. Maximum Context Window 2 — actual behaviour after exceeding the context window",
+    requirement="What happens when a request exceeds the context window",
     compare=("status", "error_code", "error_type", "truncated"),
     requires=(),
 )

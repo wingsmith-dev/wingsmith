@@ -6,8 +6,8 @@ reads. `run.json` is written after every probe rather than at the end, so a run
 interrupted halfway still has the probes it finished and a report that renders them.
 
 The same reasoning as the benchmark store: a normalised observation nobody can
-trace back to bytes is one nobody can defend in front of the person whose
-acceptance document this is.
+trace back to bytes is one nobody can defend in front of whoever asked the
+question.
 """
 
 from __future__ import annotations

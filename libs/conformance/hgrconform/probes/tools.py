@@ -1,6 +1,6 @@
 """Tool calling: the protocol, the round trip, the identity of a call, and the two ways it goes wrong.
 
-Five rows of the standard land here, and they are not the same kind of question.
+Five of the checklist's questions land here, and they are not the same kind of question.
 Protocol and round trip are mechanical — either the endpoint accepts the four
 `tool_choice` modes and reassembles a streamed call correctly, or it does not.
 Parallel calls and hallucination are behavioural, and behaviour varies between two
@@ -215,7 +215,7 @@ def _contractual(per_mode: dict[str, Any]) -> dict[str, Any]:
 @probe(
     id="tools.protocol",
     title="The four tool_choice modes, and the structure of a returned call",
-    requirement="I. Tool Calling — protocol structure, four tool_choice modes",
+    requirement="Tool call structure under the four tool_choice modes",
     compare=("statuses", "called", "finish_reasons", "call_fields", "arguments_valid"),
 )
 def protocol(session: Session) -> dict[str, Any]:
@@ -284,7 +284,7 @@ def protocol(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.streaming",
     title="A streamed tool call reassembles into valid arguments",
-    requirement="I. Tool Calling — streaming function calling; thinking must not contaminate arguments",
+    requirement="Streamed tool calls reassemble into valid arguments, uncontaminated by thinking",
     compare=("status", "streamed", "fragmented", "has_index", "reassembles", "schema_valid"),
 )
 def streaming(session: Session) -> dict[str, Any]:
@@ -350,7 +350,7 @@ def streaming(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.round_trip",
     title="A tool result sent back produces a final answer that uses it",
-    requirement="I. Tool Calling — tool-result return support; multi-turn tool conversations",
+    requirement="A tool result can be returned, and the conversation continues from it",
     compare=(
         "status",
         "accepted",
@@ -365,8 +365,8 @@ def round_trip(session: Session) -> dict[str, Any]:
 
     The sentinel is a temperature no model would invent, so `used_result` is a real
     observation rather than a coincidence. It is still the model's answer, one sample
-    of it, so it is evidence and not compared; acceptance of the result is. Whether the *first* turn produced a call
-    is not this probe's question — if it did not, the probe records that and stops,
+    of it, so it is evidence and not compared; acceptance of the result is. Whether
+    the *first* turn produced a call is not this probe's question — if it did not, the probe records that and stops,
     because a round trip with nothing to return is not a failure of the round trip.
 
     One turn can say something about identity even though it cannot say whether ids
@@ -435,7 +435,7 @@ def round_trip(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.id_uniqueness",
     title="Whether tool call ids stay unique across turns of one conversation",
-    requirement="I. Tool Calling — sequential calls; tool-result pairing across a multi-turn conversation",
+    requirement="Tool call ids stay unique across the turns of one conversation",
     compare=("statuses", "called_every_turn", "unique_across_turns", "id_shape", "derived_from_tool_name"),
 )
 def id_uniqueness(session: Session) -> dict[str, Any]:
@@ -500,7 +500,7 @@ def id_uniqueness(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.messages_id_uniqueness",
     title="The same question on the Anthropic Messages surface, where a client pairs by tool_use_id",
-    requirement="I. Protocol Support 3 — Anthropic Messages API; I. Tool Calling — tool-result pairing",
+    requirement="Tool use ids stay unique across turns on the Anthropic Messages surface",
     compare=(
         "statuses",
         "called_every_turn",
@@ -583,7 +583,7 @@ def messages_id_uniqueness(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.parallel",
     title="A prompt needing two independent tools, and how many calls come back",
-    requirement="I. Tool Calling — sequential and parallel calls",
+    requirement="Sequential and parallel tool calls",
     compare=("status",),
 )
 def parallel(session: Session) -> dict[str, Any]:
@@ -619,7 +619,7 @@ def parallel(session: Session) -> dict[str, Any]:
 @probe(
     id="tools.restraint",
     title="Whether tools are called when no tool applies, and whether undeclared ones are invented",
-    requirement="I. Tool Calling — robustness: no tool on casual conversation, no undefined functions",
+    requirement="No tool call on casual conversation, and no call to an undeclared function",
     compare=("status", "empty_tools_status"),
 )
 def restraint(session: Session) -> dict[str, Any]:
@@ -696,7 +696,7 @@ def _allowed_tools(mode: str, names: tuple[str, ...]) -> dict[str, Any]:
 @probe(
     id="tools.allowed_tools",
     title="tool_choice as a restricted set rather than a single name",
-    requirement="I. Tool Calling — tool_choice modes, including restriction to a subset",
+    requirement="tool_choice restricted to a subset of the declared tools",
     compare=("statuses", "called", "restricted", "error_shape", "error_type"),
 )
 def allowed_tools(session: Session) -> dict[str, Any]:

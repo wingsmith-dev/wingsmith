@@ -5,7 +5,7 @@ from `profile.thinking.body()` and every read comes from `profile.paths`. What t
 probe contributes is the collapse: the reasoning text itself differs on every call
 and is worthless to a diff, while the *place* it was delivered — a separate
 `reasoning_content` field, `<think>` tags inside `content`, or nowhere at all — is
-the thing the standard asks two endpoints to agree on.
+the thing two endpoints are asked to agree on.
 
 Streaming is asked separately because it is a separate answer. An endpoint can
 carry reasoning in its own field in a unary response and inline it in the deltas,
@@ -74,7 +74,7 @@ def _location(reasoning: Any, content: Any) -> str:
 @probe(
     id="thinking.default",
     title="Whether a request carrying no thinking fields thinks anyway",
-    requirement="Thinking Mode 1 — whether thinking mode is enabled by default, consistent with the provider",
+    requirement="Whether thinking is on by default, as the original provider has it",
     compare=("status", "reasoning_location", "thinking_by_default", "matches_profile_claim"),
 )
 def default(session: Session) -> dict[str, Any]:
@@ -106,7 +106,7 @@ def default(session: Session) -> dict[str, Any]:
 @probe(
     id="thinking.toggle",
     title="Thinking explicitly enabled and explicitly disabled, in this profile's dialect",
-    requirement="Thinking Mode 2 — the method for enabling and disabling thinking, and where thinking content lands",
+    requirement="How thinking is switched on and off, and where thinking content lands",
     compare=(
         "syntax",
         "enabled_status",
@@ -148,7 +148,7 @@ def toggle(session: Session) -> dict[str, Any]:
 @probe(
     id="thinking.stream_location",
     title="Where reasoning is delivered in a stream with thinking enabled",
-    requirement="Thinking Mode 2 — where the thinking content is returned, in the streaming case",
+    requirement="Where thinking content is returned in a stream",
     compare=("status", "reasoning_location", "reasoning_before_content"),
 )
 def stream_location(session: Session) -> dict[str, Any]:
@@ -185,7 +185,7 @@ def stream_location(session: Session) -> dict[str, Any]:
 @probe(
     id="thinking.efforts",
     title="Whether each effort level the profile declares is accepted",
-    requirement="Thinking Mode 2 — the method for enabling thinking, at each effort level it offers",
+    requirement="Thinking enabled at each effort level the endpoint offers",
     compare=("statuses", "levels", "all_accepted"),
 )
 def efforts(session: Session) -> dict[str, Any]:
@@ -223,7 +223,7 @@ ARITHMETIC = "What is 17 * 24? Answer with the number only."
 @probe(
     id="thinking.template_kwargs",
     title="Whether the open-source thinking switch is honoured by an endpoint that speaks another dialect",
-    requirement="Thinking Mode 2 — thinking can be switched off, consistent with the provider",
+    requirement="Whether thinking can be switched off the way open-source servers switch it, as the original provider has it",
     compare=("status", "reasoning_location", "suppressed", "precedence"),
 )
 def template_kwargs(session: Session) -> dict[str, Any]:

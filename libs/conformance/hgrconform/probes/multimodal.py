@@ -2,7 +2,7 @@
 
 The image is built here rather than read from a fixture, so that the probe carries no
 state a run could lose and no file two endpoints could be given different versions of.
-A solid-colour PNG is enough: the question the standard asks is whether the endpoint
+A solid-colour PNG is enough: the question is whether the endpoint
 looked at the pixels, and a colour is the smallest answer that cannot be produced by
 guessing from the prompt alone.
 
@@ -125,7 +125,7 @@ def _refusal_kind(response: Any) -> str:
 @probe(
     id="multimodal.image",
     title="An image content part is accepted, and the answer depends on the pixels",
-    requirement="V. Multimodal Capability Support 1 — image input, and correct image understanding",
+    requirement="Image input, and whether the image reaches the model",
     compare=("status", "has_content", "finish_reason", "refusal_kind", "error_shape", "error_type"),
     requires=("image",),
 )
@@ -172,7 +172,7 @@ def image(session: Session) -> dict[str, Any]:
 @probe(
     id="multimodal.audio",
     title="How an audio content part is routed, or declined",
-    requirement="V. Multimodal Capability Support 2 — audio input",
+    requirement="Audio input",
     compare=("status", "has_content", "refusal_kind", "error_shape", "error_type"),
     requires=("audio",),
 )
@@ -212,7 +212,7 @@ def audio(session: Session) -> dict[str, Any]:
 @probe(
     id="multimodal.video",
     title="How a video content part is routed, or declined",
-    requirement="V. Multimodal Capability Support 3 — video input",
+    requirement="Video input",
     compare=("status", "has_content", "refusal_kind", "error_shape", "error_type"),
     requires=("video",),
 )
@@ -255,7 +255,7 @@ REMOTE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transpar
 @probe(
     id="multimodal.remote_url",
     title="Whether a content part may name a URL the endpoint has to fetch",
-    requirement="V. Multimodal Capability Support 1 — image input, by reference rather than by value",
+    requirement="Image input by URL rather than by value",
     compare=("status", "refusal_kind", "error_shape", "error_type"),
     requires=("image",),
 )
@@ -265,8 +265,8 @@ def remote_url(session: Session) -> dict[str, Any]:
     Two endpoints can both accept images and disagree completely here, because
     fetching a URL the caller chose is an egress decision rather than a modelling one
     — the endpoint becomes an HTTP client pointed at an address a stranger supplied.
-    Declining is a legitimate answer and the common one. What the standard's
-    consistency requirement reaches is the *manner* of declining, so the status and
+    Declining is a legitimate answer and the common one. What a consistency
+    requirement reaches is the *manner* of declining, so the status and
     the refusal kind are compared and the message is not: a caller migrating between
     two endpoints writes their retry against a status code.
 

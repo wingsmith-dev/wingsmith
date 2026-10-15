@@ -60,7 +60,7 @@ def _answering_path(counts: dict[str, int | None]) -> str:
 @probe(
     id="cache.automatic",
     title="Whether a repeated prefix is cached without being asked for, and where the count appears",
-    requirement="X. Cache Support 1 — whether caching is automatic or explicit; 3 — how cached tokens are retrieved",
+    requirement="Whether prompt caching is automatic or explicit, and where the cached token count is reported",
     compare=(
         "cached_field_path",
         "cache_mode",
@@ -73,7 +73,7 @@ def automatic(session: Session) -> dict[str, Any]:
 
     A token count differs between two endpoints for reasons that have nothing to do
     with conformance — a different tokenizer, a different block size, a warm cache
-    left by an earlier run. What the standard distinguishes is which field carries
+    left by an earlier run. What is worth comparing is which field carries
     the answer, whether the endpoint cached without being asked, and whether the
     the count carried a value at all. Those are the comparable keys; the counts
     themselves, and whether the second call's count rose above the first's, are

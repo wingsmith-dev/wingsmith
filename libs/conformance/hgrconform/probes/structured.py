@@ -37,7 +37,7 @@ ASK = "Describe Lisbon. Answer only with the JSON object."
 @probe(
     id="structured.text",
     title='response_format {"type": "text"} is accepted',
-    requirement='I. Structured Output Support 1 — response_format plain-text mode (type="text")',
+    requirement="response_format plain-text mode (type=\"text\")",
     compare=("status", "has_content"),
 )
 def text(session: Session) -> dict[str, Any]:
@@ -52,7 +52,7 @@ def text(session: Session) -> dict[str, Any]:
 @probe(
     id="structured.json_object",
     title='response_format {"type": "json_object"} returns parseable JSON',
-    requirement='I. Structured Output Support 2 — response_format JSON mode (type="json_object")',
+    requirement="response_format JSON mode (type=\"json_object\")",
     compare=("status", "parses"),
 )
 def json_object(session: Session) -> dict[str, Any]:
@@ -76,11 +76,11 @@ def json_object(session: Session) -> dict[str, Any]:
 @probe(
     id="structured.json_schema",
     title="A declared JSON schema is accepted, and the output conforms to it",
-    requirement="I. Structured Output Support 3 — response_format structured output (type=json_schema)",
+    requirement="response_format structured output (type=\"json_schema\")",
     compare=("status", "parses", "schema_valid", "strict_accepted"),
 )
 def json_schema(session: Session) -> dict[str, Any]:
-    """Sends a schema exercising the keyword families the standard names, then validates.
+    """Sends a schema exercising the common JSON Schema keyword families, then validates.
 
     The schema covers the type keywords, a required list, an array with typed items,
     and `additionalProperties: false`, because a server that quietly drops the last

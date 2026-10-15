@@ -66,10 +66,7 @@ def _status_classes(statuses: list[int]) -> list[str]:
 @probe(
     id="limits.burst",
     title="What a short burst of concurrent requests meets",
-    requirement=(
-        "Rate-Limit / Burst Control Policy — whether burst or ramp-up limits are applied; "
-        "429 after the RPM limit"
-    ),
+    requirement="Whether burst or ramp-up limits are applied, and whether 429 follows the rate limit",
     compare=(
         "throttled",
         "rate_limit_headers",

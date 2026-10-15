@@ -1,6 +1,6 @@
 """What a probe is, and the set of them this runner knows.
 
-A probe is four things: an id, the requirement it answers, the keys on which its
+A probe is four things: an id, what it checks in plain words, the keys on which its
 observation is compared against a reference endpoint, and a function that takes a
 session and returns a flat dictionary of what it saw. Nothing else — no assertion,
 no threshold, no opinion about where results go.

@@ -2,7 +2,7 @@
 
 Short, and entirely generic — there is no model-shaped question in here. It is
 kept as three separate observations rather than one pass or fail because the
-standard asks about three cases and a supplier that rejects all of them with the
+checklist asks about three cases and a supplier that rejects all of them with the
 same status code as the original provider is the thing being checked.
 """
 
@@ -17,7 +17,7 @@ from hgrconform.probes.registry import probe
 @probe(
     id="auth.rejection",
     title="Status codes for a bad key, a missing header, and a malformed scheme",
-    requirement="I. Authentication & Security — invalid key returns 401; requests without Authorization are rejected",
+    requirement="Authentication: an invalid key is answered 401, and a request without Authorization is rejected",
     compare=("invalid_key", "no_header", "bad_scheme", "error_shape"),
 )
 def rejection(session: Session) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 """Streaming: whether it is on by default, how it is turned on, and where `usage` lands.
 
 The third of these is the interesting one and the reason the session keeps chunks
-unmerged. The standard asks that the *location* of the usage field — every chunk,
+unmerged. The checklist asks that the *location* of the usage field — every chunk,
 or only the last one — matches the original provider, and that is a question about
 the shape of the stream rather than about its contents. A client that accumulates
 deltas as they arrive has thrown the answer away before it can be asked.
@@ -22,7 +22,7 @@ USAGE_PATH = "usage.total_tokens"
 @probe(
     id="streaming.default",
     title="Whether a request without `stream` is streamed",
-    requirement="I. Streaming Output 1 — whether streaming is enabled by default",
+    requirement="Whether streaming is on by default",
     compare=("content_type", "streamed_by_default"),
 )
 def default(session: Session) -> dict[str, Any]:
@@ -39,7 +39,7 @@ def default(session: Session) -> dict[str, Any]:
 @probe(
     id="streaming.toggle",
     title="`stream: true` produces an SSE stream that terminates with [DONE]",
-    requirement="I. Streaming Output 2 — the method for enabling and disabling streaming",
+    requirement="How streaming is switched on and off",
     compare=("status", "content_type", "terminated", "has_content", "first_delta_fields"),
 )
 def toggle(session: Session) -> dict[str, Any]:
@@ -63,7 +63,7 @@ def toggle(session: Session) -> dict[str, Any]:
 @probe(
     id="streaming.usage_location",
     title="Which chunks carry `usage`, with and without `stream_options.include_usage`",
-    requirement="I. Streaming Output 3 — cumulative token usage by chunk; location and format of the usage field",
+    requirement="Token usage in a stream: whether it is sent, and in which chunk",
     compare=(
         "usage_without_option",
         "usage_with_option",
@@ -77,7 +77,7 @@ def usage_location(session: Session) -> dict[str, Any]:
 
     An index would differ between two endpoints for an uninteresting reason — they
     generated a different number of tokens. `usage_position` collapses that to the
-    three answers the standard actually distinguishes: nowhere, in the final chunk
+    three answers that actually differ for a client: nowhere, in the final chunk
     only, or in every chunk.
     """
     plain = session.stream(session.body(max_tokens=32))

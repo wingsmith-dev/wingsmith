@@ -1,7 +1,7 @@
 """Video input with real clips: whether the frames reach the model, and what they cost.
 
 `multimodal.video` sends four zero bytes and asks only whether a video part is routed.
-Once an endpoint does route video that stops being the question. What the standard
+Once an endpoint does route video that stops being the question. What the checklist
 asks next needs a clip that decodes: whether the model saw it, whether a video beside
 an image is read in the order it was sent, what the clip costs in prompt tokens and
 how that cost moves with length, frame rate and size, what the endpoint does past its
@@ -204,7 +204,7 @@ def _padded(data: bytes, mib: int) -> bytes:
 @probe(
     id="video.understanding",
     title="A real clip is accepted, and the answer names its colour and direction of motion",
-    requirement="V. Multimodal Capability Support 3 — video input, and correct video understanding",
+    requirement="Video input, and whether the frames reach the model",
     compare=("status", "has_content", "finish_reason", "refusal_kind", "error_shape", "error_type"),
     requires=("video",),
 )
@@ -240,7 +240,7 @@ def understanding(session: Session) -> dict[str, Any]:
 @probe(
     id="video.order",
     title="An image and a video in one prompt, in both orders, and whether each is read where it was sent",
-    requirement="V. Multimodal Capability Support 1, 3 — image and video input in one request",
+    requirement="Image and video input in one request, in the order sent",
     compare=("statuses", "refusal_kinds", "prompt_tokens"),
     requires=("image", "video"),
 )
@@ -286,7 +286,7 @@ def order(session: Session) -> dict[str, Any]:
 @probe(
     id="video.tokens",
     title="Prompt tokens for one clip, beside the same text with no clip",
-    requirement="II. Response Correctness 2 — prompt token accounting; V. Multimodal Capability Support 3",
+    requirement="Video input: prompt token accounting for a clip",
     compare=("statuses", "prompt_tokens", "video_tokens"),
     requires=("video",),
 )
@@ -314,7 +314,7 @@ def tokens(session: Session) -> dict[str, Any]:
 @probe(
     id="video.sampling",
     title="How a clip's prompt tokens move with its duration, frame rate and resolution",
-    requirement="V. Multimodal Capability Support 3 — video input; frame sampling and limits",
+    requirement="Video input: frame sampling, and how its cost moves with duration, rate and size",
     compare=("statuses", "duration_tokens", "rate_tokens", "size_tokens", "shape"),
     requires=("video",),
 )
@@ -363,7 +363,7 @@ def sampling(session: Session) -> dict[str, Any]:
 @probe(
     id="video.two_videos",
     title="Two videos in one prompt: accepted, or refused and how",
-    requirement="V. Multimodal Capability Support 3 — video input; limits on media items per request",
+    requirement="Video input: limits on media items per request",
     compare=("status", "refusal_kind", "error_shape", "error_type", "prompt_tokens"),
     requires=("video",),
 )
@@ -383,7 +383,7 @@ def two_videos(session: Session) -> dict[str, Any]:
 @probe(
     id="video.long_clip",
     title="A thirty-minute clip: accepted, refused, or silently capped",
-    requirement="V. Multimodal Capability Support 3 — video input; limits on duration",
+    requirement="Video input: limits on duration",
     compare=("status", "refusal_kind", "error_shape", "error_type", "prompt_tokens"),
     requires=("video",),
 )
@@ -411,7 +411,7 @@ def long_clip(session: Session) -> dict[str, Any]:
 @probe(
     id="video.payload_size",
     title="The base clip padded to a large payload: where the request body is refused",
-    requirement="V. Multimodal Capability Support 3 — video input; limits on size",
+    requirement="Video input: limits on request size",
     compare=("statuses", "refusal_kinds", "error_shapes", "error_types"),
     requires=("video",),
 )
@@ -465,7 +465,7 @@ def _usage_position(carrying: list[int], total: int) -> str:
 @probe(
     id="video.streaming",
     title="A video request streamed: whether it streams, and whether the final usage is there",
-    requirement="I. Streaming Output 1, 3; V. Multimodal Capability Support 3 — video input over a stream",
+    requirement="Video input over a stream",
     compare=(
         "status",
         "content_type",

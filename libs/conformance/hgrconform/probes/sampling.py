@@ -2,7 +2,7 @@
 
 The verifier this replaces asserts that particular values are rejected — temperature
 above one, `n` above one — because the model it was written for pins them. That is a
-vendor policy and not the standard, so asserting it reports a failure against every
+vendor policy and not a protocol rule, so asserting it reports a failure against every
 other model. The question that survives the change of model is a parity question:
 for each parameter, at a legal value, at a value outside the documented range, and at
 the wrong type, what status came back. Two endpoints with the same acceptance policy
@@ -73,7 +73,7 @@ CONTENT = "choices.0.message.content"
 @probe(
     id="sampling.acceptance",
     title="The status returned for each sampling parameter at a legal, an out-of-range, and a mistyped value",
-    requirement="I. Parameter Constraints — which request parameters are accepted, and within which bounds",
+    requirement="Which request parameters are accepted, and within which bounds",
     compare=("acceptance",),
 )
 def acceptance(session: Session) -> dict[str, Any]:
@@ -88,7 +88,7 @@ def acceptance(session: Session) -> dict[str, Any]:
     observation and a noisy one — a model can repeat itself at a high temperature by
     chance on a short completion. It is here because a status of 200 alone cannot
     separate an endpoint that honours `temperature: 5.0` from one that quietly pins
-    it, and the standard treats those as different endpoints.
+    it, and a caller sees those as different endpoints.
     """
     statuses: dict[str, int] = {}
     detail: dict[str, str] = {}
@@ -126,7 +126,7 @@ def acceptance(session: Session) -> dict[str, Any]:
 @probe(
     id="sampling.unknown_parameter",
     title="The status returned for a parameter the endpoint has no name for",
-    requirement="I. Parameter Constraints — the handling of unrecognised request parameters",
+    requirement="How unrecognised request parameters are handled",
     compare=("unknown_status", "unknown_nested_status"),
 )
 def unknown_parameter(session: Session) -> dict[str, Any]:

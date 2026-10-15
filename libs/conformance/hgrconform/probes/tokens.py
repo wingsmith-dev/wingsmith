@@ -57,7 +57,7 @@ CASES: dict[str, list[dict[str, Any]]] = {
 @probe(
     id="tokens.usage",
     title="`usage` is present and populated on a non-streaming response",
-    requirement="II. Response Correctness 2 — usage returned and not empty",
+    requirement="Usage is returned and populated",
     compare=("status", "usage_present", "usage_fields", "counts_positive"),
 )
 def usage(session: Session) -> dict[str, Any]:
@@ -96,7 +96,7 @@ def usage(session: Session) -> dict[str, Any]:
 @probe(
     id="tokens.prompt_accounting",
     title="Reported `prompt_tokens` for a fixed corpus of prompt shapes",
-    requirement="II. Response Correctness 2 — usage returned and not empty; prompt token accounting",
+    requirement="Usage is returned and populated, and prompt tokens are counted as the original provider counts them",
     compare=("prompt_tokens", "total_is_sum", "statuses"),
 )
 def prompt_accounting(session: Session) -> dict[str, Any]:

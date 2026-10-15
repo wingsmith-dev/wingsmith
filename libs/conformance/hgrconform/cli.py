@@ -221,7 +221,7 @@ def cmd_probes(args: argparse.Namespace) -> int:
         heavy = "  [heavy]" if probe.heavy else ""
         print(f"{probe.id}{heavy}")
         print(f"  {probe.title}")
-        print(f"  answers: {probe.requirement}")
+        print(f"  checks: {probe.requirement}")
         print(f"  compares: {', '.join(probe.compare) or '(not compared against a reference)'}")
         print()
     return 0

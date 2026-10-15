@@ -21,7 +21,7 @@ from hgrconform.probes.registry import probe
 @probe(
     id="errors.shape",
     title="The status and body shape of a rejected request",
-    requirement="I. Error Message Information — error responses, and their structure",
+    requirement="Error responses, and their structure",
     compare=(
         "bad_parameter_status",
         "unknown_model_status",
@@ -63,7 +63,7 @@ def shape(session: Session) -> dict[str, Any]:
 @probe(
     id="errors.leakage",
     title="Whether an error body names the infrastructure actually serving the request",
-    requirement="I. Error Message Information — does the error message contain supplier-related information",
+    requirement="Error messages do not name the infrastructure serving the request",
     compare=(),
 )
 def leakage(session: Session) -> dict[str, Any]:
@@ -186,7 +186,7 @@ def _envelope(response: Any) -> dict[str, Any]:
 @probe(
     id="errors.envelope_types",
     title="Whether every rejection uses one error vocabulary, whichever component rejected it",
-    requirement="I. Error Message Information — error responses, and their structure",
+    requirement="Error responses, and their structure",
     compare=("type_kinds", "code_kinds", "one_vocabulary", "statuses"),
 )
 def envelope_types(session: Session) -> dict[str, Any]:
@@ -249,7 +249,7 @@ def envelope_types(session: Session) -> dict[str, Any]:
 @probe(
     id="errors.required_fields",
     title="Whether a request missing a required field is rejected at all",
-    requirement="I. Error Message Information — error responses, and their structure",
+    requirement="Error responses, and their structure",
     compare=("statuses", "rejected"),
 )
 def required_fields(session: Session) -> dict[str, Any]:

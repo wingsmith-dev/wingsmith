@@ -91,7 +91,7 @@ def _bucket(count: int, total: int) -> str:
 @probe(
     id="eos.suppression",
     title="How often a reasoning request returns `finish_reason: stop` with empty content",
-    requirement="II. Reasoning 4 — EOS emitted during the reasoning phase must be suppressed",
+    requirement="An end-of-sequence token emitted while reasoning is suppressed rather than ending the response empty",
     compare=("empty_content_bucket", "empty_stop_bucket"),
     heavy=True,
 )

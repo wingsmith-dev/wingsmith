@@ -5,9 +5,9 @@ values — a status code, a field path, a boolean, a count — and that flatness
 load-bearing: comparison against a reference endpoint is a key-by-key diff of two
 of these, so anything nested is something the diff cannot explain.
 
-The reason a probe does not decide pass or fail is that almost every requirement
-in the acceptance standard is phrased as *consistent with the original model
-provider*. There is no right answer to assert against, only another endpoint to
+The reason a probe does not decide pass or fail is that almost every question
+asked of an endpoint serving someone else's model is phrased as *consistent with
+the original model provider*. There is no right answer to assert against, only another endpoint to
 agree with. A probe that asserted would have to be rewritten for each model; one
 that observes does not.
 """
