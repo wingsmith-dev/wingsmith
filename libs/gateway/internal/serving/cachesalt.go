@@ -37,7 +37,7 @@ var saltParts = map[string]string{
 // the same pixel dimensions expand to the same placeholder run, so they hash
 // identically and the second request is served the first one's KV — measured
 // on a disaggregated deployment as 0 of 12 correct at concurrency 12, against
-// 12 of 12 with a salt.
+// 12 of 12 with a salt. Tracked upstream as ai-dynamo/dynamo#15343.
 //
 // `cache_salt` is the one field that survives that handoff into the block hash,
 // so deriving it from the media is how the identity the engine dropped is put

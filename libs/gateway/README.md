@@ -258,6 +258,12 @@ prefix-cache hit rate or time-to-first-token figure quoted for an endpoint holds
 only. The salt can be narrowed back to the media identity once the engine carries multimodal
 identity across the prefill/decode handoff.
 
+The decode-side defect is tracked upstream as
+[ai-dynamo/dynamo#15343](https://github.com/ai-dynamo/dynamo/issues/15343), with a proposed fix in
+[ai-dynamo/dynamo#15371](https://github.com/ai-dynamo/dynamo/pull/15371). Narrowing the salt waits on
+a Dynamo release carrying that fix being deployed, and on the second collision (prompts that differ
+only after the image) being shown gone with it.
+
 The salt is spliced into the bytes that arrived rather than written by re-encoding the body: a text
 request's `nvext` is the only part decoded (`splicedCacheSalt`). Re-encoding cost about 31 ms on a
 4 MB prompt and splicing about 5 ms, most of it the media check every request already paid
