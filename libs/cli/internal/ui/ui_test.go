@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -437,5 +438,22 @@ func TestSparklineDrawsOneMarkPerValue(t *testing.T) {
 	flat := Sparkline(s, []float64{2, 2, 2})
 	if DisplayWidth(flat) != 3 {
 		t.Errorf("a flat series drew %q", flat)
+	}
+}
+
+// /dev/null is a character device and not a terminal, which is the case a
+// mode-bit check gets wrong and the width and colour decisions depend on.
+func TestDevNullIsNotATerminal(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Skip(err)
+	}
+	defer f.Close()
+	if IsTerminal(f) {
+		t.Fatal("/dev/null reported as a terminal")
+	}
+	t.Setenv("COLUMNS", "")
+	if w := Width(f); w != 100 {
+		t.Fatalf("width of a non-terminal = %d, want the 100-column default", w)
 	}
 }

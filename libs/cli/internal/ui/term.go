@@ -5,14 +5,18 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"golang.org/x/term"
 )
 
-// IsTerminal reports whether the file is attached to a terminal.
+// IsTerminal reports whether the file is attached to a terminal. It asks the
+// kernel rather than checking for a character device, because /dev/null is a
+// character device and is not a terminal.
 func IsTerminal(f *os.File) bool {
 	if f == nil {
 		return false
 	}
-	return isTerminal(f)
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // Width returns the usable terminal width, defaulting to 100 columns when the
@@ -26,7 +30,7 @@ func Width(f *os.File) int {
 	if !IsTerminal(f) {
 		return 100
 	}
-	if n := ioctlWidth(f); n > 20 {
+	if n, _, err := term.GetSize(int(f.Fd())); err == nil && n > 20 {
 		return n
 	}
 	return 100
