@@ -38,9 +38,12 @@
 //     Transport.RoundTrip runs and the retry it owns is kept; the pool's job is
 //     to hand the retry a *different* live tunnel to the same cluster. This is
 //     why a cluster holds more than one. An agent that was killed rather than
-//     drained never sends the GOAWAY, and the ECONNRESET or EPIPE that arrives
-//     instead is not on x/net's list — clusterTransport.RoundTrip retries that
-//     one itself, and only before any byte has reached the caller.
+//     drained never sends the GOAWAY, and the ECONNRESET, EPIPE or EOF that
+//     arrives instead says nothing about whether the agent had already
+//     forwarded the request. clusterTransport.RoundTrip resends such a request
+//     only if its headers were never written, or if it is idempotent; a
+//     completion the agent may have forwarded fails as churn rather than
+//     running twice.
 //   - ResponseHeaderTimeout. http2.Transport has no such field, but
 //     ClientConn.responseHeaderTimeout reads it off the net/http Transport that
 //     http2.ConfigureTransports attaches — so the pool is built through

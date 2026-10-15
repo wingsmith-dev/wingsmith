@@ -78,7 +78,7 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 				default:
 				}
 				sent.Add(1)
-				if err := oneCompletion(transport); err != nil {
+				if err := oneCompletion(transport, ""); err != nil {
 					failures <- err.Error()
 					return
 				}
@@ -95,7 +95,7 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 		replacement := newConnector(t, handler(name), Limits{})
 		before := pool.Live("cluster-ap")
 		link(t, pool, "cluster-ap", replacement)
-		eventually(t, 10*time.Second, "the replacement tunnel to be offered", func() bool {
+		eventually(t, patience(t), "the replacement tunnel to be offered", func() bool {
 			return pool.Live("cluster-ap") > before
 		})
 
@@ -109,7 +109,7 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 	}
 
 	const minimumLoad = 400
-	eventually(t, 30*time.Second, "the load generators to have done enough work to mean anything", func() bool {
+	eventually(t, patience(t), "the load generators to have done enough work to mean anything", func() bool {
 		return sent.Load() >= minimumLoad || len(failures) > 0
 	})
 	close(stop)
@@ -137,12 +137,13 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 // reset, the GOAWAY that would have said "I processed nothing" is never sent, and
 // x/net's own retry does not recognise the error that arrives instead.
 //
-// What it asserts is narrower than the graceful case, and deliberately so: a
-// request whose first bytes already reached its caller cannot be retried by
-// anyone, so those are counted and tolerated. A request that had NOT been answered
-// yet must never fail, however many connectors are killed underneath it. That is
-// the whole of the pool's own retry, under load, and it is what turns a crashed
-// connector from a burst of 502s into a slower second attempt.
+// What it asserts is narrower than the graceful case, and deliberately so. A
+// request the killed connector was holding may already have been forwarded, so
+// it fails as churn rather than being run twice, and a request whose first bytes
+// already reached its caller cannot be retried by anyone. Both are counted and
+// tolerated. What must hold is that no request is ever served twice, that every
+// failure is churn, and that the cluster keeps serving through the tunnels that
+// remain.
 func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 	t.Parallel()
 
@@ -153,6 +154,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		minimumLoad       = 400
 	)
 
+	served := newCounter()
 	handler := func(who string) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
@@ -160,6 +162,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 				http.Error(w, "body did not survive", http.StatusBadRequest)
 				return
 			}
+			served.add(r.Header.Get("X-Request-Id"))
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
 			flusher := http.NewResponseController(w)
@@ -186,7 +189,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		live = append(live, tunnel{conn, kill})
 	}
 
-	var sent, ok, severed atomic.Int64
+	var sent, ok, severed, lost atomic.Int64
 	failures := make(chan string, 4096)
 	stop := make(chan struct{})
 
@@ -201,8 +204,8 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 					return
 				default:
 				}
-				sent.Add(1)
-				err := oneCompletion(transport)
+				id := fmt.Sprintf("req-%d", sent.Add(1))
+				err := oneCompletion(transport, id)
 				var cut severedError
 				switch {
 				case err == nil:
@@ -213,6 +216,9 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 						failures <- fmt.Sprintf("a severed body classified as %s, not tunnel churn: %v", cut.fault, err)
 						return
 					}
+				case Classify(err) == FaultChurn:
+					// Held by the connector when it was killed, and not resent.
+					lost.Add(1)
 				default:
 					failures <- err.Error()
 					return
@@ -228,7 +234,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		replacement := newConnector(t, handler(fmt.Sprintf("gen%d", gen)), Limits{})
 		before := pool.Live("cluster-ap")
 		conn, kill := linkKillable(t, pool, "cluster-ap", replacement)
-		eventuallyCount(t, 10*time.Second, "the replacement tunnel to be offered", before+1,
+		eventuallyCount(t, patience(t), "the replacement tunnel to be offered", before+1,
 			func() int { return pool.Live("cluster-ap") })
 		live = append(live, tunnel{conn, kill})
 
@@ -237,10 +243,10 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		victim.kill()
 		select {
 		case <-victim.conn.Done():
-		case <-time.After(10 * time.Second):
+		case <-time.After(patience(t)):
 			t.Fatal("the gateway never noticed a tunnel whose connector was killed")
 		}
-		eventuallyCount(t, 10*time.Second, "the killed tunnel to leave the pool", tunnelsPerCluster,
+		eventuallyCount(t, patience(t), "the killed tunnel to leave the pool", tunnelsPerCluster,
 			func() int { return pool.Live("cluster-ap") })
 
 		// A rollout is paced by the thing being rolled: the next pod is not killed
@@ -249,12 +255,12 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		// cluster-wide outage — one request can then meet every tunnel it has as it
 		// dies, and no retry budget covers that because there is nowhere left to go.
 		serving := ok.Load() + concurrent
-		eventually(t, 20*time.Second, "the cluster to serve again through the surviving tunnels", func() bool {
+		eventually(t, patience(t), "the cluster to serve again through the surviving tunnels", func() bool {
 			return ok.Load() >= serving || len(failures) > 0
 		})
 	}
 
-	eventually(t, 30*time.Second, "the load generators to have done enough work to mean anything", func() bool {
+	eventually(t, patience(t), "the load generators to have done enough work to mean anything", func() bool {
 		return sent.Load() >= minimumLoad || len(failures) > 0
 	})
 	close(stop)
@@ -262,16 +268,22 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 	close(failures)
 
 	for failure := range failures {
-		t.Errorf("a request that had not been answered failed while a connector was killed: %s", failure)
+		t.Errorf("a request failed for a reason other than its tunnel being killed: %s", failure)
 	}
 	if sent.Load() < minimumLoad {
 		t.Fatalf("only %d requests were sent; the kills were not under load", sent.Load())
 	}
-	if ok.Load()+severed.Load() != sent.Load() {
-		t.Errorf("%d of %d requests completed, %d were severed mid-body", ok.Load(), sent.Load(), severed.Load())
+	if ok.Load()+severed.Load()+lost.Load() != sent.Load() {
+		t.Errorf("%d of %d requests completed, %d were severed mid-body, %d lost with their tunnel",
+			ok.Load(), sent.Load(), severed.Load(), lost.Load())
 	}
-	t.Logf("%d requests across %d killed connectors: %d served, %d severed mid-body",
-		sent.Load(), generations, ok.Load(), severed.Load())
+	for id, times := range served.snapshot() {
+		if times > 1 {
+			t.Errorf("%s was served %d times", id, times)
+		}
+	}
+	t.Logf("%d requests across %d killed connectors: %d served, %d severed mid-body, %d lost with their tunnel",
+		sent.Load(), generations, ok.Load(), severed.Load(), lost.Load())
 }
 
 // severedError is a response that had already begun reaching its caller when the
@@ -291,11 +303,14 @@ func (e severedError) Error() string { return "severed mid-body: " + e.err.Error
 func (e severedError) Unwrap() error { return e.err }
 
 // oneCompletion sends one streaming completion and reads it to the end.
-func oneCompletion(transport http.RoundTripper) error {
+func oneCompletion(transport http.RoundTripper, id string) error {
 	req, err := http.NewRequest(http.MethodPost, "https://ignored/v1/chat/completions",
 		strings.NewReader(`{"model":"llama-3-70b","stream":true}`))
 	if err != nil {
 		return err
+	}
+	if id != "" {
+		req.Header.Set("X-Request-Id", id)
 	}
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
@@ -313,4 +328,23 @@ func oneCompletion(transport http.RoundTripper) error {
 		return fmt.Errorf("truncated body %q", body)
 	}
 	return nil
+}
+
+// patience is how long a load test waits for something it is sure will happen.
+//
+// It is the time left before the test binary's own deadline, less a margin to
+// report in, rather than a fixed wall-clock number. Under -race with every test
+// running in parallel a tunnel takes far longer to notice a dead peer than it
+// does alone, and a fixed bound turned that slowness into a failure.
+func patience(t *testing.T) time.Duration {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return 2 * time.Minute
+	}
+	left := time.Until(deadline) - 10*time.Second
+	if left < 10*time.Second {
+		return 10 * time.Second
+	}
+	return left
 }

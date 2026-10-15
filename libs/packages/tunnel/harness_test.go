@@ -251,6 +251,16 @@ func (c *counter) get(key string) int {
 	return c.m[key]
 }
 
+func (c *counter) snapshot() map[string]int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]int, len(c.m))
+	for k, v := range c.m {
+		out[k] = v
+	}
+	return out
+}
+
 func (c *counter) total() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()

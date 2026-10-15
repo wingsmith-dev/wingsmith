@@ -8,10 +8,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -73,9 +75,9 @@ const maxReplayBytes = 100 << 20
 //
 // HTTP/2 retries the endings it recognises on its own; this budget exists for
 // the ones it does not, which is a tunnel that died without a readable GOAWAY.
-// It is small because the shape that produces them is small: a rollout replaces
-// one agent at a time, so a request meets at most one dying tunnel per
-// attempt, and a request that has met three is not being unlucky.
+// It is small because a rollout replaces one agent at a time, so a request
+// meets at most one dying tunnel per attempt, and a request that has met three
+// is not being unlucky.
 const maxTunnelAttempts = 3
 
 // authoritySuffix is the synthetic name a tunnelled request is addressed to.
@@ -488,13 +490,20 @@ type clusterTransport struct {
 // it was given, and the proxy above this one reuses the inbound request.
 //
 // The loop is not a second implementation of HTTP/2's retry, which still runs
-// inside t2.RoundTrip and still owns every ending it recognises. It covers the
-// one it does not recognise: an agent that was killed rather than drained,
-// whose socket is reset with no GOAWAY on it.
+// inside t2.RoundTrip and still owns every ending it recognises: a GOAWAY that
+// names the stream as unprocessed, or REFUSED_STREAM. It covers a tunnel that
+// died with no GOAWAY on it, and only while that cannot duplicate work: see
+// retryAfterTunnelDeath.
 func (t *clusterTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	authority := Authority(t.clusterID)
 	ctx := context.WithValue(r.Context(), clusterKey{}, t.clusterID)
 	ctx = context.WithValue(ctx, attemptKey{}, &attempts{})
+	// Set once any attempt has started writing request headers. From then on the
+	// agent may have the request, and may already have forwarded it.
+	var wrote atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteHeaders: func() { wrote.Store(true) },
+	})
 	clone := r.Clone(ctx)
 	clone.URL.Scheme = authority.Scheme
 	clone.URL.Host = authority.Host
@@ -514,7 +523,7 @@ func (t *clusterTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if first == nil {
 			first = err
 		}
-		if attempt >= maxTunnelAttempts || !retryAfterTunnelDeath(clone, err) {
+		if attempt >= maxTunnelAttempts || !retryAfterTunnelDeath(clone, err, wrote.Load()) {
 			return nil, worseOf(first, err)
 		}
 		rewound, ok := rewind(clone)
@@ -544,16 +553,43 @@ func worseOf(first, last error) error {
 // retryAfterTunnelDeath reports whether this request may be sent down another
 // tunnel.
 //
-// It only ever runs on the error return of RoundTrip, and that is the load
-// bearing part: an error return means no *http.Response was ever handed back, so
-// no byte of this answer has reached a caller. A request whose response headers
-// arrived is not here — its body errors belong to whoever is reading the body,
-// and replaying then would splice two generations into one answer.
-func retryAfterTunnelDeath(r *http.Request, err error) bool {
+// It only ever runs on the error return of RoundTrip, so no byte of this answer
+// has reached a caller. A request whose response headers arrived is not here —
+// its body errors belong to whoever is reading the body, and replaying then
+// would splice two generations into one answer.
+//
+// No response is not the same as not processed. Once the request headers have
+// been written the agent may have read them and forwarded the request to the
+// serving runtime, which may be generating — and billing — right now. A tunnel
+// that dies without a GOAWAY says nothing about which of those happened, so a
+// non-idempotent request is retried only when it provably never left: headers
+// not yet written. Idempotent methods, and requests that carry an
+// Idempotency-Key, are retried as net/http retries them. Everything else fails
+// as churn and the caller decides.
+func retryAfterTunnelDeath(r *http.Request, err error, wroteHeaders bool) bool {
 	if r.Context().Err() != nil {
 		return false
 	}
-	return isTunnelDeath(err)
+	if !isTunnelDeath(err) {
+		return false
+	}
+	return !wroteHeaders || idempotent(r)
+}
+
+// idempotent mirrors net/http's rule for replaying a request whose fate is
+// unknown: a method that is safe to repeat, or an idempotency key the caller set.
+func idempotent(r *http.Request) bool {
+	switch r.Method {
+	case "", http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return true
+	}
+	if _, ok := r.Header["Idempotency-Key"]; ok {
+		return true
+	}
+	if _, ok := r.Header["X-Idempotency-Key"]; ok {
+		return true
+	}
+	return false
 }
 
 // rewind returns an equivalent request with its body back at the start, or false

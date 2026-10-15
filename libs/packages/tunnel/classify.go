@@ -77,9 +77,11 @@ func (f Fault) String() string {
 	}
 }
 
-// Retryable reports whether the same request could be sent again. It describes
-// the fault, not a policy: HTTP/2 has already done its own retrying by the time
-// an error reaches here.
+// Retryable reports whether the fault is one a later attempt could get past. It
+// describes the fault, not a policy, and it is not permission to resend: a churn
+// ending on a request whose headers were written may mean the cluster already
+// has the request. By the time an error reaches here HTTP/2 and the pool have
+// already retried everything that was safe to.
 func (f Fault) Retryable() bool {
 	return f == FaultChurn || f == FaultSaturated || f == FaultNoTunnel
 }

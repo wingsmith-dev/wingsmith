@@ -186,44 +186,70 @@ func TestARequestWithoutGetBodyCannotBeRetried(t *testing.T) {
 	}
 }
 
-// TestUnstartedRequestsSurviveAConnectorKilledOutright is the death that actually
-// happens.
+// TestRequestsAConnectorWasKilledHoldingAreNotResent is the death that
+// actually happens.
 //
 // A drained connector says GOAWAY and x/net's own retry takes it from there. A
-// SIGKILLed one, an OOMKilled one, or one whose node was lost says nothing at all,
-// and the two shapes that silence takes on the wire are both here: an RST, which
-// reaches the gateway as ECONNRESET or EPIPE, and a FIN, which reaches it as an
-// unexpected EOF. canRetryError accepts none of them, and all of them used to be
-// classified as the cluster failing — so a connector that crashed cost a 502 for
-// every request that had not been answered yet, and the graph blamed the cluster.
+// SIGKILLed one, an OOMKilled one, or one whose node was lost says nothing at
+// all, and the two shapes that silence takes on the wire are both here: an RST,
+// which reaches the gateway as ECONNRESET or EPIPE, and a FIN, which reaches it
+// as an unexpected EOF.
 //
-// The requests are gateway-shaped for the same reason as the graceful case: the
-// pool's own retry cannot replay a body it cannot rewind either.
-func TestUnstartedRequestsSurviveAConnectorKilledOutright(t *testing.T) {
+// Either way the gateway cannot know whether the connector had already
+// forwarded a request it was holding. A completion POST that was forwarded is
+// generating, and billed, on the cluster; sending it again would run it twice.
+// So a non-idempotent request that reached the connector fails as churn and is
+// not resent, while an idempotent one — a safe method, or a POST carrying an
+// Idempotency-Key — is retried down the surviving tunnel exactly once.
+func TestRequestsAConnectorWasKilledHoldingAreNotResent(t *testing.T) {
 	t.Parallel()
 
-	for _, death := range []struct {
+	deaths := []struct {
 		name string
 		kill func(*silentPeer, *testing.T)
 	}{
 		{"the socket is reset", (*silentPeer).dieAbruptly},
 		{"the socket is closed with no GOAWAY", (*silentPeer).vanish},
-	} {
-		t.Run(death.name, func(t *testing.T) {
-			t.Parallel()
-			requestsSurviveAKilledConnector(t, death.kill)
-		})
+	}
+	requests := []struct {
+		name    string
+		build   func(t *testing.T) *http.Request
+		retried bool
+	}{
+		{"a completion POST", func(t *testing.T) *http.Request {
+			return gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+		}, false},
+		{"a POST with an idempotency key", func(t *testing.T) *http.Request {
+			req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+			req.Header.Set("Idempotency-Key", "k")
+			return req
+		}, true},
+		{"a GET", func(t *testing.T) *http.Request {
+			req, err := http.NewRequest(http.MethodGet, "https://ignored/v1/models", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return req
+		}, true},
+	}
+	for _, death := range deaths {
+		for _, request := range requests {
+			t.Run(death.name+"/"+request.name, func(t *testing.T) {
+				t.Parallel()
+				killConnectorHolding(t, death.kill, request.build, request.retried)
+			})
+		}
 	}
 }
 
-func requestsSurviveAKilledConnector(t *testing.T, kill func(*silentPeer, *testing.T)) {
+func killConnectorHolding(t *testing.T, kill func(*silentPeer, *testing.T), build func(*testing.T) *http.Request, retried bool) {
 	t.Helper()
 
 	const inFlight = 12
 	served := newCounter()
 	survivor := newConnector(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if !strings.Contains(string(body), `"model"`) {
+		if r.Method == http.MethodPost && !strings.Contains(string(body), `"model"`) {
 			http.Error(w, "the replayed body was truncated", http.StatusBadRequest)
 			return
 		}
@@ -248,12 +274,12 @@ func requestsSurviveAKilledConnector(t *testing.T, kill func(*silentPeer, *testi
 	results := make(chan error, inFlight)
 	for i := 0; i < inFlight; i++ {
 		id := fmt.Sprintf("req-%02d", i)
-		req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+		req := build(t)
 		req.Header.Set("X-Request-Id", id)
 		go func() {
 			resp, err := transport.RoundTrip(req)
 			if err != nil {
-				results <- fmt.Errorf("%s: %w (%s)", id, err, Classify(err))
+				results <- fmt.Errorf("%s: %w", id, err)
 				return
 			}
 			defer resp.Body.Close()
@@ -280,25 +306,74 @@ func requestsSurviveAKilledConnector(t *testing.T, kill func(*silentPeer, *testi
 	for i := 0; i < inFlight; i++ {
 		select {
 		case err := <-results:
-			if err != nil {
-				t.Errorf("request failed instead of being retried: %v", err)
+			switch {
+			case retried && err != nil:
+				t.Errorf("an idempotent request failed instead of being retried: %v", err)
+			case !retried && err == nil:
+				t.Error("a request the killed connector may have forwarded was sent again")
+			case !retried && Classify(err) != FaultChurn:
+				t.Errorf("classified as %s, want %s: %v", Classify(err), FaultChurn, err)
 			}
 		case <-time.After(20 * time.Second):
 			t.Fatalf("only %d of %d requests finished", i, inFlight)
 		}
 	}
-	if served.total() != inFlight {
-		t.Errorf("the survivor served %d requests, want %d", served.total(), inFlight)
+	want := 0
+	if retried {
+		want = 1
 	}
 	for i := 0; i < inFlight; i++ {
 		id := fmt.Sprintf("req-%02d", i)
-		if got := served.get(id); got != 1 {
-			t.Errorf("%s was served %d times, want exactly once", id, got)
+		if got := served.get(id); got != want {
+			t.Errorf("%s was served %d times by the survivor, want %d", id, got, want)
 		}
 	}
 	eventually(t, 5*time.Second, "the killed tunnel to leave the pool", func() bool {
 		return pool.Live("cluster-ap") == 1
 	})
+}
+
+// TestTheRetryRuleAfterATunnelDies pins which requests may be sent down another
+// tunnel after the one they were on died with no GOAWAY.
+func TestTheRetryRuleAfterATunnelDies(t *testing.T) {
+	t.Parallel()
+
+	reset := &net.OpError{Op: "read", Err: syscall.ECONNRESET}
+	post := func(header string) *http.Request {
+		req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"m"}`)
+		if header != "" {
+			req.Header[header] = []string{"k"}
+		}
+		return req
+	}
+	get, err := http.NewRequest(http.MethodGet, "https://ignored/v1/models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	for _, tc := range []struct {
+		name  string
+		req   *http.Request
+		err   error
+		wrote bool
+		want  bool
+	}{
+		{"a POST that never left", post(""), reset, false, true},
+		{"a POST whose headers were written", post(""), reset, true, false},
+		{"a POST with Idempotency-Key", post("Idempotency-Key"), reset, true, true},
+		{"a POST with X-Idempotency-Key", post("X-Idempotency-Key"), reset, true, true},
+		{"a GET whose headers were written", get, reset, true, true},
+		{"a caller that hung up", get.WithContext(canceledCtx), reset, false, false},
+		{"an error that is not the tunnel dying", get, errors.New("boom"), false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := retryAfterTunnelDeath(tc.req, tc.err, tc.wrote); got != tc.want {
+				t.Errorf("retryAfterTunnelDeath = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 // TestAKilledTunnelIsChurnNotAClusterFailure pins the classification either side
