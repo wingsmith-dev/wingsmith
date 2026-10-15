@@ -1685,8 +1685,8 @@ async def test_a_qualified_name_is_still_checked_against_the_type(db: AsyncSessi
     await seed_node(db, cluster.id, name="gpu-node-04")
     service = OperationService(db, actor="tester", notifier=MemoryNotifier())
 
-    with pytest.raises(Invalid):
-        await service.create(OperationCreateRequest(type="device.reset", target="node:gpu-node-04"))
+    with pytest.raises(Invalid, match="acts on node targets"):
+        await service.create(OperationCreateRequest(type="node.drain", target="deployment:gpu-node-04"))
 
 
 async def test_a_target_name_that_matches_nothing_is_not_found(db: AsyncSession) -> None:
@@ -1739,6 +1739,32 @@ async def test_an_idempotency_key_replays_through_a_named_target(db: AsyncSessio
     )
 
     assert again.id == first.id
+
+
+async def test_an_idempotency_key_reused_with_other_parameters_is_refused(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    await service.create(OperationCreateRequest(type="node.drain", target=node), idempotency_key="retry-1")
+    with pytest.raises(Conflict, match="different request"):
+        await service.create(
+            OperationCreateRequest(type="node.drain", target=node, parameters={"grace_seconds": 30}),
+            idempotency_key="retry-1",
+        )
+
+
+async def test_an_idempotency_key_reused_by_another_principal_is_refused(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id, name="gpu-node-04")
+
+    await OperationService(db, actor="alice", notifier=MemoryNotifier()).create(
+        OperationCreateRequest(type="node.drain", target=node), idempotency_key="retry-1"
+    )
+    with pytest.raises(Conflict):
+        await OperationService(db, actor="bob", notifier=MemoryNotifier()).create(
+            OperationCreateRequest(type="node.drain", target=node), idempotency_key="retry-1"
+        )
 
 
 async def test_creating_an_operation_announces_it_to_its_cluster(db: AsyncSession) -> None:

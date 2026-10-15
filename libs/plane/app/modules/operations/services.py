@@ -1,3 +1,5 @@
+import json
+import hashlib
 import datetime as dt
 
 import msgspec
@@ -94,6 +96,27 @@ def workload_parameters(type_name: str, parameters: dict) -> object | None:
         return msgspec.convert(parameters or {}, shape)
     except msgspec.ValidationError as exc:
         raise Invalid(f"invalid parameters for {type_name}: {exc}", {"type": type_name}) from exc
+
+
+def request_fingerprint(data: OperationCreateRequest, target_uid: str, actor: str) -> str:
+    """A digest of everything a create request asks for, stored beside its idempotency key.
+
+    A retry under the same key replays the operation only if this matches, so the same
+    key sent with different parameters, a different reason or deadline, or by another
+    principal is refused rather than answered with an operation it did not ask for. The
+    target is the resolved id, so `nod_...` and `node:gpu-node-04` naming the same node
+    are the same request.
+    """
+    request = {
+        "actor": actor,
+        "type": data.type,
+        "target": target_uid,
+        "parameters": data.parameters or {},
+        "reason": data.reason,
+        "deadline": data.deadline.isoformat() if data.deadline is not None else None,
+    }
+    encoded = json.dumps(request, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 PENDING = "pending"
@@ -284,17 +307,11 @@ class OperationService:
 
         target = await self._resolve(data, cluster)
 
+        fingerprint = request_fingerprint(data, target.uid, self.actor)
         if idempotency_key is not None:
             existing = await self.repo.by_idempotency_key(idempotency_key)
             if existing is not None:
-                operation = existing[0]
-                target_uid = await self._target_uid(operation)
-                if operation.type != data.type or target_uid != target.uid:
-                    raise Conflict(
-                        "idempotency key was already used for a different operation",
-                        {"operation": operation.uid, "type": operation.type, "target": target_uid},
-                    )
-                return self._row_schema(existing, target_uid)
+                return await self._replay(existing, fingerprint)
 
         cluster_id = target.cluster_id
         if cluster is not None:
@@ -320,7 +337,7 @@ class OperationService:
             requested_by=self.actor,
             reason=data.reason,
             idempotency_key=idempotency_key,
-            payload={"parameters": data.parameters},
+            payload={"parameters": data.parameters, "request": fingerprint},
             deadline_at=data.deadline,
         )
         if data.type in PLANE_EXECUTED:
@@ -336,12 +353,23 @@ class OperationService:
             if idempotency_key is not None:
                 replayed = await self.repo.by_idempotency_key(idempotency_key)
                 if replayed is not None:
-                    return self._row_schema(replayed, await self._target_uid(replayed[0]))
+                    return await self._replay(replayed, fingerprint)
             raise Conflict("operation could not be recorded") from exc
         cluster_uid = await self.repo.cluster_uid(cluster_id)
         if cluster_uid is not None:
             await self._announce(cluster_uid, operation.uid)
         return await self.get(operation.uid)
+
+    async def _replay(self, existing: Row, fingerprint: str) -> OperationSchema:
+        """The operation an idempotency key already created, if this request is the same one.
+
+        Anything else under the same key is a 409 that names no part of the stored request,
+        since the key may have been used by another principal.
+        """
+        operation = existing[0]
+        if (operation.payload or {}).get("request") != fingerprint:
+            raise Conflict("idempotency key was already used for a different request")
+        return self._row_schema(existing, await self._target_uid(operation))
 
     async def _execute(self, operation: Operation, target, parameters: object) -> None:
         """Carries out a plane-executed operation and closes it in one commit.

@@ -25,6 +25,7 @@ from app.modules.operations.services import PHASES
 from app.modules.operations.services import TERMINAL_PHASES
 from app.modules.operations.services import OperationService
 from app.modules.operations.services import wire_kind
+from app.modules.operations.services import request_fingerprint
 from app.modules.operations.services import workload_parameters
 from app.modules.operations.repository import TARGET_KINDS
 from app.modules.operations.repository import OperationRepository
@@ -330,6 +331,55 @@ def test_create_accepts_an_idempotency_key_header():
     assert parameter.default.header == "Idempotency-Key"
 
 
+def drain(**overrides) -> OperationCreateRequest:
+    return OperationCreateRequest(**{"type": "node.drain", "target": "node:gpu-node-04", **overrides})
+
+
+def test_the_same_request_spelled_by_id_or_by_name_has_one_fingerprint():
+    by_name = request_fingerprint(drain(), NODE_UID, "alice")
+    by_id = request_fingerprint(drain(target=NODE_UID), NODE_UID, "alice")
+    assert by_name == by_id
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"parameters": {"grace_seconds": 30}},
+        {"reason": "kernel upgrade"},
+        {"deadline": dt.datetime(2026, 1, 1, tzinfo=dt.UTC)},
+        {"type": "node.cordon"},
+    ],
+)
+def test_a_changed_request_has_a_different_fingerprint(change):
+    assert request_fingerprint(drain(), NODE_UID, "alice") != request_fingerprint(drain(**change), NODE_UID, "alice")
+
+
+def test_another_principal_or_target_has_a_different_fingerprint():
+    first = request_fingerprint(drain(), NODE_UID, "alice")
+    assert first != request_fingerprint(drain(), NODE_UID, "bob")
+    assert first != request_fingerprint(drain(), new_uid(NODE), "alice")
+
+
+class StoredOperation:
+    def __init__(self, fingerprint: str | None) -> None:
+        self.uid = new_uid(OPERATION)
+        self.payload = {"parameters": {}} if fingerprint is None else {"parameters": {}, "request": fingerprint}
+
+
+async def test_a_replay_with_a_different_request_is_a_conflict():
+    service = OperationService(db=None)
+    stored = (StoredOperation(request_fingerprint(drain(), NODE_UID, "alice")),)
+
+    with pytest.raises(Conflict, match="different request"):
+        await service._replay(stored, request_fingerprint(drain(parameters={"grace_seconds": 30}), NODE_UID, "alice"))
+
+
+async def test_a_replay_of_a_row_with_no_stored_fingerprint_is_a_conflict():
+    service = OperationService(db=None)
+    with pytest.raises(Conflict):
+        await service._replay((StoredOperation(None),), request_fingerprint(drain(), NODE_UID, "alice"))
+
+
 class CancelSession:
     """A session with no `delete`, so a cancellation that removed the row would fail here."""
 
@@ -544,3 +594,9 @@ async def test_a_cancellation_carries_who_asked_and_why() -> None:
     assert isinstance(payload, OperationCancel)
     assert payload.requested_by == "operator@example.com"
     assert payload.reason == "driver upgrade"
+
+
+async def test_a_qualified_name_of_the_wrong_kind_is_refused_before_any_lookup():
+    data = OperationCreateRequest(type="node.drain", target="deployment:gpu-node-04")
+    with pytest.raises(Invalid, match="acts on node targets"):
+        await OperationService(db=None).create(data)
