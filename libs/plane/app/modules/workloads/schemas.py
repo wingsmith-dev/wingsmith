@@ -578,9 +578,11 @@ class WorkloadCreateRequest(Struct):
     checked for phase, reachability, policy, quota and capacity, and a pin at a cluster
     that cannot take the workload leaves it pending with that cluster's reasons.
 
+    `kind` is `service`. `task` and `gang` are reserved for workload kinds on the
+    roadmap and are refused at creation, because no operator renders them yet.
+
     `min_scale` / `max_scale` / `desired_scale` are TOTALS across every cluster this
-    workload may use. They are counted in replicas for `service`, ranks for `gang`,
-    completions for `task`.
+    workload may use, counted in replicas.
 
     `priority_class` is optional rather than absent: every workload carries one, but
     the project's default answers for most callers and making them repeat it is how

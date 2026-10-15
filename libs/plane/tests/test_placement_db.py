@@ -378,35 +378,17 @@ async def test_a_share_is_this_clusters_count_and_never_the_total(sessions) -> N
         assert deployment.desired_replicas < workload.scale.desired
 
 
-async def test_a_gang_cannot_straddle_clusters(sessions) -> None:
-    """Two clusters that could each take half a gang add up to nothing.
-
-    Its ranks are co-scheduled, so a split gang is broken rather than degraded.
-    This is a rejection, not a lower-ranked answer.
-    """
+async def test_a_gang_is_refused_before_anything_is_written(sessions) -> None:
+    """Gang workloads are on the roadmap; nothing renders one, so none is accepted."""
     await seed_demand(sessions)
-    await seed_supply(sessions, "half-a", devices=4)
-    await seed_supply(sessions, "half-b", devices=4)
+    await seed_supply(sessions, "whole", devices=8)
 
     async with sessions() as db:
-        with pytest.raises(Invalid):
+        with pytest.raises(Invalid, match="not supported yet"):
             await WorkloadService(db).create(create(kind="gang", gang_size=2, **scale(2)))
 
     assert await fetch(sessions, "select uid from demand_workload") == []
     assert await fetch(sessions, "select uid from demand_deployment") == []
-
-
-async def test_a_gang_that_fits_whole_is_one_deployment(sessions) -> None:
-    await seed_demand(sessions)
-    await seed_supply(sessions, "whole", devices=8)
-    await seed_supply(sessions, "half", devices=4)
-
-    async with sessions() as db:
-        workload = await WorkloadService(db).create(create(kind="gang", gang_size=2, **scale(2)))
-
-    assert [d.cluster_name for d in workload.deployments] == ["whole"]
-    assert workload.deployments[0].desired_replicas == 2
-    assert workload.scale.unit == "ranks"
 
 
 async def test_a_cluster_with_no_live_session_is_not_a_placement_target(sessions) -> None:

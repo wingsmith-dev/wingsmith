@@ -94,6 +94,14 @@ __all__ = [
 
 
 KINDS = frozenset({"service", "task", "gang"})
+SUPPORTED_KINDS = frozenset({"service"})
+"""The kinds a workload can be created as today.
+
+`task` and `gang` are on the roadmap: the plane can describe them and placement can
+reason about a gang, but no operator renders either, so a workload of that kind would
+be accepted and then never run. They stay in `KINDS` so a listing filter by kind
+keeps answering, and are refused at creation.
+"""
 
 
 STRATEGIES = frozenset({"pack", "spread"})
@@ -768,7 +776,12 @@ class WorkloadService:
         """
         requested_at = dt.datetime.now(dt.UTC)
         if data.kind not in KINDS:
-            raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(KINDS)})
+            raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(SUPPORTED_KINDS)})
+        if data.kind not in SUPPORTED_KINDS:
+            raise Invalid(
+                f"{data.kind} workloads are not supported yet; only service workloads run today",
+                {"kind": data.kind, "supported": sorted(SUPPORTED_KINDS)},
+            )
         if data.strategy not in STRATEGIES:
             raise Invalid(f"unknown strategy {data.strategy!r}", {"allowed": sorted(STRATEGIES)})
         if data.gang_size < 1:

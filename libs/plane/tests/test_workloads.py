@@ -428,3 +428,22 @@ def test_placement_rollup_carries_no_serving_telemetry():
 def test_placement_is_a_read_only_route():
     names = {n for n, _ in inspect.getmembers(WorkloadRoutes)}
     assert "workload_placement" in names
+
+
+@pytest.mark.parametrize("kind", ["task", "gang"])
+async def test_a_kind_no_operator_renders_is_refused_at_creation(kind):
+    from app.modules.workloads.services import WorkloadService
+    from app.modules.workloads.schemas import ShapeSchema
+    from app.modules.workloads.schemas import WorkloadCreateRequest
+    from app.modules.workloads.schemas import WorkloadServingRequest
+
+    data = WorkloadCreateRequest(
+        serving=WorkloadServingRequest(
+            artifact="llama", engine="vllm", engine_runtime_version="1.0", shape=ShapeSchema(device_class="h100")
+        ),
+        name="batch",
+        project="core",
+        kind=kind,
+    )
+    with pytest.raises(Invalid, match="not supported yet"):
+        await WorkloadService(db=None).create(data)
