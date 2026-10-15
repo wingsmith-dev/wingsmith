@@ -287,8 +287,9 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 	p.mu.Lock()
 	p.clusters[clusterID] = append(p.clusters[clusterID], conn)
 	p.byConn[cc] = conn
-	live := countLive(p.clusters[clusterID])
+	siblings := p.snapshotLocked(clusterID)
 	p.mu.Unlock()
+	live := countLive(siblings)
 
 	go conn.watch(p.cfg.HealthInterval)
 	go func() {
@@ -328,12 +329,26 @@ func (p *Pool) forget(conn *Conn) {
 		p.clusters[conn.ClusterID] = kept
 	}
 	delete(p.byConn, conn.cc)
-	live := countLive(kept)
+	siblings := p.snapshotLocked(conn.ClusterID)
 	p.mu.Unlock()
+	live := countLive(siblings)
 
 	if found && p.cfg.Observer != nil {
 		p.cfg.Observer.TunnelClosed(conn.ClusterID, live)
 	}
+}
+
+// snapshotLocked copies a cluster's tunnels so they can be inspected without
+// p.mu. Conn.Live and Conn.Streams go through ClientConn.State, which waits on
+// the connection's write lock, and that lock is held across a socket write for
+// up to WriteByteTimeout. Asking under p.mu would let one stalled tunnel block
+// routing to every cluster. The caller holds p.mu.
+func (p *Pool) snapshotLocked(clusterID string) []*Conn {
+	conns := p.clusters[clusterID]
+	if len(conns) == 0 {
+		return nil
+	}
+	return append([]*Conn(nil), conns...)
 }
 
 func countLive(conns []*Conn) int {
@@ -355,16 +370,22 @@ func countLive(conns []*Conn) int {
 // last dial.
 func (p *Pool) Live(clusterID string) int {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	return countLive(p.clusters[clusterID])
+	conns := p.snapshotLocked(clusterID)
+	p.mu.Unlock()
+	return countLive(conns)
 }
 
 // Coverage is Live for every cluster that has at least one tunnel.
 func (p *Pool) Coverage() map[string]int {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	coverage := make(map[string]int, len(p.clusters))
-	for cluster, conns := range p.clusters {
+	snapshot := make(map[string][]*Conn, len(p.clusters))
+	for cluster := range p.clusters {
+		snapshot[cluster] = p.snapshotLocked(cluster)
+	}
+	p.mu.Unlock()
+
+	coverage := make(map[string]int, len(snapshot))
+	for cluster, conns := range snapshot {
 		if live := countLive(conns); live > 0 {
 			coverage[cluster] = live
 		}
@@ -558,10 +579,14 @@ func (p *Pool) GetClientConn(r *http.Request, _ string) (*http2.ClientConn, erro
 		return nil, ErrNoCluster
 	}
 
+	// The lock covers the copy and the cursor and nothing else; see
+	// snapshotLocked for why the tunnels are not inspected under it.
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	conns := p.snapshotLocked(clusterID)
+	offset := p.cursor[clusterID]
+	p.cursor[clusterID]++
+	p.mu.Unlock()
 
-	conns := p.clusters[clusterID]
 	if len(conns) == 0 {
 		return nil, fmt.Errorf("%w %s", ErrNoTunnel, clusterID)
 	}
@@ -581,8 +606,6 @@ func (p *Pool) GetClientConn(r *http.Request, _ string) (*http2.ClientConn, erro
 	// Exactly one reservation is ever taken, because there is no exported way to
 	// give one back — a speculative reserve on a candidate that then loses the
 	// comparison would burn a stream slot until the tunnel closed.
-	offset := p.cursor[clusterID]
-	p.cursor[clusterID]++
 	history := attemptsOf(r)
 	tried := history.tunnels()
 	var refused []*Conn
