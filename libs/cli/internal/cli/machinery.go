@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -279,7 +280,7 @@ func operationNoun() noun[api.Operation] {
 		name:    "operation",
 		aliases: []string{"operations", "op"},
 		group:   "machinery",
-		short:   "Long-running imperative work: drain, reset, warm, roll",
+		short:   "Long-running imperative work: drain, cordon, scale, pause",
 		long: `An operation is the imperative surface, and the only one.
 
 There is no verb endpoint anywhere — no POST on a node's own path — because a
@@ -415,12 +416,20 @@ the same name in different clusters apart.
 A target is an id or a name. A bare name is qualified with the kind the type
 acts upon before it is sent, because a target reference has to say what kind of
 thing it names — that is what makes node.drain against a device an error here
-rather than inside the cluster an hour later.`,
+rather than inside the cluster an hour later.
+
+The types are node.drain, node.cordon and node.uncordon, which the cluster's
+operator carries out, and workload.scale, workload.pause, workload.reshape and
+workload.drain, which the plane carries out itself (hgr workload scale, pause
+and drain start those for you). Benchmarks start with hgr benchmark run.`,
 		Example: `  hgr operation create node.drain iad-1-n01 --reason firmware
-  hgr operation create device.reset dev_01m0dj… --reason ecc --wait
-  hgr operation create cache.warm artifact:llama-3-70b --cluster iad-1`,
+  hgr operation create node.cordon iad-1-n02 --reason ecc --wait
+  hgr operation create node.uncordon iad-1-n02 --reason repaired`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkOperationType(args[0]); err != nil {
+				return err
+			}
 			parameters := map[string]any{}
 			kv, err := api.ParseKV(params, "param")
 			if err != nil {
@@ -640,30 +649,47 @@ func (a *App) emitOperation(cmd *cobra.Command, op api.Operation) error {
 	})
 }
 
-// operationTargetKinds names the kind of object each operation type acts upon.
-// It mirrors the plane's own table and exists for one reason: a name carries
-// nothing about its own kind, so the kind is written beside it before the
-// request leaves. `cache.warm` acts on an artifact, not on the cluster it
-// warms — that one is named by --cluster.
+// operationTargetKinds is every operation type hgr starts, and the kind of
+// object each acts upon. The kind is written beside a bare name before the
+// request leaves, because a name carries nothing about its own kind.
+//
+// It lists only what something will carry out: the operator runs node drain
+// and cordon, and the plane runs the workload changes itself. Benchmarks are
+// started with hgr benchmark run, which goes through their own collection.
 var operationTargetKinds = map[string]string{
-	"node.drain":        "node",
-	"node.cordon":       "node",
-	"node.uncordon":     "node",
-	"node.reboot":       "node",
-	"device.reset":      "device",
-	"cache.warm":        "artifact",
-	"deployment.roll":   "deployment",
-	"workload.scale":    "workload",
-	"workload.pause":    "workload",
-	"workload.drain":    "workload",
-	"component.upgrade": "component",
+	"node.drain":       "node",
+	"node.cordon":      "node",
+	"node.uncordon":    "node",
+	"workload.scale":   "workload",
+	"workload.pause":   "workload",
+	"workload.reshape": "workload",
+	"workload.drain":   "workload",
+}
+
+// operationTypes is the sorted list of types, for help and errors.
+func operationTypes() []string {
+	out := make([]string, 0, len(operationTargetKinds))
+	for t := range operationTargetKinds {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checkOperationType refuses a type nothing would carry out. The plane would
+// accept the row and it would sit pending forever.
+func checkOperationType(opType string) error {
+	if _, ok := operationTargetKinds[opType]; ok {
+		return nil
+	}
+	return errs.New(errs.CodeUsage, "unknown operation type %q", opType).
+		WithCause("hgr starts " + strings.Join(operationTypes(), ", "))
 }
 
 // qualifyOperationTarget turns a human reference into a form the plane can read
 // the kind off. An id already carries it in the prefix and an already-qualified
 // `node:gpu-node-04` is passed through; a bare name has the type's own target
-// kind written in front of it. An unrecognised type is left alone so the plane
-// answers for it, listing the types it knows.
+// kind written in front of it.
 func qualifyOperationTarget(opType, ref string) string {
 	if isPublicID(ref) || strings.Contains(ref, ":") {
 		return ref

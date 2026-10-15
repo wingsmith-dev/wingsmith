@@ -514,8 +514,8 @@ func TestATargetNameIsQualifiedWithTheKindTheTypeActsUpon(t *testing.T) {
 		want   string
 	}{
 		{"node.drain", "iad-1-n01", "node:iad-1-n01"},
-		{"device.reset", "GPU-8f3c", "device:GPU-8f3c"},
-		{"cache.warm", "llama-3-70b", "artifact:llama-3-70b"},
+		{"node.cordon", "sjc-1-n03", "node:sjc-1-n03"},
+		{"workload.scale", "chat", "workload:chat"},
 		{"node.drain", "nod_01m0dj000000000000000000ab", "nod_01m0dj000000000000000000ab"},
 		{"node.drain", "node:iad-1-n01", "node:iad-1-n01"},
 		{"nonsense.type", "iad-1-n01", "iad-1-n01"},
@@ -529,12 +529,25 @@ func TestATargetNameIsQualifiedWithTheKindTheTypeActsUpon(t *testing.T) {
 
 func TestEveryOperationTypeNamesTheKindItActsUpon(t *testing.T) {
 	for _, typ := range []string{
-		"node.drain", "node.cordon", "node.uncordon", "node.reboot",
-		"device.reset", "cache.warm", "deployment.roll", "component.upgrade",
-		"workload.scale", "workload.pause", "workload.drain",
+		"node.drain", "node.cordon", "node.uncordon",
+		"workload.scale", "workload.pause", "workload.reshape", "workload.drain",
 	} {
 		if operationTargetKinds[typ] == "" {
 			t.Errorf("%s has no target kind, so a name typed for it would go bare", typ)
+		}
+	}
+}
+
+// A type nothing carries out is refused before a request is sent: the plane
+// would record it and it would stay pending forever.
+func TestOperationCreateRefusesTypesNothingCarriesOut(t *testing.T) {
+	for _, typ := range []string{"node.reboot", "device.reset", "cache.warm", "deployment.roll", "component.upgrade"} {
+		_, errOut, code := run(t, "operation", "create", typ, "iad-1-n01", "--yes")
+		if code != 2 {
+			t.Errorf("%s exited %d, want 2 (USAGE): %s", typ, code, errOut)
+		}
+		if !strings.Contains(errOut, "node.drain") {
+			t.Errorf("%s: the error does not list the types hgr starts: %s", typ, errOut)
 		}
 	}
 }

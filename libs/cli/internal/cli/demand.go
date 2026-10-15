@@ -286,7 +286,7 @@ workload can be running in one region and queued on quota in another.`,
 				{Description: "The workload it is a share of", Command: "hgr workload get " + d.WorkloadID},
 				{Description: "What happened to it", Command: "hgr deployment events " + d.Name},
 				{Description: "What holds its devices", Command: "hgr allocation ls --cluster " + d.ClusterID},
-				{Description: "Roll it", Command: "hgr operation create deployment.roll " + d.Name},
+				{Description: "Benchmark it", Command: "hgr benchmark run " + d.Name},
 			}
 		},
 		extra: func(app *App) []*cobra.Command {

@@ -517,6 +517,15 @@ func seed() *state {
 	)
 
 	drainTarget := st.Nodes[len(st.Nodes)-1]
+	cordonTarget, failedDrain := st.Nodes[0], st.Nodes[0]
+	for i := len(st.Nodes) - 1; i >= 0; i-- {
+		switch n := st.Nodes[i]; {
+		case n.Cluster == iad && n.Cordoned:
+			cordonTarget = n
+		case n.Cluster == sjc:
+			failedDrain = n
+		}
+	}
 	st.Operations = append(st.Operations,
 		api.Operation{
 			ID: uid("opr_"), ClusterID: strptr(drainTarget.Cluster), Type: "node.drain",
@@ -526,18 +535,18 @@ func seed() *state {
 			StartedAt: ptr(now.Add(-3 * time.Minute)),
 		},
 		api.Operation{
-			ID: uid("opr_"), ClusterID: strptr(iad), Type: "cache.warm",
-			Target: api.OperationTarget{Type: "cluster", ID: iad}, RequestedBy: "operator",
-			Parameters: map[string]any{"artifact": artifactID}, CreatedAt: now.Add(-3 * time.Hour),
+			ID: uid("opr_"), ClusterID: strptr(iad), Type: "node.cordon",
+			Target: api.OperationTarget{Type: "node", ID: cordonTarget.ID}, Reason: strptr("ecc"),
+			RequestedBy: "operator", Parameters: map[string]any{"cordon": "true"}, CreatedAt: now.Add(-3 * time.Hour),
 			Phase: api.OpSucceeded, Attempts: 1, StartedAt: ptr(now.Add(-3 * time.Hour)),
-			FinishedAt: ptr(now.Add(-2 * time.Hour)), Result: map[string]any{"bytes": 141000000000},
+			FinishedAt: ptr(now.Add(-3 * time.Hour)), Result: map[string]any{"cordoned": true},
 		},
 		api.Operation{
-			ID: uid("opr_"), ClusterID: strptr(sjc), Type: "device.reset",
-			Target: api.OperationTarget{Type: "device", ID: st.Devices[len(st.Devices)-1].ID},
-			Reason: strptr("ecc"), RequestedBy: "operator", Parameters: map[string]any{},
+			ID: uid("opr_"), ClusterID: strptr(sjc), Type: "node.drain",
+			Target: api.OperationTarget{Type: "node", ID: failedDrain.ID},
+			Reason: strptr("kernel upgrade"), RequestedBy: "operator", Parameters: map[string]any{"grace_seconds": 600},
 			CreatedAt: now.Add(-26 * time.Hour), Phase: api.OpFailed, Attempts: 3,
-			Error: strptr("device did not come back after reset"), StartedAt: ptr(now.Add(-26 * time.Hour)),
+			Error: strptr("eviction blocked by a pod disruption budget"), StartedAt: ptr(now.Add(-26 * time.Hour)),
 			FinishedAt: ptr(now.Add(-25 * time.Hour)),
 		},
 	)
