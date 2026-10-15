@@ -647,8 +647,8 @@ class ClusterService:
 
         Stores only hashes; the plaintext is folded into the returned values and
         never recoverable afterwards. Rotating invalidates the previous token
-        immediately — an operator still holding it stops authenticating on its
-        next reconnect, which is the point.
+        immediately: a hub session opened with it is closed within one ownership
+        poll (`HUB_OWNERSHIP_CHECK_SECONDS`), and it can open no new one.
 
         Two hashes, one credential. `token_hash` is the sha256 the hub looks the
         token up by and compares in constant time; `remote_write_hash` is a
