@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# Adapted from vLLM v0.28.0's benchmark CLI so it runs without the engine; see README.md.
 """Entrypoint: `vllm bench serve` without the vLLM engine."""
 
 import sys

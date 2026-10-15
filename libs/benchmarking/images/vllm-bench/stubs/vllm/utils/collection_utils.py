@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# A reduced stand-in for vLLM v0.28.0's vllm/utils/collection_utils.py, without its torch-dependent internals; see README.md.
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from typing import TypeVar

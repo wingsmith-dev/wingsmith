@@ -38,5 +38,7 @@ mkdir -p "$dest/lib" "$dest/datasets" "$dest/sweep"
 for f in "${FILES[@]}"; do
   curl -sfL -o "$dest/$f" "$base/$f"
 done
+# The licence these files are distributed under, kept beside them and copied into the image.
+curl -sfL -o "$here/upstream/LICENSE" "https://raw.githubusercontent.com/vllm-project/vllm/${TAG}/LICENSE"
 
 echo "vendored vllm benchmarks + benchmarks/sweep at ${TAG} into upstream/"

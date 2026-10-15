@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# Adapted from vLLM v0.28.0's benchmark CLI so it runs without the engine; see README.md.
 """Entrypoint: `vllm bench sweep <subcommand>` without the vLLM engine.
 
 Replaces upstream `vllm/benchmarks/sweep/cli.py`, which cannot be vendored: it
