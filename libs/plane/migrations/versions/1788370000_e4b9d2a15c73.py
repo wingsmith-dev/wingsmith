@@ -4,44 +4,27 @@ Revision ID: e4b9d2a15c73
 Revises: a7c31f8e64b2
 Create Date: 2026-09-02 15:40:00.000000
 
-Five columns across four tables held a version of "what is this model called", and no two of them
-had to agree.
+Five columns across four tables held a version of "what is this model called", and no
+two of them had to agree. `Artifact.name` was a bare `gpt-oss-20b` with no organisation,
+because the organisation lives in the location URI and nothing read it, while the
+operator started every engine on `--model` rendered from that location. The gateway
+then rewrote inbound requests to a name the frontend had not registered.
 
-`Artifact` held only `name`, and it was a bare `gpt-oss-20b` with no organisation, because the
-organisation lives in the location URI and nothing read it. So `app.core.serving` reconstructed a
-slug at read time from `name`, else a `hf:`-prefixed `digest`, else the workload's name — three
-guesses, none of which could produce `openai/`. Meanwhile the operator started every engine on
-`--model` rendered from that same location, which had the organisation all along. The gateway then
-rewrote inbound requests to the plane's answer, and the frontend had registered the operator's.
+So the slug is stored once, on the artifact, derived on the way in from the location
+that names it: `hf://openai/gpt-oss-20b` becomes `openai/gpt-oss-20b`. Lowercase because
+that is what a caller types; the organisation is kept because a bare model name is not
+an id anybody can look up.
 
-The failure is not visible from either end. The deployment is healthy, the worker is ready, the
-tunnel is open, and the request comes back `model_not_found` from inside the cluster. Exactly one
-model in the fleet served, and only because a person had typed the correct answer by hand into
-`Workload.served_model_name`.
+`demand_workload.served_model_name` is dropped and not replaced: the served name is a
+fact about the weights, and what a client sends is still changeable on
+`demand_endpoint.slug`, which the gateway rewrites between.
 
-So the slug is stored once, on the artifact, derived on the way in from the location that names it:
-`hf://moonshotai/Kimi-K3` becomes `moonshotai/kimi-k3`. Lowercase because that is what a caller
-types; the organisation kept because a bare `kimi-k3` is not a model id anybody can look up. That
-the backfill independently reproduces the one hand-typed value that worked is the evidence it is
-the right rule.
+`demand_endpoint.model_slug` becomes `slug` and stops being nullable. `display_name` is
+dropped: it was a third name for the same object.
 
-`demand_workload.served_model_name` is dropped and not replaced. A second writeable spelling of a
-public identifier is how the id a client sends and the id a frontend registered come apart, and the
-workload is the wrong object to hold it anyway — it is a fact about the weights, so it survives
-re-fitting the same model at a different tensor degree, which naming it after the configuration did
-not. What a *client* sends is still changeable: that is `demand_endpoint.slug`, patchable, and the
-gateway rewrites between the two on its next poll — no engine flag, no pod respec, nothing on any
-cluster.
-
-`demand_endpoint.model_slug` becomes `slug` and stops being nullable. It was null-means-`name`,
-which forced a second field, `resolved_model_slug`, computed on the way out purely so an operator
-could see which of the two had won. `display_name` is dropped: it was a third name for the same
-object, written by nothing and read by one console component.
-
-Backfills are `COALESCE` chains rather than a data migration script because every source is already
-in the database and none of them needs a network call. An artifact whose locations say nothing
-resolvable and whose digest is a content hash keeps a lowercased `name` — wrong in the same way it
-was wrong before, and now visible in a column instead of hidden in a function.
+Backfills are `COALESCE` chains because every source is already in the database. An
+artifact whose locations say nothing resolvable and whose digest is a content hash
+keeps a lowercased `name`.
 """
 
 from typing import Union, Sequence
