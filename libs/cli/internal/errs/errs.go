@@ -28,18 +28,13 @@ const (
 	CodeConflict     Code = "CONFLICT"
 	CodeInvalidState Code = "INVALID_STATE"
 
-	CodeQuotaExceeded       Code = "QUOTA_EXCEEDED"
-	CodeCapacityUnavailable Code = "CAPACITY_UNAVAILABLE"
-
 	CodeTimeout     Code = "TIMEOUT"
 	CodeRateLimited Code = "RATE_LIMITED"
 
 	CodeServerError Code = "SERVER_ERROR"
 	CodeNetwork     Code = "NETWORK"
 
-	CodeConfirmationRequired   Code = "CONFIRMATION_REQUIRED"
-	CodeInteractiveUnavailable Code = "INTERACTIVE_UNAVAILABLE"
-	CodeUnimplemented          Code = "UNIMPLEMENTED"
+	CodeConfirmationRequired Code = "CONFIRMATION_REQUIRED"
 
 	// CodeOperationFailed is an operation or benchmark that was waited on and
 	// ended in anything but success: the request was fine, the work was not.
@@ -49,29 +44,28 @@ const (
 	CodeInternal    Code = "INTERNAL"
 )
 
+// exitCodes leaves 6 and 7 unused. They belonged to quota and capacity codes
+// the plane never returns, and stay free so a script that branched on them
+// never sees them mean something else.
 var exitCodes = map[Code]int{
-	CodeOK:                     0,
-	CodeUsage:                  2,
-	CodeInputRequired:          2,
-	CodeAuthRequired:           3,
-	CodeAuthExpired:            3,
-	CodeForbidden:              3,
-	CodeNotFound:               4,
-	CodeConflict:               5,
-	CodeInvalidState:           5,
-	CodeAmbiguous:              5,
-	CodeConfirmationRequired:   5,
-	CodeInteractiveUnavailable: 5,
-	CodeUnimplemented:          5,
-	CodeQuotaExceeded:          6,
-	CodeCapacityUnavailable:    7,
-	CodeTimeout:                8,
-	CodeRateLimited:            9,
-	CodeServerError:            10,
-	CodeNetwork:                10,
-	CodeOperationFailed:        11,
-	CodeInterrupted:            130,
-	CodeInternal:               1,
+	CodeOK:                   0,
+	CodeUsage:                2,
+	CodeInputRequired:        2,
+	CodeAuthRequired:         3,
+	CodeAuthExpired:          3,
+	CodeForbidden:            3,
+	CodeNotFound:             4,
+	CodeConflict:             5,
+	CodeInvalidState:         5,
+	CodeAmbiguous:            5,
+	CodeConfirmationRequired: 5,
+	CodeTimeout:              8,
+	CodeRateLimited:          9,
+	CodeServerError:          10,
+	CodeNetwork:              10,
+	CodeOperationFailed:      11,
+	CodeInterrupted:          130,
+	CodeInternal:             1,
 }
 
 // Action is a suggested follow-up: a human description plus a runnable command.
@@ -207,12 +201,13 @@ var explanations = map[Code]Explanation{
 	},
 	CodeForbidden: {
 		Summary: "The credentials are valid but lack permission.",
-		Fixes:   []string{"hgr context", "Ask an operator for a role upgrade"},
+		Detail:  "A tenant token reaches only its own tenant's serving view. Operating the fleet takes the admin session from hgr login.",
+		Fixes:   []string{"hgr whoami", "hgr login"},
 	},
 	CodeNotFound: {
 		Summary: "The referenced object does not exist.",
-		Detail:  "Names resolve within the active project. An object created in another project is invisible here.",
-		Fixes:   []string{"hgr cluster ls", "hgr context"},
+		Detail:  "A reference is an id or a name. get also takes a unique prefix; verbs that change something take only a whole id or name.",
+		Fixes:   []string{"List the noun to find it, e.g. hgr workload ls", "hgr context"},
 	},
 	CodeAmbiguous: {
 		Summary: "The identifier prefix matched more than one object.",
@@ -226,16 +221,6 @@ var explanations = map[Code]Explanation{
 		Summary: "The object is not in a state that allows this operation.",
 		Detail:  "For example, a draining cluster cannot accept new deployments.",
 		Fixes:   []string{"hgr cluster get <cluster>", "hgr operation ls"},
-	},
-	CodeQuotaExceeded: {
-		Summary: "The request would exceed the tenant's declared quota.",
-		Fixes:   []string{"hgr quota ls"},
-	},
-	CodeCapacityUnavailable: {
-		Summary:            "No cluster has devices matching the workload's device shape.",
-		Detail:             "Cluster selection is global and coarse: a device class unavailable in one region is often available in another.",
-		Fixes:              []string{"hgr device ls", "hgr cluster ls"},
-		TypicallyRetryable: true,
 	},
 	CodeTimeout: {
 		Summary:            "The operation did not complete within the deadline.",
@@ -260,15 +245,6 @@ var explanations = map[Code]Explanation{
 	CodeConfirmationRequired: {
 		Summary: "A destructive operation was not confirmed.",
 		Fixes:   []string{"Re-run with --yes"},
-	},
-	CodeInteractiveUnavailable: {
-		Summary: "The command needs an interactive terminal.",
-		Fixes:   []string{"Pass every value as a flag and add --no-input"},
-	},
-	CodeUnimplemented: {
-		Summary: "The command is registered but not implemented yet.",
-		Detail:  "The plane's API contract for this noun is still being written. Only `cluster` is wired end to end.",
-		Fixes:   []string{"hgr cluster ls"},
 	},
 	CodeOperationFailed: {
 		Summary: "An operation or benchmark that was waited on did not succeed.",

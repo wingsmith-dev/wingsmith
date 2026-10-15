@@ -17,10 +17,9 @@ var allCodes = []Code{
 	CodeAuthRequired, CodeAuthExpired, CodeForbidden,
 	CodeNotFound, CodeAmbiguous,
 	CodeConflict, CodeInvalidState,
-	CodeQuotaExceeded, CodeCapacityUnavailable,
 	CodeTimeout, CodeRateLimited,
 	CodeServerError, CodeNetwork, CodeOperationFailed,
-	CodeConfirmationRequired, CodeInteractiveUnavailable, CodeUnimplemented,
+	CodeConfirmationRequired,
 	CodeInterrupted, CodeInternal,
 }
 
@@ -57,7 +56,7 @@ func TestSuccessIsTheOnlyZeroExit(t *testing.T) {
 func TestExitCodesStayWhereTheyAre(t *testing.T) {
 	pinned := map[Code]int{
 		CodeOK: 0, CodeInternal: 1, CodeUsage: 2, CodeAuthRequired: 3, CodeNotFound: 4,
-		CodeConflict: 5, CodeQuotaExceeded: 6, CodeCapacityUnavailable: 7, CodeTimeout: 8,
+		CodeConflict: 5, CodeTimeout: 8,
 		CodeRateLimited: 9, CodeServerError: 10, CodeOperationFailed: 11, CodeInterrupted: 130,
 	}
 	for code, want := range pinned {
@@ -196,7 +195,7 @@ func TestBuildersCompose(t *testing.T) {
 }
 
 func TestWithCausefFormats(t *testing.T) {
-	e := New(CodeQuotaExceeded, "over quota").WithCausef("%d of %d GPUs in use", 8, 8)
+	e := New(CodeConflict, "over quota").WithCausef("%d of %d GPUs in use", 8, 8)
 	if e.Cause != "8 of 8 GPUs in use" {
 		t.Fatalf("cause = %q", e.Cause)
 	}
@@ -287,11 +286,11 @@ func TestAllCodesIsSorted(t *testing.T) {
 // are the same request.
 func TestParseCodeAcceptsHowAPersonWouldTypeIt(t *testing.T) {
 	cases := map[string]Code{
-		"not-found":            CodeNotFound,
-		"NOT_FOUND":            CodeNotFound,
-		"  not_found  ":        CodeNotFound,
-		"Rate-Limited":         CodeRateLimited,
-		"capacity-unavailable": CodeCapacityUnavailable,
+		"not-found":     CodeNotFound,
+		"NOT_FOUND":     CodeNotFound,
+		"  not_found  ": CodeNotFound,
+		"Rate-Limited":  CodeRateLimited,
+		"invalid-state": CodeInvalidState,
 	}
 	for in, want := range cases {
 		if got := ParseCode(in); got != want {

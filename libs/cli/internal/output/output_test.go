@@ -216,7 +216,7 @@ func TestAMachineFormatSendsErrorsToStderrAsJSON(t *testing.T) {
 func TestAHumanErrorNamesTheCodeAndHowToExplainIt(t *testing.T) {
 	var out, errw bytes.Buffer
 	r := New(&out, &errw, ui.Style{}, FormatHuman, "", 120, false, false)
-	r.EmitError("cluster get", errs.New(errs.CodeCapacityUnavailable, "no room").
+	r.EmitError("cluster get", errs.New(errs.CodeRateLimited, "no room").
 		WithCause("every node is full").
 		WithFix("Try another region", "hgr cluster ls --region ap-southeast-1").
 		WithRetry(60))
@@ -224,7 +224,7 @@ func TestAHumanErrorNamesTheCodeAndHowToExplainIt(t *testing.T) {
 	got := errw.String()
 	for _, want := range []string{
 		"no room", "every node is full", "hgr cluster ls --region ap-southeast-1",
-		"CAPACITY_UNAVAILABLE", "hgr explain CAPACITY_UNAVAILABLE", "retryable in ~60s",
+		"RATE_LIMITED", "hgr explain RATE_LIMITED", "retryable in ~60s",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the human error is missing %q:\n%s", want, got)
