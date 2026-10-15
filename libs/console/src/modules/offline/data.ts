@@ -990,7 +990,6 @@ const serving = {
     topology: {
       serving_topology: "disaggregated",
       group_devices: 24,
-      group_nodes_hint: "",
       roles: [
         {
           role: "prefill",

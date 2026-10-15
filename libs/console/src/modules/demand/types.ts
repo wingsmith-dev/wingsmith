@@ -326,7 +326,7 @@ export interface ServingDefaults {
 }
 
 /**
- * `UpstreamDeploymentSchema` — what the corpus's own rules render for one node shape.
+ * `UpstreamDeployment` — what the corpus's own rules render for one node shape.
  *
  * A large model has no single tested parallelism, it has one per node it can run
  * on, so this is a list rather than a number. Nothing here is a fact about the
@@ -343,7 +343,7 @@ export interface UpstreamDeployment {
 }
 
 /**
- * `UpstreamServingSchema` — serving parameters somebody upstream has run,
+ * `UpstreamRecipe` — serving parameters somebody upstream has run,
  * attributed to them.
  *
  * Kept apart from `ServingDefaults` on purpose. That is the plane's own arithmetic
@@ -509,7 +509,7 @@ export interface ServingResources {
 }
 
 /**
- * `ServingReasoningSchema` — how this workload thinks, as rendered flags.
+ * `ReasoningSchema` — how this workload thinks, as rendered flags.
  *
  * Its own object for the reason `ServingCache` is: the fields are meaningless
  * individually and all of them are conditioned on the model being able to think
@@ -525,7 +525,7 @@ export interface ServingReasoning {
 }
 
 /**
- * `ServingBehaviourSchema` — what the served API does, as the engine is told to do it.
+ * `ServingSchema` — what the served API does, as the engine is told to do it.
  *
  * Every field renders to a flag or a rendered value, so honouring any of it
  * means a replica restart — which is why it sits in the serving block beside
@@ -543,7 +543,7 @@ export interface ServingBehaviour {
 }
 
 /**
- * `ServingCapabilitiesSchema` — what this engine x artifact is *claimed* to do.
+ * `CapabilitiesSchema` — what this engine x artifact is *claimed* to do.
  *
  * The same split as `engine_args` against `imported_args`, one level up: nothing
  * here becomes a flag or reaches a cluster, because a cluster has no use for a
@@ -1276,7 +1276,6 @@ export interface EndpointCreateRequest {
   visibility?: string
   routing_strategy?: string
   enabled?: boolean
-  surface?: EndpointSurface
   targets?: EndpointTargetRequest[]
   failover_order?: string[]
   labels?: Record<string, string>
@@ -1360,12 +1359,6 @@ export interface ServingTopologyView {
   serving_topology: ServingTopology
   roles: WorkloadRole[]
   group_devices: number
-  /**
-   * What the group does not divide into, in words, or empty when there is
-   * nothing to say. Placement decides what actually fits and this cannot; what
-   * it can say is the arithmetic a person is about to be surprised by.
-   */
-  group_nodes_hint: string
 }
 
 /**

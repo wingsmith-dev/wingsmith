@@ -49,7 +49,6 @@ const disagg = (topology: Record<string, unknown> = {}) =>
         serving_topology: "disaggregated",
         roles: ROLES,
         group_devices: 0,
-        group_nodes_hint: "",
         ...topology,
       },
     },

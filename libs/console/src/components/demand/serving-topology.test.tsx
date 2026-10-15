@@ -36,7 +36,6 @@ function kimi(over: Partial<Workload> = {}): Workload {
       topology: {
         serving_topology: "disaggregated",
         group_devices: 24,
-        group_nodes_hint: "",
         roles: [
           {
             role: "prefill",
@@ -113,7 +112,6 @@ describe("the roles panel", () => {
               serving_topology: "aggregated",
               roles: [],
               group_devices: 0,
-              group_nodes_hint: "",
             },
           },
         })}
