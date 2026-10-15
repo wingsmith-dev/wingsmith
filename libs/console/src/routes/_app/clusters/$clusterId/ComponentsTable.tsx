@@ -60,12 +60,12 @@ const columns: Column<Component>[] = [
       component.behind ? (
         <Badge
           variant="outline"
-          className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-amber-600 dark:text-amber-400"
+          className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-warning"
         >
           behind
         </Badge>
       ) : (
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        <span className="font-mono text-2xs text-muted-foreground">—</span>
       ),
   },
   {
@@ -83,7 +83,7 @@ const columns: Column<Component>[] = [
     header: "Observed",
     align: "right",
     cell: (component) => (
-      <span className="font-mono text-2xs text-muted-foreground/70">
+      <span className="font-mono text-2xs text-muted-foreground">
         {formatRelative(component.status.observed_at)}
       </span>
     ),

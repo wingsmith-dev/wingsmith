@@ -113,7 +113,7 @@ export function BenchmarkRequestPage() {
               >
                 {request.phase}
               </StatusLabel>
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {request.runs.length} run
                 {request.runs.length === 1 ? "" : "s"} ·{" "}
                 {request.criteria_version}
@@ -126,7 +126,7 @@ export function BenchmarkRequestPage() {
             </p>
 
             {!request.homogeneous && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-warning">
                 The coverage behind this target was not homogeneous — two of the
                 things measured ran different artifacts or serving
                 configurations. An accuracy score over that belongs to neither
@@ -154,7 +154,7 @@ export function BenchmarkRequestPage() {
                     <Field label="Mode">
                       {request.mode}
                       {stepped && (
-                        <span className="text-muted-foreground/60">
+                        <span className="text-muted-foreground">
                           {" "}
                           over {stepped}
                         </span>
@@ -187,7 +187,7 @@ export function BenchmarkRequestPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-2xs text-muted-foreground/70">
+                  <p className="text-2xs text-muted-foreground">
                     Snapshotted when the request expanded. It is allowed to go
                     stale: a workload rescaled since does not change what was
                     measured.
@@ -264,7 +264,7 @@ export function BenchmarkRequestPage() {
             />
 
             <div>
-              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                 Runs
               </h2>
               <DataTable

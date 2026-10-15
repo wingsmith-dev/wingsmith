@@ -129,7 +129,7 @@ export function DeviceClassMultiField({
       <Label>{label}</Label>
       <div className="flex flex-wrap gap-1.5 rounded-md border p-2">
         {entries.length === 0 && (
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             catalog unavailable
           </span>
         )}
@@ -154,7 +154,7 @@ export function DeviceClassMultiField({
           )
         })}
       </div>
-      <p className="text-2xs text-muted-foreground/70">{hint}</p>
+      <p className="text-2xs text-muted-foreground">{hint}</p>
     </div>
   )
 }

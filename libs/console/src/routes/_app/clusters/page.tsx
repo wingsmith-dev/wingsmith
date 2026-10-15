@@ -163,7 +163,7 @@ export function ClustersPage() {
             <p className="text-sm text-muted-foreground">
               No clusters registered yet.
             </p>
-            <p className="max-w-sm text-xs text-muted-foreground/60">
+            <p className="max-w-sm text-xs text-muted-foreground">
               Registering declares a cluster in the plane; the operator is then
               installed in it and dials home. The cluster page walks you through
               connecting it.
@@ -227,13 +227,13 @@ function StatCard({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-4">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={cn(
           "font-heading text-2xl leading-none font-semibold tabular-nums",
-          tone === "warn" && "text-amber-500"
+          tone === "warn" && "text-warning"
         )}
       >
         {value}

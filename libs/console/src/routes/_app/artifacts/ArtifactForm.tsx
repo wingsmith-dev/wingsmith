@@ -241,7 +241,7 @@ export function ArtifactForm({
           {!!resolve.error && <ResolveError error={resolve.error} />}
 
           {!!existing && (
-            <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+            <p className="font-mono text-2xs text-warning">
               Already registered as {existing}. Registering again will conflict.
             </p>
           )}
@@ -363,7 +363,7 @@ function ResolveNotes({ notes }: { notes: ResolveNote[] }) {
             className={cn(
               "space-y-1 rounded-md border px-3 py-2 text-2xs",
               group.warn
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                ? "border-amber-500/40 bg-amber-500/10 text-warning"
                 : "border-border bg-muted/60 text-muted-foreground"
             )}
           >
@@ -431,7 +431,7 @@ function ServingSuggestion({ serving }: { serving: ServingDefaults }) {
   return (
     <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5">
       <p className="text-xs font-medium">Suggested serving shape</p>
-      <p className="text-2xs text-muted-foreground/70">
+      <p className="text-2xs text-muted-foreground">
         The first three are read off the repo's config; the last two are the
         hardware that configuration would need. Nothing here is saved on the
         artifact — it carries over into the workload you declare for these
@@ -440,7 +440,7 @@ function ServingSuggestion({ serving }: { serving: ServingDefaults }) {
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         {rows.map(([label, value]) => (
           <div key={label} className="space-y-0.5">
-            <dt className="text-2xs text-muted-foreground/70">{label}</dt>
+            <dt className="text-2xs text-muted-foreground">{label}</dt>
             <dd className="font-mono text-xs">{value}</dd>
           </div>
         ))}

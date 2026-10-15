@@ -14,7 +14,7 @@ export function NodeOperations({ node }: { node: SupplyNode }) {
 
   return (
     <div>
-      <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+      <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
         Operation history
       </h2>
       <DataTable

@@ -65,16 +65,16 @@ function StatCard({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={
           "font-heading text-xl leading-none font-semibold tabular-nums " +
           (tone === "ok"
-            ? "text-emerald-500"
+            ? "text-success"
             : tone === "warn"
-              ? "text-amber-500"
+              ? "text-warning"
               : "")
         }
       >
@@ -247,20 +247,20 @@ function FilesPanel({ artifact }: { artifact: Artifact }) {
         <CardTitle className="text-sm">
           Files &amp; locations ({artifact.locations.length})
         </CardTitle>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           Content-addressed manifest
         </p>
       </CardHeader>
       <CardContent>
         {artifact.locations.length === 0 ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             No location registered — nothing can pull these bytes yet.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                   <th className="p-2 text-left font-medium">URI</th>
                   <th className="p-2 text-left font-medium">Scheme</th>
                   <th className="p-2 text-left font-medium">Region</th>
@@ -405,7 +405,7 @@ function BaselinesPanel({
       <CardHeader className="flex-row items-center justify-between pb-2">
         <div>
           <CardTitle className="text-sm">Quality baselines</CardTitle>
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             Declared floors graded against benchmark runs
           </p>
         </div>
@@ -422,7 +422,7 @@ function BaselinesPanel({
         {baselines.isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : rows.length === 0 ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             No baseline recorded — an acceptance review has nothing to compare
             against.
           </p>
@@ -430,7 +430,7 @@ function BaselinesPanel({
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                   <th className="p-2 text-left font-medium">Dataset</th>
                   <th className="p-2 text-left font-medium">Metric</th>
                   <th className="p-2 text-right font-medium">Value</th>
@@ -636,7 +636,7 @@ function FingerprintPanel({ artifact }: { artifact: Artifact }) {
           <Field label="Fingerprint" className="sm:col-span-2">
             <CopyableId
               value={artifact.digest}
-              className="text-2xs break-all text-muted-foreground/80"
+              className="text-2xs break-all text-muted-foreground"
             />
           </Field>
           <Field label="Id">
@@ -646,14 +646,14 @@ function FingerprintPanel({ artifact }: { artifact: Artifact }) {
             {artifact.verified ? (
               <Badge
                 variant="secondary"
-                className="border-emerald-500/30 bg-emerald-500/10 font-mono text-2xs text-emerald-500"
+                className="border-emerald-500/30 bg-emerald-500/10 font-mono text-2xs text-success"
               >
                 verified
               </Badge>
             ) : (
               <Badge
                 variant="secondary"
-                className="border-amber-500/30 bg-amber-500/10 font-mono text-2xs text-amber-500"
+                className="border-amber-500/30 bg-amber-500/10 font-mono text-2xs text-warning"
               >
                 unverified
               </Badge>
@@ -688,7 +688,7 @@ function ActivityPanel({ artifactId }: { artifactId: string }) {
         {events.isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : rows.length === 0 ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             Nothing recorded against this artifact yet.
           </p>
         ) : (
@@ -703,7 +703,7 @@ function ActivityPanel({ artifactId }: { artifactId: string }) {
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="font-mono text-2xs">{event.kind}</span>
                     <span
-                      className="font-mono text-2xs text-muted-foreground/50"
+                      className="font-mono text-2xs text-muted-foreground"
                       title={formatAbsolute(event.occurred_at)}
                     >
                       {formatRelative(event.occurred_at)}
@@ -731,7 +731,7 @@ function MetadataPanel({ artifact }: { artifact: Artifact }) {
       </CardHeader>
       <CardContent>
         {Object.keys(artifact.metadata).length === 0 ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">none</p>
+          <p className="font-mono text-2xs text-muted-foreground">none</p>
         ) : (
           <Json value={artifact.metadata} />
         )}

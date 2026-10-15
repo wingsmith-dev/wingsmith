@@ -41,7 +41,7 @@ export function VerdictBadge({
       <StatusLabel tone={verdictTone(outcome)}>
         {verdictLabel(outcome)}
       </StatusLabel>
-      <span className="font-mono text-2xs text-muted-foreground/60">
+      <span className="font-mono text-2xs text-muted-foreground">
         under {criteriaVersion}
       </span>
     </span>
@@ -115,7 +115,7 @@ export function VerdictPanel({
                     <TableCell className="text-right font-mono text-2xs">
                       {formatStat(check.observed ?? undefined)}
                     </TableCell>
-                    <TableCell className="text-center font-mono text-2xs text-muted-foreground/60">
+                    <TableCell className="text-center font-mono text-2xs text-muted-foreground">
                       {check.comparator}
                     </TableCell>
                     <TableCell className="text-right font-mono text-2xs">

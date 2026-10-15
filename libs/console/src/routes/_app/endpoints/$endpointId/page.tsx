@@ -101,9 +101,7 @@ function reading(data: Metrics | undefined, metric: string): string {
 /** Why a chart or a strip is empty, said where the chart would have been. */
 function EmptyNote({ children }: React.PropsWithChildren) {
   return (
-    <p className="py-2 font-mono text-2xs text-muted-foreground/50">
-      {children}
-    </p>
+    <p className="py-2 font-mono text-2xs text-muted-foreground">{children}</p>
   )
 }
 
@@ -156,8 +154,8 @@ function Chart({
 type Tone = "default" | "ok" | "warn" | "danger"
 const TONE_CLASS: Record<Tone, string> = {
   default: "",
-  ok: "text-emerald-500",
-  warn: "text-amber-500",
+  ok: "text-success",
+  warn: "text-warning",
   danger: "text-destructive",
 }
 
@@ -174,7 +172,7 @@ function StatTile({
 }>) {
   return (
     <Card size="sm" className="gap-1.5 px-3 py-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div
@@ -274,10 +272,10 @@ function AvailabilityCard({
   return (
     <Card size="sm" className="gap-2.5 px-4 py-3.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Availability
         </span>
-        <span className="font-mono text-2xs text-muted-foreground/50">
+        <span className="font-mono text-2xs text-muted-foreground">
           {windowLabel}
         </span>
       </div>
@@ -289,13 +287,13 @@ function AvailabilityCard({
       >
         {loading ? "…" : formatMetric(percent, "percent")}
       </div>
-      <p className="font-mono text-2xs text-muted-foreground/50">
+      <p className="font-mono text-2xs text-muted-foreground">
         the share of calls the front door answered
       </p>
 
       <div className="space-y-1.5 border-t pt-3">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             last {AVAILABILITY_DAYS} days
           </span>
           <span
@@ -309,7 +307,7 @@ function AvailabilityCard({
         </div>
         <div className="w-full max-w-[420px] space-y-1.5">
           <AvailabilityBar days={days} />
-          <div className="flex items-center justify-between font-mono text-2xs text-muted-foreground/40">
+          <div className="flex items-center justify-between font-mono text-2xs text-muted-foreground">
             <span>{AVAILABILITY_DAYS}d ago</span>
             <span>today</span>
           </div>
@@ -351,7 +349,7 @@ function servingHealth(
 /** A ready/total replica count with one cell per replica, ready cells lit. */
 function ReplicaBar({ ready, total }: { ready: number; total: number }) {
   if (total <= 0) {
-    return <span className="text-muted-foreground/40">—</span>
+    return <span className="text-muted-foreground">—</span>
   }
   const cells = Math.min(total, 12)
   return (
@@ -732,7 +730,10 @@ export function EndpointDetailPage() {
                     <CardContent className="space-y-4">
                       <FieldGrid>
                         <Field label="Slug">
-                          <CopyableId value={endpoint.slug} className="text-2xs">
+                          <CopyableId
+                            value={endpoint.slug}
+                            className="text-2xs"
+                          >
                             {endpoint.slug}
                           </CopyableId>
                         </Field>
@@ -898,7 +899,7 @@ export function EndpointDetailPage() {
                                     total={rollup.total}
                                   />
                                 ) : (
-                                  <span className="text-muted-foreground/40">
+                                  <span className="text-muted-foreground">
                                     —
                                   </span>
                                 )}
@@ -1002,7 +1003,7 @@ export function EndpointDetailPage() {
                           </Field>
                         </FieldGrid>
                       ) : (
-                        <p className="font-mono text-2xs text-muted-foreground/60">
+                        <p className="font-mono text-2xs text-muted-foreground">
                           No backing workload resolved for this endpoint's
                           targets.
                         </p>
@@ -1117,7 +1118,7 @@ export function EndpointDetailPage() {
 
                   {unmeasured && (
                     <Card size="sm" className="px-3 py-2.5">
-                      <p className="font-mono text-2xs text-muted-foreground/60">
+                      <p className="font-mono text-2xs text-muted-foreground">
                         {unmeasured}
                       </p>
                     </Card>
@@ -1132,7 +1133,7 @@ export function EndpointDetailPage() {
                           Requests per second, counted at the front door
                         </p>
                       </div>
-                      <span className="font-mono text-2xs text-muted-foreground/60">
+                      <span className="font-mono text-2xs text-muted-foreground">
                         {chartWindow.label}
                       </span>
                     </CardHeader>
@@ -1153,7 +1154,9 @@ export function EndpointDetailPage() {
                           label="request rate"
                         />
                       ) : (
-                        <EmptyNote>nothing is measuring this endpoint</EmptyNote>
+                        <EmptyNote>
+                          nothing is measuring this endpoint
+                        </EmptyNote>
                       )}
                     </CardContent>
                   </Card>
@@ -1171,7 +1174,7 @@ export function EndpointDetailPage() {
                           End-to-end percentiles, hop and queue included
                         </p>
                       </div>
-                      <span className="font-mono text-2xs text-muted-foreground/60">
+                      <span className="font-mono text-2xs text-muted-foreground">
                         {chartWindow.label}
                       </span>
                     </CardHeader>
@@ -1185,7 +1188,10 @@ export function EndpointDetailPage() {
                             curves={[
                               { metric: "serving.latency_p99", tone: "danger" },
                               { metric: "serving.latency_p95", tone: "warn" },
-                              { metric: "serving.latency_p50", tone: "primary" },
+                              {
+                                metric: "serving.latency_p50",
+                                tone: "primary",
+                              },
                             ]}
                             spanLabel={chartWindow.label}
                             label="latency"
@@ -1239,7 +1245,9 @@ export function EndpointDetailPage() {
                           </div>
                         </>
                       ) : (
-                        <EmptyNote>nothing is measuring this endpoint</EmptyNote>
+                        <EmptyNote>
+                          nothing is measuring this endpoint
+                        </EmptyNote>
                       )}
                     </CardContent>
                   </Card>
@@ -1258,7 +1266,6 @@ export function EndpointDetailPage() {
                 </div>
               </div>
             </TabsContent>
-
           </div>
         </Tabs>
       )}

@@ -52,7 +52,7 @@ export function ClusterEvents({
                 >
                   {event.kind}
                 </Link>
-                <span className="font-mono text-2xs text-muted-foreground/50">
+                <span className="font-mono text-2xs text-muted-foreground">
                   {event.subject.type}
                 </span>
               </div>
@@ -70,7 +70,7 @@ export function ClusterEvents({
               </Link>
             )}
             <span
-              className="shrink-0 font-mono text-2xs text-muted-foreground/50"
+              className="shrink-0 font-mono text-2xs text-muted-foreground"
               title={formatAbsolute(event.occurred_at)}
             >
               {formatRelative(event.occurred_at)}

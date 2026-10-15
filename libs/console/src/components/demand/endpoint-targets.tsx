@@ -206,7 +206,7 @@ export function TargetsField({
         </div>
       )}
 
-      <p className="text-2xs text-muted-foreground/70">
+      <p className="text-2xs text-muted-foreground">
         Weight, role, and whether the gateway may route to the deployment.
       </p>
     </div>
@@ -311,7 +311,7 @@ export function FailoverField({
         </div>
       )}
 
-      <p className="text-2xs text-muted-foreground/70">
+      <p className="text-2xs text-muted-foreground">
         Most preferred first. Only read when the routing strategy is failover.
       </p>
     </div>

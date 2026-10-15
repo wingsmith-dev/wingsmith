@@ -229,7 +229,7 @@ export function TimeChart({
       <div
         ref={box}
         className={cn(
-          "flex w-full items-center justify-center rounded-md border border-dashed text-2xs text-muted-foreground/60",
+          "flex w-full items-center justify-center rounded-md border border-dashed text-2xs text-muted-foreground",
           className
         )}
         style={{ height }}
@@ -303,7 +303,7 @@ export function TimeChart({
                 y={y(tick)}
                 dominantBaseline="middle"
                 textAnchor="end"
-                className="fill-muted-foreground/70 font-mono text-[9px] tabular-nums"
+                className="fill-muted-foreground font-mono text-[9px] tabular-nums"
               >
                 {tickLabel(tick, unit)}
               </text>
@@ -352,7 +352,7 @@ export function TimeChart({
           <text
             x={0}
             y={plot.height + 14}
-            className="fill-muted-foreground/70 font-mono text-[9px]"
+            className="fill-muted-foreground font-mono text-[9px]"
           >
             {clockLabel(minAt, span)}
           </text>
@@ -360,7 +360,7 @@ export function TimeChart({
             x={plot.width}
             y={plot.height + 14}
             textAnchor="end"
-            className="fill-muted-foreground/70 font-mono text-[9px]"
+            className="fill-muted-foreground font-mono text-[9px]"
           >
             {clockLabel(minAt + span, span)}
           </text>

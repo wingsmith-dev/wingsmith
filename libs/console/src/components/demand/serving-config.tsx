@@ -187,7 +187,7 @@ export function ServingPrecedence({
 }) {
   if (overrides.length === 0) return null
   return (
-    <div className="space-y-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-amber-700 dark:text-amber-400">
+    <div className="space-y-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-warning">
       <p>
         {overrides.length === 1 ? "One engine arg is" : "Engine args are"}{" "}
         overridden. Where a typed serving field and an engine arg set the same

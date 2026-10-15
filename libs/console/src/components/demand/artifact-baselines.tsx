@@ -72,7 +72,7 @@ export function ArtifactBaselines({ artifactId }: { artifactId: string }) {
             </Button>
           </WriteAction>
         </div>
-        <p className="text-2xs text-muted-foreground/70">{FLOOR_NOTE}</p>
+        <p className="text-2xs text-muted-foreground">{FLOOR_NOTE}</p>
       </CardHeader>
       <CardContent className="p-0">
         {isLoading && <Skeleton className="m-4 h-20" />}
@@ -125,9 +125,7 @@ export function ArtifactBaselines({ artifactId }: { artifactId: string }) {
                         {baseline.source_uri}
                       </a>
                     ) : (
-                      <span className="text-amber-600 dark:text-amber-400">
-                        no source
-                      </span>
+                      <span className="text-warning">no source</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">

@@ -98,13 +98,13 @@ function StatTile({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-4 py-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div
         className={cn(
           "font-mono text-xl leading-none tabular-nums",
-          tone === "ok" && "text-emerald-500"
+          tone === "ok" && "text-success"
         )}
       >
         {value}
@@ -213,7 +213,7 @@ function columns(
       header: (
         <span>
           Status{" "}
-          <span className="text-muted-foreground/50 normal-case">/ 14d</span>
+          <span className="text-muted-foreground normal-case">/ 14d</span>
         </span>
       ),
       cell: (endpoint) => {
@@ -227,7 +227,7 @@ function columns(
                 {state.label}
               </span>
             </span>
-            <span className="font-mono text-2xs text-muted-foreground/60">
+            <span className="font-mono text-2xs text-muted-foreground">
               {state.availability}
             </span>
           </div>
@@ -249,7 +249,7 @@ function columns(
             title={workload.name}
           >
             <span className="truncate">{workload.name}</span>
-            <IconArrowUpRight className="size-3 text-muted-foreground/50" />
+            <IconArrowUpRight className="size-3 text-muted-foreground" />
           </Link>
         )
       },
@@ -444,7 +444,7 @@ export function EndpointsPage() {
 
         {unmeasured && (
           <Card size="sm" className="px-3 py-2.5">
-            <p className="font-mono text-2xs text-muted-foreground/60">
+            <p className="font-mono text-2xs text-muted-foreground">
               {unmeasured}
             </p>
           </Card>

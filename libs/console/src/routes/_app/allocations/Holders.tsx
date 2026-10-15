@@ -65,7 +65,7 @@ export function Holders({ board }: { board: Board | undefined }) {
 
   if (rows.length === 0) {
     return (
-      <p className="font-mono text-2xs text-muted-foreground/50">
+      <p className="font-mono text-2xs text-muted-foreground">
         Nothing holds capacity in this scope.
       </p>
     )
@@ -103,7 +103,7 @@ export function Holders({ board }: { board: Board | undefined }) {
                   {row.holder.workload_name}
                 </span>
               )}
-              <span className="block truncate font-mono text-2xs text-muted-foreground/50">
+              <span className="block truncate font-mono text-2xs text-muted-foreground">
                 {row.holder.project_slug} · {[...row.clusters].join(", ")}
                 {row.fabrics.size > 1 ? ` · ${row.fabrics.size} fabrics` : ""}
               </span>

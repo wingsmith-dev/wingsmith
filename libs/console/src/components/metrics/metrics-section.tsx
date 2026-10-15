@@ -18,7 +18,7 @@ export function MetricsSection({
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <h2 className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {title ?? (family === "gpu" ? "Utilization" : "Serving")}
       </h2>
       <MetricsPanel scope={scope} refId={refId} family={family} lead={lead} />

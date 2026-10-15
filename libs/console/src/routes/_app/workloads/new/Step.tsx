@@ -58,7 +58,7 @@ export function Step({
                 ? "bg-primary/15 text-primary"
                 : ready
                   ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground/60"
+                  : "bg-muted text-muted-foreground"
             )}
           >
             {answered ? <IconCheck className="size-3" /> : index}
@@ -69,7 +69,7 @@ export function Step({
               {title}
             </h2>
             {hint && (
-              <p className="mt-0.5 font-mono text-2xs text-muted-foreground/60">
+              <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
                 {hint}
               </p>
             )}

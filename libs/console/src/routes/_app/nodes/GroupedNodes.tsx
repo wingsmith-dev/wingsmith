@@ -109,7 +109,7 @@ export function GroupedNodes({
                       >
                         {group.name}
                       </Link>
-                      <span className="font-mono text-2xs text-muted-foreground/60">
+                      <span className="font-mono text-2xs text-muted-foreground">
                         {group.nodes.length} node
                         {group.nodes.length === 1 ? "" : "s"} loaded
                       </span>
@@ -137,7 +137,7 @@ export function GroupedNodes({
 
       {items && items.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-1">
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {list.loaded} loaded across {groups.length} cluster
             {groups.length === 1 ? "" : "s"}
             {hasNextPage ? " · more available" : ""}

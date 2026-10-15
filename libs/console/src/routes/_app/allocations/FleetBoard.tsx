@@ -111,7 +111,7 @@ export function FleetBoard({
   if (isLoading && !board) return <BoardSkeleton />
   if (!board || board.regions.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-10 text-center font-mono text-2xs text-muted-foreground/60">
+      <div className="rounded-lg border border-dashed p-10 text-center font-mono text-2xs text-muted-foreground">
         No devices are reporting in this scope.
       </div>
     )
@@ -438,7 +438,7 @@ function RegionSection({
         >
           {region.region}
         </button>
-        <span className="font-mono text-2xs text-muted-foreground/50">
+        <span className="font-mono text-2xs text-muted-foreground">
           {region.clusters.length}{" "}
           {region.clusters.length === 1 ? "cluster" : "clusters"}
         </span>
@@ -502,7 +502,7 @@ function ClusterCard({
           <span className="truncate font-mono text-xs font-semibold hover:underline">
             {meta.name}
           </span>
-          <span className="truncate font-mono text-2xs text-muted-foreground/60">
+          <span className="truncate font-mono text-2xs text-muted-foreground">
             {[meta.region, meta.display_name].filter(Boolean).join(" · ")}
             {meta.reachable ? "" : " · unreachable"}
             {cluster.reservations.length > 0 && (
@@ -515,14 +515,12 @@ function ClusterCard({
         </button>
 
         <div className="ml-auto flex items-center gap-4">
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             largest block{" "}
             <span
               className={cn(
                 "font-semibold",
-                cluster.largest_block >= 8
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-foreground"
+                cluster.largest_block >= 8 ? "text-success" : "text-foreground"
               )}
             >
               {cluster.largest_block}
@@ -535,7 +533,7 @@ function ClusterCard({
       {!collapsed && (
         <div className="space-y-0.5 border-t bg-background/40 p-2">
           {cluster.fabrics.length === 0 ? (
-            <p className="px-2 py-1 font-mono text-2xs text-muted-foreground/50">
+            <p className="px-2 py-1 font-mono text-2xs text-muted-foreground">
               No devices reporting.{" "}
               {meta.sync.state === "never_connected"
                 ? "This cluster has never connected."
@@ -596,7 +594,7 @@ function FabricRow({
         <div className="truncate font-mono text-2xs">
           {fabricHardware(fabric.device_classes)}
         </div>
-        <div className="truncate font-mono text-2xs text-muted-foreground/50">
+        <div className="truncate font-mono text-2xs text-muted-foreground">
           {spec}
         </div>
       </div>
@@ -606,12 +604,8 @@ function FabricRow({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-3 font-mono text-2xs">
-        {fit && !fit.ok && (
-          <span className="text-amber-600 dark:text-amber-400">
-            {fit.reason}
-          </span>
-        )}
-        <span className="text-muted-foreground/60">
+        {fit && !fit.ok && <span className="text-warning">{fit.reason}</span>}
+        <span className="text-muted-foreground">
           {fabric.counts.held}/{fabric.counts.total} held
         </span>
         {fabric.counts.reserved > 0 && (
@@ -623,8 +617,8 @@ function FabricRow({
           className={cn(
             "w-10 text-right",
             fabric.counts.available > 0
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-muted-foreground/40"
+              ? "text-success"
+              : "text-muted-foreground"
           )}
         >
           {fabric.counts.available} free
@@ -658,19 +652,15 @@ function Tally({
 }) {
   const items: [string, number, string][] = [
     ["held", counts.held, "text-foreground"],
-    ["free", counts.free, "text-emerald-600 dark:text-emerald-400"],
+    ["free", counts.free, "text-success"],
     ...(counts.reserved > 0
       ? ([
           ["reserved", counts.reserved, "text-primary"],
-          [
-            "available",
-            counts.available,
-            "text-emerald-600 dark:text-emerald-400",
-          ],
+          ["available", counts.available, "text-success"],
         ] as [string, number, string][])
       : []),
     ["fault", counts.fault, "text-destructive"],
-    ["cordoned", counts.cordoned, "text-amber-600 dark:text-amber-400"],
+    ["cordoned", counts.cordoned, "text-warning"],
     ["total", counts.total, "text-muted-foreground"],
   ]
   return (
@@ -681,12 +671,12 @@ function Tally({
             className={cn(
               "font-mono tabular-nums",
               compact ? "text-2xs" : "text-sm font-semibold",
-              value === 0 ? "text-muted-foreground/40" : tone
+              value === 0 ? "text-muted-foreground" : tone
             )}
           >
             {value}
           </span>
-          <span className="font-mono text-2xs tracking-wider text-muted-foreground/50 uppercase">
+          <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             {label}
           </span>
         </div>
@@ -725,7 +715,7 @@ function UtilBar({
         style={{ width: `${pct(counts.held)}%` }}
       />
       <span
-        className={cn("h-full bg-primary/25 text-primary/70", HATCH)}
+        className={cn("h-full bg-primary/25 text-primary", HATCH)}
         style={{ width: `${pct(Math.min(counts.reserved, counts.free))}%` }}
       />
       <span

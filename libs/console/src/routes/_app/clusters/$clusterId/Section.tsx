@@ -35,7 +35,7 @@ export function Section({
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">{title}</h2>
         {description && (
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             {description}
           </p>
         )}

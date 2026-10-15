@@ -141,7 +141,7 @@ export function NewOperationDialog({
               className={
                 targetLooksWrong
                   ? "font-mono text-2xs text-destructive"
-                  : "font-mono text-2xs text-muted-foreground/60"
+                  : "font-mono text-2xs text-muted-foreground"
               }
             >
               {type} acts on {kind} targets — an id starting {prefix}, or a name

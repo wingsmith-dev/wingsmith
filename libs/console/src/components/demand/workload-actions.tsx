@@ -109,7 +109,7 @@ export function ScaleWorkloadDialog({
          * multiplies the weights out, and nothing about a new prefill process
          * changes what a decode process is, so no weights reload.
          */
-        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-success">
           {roles.map((role) => `${role.count} ${role.role}`).join(" · ")}
           {devices ? ` · ${devices * (desired ?? 0)} devices` : ""}. Scaling
           groups reloads no model weights; the ratio is preserved by
@@ -331,7 +331,7 @@ export function ReshapeWorkloadDialog({
         className={
           armed
             ? "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-            : "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+            : "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-warning"
         }
       >
         Every replica is replaced and every process reloads its weights, at

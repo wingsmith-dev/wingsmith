@@ -97,7 +97,7 @@ export function OperationDetailPage() {
                 {operation.phase}
               </StatusLabel>
               {open && (
-                <span className="font-mono text-2xs text-muted-foreground/60">
+                <span className="font-mono text-2xs text-muted-foreground">
                   polling every few seconds
                 </span>
               )}

@@ -110,7 +110,7 @@ export function WorkbenchPage() {
           <div className="flex items-center gap-2">
             <Label
               htmlFor="workbench-mock"
-              className="font-mono text-2xs tracking-[0.12em] text-muted-foreground/60 uppercase"
+              className="font-mono text-2xs tracking-[0.12em] text-muted-foreground uppercase"
             >
               Mock
             </Label>
@@ -211,7 +211,7 @@ export function WorkbenchPage() {
             )}
 
             {search.mock && mocked.length > 0 && (
-              <p className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 text-2xs text-amber-700 dark:text-amber-300">
+              <p className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 text-2xs text-warning">
                 <span className="font-semibold tracking-[0.12em] uppercase">
                   Mock ·{" "}
                 </span>
@@ -234,7 +234,7 @@ export function WorkbenchPage() {
             />
 
             {search.type && (
-              <p className="px-1 text-2xs text-muted-foreground/60">
+              <p className="px-1 text-2xs text-muted-foreground">
                 {RUN_KINDS[search.type].question}
               </p>
             )}

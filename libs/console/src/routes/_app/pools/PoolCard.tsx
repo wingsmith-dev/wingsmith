@@ -13,10 +13,10 @@ import { Link } from "@tanstack/react-router"
 function PanelHeading({ kind }: { kind: "declared" | "observed" }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+      <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
         {kind}
       </span>
-      <span className="font-mono text-2xs text-muted-foreground/40">
+      <span className="font-mono text-2xs text-muted-foreground">
         {kind === "declared"
           ? "written by the plane"
           : "reported by the cluster"}
@@ -62,7 +62,7 @@ export function PoolCard({
         >
           {pool.name}
         </Link>
-        <span className="font-mono text-2xs text-muted-foreground/60">
+        <span className="font-mono text-2xs text-muted-foreground">
           {pool.id}
         </span>
         <Link
@@ -81,7 +81,7 @@ export function PoolCard({
           {!pool.within_declared_bounds && (
             <Badge
               variant="outline"
-              className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-amber-600 dark:text-amber-400"
+              className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-warning"
             >
               outside declared bounds
             </Badge>
@@ -136,7 +136,7 @@ export function PoolCard({
             <Field label="Revision">{pool.revision}</Field>
           </div>
           <div className="mt-4 space-y-1.5">
-            <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
+            <div className="flex justify-between font-mono text-2xs text-muted-foreground">
               <span>membership against bounds</span>
               <span>
                 {membership.nodes_total} of {pool.max_nodes} max

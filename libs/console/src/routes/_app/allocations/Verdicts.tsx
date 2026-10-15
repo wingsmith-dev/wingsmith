@@ -37,14 +37,14 @@ export function Verdicts({
 }) {
   if (isLoading) {
     return (
-      <p className="px-1.5 py-1 font-mono text-2xs text-muted-foreground/50">
+      <p className="px-1.5 py-1 font-mono text-2xs text-muted-foreground">
         asking the plane…
       </p>
     )
   }
   if (error) {
     return (
-      <p className="flex items-start gap-1.5 px-1.5 py-1 font-mono text-2xs text-amber-600 dark:text-amber-400">
+      <p className="flex items-start gap-1.5 px-1.5 py-1 font-mono text-2xs text-warning">
         <IconAlertTriangle className="mt-px size-3 shrink-0" />
         {formatError(error)}
       </p>
@@ -57,12 +57,12 @@ export function Verdicts({
 
   return (
     <div className="space-y-1.5 border-l-2 border-primary/30 py-1 pl-2">
-      <div className="font-mono text-2xs tracking-wider text-primary/70 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-primary uppercase">
         the plane says
       </div>
 
       {summary && (
-        <p className="font-mono text-2xs leading-relaxed text-muted-foreground/70">
+        <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
           {summary}
         </p>
       )}
@@ -74,7 +74,7 @@ export function Verdicts({
               key={share.cluster}
               className="flex items-baseline gap-1.5 font-mono text-2xs"
             >
-              <IconCheck className="size-3 shrink-0 text-emerald-500" />
+              <IconCheck className="size-3 shrink-0 text-success" />
               <span className="flex-1 truncate">{share.cluster_name}</span>
               <span className="tabular-nums">
                 {share.replicas} {share.replicas === 1 ? "replica" : "replicas"}
@@ -82,7 +82,7 @@ export function Verdicts({
             </div>
           ))}
           {!!shortfall && shortfall > 0 && (
-            <div className="flex items-baseline gap-1.5 font-mono text-2xs text-amber-600 dark:text-amber-400">
+            <div className="flex items-baseline gap-1.5 font-mono text-2xs text-warning">
               <IconAlertTriangle className="size-3 shrink-0" />
               <span className="flex-1">shortfall</span>
               <span className="tabular-nums">{shortfall}</span>
@@ -99,7 +99,7 @@ export function Verdicts({
       ))}
 
       {disagreement && (
-        <p className="border-t pt-1 font-mono text-2xs leading-relaxed text-muted-foreground/50">
+        <p className="border-t pt-1 font-mono text-2xs leading-relaxed text-muted-foreground">
           {disagreement}
         </p>
       )}
@@ -132,27 +132,25 @@ function Row({ verdict }: { verdict: ClusterVerdict }) {
     <div className="space-y-0.5">
       <div className="flex items-baseline gap-1.5 font-mono text-2xs">
         {verdict.feasible ? (
-          <IconCheck className="size-3 shrink-0 text-emerald-500" />
+          <IconCheck className="size-3 shrink-0 text-success" />
         ) : (
-          <IconX className="size-3 shrink-0 text-muted-foreground/40" />
+          <IconX className="size-3 shrink-0 text-muted-foreground" />
         )}
         <span
           className={cn(
             "flex-1 truncate",
-            !verdict.feasible && "text-muted-foreground/60"
+            !verdict.feasible && "text-muted-foreground"
           )}
         >
           {verdict.cluster_name}
         </span>
-        <span className="shrink-0 text-muted-foreground/50">{counts}</span>
+        <span className="shrink-0 text-muted-foreground">{counts}</span>
       </div>
 
       {verdict.reasons.map((reason) => (
         <div key={reason.code} className="pl-4">
-          <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
-            {reason.code}
-          </span>
-          <p className="font-mono text-2xs leading-relaxed text-muted-foreground/50">
+          <span className="font-mono text-2xs text-warning">{reason.code}</span>
+          <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
             {reason.message}
           </p>
         </div>

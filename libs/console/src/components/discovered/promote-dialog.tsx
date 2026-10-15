@@ -143,7 +143,7 @@ export function PromoteDialog({
                 ? "the serving block is read off what this cluster is running — only the weights are declared"
                 : "no weights identified yet — register them from the reading first"}
             </p>
-            <p className="font-mono text-2xs break-all text-muted-foreground/60">
+            <p className="font-mono text-2xs break-all text-muted-foreground">
               running {workload.images.join(", ") || "an unrecorded image"}
             </p>
           </div>
@@ -211,7 +211,7 @@ export function PromoteDialog({
               {workload.devices_per_replica} device
               {workload.devices_per_replica === 1 ? "" : "s"} each
             </p>
-            <p className="mt-1 font-mono text-2xs break-all text-muted-foreground/60">
+            <p className="mt-1 font-mono text-2xs break-all text-muted-foreground">
               fingerprint {fingerprint ?? "unknown — cannot promote"}
             </p>
           </div>

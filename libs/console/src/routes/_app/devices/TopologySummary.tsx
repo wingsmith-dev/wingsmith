@@ -57,14 +57,10 @@ function Stat({
   tone?: "default" | "ok" | "danger"
 }) {
   const toneClass =
-    tone === "ok"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : tone === "danger"
-        ? "text-destructive"
-        : ""
+    tone === "ok" ? "text-success" : tone === "danger" ? "text-destructive" : ""
   return (
     <div>
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div className={`mt-0.5 font-mono text-sm ${toneClass}`}>{value}</div>

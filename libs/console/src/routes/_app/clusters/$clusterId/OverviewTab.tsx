@@ -37,16 +37,16 @@ function StatTile({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-4 py-3.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={
           "font-heading text-2xl leading-none font-semibold tabular-nums" +
           (tone === "ok"
-            ? " text-emerald-500"
+            ? " text-success"
             : tone === "warn"
-              ? " text-amber-500"
+              ? " text-warning"
               : "")
         }
       >
@@ -240,7 +240,7 @@ function DeploymentsTable({
                   </Td>
                   <Td className="font-mono text-2xs text-muted-foreground">
                     {serving ?? (
-                      <span className="text-muted-foreground/40">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </Td>
                   <Td className="font-mono tabular-nums">
@@ -300,7 +300,7 @@ function HeadroomPanel({
     <Card className="gap-0 border-primary/30 p-0">
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">Headroom</h2>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           free capacity and how it&apos;s shaped
         </p>
       </div>
@@ -310,12 +310,12 @@ function HeadroomPanel({
             <span
               className={
                 "font-heading text-2xl leading-none font-semibold tabular-nums" +
-                (t.tone === "warn" ? " text-amber-500" : "")
+                (t.tone === "warn" ? " text-warning" : "")
               }
             >
               {t.value}
             </span>
-            <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               {t.label}
             </span>
           </div>

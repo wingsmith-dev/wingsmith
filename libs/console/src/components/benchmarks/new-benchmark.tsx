@@ -153,7 +153,7 @@ export function NewBenchmarkDialog({
               </SelectContent>
             </Select>
             {selected && (
-              <p className="text-2xs text-muted-foreground/70">
+              <p className="text-2xs text-muted-foreground">
                 {selected.description}
               </p>
             )}
@@ -193,7 +193,7 @@ export function NewBenchmarkDialog({
                       onChange={(e) => set(parameter.name, e.target.value)}
                     />
                   )}
-                  <p className="text-2xs text-muted-foreground/60">
+                  <p className="text-2xs text-muted-foreground">
                     {parameter.description}
                   </p>
                 </div>
@@ -210,7 +210,7 @@ export function NewBenchmarkDialog({
               onChange={(e) => setImage(e.target.value)}
               placeholder={selected?.image ?? "the harness's pinned image"}
             />
-            <p className="text-2xs text-muted-foreground/60">
+            <p className="text-2xs text-muted-foreground">
               Leave empty to use the pinned image above. Override it only to
               reach a release the plane has not pinned yet — a run on a
               different image is its own comparison group.

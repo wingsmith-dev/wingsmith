@@ -18,12 +18,10 @@ export function TopologyCard({ nodeId }: { nodeId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading && (
-          <p className="font-mono text-2xs text-muted-foreground/60">
-            Loading…
-          </p>
+          <p className="font-mono text-2xs text-muted-foreground">Loading…</p>
         )}
         {items?.length === 0 && (
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             No fabric reported for this node.
           </p>
         )}
@@ -34,7 +32,7 @@ export function TopologyCard({ nodeId }: { nodeId: string }) {
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-xs">{domain.identifier}</span>
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {topologyKindLabel(domain.kind)}
               </span>
             </div>

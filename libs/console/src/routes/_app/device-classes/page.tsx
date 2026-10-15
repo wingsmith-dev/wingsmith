@@ -121,7 +121,7 @@ function Unnamed({ classes }: { classes: DeviceClass[] }) {
       className="gap-1.5 border-amber-500/30 bg-amber-500/5 px-3 py-3"
     >
       <div className="flex items-center gap-2 text-xs">
-        <IconAlertTriangle className="size-4 shrink-0 text-amber-500" />
+        <IconAlertTriangle className="size-4 shrink-0 text-warning" />
         <span className="font-medium">
           {classes.length === 1
             ? "One class in the fleet has no catalog entry"
@@ -210,12 +210,12 @@ function Row({ entry, cluster }: { entry: DeviceClass; cluster?: string }) {
               className="block hover:underline"
             >
               <span className="text-xs">{entry.label}</span>
-              <span className="block truncate font-mono text-2xs text-muted-foreground/60">
+              <span className="block truncate font-mono text-2xs text-muted-foreground">
                 {entry.name}
               </span>
             </Link>
             {!entry.in_catalog && (
-              <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+              <span className="font-mono text-2xs text-warning">
                 not in the catalog
               </span>
             )}
@@ -233,35 +233,33 @@ function Row({ entry, cluster }: { entry: DeviceClass; cluster?: string }) {
       </TableCell>
       <TableCell className="text-right font-mono text-xs tabular-nums">
         {inventory.devices || (
-          <span className="text-muted-foreground/40">none</span>
+          <span className="text-muted-foreground">none</span>
         )}
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
         {inventory.devices === 0 ? (
-          <span className="text-muted-foreground/40">—</span>
+          <span className="text-muted-foreground">—</span>
         ) : (
-          <span
-            className={impaired > 0 ? "text-amber-600 dark:text-amber-400" : ""}
-          >
+          <span className={impaired > 0 ? "text-warning" : ""}>
             {inventory.healthy}
           </span>
         )}
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
         {inventory.devices === 0 ? (
-          <span className="text-muted-foreground/40">—</span>
+          <span className="text-muted-foreground">—</span>
         ) : (
           inventory.allocatable
         )}
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
-        {inventory.nodes || <span className="text-muted-foreground/40">—</span>}
+        {inventory.nodes || <span className="text-muted-foreground">—</span>}
       </TableCell>
       <TableCell className="font-mono text-2xs text-muted-foreground">
         {inventory.clusters.length > 0 ? (
           inventory.clusters.join(", ")
         ) : (
-          <span className="text-muted-foreground/40">not owned</span>
+          <span className="text-muted-foreground">not owned</span>
         )}
       </TableCell>
     </TableRow>

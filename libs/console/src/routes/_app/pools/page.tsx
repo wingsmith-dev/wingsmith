@@ -68,7 +68,7 @@ export function PoolsPage() {
               label: clusterLabel(cluster),
             }))}
           />
-          <div className="ml-auto font-mono text-2xs text-muted-foreground/60">
+          <div className="ml-auto font-mono text-2xs text-muted-foreground">
             {list.loaded} loaded{list.hasNextPage ? " · more available" : ""}
           </div>
         </div>

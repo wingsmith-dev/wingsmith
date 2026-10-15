@@ -66,7 +66,7 @@ export function NodeKindBadge({ devices }: { devices: number }) {
 export function CordonState({ cordoned }: { cordoned: boolean }) {
   if (!cordoned) {
     return (
-      <span className="inline-flex items-center gap-2 font-mono text-xs text-muted-foreground/60">
+      <span className="inline-flex items-center gap-2 font-mono text-xs text-muted-foreground">
         <StatusDot tone="neutral" />
         schedulable
       </span>
@@ -75,7 +75,7 @@ export function CordonState({ cordoned }: { cordoned: boolean }) {
   return (
     <Badge
       variant="outline"
-      className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400"
+      className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs tracking-wider text-warning uppercase"
     >
       cordoned
     </Badge>
@@ -91,7 +91,7 @@ export function DeviceHealthLabel({ device }: { device: Device }) {
       {device.throttled && (
         <Badge
           variant="outline"
-          className="border-amber-500/40 font-mono text-2xs text-amber-600 dark:text-amber-400"
+          className="border-amber-500/40 font-mono text-2xs text-warning"
         >
           throttled
         </Badge>
@@ -107,9 +107,7 @@ export function DeviceHealthLabel({ device }: { device: Device }) {
  */
 export function EccCell({ device }: { device: Device }) {
   if (!device.ecc_enabled) {
-    return (
-      <span className="font-mono text-2xs text-muted-foreground/40">off</span>
-    )
+    return <span className="font-mono text-2xs text-muted-foreground">off</span>
   }
   const clean =
     device.ecc_volatile_errors === 0 && device.ecc_aggregate_errors === 0
@@ -117,8 +115,8 @@ export function EccCell({ device }: { device: Device }) {
     <span
       className={
         clean
-          ? "font-mono text-2xs text-muted-foreground/60"
-          : "font-mono text-2xs text-amber-600 dark:text-amber-400"
+          ? "font-mono text-2xs text-muted-foreground"
+          : "font-mono text-2xs text-warning"
       }
     >
       {device.ecc_volatile_errors}/{device.ecc_aggregate_errors}
@@ -137,8 +135,8 @@ export function AllocatableCell({ allocatable }: { allocatable: boolean }) {
     <span
       className={
         allocatable
-          ? "font-mono text-2xs text-emerald-600 dark:text-emerald-400"
-          : "font-mono text-2xs text-muted-foreground/50"
+          ? "font-mono text-2xs text-success"
+          : "font-mono text-2xs text-muted-foreground"
       }
     >
       {allocatable ? "allocatable" : "unschedulable"}

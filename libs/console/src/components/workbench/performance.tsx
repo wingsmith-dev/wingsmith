@@ -102,7 +102,7 @@ export function PerformanceSuite({
       )}
 
       <div>
-        <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+        <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
           Per input-length band
         </h2>
         <BandTable bands={(bands?.items ?? []) as BenchmarkBand[]} />

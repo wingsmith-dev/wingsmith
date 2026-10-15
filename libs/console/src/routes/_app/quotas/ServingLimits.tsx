@@ -37,9 +37,7 @@ export function Committed({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
-            uncommitted
-          </span>
+          <span className="font-mono text-2xs text-warning">uncommitted</span>
         </TooltipTrigger>
         <TooltipContent className="max-w-64 text-2xs">
           Nothing was committed on this axis, so the gateway does not limit it.
@@ -69,7 +67,7 @@ export function Committed({
     <span className="font-mono text-xs">
       {formatLimit(value)}
       {unit && (
-        <span className="text-muted-foreground/50">
+        <span className="text-muted-foreground">
           {" "}
           {unit}
         </span>
@@ -148,10 +146,7 @@ export function OnExceedBadge({
         <span className="font-mono text-2xs text-muted-foreground">
           {onExceed}
           {onExceed === "queue" && queueTimeoutMs !== null && (
-            <span className="text-muted-foreground/50">
-              {" "}
-              · {queueTimeoutMs}ms
-            </span>
+            <span className="text-muted-foreground"> · {queueTimeoutMs}ms</span>
           )}
         </span>
       </TooltipTrigger>

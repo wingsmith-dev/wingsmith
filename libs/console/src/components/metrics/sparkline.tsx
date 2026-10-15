@@ -155,7 +155,7 @@ export function MetricChart({
   return (
     <div className="space-y-1.5">
       <div className="flex gap-2">
-        <div className="flex h-24 w-16 shrink-0 flex-col justify-between text-right font-mono text-2xs text-muted-foreground/60 tabular-nums">
+        <div className="flex h-24 w-16 shrink-0 flex-col justify-between text-right font-mono text-2xs text-muted-foreground tabular-nums">
           <span className="-translate-y-[3px]">{formatMetric(max, unit)}</span>
           <span className="translate-y-[3px]">{formatMetric(min, unit)}</span>
         </div>
@@ -187,7 +187,7 @@ export function MetricChart({
           </svg>
         </div>
       </div>
-      <div className="flex justify-between pl-[72px] font-mono text-2xs text-muted-foreground/40">
+      <div className="flex justify-between pl-[72px] font-mono text-2xs text-muted-foreground">
         <span>{spanLabel} ago</span>
         <span>now</span>
       </div>

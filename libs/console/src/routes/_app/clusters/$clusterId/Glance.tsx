@@ -80,7 +80,7 @@ function ServingSection({ cluster }: { cluster: Cluster }) {
           </Field>
         </FieldGrid>
       ) : (
-        <p className="font-mono text-xs text-muted-foreground/60">
+        <p className="font-mono text-xs text-muted-foreground">
           No address. Nothing can route traffic to this cluster until one is
           declared.
         </p>
@@ -112,7 +112,7 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
           {cluster.name}
           <CopyableId
             value={cluster.id}
-            className="ml-2 text-2xs text-muted-foreground/60"
+            className="ml-2 text-2xs text-muted-foreground"
           />
         </Field>
         <Field label="Region">
@@ -158,7 +158,7 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
         </Field>
         <Field label="Capabilities">
           {Object.keys(cluster.capabilities).length === 0 ? (
-            <span className="text-muted-foreground/40">none</span>
+            <span className="text-muted-foreground">none</span>
           ) : (
             Object.entries(cluster.capabilities)
               .map(([key, value]) =>

@@ -42,10 +42,7 @@ function columns(
         <span className="font-mono text-2xs text-muted-foreground">
           {project.tenant.slug}
           {!project.tenant.enabled && (
-            <span className="text-amber-600 dark:text-amber-400">
-              {" "}
-              · disabled
-            </span>
+            <span className="text-warning"> · disabled</span>
           )}
         </span>
       ),

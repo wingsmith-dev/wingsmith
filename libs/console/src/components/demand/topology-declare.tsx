@@ -73,7 +73,7 @@ export function TopologyChoice({
 
       {disaggregated && roles && (
         <div className="space-y-2 rounded-md border p-3">
-          <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             Workers per group
           </div>
           {roles.map((role) => (
@@ -124,7 +124,7 @@ export function TopologyChoice({
                and the declaration path has no cluster in hand — so a ratio that
                strands a node produces no error at declaration, no error at
                placement, and a bill. */
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-amber-700 dark:text-amber-400">
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-warning">
               {stranded}. This is not refused anywhere: the group either fits or
               the devices sit held and idle.
             </p>
@@ -175,7 +175,7 @@ function TopologyOption({
     >
       <div className="font-mono text-xs">{title}</div>
       <div className="text-2xs text-muted-foreground">{detail}</div>
-      <div className="text-2xs text-muted-foreground/60">{note}</div>
+      <div className="text-2xs text-muted-foreground">{note}</div>
     </button>
   )
 }

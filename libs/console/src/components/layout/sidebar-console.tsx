@@ -103,7 +103,7 @@ function NavGroup({
   return (
     <SidebarGroup>
       {label && (
-        <SidebarGroupLabel className="font-mono text-2xs font-semibold tracking-[0.15em] text-muted-foreground/50 uppercase">
+        <SidebarGroupLabel className="font-mono text-2xs font-semibold tracking-[0.15em] text-muted-foreground uppercase">
           {label}
         </SidebarGroupLabel>
       )}
@@ -150,7 +150,7 @@ export function ConsoleSidebar({
         {transport.kind === "fixtures" && (
           <Badge
             variant="outline"
-            className="justify-center border-amber-500/30 bg-amber-500/10 font-mono text-2xs tracking-[0.18em] text-amber-600 uppercase group-data-[collapsible=icon]:hidden dark:text-amber-400"
+            className="justify-center border-amber-500/30 bg-amber-500/10 font-mono text-2xs tracking-[0.18em] text-warning uppercase group-data-[collapsible=icon]:hidden"
           >
             Fixtures
           </Badge>
@@ -210,7 +210,7 @@ function ReadOnlyNotice() {
       to="/settings"
       search={{ section: "preferences" }}
       title="Writes are blocked from this console. Connected clusters still reconcile."
-      className="mb-1 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-700 transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-amber-500/15 dark:text-amber-400"
+      className="mb-1 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-warning transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-amber-500/15"
     >
       <IconEye className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate font-mono text-2xs tracking-[0.14em] uppercase group-data-[collapsible=icon]:hidden">

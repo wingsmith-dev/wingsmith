@@ -229,13 +229,13 @@ function ChangeList({
       {shown.map((change) => (
         <div key={change.path} className="font-mono text-2xs">
           <span className="text-muted-foreground">{change.path}</span>{" "}
-          <span className="text-muted-foreground/70">{change.before}</span>
-          <span className="px-1 text-muted-foreground/50">→</span>
+          <span className="text-muted-foreground">{change.before}</span>
+          <span className="px-1 text-muted-foreground">→</span>
           <span>{change.after}</span>
         </div>
       ))}
       {changes.length > shown.length && (
-        <div className="text-2xs text-muted-foreground/70">
+        <div className="text-2xs text-muted-foreground">
           and {changes.length - shown.length} more
         </div>
       )}

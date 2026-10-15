@@ -26,7 +26,7 @@ export function PriorityClassCard({
       <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-4 py-3">
         <ResourceGlyph kind="priority-class" size="sm" />
         <span className="font-medium">{priorityClass.name}</span>
-        <span className="font-mono text-2xs text-muted-foreground/60">
+        <span className="font-mono text-2xs text-muted-foreground">
           {priorityClass.value}
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -64,7 +64,7 @@ export function PriorityClassCard({
           </span>
         </Field>
 
-        <span className="block font-mono text-2xs text-muted-foreground/50">
+        <span className="block font-mono text-2xs text-muted-foreground">
           {priorityClass.id}
         </span>
       </div>

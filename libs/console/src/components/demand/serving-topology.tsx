@@ -85,7 +85,7 @@ function AchievedLine({
         {achieved.label} on {deployment.cluster_name}
       </span>
       {achieved.settling && (
-        <span className="text-muted-foreground/60">· settling</span>
+        <span className="text-muted-foreground">· settling</span>
       )}
     </div>
   )
@@ -218,12 +218,10 @@ function RatioControl({
   return (
     <div className="space-y-2 rounded-md border p-3">
       <div className="flex items-baseline justify-between">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Ratio
         </span>
-        <span className="text-2xs text-emerald-700 dark:text-emerald-400">
-          free · reloads nothing
-        </span>
+        <span className="text-2xs text-success">free · reloads nothing</span>
       </div>
 
       <div className="space-y-1.5">
@@ -255,7 +253,7 @@ function RatioControl({
            arithmetic and cannot run it — the declaration path has no device
            budget — so a ratio that strands a node produces no error anywhere,
            which is precisely why it is worth a line at the moment of choosing. */
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-amber-700 dark:text-amber-400">
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-warning">
           {stranded}. Nothing refuses this — the devices are simply held and
           idle.
         </p>
@@ -437,7 +435,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
   return (
     <div className="space-y-2 rounded-md border p-3">
       <div className="flex items-baseline justify-between">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Configuration
         </span>
         <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
@@ -482,7 +480,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
             ) : (
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-muted-foreground">
                 {roleOverrides(role).length === 0 ? (
-                  <span className="text-muted-foreground/60">
+                  <span className="text-muted-foreground">
                     inherits every argument from the workload
                   </span>
                 ) : (
@@ -507,7 +505,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
       )}
 
       {cost && (
-        <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-amber-800 dark:text-amber-300">
+        <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-warning">
           <RollCost cost={cost} />
           {!unlocked && (
             <WriteAction>

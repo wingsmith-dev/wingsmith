@@ -29,8 +29,10 @@
   --primary: oklch(0.545 0.128 208); /* hangar cyan */
   --primary-foreground: oklch(1 0 0);
 
-  /* semantic */
+  /* semantic — text tokens hold 4.5:1 on background, card and muted */
   --destructive: oklch(0.577 0.245 27.325); /* #dc2626 */
+  --warning: oklch(0.555 0.163 48.998); /* #b45309 */
+  --success: oklch(0.508 0.118 165.612); /* #047857 */
 
   /* borders / inputs */
   --border: oklch(0.113 0.004 286 / 12%); /* ink-12 */
@@ -78,6 +80,8 @@
   --accent: oklch(0.22 0.005 286);
   --accent-foreground: oklch(0.979 0.001 286);
   --destructive: oklch(0.704 0.191 22.216);
+  --warning: oklch(0.828 0.189 84.429); /* #fbbf24 */
+  --success: oklch(0.765 0.177 163.223); /* #34d399 */
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.68 0.115 208);
@@ -136,6 +140,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);

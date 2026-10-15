@@ -141,7 +141,7 @@ export function BenchmarkDetailPage() {
               >
                 {run.phase}
               </StatusLabel>
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {run.harness}
                 {run.harness_version ? ` ${run.harness_version}` : ""}
               </span>
@@ -249,7 +249,7 @@ export function BenchmarkDetailPage() {
                     </Field>
                   </FieldGrid>
                   {run.endpoint_id && (
-                    <p className="text-2xs text-muted-foreground/70">
+                    <p className="text-2xs text-muted-foreground">
                       An endpoint-level run carries no snapshot. The request was
                       routed by weight across every enabled upstream, so no one
                       of them is what this measured.
@@ -272,7 +272,7 @@ export function BenchmarkDetailPage() {
             {verdict && <VerdictPanel verdict={verdict} title="Verdict" />}
 
             <div>
-              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                 Result · {runKindMeta(run.harness).label.toLowerCase()}
               </h2>
               <RunBody run={run} />
@@ -280,13 +280,13 @@ export function BenchmarkDetailPage() {
 
             {run.log_tail && (
               <div>
-                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                   Log tail
                 </h2>
                 <pre className="max-h-[28rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-2xs whitespace-pre-wrap">
                   {run.log_tail}
                 </pre>
-                <p className="mt-1 text-2xs text-muted-foreground/60">
+                <p className="mt-1 text-2xs text-muted-foreground">
                   Tail-capped by the operator at ~64 KiB. The full run, when it
                   happens, lives under artifacts_uri — not here.
                 </p>

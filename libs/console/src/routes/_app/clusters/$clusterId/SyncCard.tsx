@@ -7,7 +7,7 @@ import type { ClusterSync } from "@/modules/clusters/types"
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span className="truncate font-mono text-xs">{value}</span>
@@ -41,7 +41,7 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
         />
         {sync.read_only && (
           <div className="py-2">
-            <p className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400">
+            <p className="font-mono text-2xs tracking-wider text-warning uppercase">
               Read-only operator
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -73,7 +73,7 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
         />
         {sync.last_error && (
           <div className="pt-2">
-            <p className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <p className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               Last error
             </p>
             <p className="mt-1 font-mono text-xs break-words text-destructive">

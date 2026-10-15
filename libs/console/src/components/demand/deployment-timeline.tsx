@@ -61,14 +61,14 @@ export function DeploymentTimeline({
                 className={cn(
                   "font-mono text-2xs",
                   event.severity === "error" && "text-destructive",
-                  event.severity === "warning" && "text-amber-600",
+                  event.severity === "warning" && "text-warning",
                   event.severity === "info" && "text-muted-foreground"
                 )}
               >
                 {event.kind}
               </span>
               <span
-                className="text-2xs text-muted-foreground/70"
+                className="text-2xs text-muted-foreground"
                 title={formatAbsolute(event.occurred_at)}
               >
                 {formatRelative(event.occurred_at)}
@@ -100,7 +100,7 @@ function Detail({ event }: { event: PlaneEvent }) {
   if (!reason && !showReplicas) return null
 
   return (
-    <p className="mt-0.5 space-x-2 text-2xs text-muted-foreground/70">
+    <p className="mt-0.5 space-x-2 text-2xs text-muted-foreground">
       {reason && <span className="font-mono">{reason}</span>}
       {showReplicas && (
         <span>

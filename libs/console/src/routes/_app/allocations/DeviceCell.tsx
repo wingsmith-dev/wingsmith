@@ -129,13 +129,13 @@ export function DeviceCell(props: CellProps) {
 function face(cell: BoardDevice): string {
   if (cell.device.health !== "healthy") {
     return cn(
-      "bg-destructive/20 text-destructive/70 ring-1 ring-destructive/40 ring-inset",
+      "bg-destructive/20 text-destructive ring-1 ring-destructive/40 ring-inset",
       HATCH
     )
   }
   if (cell.cordoned) {
     return cn(
-      "bg-muted text-muted-foreground/50 ring-1 ring-border ring-inset",
+      "bg-muted text-muted-foreground ring-1 ring-border ring-inset",
       HATCH
     )
   }

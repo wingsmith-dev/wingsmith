@@ -21,8 +21,7 @@ const LEVEL_STYLES: Record<BenchmarkLevel, string> = {
   deployment: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
   workload:
     "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  endpoint:
-    "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  endpoint: "border-amber-500/40 bg-amber-500/10 text-warning",
 }
 
 export function LevelBadge({
@@ -67,7 +66,7 @@ export function TargetLink({
   className?: string
 }) {
   const style = cn("font-mono text-xs hover:underline", className)
-  if (!target) return <span className="text-muted-foreground/40">—</span>
+  if (!target) return <span className="text-muted-foreground">—</span>
   if (level === "endpoint")
     return (
       <Link

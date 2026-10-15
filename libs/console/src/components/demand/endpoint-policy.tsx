@@ -62,7 +62,11 @@ function RuleTerms({ rule }: { rule: PolicyRule }) {
  */
 function RuleScope({ rule }: { rule: PolicyRule }) {
   if (rule.route == null && rule.stream == null && !rule.when_present) {
-    return <span className="font-mono text-2xs text-muted-foreground/60">every request</span>
+    return (
+      <span className="font-mono text-2xs text-muted-foreground">
+        every request
+      </span>
+    )
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
@@ -104,8 +108,7 @@ export function EndpointPolicyCard({
         <div>
           <CardTitle className="text-sm">Request policy</CardTitle>
           <p className="mt-1 text-2xs text-muted-foreground">
-            Terms this endpoint sells, applied to a request before it is
-            proxied
+            Terms this endpoint sells, applied to a request before it is proxied
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -144,7 +147,7 @@ export function EndpointPolicyCard({
             </TableBody>
           </Table>
         ) : (
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             No consistency term sold on this endpoint. The gateway forwards
             every request as it was written.
           </p>

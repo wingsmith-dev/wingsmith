@@ -270,7 +270,7 @@ export function NewRunDialog({
           ))}
         </div>
         {isLoading && (
-          <p className="text-2xs text-muted-foreground/60">
+          <p className="text-2xs text-muted-foreground">
             Loading the harness catalogue…
           </p>
         )}
@@ -378,7 +378,7 @@ export function NewRunDialog({
                         }
                       />
                     )}
-                    <p className="text-2xs text-muted-foreground/60">
+                    <p className="text-2xs text-muted-foreground">
                       {parameter.description}
                     </p>
                   </div>
@@ -469,7 +469,7 @@ function KindCard({
           </Badge>
         )}
       </div>
-      <span className="text-2xs leading-snug text-muted-foreground/70">
+      <span className="text-2xs leading-snug text-muted-foreground">
         {meta.question}
       </span>
     </button>

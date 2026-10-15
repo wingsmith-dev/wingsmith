@@ -179,7 +179,7 @@ export function UpstreamCard({ upstream }: { upstream: ArtifactUpstream }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {!claimed ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             Nobody recorded the publisher's claim, so a workload built on these
             weights has nothing to be compared against.
           </p>

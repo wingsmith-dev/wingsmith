@@ -37,22 +37,18 @@ function SummaryTile({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/70 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={cn(
           "font-heading text-2xl leading-none font-semibold tabular-nums",
-          tone === "warn" && "text-amber-600 dark:text-amber-400"
+          tone === "warn" && "text-warning"
         )}
       >
         {value}
       </span>
-      {note && (
-        <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
-          {note}
-        </span>
-      )}
+      {note && <span className="font-mono text-2xs text-warning">{note}</span>}
     </Card>
   )
 }
@@ -77,7 +73,7 @@ function DeviceStrip({ devices }: { devices: NodeDeviceRollup }) {
         />
       ))}
       {total === 0 && (
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        <span className="font-mono text-2xs text-muted-foreground">—</span>
       )}
     </span>
   )
@@ -156,7 +152,7 @@ function nodeListColumns(
             {node.pool_name}
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             unpooled
           </span>
         ),
@@ -170,7 +166,7 @@ function nodeListColumns(
             {node.devices.device_class}
           </span>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+          <span className="font-mono text-2xs text-muted-foreground">—</span>
         ),
     },
     {
@@ -188,7 +184,7 @@ function nodeListColumns(
             {node.devices.allocated}/{node.devices.total}
           </span>
         ) : (
-          <span className="font-mono text-xs text-muted-foreground/40">—</span>
+          <span className="font-mono text-xs text-muted-foreground">—</span>
         ),
     },
     {
@@ -200,7 +196,7 @@ function nodeListColumns(
           className={cn(
             "font-mono text-2xs",
             node.driver_version && driftDrivers.has(node.driver_version)
-              ? "text-amber-600 dark:text-amber-400"
+              ? "text-warning"
               : "text-muted-foreground"
           )}
         >
@@ -213,7 +209,7 @@ function nodeListColumns(
       header: "Uptime",
       align: "right",
       cell: (node) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           {node.joined_at ? formatRelative(node.joined_at) : "—"}
         </span>
       ),

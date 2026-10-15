@@ -26,7 +26,7 @@ export function TenantServed({ tenant }: { tenant: string }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+        <h2 className="font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
           Served models · what this tenant sees
         </h2>
         <WindowToggle value={window} onChange={setWindow} />

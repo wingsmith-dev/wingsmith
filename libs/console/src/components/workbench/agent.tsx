@@ -61,7 +61,7 @@ export function AgentSuite({ id }: { id: string }) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Sessions</CardTitle>
-          <p className="mt-1 text-2xs text-muted-foreground/60">
+          <p className="mt-1 text-2xs text-muted-foreground">
             One row per client and task. A failure names the first thing that
             went wrong, verbatim — a session that ended for an unnamed reason is
             not evidence of anything.
@@ -96,11 +96,11 @@ function SessionLine({ session }: { session: AgentSession }) {
         {session.toolCalls} calls
       </span>
       {session.retries > 0 && (
-        <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+        <span className="font-mono text-2xs text-warning">
           {session.retries} retries
         </span>
       )}
-      <span className="w-16 text-right font-mono text-2xs text-muted-foreground/60">
+      <span className="w-16 text-right font-mono text-2xs text-muted-foreground">
         {formatMs(session.ms)}
       </span>
       {session.failure && (
@@ -181,7 +181,7 @@ function TurnLine({ turn }: { turn: AgentTurn }) {
         long && "hover:bg-muted/40"
       )}
     >
-      <span className="w-16 shrink-0 font-mono text-2xs text-muted-foreground/50">
+      <span className="w-16 shrink-0 font-mono text-2xs text-muted-foreground">
         {turn.role}
       </span>
       {turn.tool && (
@@ -197,7 +197,7 @@ function TurnLine({ turn }: { turn: AgentTurn }) {
       >
         {turn.text}
       </span>
-      <span className="w-12 shrink-0 text-right font-mono text-2xs text-muted-foreground/40">
+      <span className="w-12 shrink-0 text-right font-mono text-2xs text-muted-foreground">
         {formatMs(turn.ms)}
       </span>
     </button>

@@ -111,14 +111,14 @@ export function ActivityStream({
           />
         </label>
 
-        <span className="ml-auto font-mono text-2xs text-muted-foreground/60">
+        <span className="ml-auto font-mono text-2xs text-muted-foreground">
           {rows.length} of {events?.length ?? 0}
         </span>
       </div>
 
       <div className="overflow-y-auto rounded-lg p-3">
         {rows.length === 0 && !loading ? (
-          <div className="text-xs text-muted-foreground/60">
+          <div className="text-xs text-muted-foreground">
             {events?.length
               ? "No activity matches these filters."
               : "Nothing has been recorded against this workload yet."}

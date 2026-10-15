@@ -138,7 +138,7 @@ export function OperationsPage() {
               empty="Nothing has been asked of the fleet."
             />
 
-            <p className="px-1 text-2xs text-muted-foreground/60">
+            <p className="px-1 text-2xs text-muted-foreground">
               Most operations start from the resource they act on — cordon from
               a node, roll from a deployment. This page is where you come back
               to see whether they finished.
@@ -175,7 +175,7 @@ export function OperationsPage() {
               onMore={events.fetchNextPage}
             />
 
-            <p className="px-1 text-2xs text-muted-foreground/60">
+            <p className="px-1 text-2xs text-muted-foreground">
               Events tagged with an operation id came from something we
               initiated. Untagged ones — a lost heartbeat, an ECC error — are
               the cluster telling us something on its own.
@@ -200,13 +200,13 @@ function SummaryTile({
     tone === "danger"
       ? "text-destructive"
       : tone === "ok"
-        ? "text-emerald-500"
+        ? "text-success"
         : tone === "warn"
-          ? "text-amber-500"
+          ? "text-warning"
           : "text-foreground"
   return (
     <Card size="sm" className="gap-2 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
@@ -255,7 +255,7 @@ function EventFeed({
             className="grid grid-cols-[5.5rem_0.5rem_minmax(0,1fr)] items-baseline gap-3 px-4 py-2"
           >
             <span
-              className="text-right font-mono text-2xs text-muted-foreground/70"
+              className="text-right font-mono text-2xs text-muted-foreground"
               title={formatAbsolute(event.occurred_at)}
             >
               {formatRelative(event.occurred_at)}
@@ -270,7 +270,7 @@ function EventFeed({
                 <span className="font-mono text-2xs text-muted-foreground">
                   {event.subject.type}
                   {event.subject.id && (
-                    <span className="text-muted-foreground/50">
+                    <span className="text-muted-foreground">
                       /{event.subject.id}
                     </span>
                   )}

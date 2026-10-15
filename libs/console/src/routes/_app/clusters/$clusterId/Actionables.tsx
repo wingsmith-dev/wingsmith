@@ -44,7 +44,7 @@ export function Actionables({
     <Card className="gap-0 p-0 py-0">
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">Needs attention</h2>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           everything on this cluster somebody has to act on
         </p>
         <div className="ml-auto flex items-center gap-3">
@@ -71,7 +71,7 @@ export function Actionables({
         </div>
       ) : actionables.length === 0 ? (
         <div className="flex items-center justify-center gap-3 p-8 text-center">
-          <IconCheck className="size-4 text-emerald-500" />
+          <IconCheck className="size-4 text-success" />
           <p className="text-sm text-muted-foreground">
             Nothing to do here. Every pool is within its declared bounds, every
             node and device reports healthy, and nothing is in flight.
@@ -88,7 +88,7 @@ export function Actionables({
               <StatusDot tone={item.tone} />
               <ResourceIcon
                 kind={item.kind}
-                className="size-3.5 text-muted-foreground/60"
+                className="size-3.5 text-muted-foreground"
               />
               <span className="text-xs font-medium">{item.title}</span>
               {item.badges?.map((badge) => (

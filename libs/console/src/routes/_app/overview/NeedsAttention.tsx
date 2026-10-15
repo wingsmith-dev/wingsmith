@@ -14,9 +14,9 @@ type Filter = "all" | "discovered" | "health"
 
 const ICON_TONE: Record<StatusTone, string> = {
   danger: "bg-destructive/15 text-destructive",
-  warn: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  warn: "bg-amber-500/15 text-warning",
   info: "bg-primary/15 text-primary",
-  ok: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  ok: "bg-emerald-500/15 text-success",
   neutral: "bg-secondary text-muted-foreground",
 }
 
@@ -72,7 +72,7 @@ export function NeedsAttention({
       {shown.length === 0 ? (
         <PanelEmpty>
           <span className="inline-flex items-center gap-2">
-            <IconCheck className="size-4 text-emerald-500" />
+            <IconCheck className="size-4 text-success" />
             Nothing to decide. Every cluster reports in and every endpoint
             serves.
           </span>
@@ -100,7 +100,7 @@ export function NeedsAttention({
               </div>
 
               {item.pill && (
-                <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-px font-mono text-2xs text-amber-600 lowercase dark:text-amber-400">
+                <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-px font-mono text-2xs text-warning lowercase">
                   {item.pill}
                 </span>
               )}

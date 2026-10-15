@@ -99,7 +99,7 @@ function columns(
           <span className="font-mono text-xs">
             {footprintSummary(footprintOfServing(workload.serving))}
           </span>
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {workload.artifact_tag ?? workload.kind}
           </span>
         </div>
@@ -282,13 +282,13 @@ function StatTile({
   return (
     <Card size="sm" className="gap-2">
       <div className="flex flex-col gap-2 px-3">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           {label}
         </span>
         <span
           className={
             tone === "warn"
-              ? "font-heading text-2xl leading-none font-semibold text-amber-500 tabular-nums"
+              ? "font-heading text-2xl leading-none font-semibold text-warning tabular-nums"
               : "font-heading text-2xl leading-none font-semibold tabular-nums"
           }
         >

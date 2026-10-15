@@ -14,20 +14,17 @@ const ENFORCEMENT: Record<
   obeyed: {
     label: "obeyed",
     hint: "Rendered and honoured. Changing it changes what actually runs.",
-    className:
-      "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    className: "border-emerald-500/40 bg-emerald-500/10 text-success",
   },
   asserted: {
     label: "asserted",
     hint: "A claim. Nothing renders it and nothing checks it — a conformance run is what can prove it wrong.",
-    className:
-      "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    className: "border-amber-500/40 bg-amber-500/10 text-warning",
   },
   disclosure: {
     label: "disclosure",
     hint: "Documented and enforced by nothing, in any configuration. Do not repeat it to a customer as a limit.",
-    className:
-      "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    className: "border-amber-500/40 bg-amber-500/10 text-warning",
   },
   conditional: {
     label: "under enforce",
@@ -97,7 +94,7 @@ export function DeclaredSection({
           {!plain && <h3 className="text-xs font-medium">{title}</h3>}
           <EnforcementBadge kind={kind} />
         </div>
-        <p className="text-2xs text-muted-foreground/70">{hint}</p>
+        <p className="text-2xs text-muted-foreground">{hint}</p>
       </div>
       {children}
     </section>

@@ -39,7 +39,7 @@ export function PlanPanel({
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center justify-between text-sm">
           Plan
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {moves.length} {moves.length === 1 ? "change" : "changes"}
           </span>
         </CardTitle>
@@ -47,7 +47,7 @@ export function PlanPanel({
 
       <CardContent className="space-y-3">
         {moves.length === 0 ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             Place a brick or drag an allocation to start one.
           </p>
         ) : (
@@ -116,7 +116,7 @@ export function PlanPanel({
           </div>
         )}
 
-        <p className="font-mono text-2xs leading-relaxed text-muted-foreground/40">
+        <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
           A plan stays here. Allocations are observed state with one writer —
           the cluster — so there is nothing to submit and nothing to apply.
         </p>
@@ -192,20 +192,20 @@ function BatchRow({
 
   return (
     <div className="flex items-start gap-2 rounded-md bg-muted/30 px-1.5 py-1">
-      <IconCirclePlus className="mt-0.5 size-3 shrink-0 text-emerald-500" />
+      <IconCirclePlus className="mt-0.5 size-3 shrink-0 text-success" />
       <span
         className={cn("mt-1 size-2 shrink-0 rounded-[2px]", colour.swatch)}
       />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-2xs">
           {batch.brick.label}
-          <span className="text-muted-foreground/50">
+          <span className="text-muted-foreground">
             {" "}
             · {batch.moves.length}{" "}
             {batch.moves.length === 1 ? "replica" : "replicas"} · {devices} dev
           </span>
         </span>
-        <span className="block truncate font-mono text-2xs text-muted-foreground/50">
+        <span className="block truncate font-mono text-2xs text-muted-foreground">
           {[...clusters].join(", ")} · {fabrics.length}{" "}
           {fabrics.length === 1 ? "fabric" : "fabrics"}
         </span>
@@ -230,11 +230,11 @@ function MoveRow({ move, board }: { move: Move; board: Board | undefined }) {
     <div className="flex items-start gap-2 rounded-md bg-muted/30 px-1.5 py-1">
       <span className="mt-0.5 shrink-0">
         {move.kind === "release" ? (
-          <IconCircleMinus className="size-3 text-amber-500" />
+          <IconCircleMinus className="size-3 text-warning" />
         ) : move.kind === "move" ? (
           <IconArrowRight className="size-3 text-primary" />
         ) : (
-          <IconCirclePlus className="size-3 text-emerald-500" />
+          <IconCirclePlus className="size-3 text-success" />
         )}
       </span>
       <span
@@ -242,7 +242,7 @@ function MoveRow({ move, board }: { move: Move; board: Board | undefined }) {
       />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-2xs">{label}</span>
-        <span className="block truncate font-mono text-2xs text-muted-foreground/50">
+        <span className="block truncate font-mono text-2xs text-muted-foreground">
           {move.kind === "place" && `→ ${to.join(", ")}`}
           {move.kind === "move" && `${from.join(", ")} → ${to.join(", ")}`}
           {move.kind === "release" && `released from ${from.join(", ")}`}
@@ -279,18 +279,18 @@ function Row({
   const good = up ? delta > 0 : delta < 0
   return (
     <div className="flex items-baseline gap-2 font-mono text-2xs">
-      <span className="flex-1 text-muted-foreground/60">{label}</span>
-      <span className="text-muted-foreground/50 tabular-nums">{before}</span>
-      <IconArrowRight className="size-2.5 text-muted-foreground/30" />
+      <span className="flex-1 text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground tabular-nums">{before}</span>
+      <IconArrowRight className="size-2.5 text-muted-foreground" />
       <span className="w-6 text-right tabular-nums">{after}</span>
       <span
         className={cn(
           "w-8 text-right tabular-nums",
           delta === 0
-            ? "text-muted-foreground/30"
+            ? "text-muted-foreground"
             : good
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-amber-600 dark:text-amber-400"
+              ? "text-success"
+              : "text-warning"
         )}
       >
         {delta === 0 ? "—" : delta > 0 ? `+${delta}` : delta}

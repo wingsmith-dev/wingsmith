@@ -44,10 +44,7 @@ const columns: Column<PlaneEvent>[] = [
       <span className="font-mono text-2xs text-muted-foreground">
         {event.subject.type}
         {event.subject.id && (
-          <span className="text-muted-foreground/50">
-            {" "}
-            · {event.subject.id}
-          </span>
+          <span className="text-muted-foreground"> · {event.subject.id}</span>
         )}
       </span>
     ),
@@ -71,7 +68,7 @@ const columns: Column<PlaneEvent>[] = [
           {event.operation_id}
         </Link>
       ) : (
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        <span className="font-mono text-2xs text-muted-foreground">—</span>
       ),
   },
   {
@@ -80,7 +77,7 @@ const columns: Column<PlaneEvent>[] = [
     secondary: true,
     cell: (event) =>
       Object.keys(event.details).length === 0 ? (
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        <span className="font-mono text-2xs text-muted-foreground">—</span>
       ) : (
         <span className="font-mono text-2xs text-muted-foreground">
           {Object.entries(event.details)

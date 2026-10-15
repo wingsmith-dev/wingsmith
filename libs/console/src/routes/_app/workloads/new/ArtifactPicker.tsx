@@ -41,7 +41,7 @@ export function ArtifactPicker({
       {list.isLoading && <Skeleton className="h-32 w-full" />}
 
       {!list.isLoading && artifacts.length === 0 && (
-        <p className="py-6 text-center font-mono text-2xs text-muted-foreground/60">
+        <p className="py-6 text-center font-mono text-2xs text-muted-foreground">
           {search
             ? "Nothing matches."
             : "No artifacts registered. Register one first — there is nothing to run yet."}
@@ -81,7 +81,7 @@ function ArtifactRow({
     >
       <ResourceIcon
         kind="artifact"
-        className="size-4 shrink-0 text-muted-foreground/60"
+        className="size-4 shrink-0 text-muted-foreground"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -103,7 +103,7 @@ function ArtifactRow({
 function ArtifactFacts({ artifact }: { artifact: Artifact }) {
   const params = artifact.parameter_count
   return (
-    <div className="flex shrink-0 flex-col items-end font-mono text-2xs text-muted-foreground/60 tabular-nums">
+    <div className="flex shrink-0 flex-col items-end font-mono text-2xs text-muted-foreground tabular-nums">
       <span>
         {params ? `${(params / 1e9).toFixed(params < 1e10 ? 1 : 0)}B` : "—"}
       </span>

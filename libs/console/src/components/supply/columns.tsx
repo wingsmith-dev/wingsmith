@@ -75,7 +75,7 @@ export function nodeColumns(
             {node.pool_name}
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             unpooled
           </span>
         ),
@@ -92,7 +92,7 @@ export function nodeColumns(
             <span className="block truncate font-mono text-2xs">
               {node.instance_type}
             </span>
-            <span className="block truncate text-2xs text-muted-foreground/60">
+            <span className="block truncate text-2xs text-muted-foreground">
               {[
                 node.cpu_cores ? `${node.cpu_cores} vCPU` : null,
                 node.memory_mib
@@ -104,7 +104,7 @@ export function nodeColumns(
             </span>
           </div>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             unknown
           </span>
         ),
@@ -140,8 +140,8 @@ export function nodeColumns(
           <span
             className={
               bad > 0
-                ? "font-mono text-xs text-amber-600 dark:text-amber-400"
-                : "font-mono text-xs text-muted-foreground/50"
+                ? "font-mono text-xs text-warning"
+                : "font-mono text-xs text-muted-foreground"
             }
           >
             {bad}
@@ -164,7 +164,7 @@ export function nodeColumns(
       header: "Observed",
       align: "right",
       cell: (node) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           {formatRelative(node.observed_at)}
         </span>
       ),
@@ -191,7 +191,7 @@ export function deviceColumns(
               className="font-mono text-xs hover:underline"
             >
               {shortenId(device.device_uuid)}
-              <span className="ml-2 text-muted-foreground/50">
+              <span className="ml-2 text-muted-foreground">
                 #{device.device_index}
               </span>
             </Link>
@@ -278,12 +278,12 @@ export function deviceColumns(
             className="inline-flex flex-col font-mono text-2xs hover:underline"
           >
             <span>{device.topology.identifier}</span>
-            <span className="text-muted-foreground/50">
+            <span className="text-muted-foreground">
               {topologyKindLabel(device.topology.kind)}
             </span>
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+          <span className="font-mono text-2xs text-muted-foreground">—</span>
         ),
     })
   }
@@ -350,7 +350,7 @@ export function topologyColumns(): Column<TopologyDomain>[] {
             {domain.node_names[0]}
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             {domain.nodes.length === 0
               ? "none"
               : `${domain.nodes.length} nodes`}

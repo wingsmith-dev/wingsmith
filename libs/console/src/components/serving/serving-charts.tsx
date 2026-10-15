@@ -58,15 +58,13 @@ function Panel({
   return (
     <section className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="font-mono text-2xs tracking-wider text-muted-foreground/70 uppercase">
+        <h3 className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           {title}
         </h3>
         <ChartLegend series={series} />
       </div>
       <TimeChart series={series} unit={unit} />
-      {note ? (
-        <p className="text-2xs text-muted-foreground/60">{note}</p>
-      ) : null}
+      {note ? <p className="text-2xs text-muted-foreground">{note}</p> : null}
     </section>
   )
 }

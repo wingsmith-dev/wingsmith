@@ -55,7 +55,7 @@ export function MetricPicker({
         <Button size="sm" variant="outline">
           <IconAdjustments className="size-4" />
           Metrics
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {chosen.size}
           </span>
         </Button>
@@ -67,7 +67,7 @@ export function MetricPicker({
         {groups.map((group, index) => (
           <div key={group.group}>
             {index > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <DropdownMenuLabel className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               {group.label}
             </DropdownMenuLabel>
             {group.metrics.map((metric) => (
@@ -80,7 +80,7 @@ export function MetricPicker({
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate">{metric.title}</span>
-                  <span className="font-mono text-2xs text-muted-foreground/60">
+                  <span className="font-mono text-2xs text-muted-foreground">
                     {metric.name} · {unitLabel(metric.unit)}
                     {answered.has(metric.name) ? "" : " · no series"}
                   </span>

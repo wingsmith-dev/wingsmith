@@ -92,7 +92,7 @@ export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
                 </TableCell>
                 <TableCell>
                   {band.incomplete.length === 0 ? (
-                    <span className="font-mono text-2xs text-muted-foreground/40">
+                    <span className="font-mono text-2xs text-muted-foreground">
                       —
                     </span>
                   ) : (
@@ -101,7 +101,7 @@ export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
                         <Badge
                           key={run}
                           variant="outline"
-                          className="border-amber-500/40 font-mono text-2xs text-amber-700 dark:text-amber-300"
+                          className="border-amber-500/40 font-mono text-2xs text-warning"
                           asChild
                         >
                           <Link to="/workbench/$runId" params={{ runId: run }}>
@@ -117,7 +117,7 @@ export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
           </TableBody>
         </Table>
       </div>
-      <p className="font-mono text-2xs text-muted-foreground/50">
+      <p className="font-mono text-2xs text-muted-foreground">
         One target per band, so no row totals them. A band absent from this
         table was not covered by the sweep, which is not the same as meeting its
         target; a run under Incomplete reported no time-to-first-token at all.

@@ -56,7 +56,7 @@ export function SegTabs<T extends string>({
         >
           {option.label}
           {option.count !== undefined && (
-            <span className="font-mono text-muted-foreground/60">
+            <span className="font-mono text-muted-foreground">
               {option.count}
             </span>
           )}

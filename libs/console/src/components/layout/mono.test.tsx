@@ -66,8 +66,8 @@ describe("VersionPair", () => {
     const { container: level } = render(
       <VersionPair desired="1.4.0" observed="1.4.0" behind={false} />
     )
-    expect(behind.innerHTML).toContain("amber")
-    expect(level.innerHTML).not.toContain("amber")
+    expect(behind.innerHTML).toContain("text-warning")
+    expect(level.innerHTML).not.toContain("text-warning")
   })
 })
 

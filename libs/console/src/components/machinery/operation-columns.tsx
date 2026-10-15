@@ -35,7 +35,7 @@ export function operationColumns(): Column<Operation>[] {
       header: "Target",
       cell: (operation) => (
         <span className="font-mono text-2xs">
-          <span className="text-muted-foreground/60">
+          <span className="text-muted-foreground">
             {operation.target.type}{" "}
           </span>
           {operation.target.id}
@@ -94,7 +94,7 @@ export function operationColumns(): Column<Operation>[] {
       header: "Created",
       align: "right",
       cell: (operation) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           {formatRelative(operation.created_at)}
         </span>
       ),

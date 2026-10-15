@@ -46,7 +46,7 @@ export function StatTile({
       className="gap-2 transition-colors hover:ring-foreground/20"
     >
       <Link to={to} className="flex flex-col gap-2 px-3">
-        <div className="flex items-center gap-2 font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <div className="flex items-center gap-2 font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           <ResourceIcon kind={kind} className="size-3.5" />
           {label}
         </div>
@@ -63,7 +63,7 @@ export function StatTile({
               {value}
             </span>
             {detail && (
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {detail}
               </span>
             )}

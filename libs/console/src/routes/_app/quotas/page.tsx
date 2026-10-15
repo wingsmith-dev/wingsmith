@@ -70,7 +70,7 @@ function columns(
       cell: (quota) => (
         <span className="font-mono text-xs">
           {quota.limit_devices ?? (
-            <span className="text-muted-foreground/40">none</span>
+            <span className="text-muted-foreground">none</span>
           )}
         </span>
       ),
@@ -95,7 +95,7 @@ function columns(
         return (
           <div className="min-w-28 space-y-1">
             <Progress value={Math.min(pct, 100)} className="h-1.5" />
-            <span className="font-mono text-2xs text-muted-foreground/60">
+            <span className="font-mono text-2xs text-muted-foreground">
               {quota.usage.live_allocations} live ·{" "}
               {quota.usage.over_quota_devices} over quota
             </span>

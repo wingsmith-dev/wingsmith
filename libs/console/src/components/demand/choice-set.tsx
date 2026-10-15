@@ -48,9 +48,7 @@ export function ChoiceSetField({
         className="flex flex-wrap items-center gap-1.5 rounded-md border px-2 py-2"
       >
         {value.length === 0 && (
-          <span className="font-mono text-2xs text-muted-foreground/40">
-            none
-          </span>
+          <span className="font-mono text-2xs text-muted-foreground">none</span>
         )}
         {value.map((member, index) => (
           <Badge
@@ -59,7 +57,7 @@ export function ChoiceSetField({
             className="gap-1 pr-1 font-mono text-2xs"
           >
             {ordered && (
-              <span className="text-muted-foreground/60">{index + 1}.</span>
+              <span className="text-muted-foreground">{index + 1}.</span>
             )}
             {member}
             {ordered && (
@@ -69,7 +67,7 @@ export function ChoiceSetField({
                   aria-label={`Move ${member} earlier`}
                   disabled={index === 0}
                   onClick={() => move(index, -1)}
-                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
                   <IconChevronLeft className="size-3" />
                 </button>
@@ -78,7 +76,7 @@ export function ChoiceSetField({
                   aria-label={`Move ${member} later`}
                   disabled={index === value.length - 1}
                   onClick={() => move(index, 1)}
-                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
                   <IconChevronRight className="size-3" />
                 </button>
@@ -88,7 +86,7 @@ export function ChoiceSetField({
               type="button"
               aria-label={`Remove ${member}`}
               onClick={() => onChange(value.filter((v) => v !== member))}
-              className="text-muted-foreground/60 hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground"
             >
               <IconX className="size-3" />
             </button>
@@ -111,7 +109,7 @@ export function ChoiceSetField({
           ))}
         </div>
       )}
-      {hint && <p className="text-2xs text-muted-foreground/70">{hint}</p>}
+      {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -126,7 +124,7 @@ export function ChoiceSet({
 }) {
   if (value.length === 0) {
     return (
-      <span className="font-mono text-2xs text-muted-foreground/40">none</span>
+      <span className="font-mono text-2xs text-muted-foreground">none</span>
     )
   }
   return (
@@ -134,7 +132,7 @@ export function ChoiceSet({
       {value.map((member, index) => (
         <Badge key={member} variant="outline" className="font-mono text-2xs">
           {ordered && (
-            <span className="mr-1 text-muted-foreground/50">{index + 1}.</span>
+            <span className="mr-1 text-muted-foreground">{index + 1}.</span>
           )}
           {member}
         </Badge>

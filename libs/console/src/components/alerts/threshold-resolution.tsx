@@ -135,7 +135,7 @@ export function ThresholdResolution({
         )}
       </div>
 
-      <div className="font-mono text-2xs text-muted-foreground/60">
+      <div className="font-mono text-2xs text-muted-foreground">
         {definition.metric}
       </div>
 
@@ -143,19 +143,19 @@ export function ThresholdResolution({
         <Field label="Window">
           {lookback.value ?? "—"}
           {lookback.fromRule && (
-            <span className="text-muted-foreground/50"> · from the rule</span>
+            <span className="text-muted-foreground"> · from the rule</span>
           )}
         </Field>
         <Field label="Held for">
           {hold.value === null ? "—" : formatSeconds(hold.value)}
           {hold.fromRule && (
-            <span className="text-muted-foreground/50"> · from the rule</span>
+            <span className="text-muted-foreground"> · from the rule</span>
           )}
         </Field>
         <Field label="Severity">
           {severity.value ?? "—"}
           {severity.fromRule && (
-            <span className="text-muted-foreground/50"> · from the rule</span>
+            <span className="text-muted-foreground"> · from the rule</span>
           )}
         </Field>
         <Field label="Declared because">
@@ -171,7 +171,7 @@ export function ThresholdResolution({
 
       {shadowed.length > 0 && (
         <div className="space-y-1">
-          <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             Shadowed
           </div>
           {shadowed.map((threshold) => (
@@ -182,7 +182,7 @@ export function ThresholdResolution({
 
       {ignored.length > 0 && (
         <div className="space-y-1">
-          <div className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400">
+          <div className="font-mono text-2xs tracking-wider text-warning uppercase">
             Declared but switched off
           </div>
           <p className="font-mono text-2xs text-muted-foreground">

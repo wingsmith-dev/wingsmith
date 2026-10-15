@@ -136,14 +136,16 @@ export function EndpointSurfaceCard({
                     <Dash>{surfaceValue(key, surface)}</Dash>
                   </TableCell>
                   <TableCell>
-                    <EnforcementBadge kind={SURFACE_ENFORCEMENT[key].enforcement} />
+                    <EnforcementBadge
+                      kind={SURFACE_ENFORCEMENT[key].enforcement}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         ) : (
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             No surface declared. The gateway forwards what it is given.
           </p>
         )}

@@ -45,7 +45,7 @@ export function Inspector({
         </CardHeader>
         <CardContent className="space-y-3">
           <Holders board={board} />
-          <p className="font-mono text-2xs leading-relaxed text-muted-foreground/40">
+          <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
             Click a device, a fabric or a cluster to inspect it.
           </p>
         </CardContent>
@@ -219,7 +219,7 @@ function Incoming({ reservations }: { reservations: Reservation[] }) {
 
   return (
     <div className="space-y-1">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         Incoming
       </div>
       {rows.map((reservation) => (
@@ -245,7 +245,7 @@ function Incoming({ reservations }: { reservations: Reservation[] }) {
               {reservation.devices}
             </span>
           </div>
-          <div className="truncate font-mono text-2xs text-muted-foreground/60">
+          <div className="truncate font-mono text-2xs text-muted-foreground">
             {[
               reservation.deployment_name,
               reservation.device_class,
@@ -258,7 +258,7 @@ function Incoming({ reservations }: { reservations: Reservation[] }) {
           </div>
         </div>
       ))}
-      <p className="font-mono text-2xs leading-relaxed text-muted-foreground/40">
+      <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
         Declared, not yet bound. The cells marked for these on the board are the
         board&rsquo;s own guess; the cluster picks the actual accelerators.
       </p>
@@ -317,14 +317,14 @@ function DeviceDetail({
       )}
 
       <Field label="UUID">
-        <span className="text-2xs text-muted-foreground/70">
+        <span className="text-2xs text-muted-foreground">
           {device.device_uuid}
         </span>
       </Field>
 
       {cell.slices.length > 0 && (
         <div className="space-y-1">
-          <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             Slices
           </div>
           {cell.slices.map((slice) => (
@@ -345,7 +345,7 @@ function DeviceDetail({
                 {slice.device.mig_profile ??
                   `slice ${slice.device.device_index}`}
               </span>
-              <span className="truncate text-muted-foreground/60">
+              <span className="truncate text-muted-foreground">
                 {slice.holder
                   ? `${slice.holder.workload_name}${
                       slice.holder.origin === "reserved" ? " · reserved" : ""
@@ -454,7 +454,7 @@ function AllocationDetail({
       </FieldGrid>
 
       {fabrics.length > 1 && (
-        <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+        <p className="font-mono text-2xs text-warning">
           This gang is split over {fabrics.length} fabrics.
         </p>
       )}
@@ -482,7 +482,7 @@ function AllocationDetail({
       )}
 
       <div className="space-y-1">
-        <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Held devices
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -491,7 +491,7 @@ function AllocationDetail({
               key={cell.device.id}
               type="button"
               onClick={() => select({ kind: "device", id: cell.device.id })}
-              className="font-mono text-2xs text-muted-foreground/70 hover:text-primary hover:underline"
+              className="font-mono text-2xs text-muted-foreground hover:text-primary hover:underline"
             >
               {cell.device.node_name}/gpu{cell.device.device_index}
             </button>
@@ -559,10 +559,10 @@ function ReservedBlock({ holder }: { holder: Holder }) {
         </span>
         <span className="font-mono text-2xs text-primary">reserved</span>
       </div>
-      <div className="font-mono text-2xs text-muted-foreground/60">
+      <div className="font-mono text-2xs text-muted-foreground">
         {holder.device_count}× {holder.device_class} owed to this cluster
       </div>
-      <p className="font-mono text-2xs leading-relaxed text-muted-foreground/50">
+      <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
         Declared, not yet bound. The board picked this device to show the
         promise somewhere; the cluster chooses the actual accelerators and may
         well choose others.
@@ -592,11 +592,11 @@ function HolderBlock({
         <span className="min-w-0 flex-1 truncate font-mono text-2xs font-semibold">
           {holder.workload_name}
         </span>
-        <span className="font-mono text-2xs text-muted-foreground/60">
+        <span className="font-mono text-2xs text-muted-foreground">
           {holder.origin === "live" ? holder.phase : holder.origin}
         </span>
       </div>
-      <div className="font-mono text-2xs text-muted-foreground/60">
+      <div className="font-mono text-2xs text-muted-foreground">
         {holder.project_slug} · {holder.device_count}× {holder.device_class} ·{" "}
         {holder.gang_complete ? "gang complete" : "gang partial"}
       </div>
@@ -640,7 +640,7 @@ function HolderBlock({
 
 function Missing({ what }: { what: string }) {
   return (
-    <p className="font-mono text-2xs text-muted-foreground/50">
+    <p className="font-mono text-2xs text-muted-foreground">
       That {what} is not in the current scope.
     </p>
   )

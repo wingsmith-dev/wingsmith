@@ -72,18 +72,18 @@ export function Provenance({
   const empty = !value.by && !value.at && !value.uri
   if (empty) {
     return claimed ? (
-      <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-amber-700 dark:text-amber-400">
+      <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-warning">
         No provenance. Nobody recorded who asserted this or from where, so
         nothing on this block can be argued about.
       </p>
     ) : (
-      <p className="font-mono text-2xs text-muted-foreground/50">
+      <p className="font-mono text-2xs text-muted-foreground">
         Nothing recorded.
       </p>
     )
   }
   return (
-    <p className="font-mono text-2xs text-muted-foreground/70">
+    <p className="font-mono text-2xs text-muted-foreground">
       {byLabel.toLowerCase()} {value.by ?? "—"} · {formatAbsolute(value.at)}
       {value.uri && (
         <>

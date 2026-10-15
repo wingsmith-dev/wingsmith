@@ -170,9 +170,7 @@ function Body({
             </Field>
             <Field label="Quota">
               {row?.over_quota ? (
-                <span className="text-amber-600 dark:text-amber-400">
-                  over quota
-                </span>
+                <span className="text-warning">over quota</span>
               ) : (
                 "within quota"
               )}
@@ -182,7 +180,7 @@ function Body({
       </FieldGrid>
 
       {holder.origin === "reserved" && (
-        <p className="font-mono text-2xs leading-relaxed text-muted-foreground/50">
+        <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
           The cells below are the board&rsquo;s own guess at where this will
           land. The count is exact and the cluster picks the accelerators.
         </p>
@@ -195,7 +193,7 @@ function Body({
       )}
 
       <div className="space-y-1">
-        <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Devices · {cells.length}
         </div>
         {[...nodes.entries()].map(([node, group]) => (
@@ -208,7 +206,7 @@ function Body({
               >
                 {node}
               </Link>
-              <span className="shrink-0 text-muted-foreground/60">
+              <span className="shrink-0 text-muted-foreground">
                 {group.length}× {group[0].device.device_class} ·{" "}
                 {gibibytes(group[0].device.memory_mib)}
               </span>
@@ -219,7 +217,7 @@ function Body({
                   key={cell.device.id}
                   to="/devices/$deviceId"
                   params={{ deviceId: cell.device.id }}
-                  className="font-mono text-2xs text-muted-foreground/70 hover:text-primary hover:underline"
+                  className="font-mono text-2xs text-muted-foreground hover:text-primary hover:underline"
                 >
                   gpu{cell.device.device_index}
                   {cell.device.mig_profile
@@ -231,7 +229,7 @@ function Body({
           </div>
         ))}
         {board && cells.length > 1 && fabricsOf(board, cells) > 1 && (
-          <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+          <p className="font-mono text-2xs text-warning">
             This gang is split over {fabricsOf(board, cells)} fabrics.
           </p>
         )}

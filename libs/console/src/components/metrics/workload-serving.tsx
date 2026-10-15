@@ -25,11 +25,11 @@ export function WorkloadServingSection({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <h2 className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Serving
         </h2>
         {deployments.length > 1 && (
-          <p className="max-w-3xl text-2xs text-muted-foreground/50">
+          <p className="max-w-3xl text-2xs text-muted-foreground">
             One panel per cluster. These are not added up or averaged across
             clusters: each share is measured where it runs.
           </p>
@@ -37,7 +37,7 @@ export function WorkloadServingSection({
       </div>
       {deployments.map((deployment) => (
         <div key={deployment.id} className="flex flex-col gap-1.5">
-          <div className="font-mono text-2xs text-muted-foreground/60">
+          <div className="font-mono text-2xs text-muted-foreground">
             {deployment.cluster_name}
           </div>
           <MetricsPanel

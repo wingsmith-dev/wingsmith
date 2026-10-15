@@ -421,7 +421,7 @@ export function NewWorkloadPage() {
                for the fabric a replica has to fit inside, and two senses of it
                on one screen is a bug somebody writes. */
             <div className="mt-3 space-y-2 border-t pt-3">
-              <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 Prefill and decode
               </div>
               <TopologyChoice
@@ -452,7 +452,7 @@ export function NewWorkloadPage() {
           {fit && !fit.fits && <SizingDoubt fit={fit} />}
           {roles && (
             <div className="mb-3 space-y-2">
-              <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 Per role
               </div>
               <RoleParamFields roles={roles} onChange={setRoles} />
@@ -513,13 +513,13 @@ export function NewWorkloadPage() {
             </FormGrid>
 
             {sole && (
-              <p className="font-mono text-2xs text-muted-foreground/50">
+              <p className="font-mono text-2xs text-muted-foreground">
                 Charged to {sole.slug}, the only project. Its default priority
                 class applies.
               </p>
             )}
             {projects?.length === 0 && (
-              <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
+              <p className="font-mono text-2xs text-warning">
                 No projects exist. Quota is keyed by project, so one has to
                 before anything can run.
               </p>
@@ -540,7 +540,7 @@ export function NewWorkloadPage() {
         </Step>
 
         <div className="flex items-center justify-between gap-3 pt-4">
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             Need a task, a gang or a deadline? Those still go through the
             workload form on the list page.
           </p>
@@ -738,13 +738,13 @@ function ParamFields({
 function SizingDoubt({ fit }: { fit: ArtifactFit }) {
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
-      <p className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-500">
+      <p className="font-mono text-2xs tracking-wider text-warning uppercase">
         The sizing does not think this fits
       </p>
       <p className="mt-1 font-mono text-2xs text-muted-foreground">
         {fit.reason}
       </p>
-      <p className="mt-1.5 font-mono text-2xs text-muted-foreground/70">
+      <p className="mt-1.5 font-mono text-2xs text-muted-foreground">
         It is an estimate and you can overrule it — engines pack a cache better
         than arithmetic predicts, and interleaved attention makes the KV figure
         a ceiling rather than a cost. If it turns out to be right the worker
@@ -780,13 +780,13 @@ function Proposed({
   return (
     <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
       {loading && (
-        <p className="font-mono text-2xs text-muted-foreground/50">
+        <p className="font-mono text-2xs text-muted-foreground">
           reading what these weights imply…
         </p>
       )}
 
       {!loading && seeded.length === 0 && (
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           Nothing is proposed for these weights beyond the fit. Every parameter
           under the shape is the plane's own default, and all of them are
           editable on the workload afterwards.
@@ -795,7 +795,7 @@ function Proposed({
 
       {seeded.length > 0 && (
         <div className="space-y-1">
-          <p className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          <p className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             Filled in for you
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -806,7 +806,7 @@ function Proposed({
                 className="font-mono text-2xs"
               >
                 {field.replace(/_/g, " ")}
-                <span className="ml-1 text-muted-foreground/50">
+                <span className="ml-1 text-muted-foreground">
                   {SEEDED_LABEL[from]}
                 </span>
               </Badge>
@@ -820,7 +820,7 @@ function Proposed({
       {upstream && <UpstreamClaim upstream={upstream} />}
 
       {identical.length > 0 && (
-        <p className="border-t pt-2 font-mono text-2xs text-muted-foreground/70">
+        <p className="border-t pt-2 font-mono text-2xs text-muted-foreground">
           {identical.length} other workload
           {identical.length === 1 ? "" : "s"} run this exact configuration:{" "}
           {identical.slice(0, 4).map((workload, index) => (
@@ -860,7 +860,7 @@ function Proposed({
  */
 function OwnBuildWarning({ upstream }: { upstream: UpstreamServing }) {
   return (
-    <p className="rounded border border-amber-500/40 bg-amber-500/5 p-2 font-mono text-2xs text-amber-700 dark:text-amber-400">
+    <p className="rounded border border-amber-500/40 bg-amber-500/5 p-2 font-mono text-2xs text-warning">
       {upstream.source} serves {upstream.model_id} from{" "}
       <span className="font-semibold">{upstream.docker_image}</span>, a build of
       its own. The image the plane derives from the engine and the runtime
@@ -891,7 +891,7 @@ function OwnBuildWarning({ upstream }: { upstream: UpstreamServing }) {
  */
 function UpstreamClaim({ upstream }: { upstream: UpstreamServing }) {
   return (
-    <p className="font-mono text-2xs text-muted-foreground/70">
+    <p className="font-mono text-2xs text-muted-foreground">
       {upstream.source} publishes a tested configuration for {upstream.model_id}
       {upstream.verified_hardware.length > 0 &&
         ` — verified on ${upstream.verified_hardware.join(", ")}`}

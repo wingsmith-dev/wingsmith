@@ -133,7 +133,7 @@ export function ClusterCard({
               />
               {clusterLabel(cluster)}
             </Link>
-            <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground/60">
+            <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground">
               {region}
             </span>
           </div>
@@ -141,7 +141,7 @@ export function ClusterCard({
             <span
               className={cn(
                 "inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground",
-                !cluster.reachable && !onboarding && "text-amber-500"
+                !cluster.reachable && !onboarding && "text-warning"
               )}
             >
               <IconActivity className="size-3" />
@@ -164,12 +164,12 @@ export function ClusterCard({
         {gpuTotal > 0 ? (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between">
-              <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 GPUs allocated
               </span>
               <span className="font-mono text-xs tabular-nums">
                 {gpuAllocated ?? "?"}
-                <span className="text-muted-foreground/60">/{gpuTotal}</span>
+                <span className="text-muted-foreground">/{gpuTotal}</span>
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
@@ -181,10 +181,10 @@ export function ClusterCard({
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               GPUs
             </span>
-            <div className="flex items-center gap-2 rounded-md border bg-muted px-2.5 py-2 text-2xs leading-snug text-foreground/80">
+            <div className="flex items-center gap-2 rounded-md border bg-muted px-2.5 py-2 text-2xs leading-snug text-foreground">
               <IconInfoCircle className="size-4 shrink-0 text-muted-foreground" />
               <span>
                 {onboarding
@@ -203,7 +203,7 @@ export function ClusterCard({
                 ? "bg-destructive/10 text-destructive"
                 : noteTone === "info"
                   ? "bg-primary/10 text-primary"
-                  : "bg-amber-500/10 text-amber-500"
+                  : "bg-amber-500/10 text-warning"
             )}
           >
             {noteTone === "info" ? (
@@ -251,14 +251,14 @@ function Stat({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={cn(
           "font-mono text-xs tabular-nums",
-          warn && "text-amber-500",
-          muted && "text-muted-foreground/50"
+          warn && "text-warning",
+          muted && "text-muted-foreground"
         )}
       >
         {value}

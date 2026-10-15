@@ -30,15 +30,15 @@ export function StatTile({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div
         className={cn(
           "font-mono leading-none tabular-nums",
           small ? "text-sm" : "text-xl",
-          tone === "ok" && "text-emerald-600 dark:text-emerald-400",
-          tone === "warn" && "text-amber-600 dark:text-amber-400",
+          tone === "ok" && "text-success",
+          tone === "warn" && "text-warning",
           tone === "danger" && "text-red-600 dark:text-red-400"
         )}
       >

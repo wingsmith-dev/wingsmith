@@ -66,7 +66,7 @@ export function benchmarkColumns(
           >
             {run.harness}
             {run.harness_version && (
-              <span className="text-muted-foreground/60">
+              <span className="text-muted-foreground">
                 {" "}
                 {run.harness_version}
               </span>
@@ -115,7 +115,7 @@ export function benchmarkColumns(
             {shortenId(run.request_id)}
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+          <span className="font-mono text-2xs text-muted-foreground">—</span>
         ),
     })
   }
@@ -213,7 +213,7 @@ export function benchmarkColumns(
       header: "Started",
       align: "right",
       cell: (run) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           {formatRelative(run.started_at ?? run.created_at)}
         </span>
       ),

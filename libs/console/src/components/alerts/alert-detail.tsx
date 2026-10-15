@@ -86,7 +86,7 @@ export function AlertDetail({
             <Field label="Subject">
               {alert.subject.type}
               {alert.subject.id && (
-                <span className="text-muted-foreground/60">
+                <span className="text-muted-foreground">
                   {" "}
                   · {alert.subject.id}
                 </span>
@@ -111,7 +111,7 @@ export function AlertDetail({
                   {formatRelative(alert.fired_at)}
                 </span>
               ) : (
-                <span className="text-muted-foreground/40">
+                <span className="text-muted-foreground">
                   not yet — still pending
                 </span>
               )}
@@ -124,7 +124,7 @@ export function AlertDetail({
                   {formatRelative(alert.acknowledged_at)}
                 </span>
               ) : (
-                <span className="text-muted-foreground/40">no</span>
+                <span className="text-muted-foreground">no</span>
               )}
             </Field>
             <Field label="Notified">
@@ -143,7 +143,7 @@ export function AlertDetail({
           )}
 
           <div className="space-y-2">
-            <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               The number behind it
             </div>
             <ThresholdResolution
@@ -158,13 +158,13 @@ export function AlertDetail({
 
           {details.length > 0 && (
             <div className="space-y-2">
-              <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 Details
               </div>
               <div className="space-y-1 rounded-md border bg-muted/40 p-3">
                 {details.map(([key, value]) => (
                   <div key={key} className="font-mono text-2xs">
-                    <span className="text-muted-foreground/60">{key}</span>{" "}
+                    <span className="text-muted-foreground">{key}</span>{" "}
                     {typeof value === "object" && value !== null
                       ? JSON.stringify(value)
                       : String(value)}
@@ -223,7 +223,7 @@ export function AlertDetail({
                     Resolve
                   </Button>
                 </div>
-                <p className="text-2xs text-muted-foreground/70">
+                <p className="text-2xs text-muted-foreground">
                   Resolving a condition that is still true is a snooze: the
                   reactor recomputes from scratch and reopens it on the next
                   tick.

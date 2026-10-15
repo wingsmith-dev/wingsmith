@@ -19,8 +19,8 @@ interface StatCardProps {
 
 const TONE_CLASS: Record<StatTone, string> = {
   default: "",
-  ok: "text-emerald-600 dark:text-emerald-400",
-  warn: "text-amber-600 dark:text-amber-400",
+  ok: "text-success",
+  warn: "text-warning",
   danger: "text-destructive",
 }
 

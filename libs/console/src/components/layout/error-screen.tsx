@@ -45,7 +45,7 @@ export function ErrorScreen({ error, reset }: ErrorScreenProps) {
         </div>
 
         {!isNetwork && !isForbidden && (
-          <p className="rounded-lg border bg-secondary/40 px-4 py-2 font-mono text-2xs text-muted-foreground/70">
+          <p className="rounded-lg border bg-secondary/40 px-4 py-2 font-mono text-2xs text-muted-foreground">
             {String(error)}
           </p>
         )}

@@ -217,7 +217,7 @@ function columns(
               const entries = Object.entries(deployment.live_digests ?? {})
               if (!entries.length)
                 return (
-                  <span className="font-mono text-2xs text-muted-foreground/70">
+                  <span className="font-mono text-2xs text-muted-foreground">
                     <Dash>{null}</Dash>
                   </span>
                 )
@@ -230,7 +230,7 @@ function columns(
                         "font-mono text-2xs",
                         digest === servingDigest
                           ? "text-foreground"
-                          : "text-muted-foreground/70"
+                          : "text-muted-foreground"
                       )}
                     >
                       {ready} x {shortenId(digest)}

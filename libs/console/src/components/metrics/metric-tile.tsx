@@ -13,7 +13,7 @@ import { Sparkline } from "./sparkline"
 
 const TONE = {
   ok: "text-foreground",
-  warn: "text-amber-600 dark:text-amber-400",
+  warn: "text-warning",
   danger: "text-destructive",
 } as const
 
@@ -47,7 +47,7 @@ export function MetricTile({
           <TooltipTrigger asChild>
             <div
               title={note}
-              className="w-fit cursor-help font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase underline decoration-dotted underline-offset-2"
+              className="w-fit cursor-help font-mono text-2xs tracking-wider text-muted-foreground uppercase underline decoration-dotted underline-offset-2"
             >
               {title}
             </div>
@@ -55,7 +55,7 @@ export function MetricTile({
           <TooltipContent className="max-w-72">{note}</TooltipContent>
         </Tooltip>
       ) : (
-        <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           {title}
         </div>
       )}
@@ -63,7 +63,7 @@ export function MetricTile({
         className={cn(
           "font-mono leading-none tabular-nums",
           large ? "text-3xl" : "text-lg",
-          absent ? "text-muted-foreground/40" : TONE[tone]
+          absent ? "text-muted-foreground" : TONE[tone]
         )}
       >
         {formatMetric(sample.value, sample.unit)}
@@ -76,7 +76,7 @@ export function MetricTile({
         />
       ) : null}
       {footnote ? (
-        <div className="text-2xs text-muted-foreground/60">{footnote}</div>
+        <div className="text-2xs text-muted-foreground">{footnote}</div>
       ) : null}
     </Card>
   )

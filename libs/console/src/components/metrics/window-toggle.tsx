@@ -34,7 +34,7 @@ export function WindowToggle({
           aria-pressed={window.key === value.key}
           onClick={() => onChange(window)}
           className={cn(
-            "rounded-[3px] px-2 py-0.5 font-mono text-2xs text-muted-foreground/70 transition-colors",
+            "rounded-[3px] px-2 py-0.5 font-mono text-2xs text-muted-foreground transition-colors",
             "hover:text-foreground",
             window.key === value.key &&
               "bg-background text-foreground shadow-xs"

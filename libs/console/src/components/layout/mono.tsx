@@ -19,9 +19,7 @@ export function Id({
   className?: string
 }) {
   return (
-    <span
-      className={cn("font-mono text-2xs text-muted-foreground/60", className)}
-    >
+    <span className={cn("font-mono text-2xs text-muted-foreground", className)}>
       {value}
     </span>
   )
@@ -31,7 +29,7 @@ export function Labels({ labels }: { labels: Record<string, string> }) {
   const entries = Object.entries(labels)
   if (entries.length === 0) {
     return (
-      <span className="font-mono text-2xs text-muted-foreground/40">none</span>
+      <span className="font-mono text-2xs text-muted-foreground">none</span>
     )
   }
   return (
@@ -47,7 +45,7 @@ export function Labels({ labels }: { labels: Record<string, string> }) {
 
 export function Dash({ children }: { children: React.ReactNode }) {
   if (children === null || children === undefined || children === "") {
-    return <span className="text-muted-foreground/40">—</span>
+    return <span className="text-muted-foreground">—</span>
   }
   return <>{children}</>
 }
@@ -67,7 +65,7 @@ export function Truncated({
           {value}
         </span>
       </TooltipTrigger>
-      <TooltipContent className="max-w-sm break-all font-mono text-2xs">
+      <TooltipContent className="max-w-sm font-mono text-2xs break-all">
         {value}
       </TooltipContent>
     </Tooltip>
@@ -90,10 +88,8 @@ export function VersionPair({
 }) {
   return (
     <span className="font-mono text-2xs">
-      <span className={behind ? "text-amber-600 dark:text-amber-400" : ""}>
-        {observed ?? "—"}
-      </span>
-      <span className="text-muted-foreground/40"> / {desired}</span>
+      <span className={behind ? "text-warning" : ""}>{observed ?? "—"}</span>
+      <span className="text-muted-foreground"> / {desired}</span>
     </span>
   )
 }
@@ -111,7 +107,7 @@ function highlightYaml(line: string, key: number): React.ReactNode {
   if (trimmed === "") return line
   if (trimmed.startsWith("#")) {
     return (
-      <span key={key} className="text-muted-foreground/50 italic">
+      <span key={key} className="text-muted-foreground italic">
         {line}
       </span>
     )
@@ -128,11 +124,9 @@ function highlightYaml(line: string, key: number): React.ReactNode {
       {indent}
       <span className="text-sky-600 dark:text-sky-400">{name}</span>
       {colon}
-      {val && (
-        <span className="text-emerald-600 dark:text-emerald-400">{val}</span>
-      )}
+      {val && <span className="text-success">{val}</span>}
       {comment && (
-        <span className="text-muted-foreground/50 italic">{comment}</span>
+        <span className="text-muted-foreground italic">{comment}</span>
       )}
     </span>
   )
@@ -147,7 +141,7 @@ function highlightShell(line: string, key: number): React.ReactNode {
         if (/^\s+$/.test(part) || part === "") return part
         if (part.startsWith("-")) {
           return (
-            <span key={i} className="text-amber-600 dark:text-amber-400">
+            <span key={i} className="text-warning">
               {part}
             </span>
           )
@@ -220,10 +214,10 @@ export function CopyableBlock({
         type="button"
         onClick={copy}
         aria-label={copied ? "Copied" : "Copy"}
-        className="absolute top-2 right-2 text-muted-foreground/50 opacity-0 transition-opacity group-hover/block:opacity-100 hover:text-foreground focus-visible:opacity-100"
+        className="absolute top-2 right-2 text-muted-foreground opacity-0 transition-opacity group-hover/block:opacity-100 hover:text-foreground focus-visible:opacity-100"
       >
         {copied ? (
-          <IconCheck className="size-3.5 text-emerald-500" />
+          <IconCheck className="size-3.5 text-success" />
         ) : (
           <IconCopy className="size-3.5" />
         )}
@@ -280,10 +274,10 @@ export function CopyableId({
         type="button"
         onClick={copy}
         aria-label={copied ? `Copied ${value}` : `Copy ${value}`}
-        className="shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover/id:opacity-100 hover:text-foreground focus-visible:opacity-100"
+        className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/id:opacity-100 hover:text-foreground focus-visible:opacity-100"
       >
         {copied ? (
-          <IconCheck className="size-3 text-emerald-500" />
+          <IconCheck className="size-3 text-success" />
         ) : (
           <IconCopy className="size-3" />
         )}

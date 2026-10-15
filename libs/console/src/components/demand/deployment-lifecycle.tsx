@@ -65,11 +65,11 @@ export function DeploymentLifecycle({
                     "bg-primary/10 font-medium text-primary",
                   here &&
                     degraded &&
-                    "bg-amber-500/10 font-medium text-amber-600 dark:text-amber-400",
+                    "bg-amber-500/10 font-medium text-warning",
                   here &&
                     failed &&
                     "bg-destructive/10 font-medium text-destructive",
-                  !done && !here && "text-muted-foreground/50"
+                  !done && !here && "text-muted-foreground"
                 )}
               >
                 <StatusDot
@@ -113,10 +113,7 @@ export function DeploymentLifecycle({
         >
           {reasonText(status.reason)}
           {status.message && (
-            <span className="text-muted-foreground/70">
-              {" "}
-              — {status.message}
-            </span>
+            <span className="text-muted-foreground"> — {status.message}</span>
           )}
         </p>
       )}
@@ -129,7 +126,7 @@ export function DeploymentLifecycle({
       )}
 
       {status.observed_at && (
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           reported {formatRelative(status.observed_at)} · generation{" "}
           {status.observed_generation}
           {status.observed_generation !== deployment.generation &&

@@ -120,7 +120,7 @@ export function NodeDetailPage() {
                 <span
                   className={
                     eccTotal > 0
-                      ? "font-mono text-2xl leading-none font-semibold text-amber-600 tabular-nums dark:text-amber-400"
+                      ? "font-mono text-2xl leading-none font-semibold text-warning tabular-nums"
                       : "font-mono text-2xl leading-none font-semibold tabular-nums"
                   }
                 >
@@ -131,7 +131,7 @@ export function NodeDetailPage() {
 
             <div className="flex flex-wrap items-center gap-3">
               <CordonState cordoned={node.cordoned} />
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 observed {formatRelative(node.observed_at)}
               </span>
             </div>
@@ -145,7 +145,7 @@ export function NodeDetailPage() {
                     <h2 className="font-heading text-sm font-medium">
                       Devices
                     </h2>
-                    <p className="font-mono text-2xs text-muted-foreground/60">
+                    <p className="font-mono text-2xs text-muted-foreground">
                       {node.devices.total} total ·{" "}
                       {unhealthyCount(node.devices)} unhealthy
                     </p>
@@ -278,7 +278,7 @@ function StatTile({
   return (
     <Card size="sm" className="gap-2">
       <div className="flex flex-col gap-2 px-3">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           {label}
         </span>
         <div className="flex min-h-7 items-center">{children}</div>
@@ -312,7 +312,7 @@ function ReplicasCard({
         <h2 className="font-heading text-sm font-medium">
           Replicas on this node
         </h2>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           {allocations.length} replicas · {held} devices held
         </p>
       </div>
@@ -328,7 +328,7 @@ function ReplicasCard({
       ) : (
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b text-left font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <tr className="border-b text-left font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               <th className="px-4 py-2 font-medium">Replica</th>
               <th className="px-4 py-2 font-medium">Workload</th>
               <th className="px-4 py-2 font-medium">Class</th>
@@ -350,7 +350,7 @@ function ReplicasCard({
                     className="inline-flex items-center gap-1 font-mono text-2xs hover:underline"
                   >
                     {alloc.workload}
-                    <IconArrowUpRight className="size-3 text-muted-foreground/50" />
+                    <IconArrowUpRight className="size-3 text-muted-foreground" />
                   </Link>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-2xs text-muted-foreground">
@@ -442,7 +442,7 @@ function ConditionsCard({
     <Card className="gap-0 p-0 py-0">
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">Conditions</h2>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           reported by the kubelet and the Hangar agent
         </p>
       </div>
@@ -455,7 +455,7 @@ function ConditionsCard({
             <span className="inline-flex items-center gap-2 font-mono text-xs">
               <StatusDot tone={row.tone} />
               {row.label}
-              <span className="text-muted-foreground/60">— {row.detail}</span>
+              <span className="text-muted-foreground">— {row.detail}</span>
             </span>
           </div>
         ))}
@@ -477,7 +477,7 @@ function NodeEventsCard({
     <Card className="gap-0 p-0 py-0">
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">Recent events</h2>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           observed · newest first
         </p>
         <Link
@@ -513,7 +513,7 @@ function NodeEventsCard({
                 <p className="text-xs text-muted-foreground">{event.message}</p>
               </div>
               <span
-                className="shrink-0 font-mono text-2xs text-muted-foreground/50"
+                className="shrink-0 font-mono text-2xs text-muted-foreground"
                 title={formatAbsolute(event.occurred_at)}
               >
                 {formatRelative(event.occurred_at)}

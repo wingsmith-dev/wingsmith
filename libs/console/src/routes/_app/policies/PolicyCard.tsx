@@ -14,7 +14,7 @@ import type { Policy } from "@/modules/binding/types"
 function List({ values, tone }: { values: string[]; tone: "allow" | "deny" }) {
   if (values.length === 0) {
     return (
-      <span className="font-mono text-2xs text-muted-foreground/40">
+      <span className="font-mono text-2xs text-muted-foreground">
         {tone === "allow" ? "no opinion" : "none"}
       </span>
     )
@@ -93,7 +93,7 @@ export function PolicyCard({
           </Field>
           <Field label="Attached to" className="sm:col-span-2">
             {policy.attachments.length === 0 ? (
-              <span className="text-muted-foreground/40">
+              <span className="text-muted-foreground">
                 nothing — constrains nothing
               </span>
             ) : (
@@ -115,7 +115,7 @@ export function PolicyCard({
           </Field>
         </div>
 
-        <span className="block font-mono text-2xs text-muted-foreground/50">
+        <span className="block font-mono text-2xs text-muted-foreground">
           {policy.id}
         </span>
       </div>

@@ -73,7 +73,7 @@ function Breakdown({ data, family }: { data: Metrics; family: MetricFamily }) {
   const side = metricDefinition(row.side)
   return (
     <Card size="sm" className="gap-0 overflow-hidden px-0">
-      <div className="px-3 pb-2 font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="px-3 pb-2 font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         Per {MEMBER[data.scope]}
       </div>
       <div className="divide-y divide-border/60">
@@ -105,7 +105,7 @@ function Breakdown({ data, family }: { data: Metrics; family: MetricFamily }) {
                   tone === "danger"
                     ? "text-destructive"
                     : tone === "warn"
-                      ? "text-amber-600 dark:text-amber-400"
+                      ? "text-warning"
                       : "text-muted-foreground"
                 )}
               >
@@ -242,7 +242,7 @@ export function MetricsPanel({
         groups.map((group) => (
           <div key={group.group} className="flex flex-col gap-1.5">
             {groups.length > 1 && (
-              <div className="font-mono text-2xs tracking-wider text-muted-foreground/50 uppercase">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 {group.label}
               </div>
             )}
@@ -254,12 +254,12 @@ export function MetricsPanel({
 
       {!leadOnly && <Breakdown data={data} family={family} />}
       {!leadOnly && data.source ? (
-        <div className="font-mono text-2xs text-muted-foreground/50">
+        <div className="font-mono text-2xs text-muted-foreground">
           {data.window} window · {data.source.kind} · {data.source.url}
         </div>
       ) : null}
       {!leadOnly && family === "inference" ? (
-        <p className="max-w-3xl text-2xs text-muted-foreground/50">
+        <p className="max-w-3xl text-2xs text-muted-foreground">
           {AVAILABILITY_SOURCE}
         </p>
       ) : null}

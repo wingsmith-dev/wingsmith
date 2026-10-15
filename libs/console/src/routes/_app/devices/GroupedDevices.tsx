@@ -115,7 +115,7 @@ function ModelGroup({ name, devices }: { name: string; devices: Device[] }) {
         />
         <div className="flex min-w-[11rem] flex-col gap-0.5">
           <span className="text-sm font-semibold">{label}</span>
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {specLine(devices[0])}
           </span>
         </div>
@@ -195,20 +195,16 @@ function ClusterRow({ row }: { row: ClusterRollup }) {
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
         {row.free > 0 ? (
-          <span className="text-emerald-600 dark:text-emerald-400">
-            {row.free}
-          </span>
+          <span className="text-success">{row.free}</span>
         ) : (
-          <span className="text-muted-foreground/40">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
         {row.fault > 0 ? (
-          <span className="text-amber-600 dark:text-amber-400">
-            {row.fault}
-          </span>
+          <span className="text-warning">{row.fault}</span>
         ) : (
-          <span className="text-muted-foreground/40">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell>
@@ -242,9 +238,9 @@ function Count({
 }) {
   const zero = value === 0
   const color = zero
-    ? "text-muted-foreground/50 font-normal"
+    ? "text-muted-foreground font-normal"
     : tone === "free"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-success"
       : tone === "fault"
         ? "text-destructive"
         : ""
@@ -255,7 +251,7 @@ function Count({
       >
         {value}
       </span>
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
     </div>
@@ -308,17 +304,17 @@ function ByBucket({
             <div className="flex flex-wrap items-baseline gap-3">
               <span className="font-mono text-xs">{identifier}</span>
               {kind && (
-                <span className="font-mono text-2xs text-muted-foreground/60">
+                <span className="font-mono text-2xs text-muted-foreground">
                   {topologyKindLabel(kind)}
                 </span>
               )}
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {healthy}/{group.length} healthy · {free} allocatable
               </span>
               {by === "topology" && free >= GANG_SIZE && (
                 <Badge
                   variant="outline"
-                  className="border-emerald-500/40 bg-emerald-500/10 font-mono text-2xs text-emerald-600 dark:text-emerald-400"
+                  className="border-emerald-500/40 bg-emerald-500/10 font-mono text-2xs text-success"
                 >
                   {GANG_SIZE}-way free
                 </Badge>

@@ -86,7 +86,7 @@ function RollNotice({
     <p
       className={
         armed
-          ? "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+          ? "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-warning"
           : "rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
       }
     >
@@ -297,7 +297,7 @@ function ClusterFloorsField({
     <div className="space-y-2">
       <div className="space-y-1">
         <h3 className="text-xs font-medium">Cluster floors</h3>
-        <p className="text-2xs text-muted-foreground/70">
+        <p className="text-2xs text-muted-foreground">
           The minimum share placement must keep on a cluster. Blank means no
           floor — placement may take the share to zero.
         </p>

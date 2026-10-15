@@ -56,7 +56,7 @@ function FabricChoice({
         <span className="text-xs font-medium">
           Keep every replica inside one fabric
         </span>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           {derived
             ? "The shape needs it: a tensor group reaching over the backend fabric is the one split that does not work."
             : "Not needed by this shape — pipeline stages cross a network perfectly well. Tick it to ask for one anyway."}
@@ -264,7 +264,7 @@ export function WhereStep({
             />
             <div className="min-w-0">
               <span className="text-xs font-medium">{mode.label}</span>
-              <p className="font-mono text-2xs text-muted-foreground/60">
+              <p className="font-mono text-2xs text-muted-foreground">
                 {mode.caption}
               </p>
             </div>
@@ -291,7 +291,7 @@ export function WhereStep({
                 }
               />
               {region}
-              <span className="text-muted-foreground/50">
+              <span className="text-muted-foreground">
                 {
                   (clusters ?? []).filter(
                     (cluster) => cluster.region === region
@@ -301,12 +301,12 @@ export function WhereStep({
             </label>
           ))}
           {regions.length === 0 && (
-            <p className="w-full font-mono text-2xs text-muted-foreground/60">
+            <p className="w-full font-mono text-2xs text-muted-foreground">
               No cluster reports a region yet.
             </p>
           )}
           {regions.length > 0 && value.regions.length === 0 && (
-            <p className="w-full font-mono text-2xs text-muted-foreground/60">
+            <p className="w-full font-mono text-2xs text-muted-foreground">
               None selected, which is the same as letting placement decide.
             </p>
           )}
@@ -335,7 +335,7 @@ export function WhereStep({
             </label>
           ))}
           {value.allowed.length === 0 && (
-            <p className="w-full font-mono text-2xs text-muted-foreground/60">
+            <p className="w-full font-mono text-2xs text-muted-foreground">
               None selected, which is the same as letting placement decide.
             </p>
           )}
@@ -344,7 +344,7 @@ export function WhereStep({
 
       {value.mode === "pin" && (
         <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-          <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
+          <p className="font-mono text-2xs text-warning">
             A pinned workload gets exactly one deployment on the cluster you
             name, whether or not it has the devices for it.
           </p>
@@ -412,7 +412,7 @@ function RealVerdict({
           preview
         </Badge>
       </div>
-      <p className="font-mono text-2xs text-muted-foreground/70">{summary}</p>
+      <p className="font-mono text-2xs text-muted-foreground">{summary}</p>
       {narrowed.length > 0 && (
         <div className="space-y-1 border-t pt-2">
           {narrowed.map((verdict) => (
@@ -424,15 +424,13 @@ function RealVerdict({
                 <StatusDot tone={verdict.feasible ? "ok" : "neutral"} />
                 <span
                   className={
-                    verdict.feasible
-                      ? ""
-                      : "text-muted-foreground/60 line-through"
+                    verdict.feasible ? "" : "text-muted-foreground line-through"
                   }
                 >
                   {verdict.cluster_name}
                 </span>
               </span>
-              <span className="min-w-0 truncate text-right text-muted-foreground/60">
+              <span className="min-w-0 truncate text-right text-muted-foreground">
                 {verdict.feasible
                   ? `${verdict.free_devices} free · slack ${verdict.fit_slack}`
                   : (verdict.reasons[0]?.message ?? "ruled out")}
@@ -457,7 +455,7 @@ function RealVerdict({
 function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
   if (!fit)
     return (
-      <p className="rounded-lg border bg-muted/20 p-3 font-mono text-2xs text-muted-foreground/60">
+      <p className="rounded-lg border bg-muted/20 p-3 font-mono text-2xs text-muted-foreground">
         Placement picks the cluster when you deploy. The workload page shows
         what it decided, and why every other cluster lost.
       </p>
@@ -485,7 +483,7 @@ function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
           </TooltipContent>
         </Tooltip>
       </div>
-      <p className="font-mono text-2xs text-muted-foreground/60">
+      <p className="font-mono text-2xs text-muted-foreground">
         {short
           ? `Fewer free than the ${fit.device_count} a replica needs. Placement will queue it rather than reject it.`
           : "Placement picks the cluster when you deploy."}

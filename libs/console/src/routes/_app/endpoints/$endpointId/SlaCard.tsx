@@ -56,7 +56,7 @@ function MonthToggle({
           aria-pressed={month.month === value}
           onClick={() => onChange(month.month)}
           className={cn(
-            "rounded-[3px] px-2 py-0.5 font-mono text-2xs text-muted-foreground/70 transition-colors",
+            "rounded-[3px] px-2 py-0.5 font-mono text-2xs text-muted-foreground transition-colors",
             "hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
             month.month === value && "bg-background text-foreground shadow-xs"
           )}
@@ -77,7 +77,7 @@ function Tails({ report }: { report: SlaReport }) {
   return (
     <table className="w-full font-mono text-xs tabular-nums">
       <thead>
-        <tr className="text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <tr className="text-2xs tracking-wider text-muted-foreground uppercase">
           <th scope="col" className="pb-1 text-left font-normal">
             <span className="sr-only">Measurement</span>
           </th>
@@ -93,7 +93,7 @@ function Tails({ report }: { report: SlaReport }) {
           <tr key={label}>
             <th
               scope="row"
-              className="py-0.5 text-left text-2xs font-normal tracking-wider text-muted-foreground/60 uppercase"
+              className="py-0.5 text-left text-2xs font-normal tracking-wider text-muted-foreground uppercase"
             >
               {label}
             </th>
@@ -120,7 +120,7 @@ function SlaBody({ report }: { report: SlaReport }) {
         <span className="font-mono text-xl leading-none tabular-nums">
           {slaPercent(report.availability)}
         </span>
-        <span className="font-mono text-2xs text-muted-foreground/60">
+        <span className="font-mono text-2xs text-muted-foreground">
           {objective === null
             ? "no objective declared"
             : `objective ${slaPercent(objective)}`}
@@ -132,7 +132,7 @@ function SlaBody({ report }: { report: SlaReport }) {
       {report.error_budget_consumed !== null && (
         <div className="space-y-1">
           <div className="flex items-baseline justify-between gap-2 font-mono text-2xs">
-            <span className="tracking-wider text-muted-foreground/60 uppercase">
+            <span className="tracking-wider text-muted-foreground uppercase">
               Error budget
             </span>
             <span className="tabular-nums">{budget.label}</span>
@@ -163,7 +163,7 @@ function SlaBody({ report }: { report: SlaReport }) {
       </div>
 
       <p
-        className="font-mono text-2xs text-muted-foreground/50"
+        className="font-mono text-2xs text-muted-foreground"
         title={report.definition_text}
       >
         {report.partial ? "month to date · " : ""}
@@ -191,7 +191,7 @@ export function SlaCard({ endpointId }: { endpointId: string }) {
   return (
     <Card size="sm" className="gap-2.5 px-4 py-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           Service level
         </span>
         <MonthToggle months={months} value={month} onChange={setMonth} />
@@ -208,7 +208,7 @@ export function SlaCard({ endpointId }: { endpointId: string }) {
           could not load the report: {formatError(error)}
         </p>
       ) : data?.unavailable ? (
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           {data.unavailable}
         </p>
       ) : data ? (

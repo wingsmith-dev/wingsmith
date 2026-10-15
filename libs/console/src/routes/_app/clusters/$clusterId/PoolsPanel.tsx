@@ -70,7 +70,7 @@ export function ClusterPoolsPanel({
 
       {list.items && list.items.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-1">
-          <span className="font-mono text-2xs text-muted-foreground/60">
+          <span className="font-mono text-2xs text-muted-foreground">
             {list.loaded} loaded{list.hasNextPage ? " · more available" : ""}
           </span>
           {list.hasNextPage && (

@@ -116,7 +116,7 @@ function Identity({ tenant }: { tenant: Tenant }) {
           {tenant.slug}
           <CopyableId
             value={tenant.id}
-            className="ml-2 text-2xs text-muted-foreground/60"
+            className="ml-2 text-2xs text-muted-foreground"
           />
         </Field>
         <Field label="Name">{tenant.name}</Field>
@@ -236,7 +236,7 @@ export function TenantDetailPage() {
              */}
             {tenant && (
               <div>
-                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                   Traffic
                 </h2>
                 <MetricsPanel
@@ -250,7 +250,7 @@ export function TenantDetailPage() {
             )}
 
             <div>
-              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                 Projects
               </h2>
               <DataTable

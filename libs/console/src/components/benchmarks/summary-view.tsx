@@ -79,7 +79,7 @@ export function BenchmarkSummaryView({
                   <TableCell className="font-mono text-2xs whitespace-nowrap">
                     {metricLabel(key)}
                   </TableCell>
-                  <TableCell className="font-mono text-2xs text-muted-foreground/60">
+                  <TableCell className="font-mono text-2xs text-muted-foreground">
                     {block?.unit ?? "—"}
                   </TableCell>
                   {PERCENTILES.map((p) => (
@@ -101,9 +101,7 @@ export function BenchmarkSummaryView({
         <div className="flex flex-wrap gap-x-6 gap-y-1.5">
           {scalars.map(([key, value]) => (
             <span key={key} className="font-mono text-2xs">
-              <span className="text-muted-foreground/60">
-                {metricLabel(key)}{" "}
-              </span>
+              <span className="text-muted-foreground">{metricLabel(key)} </span>
               {String(value)}
             </span>
           ))}

@@ -188,7 +188,7 @@ export function DeviceDetailPage() {
                     </Field>
                   </FieldGrid>
                 ) : (
-                  <p className="font-mono text-2xs text-muted-foreground/60">
+                  <p className="font-mono text-2xs text-muted-foreground">
                     {allocations.isLoading
                       ? "Loading…"
                       : "No live allocation holds this device."}

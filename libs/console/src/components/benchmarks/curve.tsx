@@ -371,7 +371,7 @@ function AxisChart({
             <span className={cn("size-2 rounded-full", DOT[metric.tone])} />
             {metric.label}
             {metric.display && (
-              <span className="text-muted-foreground/50">display only</span>
+              <span className="text-muted-foreground">display only</span>
             )}
           </li>
         ))}
@@ -454,9 +454,8 @@ function AxisChart({
             textAnchor="middle"
             className={cn(
               "font-mono text-[9px]",
-              point.discard
-                ? "fill-muted-foreground/50"
-                : "fill-muted-foreground"
+              "fill-muted-foreground",
+              point.discard && "line-through"
             )}
           >
             {point.step_value ?? "—"}
@@ -465,7 +464,7 @@ function AxisChart({
       </svg>
 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
           {stepFieldLabel(curve.step_field)}
         </span>
         {focused && (
@@ -519,7 +518,7 @@ function Plot({
               x={PAD_L - 6}
               y={top + PANEL_H * (1 - fraction) + 3}
               textAnchor="end"
-              className="fill-muted-foreground/60 font-mono text-[8px]"
+              className="fill-muted-foreground font-mono text-[8px]"
             >
               {shortNumber(ceiling * fraction)}
             </text>
@@ -529,7 +528,7 @@ function Plot({
       <text
         x={PAD_L}
         y={top - 4}
-        className="fill-muted-foreground/60 font-mono text-[8px] tracking-wider uppercase"
+        className="fill-muted-foreground font-mono text-[8px] tracking-wider uppercase"
       >
         {label} · {ceiling === null ? "nothing measured" : unit}
       </text>
@@ -640,9 +639,7 @@ function StepTable({ curve }: { curve: BenchmarkCurve }) {
         <span className="font-mono text-xs tabular-nums">
           {point.step_value ?? "—"}
           {point.discard && (
-            <span className="ml-2 text-2xs text-muted-foreground/60">
-              warm-up
-            </span>
+            <span className="ml-2 text-2xs text-muted-foreground">warm-up</span>
           )}
         </span>
       ),
@@ -713,9 +710,7 @@ function Panel({
               {badge}
             </CardTitle>
             {subtitle && (
-              <p className="mt-1 text-2xs text-muted-foreground/60">
-                {subtitle}
-              </p>
+              <p className="mt-1 text-2xs text-muted-foreground">{subtitle}</p>
             )}
           </div>
           {action}
@@ -727,5 +722,5 @@ function Panel({
 }
 
 function Note({ children }: React.PropsWithChildren) {
-  return <p className="py-2 text-2xs text-muted-foreground/70">{children}</p>
+  return <p className="py-2 text-2xs text-muted-foreground">{children}</p>
 }

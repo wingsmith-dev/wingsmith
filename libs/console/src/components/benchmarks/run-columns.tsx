@@ -50,7 +50,7 @@ function targetCell(run: BenchmarkRun) {
         params={{ endpointId: run.endpoint_id }}
         className="font-mono text-2xs hover:underline"
       >
-        <span className="text-muted-foreground/50">endpoint </span>
+        <span className="text-muted-foreground">endpoint </span>
         {shortenId(run.endpoint_id)}
       </Link>
     )
@@ -61,7 +61,7 @@ function targetCell(run: BenchmarkRun) {
         params={{ deploymentId: run.deployment_id }}
         className="font-mono text-2xs hover:underline"
       >
-        <span className="text-muted-foreground/50">deployment </span>
+        <span className="text-muted-foreground">deployment </span>
         {shortenId(run.deployment_id)}
       </Link>
     )
@@ -107,7 +107,7 @@ export function runColumns(): Column<BenchmarkRun>[] {
           >
             {run.harness}
             {run.harness_version && (
-              <span className="text-muted-foreground/60">
+              <span className="text-muted-foreground">
                 {" "}
                 {run.harness_version}
               </span>
@@ -177,7 +177,7 @@ export function runColumns(): Column<BenchmarkRun>[] {
       header: "Started",
       align: "right",
       cell: (run) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           {formatRelative(run.started_at ?? run.created_at)}
         </span>
       ),

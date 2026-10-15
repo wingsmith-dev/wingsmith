@@ -92,14 +92,14 @@ export function EvaluationRun({ id }: { id: string }) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Datasets</CardTitle>
-          <p className="mt-1 text-2xs text-muted-foreground/60">
+          <p className="mt-1 text-2xs text-muted-foreground">
             One row per dataset the run sat. Scores read straight from the
             harness's reports; the plane does not re-grade them.
           </p>
         </CardHeader>
         <CardContent className="px-0">
           <div className="divide-y divide-border/60 border-y">
-            <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-2xs tracking-[0.12em] text-muted-foreground/40 uppercase">
+            <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-2xs tracking-[0.12em] text-muted-foreground uppercase">
               <span className="w-40 shrink-0">Dataset</span>
               <span className="min-w-0 flex-1">Metric</span>
               <span className="w-20 shrink-0 text-right">Samples</span>
@@ -128,7 +128,7 @@ export function EvaluationRun({ id }: { id: string }) {
                     <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
                       {label}
                     </span>
-                    <span className="w-20 shrink-0 text-right font-mono text-2xs text-muted-foreground/60 tabular-nums">
+                    <span className="w-20 shrink-0 text-right font-mono text-2xs text-muted-foreground tabular-nums">
                       {num.toLocaleString()}
                     </span>
                     <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums">
@@ -161,14 +161,14 @@ export function EvaluationSuite({ id }: { id: string }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Runs</CardTitle>
-        <p className="mt-1 text-2xs text-muted-foreground/60">
+        <p className="mt-1 text-2xs text-muted-foreground">
           One line per run. The score is the run's own reports; requests that
           sit several datasets land as several rows.
         </p>
       </CardHeader>
       <CardContent className="px-0">
         <div className="divide-y divide-border/60 border-y">
-          <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-2xs tracking-[0.12em] text-muted-foreground/40 uppercase">
+          <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-2xs tracking-[0.12em] text-muted-foreground uppercase">
             <span className="w-32 shrink-0">Run</span>
             <span className="min-w-0 flex-1">Datasets</span>
             <span className="w-20 shrink-0 text-right">Samples</span>
@@ -215,7 +215,7 @@ export function EvaluationSuite({ id }: { id: string }) {
                       ? reports.map((r) => r.dataset_name).join(", ")
                       : "—"}
                   </span>
-                  <span className="w-20 shrink-0 text-right font-mono text-2xs text-muted-foreground/60 tabular-nums">
+                  <span className="w-20 shrink-0 text-right font-mono text-2xs text-muted-foreground tabular-nums">
                     {samples > 0 ? samples.toLocaleString() : "—"}
                   </span>
                   <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums">

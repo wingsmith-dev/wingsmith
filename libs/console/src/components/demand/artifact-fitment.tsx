@@ -156,7 +156,7 @@ function MemoryBar({ fit }: { fit: ArtifactFit }) {
           style={{ width: pct(fit.weights_gb) }}
         />
       </div>
-      <span className="font-mono text-2xs text-muted-foreground/70 tabular-nums">
+      <span className="font-mono text-2xs text-muted-foreground tabular-nums">
         {fit.kv_counted ? (
           <>
             {Math.round(fit.weights_gb)} +{" "}
@@ -185,7 +185,7 @@ function MemoryBar({ fit }: { fit: ArtifactFit }) {
 function FleetCell({ fit }: { fit: ArtifactFit }) {
   if (fit.devices_total === 0)
     return (
-      <span className="font-mono text-2xs text-muted-foreground/40">none</span>
+      <span className="font-mono text-2xs text-muted-foreground">none</span>
     )
   const short = fit.fits && fit.devices_allocatable < fit.device_count
   return (
@@ -194,8 +194,8 @@ function FleetCell({ fit }: { fit: ArtifactFit }) {
         <span
           className={cn(
             "font-mono text-2xs tabular-nums",
-            short && "text-amber-500",
-            fit.supply_short && "text-amber-500"
+            short && "text-warning",
+            fit.supply_short && "text-warning"
           )}
         >
           {fit.devices_allocatable}/{fit.devices_total}
@@ -222,7 +222,7 @@ function Terms({
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       {children}
@@ -346,7 +346,7 @@ export function ArtifactFitmentPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           {!bare && <CardTitle className="text-sm">Fitment</CardTitle>}
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             {active?.caption}
           </p>
         </div>
@@ -419,7 +419,7 @@ export function ArtifactFitmentPanel({
           </Select>
         </Terms>
         {data && (
-          <span className="ml-auto font-mono text-2xs text-muted-foreground/50">
+          <span className="ml-auto font-mono text-2xs text-muted-foreground">
             sized at {data.quantization}
           </span>
         )}
@@ -437,7 +437,7 @@ export function ArtifactFitmentPanel({
       )}
       {data && !data.sizable && (
         <div className="space-y-2">
-          <p className="font-mono text-2xs text-muted-foreground/60">
+          <p className="font-mono text-2xs text-muted-foreground">
             {data.note}
           </p>
           <RefreshSourceButton
@@ -448,15 +448,11 @@ export function ArtifactFitmentPanel({
         </div>
       )}
       {data?.sizable && data.items.length === 0 && (
-        <p className="font-mono text-2xs text-muted-foreground/60">
-          {data.note}
-        </p>
+        <p className="font-mono text-2xs text-muted-foreground">{data.note}</p>
       )}
       {data?.sizable && data.items.length > 0 && data.note && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
-          <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
-            {data.note}
-          </p>
+          <p className="font-mono text-2xs text-warning">{data.note}</p>
           {/* The note ends by saying re-resolving the source prices the window. This is that. */}
           {data.items.every((item) => !item.kv_counted) && (
             <RefreshSourceButton
@@ -471,7 +467,7 @@ export function ArtifactFitmentPanel({
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground uppercase">
                 {selecting && <th className="w-6 p-2" />}
                 <th className="p-2 text-left font-medium">Device class</th>
                 <th className="p-2 text-left font-medium">Fit</th>
@@ -509,7 +505,7 @@ export function ArtifactFitmentPanel({
         <button
           type="button"
           onClick={() => setEverything(true)}
-          className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
+          className="mt-2 font-mono text-2xs text-muted-foreground hover:text-primary"
         >
           showing the top {data.items.length} of {data.considered} ranked — show
           all
@@ -519,7 +515,7 @@ export function ArtifactFitmentPanel({
         <button
           type="button"
           onClick={() => setEverything(false)}
-          className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
+          className="mt-2 font-mono text-2xs text-muted-foreground hover:text-primary"
         >
           showing all {data.considered} — show the top 5
         </button>
@@ -570,7 +566,7 @@ function LayoutChoices({
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         How many
       </span>
       <div className="flex flex-wrap gap-1.5">
@@ -598,16 +594,14 @@ function LayoutChoices({
                       ? `${layout.node_count} nodes x ${perNode}`
                       : `${layout.device_count} dev`}
                   </span>
-                  <span className="font-mono text-2xs text-muted-foreground/60 tabular-nums">
+                  <span className="font-mono text-2xs text-muted-foreground tabular-nums">
                     tp{layout.tensor_parallel}
                     {layout.pipeline_parallel > 1 &&
                       `/pp${layout.pipeline_parallel}`}
                     {layout.context_length > 0 && (
                       <>
                         {" · "}
-                        <span
-                          className={cn(layout.reduced && "text-amber-500")}
-                        >
+                        <span className={cn(layout.reduced && "text-warning")}>
                           {formatTokens(layout.context_length)}
                         </span>
                       </>
@@ -623,7 +617,7 @@ function LayoutChoices({
                   </span>
                 )}
                 {layout.supply_short && (
-                  <span className="mt-1 block text-amber-500">
+                  <span className="mt-1 block text-warning">
                     The fleet holds {fit.devices_total} of this class and this
                     layout needs {layout.device_count}.
                   </span>
@@ -633,7 +627,7 @@ function LayoutChoices({
           )
         })}
       </div>
-      <p className="font-mono text-2xs text-muted-foreground/50">
+      <p className="font-mono text-2xs text-muted-foreground">
         Fewer cards serve a shorter window and leave the rest of the node for
         something else. More buy context and concurrency.
       </p>
@@ -746,7 +740,7 @@ function FitRow({
               </Tooltip>
             )}
           </div>
-          <span className="font-mono text-2xs text-muted-foreground/50">
+          <span className="font-mono text-2xs text-muted-foreground">
             {fit.device_class}
           </span>
         </td>
@@ -761,7 +755,7 @@ function FitRow({
             <TooltipContent className="max-w-80">
               {fit.reason}
               {fit.supply_short && (
-                <span className="mt-1 block text-amber-500">
+                <span className="mt-1 block text-warning">
                   {shortfall(fit)}
                 </span>
               )}
@@ -776,14 +770,14 @@ function FitRow({
                   <span
                     className={cn(
                       "font-mono text-xs tabular-nums",
-                      fit.supply_short && "text-amber-500"
+                      fit.supply_short && "text-warning"
                     )}
                   >
                     {fit.node_count > 1
                       ? `${fit.node_count} nodes x ${Math.min(fit.devices_per_node, fit.device_count)}`
                       : `1 node x ${fit.device_count}`}
                   </span>
-                  <span className="font-mono text-2xs text-muted-foreground/50 tabular-nums">
+                  <span className="font-mono text-2xs text-muted-foreground tabular-nums">
                     {fit.device_count} dev · tp{fit.tensor_parallel}/pp
                     {fit.pipeline_parallel}
                   </span>
@@ -794,7 +788,7 @@ function FitRow({
                   ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric — tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
                   : `One node of ${fit.device_count}, tensor-parallel ${fit.tensor_parallel}. A node of this class holds ${fit.devices_per_node} devices.`}
                 {fit.supply_short && (
-                  <span className="mt-1 block text-amber-500">
+                  <span className="mt-1 block text-warning">
                     {shortfall(fit)}
                   </span>
                 )}

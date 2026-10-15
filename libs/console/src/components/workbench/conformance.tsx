@@ -34,7 +34,7 @@ const OUTCOME_STYLE: Record<
 > = {
   agrees: {
     dot: "bg-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-400",
+    text: "text-success",
     label: "agrees",
   },
   differs: {
@@ -44,7 +44,7 @@ const OUTCOME_STYLE: Record<
   },
   "not-observed": {
     dot: "bg-muted-foreground/40",
-    text: "text-muted-foreground/60",
+    text: "text-muted-foreground",
     label: "not observed",
   },
 }
@@ -101,7 +101,7 @@ export function ConformanceSuite({
       </StatRow>
 
       {!reference && (
-        <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-warning">
           No reference endpoint was set, so nothing here is a verdict. These
           rows record what this endpoint answered and nothing about whether that
           is what it should have answered — the standard asks for consistency
@@ -159,7 +159,7 @@ function ProbeLedger({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="text-sm">Claims</CardTitle>
-            <p className="mt-1 text-2xs text-muted-foreground/60">
+            <p className="mt-1 text-2xs text-muted-foreground">
               One row per behavioural claim in the standard. Expand a row for
               the bytes that produced it.
             </p>
@@ -261,7 +261,7 @@ function ProbeLine({
         >
           <IconChevronRight
             className={cn(
-              "size-3 shrink-0 text-muted-foreground/40 transition-transform",
+              "size-3 shrink-0 text-muted-foreground transition-transform",
               expanded && "rotate-90"
             )}
           />
@@ -277,7 +277,7 @@ function ProbeLine({
             {row.observed}
           </span>
           {withReference && (
-            <span className="hidden w-40 shrink-0 truncate text-right font-mono text-2xs text-muted-foreground/50 md:block">
+            <span className="hidden w-40 shrink-0 truncate text-right font-mono text-2xs text-muted-foreground md:block">
               {row.reference}
             </span>
           )}
@@ -311,7 +311,7 @@ function ProbeLine({
             )}
           </div>
           <div>
-            <p className="mb-1 font-mono text-2xs tracking-[0.12em] text-muted-foreground/50 uppercase">
+            <p className="mb-1 font-mono text-2xs tracking-[0.12em] text-muted-foreground uppercase">
               Exchange
             </p>
             <pre className="overflow-x-auto rounded-md border bg-background p-2 font-mono text-2xs leading-relaxed">
@@ -327,7 +327,7 @@ function ProbeLine({
 function Reading({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-mono text-2xs tracking-[0.12em] text-muted-foreground/50 uppercase">
+      <p className="font-mono text-2xs tracking-[0.12em] text-muted-foreground uppercase">
         {label}
       </p>
       <p className="font-mono text-xs">{value}</p>

@@ -34,14 +34,14 @@ export function Legend() {
       <Item
         label="fault"
         face={cn(
-          "bg-destructive/20 text-destructive/70 ring-1 ring-destructive/40 ring-inset",
+          "bg-destructive/20 text-destructive ring-1 ring-destructive/40 ring-inset",
           HATCH
         )}
       />
       <Item
         label="cordoned"
         face={cn(
-          "bg-muted text-muted-foreground/50 ring-1 ring-border ring-inset",
+          "bg-muted text-muted-foreground ring-1 ring-border ring-inset",
           HATCH
         )}
       />
@@ -51,10 +51,7 @@ export function Legend() {
         face="bg-primary/25 ring-1 ring-dashed ring-primary/60 ring-inset"
         bar={
           <span
-            className={cn(
-              "block size-full bg-primary/25 text-primary/70",
-              HATCH
-            )}
+            className={cn("block size-full bg-primary/25 text-primary", HATCH)}
           />
         }
       />
@@ -93,9 +90,7 @@ function Item({
       {bar && (
         <span className="h-1.5 w-3.5 overflow-hidden rounded-full">{bar}</span>
       )}
-      <span className="font-mono text-2xs text-muted-foreground/60">
-        {label}
-      </span>
+      <span className="font-mono text-2xs text-muted-foreground">{label}</span>
     </span>
   )
 }

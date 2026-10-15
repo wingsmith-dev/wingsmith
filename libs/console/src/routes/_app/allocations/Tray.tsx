@@ -107,7 +107,7 @@ export function Tray({ board }: { board: Board | undefined }) {
             </Button>
           )}
         </CardTitle>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           {armed && holding
             ? `${armed.label} in hand · click where it should go, or click it again to put it back`
             : armed
@@ -118,7 +118,7 @@ export function Tray({ board }: { board: Board | undefined }) {
 
       <CardContent className="space-y-3 px-2">
         {isLoading && (
-          <p className="px-2 font-mono text-2xs text-muted-foreground/50">
+          <p className="px-2 font-mono text-2xs text-muted-foreground">
             Loading…
           </p>
         )}
@@ -136,7 +136,7 @@ export function Tray({ board }: { board: Board | undefined }) {
         )}
 
         <div className="flex items-center gap-2 px-1.5 pt-1">
-          <Label className="font-mono text-2xs text-muted-foreground/60">
+          <Label className="font-mono text-2xs text-muted-foreground">
             as project
           </Label>
           <Select
@@ -184,11 +184,11 @@ function Group({
 }: React.PropsWithChildren<{ label: string; empty: string; count: number }>) {
   return (
     <div className="space-y-1">
-      <div className="px-1.5 font-mono text-2xs tracking-[0.15em] text-muted-foreground/50 uppercase">
+      <div className="px-1.5 font-mono text-2xs tracking-[0.15em] text-muted-foreground uppercase">
         {label}
       </div>
       {count === 0 && empty ? (
-        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground/40">
+        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground">
           {empty}
         </p>
       ) : null}
@@ -333,7 +333,7 @@ function BrickRow({
             "bg-primary/10 ring-1 ring-primary/40 ring-inset"
         )}
       >
-        <IconGripVertical className="size-3 shrink-0 text-muted-foreground/40" />
+        <IconGripVertical className="size-3 shrink-0 text-muted-foreground" />
         <span
           className={cn("size-2.5 shrink-0 rounded-[2px]", colour.swatch)}
         />
@@ -341,7 +341,7 @@ function BrickRow({
           <span className="block truncate font-mono text-2xs">
             {brick.label}
           </span>
-          <span className="block truncate font-mono text-2xs text-muted-foreground/50">
+          <span className="block truncate font-mono text-2xs text-muted-foreground">
             {brick.detail}
           </span>
         </span>
@@ -357,12 +357,12 @@ function BrickRow({
               className={cn(
                 "block",
                 plan.wanted === 0
-                  ? "text-muted-foreground/40"
+                  ? "text-muted-foreground"
                   : plan.placed === plan.wanted
-                    ? "text-emerald-600 dark:text-emerald-400"
+                    ? "text-success"
                     : plan.placed === 0
                       ? "text-destructive"
-                      : "text-amber-600 dark:text-amber-400"
+                      : "text-warning"
               )}
               title={
                 authoritative
@@ -483,17 +483,17 @@ function ArtifactShapes({
       </Select>
 
       {artifact && fitment.isLoading && (
-        <p className="px-1.5 font-mono text-2xs text-muted-foreground/50">
+        <p className="px-1.5 font-mono text-2xs text-muted-foreground">
           sizing…
         </p>
       )}
       {fitment.data?.note && (
-        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground/40">
+        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground">
           {fitment.data.note}
         </p>
       )}
       {artifact && !fitment.isLoading && bricks.length === 0 && (
-        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground/40">
+        <p className="px-1.5 font-mono text-2xs leading-relaxed text-muted-foreground">
           Nothing in the catalog holds these weights at{" "}
           {fitment.data?.context_length ?? "?"} tokens.
         </p>

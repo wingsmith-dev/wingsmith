@@ -137,7 +137,7 @@ function columns(
         return (
           <span className="font-mono text-2xs text-muted-foreground">
             {n === 0 ? (
-              <span className="text-muted-foreground/50">0 workloads</span>
+              <span className="text-muted-foreground">0 workloads</span>
             ) : (
               `${n} ${n === 1 ? "workload" : "workloads"}`
             )}
@@ -196,13 +196,13 @@ interface TileProps {
 function SummaryTile({ label, value, tone }: TileProps) {
   return (
     <Card size="sm" className="gap-2 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       <span
         className={
           tone === "warn"
-            ? "font-heading text-2xl leading-none font-semibold text-amber-500 tabular-nums"
+            ? "font-heading text-2xl leading-none font-semibold text-warning tabular-nums"
             : "font-heading text-2xl leading-none font-semibold tabular-nums"
         }
       >

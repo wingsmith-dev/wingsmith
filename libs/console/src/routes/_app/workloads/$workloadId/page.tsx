@@ -443,7 +443,7 @@ export function WorkloadDetailPage() {
                       </Field>
                       <Field label="Engine">
                         {workload.serving.engine}{" "}
-                        <span className="text-muted-foreground/60">
+                        <span className="text-muted-foreground">
                           {workload.serving.engine_runtime_version}
                         </span>
                       </Field>
@@ -553,7 +553,7 @@ export function WorkloadDetailPage() {
                         <span className="font-mono">
                           {workload.served_model_name || "—"}
                         </span>
-                        <span className="ml-2 text-2xs text-muted-foreground/60">
+                        <span className="ml-2 text-2xs text-muted-foreground">
                           from the artifact&rsquo;s slug
                         </span>
                       </Field>
@@ -611,7 +611,7 @@ export function WorkloadDetailPage() {
                         {workload.adapter_artifact_ids?.length || "none"}
                       </Field>
                       <Field label="Digest" className="sm:col-span-2">
-                        <span className="font-mono text-2xs break-all text-muted-foreground/70">
+                        <span className="font-mono text-2xs break-all text-muted-foreground">
                           {workload.serving_digest}
                         </span>
                       </Field>
@@ -733,7 +733,7 @@ export function WorkloadDetailPage() {
 
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="New run">
-                    <p className="text-2xs text-muted-foreground/70">
+                    <p className="text-2xs text-muted-foreground">
                       Requests a workload-level measurement of this serving
                       configuration. The plane expands the ask into one run per
                       placed deployment and grades it against the frozen
@@ -789,7 +789,7 @@ export function WorkloadDetailPage() {
                         <GpuNodeCard key={node.node} node={node} />
                       ))}
                       {placement && placement.nodes.length === 0 && (
-                        <p className="text-2xs text-muted-foreground/60">
+                        <p className="text-2xs text-muted-foreground">
                           This workload holds no devices right now.
                         </p>
                       )}
@@ -1080,7 +1080,7 @@ function Vital({
 }) {
   return (
     <div className="min-w-0 px-4 py-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div className="mt-2 truncate font-mono text-base leading-none">
@@ -1092,8 +1092,8 @@ function Vital({
           tone === "danger"
             ? "text-destructive"
             : tone === "warn"
-              ? "text-amber-600 dark:text-amber-400"
-              : "text-muted-foreground/60"
+              ? "text-warning"
+              : "text-muted-foreground"
         )}
       >
         {detail}
@@ -1139,15 +1139,15 @@ function StatTile({
 }) {
   return (
     <Card size="sm" className="gap-1.5 px-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
         {label}
       </div>
       <div
         className={cn(
           "font-mono leading-none tabular-nums",
           small ? "text-sm" : "text-xl",
-          tone === "ok" && "text-emerald-600 dark:text-emerald-400",
-          tone === "warn" && "text-amber-600 dark:text-amber-400"
+          tone === "ok" && "text-success",
+          tone === "warn" && "text-warning"
         )}
       >
         {value}
@@ -1227,7 +1227,7 @@ function EngineArgsPanel({
     >
       <div className="space-y-3">
         {empty ? (
-          <p className="font-mono text-2xs text-muted-foreground/50">
+          <p className="font-mono text-2xs text-muted-foreground">
             {shown === "resolved"
               ? "None — the engine runs on its own defaults."
               : "Nothing declared — every argument below was resolved."}
@@ -1242,7 +1242,7 @@ function EngineArgsPanel({
           </pre>
         )}
         {overrides.length > 0 && (
-          <p className="text-2xs text-amber-700 dark:text-amber-400">
+          <p className="text-2xs text-warning">
             {overrides.map((o) => `--${o.flag}`).join(", ")} came from the typed
             serving block; the engine args spelling of each is ignored.
           </p>
@@ -1305,9 +1305,7 @@ function Panel({
               {badge}
             </CardTitle>
             {subtitle && (
-              <p className="mt-1 text-2xs text-muted-foreground/60">
-                {subtitle}
-              </p>
+              <p className="mt-1 text-2xs text-muted-foreground">{subtitle}</p>
             )}
           </div>
           {action}
@@ -1778,7 +1776,7 @@ function PerformanceView({
               <div className="flex flex-col gap-3">
                 {data.breakdown.map((member) => (
                   <div key={member.key} className="flex flex-col gap-1">
-                    <div className="font-mono text-2xs text-muted-foreground/60">
+                    <div className="font-mono text-2xs text-muted-foreground">
                       {member.label}
                     </div>
                     <FieldGrid>
@@ -1807,13 +1805,13 @@ function PerformanceView({
       </div>
 
       {data.unavailable && (
-        <div className="text-2xs text-muted-foreground/60">
+        <div className="text-2xs text-muted-foreground">
           Partly measured: {data.unavailable}
         </div>
       )}
 
       {data.source && (
-        <div className="font-mono text-2xs text-muted-foreground/50">
+        <div className="font-mono text-2xs text-muted-foreground">
           {data.window} window · {data.source.kind} · {data.source.url}
         </div>
       )}
@@ -1840,7 +1838,7 @@ function MetricsNotice({ children }: React.PropsWithChildren) {
 
 function EmptyNote({ children }: React.PropsWithChildren) {
   return (
-    <p className="py-6 text-center text-2xs text-muted-foreground/60">
+    <p className="py-6 text-center text-2xs text-muted-foreground">
       {children}
     </p>
   )
@@ -1876,7 +1874,7 @@ const latencyColumns = [
 function GpuHeatmap({ curve }: { curve: UtilizationWeek }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="font-mono text-2xs text-muted-foreground/60">
+      <div className="font-mono text-2xs text-muted-foreground">
         {curve.label}
       </div>
       {HEATMAP_DAYS.map((label, day) => (
@@ -2010,13 +2008,13 @@ function Unbacked({ title, note }: { title: string; note: string }) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm text-muted-foreground">
           {title}
-          <span className="rounded-full border border-dashed px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/60">
+          <span className="rounded-full border border-dashed px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
             not measured yet
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xs text-muted-foreground/60">{note}</p>
+        <p className="text-2xs text-muted-foreground">{note}</p>
       </CardContent>
     </Card>
   )
@@ -2094,7 +2092,7 @@ const replicaColumns = [
       r.replica ? (
         mono(r.replica)
       ) : (
-        <span className="font-mono text-2xs text-muted-foreground/60">
+        <span className="font-mono text-2xs text-muted-foreground">
           held (no replica yet)
         </span>
       ),

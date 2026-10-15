@@ -78,10 +78,7 @@ const alertColumns: Column<Alert>[] = [
       <span className="font-mono text-2xs text-muted-foreground">
         {alert.subject.type}
         {alert.subject.id && (
-          <span className="text-muted-foreground/50">
-            {" "}
-            · {alert.subject.id}
-          </span>
+          <span className="text-muted-foreground"> · {alert.subject.id}</span>
         )}
       </span>
     ),
@@ -125,7 +122,7 @@ function thresholdColumns(
       cell: (threshold) => (
         <div className="min-w-0">
           <div className="font-mono text-xs">{threshold.rule}</div>
-          <div className="font-mono text-2xs text-muted-foreground/60">
+          <div className="font-mono text-2xs text-muted-foreground">
             {threshold.metric}
           </div>
         </div>
@@ -173,13 +170,11 @@ function thresholdColumns(
           <span className="font-mono text-2xs text-muted-foreground">
             {lookback.value ?? "—"}
             {lookback.fromRule && (
-              <span className="text-muted-foreground/40">*</span>
+              <span className="text-muted-foreground">*</span>
             )}
             {" · for "}
             {hold.value === null ? "—" : formatSeconds(hold.value)}
-            {hold.fromRule && (
-              <span className="text-muted-foreground/40">*</span>
-            )}
+            {hold.fromRule && <span className="text-muted-foreground">*</span>}
           </span>
         )
       },
@@ -194,7 +189,7 @@ function thresholdColumns(
           <span className="font-mono text-2xs text-muted-foreground">
             {severity.value}
             {severity.fromRule && (
-              <span className="text-muted-foreground/40">*</span>
+              <span className="text-muted-foreground">*</span>
             )}
           </span>
         ) : (
@@ -400,7 +395,7 @@ export function AlertsPage() {
               <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-2xs text-muted-foreground">
                 {undeclared.length} of {catalogue.length} metric rules have no
                 declared number, so the reactor evaluates them for nobody:{" "}
-                <span className="text-muted-foreground/60">
+                <span className="text-muted-foreground">
                   {undeclared.map((entry) => entry.name).join(", ")}
                 </span>
               </p>
@@ -418,7 +413,7 @@ export function AlertsPage() {
               empty="No thresholds declared."
             />
 
-            <p className="px-1 font-mono text-2xs text-muted-foreground/50">
+            <p className="px-1 font-mono text-2xs text-muted-foreground">
               * inherited from the rule rather than declared on the row.
             </p>
           </TabsContent>

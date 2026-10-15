@@ -52,9 +52,7 @@ export function ClusterReachability({
             <span
               className={cn(
                 "shrink-0 font-mono text-2xs",
-                row.stale
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground"
+                row.stale ? "text-warning" : "text-muted-foreground"
               )}
             >
               {row.note}

@@ -77,7 +77,7 @@ export function ServingQuotaSheet({
           )}
 
           <section className="space-y-2">
-            <h3 className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <h3 className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               Declared
             </h3>
             <FieldGrid>
@@ -122,10 +122,10 @@ export function ServingQuotaSheet({
           </section>
 
           <section className="space-y-3">
-            <h3 className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            <h3 className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
               What a replica enforces
             </h3>
-            <p className="text-2xs text-muted-foreground/70">
+            <p className="text-2xs text-muted-foreground">
               {LIMIT_SCOPE_MEANING[quota.limit_scope]}
             </p>
             <NumberField
@@ -160,7 +160,7 @@ export function ServingQuotaSheet({
                 </FieldGrid>
 
                 {row.starved_replicas > 0 && (
-                  <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                     {row.starved_replicas} of {row.replicas} replicas would hold
                     a share of zero on some limit and refuse every request that
                     reaches them. The commitment is smaller than the fleet.
@@ -168,7 +168,7 @@ export function ServingQuotaSheet({
                 )}
 
                 {quota.limit_scope === "per_replica" && (
-                  <p className="text-2xs text-muted-foreground/70">
+                  <p className="text-2xs text-muted-foreground">
                     Under {LIMIT_SCOPE_LABEL.per_replica} these are the declared
                     numbers unchanged, and a fleet of {row.replicas} admits up
                     to {row.replicas} times what was sold.
@@ -176,7 +176,7 @@ export function ServingQuotaSheet({
                 )}
 
                 {row.workloads.length > 0 && (
-                  <p className="text-2xs text-muted-foreground/70">
+                  <p className="text-2xs text-muted-foreground">
                     Traffic admitted through this name reaches{" "}
                     {row.workloads.length} workload
                     {row.workloads.length === 1 ? "" : "s"}. A workload behind

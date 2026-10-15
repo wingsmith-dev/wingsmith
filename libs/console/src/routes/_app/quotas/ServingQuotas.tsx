@@ -43,7 +43,7 @@ function columns(
         <ResourceCell kind="endpoint">
           <div className="font-mono text-xs">{quota.endpoint_name}</div>
           {commitsNothing(quota) && (
-            <div className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+            <div className="font-mono text-2xs text-warning">
               commits nothing
             </div>
           )}
@@ -63,7 +63,7 @@ function columns(
         <div className="space-y-0.5">
           <Committed value={quota.committed_rpm} />
           {quota.burst_rpm !== null && (
-            <div className="font-mono text-2xs text-muted-foreground/60">
+            <div className="font-mono text-2xs text-muted-foreground">
               burst {quota.burst_rpm}
             </div>
           )}

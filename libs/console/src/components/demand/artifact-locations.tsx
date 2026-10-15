@@ -112,7 +112,7 @@ export function LocationsField({
         </div>
       )}
 
-      <p className="text-2xs text-muted-foreground/70">
+      <p className="text-2xs text-muted-foreground">
         Scheme, URI, region, and which one to prefer.
       </p>
     </div>

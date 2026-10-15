@@ -24,9 +24,7 @@ import { useState } from "react"
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
-      <span className="font-mono text-2xs text-muted-foreground/60">
-        {label}
-      </span>
+      <span className="font-mono text-2xs text-muted-foreground">{label}</span>
       <span className="min-w-0 text-right font-mono text-xs break-all">
         {value}
       </span>
@@ -39,7 +37,7 @@ function Read({ draft }: { draft: ServingDraft }) {
     <div className="min-w-0 space-y-4">
       {!draft.confident && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-          <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+          <p className="font-mono text-2xs text-warning">
             this could not be read with confidence — check every field before
             saving
           </p>
@@ -93,7 +91,7 @@ function Read({ draft }: { draft: ServingDraft }) {
 
       {Object.keys(draft.engine_args).length > 0 && (
         <div>
-          <p className="mb-1.5 font-mono text-2xs text-muted-foreground/60">
+          <p className="mb-1.5 font-mono text-2xs text-muted-foreground">
             carried through as engine args
           </p>
           <div className="flex flex-wrap gap-1">
@@ -113,7 +111,7 @@ function Read({ draft }: { draft: ServingDraft }) {
 
       {draft.notes.length > 0 && (
         <div>
-          <p className="mb-1.5 font-mono text-2xs text-muted-foreground/60">
+          <p className="mb-1.5 font-mono text-2xs text-muted-foreground">
             what could not be determined
           </p>
           <ul className="space-y-1">
@@ -147,14 +145,14 @@ function Steps({ current }: { current: Step }) {
     <div className="flex items-center gap-1.5 font-mono text-2xs">
       {STEPS.map((step, i) => (
         <span key={step.key} className="flex items-center gap-1.5">
-          {i > 0 && <span className="text-muted-foreground/40">→</span>}
+          {i > 0 && <span className="text-muted-foreground">→</span>}
           <span
             className={
               i === at
                 ? "text-foreground"
                 : i < at
                   ? "text-muted-foreground"
-                  : "text-muted-foreground/40"
+                  : "text-muted-foreground"
             }
           >
             {i < at ? `${step.label} ✓` : step.label}
@@ -253,7 +251,7 @@ export function ServingDraftDialog({
           {draft && step === "serving" && (
             <>
               <Read draft={draft} />
-              <p className="font-mono text-2xs text-muted-foreground/60">
+              <p className="font-mono text-2xs text-muted-foreground">
                 Nothing here is submitted. The plane derives the block it adopts
                 from this same reading, so what is declared is what is already
                 running — changing any of it is a PATCH afterwards, where a

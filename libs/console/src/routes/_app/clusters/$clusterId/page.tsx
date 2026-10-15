@@ -35,7 +35,7 @@ import { ClusterTopologyTable } from "./TopologyTable"
 
 function TabNote({ children }: React.PropsWithChildren) {
   return (
-    <p className="font-mono text-2xs leading-relaxed text-muted-foreground/60">
+    <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
       {children}
     </p>
   )

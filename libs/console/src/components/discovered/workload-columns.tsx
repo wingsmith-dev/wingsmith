@@ -24,7 +24,7 @@ export function workloadColumns(): Column<DiscoveredWorkload>[] {
             {workload.name}
             <Id value={workload.namespace} className="ml-2" />
           </div>
-          <div className="font-mono text-2xs text-muted-foreground/60">
+          <div className="font-mono text-2xs text-muted-foreground">
             {workload.kind} · <Dash>{imageTag(workload.images)}</Dash>
           </div>
         </ResourceCell>
@@ -53,7 +53,7 @@ export function workloadColumns(): Column<DiscoveredWorkload>[] {
       cell: (workload) => (
         <span className="font-mono text-2xs">
           {workload.replicas_ready}
-          <span className="text-muted-foreground/50">
+          <span className="text-muted-foreground">
             /{workload.replicas_desired}
           </span>
         </span>
@@ -67,7 +67,7 @@ export function workloadColumns(): Column<DiscoveredWorkload>[] {
         <span className="font-mono text-2xs">
           {workload.devices_total}
           {workload.devices_per_replica > 0 && (
-            <span className="text-muted-foreground/50">
+            <span className="text-muted-foreground">
               {" "}
               ({workload.devices_per_replica}/replica)
             </span>
@@ -97,7 +97,7 @@ export function workloadColumns(): Column<DiscoveredWorkload>[] {
       align: "right",
       secondary: true,
       cell: (workload) => (
-        <span className="font-mono text-2xs text-muted-foreground/70">
+        <span className="font-mono text-2xs text-muted-foreground">
           <Dash>
             {workload.first_seen_at
               ? formatRelative(workload.first_seen_at)

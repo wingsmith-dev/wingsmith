@@ -10,9 +10,7 @@ import { toast } from "sonner"
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
-      <span className="font-mono text-2xs text-muted-foreground/60">
-        {label}
-      </span>
+      <span className="font-mono text-2xs text-muted-foreground">{label}</span>
       <span className="min-w-0 text-right font-mono text-xs break-all">
         {value}
       </span>
@@ -100,7 +98,7 @@ export function ArtifactStep({
         </div>
       ) : (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-          <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+          <p className="font-mono text-2xs text-warning">
             adopted by reference, not by content — the digest below is the name
             the cluster was given, and the artifact is recorded unverified
           </p>

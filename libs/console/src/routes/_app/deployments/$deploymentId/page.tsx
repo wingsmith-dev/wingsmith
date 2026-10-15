@@ -137,7 +137,7 @@ export function DeploymentDetailPage() {
               <StatusLabel tone={workloadPhaseTone(deployment.admission_phase)}>
                 {deployment.admission_phase}
               </StatusLabel>
-              <span className="font-mono text-2xs text-muted-foreground/60">
+              <span className="font-mono text-2xs text-muted-foreground">
                 generation {deployment.generation}
               </span>
               <Labels labels={workload?.labels ?? {}} />
@@ -160,7 +160,7 @@ export function DeploymentDetailPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="space-y-1.5">
-                      <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
+                      <div className="flex justify-between font-mono text-2xs text-muted-foreground">
                         <span>ready</span>
                         <span>
                           {replicas.ready}/{deployment.desired_replicas}
@@ -192,7 +192,7 @@ export function DeploymentDetailPage() {
                 </Card>
 
                 <div>
-                  <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                  <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                     Operations
                   </h2>
                   <DataTable
@@ -311,7 +311,7 @@ export function DeploymentDetailPage() {
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Serving</CardTitle>
-                      <p className="font-mono text-2xs text-muted-foreground/60">
+                      <p className="font-mono text-2xs text-muted-foreground">
                         The workload's, not the deployment's — every cluster
                         runs the same configuration.
                       </p>

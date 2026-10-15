@@ -243,7 +243,7 @@ export function ServingQuotaForm({
           }))}
         />
         <div className="space-y-1.5 rounded-md border px-3 py-2.5">
-          <p className="text-2xs text-muted-foreground/70">
+          <p className="text-2xs text-muted-foreground">
             Gateway replicas keep no shared counter, so one of these two error
             directions has to be chosen.
           </p>
@@ -254,7 +254,7 @@ export function ServingQuotaForm({
                 "rounded-sm px-2 py-1 text-2xs",
                 value === scope
                   ? "bg-muted text-foreground"
-                  : "text-muted-foreground/50"
+                  : "text-muted-foreground"
               )}
             >
               <span className="font-mono">{LIMIT_SCOPE_LABEL[value]}</span> —{" "}

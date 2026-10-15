@@ -129,7 +129,7 @@ function SettingsNav({ current }: { current: SettingsSection }) {
         "kind" in item ? (
           <span
             key={item.label}
-            className="flex h-8 items-center px-2 font-mono text-2xs tracking-widest text-muted-foreground/50 uppercase"
+            className="flex h-8 items-center px-2 font-mono text-2xs tracking-widest text-muted-foreground uppercase"
           >
             {item.label}
           </span>
@@ -171,7 +171,7 @@ function Panel({
       <div className="flex items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
         <div>
           <h2 className="text-sm leading-none font-semibold">{title}</h2>
-          <p className="mt-1 font-mono text-2xs text-muted-foreground/60">
+          <p className="mt-1 font-mono text-2xs text-muted-foreground">
             {description}
           </p>
         </div>
@@ -257,12 +257,12 @@ function GpuModelRow({ entry }: { entry: DeviceClass }) {
                 {entry.label}
                 <IconArrowUpRight className="size-3 text-muted-foreground" />
               </span>
-              <span className="block truncate font-mono text-2xs text-muted-foreground/60">
+              <span className="block truncate font-mono text-2xs text-muted-foreground">
                 {entry.name}
               </span>
             </Link>
             {!entry.in_catalog && (
-              <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+              <span className="font-mono text-2xs text-warning">
                 not in the catalog
               </span>
             )}
@@ -284,7 +284,7 @@ function GpuModelRow({ entry }: { entry: DeviceClass }) {
             {clusters} {clusters === 1 ? "cluster" : "clusters"} · {devices}
           </span>
         ) : (
-          <span className="text-muted-foreground/50">not in use</span>
+          <span className="text-muted-foreground">not in use</span>
         )}
       </TableCell>
     </TableRow>
@@ -514,7 +514,7 @@ function ConfigurationSection() {
 
 /** A `Field` value that is configured nowhere. Blank would read as a value. */
 function Unset() {
-  return <span className="text-muted-foreground/50">not set</span>
+  return <span className="text-muted-foreground">not set</span>
 }
 
 function seconds(value: number) {
@@ -619,7 +619,7 @@ function SourceRowCells({ row }: { row: SourceRow }) {
       <TableCell className="font-mono text-2xs text-muted-foreground">
         {row.source
           ? row.source.label || (
-              <span className="text-muted-foreground/50">dedicated store</span>
+              <span className="text-muted-foreground">dedicated store</span>
             )
           : "—"}
       </TableCell>
@@ -699,7 +699,7 @@ function ProcessPanel({ config }: { config: PlaneConfig }) {
           </Field>
         </FieldGrid>
 
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           The connection is reported in parts. The plane never sends its
           DATABASE_URL, so no credential can travel with it.
         </p>
@@ -727,7 +727,7 @@ function HubPanel({ config }: { config: PlaneConfig }) {
           <Field label="Path">{hub.path}</Field>
           <Field label="Instance id">
             {hub.instance_id || (
-              <span className="text-muted-foreground/50">
+              <span className="text-muted-foreground">
                 resolved per process
               </span>
             )}
@@ -833,12 +833,12 @@ function ClusterSetupPanel({ config }: { config: PlaneConfig }) {
         <Field label="Chart ref">{setup.chart_ref || <Unset />}</Field>
         <Field label="Chart version">
           {setup.chart_version || (
-            <span className="text-muted-foreground/50">latest</span>
+            <span className="text-muted-foreground">latest</span>
           )}
         </Field>
         <Field label="Operator image">
           {setup.operator_image || (
-            <span className="text-muted-foreground/50">
+            <span className="text-muted-foreground">
               chart&rsquo;s appVersion
             </span>
           )}
@@ -883,7 +883,7 @@ function ReadOnlyPanel() {
         <div className="flex items-start justify-between gap-4 rounded-md border px-3 py-2.5">
           <div className="space-y-0.5">
             <Label htmlFor="read-only">Read-only mode</Label>
-            <p className="text-2xs text-muted-foreground/70">
+            <p className="text-2xs text-muted-foreground">
               Refuses every write before it leaves the browser, and hides the
               affordances that would start one.
             </p>
@@ -964,9 +964,7 @@ function PlanePanel() {
               <span>
                 same origin
                 {origin && (
-                  <span className="ml-1.5 text-muted-foreground/60">
-                    {origin}
-                  </span>
+                  <span className="ml-1.5 text-muted-foreground">{origin}</span>
                 )}
               </span>
             )}
@@ -977,7 +975,7 @@ function PlanePanel() {
             </Badge>
           </Field>
         </FieldGrid>
-        <p className="font-mono text-2xs text-muted-foreground/60">
+        <p className="font-mono text-2xs text-muted-foreground">
           Set by the deployment: HANGAR_API_BASE_URL on the console image, or
           VITE_API_BASE_URL for a dev server.
         </p>
