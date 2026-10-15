@@ -9,6 +9,8 @@
 *.pem
 *.key
 kubeconfig*
+# A cluster's downloaded install values carry its enrolment token.
+hangar-*-values.yaml
 
 # Tooling
 node_modules/
