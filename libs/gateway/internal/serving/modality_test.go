@@ -141,3 +141,37 @@ func TestRetrievingAVideoJobSaysGenerationIsSynchronous(t *testing.T) {
 		t.Fatalf("POST /v1/videos = %d %s, want it proxied", rec.Code, rec.Body)
 	}
 }
+
+// TestOnlyForwardedPathsReachAnEngine pins the allowlist: a frontend serves
+// more than inference, and a caller must not reach the rest of it through this
+// hop just by naming a path.
+func TestOnlyForwardedPathsReachAnEngine(t *testing.T) {
+	server, _ := upstreamServer(t)
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodPost, "/v1/chat/completions", http.StatusOK},
+		{http.MethodPost, "/v1/embeddings", http.StatusOK},
+		{http.MethodPost, "/v1/messages", http.StatusOK},
+		{http.MethodPost, "/metrics", http.StatusNotFound},
+		{http.MethodPost, "/v1/chat/completions/extra", http.StatusNotFound},
+		{http.MethodPost, "/engine/admin/reset", http.StatusNotFound},
+		{http.MethodPost, "/v1/files", http.StatusNotFound},
+		{http.MethodGet, "/v1/chat/completions", http.StatusNotFound},
+		{http.MethodPut, "/v1/chat/completions", http.StatusNotFound},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"chat"}`)))
+		if rec.Code != tc.status {
+			t.Errorf("%s %s = %d, want %d: %s", tc.method, tc.path, rec.Code, tc.status, rec.Body)
+		}
+		if tc.status == http.StatusNotFound && !strings.Contains(rec.Body.String(), "unsupported_path") {
+			t.Errorf("%s %s answered %s, want unsupported_path", tc.method, tc.path, rec.Body)
+		}
+	}
+}

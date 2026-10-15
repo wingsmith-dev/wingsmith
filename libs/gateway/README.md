@@ -241,10 +241,15 @@ No pricing, and nothing is added to the response body the caller sees.
   `errors.go`. An allowlist, because what a caller needs is small and closed while what an engine
   might add is neither. A `Location` is reduced to a path first: the authority a frontend builds one
   from is the address the agent dialled.
-- **A request with no body.** Not parsed as JSON. A bodiless `GET`, `HEAD` or `DELETE` has no
-  `model` to route on and is a `404 unsupported_path`; a bodiless `POST` is `400 missing_model`.
+- **A path that is not on the list.** Only a `POST` to `/v1/chat/completions`, `/v1/completions`,
+  `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/images/generations`, `/v1/images/edits`,
+  `/v1/videos`, `/v1/videos/stream`, `/v1/audio/transcriptions`, `/v1/audio/translations` or
+  `/v1/audio/speech` is forwarded (`forwardedPaths` in `modality.go`), plus `GET /v1/models`, which
+  is answered here. Anything else is `404 unsupported_path` before the body is read: an engine
+  frontend serves admin, debug and metrics routes too, and none of them are a caller's to reach.
   Any non-`POST` to `/v1/videos` or `/v1/videos/*` is a `404 unsupported_path` saying generation is
   synchronous: Dynamo 1.5.0 has no video job store, and `POST /v1/videos` returns the finished video.
+- **A request with no body.** Not parsed as JSON. A bodiless `POST` is `400 missing_model`.
 - **`X-Request-Id`.** Every response carries one, including the errors this hop writes itself. A
   caller's own value is kept when it is at most 128 characters of `[A-Za-z0-9._:-]`; otherwise a
   UUIDv4 is minted. The same id is the `request_id` on the `gateway: request` access line and on the

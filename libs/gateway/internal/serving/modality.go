@@ -109,3 +109,36 @@ func stageVideoRetrieval(w http.ResponseWriter, r *http.Request, req *requestSta
 			"There is no video job to retrieve, list or delete.")
 	return r, false
 }
+
+// forwardedPaths are the API paths this hop forwards to an engine, all of them
+// POST. Anything else is answered 404 here, before the body is read: an engine
+// frontend serves more than inference (metrics, health, admin and debug routes
+// among them), and a path nobody listed is not one a caller should be able to
+// reach through this hop. `GET /v1/models` is the catalog and is answered from
+// the table before this check; the read half of the video API is answered by
+// stageVideoRetrieval.
+var forwardedPaths = map[string]bool{
+	"/v1/chat/completions":     true,
+	"/v1/completions":          true,
+	"/v1/responses":            true,
+	"/v1/messages":             true,
+	"/v1/embeddings":           true,
+	"/v1/images/generations":   true,
+	"/v1/images/edits":         true,
+	"/v1/videos":               true,
+	"/v1/videos/stream":        true,
+	"/v1/audio/transcriptions": true,
+	"/v1/audio/translations":   true,
+	"/v1/audio/speech":         true,
+}
+
+// stageSupportedPath refuses any request that is not a POST to a forwarded path.
+func stageSupportedPath(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
+	if r.Method == http.MethodPost && forwardedPaths[r.URL.Path] {
+		return r, true
+	}
+	markEndpoint(r, metrics.EndpointUnknown, "")
+	MarkOutcome(r, metrics.OutcomeClientError)
+	writeError(w, http.StatusNotFound, "unsupported_path", r.Method+" "+r.URL.Path+" is not answered here.")
+	return r, false
+}
