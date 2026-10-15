@@ -4,7 +4,13 @@ import type { ReactNode } from "react"
 import { createElement } from "react"
 import { describe, expect, it, vi } from "vitest"
 import type { ListResponse } from "@/lib/api"
-import { fetchAllPages, useAllPages, useCursorList } from "./paginate"
+import {
+  MAX_PAGES,
+  anyTruncated,
+  fetchAllPages,
+  useAllPages,
+  useCursorList,
+} from "./paginate"
 
 type Row = { id: string }
 
@@ -56,7 +62,7 @@ describe("fetchAllPages", () => {
 
   it("handles an empty collection", async () => {
     const { fetch } = pager([page([], null)])
-    expect(await fetchAllPages(fetch)).toEqual([])
+    expect([...(await fetchAllPages(fetch))]).toEqual([])
   })
 
   it("caps itself so a runaway cursor cannot spin forever", async () => {
@@ -64,8 +70,24 @@ describe("fetchAllPages", () => {
     const fetch = vi.fn(async () => page(["x"], "always"))
     const got = await fetchAllPages(fetch)
 
-    expect(fetch.mock.calls.length).toBeLessThanOrEqual(40)
+    expect(fetch.mock.calls.length).toBe(MAX_PAGES)
     expect(got.length).toBe(fetch.mock.calls.length)
+    expect(got.truncated).toBe(true)
+  })
+
+  it("is not truncated when the cursor runs out", async () => {
+    const { fetch } = pager([page(["a"], "1"), page(["b"], null)])
+    expect((await fetchAllPages(fetch)).truncated).toBe(false)
+  })
+
+  it("is not truncated when the last allowed page has no cursor", async () => {
+    const pages = Array.from({ length: MAX_PAGES }, (_, i) =>
+      page([String(i)], i < MAX_PAGES - 1 ? String(i + 1) : null)
+    )
+    const { fetch } = pager(pages)
+    const got = await fetchAllPages(fetch)
+    expect(got).toHaveLength(MAX_PAGES)
+    expect(got.truncated).toBe(false)
   })
 
   it("lets a failure surface rather than returning a short list", async () => {
@@ -237,5 +259,14 @@ describe("useAllPages", () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe("anyTruncated", () => {
+  it("is true only when a loaded drain hit the cap", () => {
+    const full = Object.assign([1], { truncated: false })
+    const capped = Object.assign([1], { truncated: true })
+    expect(anyTruncated({ data: full }, { data: undefined })).toBe(false)
+    expect(anyTruncated({ data: full }, { data: capped })).toBe(true)
   })
 })

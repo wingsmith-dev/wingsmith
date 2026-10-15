@@ -53,7 +53,17 @@ export function useCursorList<T>(
   }
 }
 
-const MAX_PAGES = 40
+export const MAX_PAGES = 40
+
+/**
+ * A drained collection. `truncated` is set when the page cap stopped the drain with
+ * a cursor still pending, so a caller counting the collection can say its number is
+ * a floor instead of presenting it as the total. The flag is an own enumerable
+ * property on purpose: it makes React Query treat the array as non-plain and skip
+ * structural sharing, which would otherwise copy the items into a fresh array and
+ * drop the flag.
+ */
+export type Drained<T> = T[] & { truncated: boolean }
 
 /**
  * Drains every page. Reserved for the small, bounded collections a filter
@@ -62,16 +72,25 @@ const MAX_PAGES = 40
  */
 export async function fetchAllPages<T>(
   fetchPage: PageFetcher<T>
-): Promise<T[]> {
+): Promise<Drained<T>> {
   const out: T[] = []
   let cursor: string | undefined
+  let truncated = false
   for (let i = 0; i < MAX_PAGES; i++) {
     const page = await fetchPage(cursor)
     out.push(...page.items)
     if (!page.next_cursor) break
     cursor = page.next_cursor
+    truncated = i === MAX_PAGES - 1
   }
-  return out
+  return Object.assign(out, { truncated })
+}
+
+/** Whether any of these drained reads stopped at the page cap. */
+export function anyTruncated(
+  ...queries: { data?: { truncated: boolean } }[]
+): boolean {
+  return queries.some((query) => query.data?.truncated === true)
 }
 
 /** A drained collection as a query, for filter controls and lookup maps. */

@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header"
+import { anyTruncated } from "@/lib/paginate"
 import { deriveFleetAttention } from "@/modules/overview/attention"
 import {
   allocationTotals,
@@ -58,6 +59,15 @@ export function OverviewPage() {
   const reachability = clusters.data && reachabilityRows(clusters.data)
   const readOnly = useReadOnly()
   const freshness = freshnessNote(clusters.data, Boolean(clusters.error))
+  const partial = anyTruncated(
+    clusters,
+    nodes,
+    devices,
+    deployments,
+    endpoints,
+    workloads,
+    discovered
+  )
 
   const attention =
     clusters.data ||
@@ -183,6 +193,16 @@ export function OverviewPage() {
             />
           </div>
         </div>
+
+        {partial && (
+          <p
+            role="status"
+            className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-warning"
+          >
+            Some counts on this page are partial: a collection was larger than
+            the console reads in one pass, so the figures are lower bounds.
+          </p>
+        )}
 
         {(readOnly || freshness) && (
           <p className="flex items-center gap-2 text-2xs text-muted-foreground">
