@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCursorList } from "@/lib/paginate"
 import {
@@ -18,7 +19,7 @@ import {
 import { isOpen, type Operation, type OperationCreateRequest } from "./types"
 
 /** How often an unfinished operation is re-read. Polling a drain is the point. */
-const POLL_MS = 4000
+const POLL_MS = POLL.operation
 
 export function useOperations(filters: OperationFilters = {}) {
   return useCursorList(["operations", filters], (cursor) =>

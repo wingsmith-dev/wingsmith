@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
@@ -22,7 +23,7 @@ import type {
  * screen somebody leaves open during an incident, and a poll that stopped
  * because nothing was firing would never show them the moment something was.
  */
-const POLL_MS = 15_000
+const POLL_MS = POLL.alerts
 
 export function useAlerts(filters: AlertFilters = {}) {
   return useCursorList(

@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useMemo } from "react"
 import { useCursorList } from "@/lib/paginate"
@@ -27,7 +28,7 @@ import {
 } from "./types"
 
 /** How often an unfinished run is re-read. A benchmark takes minutes. */
-const POLL_MS = 5000
+const POLL_MS = POLL.progress
 
 export function useBenchmarks(filters: BenchmarkFilters = {}) {
   return useCursorList(["benchmarks", filters], (cursor) =>

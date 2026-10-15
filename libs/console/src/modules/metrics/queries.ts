@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useQuery } from "@tanstack/react-query"
 
 import {
@@ -9,7 +10,7 @@ import {
 import type { MetricScope } from "./types"
 
 /** Measurement goes stale on its own, so it refetches; inventory does not and does not. */
-const REFRESH_MS = 30_000
+const REFRESH_MS = POLL.metrics
 
 export function useMetrics(
   scope: MetricScope,

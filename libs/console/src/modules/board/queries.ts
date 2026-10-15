@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useAllPages } from "@/lib/paginate"
 import { fetchProjects } from "@/modules/binding/api"
 import { fetchClusters } from "@/modules/clusters/api"
@@ -18,7 +19,7 @@ import type { Assignments, Board, Brick, Move } from "./types"
 const PAGE = 200
 
 /** Poll cadence for the board. Allocations move on the sync stream's timescale. */
-const POLL_MS = 10_000
+const POLL_MS = POLL.allocations
 
 export interface BoardScope {
   cluster?: string

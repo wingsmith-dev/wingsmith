@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import {
   useMutation,
   useQueries,
@@ -52,7 +53,7 @@ import type {
 } from "./types"
 
 /** Fast enough to watch a deployment come up, slow enough not to poll the plane for sport. */
-const POLL_MS = 5000
+const POLL_MS = POLL.progress
 
 export function useArtifacts(filters: ArtifactFilters = {}) {
   return useCursorList(["artifacts", filters], (cursor) =>

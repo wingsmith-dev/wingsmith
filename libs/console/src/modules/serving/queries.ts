@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useQuery } from "@tanstack/react-query"
 
 import { windowQuery, type TimeWindow } from "@/modules/metrics/windows"
@@ -9,7 +10,7 @@ import {
 } from "./api"
 
 /** How often the view re-reads. Slow: this is a status page, not a dashboard. */
-const REFETCH_MS = 30_000
+const REFETCH_MS = POLL.metrics
 
 /**
  * `tenant` is undefined on the tenant's own page — the plane scopes that read by

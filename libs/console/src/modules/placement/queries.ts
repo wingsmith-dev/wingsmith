@@ -1,3 +1,4 @@
+import { POLL } from "@/lib/poll"
 import { useQuery } from "@tanstack/react-query"
 import type { PlacementShapeRequest } from "./types"
 import {
@@ -72,7 +73,7 @@ export function usePlacementPreview(
  * reservation that has already been bound, sitting beside the devices that bound
  * it, reads as double the demand there actually is.
  */
-const RESERVATIONS_POLL_MS = 10_000
+const RESERVATIONS_POLL_MS = POLL.allocations
 
 export function useReservations(filters: ReservationFilters = {}) {
   return useQuery({
