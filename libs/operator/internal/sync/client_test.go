@@ -21,6 +21,8 @@ type recorder struct {
 	rejectAt  uint64
 	panicAt   uint64
 	panicSync bool
+	// failures rejects a sequence number that many times and then applies it.
+	failures map[uint64]int
 }
 
 func (r *recorder) Handle(_ context.Context, e *Envelope) error {
@@ -30,6 +32,10 @@ func (r *recorder) Handle(_ context.Context, e *Envelope) error {
 		seq = *e.Seq
 	}
 	reject := r.rejectAt != 0 && seq == r.rejectAt
+	if left := r.failures[seq]; left > 0 {
+		r.failures[seq] = left - 1
+		reject = true
+	}
 	doPanic := r.panicAt != 0 && seq == r.panicAt
 	r.mu.Unlock()
 	if doPanic {
@@ -163,7 +169,17 @@ func testOptions(h *fakeHub) Options {
 
 func startWith(t *testing.T, opts Options) *Client {
 	t.Helper()
+	return startTuned(t, opts, nil)
+}
+
+// startTuned runs a client after letting the test adjust the per-client knobs Options does not
+// carry.
+func startTuned(t *testing.T, opts Options, tune func(*Client)) *Client {
+	t.Helper()
 	c := NewClient(opts)
+	if tune != nil {
+		tune(c)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); _ = c.Run(ctx) }()
@@ -367,6 +383,53 @@ func TestAckAdvancesOnlyOnContiguousDurableApply(t *testing.T) {
 		hello := h.lastHello()
 		return hello.ResumeFrom == nil || *hello.ResumeFrom == 0
 	})
+}
+
+func TestARejectedFrameIsRetriedWithinTheSession(t *testing.T) {
+	h := newFakeHub(t)
+	rec := &recorder{failures: map[uint64]int{1: 2}}
+	opts := testOptions(h)
+	opts.Handler = rec
+	c := startTuned(t, opts, func(c *Client) { c.applyRetryMin = time.Millisecond })
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
+	h.push("dep_b")
+
+	eventually(t, 2*time.Second, "both frames applied", func() bool { return len(rec.seenSeqs()) == 2 })
+	// The hub reads the operator's ack off its sequenced frames, so one has to go up.
+	if err := c.Send("node.observed", "nod_1", wire.NodeObserved{NodeID: "nod_1"}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 2*time.Second, "ack past the retried frame", func() bool { return h.highestAck() == 2 })
+	if got := rec.seenSeqs(); got[0] != 1 || got[1] != 2 {
+		t.Fatalf("frames must apply in order once the retry succeeds, got %v", got)
+	}
+	if got := h.connectionCount(); got != 1 {
+		t.Fatalf("a frame that succeeds on retry must not cost the session, saw %d connections", got)
+	}
+}
+
+func TestAFrameRejectedOnEveryAttemptEndsTheSession(t *testing.T) {
+	h := newFakeHub(t)
+	rec := &recorder{rejectAt: 1}
+	opts := testOptions(h)
+	opts.Handler = rec
+	startTuned(t, opts, func(c *Client) {
+		c.applyAttempts = 2
+		c.applyRetryMin = time.Millisecond
+	})
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
+	eventually(t, 3*time.Second, "the session ends and redials", func() bool { return h.connectionCount() >= 2 })
+	hello := h.lastHello()
+	if hello.ResumeFrom != nil && *hello.ResumeFrom != 0 {
+		t.Fatalf("the rejected frame must be replayed, resume_from was %d", *hello.ResumeFrom)
+	}
+	if got := h.highestAck(); got != 0 {
+		t.Fatalf("a rejected frame must not be acknowledged, hub saw ack %d", got)
+	}
 }
 
 // TestPanickingHandlerIsSurvivedAndTheFrameAdvances is the PROTOCOL §6b case for a panic: a

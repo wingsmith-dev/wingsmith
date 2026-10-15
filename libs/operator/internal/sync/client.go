@@ -49,11 +49,24 @@ const (
 // without them.
 const loopDrainTimeout = 5 * time.Second
 
+// A frame the handler rejects is retried in place before the session gives up on it.
+//
+// In place, because a rejection is usually transient — an API server that timed out, a conflict,
+// an object still being torn down — and waiting a moment is cheaper than a reconnect. Bounded,
+// because a frame that keeps failing holds every later frame behind it, and ending the session is
+// what makes the hub replay it from the durable cursor on the next resume.
+const (
+	applyAttempts = 5
+	applyRetryMin = 250 * time.Millisecond
+	applyRetryMax = 4 * time.Second
+)
+
 // Handler consumes frames the hub pushes down.
 //
 // Returning an error means the frame was not durably applied: the client will not advance its
-// acknowledged sequence past it, so the hub replays it on the next resume. Withholding the ack is
-// the only "could not apply" signal in the protocol — there is no negative acknowledgement.
+// acknowledged sequence past it, retries it in place a bounded number of times, and then ends the
+// session so the hub replays it on the next resume. Withholding the ack is the only "could not
+// apply" signal in the protocol — there is no negative acknowledgement.
 type Handler interface {
 	Handle(ctx context.Context, e *Envelope) error
 	// Resync is called when the hub could not honour a resume, before the snapshot streams, so
@@ -175,11 +188,15 @@ type Client struct {
 	queue  *sendQueue
 	replay *replayBuffer
 
+	// applyAttempts and applyRetryMin are the package constants, held per client so a test can
+	// shorten them.
+	applyAttempts int
+	applyRetryMin time.Duration
+
 	mu         stdsync.Mutex
 	nextSeq    uint64
 	cursor     Cursor
 	expected   uint64
-	holed      bool
 	connected  bool
 	connects   uint64
 	lastRecvAt time.Time
@@ -194,6 +211,9 @@ func NewClient(opts Options) *Client {
 		queue:   newSendQueue(opts.SendQueueSize),
 		replay:  newReplayBuffer(opts.SendQueueSize),
 		nextSeq: 1,
+
+		applyAttempts: applyAttempts,
+		applyRetryMin: applyRetryMin,
 	}
 }
 
@@ -465,7 +485,6 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 	c.mu.Lock()
 	c.cursor = next
 	c.expected = next.Seq + 1
-	c.holed = false
 	if fresh {
 		c.nextSeq = 1
 	}
@@ -585,24 +604,8 @@ func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound) error {
 		e := in.env
 
 		if in.handle {
-			if err := c.handleFrame(ctx, e); err != nil {
-				var pe *panicError
-				if errors.As(err, &pe) {
-					// PROTOCOL §6b: a panic is not obviously transient, and a deterministic one
-					// recurs on every retry — withholding the ack would wedge the stream behind it
-					// forever. Treated as a permanently unappliable frame instead: accepted,
-					// discarded, and logged loudly, exactly like an unknown type or a malformed
-					// payload. The frame's sequence still advances below.
-					c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
-						"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
-				} else {
-					c.log.Error("handler rejected frame; withholding ack",
-						"type", e.Type, "seq", e.Seq, "error", err)
-					c.mu.Lock()
-					c.holed = true
-					c.mu.Unlock()
-					continue
-				}
+			if err := c.applyFrame(ctx, e); err != nil {
+				return err
 			}
 		}
 
@@ -615,12 +618,57 @@ func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound) error {
 	}
 }
 
+// applyFrame hands one frame to the handler until it is applied, retrying a rejection in place.
+//
+// A rejection used to be recorded and left: the cursor stopped at the frame, every later frame was
+// applied but never acknowledged, and nothing retried it until the session happened to end for
+// some other reason. Now the frame is retried with backoff, and a frame still rejected after the
+// last attempt ends the session, so the resume replays it from the durable cursor.
+func (c *Client) applyFrame(ctx context.Context, e *Envelope) error {
+	delay := c.applyRetryMin
+	for attempt := 1; ; attempt++ {
+		err := c.handleFrame(ctx, e)
+		if err == nil {
+			return nil
+		}
+		var pe *panicError
+		if errors.As(err, &pe) {
+			// PROTOCOL §6b: a panic is not obviously transient, and a deterministic one recurs
+			// on every retry. It is treated as a permanently unappliable frame instead:
+			// accepted, discarded, and logged loudly, exactly like an unknown type or a
+			// malformed payload. The frame's sequence still advances.
+			c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
+				"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
+			return nil
+		}
+		if attempt >= c.applyAttempts {
+			return fmt.Errorf("handler rejected %s seq %s %d times; ending the session so the resume replays it: %w",
+				e.Type, seqString(e.Seq), attempt, err)
+		}
+		c.log.Warn("handler rejected frame; retrying",
+			"type", e.Type, "seq", e.Seq, "attempt", attempt, "retry_in", delay, "error", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, applyRetryMax)
+	}
+}
+
+func seqString(seq *uint64) string {
+	if seq == nil {
+		return "-"
+	}
+	return fmt.Sprint(*seq)
+}
+
 // handleFrame applies one frame under a deadline of its own.
 //
 // The deadline is here because the session context has none: a handler blocked on an unresponsive
 // API server would otherwise hold this goroutine for as long as that lasts, and a stall with no
-// bound is a stall nothing can report. Exceeding it is an ordinary rejection — the ack is withheld
-// and the hub replays the frame on the next resume.
+// bound is a stall nothing can report. Exceeding it is an ordinary rejection, retried like any
+// other.
 func (c *Client) handleFrame(ctx context.Context, e *Envelope) error {
 	ctx, cancel := context.WithTimeout(ctx, applyTimeout)
 	defer cancel()
@@ -631,9 +679,8 @@ func (c *Client) handleFrame(ctx context.Context, e *Envelope) error {
 //
 // Arrival order and applied position are two different cursors and must not be conflated. The
 // expected sequence tracks what has arrived; the durable cursor tracks what has been applied
-// contiguously. A frame the handler refuses stalls the second without stalling the first —
-// withholding the ack is how "I could not apply this" is said, and it must not manufacture a gap
-// out of the peer's next perfectly ordinary frame.
+// contiguously. A frame the handler is still retrying holds the second without holding the
+// first, so it never manufactures a gap out of the peer's next perfectly ordinary frame.
 func (c *Client) accept(e *Envelope) (bool, error) {
 	if !e.Sequenced() {
 		return true, nil
@@ -663,9 +710,9 @@ func (c *Client) accept(e *Envelope) (bool, error) {
 // a reconnect and replays from the last durable point, which is the recoverable direction.
 func (c *Client) advance(ctx context.Context, seq uint64) error {
 	c.mu.Lock()
-	next, holed := c.cursor, c.holed
+	next := c.cursor
 	c.mu.Unlock()
-	if holed || seq != next.Seq+1 {
+	if seq != next.Seq+1 {
 		return nil
 	}
 	next.Seq = seq
