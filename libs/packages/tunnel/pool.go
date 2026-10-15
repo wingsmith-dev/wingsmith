@@ -41,6 +41,26 @@ var ErrNoCluster = errors.New("tunnel: request carries no cluster")
 // caller's own cap means it should never be reachable from the gateway.
 var ErrBodyTooLarge = errors.New("tunnel: request body too large to keep replayable")
 
+// ErrPoolClosed means the pool has been shut down or closed and adopts nothing
+// more.
+var ErrPoolClosed = errors.New("tunnel: pool closed")
+
+// ErrTunnelLimit means adopting a tunnel would take a cluster, or the pool, past
+// its cap.
+//
+// One enrolment token may dial as often as it likes, and every tunnel costs two
+// goroutines and up to ConnWindow of receive buffer here. Without a cap a leaked
+// token, or an agent stuck in a redial loop, grows this process without bound.
+var ErrTunnelLimit = errors.New("tunnel: tunnel limit reached")
+
+// DefaultMaxTunnelsPerCluster is how many tunnels one cluster may hold on one
+// gateway replica. An agent holds a couple per replica and a cluster runs a
+// handful of agents, so this is far above any honest install.
+const DefaultMaxTunnelsPerCluster = 64
+
+// DefaultMaxTunnels is how many tunnels one gateway replica holds in total.
+const DefaultMaxTunnels = 4096
+
 // maxReplayBytes caps the body the pool will hold in order to keep a request
 // replayable. Matched to the gateway's own request cap — move them together.
 //
@@ -93,6 +113,12 @@ type PoolConfig struct {
 	HealthInterval time.Duration
 	// Observer, when set, is told about coverage changes.
 	Observer Observer
+	// MaxTunnelsPerCluster caps the tunnels one cluster holds on this replica.
+	// Zero means DefaultMaxTunnelsPerCluster.
+	MaxTunnelsPerCluster int
+	// MaxTunnels caps the tunnels this replica holds across every cluster. Zero
+	// means DefaultMaxTunnels.
+	MaxTunnels int
 }
 
 // DefaultResponseHeaderTimeout is how long a cluster gets to produce a response
@@ -184,6 +210,12 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 	if cfg.HealthInterval == 0 {
 		cfg.HealthInterval = DefaultHealthInterval
 	}
+	if cfg.MaxTunnelsPerCluster <= 0 {
+		cfg.MaxTunnelsPerCluster = DefaultMaxTunnelsPerCluster
+	}
+	if cfg.MaxTunnels <= 0 {
+		cfg.MaxTunnels = DefaultMaxTunnels
+	}
 
 	// MaxConcurrentStreams is deliberately absent. It is a server setting: x/net's
 	// client advertises ENABLE_PUSH, INITIAL_WINDOW_SIZE, MAX_FRAME_SIZE and
@@ -254,16 +286,20 @@ func dnsLabel(id string) string {
 // peer sends SETTINGS before anything else — that its advertised stream limit
 // has arrived. Admitting requests before then would admit them against x/net's
 // assumed 100 streams rather than the agent's real limit.
+//
+// The pool's state is checked twice: before the handshake, so a dial that
+// cannot be kept costs nothing, and again under the lock that adds it, because
+// a Shutdown or a sibling dial can land while the PING is in flight. A tunnel
+// adopted after Shutdown had collected the tunnels to drain would never be
+// drained.
 func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn, error) {
 	if clusterID == "" {
+		_ = raw.Close()
 		return nil, ErrNoCluster
 	}
-	p.mu.Lock()
-	closed := p.closed
-	p.mu.Unlock()
-	if closed {
+	if err := p.Admit(clusterID); err != nil {
 		_ = raw.Close()
-		return nil, errors.New("tunnel: pool closed")
+		return nil, err
 	}
 
 	cc, err := p.t2.NewClientConn(raw)
@@ -285,6 +321,11 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 	}
 
 	p.mu.Lock()
+	if err := p.admitLocked(clusterID); err != nil {
+		p.mu.Unlock()
+		_ = cc.Close()
+		return nil, err
+	}
 	p.clusters[clusterID] = append(p.clusters[clusterID], conn)
 	p.byConn[cc] = conn
 	siblings := p.snapshotLocked(clusterID)
@@ -300,6 +341,29 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 		p.cfg.Observer.TunnelOpened(clusterID, live)
 	}
 	return conn, nil
+}
+
+// Admit reports whether the pool would adopt one more tunnel to clusterID right
+// now. The listener asks before it accepts a dial, so an agent past the cap is
+// told why rather than handed a connection that is closed under it. Adopt asks
+// again, so the answer is advice and not a reservation.
+func (p *Pool) Admit(clusterID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.admitLocked(clusterID)
+}
+
+func (p *Pool) admitLocked(clusterID string) error {
+	if p.closed {
+		return ErrPoolClosed
+	}
+	if held := len(p.clusters[clusterID]); held >= p.cfg.MaxTunnelsPerCluster {
+		return fmt.Errorf("%w: cluster %s already holds %d tunnels on this replica", ErrTunnelLimit, clusterID, held)
+	}
+	if held := len(p.byConn); held >= p.cfg.MaxTunnels {
+		return fmt.Errorf("%w: this replica already holds %d tunnels", ErrTunnelLimit, held)
+	}
+	return nil
 }
 
 func addrString(conn net.Conn) string {
