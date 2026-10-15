@@ -16,9 +16,11 @@ import asyncio
 import argparse
 import datetime as dt
 
+from typing import cast
 from logging import getLogger
 
 from sqlalchemy import Delete
+from sqlalchemy import CursorResult
 from sqlalchemy import delete
 from sqlalchemy import exists
 from sqlalchemy import select
@@ -61,7 +63,8 @@ async def prune_events(
     total = 0
     while True:
         async with sessions.begin() as db:
-            deleted = (await db.execute(prune_statement(before, batch))).rowcount
+            result = cast(CursorResult, await db.execute(prune_statement(before, batch)))
+            deleted = result.rowcount
         total += deleted
         if deleted < batch:
             return total
