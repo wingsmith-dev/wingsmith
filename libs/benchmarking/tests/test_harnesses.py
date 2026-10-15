@@ -71,3 +71,18 @@ def test_plans_command_lists_every_committed_plan(capsys: pytest.CaptureFixture[
     out = capsys.readouterr().out
     for path in PLANS:
         assert load_plan(path).name in out
+
+
+def test_plans_ship_inside_the_package() -> None:
+    """A wheel carries only the package, so a plan outside it would vanish on install."""
+    package = Path(cli.__file__).resolve().parent
+    assert cli.PLANS_DIR.resolve().is_relative_to(package)
+    assert PLANS, "no committed plans found"
+
+
+def test_vllm_build_context_does_not_depend_on_the_working_directory(monkeypatch, tmp_path) -> None:
+    from hgrbench.harnesses import vllm_bench
+
+    monkeypatch.chdir(tmp_path)
+    assert Path(vllm_bench.BUILD_CONTEXT).is_absolute()
+    assert (Path(vllm_bench.BUILD_CONTEXT) / "Dockerfile").is_file()

@@ -49,9 +49,10 @@ measure each other.
 ## Plans, not flags
 
 A plan is committed TOML — the endpoint, the models, the load points, the ladders,
-the SLA. `plans/smoke.toml` and `plans/deep.toml` are the two profiles. Flags only
-narrow a plan (`--harness`, `--model`), show it (`--dry-run`), or unlock the
-saturation search (`--hard`).
+the SLA. `hgrbench/plans/smoke.toml` and `hgrbench/plans/deep.toml` are the two
+profiles, shipped inside the package so `hgrbench plans` finds them from an install
+too. Flags only narrow a plan (`--harness`, `--model`), show it (`--dry-run`), or
+unlock the saturation search (`--hard`).
 
 That split is on purpose: what got measured is then reviewable in a diff, and a
 number in a report can be traced to a document rather than to somebody's shell
@@ -125,7 +126,7 @@ shows each harness's own value and the spread between them.
 ## Layout
 
 ```
-plans/                    committed suite plans (smoke, deep)
+hgrbench/plans/           committed suite plans (smoke, deep), shipped as package data
 hgrbench/plan.py          plan file → the matrix, the ladders, the ladder specs
 hgrbench/runner.py        one cell at a time; the saturation search
 hgrbench/metrics.py       the field maps: harness export → canonical ids

@@ -31,6 +31,8 @@ the request count and can make the second come out *below* the mean.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from hgrbench.plan import Cell
 from hgrbench.harnesses.base import TOKEN_ENV
 from hgrbench.harnesses.base import Context
@@ -44,7 +46,11 @@ from hgrbench.harnesses.base import shell_command
 
 IMAGE = "hangar/vllm-bench:0.28.0"
 PINNED_VERSION = "0.28.0"
-BUILD_CONTEXT = "libs/benchmarking/images/vllm-bench"
+# Resolved from this file rather than the working directory, so the image builds
+# whichever directory hgrbench runs from. It is outside the package on purpose: the
+# vendored sources are not something a wheel should carry, and an install without a
+# checkout says so when it needs the image (`Runner.build`).
+BUILD_CONTEXT = str(Path(__file__).resolve().parents[2] / "images" / "vllm-bench")
 RESULTS = "/results"
 EXPORT = "run.json"
 ENTRYPOINT = "/bench/main.py"

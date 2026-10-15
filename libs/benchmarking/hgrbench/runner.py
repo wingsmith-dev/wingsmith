@@ -146,8 +146,9 @@ class Runner:
         context = Path(harness.build_context)
         if not context.is_dir():
             raise HarnessError(
-                f"{harness.name} needs the image at {harness.image}, and its build context "
-                f"{harness.build_context} is not in this checkout"
+                f"{harness.name} needs the image {harness.image}, which is built from "
+                f"{harness.build_context}; that directory ships with the source tree, not the "
+                f"package, so build it from a checkout or load the image some other way"
             )
         self.say(f"building {harness.image} from {harness.build_context}")
         done = subprocess.run(["docker", "build", "-t", harness.image, str(context)], text=True)

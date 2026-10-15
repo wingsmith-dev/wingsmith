@@ -5,7 +5,7 @@ Four verbs:
     hgrbench run <plan>        take the measurements
     hgrbench report [<run>]    render a suite run as one HTML page
     hgrbench harnesses         what this runner can drive, and what each is for
-    hgrbench plans             the plans in this checkout
+    hgrbench plans             the plans shipped with hgrbench
 
 `run` is deliberately hard to point somewhere by accident: the endpoint, the
 models, the load points and the ladders all come from a plan file that is committed
@@ -23,6 +23,7 @@ import tempfile
 from pathlib import Path
 from datetime import UTC
 from datetime import datetime
+from importlib import resources
 
 from hgrbench import metrics
 from hgrbench.plan import Plan
@@ -41,7 +42,9 @@ from hgrbench.runner import refuse_invalid
 from hgrbench.harnesses import registry
 
 
-PLANS_DIR = Path(__file__).resolve().parent.parent / "plans"
+# Shipped inside the package, so `hgrbench plans` and a plan named by its stem work
+# from an installed wheel as well as from a checkout.
+PLANS_DIR = Path(resources.files("hgrbench") / "plans")
 DEFAULT_RESULTS = Path(".local/bench")
 
 
@@ -186,7 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="take the measurements a plan describes")
-    run.add_argument("plan", help="a plan name from libs/benchmarking/plans, or a path")
+    run.add_argument("plan", help="a committed plan by name (see `hgrbench plans`), or a path")
     run.add_argument("--results", default=str(DEFAULT_RESULTS), help="where suite runs are kept")
     run.add_argument("--harness", action="append", help="only this harness; repeatable")
     run.add_argument("--model", action="append", help="only this model; repeatable")
@@ -211,7 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
     harnesses = subparsers.add_parser("harnesses", help="what this runner can drive")
     harnesses.set_defaults(func=cmd_harnesses)
 
-    plans = subparsers.add_parser("plans", help="the plans in this checkout")
+    plans = subparsers.add_parser("plans", help="the plans shipped with hgrbench")
     plans.set_defaults(func=cmd_plans)
 
     return parser
