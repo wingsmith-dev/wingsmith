@@ -2,7 +2,6 @@ import { JsonField, NumberField } from "@/components/layout/form"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
-  formatMinutes,
   recipeRoles,
   refusedRoleArgs,
   strandedByRatio,
@@ -252,9 +251,8 @@ export function RoleParamFields({
       })}
       <p className="text-2xs text-muted-foreground">
         These decide what each process is, so they are in the serving digest.
-        Changing them on a running workload reloads both roles at about{" "}
-        {formatMinutes(20)} a worker — the ratio above is the part that stays
-        free.
+        Changing them on a running workload reloads the weights in every worker
+        of both roles — the ratio above is the part that stays free.
       </p>
     </div>
   )

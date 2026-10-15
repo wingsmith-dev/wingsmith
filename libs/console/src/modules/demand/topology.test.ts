@@ -10,7 +10,6 @@ import {
   strandedByRatio,
   roleWorkers,
   recipeRoles,
-  formatMinutes,
   roleReadiness,
   roleReadinessLabel,
   rolesAtGroupCount,
@@ -258,10 +257,14 @@ describe("what a per-role configuration change costs", () => {
     expect(cost.workers).toBe(6)
   })
 
-  it("takes the longest role rather than the sum", () => {
-    // Each role is a Deployment of its own; they are not made to wait for one
-    // another. Four decode at twenty minutes each is the critical path.
-    expect(rolloutCost(disagg())!.minutes).toBe(80)
+  it("names the role with the most workers as the one that sets the length", () => {
+    // Each role is a Deployment of its own and they roll side by side, but a
+    // role's workers reload one at a time. Four decode is the critical path.
+    expect(rolloutCost(disagg())!.longest).toEqual({
+      role: "decode",
+      weight: 2,
+      workers: 4,
+    })
   })
 
   it("keeps serving when every role has a worker to spare", () => {
@@ -295,13 +298,7 @@ describe("what a per-role configuration change costs", () => {
     const cost = rolloutCost(single)!
     expect(cost.servesThrough).toBe(false)
     expect(cost.roleAtRisk).toBe("prefill")
-    expect(cost.minutes).toBe(40)
-  })
-
-  it("reads long rolls in hours", () => {
-    expect(formatMinutes(40)).toBe("40 min")
-    expect(formatMinutes(120)).toBe("2 h")
-    expect(formatMinutes(80)).toBe("1 h 20 min")
+    expect(cost.longest.role).toBe("decode")
   })
 })
 

@@ -28,13 +28,11 @@ import {
   achievedRatio,
   declaredRatio,
   declaredRoles,
-  formatMinutes,
   groupDevices,
   refusedRoleArgs,
   roleOverrides,
   rolloutCost,
   strandedByRatio,
-  WEIGHT_LOAD_MINUTES,
   type RoleReadiness,
   type RolloutCost,
 } from "@/modules/demand/topology"
@@ -46,7 +44,7 @@ import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
  * The subject of every part here is one asymmetry: the ratio is free to change
  * and the per-role configuration is not. A ratio change is a scale and reloads
  * no weights; a change to what a role IS renames the objects Dynamo derives for
- * BOTH roles and costs two weight loads of about twenty minutes each. Nothing
+ * BOTH roles and reloads the weights in every worker of both. Nothing
  * on the screen may let those two look like the same kind of edit.
  */
 
@@ -347,11 +345,12 @@ function RollCost({ cost }: { cost: RolloutCost }) {
         </p>
       )}
       <p>
-        Both roles are renamed and all {cost.workers} workers reload — {counts},
-        about {WEIGHT_LOAD_MINUTES} minutes each, roughly{" "}
-        {formatMinutes(cost.minutes)} for the longest role. Dynamo hashes one
-        worker spec across the whole graph, so editing either role replaces the
-        other role&rsquo;s pods too.
+        Both roles are renamed and all {cost.workers} workers reload the
+        model&rsquo;s weights — {counts}. A role&rsquo;s workers reload one
+        after another, so the roll lasts {cost.longest.workers} weight{" "}
+        {cost.longest.workers === 1 ? "load" : "loads"} end to end, set by{" "}
+        {cost.longest.role}. Dynamo hashes one worker spec across the whole
+        graph, so editing either role replaces the other role&rsquo;s pods too.
       </p>
     </div>
   )
@@ -533,8 +532,8 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
             onClick={save}
           >
             {cost?.servesThrough
-              ? `Reload ${cost.workers} workers · ~${formatMinutes(cost.minutes)}`
-              : `Reload ${cost?.workers ?? 0} workers · ~${formatMinutes(cost?.minutes ?? 0)} down`}
+              ? `Reload ${cost.workers} workers`
+              : `Reload ${cost?.workers ?? 0} workers · model down`}
           </Button>
           <Button
             variant="ghost"

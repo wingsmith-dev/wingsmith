@@ -311,16 +311,6 @@ export function refusedRoleArgs(args: Record<string, unknown>): string[] {
   )
 }
 
-/**
- * What one worker costs to bring up, in minutes.
- *
- * K3's weights were measured at about twenty-two minutes on a B300 and the
- * plan rounds it to twenty. It is a constant here because it is the same
- * constant everywhere it is quoted, and a number that drifts between two
- * screens is a number a person stops believing.
- */
-export const WEIGHT_LOAD_MINUTES = 20
-
 export interface RoleWorkers {
   role: ServingRole
   weight: number
@@ -362,10 +352,12 @@ export interface RolloutCost {
   /** The role that empties, when one does. */
   roleAtRisk: ServingRole | null
   /**
-   * Minutes, from the longest role rather than the sum: each role is a
-   * Deployment of its own and they are not made to wait for each other.
+   * The role with the most workers, which sets how long the roll takes: each
+   * role is a Deployment of its own and they roll side by side, but a role's
+   * own workers reload one after another. How long one weight load takes
+   * depends on the model, the storage and the network, so no time is quoted.
    */
-  minutes: number
+  longest: RoleWorkers
 }
 
 /**
@@ -386,25 +378,16 @@ export function rolloutCost(workload: Workload): RolloutCost | null {
   const perRole = roleWorkers(workload)
   if (perRole.length === 0) return null
   const emptied = perRole.find((role) => role.workers <= 1) ?? null
-  const longest = perRole.reduce(
-    (most, role) => Math.max(most, role.workers),
-    0
+  const longest = perRole.reduce((most, role) =>
+    role.workers > most.workers ? role : most
   )
   return {
     workers: perRole.reduce((total, role) => total + role.workers, 0),
     perRole,
     servesThrough: emptied === null,
     roleAtRisk: emptied?.role ?? null,
-    minutes: longest * WEIGHT_LOAD_MINUTES,
+    longest,
   }
-}
-
-/** `1 h 20 m`, or `40 m`. Hours because six workers is not a number of minutes. */
-export function formatMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
 }
 
 /**
