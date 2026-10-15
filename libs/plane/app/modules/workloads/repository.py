@@ -495,16 +495,12 @@ class WorkloadRepository:
         await self.db.delete(workload)
         await self.db.flush()
 
-    async def policy_by_name(self, name: str) -> Policy | None:
-        result = await self.db.execute(select(Policy).where(Policy.name == name))
-        return result.scalar_one_or_none()
-
     async def detach(self, workload: Workload, subject_type: str, generated: str) -> list[str]:
         """Removes every policy attachment naming this workload, and the policy created for it.
 
         `subject_id` is polymorphic and has no foreign key, so nothing cascades: without
         this a deleted workload leaves attachments pointing at a row that is gone, and
-        its own placement policy holding a name the next workload of that name needs.
+        its own placement policy constraining nothing.
         The generated policy is deleted only while this workload is its sole subject;
         one somebody has since attached elsewhere is theirs now and is left in place.
         """

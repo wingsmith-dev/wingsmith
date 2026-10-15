@@ -488,7 +488,7 @@ async def test_a_region_allow_list_becomes_a_policy_attached_to_the_workload(ses
         " where w.uid = :uid",
         {"uid": workload.id},
     )
-    assert rows == [("llama-prod-placement", ["ap-southeast-1"], "workload")]
+    assert rows == [(f"{workload.id}-placement", ["ap-southeast-1"], "workload")]
 
 
 async def test_the_constraint_a_workload_declared_survives_into_later_expansions(sessions) -> None:
@@ -1227,7 +1227,30 @@ async def test_deleting_a_workload_removes_the_placement_policy_created_for_it(s
     assert await fetch(sessions, "select id from bind_policy_attachment") == []
 
 
-async def test_a_policy_name_collision_names_the_policy(sessions) -> None:
+async def test_two_projects_can_each_constrain_a_workload_of_the_same_name(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "asia", devices=16, region="ap-southeast-1")
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into bind_project (id, uid, tenant_id, slug, name, default_priority_class_id)"
+                " select gen_random_uuid(), :uid, tenant_id, 'research', 'Research', default_priority_class_id"
+                " from bind_project where slug = 'core'"
+            ),
+            {"uid": ids.new_uid(ids.PROJECT)},
+        )
+
+    async with sessions() as db:
+        first = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+    async with sessions() as db:
+        second = await WorkloadService(db).create(create(project="research", allowed_regions=["ap-southeast-1"]))
+
+    names = await fetch(sessions, "select name from bind_policy order by name")
+    assert sorted(names) == sorted([(f"{first.id}-placement",), (f"{second.id}-placement",)])
+
+
+async def test_a_policy_named_like_a_workload_does_not_block_its_constraint(sessions) -> None:
+    """The generated policy is named by workload id, so a policy named after the workload is no collision."""
     await seed_demand(sessions)
     await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
     async with sessions.begin() as db:
@@ -1237,5 +1260,5 @@ async def test_a_policy_name_collision_names_the_policy(sessions) -> None:
         )
 
     async with sessions() as db:
-        with pytest.raises(Conflict, match="policy named 'llama-prod-placement'"):
-            await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+        workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+    assert [d.cluster_name for d in workload.deployments] == ["asia"]

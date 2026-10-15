@@ -142,11 +142,10 @@ def violated(exc: IntegrityError) -> str | None:
     return None
 
 
-def _conflict(exc: IntegrityError, name: str, project: str | None) -> Conflict:
+def _conflict(exc: IntegrityError, name: str, project: str | None, policy: str | None = None) -> Conflict:
     """A conflict that says which name collided, rather than blaming the workload's for all of them."""
     constraint = violated(exc)
-    if constraint == POLICY_NAME_CONSTRAINT:
-        policy = constraint_name(name)
+    if constraint == POLICY_NAME_CONSTRAINT and policy is not None:
         return Conflict(
             f"a policy named {policy!r} already exists, and it is the name this workload's placement constraint "
             "would take",
@@ -163,16 +162,16 @@ def _conflict(exc: IntegrityError, name: str, project: str | None) -> Conflict:
     return Conflict("workload conflicts with an existing one", {"constraint": constraint})
 
 
-def constraint_name(workload_name: str) -> str:
+def constraint_name(workload_uid: str) -> str:
     """The name of the policy a workload's own allow-list becomes.
 
-    Derived from the workload rather than random so that the policies list reads as a
-    list of intentions instead of a list of identifiers, and so a second workload of the
-    same name in another project collides loudly — `Policy.name` is globally unique, and
-    a silent second constraint sharing one name would be worse than the conflict. The
-    conflict names the policy, not the workload, so the caller knows which name to change.
+    Derived from the workload's id, not its name. `Policy.name` is unique across the
+    plane while a workload name is unique only inside its project, so a name-derived
+    policy would stop two projects from each having a constrained workload of the same
+    name, and the collision would tell one tenant that another's workload exists. The
+    policy's description carries the workload's name for a reader.
     """
-    return f"{workload_name}{CONSTRAINT_SUFFIX}"
+    return f"{workload_uid}{CONSTRAINT_SUFFIX}"
 
 
 def _reshape_unavailability(before_devices: int, after_devices: int) -> dict:
@@ -925,9 +924,10 @@ class WorkloadService:
                 "cluster pins placement to one and an allow-list asks placement to choose",
                 {"cluster": data.cluster},
             )
+        workload_uid = new_uid(WORKLOAD)
         constraint = (
             PolicySnapshot(
-                name=constraint_name(data.name),
+                name=constraint_name(workload_uid),
                 enabled=True,
                 allowed_regions=tuple(data.allowed_regions),
                 allowed_residencies=(),
@@ -939,15 +939,8 @@ class WorkloadService:
             else None
         )
 
-        if constraint is not None and await self.repo.policy_by_name(constraint.name) is not None:
-            raise Conflict(
-                f"a policy named {constraint.name!r} already exists, and it is the name this workload's "
-                "placement constraint would take; delete or rename that policy, or name the workload differently",
-                {"policy": constraint.name},
-            )
-
         workload = Workload(
-            uid=new_uid(WORKLOAD),
+            uid=workload_uid,
             name=data.name,
             kind=data.kind,
             project_id=project.id,
@@ -1006,7 +999,7 @@ class WorkloadService:
                     Policy(
                         uid=new_uid(POLICY),
                         name=constraint.name,
-                        description=f"Placement constraint declared when {data.name} was created.",
+                        description=f"Placement constraint declared when workload {data.name} was created.",
                         allowed_regions=list(data.allowed_regions),
                         allowed_cluster_ids=[c.id for c in narrowed],
                         enabled=True,
@@ -1056,7 +1049,7 @@ class WorkloadService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise _conflict(exc, data.name, data.project) from exc
+            raise _conflict(exc, data.name, data.project, None if constraint is None else constraint.name) from exc
 
         for row in (await self.repo.deployments([workload.id])).get(workload.id, []):
             await self._announce(row.cluster_uid, row[0].uid, row[0].generation)
@@ -1133,8 +1126,8 @@ class WorkloadService:
         are declared here and take effect at the next expansion rather than
         reshuffling a running workload the moment they are written.
 
-        The name is fixed. Every deployment and the workload's placement policy are
-        named after it, and a cluster knows the deployment by that name; renaming would
+        The name is fixed. Every deployment is named after it and a cluster knows the
+        deployment by that name; renaming would
         either leave them behind or replace every running copy. A patch restating the
         current name is accepted.
 
@@ -1163,8 +1156,8 @@ class WorkloadService:
             name = fields.pop("name")
             if name != workload.name:
                 raise Invalid(
-                    "a workload's name cannot change: its deployments and placement policy are named after "
-                    "it; create a new workload under the new name",
+                    "a workload's name cannot change: its deployments are named after it; create a new "
+                    "workload under the new name",
                     {"name": workload.name, "requested": name},
                 )
         if "strategy" in fields and fields["strategy"] not in STRATEGIES:
@@ -1673,7 +1666,7 @@ class WorkloadService:
             f"{workload.name} was deleted from {len(deployments)} cluster(s)",
             {"deployments": str(len(deployments))},
         )
-        await self.repo.detach(workload, SUBJECT_WORKLOAD, constraint_name(workload.name))
+        await self.repo.detach(workload, SUBJECT_WORKLOAD, constraint_name(workload.uid))
         await self.repo.delete(workload, deployments)
         await self.db.commit()
         for cluster_uid, uid, generation in announcements:

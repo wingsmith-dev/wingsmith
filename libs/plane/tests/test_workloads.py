@@ -477,8 +477,8 @@ def _integrity(constraint_name):
 def test_a_policy_name_collision_is_reported_as_the_policy_not_the_workload():
     from app.modules.workloads.services import _conflict
 
-    conflict = _conflict(_integrity("bind_policy_name_key"), "llama", "core")
-    assert "policy named 'llama-placement'" in str(conflict)
+    conflict = _conflict(_integrity("bind_policy_name_key"), "llama", "core", "wkl_abc-placement")
+    assert "policy named 'wkl_abc-placement'" in str(conflict)
     assert "workload" in str(_conflict(_integrity("uq_demand_workload_project_name"), "llama", "core"))
     assert "deployment named 'llama'" in str(_conflict(_integrity("uq_demand_deployment_cluster_name"), "llama", None))
 
