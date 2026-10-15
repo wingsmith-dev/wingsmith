@@ -3,6 +3,8 @@ package metrics
 import (
 	"testing"
 
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -78,5 +80,44 @@ func TestCoverageDropsClustersThatLeaveTheTable(t *testing.T) {
 	recorder.TunnelCoverage([]TunnelSample{{ClusterID: "clu_ap", Cluster: "ap", Reachable: true}})
 	if _, ok := labelled(t, recorder, "hangar_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_us", "cluster": "us"}); ok {
 		t.Fatal("a cluster that left the table is still reporting coverage")
+	}
+}
+
+// The listener and the pool find these by type assertion, so a renamed method
+// would silently stop counting.
+var (
+	_ tunnel.DuplicateObserver  = (*Recorder)(nil)
+	_ tunnel.RevocationObserver = (*Recorder)(nil)
+	_ tunnel.RetryObserver      = (*Recorder)(nil)
+)
+
+// TestDuplicatesRevocationsAndRetriesAreTheirOwnSeries. A duplicate dial is how
+// an agent finds every replica and a revocation is the plane working; folding
+// either into the refused count would make both look like failures.
+func TestDuplicatesRevocationsAndRetriesAreTheirOwnSeries(t *testing.T) {
+	recorder := New()
+
+	recorder.TunnelDialDuplicate()
+	recorder.TunnelDialDuplicate()
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_dials_duplicate_total", map[string]string{}); !ok || got != 2 {
+		t.Fatalf("duplicates = %v (%v)", got, ok)
+	}
+	if _, ok := labelled(t, recorder, "hangar_gateway_tunnel_dials_rejected_total", map[string]string{"reason": "duplicate"}); ok {
+		t.Fatal("a duplicate was counted as a refused dial")
+	}
+
+	recorder.TunnelRevoked("clu_ap")
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnels_revoked_total", map[string]string{"cluster_id": "clu_ap"}); !ok || got != 1 {
+		t.Fatalf("revoked = %v (%v)", got, ok)
+	}
+
+	recorder.TunnelRetry("clu_ap", tunnel.RetryWritten)
+	recorder.TunnelRetry("clu_ap", tunnel.RetryResent)
+	recorder.TunnelRetry("clu_ap", tunnel.RetryResent)
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "written"}); !ok || got != 1 {
+		t.Fatalf("written = %v (%v)", got, ok)
+	}
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "resent"}); !ok || got != 2 {
+		t.Fatalf("resent = %v (%v)", got, ok)
 	}
 }

@@ -22,8 +22,31 @@ type TunnelSample struct {
 	Reachable bool
 }
 
+// tunnelEvents are the tunnel series registered by registerTunnels itself.
+type tunnelEvents struct {
+	duplicates prometheus.Counter
+	revoked    *prometheus.CounterVec
+	retries    *prometheus.CounterVec
+}
+
 // registerTunnels builds the tunnel series. Called from New.
 func (r *Recorder) registerTunnels() {
+	r.tunnelEvents = tunnelEvents{
+		duplicates: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "hangar_gateway_tunnel_dials_duplicate_total",
+			Help: "Agent dials that landed on this replica after the agent already covered it. Not a refusal: it is how an agent behind one address finds every replica. A rate that never settles means the replica count the agents were told is wrong.",
+		}),
+		revoked: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "hangar_gateway_tunnels_revoked_total",
+			Help: "Open tunnels closed because the plane no longer accepts their token, or now resolves it to another cluster.",
+		}, tunnelLabels),
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "hangar_gateway_tunnel_retries_total",
+			Help: "Requests whose tunnel died under them with no GOAWAY, by what became of them: resent down another tunnel, not resent because the agent may already have forwarded them (written), or out of attempts (exhausted).",
+		}, []string{"cluster_id", "outcome"}),
+	}
+	r.registry.MustRegister(r.tunnelEvents.duplicates, r.tunnelEvents.revoked, r.tunnelEvents.retries)
+
 	r.tunnels = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "hangar_gateway_tunnels",
 		Help: "Live tunnels this replica holds to a cluster. Per-replica by nature: an agent dials one pod, not a Service, so this is coverage of this process and not of the deployment.",
@@ -31,7 +54,7 @@ func (r *Recorder) registerTunnels() {
 
 	r.tunnelDials = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "hangar_gateway_tunnel_dials_rejected_total",
-		Help: "Agent dials that never became tunnels, by reason. unauthorized is a credential problem and unavailable is the plane being unreachable; the two need different people.",
+		Help: "Agent dials that never became tunnels, by reason. unauthorized is a credential problem and unavailable is the plane being unreachable; the two need different people. limit is a dial that authenticated while its cluster or this replica held as many tunnels as allowed, and throttled one from an address that kept failing or had too many handshakes open.",
 	}, []string{"reason"})
 
 	r.tunnelCoverage = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -54,9 +77,28 @@ func (r *Recorder) TunnelClosed(clusterID string, live int) {
 	r.tunnels.WithLabelValues(clusterID).Set(float64(live))
 }
 
-// TunnelDialRejected records a dial that did not authenticate.
+// TunnelDialRejected records a dial that did not become a tunnel. Most did not
+// authenticate; a "limit" dial did, and was refused for the tunnel cap.
 func (r *Recorder) TunnelDialRejected(reason string) {
 	r.tunnelDials.WithLabelValues(reason).Inc()
+}
+
+// TunnelDialDuplicate records a dial to a replica the agent already covers.
+// It implements tunnel.DuplicateObserver.
+func (r *Recorder) TunnelDialDuplicate() {
+	r.tunnelEvents.duplicates.Inc()
+}
+
+// TunnelRevoked records an open tunnel closed for its token. It implements
+// tunnel.RevocationObserver.
+func (r *Recorder) TunnelRevoked(clusterID string) {
+	r.tunnelEvents.revoked.WithLabelValues(clusterID).Inc()
+}
+
+// TunnelRetry records what became of a request whose tunnel died. It
+// implements tunnel.RetryObserver.
+func (r *Recorder) TunnelRetry(clusterID, outcome string) {
+	r.tunnelEvents.retries.WithLabelValues(clusterID, outcome).Inc()
 }
 
 // TunnelCoverage records which clusters in the loaded table this replica can

@@ -82,6 +82,7 @@ type Recorder struct {
 	tunnels        *prometheus.GaugeVec
 	tunnelDials    *prometheus.CounterVec
 	tunnelCoverage *prometheus.GaugeVec
+	tunnelEvents   tunnelEvents
 
 	tableRefreshes  *prometheus.CounterVec
 	tableRefreshOK  prometheus.Gauge
