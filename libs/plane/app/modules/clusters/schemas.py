@@ -212,7 +212,8 @@ class ClusterUpdateRequest(Struct):
 
 
 class TunnelAuthRequest(Struct):
-    """The enrolment token a serving agent presented when it dialled the gateway.
+    """The enrolment token a serving agent presented when it dialled the gateway,
+    and where the dial came from.
 
     The token travels in the body and not in `Authorization`, because that header
     already carries the caller's own credential. One request, two credentials, and
@@ -220,6 +221,9 @@ class TunnelAuthRequest(Struct):
     """
 
     token: Annotated[str, Meta(max_length=512)]
+    source: Annotated[str, Meta(max_length=128)] | None = None
+    """The agent's address as the gateway saw it. Keys the failure budget, so one
+    source's bad tokens throttle only that source."""
 
 
 class TunnelIdentitySchema(Struct):

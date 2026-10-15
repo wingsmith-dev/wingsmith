@@ -117,7 +117,8 @@ class ClusterRoutes(Controller):
         """
         if context.principal.kind != "gateway":
             raise Forbidden("agent verification is for the gateway's service credential only")
-        return Response(await svc.verify_tunnel_token(data.token))
+        source = data.source or f"principal:{context.principal.id}"
+        return Response(await svc.verify_tunnel_token(data.token, source=source))
 
     @patch("/{ref:str}")
     async def update_cluster(

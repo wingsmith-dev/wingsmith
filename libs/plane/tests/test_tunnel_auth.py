@@ -27,6 +27,7 @@ from app.modules.clusters.schemas import ClusterCreateRequest
 from app.modules.clusters.schemas import ClusterUpdateRequest
 from app.modules.clusters.services import TUNNEL_AUTH_GUESSES
 from app.modules.clusters.services import ClusterService
+from app.modules.clusters.services import KeyedFailureBudget
 
 
 @pytest.fixture(autouse=True)
@@ -90,9 +91,52 @@ async def test_a_run_of_guesses_is_rate_limited():
     service = ClusterService(db=None)
     for _ in range(TUNNEL_AUTH_GUESSES.limit):
         with pytest.raises(NotAuthorized):
-            await service.verify_tunnel_token("junk")
+            await service.verify_tunnel_token("junk", source="10.0.0.1")
     with pytest.raises(TooManyRequests):
-        await service.verify_tunnel_token("junk")
+        await service.verify_tunnel_token("junk", source="10.0.0.1")
+
+
+async def test_one_source_s_guesses_do_not_throttle_another():
+    """A single process-wide budget let whoever sent failures spend it for everyone."""
+    service = ClusterService(db=None)
+    for _ in range(TUNNEL_AUTH_GUESSES.limit):
+        with pytest.raises(NotAuthorized):
+            await service.verify_tunnel_token("junk", source="10.0.0.1")
+    with pytest.raises(NotAuthorized):
+        await service.verify_tunnel_token("junk", source="10.0.0.2")
+
+
+async def test_a_throttled_answer_still_carries_the_verdict():
+    """A gateway must be able to drop a rotated token's cached identity even while throttled."""
+    service = ClusterService(db=None)
+    for _ in range(TUNNEL_AUTH_GUESSES.limit):
+        with pytest.raises(NotAuthorized) as refused:
+            await service.verify_tunnel_token("junk", source="10.0.0.1")
+        assert refused.value.detail == {"verdict": "unknown_token"}
+    with pytest.raises(TooManyRequests) as throttled:
+        await service.verify_tunnel_token("junk", source="10.0.0.1")
+    assert throttled.value.detail["verdict"] == "unknown_token"
+    assert throttled.value.detail["retry_after_seconds"] == 60
+
+
+def test_throttled_and_refused_are_told_apart_over_http():
+    for _ in range(TUNNEL_AUTH_GUESSES.limit):
+        TUNNEL_AUTH_GUESSES.fail("10.0.0.9")
+    with client(AuthManager.gateway_principal()) as http:
+        throttled = http.post("/clusters/tunnel-auth", json={"token": "junk", "source": "10.0.0.9"})
+        refused = http.post("/clusters/tunnel-auth", json={"token": "junk", "source": "10.0.0.10"})
+    assert (throttled.status_code, throttled.json()["code"]) == (429, "rate_limited")
+    assert (refused.status_code, refused.json()["code"]) == (401, "not_authorized")
+    assert throttled.json()["detail"]["verdict"] == refused.json()["detail"]["verdict"] == "unknown_token"
+
+
+def test_the_keyed_budget_forgets_the_least_recently_charged_source():
+    budget = KeyedFailureBudget(limit=1, window_seconds=60.0, max_keys=2)
+    budget.fail("a")
+    budget.fail("b")
+    budget.fail("c")
+    assert not budget.spent("a")
+    assert budget.spent("b") and budget.spent("c")
 
 
 def test_the_budget_forgets_failures_older_than_its_window():
@@ -164,9 +208,10 @@ async def test_a_disabled_cluster_is_refused_and_costs_nothing(svc):
     await svc.update(created.id, ClusterUpdateRequest(phase="disabled"))
 
     for _ in range(TUNNEL_AUTH_GUESSES.limit + 1):
-        with pytest.raises(NotAuthorized):
-            await svc.verify_tunnel_token(token)
-    assert not TUNNEL_AUTH_GUESSES.spent()
+        with pytest.raises(NotAuthorized) as refused:
+            await svc.verify_tunnel_token(token, source="10.0.0.1")
+        assert refused.value.detail == {"verdict": "cluster_disabled"}
+    assert not TUNNEL_AUTH_GUESSES.spent("10.0.0.1")
 
 
 @pytest.mark.database

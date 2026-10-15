@@ -5,6 +5,7 @@ import datetime as dt
 from uuid import UUID
 from typing import NoReturn
 from logging import getLogger
+from collections import OrderedDict
 
 import yaml
 
@@ -52,25 +53,51 @@ RESERVED_NAMES = frozenset({"rollups", "tunnel-auth"})
 """Fixed segments under `/v1/clusters`. A cluster called `rollups` would be
 unreachable by name, because `GET /v1/clusters/rollups` is the rollup list."""
 
-TUNNEL_AUTH_GUESSES = FailureBudget(limit=20, window_seconds=60.0)
-"""Failed agent verifications this process will answer in a rolling minute.
 
-Twenty is well above what a healthy fleet produces — verification happens once
-per tunnel, at connection setup, and the gateway caches the answer for the life of
-that connection, so a fleet of a hundred clusters restarting all at once makes a
-hundred *successful* calls and spends nothing here. It is far below what guessing
-a 256-bit token needs. Reaching this route at all requires the gateway's own
-credential, so an exhausted budget means either that credential leaked or a
-agent is looping on a token nobody has: both are worth a 429 and a log line.
+class KeyedFailureBudget:
+    """One `FailureBudget` per key, so one source's failures spend only its own.
 
-Spent only by failures, and consulted only on the failure path, so a valid token
-is never refused by it. The reverse — gating every call on the budget — reads as
-the safer choice and is not: one cluster left with a stale token retries eight
-dial slots at `BackoffMax`, which is roughly thirty refusals a minute against
-this limit, so the budget stays spent for as long as that agent is installed
-and no other cluster can establish a tunnel again. That is a fleet-wide outage
-caused by one misconfigured cluster. A guesser still gets nothing but `429`s here;
-what it no longer gets is everyone else's dials.
+    Bounded: past `max_keys` the least recently charged key is forgotten, which
+    errs towards answering rather than towards holding memory for every address
+    that ever sent a bad token.
+    """
+
+    def __init__(self, limit: int, window_seconds: float, max_keys: int = 4096) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self.max_keys = max_keys
+        self._budgets: OrderedDict[str, FailureBudget] = OrderedDict()
+
+    def spent(self, key: str) -> bool:
+        budget = self._budgets.get(key)
+        return budget is not None and budget.spent()
+
+    def fail(self, key: str) -> None:
+        budget = self._budgets.pop(key, None) or FailureBudget(self.limit, self.window_seconds)
+        budget.fail()
+        self._budgets[key] = budget
+        while len(self._budgets) > self.max_keys:
+            self._budgets.popitem(last=False)
+
+    def clear(self) -> None:
+        self._budgets.clear()
+
+
+TUNNEL_AUTH_GUESSES = KeyedFailureBudget(limit=20, window_seconds=60.0)
+"""Failed agent verifications answered per source in a rolling minute.
+
+Keyed by the agent's address as the gateway saw it (`TunnelAuthRequest.source`),
+or by the calling principal when the gateway does not say. A single budget for
+the whole process let anyone able to send failures spend it for everybody, and
+an exhausted budget used to answer with a bare 429 that a gateway could not
+tell from an outage, so a token that had just been rotated out kept working
+for as long as the gateway's cache grace lasted.
+
+Twenty is well above what a healthy agent produces — verification happens once
+per tunnel, at connection setup — and far below what guessing a 256-bit token
+needs. Spent only by failures and consulted only on the failure path, after the
+lookup, so a valid token is never refused by it, and a refusal that is
+throttled still carries the verdict (`unknown_token`) in its detail.
 """
 
 
@@ -634,19 +661,27 @@ class ClusterService:
         await self.db.refresh(cluster)
         return self._render_setup(cluster, hub_url, enrolment_token=token)
 
-    def _spend_tunnel_guess(self, message: str) -> NoReturn:
-        """Charges one failed verification to the budget and refuses.
+    def _spend_tunnel_guess(self, source: str, message: str) -> NoReturn:
+        """Charges one failed verification to `source`'s budget and refuses.
 
         Only failures reach here, which is the whole point: the budget is read on
         the way to a refusal and never on the way to an identity, so a cluster
         presenting a good token is never rate-limited by somebody else's bad one.
-        """
-        if TUNNEL_AUTH_GUESSES.spent():
-            raise TooManyRequests("too many failed agent verifications; retry shortly")
-        TUNNEL_AUTH_GUESSES.fail()
-        raise NotAuthorized(message)
 
-    async def verify_tunnel_token(self, token: str) -> TunnelIdentitySchema:
+        A spent budget answers `429 rate_limited` rather than `401`, so a caller
+        can slow down, but the detail still says `verdict: unknown_token`: the
+        lookup has already happened, and a gateway must be able to drop a cached
+        identity for a rotated token whether or not this source is throttled.
+        """
+        if TUNNEL_AUTH_GUESSES.spent(source):
+            raise TooManyRequests(
+                "too many failed agent verifications from this source; retry shortly",
+                {"verdict": "unknown_token", "retry_after_seconds": int(TUNNEL_AUTH_GUESSES.window_seconds)},
+            )
+        TUNNEL_AUTH_GUESSES.fail(source)
+        raise NotAuthorized(message, {"verdict": "unknown_token"})
+
+    async def verify_tunnel_token(self, token: str, source: str = "") -> TunnelIdentitySchema:
         """Resolves a serving agent's enrolment token to the cluster it belongs to.
 
         A third verifier over the same credential the hub and the metrics write
@@ -670,25 +705,24 @@ class ClusterService:
         already gone from `GET /v1/endpoints/resolved`), and a `pending` one may
         bring its agent up before its operator has completed a handshake.
 
-        A wrong or unknown token spends from a shared failure budget; a known
-        token belonging to a disabled cluster does not, or one cluster left
-        disabled with an agent retry loop would deny every other cluster's
-        dials. For the same reason the budget is never consulted before the
-        lookup: a cluster holding a stale token must not be able to refuse a
-        cluster holding a good one.
+        A wrong or unknown token spends from `source`'s failure budget (see
+        `TUNNEL_AUTH_GUESSES`); a known token belonging to a disabled cluster
+        does not. The budget is never consulted before the lookup: a cluster
+        holding a stale token must not be able to refuse a cluster holding a
+        good one.
         """
         if not AuthManager.looks_like_enrolment(token):
-            self._spend_tunnel_guess("not a cluster enrolment token")
+            self._spend_tunnel_guess(source, "not a cluster enrolment token")
 
         digest = AuthManager.hash_enrolment_token(token)
         cluster = await self.repo.by_token_hash(digest)
         if cluster is None or not hmac.compare_digest(cluster.token_hash or "", digest):
             logger.warning("cluster.tunnel_auth.refused reason=unknown_token")
-            self._spend_tunnel_guess("unknown cluster enrolment token")
+            self._spend_tunnel_guess(source, "unknown cluster enrolment token")
 
         if cluster.phase == "disabled":
             logger.warning("cluster.tunnel_auth.refused cluster=%s reason=disabled", cluster.uid)
-            raise NotAuthorized(f"cluster {cluster.name!r} is disabled")
+            raise NotAuthorized(f"cluster {cluster.name!r} is disabled", {"verdict": "cluster_disabled"})
 
         return TunnelIdentitySchema(cluster_id=cluster.uid, cluster_name=cluster.name)
 
