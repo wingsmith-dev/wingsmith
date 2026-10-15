@@ -8,7 +8,7 @@ import {
   redirect,
   useRouter,
 } from "@tanstack/react-router"
-import { TanStackRouterDevtools } from "@tanstack/router-devtools"
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools"
 
 function RootErrorComponent({ error }: { error: unknown }) {
   const router = useRouter()
