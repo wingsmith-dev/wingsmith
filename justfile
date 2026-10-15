@@ -446,8 +446,7 @@ conformance-test *args:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
-# Helm's crds/ dir is a plain copy, never templated. It mirrors the hangar.dev_* files exactly, so
-# a CRD renamed or removed at the source does not linger in the chart.
+# Helm's crds/ dir is a plain copy, never templated — kept in step by hand when the CRDs change.
 # Copy the hangar CRDs into the chart from their source of truth in libs/operator/deploy/crd
 chart-sync-crds:
     #!/usr/bin/env bash
@@ -484,8 +483,8 @@ chart-lint:
       --set hfToken.create=true --set hfToken.value=hf_lint \
       --set serving.enabled=true --set serving.host=lint.example.com \
       --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend >/dev/null
-    # The frontend and the engine are configured separately, and either can pull its image from a
-    # private registry. In both cases the credential must be copied from the release namespace into the
+    # The frontend and the engine are configured separately, and either can pull a private runtime
+    # image. In both cases the credential must be copied from the release namespace into the
     # workload namespace. The key is `frontend.imagePullSecrets` and not `operator.frontend.*`:
     # the pull secret is common to both frontend modes, so it stayed at `frontend.*` when the
     # per-model knobs moved under `frontend.perModel.*`.
