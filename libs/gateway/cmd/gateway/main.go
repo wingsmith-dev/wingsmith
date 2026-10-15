@@ -34,13 +34,11 @@ func main() {
 	planeURL := flag.String("plane-url", "", "hangar plane base URL (HANGAR_PLANE_URL env fallback)")
 	resync := flag.Duration("resync", 30*time.Second, "how often to re-read the routing table")
 	credentialsPath := flag.String("credentials", "", "path to the mounted credential file (HANGAR_GATEWAY_CREDENTIALS env fallback)")
-	// Both of the settings below default to something that works and are read
-	// from the environment as well as the command line, and neither is ever
-	// fatal by its absence. That is not politeness, it is the deploy path:
-	// `just deploy plane` runs `kubectl apply -k infra/`, and infra/ carries
-	// this component's manifest — so a manifest that names a flag the running
-	// image does not know reaches the old binary first and flag.Parse exits 2,
-	// which is a crashloop of the data plane caused by deploying the control
+	// The settings below default to something that works and are read from the
+	// environment as well as the command line, and none is fatal by its
+	// absence. That is the deploy path, not politeness: a manifest rolled out
+	// before the image it names reaches the old binary first, and a flag that
+	// binary does not know makes flag.Parse exit 2, a crashloop of the data
 	// plane. An unknown environment variable is inert; an unknown flag is not.
 	metricsAddr := flag.String("metrics-listen", "", "address for the Prometheus /metrics listener, empty for the default (HANGAR_GATEWAY_METRICS_LISTEN env fallback, \"off\" to disable)")
 	probeToken := flag.String("probe-token", "", "token the conformance runner presents to mark its traffic as probe rather than live; accepts a comma-separated pair while rotating (HANGAR_GATEWAY_PROBE_TOKEN env fallback)")
@@ -402,12 +400,14 @@ const tunnelCertReloadEvery = 10 * time.Minute
 // the property to keep: a plane that is down means existing tunnels go on
 // serving, and only a new dial fails — and even a new dial succeeds while the
 // listener's cache still holds an answer for its token.
+//
 // The replica count reported to agents is a number this process is told, not one
 // it discovers. Discovering it would mean a Kubernetes client, and the gateway
 // not having one is a property worth more than the convenience — so scaling the
-// gateway is two numbers in one file, `replicas` and HANGAR_GATEWAY_REPLICAS in
-// infra/80-gateway.yaml, and changing either restarts the pods, which is what
-// makes every agent redial and read the new number.
+// gateway is two numbers that must move together in its manifest, the
+// StatefulSet's `replicas` and HANGAR_GATEWAY_REPLICAS, and changing either
+// restarts the pods, which is what makes every agent redial and read the new
+// number. See "Scaling" in the README.
 //
 // Setting it too low is the failure that matters: agents stop dialling before
 // they have covered every replica, and the replicas they missed answer nothing

@@ -82,6 +82,8 @@ does not learn whether a tenant is enabled.
 | `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
 | `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
+| `-gateways` / `HANGAR_GATEWAY_REPLICAS` | how many gateway replicas are running, told to every dialling agent; must equal the StatefulSet's `replicas`. See [Scaling](#scaling) |
+| `-gateway-id` / `HANGAR_GATEWAY_ID` | this replica's identity, reported to agents; defaults to the hostname, which is the pod name in a StatefulSet |
 | `HANGAR_GATEWAY_REDACT_NAMES` | comma-separated names your own infrastructure goes by, redacted from quoted engine messages on top of the built-in stack names; env only |
 | `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
 | `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` | requests one tenant may have in flight on one replica, default `1024`, `0` for no cap |
@@ -96,12 +98,11 @@ does not learn whether a tenant is enabled.
 | `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | shutdown phases, default `5s` / `20s` / `5s`; see [Shutdown](#shutdown) |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
-None of the last three is required and none is fatal by its absence, which is a deploy constraint
-rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/` carries this
-component's manifest, so a manifest naming a flag the running image does not know reaches the old
-binary and `flag.Parse` exits 2. Prefer the environment variable when adding one to a manifest — an
-unknown variable is inert, an unknown flag is a crashloop of the data plane caused by deploying the
-control plane. `HANGAR_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
+Only the plane URL and the service token are required; nothing else is fatal by its absence. That is
+a deploy constraint rather than a courtesy: a manifest rolled out before the image it names reaches
+the old binary first, and a flag that binary does not know makes `flag.Parse` exit 2. Prefer the
+environment variable when adding one to a manifest — an unknown variable is inert, an unknown flag
+is a crashloop of the data plane. `HANGAR_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
 manifest naming its address is exactly the change that turns direct tenants on.
 
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
@@ -136,6 +137,27 @@ The check decodes `messages` and `input` once per request, so it costs time on a
 It does not replace the engine's own control (vLLM's `--allowed-media-domains`) or an egress
 NetworkPolicy on the worker namespace, which also cover traffic that did not come through this
 gateway. Use all three where tenants can send media URLs.
+
+## Scaling
+
+Agents dial out to the gateway, and every replica needs a tunnel from every cluster it routes to.
+An agent learns how many replicas there are from the number each replica reports on the handshake,
+and keeps redialling the tunnel address until it has a tunnel to that many distinct gateway ids.
+The gateway does not discover that number: it has no Kubernetes client, so it is told with
+`HANGAR_GATEWAY_REPLICAS`, and that value must equal the StatefulSet's `replicas`.
+
+- **Set too low**, agents stop dialling before they cover every replica. The replicas they missed
+  hold no tunnel for those clusters and answer `503 no_capacity` for their models while reporting
+  healthy. This is the failure to avoid.
+- **Set too high**, agents keep redialling and land on replicas they already hold. It costs some
+  dials and nothing else.
+- **Unset**, every replica reports one, which is only right for a single replica. The gateway logs a
+  warning at startup.
+
+Change both numbers in the same rollout. The pods restart, every agent redials, and each reads the
+new count. Readiness (`/readyz`) only fails while a replica can reach none of the clusters in its
+routing table, so a replica missing one cluster's tunnel stays in the Service and answers `503` for
+that cluster's models; `hangar_gateway_tunnel_coverage` shows which replica lacks which cluster.
 
 ## Shutdown
 

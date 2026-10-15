@@ -138,7 +138,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 		{
 			name:   "a word that names the stack",
 			status: http.StatusBadRequest,
-			detail: "vllm_omni rejected the request: see ghcr.io/hangar-dev/runtime and Dynamo docs",
+			detail: "vllm_omni rejected the request: see ghcr.io/hangar-dev/engine and Dynamo docs",
 			never:  []string{"vllm", "ghcr.io", "Dynamo"},
 		},
 		{
