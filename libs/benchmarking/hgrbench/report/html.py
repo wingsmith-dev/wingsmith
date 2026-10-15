@@ -20,6 +20,7 @@ versioned URL that will not be there forever.
 
 from __future__ import annotations
 
+import html
 import json
 
 from typing import Any
@@ -115,11 +116,23 @@ def payload(suite: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def embedded_json(value: Any) -> str:
+    """JSON that cannot end the `<script>` element it is embedded in.
+
+    `<`, `>` and `&` are written as JSON escapes, which `JSON.parse` reads back as the
+    same characters. Left alone, a note, a model name or an error containing
+    `</script>` would close the data block and put the rest of it in the page as
+    markup.
+    """
+    text = json.dumps(value)
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def render(suite: dict[str, Any], destination: Path) -> Path:
     """Write the page and return where it went."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    body = TEMPLATE.replace("__TITLE__", suite.get("run_id", "benchmark"))
-    body = body.replace("__DATA__", json.dumps(payload(suite)))
+    body = TEMPLATE.replace("__TITLE__", html.escape(str(suite.get("run_id", "benchmark"))))
+    body = body.replace("__DATA__", embedded_json(payload(suite)))
     destination.write_text(body)
     return destination
 
@@ -278,6 +291,11 @@ const el = (n, a = {}) => { const e = document.createElementNS(SVGNS, n);
 const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? '—'
   : Math.abs(v) >= 1000 ? v.toLocaleString(undefined, {maximumFractionDigits: 0})
   : v.toLocaleString(undefined, {maximumFractionDigits: d});
+// Every string that came from the suite goes through this before it reaches innerHTML.
+// Model names, statuses, notes and error text are written by harnesses and plans, not
+// by this page, and none of them is markup.
+const ESCAPES = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ESCAPES[c]);
 const median = (xs) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
@@ -285,8 +303,8 @@ const tip = document.getElementById('tip');
 function hoverable(node, title, rows) {
   node.classList.add('mark');
   node.addEventListener('pointerenter', () => {
-    tip.innerHTML = '<b>' + title + '</b>' + rows.filter(Boolean)
-      .map(([k, v]) => '<span class="k">' + k + '</span>' + v).join('<br>');
+    tip.innerHTML = '<b>' + esc(title) + '</b>' + rows.filter(Boolean)
+      .map(([k, v]) => '<span class="k">' + esc(k) + '</span>' + esc(v)).join('<br>');
     tip.style.opacity = 1;
   });
   node.addEventListener('pointermove', (e) => {
@@ -332,14 +350,14 @@ const facts = [
   ['Host', D.suite.arch],
 ];
 document.getElementById('facts').innerHTML = facts
-  .filter(([, v]) => v).map(([k, v]) => `<div>${k} <b>${v}</b></div>`).join('');
+  .filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)} <b>${esc(v)}</b></div>`).join('');
 const measured = models.filter(m => D.series.some(s => s.model === m));
 const unmeasured = models.filter(m => !measured.includes(m));
 
 const caveats = [...D.notes];
 if (unmeasured.length) caveats.push(`Not measured in this run: ${unmeasured.join(', ')}. `
   + 'The plan names them; this invocation narrowed to a subset.');
-document.getElementById('caveats').innerHTML = caveats.map(n => `<li>${n}</li>`).join('');
+document.getElementById('caveats').innerHTML = caveats.map(n => `<li>${esc(n)}</li>`).join('');
 
 /* ── verdict ──────────────────────────────────────────────────────────────── */
 function verdictFor(model) {
@@ -364,9 +382,9 @@ function verdictFor(model) {
   const worstTtft = at(P.ttft, vs => vs.reduce((a, b) => (b.v > a.v ? b : a)));
   if (worstTtft) rows.push(['Worst TTFT p90', fmt(worstTtft.v, 0) + '<small>ms at c' + worstTtft.c + '</small>']);
   if (knee) {
-    rows.push([`Holds ${knee.field} ≤ ${fmt(knee.limit, 0)}`,
+    rows.push([`Holds ${esc(knee.field)} ≤ ${fmt(knee.limit, 0)}`,
       knee.max_passing ? 'up to c' + knee.max_passing : 'at no rung tried']);
-    if (knee.breach) rows.push(['Broke at c' + knee.breach.concurrency, `<span class="muted">${knee.breach.why}</span>`]);
+    if (knee.breach) rows.push(['Broke at c' + knee.breach.concurrency, `<span class="muted">${esc(knee.breach.why)}</span>`]);
   }
   rows.push(['Failed requests', errors ? `<span class="pill bad">${errors}</span>` : '<span class="pill good">none</span>']);
   if (failed) rows.push(['Cells that did not produce a result', `<span class="pill bad">${failed}</span>`]);
@@ -375,7 +393,7 @@ function verdictFor(model) {
 
 document.getElementById('verdict').innerHTML = measured.map(model => `
   <div class="card">
-    <h3><span class="model">${model}</span></h3>
+    <h3><span class="model">${esc(model)}</span></h3>
     <ul class="lines">${verdictFor(model).map(([k, v]) =>
       `<li><span class="k">${k}</span><span class="v">${v}</span></li>`).join('')}</ul>
   </div>`).join('');
@@ -387,7 +405,7 @@ function lineChart(host, {model, field, title, note, unit}) {
   const names = harnessesWith(model, field);
   card.innerHTML = `<h3>${title} <span class="muted" style="font-weight:400">${unit}</span></h3><p class="note">${note}</p>
     <div class="legend">${names.map(h =>
-      `<span><i class="swatch" style="background:${colorOf(h)}"></i>${h}</span>`).join('')}</div>`;
+      `<span><i class="swatch" style="background:${colorOf(h)}"></i>${esc(h)}</span>`).join('')}</div>`;
   const svg = el('svg');
   card.appendChild(svg);
   host.appendChild(card);
@@ -442,7 +460,7 @@ function frontier(host, model) {
     <p class="note">Aggregate output rate against the latency one caller felt to get it. Up and to the
     right is capacity; the bend is where queueing starts. Each point is labelled with its concurrency.</p>
     <div class="legend">${names.map(h =>
-      `<span><i class="swatch" style="background:${colorOf(h)}"></i>${h}</span>`).join('')}</div>`;
+      `<span><i class="swatch" style="background:${colorOf(h)}"></i>${esc(h)}</span>`).join('')}</div>`;
   const svg = el('svg');
   card.appendChild(svg);
   host.appendChild(card);
@@ -506,7 +524,7 @@ function frontier(host, model) {
 const curves = document.getElementById('curves');
 for (const model of measured) {
   const section = document.createElement('div');
-  section.innerHTML = `<h3 style="margin:22px 0 10px">${model}</h3>`;
+  section.innerHTML = `<h3 style="margin:22px 0 10px">${esc(model)}</h3>`;
   curves.appendChild(section);
   const grid = document.createElement('div');
   grid.className = 'cards';
@@ -567,11 +585,11 @@ function agreement() {
     inter-token latency differently. ${rows.length > shown.length ? `Showing the ${shown.length} widest of ${rows.length}.` : ''}</p>
     <div class="scroll"><table><thead><tr>
       <th class="l">Model</th><th>Load</th><th class="l">Field</th>
-      ${HARNESSES.map(h => `<th>${h}</th>`).join('')}<th>Spread</th>
+      ${HARNESSES.map(h => `<th>${esc(h)}</th>`).join('')}<th>Spread</th>
     </tr></thead><tbody>
     ${shown.map(r => `<tr>
-      <td class="l">${r.model}</td><td>c${r.c}</td>
-      <td class="l">${F[r.field].label} <span class="muted">${F[r.field].unit}</span></td>
+      <td class="l">${esc(r.model)}</td><td>c${esc(r.c)}</td>
+      <td class="l">${esc(F[r.field].label)} <span class="muted">${esc(F[r.field].unit)}</span></td>
       ${HARNESSES.map(h => `<td>${r.byHarness.has(h) ? fmt(r.byHarness.get(h)) : '<span class="muted">—</span>'}</td>`).join('')}
       <td class="${cls(r.spread)}">${fmt(r.spread, 0)}%</td>
     </tr>`).join('')}
@@ -598,7 +616,7 @@ function variance() {
   }
   const field = P.ttft;
   host.innerHTML = `<h3>How much of a difference is noise</h3>
-    <p class="note">${F[field].label} across repeats of the same cell. If two harnesses differ by less
+    <p class="note">${esc(F[field].label)} across repeats of the same cell. If two harnesses differ by less
     than one cell's own spread, they do not disagree.</p>
     <div class="scroll"><table><thead><tr>
       <th class="l">Model</th><th class="l">Harness</th><th>Load</th><th>Repeats</th>
@@ -609,7 +627,7 @@ function variance() {
       if (!values.length) return '';
       const lo = Math.min(...values), hi = Math.max(...values), mid = median(values);
       const pct = mid ? ((hi - lo) / mid) * 100 : 0;
-      return `<tr><td class="l">${model}</td><td class="l">${harness}</td><td>c${c}</td>
+      return `<tr><td class="l">${esc(model)}</td><td class="l">${esc(harness)}</td><td>c${esc(c)}</td>
         <td>${values.length}</td><td>${fmt(lo, 0)}</td><td>${fmt(mid, 0)}</td><td>${fmt(hi, 0)}</td>
         <td class="${pct > 25 ? 'spread wide' : pct > 10 ? 'spread some' : 'spread'}">${fmt(pct, 0)}%</td></tr>`;
     }).join('')}</tbody></table></div>`;
@@ -628,22 +646,22 @@ function table() {
     Raw exports are under each cell's own directory, unconverted.</p>
     <table><thead><tr>
       <th class="l">Model</th><th class="l">Harness</th><th class="l">Stage</th><th>Load</th><th>#</th>
-      ${cols.map(c => `<th>${F[c].label}<br><span class="muted">${F[c].unit}</span></th>`).join('')}
+      ${cols.map(c => `<th>${esc(F[c].label)}<br><span class="muted">${esc(F[c].unit)}</span></th>`).join('')}
       <th class="l">Status</th>
     </tr></thead><tbody>
     ${rows.map(s => `<tr>
-      <td class="l">${s.model}</td><td class="l">${s.harness}</td>
-      <td class="l muted">${s.stage}</td>
-      <td>c${s.concurrency}${s.request_rate ? ` @${fmt(s.request_rate)}/s` : ''}</td>
-      <td class="muted">${s.repeat}</td>
+      <td class="l">${esc(s.model)}</td><td class="l">${esc(s.harness)}</td>
+      <td class="l muted">${esc(s.stage)}</td>
+      <td>c${esc(s.concurrency)}${s.request_rate ? ` @${fmt(s.request_rate)}/s` : ''}</td>
+      <td class="muted">${esc(s.repeat)}</td>
       ${cols.map(c => {
         const v = s.readings[c];
         if (v === undefined) return '<td class="muted">—</td>';
         return `<td>${fmt(v, c === P.errors ? 0 : 1)}${s.derived[c] ? '°' : ''}</td>`;
       }).join('')}
       <td class="l">${s.status === 'ok'
-        ? (s.errors ? `<span class="pill bad">${s.errors} failed</span>` : '<span class="pill good">ok</span>')
-        : `<span class="pill bad">${s.status}</span>`}</td>
+        ? (s.errors ? `<span class="pill bad">${esc(s.errors)} failed</span>` : '<span class="pill good">ok</span>')
+        : `<span class="pill bad">${esc(s.status)}</span>`}</td>
     </tr>`).join('')}
     </tbody></table>`;
 }
@@ -655,17 +673,17 @@ function footer() {
   parts.push('<h4>The harnesses in this run</h4><ul>' + HARNESSES.map(h => {
     const entry = D.harnesses[h];
     const missing = entry.missing.length
-      ? ` Could not answer: ${entry.missing.map(m => F[m] ? F[m].label : m).join(', ')}.` : '';
+      ? ` Could not answer: ${entry.missing.map(m => esc(F[m] ? F[m].label : m)).join(', ')}.` : '';
     const derived = Object.keys(entry.derived).length
       ? ' Derived here: ' + Object.entries(entry.derived)
-        .map(([k, how]) => `${F[k] ? F[k].label : k} as ${how}`).join('; ') + '.' : '';
-    return `<li><b>${h}</b> ${entry.versions.join(', ')}.${missing}${derived}</li>`;
+        .map(([k, how]) => `${esc(F[k] ? F[k].label : k)} as ${esc(how)}`).join('; ') + '.' : '';
+    return `<li><b>${esc(h)}</b> ${esc(entry.versions.join(', '))}.${missing}${derived}</li>`;
   }).join('') + '</ul>');
-  const notes = HARNESSES.flatMap(h => D.harnesses[h].notes.map(n => `<li><b>${h}</b> — ${n}</li>`));
+  const notes = HARNESSES.flatMap(h => D.harnesses[h].notes.map(n => `<li><b>${esc(h)}</b> — ${esc(n)}</li>`));
   if (notes.length) parts.push('<h4>What each tool did with the request</h4><ul>' + notes.join('') + '</ul>');
   parts.push(`<h4>Provenance</h4><ul>
-    <li>Plan: <code>${D.suite.source}</code></li>
-    <li>Run: <code>${D.suite.run_id}</code>, ${D.series.length} measurements from ${D.suite.planned_cells} planned cells</li>
+    <li>Plan: <code>${esc(D.suite.source)}</code></li>
+    <li>Run: <code>${esc(D.suite.run_id)}</code>, ${D.series.length} measurements from ${D.suite.planned_cells} planned cells</li>
     <li>Every harness's own export is kept verbatim in <code>suite.json</code> and beside it, so a
     correction to a field map is a re-read rather than a re-run.</li></ul>`);
   document.getElementById('footer').innerHTML = parts.join('');
