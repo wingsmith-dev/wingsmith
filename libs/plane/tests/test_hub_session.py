@@ -1194,3 +1194,16 @@ def test_an_operator_that_did_not_restart_keeps_its_place() -> None:
     state.adopt(2)
     assert state.expected_seq == 2
     assert state.adopt_inbound is False
+
+
+def test_a_session_with_a_connection_still_attached_is_never_reaped() -> None:
+    """Two connections, one closed: the session is still live, and the reaper must see it so."""
+    registry = SessionRegistry(replay_capacity=16)
+    state = registry.create(CLUSTER)
+    registry.connected(state.session_id)
+    registry.connected(state.session_id)
+
+    assert registry.disconnected(state.session_id) is False
+    assert registry.reap(ttl=0.0) == []
+    assert registry.disconnected(state.session_id) is True
+    assert registry.reap(ttl=0.0) == [state.session_id]

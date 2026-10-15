@@ -304,8 +304,8 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
     declaration when it has one, otherwise empty. Empty means the cluster
     decides, and it does not mean the engine image — a frontend and a worker are
     separately versioned binaries, which is the entire reason the field exists, so
-    falling back to `engine_runtime_image` here would hand every model the one image the Kimi
-    K3 frontend fix exists to avoid. The default belongs to the operator because only
+    falling back to `engine_runtime_image` here would hand every model the one image a
+    separate frontend build exists to avoid. The default belongs to the operator because only
     the operator knows what the cluster it runs in serves through.
     """
     fraction = workload.kv_cache_fraction

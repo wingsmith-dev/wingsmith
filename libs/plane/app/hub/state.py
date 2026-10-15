@@ -194,9 +194,8 @@ class SessionRegistry:
         """A connection attached to `session_id`. Cancels any idle countdown.
 
         `connection_count` is cumulative — the total number of connections this session has
-        ever had, not how many are open now — because that is the number the interop
-        harness and `test/interop/hub.py` already expose it as. Liveness for the reaper is
-        tracked separately, through `idle_since`.
+        ever had. How many are open now is `attached`, and liveness for the reaper is
+        `idle_since`, which only the last of them to detach starts.
         """
         state = self._sessions.get(session_id)
         if state is not None:
@@ -223,8 +222,9 @@ class SessionRegistry:
         """Drops every session idle for at least `ttl` seconds. Never one with a live connection.
 
         A session is a reap candidate only once `idle_since` is set, which `connected()`
-        clears — so a session mid-reconnect, or one whose connection never finished
-        detaching, cannot be dropped out from under it.
+        clears and `disconnected()` sets only when no connection is left attached — so a
+        session mid-reconnect, or one a second connection resumed before the first had
+        finished closing, cannot be dropped out from under it.
         """
         now = time.monotonic()
         dropped = [

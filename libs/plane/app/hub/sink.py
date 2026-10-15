@@ -224,10 +224,9 @@ class MemorySink:
 
 
 class NullSink:
-    """A `Sink` that accepts everything and keeps nothing.
+    """A `Sink` that accepts everything and keeps nothing, for a hub run with no database.
 
-    The hub is a correct protocol peer before the ingestion track exists; this is what it writes
-    to until then. It never raises, so every frame is acknowledged.
+    It never raises, so every frame is acknowledged.
     """
 
     async def apply_observed(self, frame: SinkFrame) -> None: ...
@@ -256,7 +255,7 @@ class NullSink:
 
 
 class EmptyDesiredSource:
-    """A `DesiredSource` with nothing to declare. The registry track replaces this."""
+    """A `DesiredSource` with nothing to declare, for tests and for a hub run with no database."""
 
     async def iter_desired(self, cluster_id: str, scope: str) -> AsyncIterator[tuple[str, Struct]]:
         return
