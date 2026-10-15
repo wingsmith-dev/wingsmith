@@ -94,7 +94,7 @@ regression test on the rule above, and it is the check to run after writing a pr
 | `streaming`, `length`, `sampling` | streaming and usage location, output caps and reasoning-only exhaustion, parameter acceptance |
 | `structured`, `tools` | `response_format` in three modes, tool-call protocol, round trip, restraint, tool call id uniqueness across turns on both the chat and Messages surfaces |
 | `thinking`, `cache`, `multimodal`, `tokens` | thinking mode, cached tokens, image input, token accounting |
-| `video` | video input with the clips in `assets/video/`: understanding, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
+| `video` | video input with the clips in `hgrconform/assets/video/`: understanding, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
 | `eos`, `limits` | EOS suppression rate, burst policy |
 
 Not here, on purpose:

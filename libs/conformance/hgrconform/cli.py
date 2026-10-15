@@ -20,6 +20,7 @@ import argparse
 from pathlib import Path
 from datetime import UTC
 from datetime import datetime
+from importlib import resources
 
 from hgrconform.facts import Fact
 from hgrconform.facts import compare
@@ -32,7 +33,8 @@ from hgrconform.runner import run_probes
 from hgrconform.profile import load_profile
 
 
-PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
+# Shipped inside the package, so a profile named by its stem resolves from an install too.
+PROFILES_DIR = Path(resources.files("hgrconform") / "profiles")
 DEFAULT_RESULTS = Path(".local/conformance")
 TARGET = "target"
 REFERENCE = "reference"

@@ -7,7 +7,7 @@ an image is read in the order it was sent, what the clip costs in prompt tokens 
 how that cost moves with length, frame rate and size, what the endpoint does past its
 limits, and whether all of it streams.
 
-The clips are committed under `assets/video/` beside the `make.sh` that produced them,
+The clips are committed under `hgrconform/assets/video/` beside the `make.sh` that produced them,
 rather than built here the way `multimodal.image` builds its PNG. An H.264 encoder is
 not something to write by hand, and a recipe in a diff is the next best thing to a
 clip built at run time. Every clip is one red square moving left to right across
@@ -29,6 +29,7 @@ import struct
 from base64 import b64encode
 from typing import Any
 from pathlib import Path
+from importlib import resources
 from itertools import pairwise
 from dataclasses import dataclass
 
@@ -42,7 +43,7 @@ from hgrconform.probes.multimodal import _error_shape
 from hgrconform.probes.multimodal import _refusal_kind
 
 
-ASSETS = Path(__file__).resolve().parents[2] / "assets" / "video"
+ASSETS = Path(resources.files("hgrconform") / "assets" / "video")
 CHAT = "/v1/chat/completions"
 
 ANSWER_TOKENS = 4096
