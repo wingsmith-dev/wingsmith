@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import builtins
 import datetime as dt
 
 from uuid import UUID
@@ -577,7 +578,7 @@ class EndpointService:
             revision=_revision(endpoint),
         )
 
-    def _referenced(self, endpoints: list[Endpoint]) -> list[UUID]:
+    def _referenced(self, endpoints: builtins.list[Endpoint]) -> builtins.list[UUID]:
         ids: list[UUID] = []
         for endpoint in endpoints:
             ids.extend(t.deployment_id for t in endpoint.targets)
@@ -624,8 +625,8 @@ class EndpointService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def _resolve(
-        self, targets: list[EndpointTargetRequest], failover: list[str], tenant_id: UUID | None
-    ) -> tuple[list[EndpointTarget], list[UUID]]:
+        self, targets: builtins.list[EndpointTargetRequest], failover: builtins.list[str], tenant_id: UUID | None
+    ) -> tuple[builtins.list[EndpointTarget], builtins.list[UUID]]:
         """Turns target and failover references into rows and an ordered id array.
 
         Targets resolve inside the endpoint's tenant, and a bare deployment name that
@@ -673,7 +674,7 @@ class EndpointService:
             order.append(deployment.id)
         return rows, order
 
-    async def _check_namespace(self, slug: str, aliases: list[str], endpoint_id: UUID | None = None) -> None:
+    async def _check_namespace(self, slug: str, aliases: builtins.list[str], endpoint_id: UUID | None = None) -> None:
         """Refuses a public id that two endpoints would answer to.
 
         Aliases and canonical slugs are one namespace, and no database constraint can say so: the

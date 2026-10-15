@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import datetime as dt
 
 from uuid import UUID
@@ -580,9 +581,9 @@ class WorkloadService:
         project_uid: str,
         priority_class: str,
         pinned_cluster_uid: str | None,
-        adapter_uids: list[str],
-        deployments: list[WorkloadDeploymentSchema],
-        rows: list[Deployment],
+        adapter_uids: builtins.list[str],
+        deployments: builtins.list[WorkloadDeploymentSchema],
+        rows: builtins.list[Deployment],
         artifact_tag: str | None = None,
         served_model_name: str = "",
     ) -> WorkloadSchema:
@@ -650,7 +651,7 @@ class WorkloadService:
             live_digests=live,
         )
 
-    async def _render(self, rows: list) -> list[WorkloadSchema]:
+    async def _render(self, rows: list) -> builtins.list[WorkloadSchema]:
         """One page of workloads, their expansions, and their replica counts.
 
         A fixed number of queries whatever the page size, and never one per row.
@@ -797,7 +798,7 @@ class WorkloadService:
             replicas=replicas,
         )
 
-    async def _adapter_ids(self, refs: list[str]) -> list[UUID]:
+    async def _adapter_ids(self, refs: builtins.list[str]) -> builtins.list[UUID]:
         if not refs:
             return []
         found = await self.repo.artifacts_by_ref(refs)
@@ -1055,7 +1056,9 @@ class WorkloadService:
             await self._announce(row.cluster_uid, row[0].uid, row[0].generation)
         return await self.get(workload.uid)
 
-    async def _apply_serving_patch(self, workload: Workload, patch: WorkloadServingUpdate) -> list[WorkloadRole]:
+    async def _apply_serving_patch(
+        self, workload: Workload, patch: WorkloadServingUpdate
+    ) -> builtins.list[WorkloadRole]:
         """Merges a serving patch onto the stored configuration and rewrites the columns.
 
         The whole configuration is validated, not the fields the caller named, so a

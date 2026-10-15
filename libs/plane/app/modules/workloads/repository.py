@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import builtins
+
 from uuid import UUID
 from collections.abc import Sequence
 
@@ -112,7 +114,7 @@ class WorkloadRepository:
             .order_by(Allocation.seq.asc(), Node.name.asc())
         )
 
-    async def placement(self, workload_id) -> list[Row]:
+    async def placement(self, workload_id) -> builtins.list[Row]:
         result = await self.db.execute(self.placement_query(workload_id))
         return list(result.all())
 
@@ -218,7 +220,7 @@ class WorkloadRepository:
             .group_by(Replica.deployment_id)
         )
 
-    async def matches(self, ref: str, project: str | None = None, lock: bool = False) -> list[Row]:
+    async def matches(self, ref: str, project: str | None = None, lock: bool = False) -> builtins.list[Row]:
         """Every workload a reference could mean, capped at two.
 
         A name is unique per project, so a bare name with no project filter can
@@ -235,7 +237,7 @@ class WorkloadRepository:
         result = await self.db.execute(query)
         return list(result.all())
 
-    async def candidates(self, name: str) -> list[Row]:
+    async def candidates(self, name: str) -> builtins.list[Row]:
         """Every workload answering to a bare name, with the project it is in.
 
         Only consulted when a name resolved to more than one row: the caller owes
@@ -248,11 +250,11 @@ class WorkloadRepository:
         )
         return list(result.all())
 
-    async def list(self, **kwargs) -> list[Row]:
+    async def list(self, **kwargs) -> builtins.list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))
         return list(result.all())
 
-    async def deployments(self, workload_ids: list, lock: bool = False) -> dict[UUID, list[Row]]:
+    async def deployments(self, workload_ids: list, lock: bool = False) -> dict[UUID, builtins.list[Row]]:
         """The per-cluster deployments of a page of workloads, keyed by workload.
 
         `lock` holds the deployment rows and re-reads them, for a write that moves them.
@@ -290,7 +292,7 @@ class WorkloadRepository:
         result = await self.db.execute(select(Artifact.id, Artifact.uid).where(Artifact.id.in_(artifact_ids)))
         return {row.id: row.uid for row in result.all()}
 
-    async def artifacts_by_ref(self, refs: list[str]) -> list[Artifact]:
+    async def artifacts_by_ref(self, refs: builtins.list[str]) -> builtins.list[Artifact]:
         found: list[Artifact] = []
         for ref in refs:
             artifact = await self.artifact_by_ref(ref)
@@ -342,7 +344,7 @@ class WorkloadRepository:
         return result.scalar_one_or_none()
 
     async def add(
-        self, workload: Workload, deployments: list[Deployment], roles: Sequence[WorkloadRole] = ()
+        self, workload: Workload, deployments: builtins.list[Deployment], roles: Sequence[WorkloadRole] = ()
     ) -> Workload:
         self.db.add(workload)
         for deployment in deployments:
@@ -355,7 +357,7 @@ class WorkloadRepository:
             await self.db.flush()
         return workload
 
-    async def roles_of(self, workload: Workload) -> list[WorkloadRole]:
+    async def roles_of(self, workload: Workload) -> builtins.list[WorkloadRole]:
         """This workload's role rows, ordered so two reads of one workload agree.
 
         A query rather than `workload.roles`, which is `lazy="noload"` and answers an empty list
@@ -367,7 +369,7 @@ class WorkloadRepository:
         )
         return list(result.scalars())
 
-    async def roles_for(self, workload_ids: Sequence[UUID]) -> dict[UUID, list[WorkloadRole]]:
+    async def roles_for(self, workload_ids: Sequence[UUID]) -> dict[UUID, builtins.list[WorkloadRole]]:
         """The role rows for a page of workloads, in one round trip.
 
         The same argument the class docstring makes about deployments: a page walked through the
@@ -465,7 +467,7 @@ class WorkloadRepository:
             grouped.setdefault(row.deployment_id, {})[row.serving_digest] = row.ready
         return grouped
 
-    async def replace_roles(self, workload: Workload, roles: Sequence[WorkloadRole]) -> list[WorkloadRole]:
+    async def replace_roles(self, workload: Workload, roles: Sequence[WorkloadRole]) -> builtins.list[WorkloadRole]:
         """Sets a workload's roles to exactly these, deleting whatever was there.
 
         Replace rather than merge, matching how the serving request treats every other block it
@@ -483,7 +485,7 @@ class WorkloadRepository:
         await self.db.flush()
         return stored
 
-    async def delete(self, workload: Workload, deployments: list[Deployment]) -> None:
+    async def delete(self, workload: Workload, deployments: builtins.list[Deployment]) -> None:
         """Deletes the expansion and then the workload it hangs off.
 
         The database would cascade either way. The order is what keeps the unit of
@@ -495,7 +497,7 @@ class WorkloadRepository:
         await self.db.delete(workload)
         await self.db.flush()
 
-    async def detach(self, workload: Workload, subject_type: str, generated: str) -> list[str]:
+    async def detach(self, workload: Workload, subject_type: str, generated: str) -> builtins.list[str]:
         """Removes every policy attachment naming this workload, and the policy created for it.
 
         `subject_id` is polymorphic and has no foreign key, so nothing cascades: without
@@ -538,7 +540,7 @@ class WorkloadRepository:
         await self.db.flush()
         return removed
 
-    async def clusters_by_uid(self, uids: list[str]) -> dict[str, Cluster]:
+    async def clusters_by_uid(self, uids: builtins.list[str]) -> dict[str, Cluster]:
         if not uids:
             return {}
         result = await self.db.execute(select(Cluster).where(Cluster.uid.in_(uids)))

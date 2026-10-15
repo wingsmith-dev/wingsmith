@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import DeploymentStatus
 from app.db.models import WorkloadRevision
 from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
@@ -96,7 +97,7 @@ def _revision_view(row: WorkloadRevision) -> WorkloadRevisionSchema:
     )
 
 
-def _status(row) -> DeploymentStatusSchema | None:
+def _status(row: DeploymentStatus | None) -> DeploymentStatusSchema | None:
     if row is None:
         return None
     return DeploymentStatusSchema(

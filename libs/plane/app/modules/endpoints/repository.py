@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import builtins
+
 from uuid import UUID
 
 from sqlalchemy import Row
@@ -170,7 +172,7 @@ class EndpointRepository:
             query = query.where(column == ref)
         return query
 
-    async def resolved(self, ref: str | None = None) -> list[Row]:
+    async def resolved(self, ref: str | None = None) -> builtins.list[Row]:
         result = await self.db.execute(self.resolved_query(ref))
         return list(result.all())
 
@@ -182,7 +184,7 @@ class EndpointRepository:
         result = await self.db.execute(query)
         return result.first()
 
-    async def list(self, **kwargs) -> list[Row]:
+    async def list(self, **kwargs) -> builtins.list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))
         return list(result.unique().all())
 
@@ -199,7 +201,9 @@ class EndpointRepository:
         result = await self.db.execute(select(Project).where(column == ref).limit(2))
         return at_most_one(list(result.scalars()), "project", ref)
 
-    async def deployments_by_ref(self, refs: list[str], tenant_id: UUID | None) -> dict[str, list[Deployment]]:
+    async def deployments_by_ref(
+        self, refs: builtins.list[str], tenant_id: UUID | None
+    ) -> dict[str, builtins.list[Deployment]]:
         """Every deployment each target reference could mean, inside one tenant, in one query.
 
         Scoped to the tenant that owns the endpoint: an endpoint routes to deployments
@@ -278,7 +282,7 @@ class EndpointRepository:
         result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none() is not None
 
-    async def replace_aliases(self, endpoint: Endpoint, aliases: list[str]) -> None:
+    async def replace_aliases(self, endpoint: Endpoint, aliases: builtins.list[str]) -> None:
         """Replaces an endpoint's whole alias set.
 
         A full replace and never a merge: an alias has no identity beyond its own string, so there
