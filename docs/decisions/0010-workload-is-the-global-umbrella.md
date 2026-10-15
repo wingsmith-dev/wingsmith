@@ -2,7 +2,8 @@
 
 **Status:** accepted · 2026-08-24, amended by ADR 0014
 
-**Amends:** the founding object model, which made Workload a *supertype* of Deployment.
+**Amends:** the founding object model (now [`docs/architecture`](../architecture/README.md)), which
+made Workload a *supertype* of Deployment.
 
 ## Context
 

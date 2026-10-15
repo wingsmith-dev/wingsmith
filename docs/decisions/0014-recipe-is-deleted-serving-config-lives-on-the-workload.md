@@ -2,8 +2,8 @@
 
 **Status:** accepted · 2026-09-02
 
-**Amends:** the founding object model, which made Recipe one of the seven objects of the minimal
-core, and answers the question it left open — whether a serving configuration is a catalog object or
+**Amends:** the founding object model (now [`docs/architecture`](../architecture/README.md)), which made
+Recipe one of the seven objects of the minimal core, and answers the question it left open — whether a serving configuration is a catalog object or
 a deployment-time choice. Also amends
 [ADR 0010](0010-workload-is-the-global-umbrella.md), which moved `recipe_id` up onto the Workload;
 the field it moved is now the fields themselves.

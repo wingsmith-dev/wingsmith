@@ -2,8 +2,11 @@
 
 **Status:** accepted · 2026-09-13
 
-All six bounds below are implemented. Rolled onto a Kimi K3 fleet, they answered every clip the
-stock image refused or killed a worker on, left the prefill role's KV allocation unchanged, and took
+All six bounds below are implemented. Bounds 1, 5 and 6 live in this repository. Bounds 2, 3 and 4
+are a patch to the worker's video loader, carried in a worker image layered on the vendor runtime
+image; that layer is maintained outside this repository, and the bounds are recorded here because
+the plane and the gateway are built around them. Rolled onto a Kimi K3 deployment, the six answered
+every clip the stock image refused or killed a worker on, left the prefill role's KV allocation unchanged, and took
 prefill restarts under video traffic to zero. What that roll did *not* establish is concurrent video:
 one clip at a time was sent, and a prefill worker that has served full-grid video holds ~19.5 GiB per
 GPU of encoder reserve, leaving 3.5-4 GiB free. That is the open edge.
@@ -65,9 +68,9 @@ those frames regardless. Without it, a ten-minute clip is decoded at 1920×1080 
 | # | Bound | Value | Layer | On exceed |
 |---|---|---|---|---|
 | 1 | `fps` in `--media-io-kwargs` | 8, K3's own `sample_fps` | the workload's own `engine_args` | samples fewer frames |
-| 2 | decode at the derived per-frame size | `min(16384, 655360/n)` patches | [`hangar-runtime/worker/vllm/kimi-k3-video/`](../../hangar-runtime/worker/vllm/kimi-k3-video/) | silent resize |
-| 3 | per-clip decoded bytes | 1 GiB | `hangar-runtime/worker/vllm/kimi-k3-video/` | 400 naming duration and resolution |
-| 4 | URL fetch bytes | 100 MiB | `hangar-runtime/worker/vllm/kimi-k3-video/` | 400 |
+| 2 | decode at the derived per-frame size | `min(16384, 655360/n)` patches | the worker image's video loader | silent resize |
+| 3 | per-clip decoded bytes | 1 GiB | the worker image's video loader | 400 naming duration and resolution |
+| 4 | URL fetch bytes | 100 MiB | the worker image's video loader | 400 |
 | 5 | client `media_io_kwargs` | stripped | [`libs/gateway/`](../../libs/gateway/internal/serving/policy.go) | silently dropped |
 | 6 | `serving.max_videos_per_request` | 1 | plane, already typed | 400 |
 
