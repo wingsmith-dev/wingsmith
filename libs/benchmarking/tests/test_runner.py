@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import json
 import subprocess
 
 from pathlib import Path
@@ -16,6 +17,7 @@ from hgrbench.store import Store
 from hgrbench.store import Suite
 from hgrbench.runner import Runner
 from hgrbench.runner import Options
+from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
 
 
@@ -81,3 +83,88 @@ def test_a_timed_out_run_kills_its_container_and_keeps_its_log(tmp_path: Path, m
     text = log.read_text()
     assert "started $HGR_BENCH_TOKEN" in text
     assert "timed out after 1s" in text
+
+
+def _plan_text(**overrides: str) -> str:
+    sections = {
+        "head": 'name = "t"\nharnesses = ["aiperf"]\nrepeats = 1\n',
+        "endpoint": '[endpoint]\nurl = "http://host.docker.internal:8080"\n',
+        "models": '[[models]]\nname = "m"\ntokenizer = "org/m"\n',
+        "load": "[[load]]\nconcurrency = 2\nrequests = 4\n",
+        "knee": "[knee]\nenabled = false\n",
+    }
+    sections.update(overrides)
+    return "\n".join(sections.values())
+
+
+def _problems(tmp_path: Path, **overrides: str) -> list[str]:
+    path = tmp_path / "plan.toml"
+    path.write_text(_plan_text(**overrides))
+    return runner_module.plan_problems(load_plan(path))
+
+
+def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
+    assert _problems(tmp_path) == []
+
+
+@pytest.mark.parametrize("path", sorted(PLANS_DIR.glob("*.toml")), ids=lambda p: p.stem)
+def test_committed_plans_are_valid(path: Path) -> None:
+    assert runner_module.plan_problems(load_plan(path)) == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"head": 'name = "t"\nharnesses = ["nope"]\n'}, "unknown harness 'nope'"),
+        ({"head": 'name = "t"\nharnesses = ["aiperf"]\nrepeats = 0\n'}, "repeats is 0"),
+        ({"models": '[[models]]\nname = "m"\n'}, "m has no tokenizer"),
+        ({"load": "[[load]]\nconcurrency = 2\nseconds = 30\n"}, "aiperf counts requests, not seconds"),
+        ({"load": "[[load]]\nconcurrency = 0\nrequests = 4\n"}, "concurrency must be at least 1"),
+        (
+            {"knee": '[knee]\nenabled = true\nfield = "ttft.p95"\nrequests_per_rung = 4\n'},
+            "knee field 'ttft.p95' is not a metric id",
+        ),
+        (
+            {"knee": '[sweep]\nenabled = true\nharnesses = ["aiperf"]\n'},
+            "aiperf is in [sweep] and cannot walk a ladder",
+        ),
+    ],
+)
+def test_a_plan_is_refused_before_the_first_cell(tmp_path: Path, overrides: dict[str, str], expected: str) -> None:
+    assert any(expected in problem for problem in _problems(tmp_path, **overrides))
+
+
+def test_the_cli_refuses_an_invalid_plan_without_creating_a_run(tmp_path: Path) -> None:
+    from hgrbench import cli
+
+    path = tmp_path / "plan.toml"
+    path.write_text(_plan_text(models='[[models]]\nname = "m"\n'))
+    results = tmp_path / "results"
+
+    assert cli.main(["run", str(path), "--results", str(results), "--no-open"]) == 1
+    assert not results.exists()
+
+
+def test_points_of_one_run_reporting_the_same_load_get_distinct_ids(tmp_path: Path) -> None:
+    runner = _runner(tmp_path)
+    cell = runner_module.expand(runner.plan)[0]
+    first = Emission(summary={}, version="0.7.3", load={"kind": "concurrency", "concurrency": 4})
+    second = Emission(summary={}, version="0.7.3", load={"kind": "concurrency", "concurrency": 4})
+
+    taken: set[str] = set()
+    one = runner.relabel(cell, first, taken)
+    taken.add(one.id)
+    two = runner.relabel(cell, second, taken)
+
+    assert one.load.concurrency == two.load.concurrency == 4
+    assert one.id != two.id
+
+
+def test_the_suite_file_is_replaced_whole(tmp_path: Path) -> None:
+    runner = _runner(tmp_path)
+    store = runner.store
+
+    store.flush()
+
+    assert json.loads(store.suite_path.read_text())["run_id"] == "test"
+    assert [path.name for path in store.root.iterdir()] == ["suite.json"]

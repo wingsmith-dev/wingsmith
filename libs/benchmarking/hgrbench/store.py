@@ -15,6 +15,7 @@ report that renders them.
 
 from __future__ import annotations
 
+import os
 import json
 
 from typing import Any
@@ -174,8 +175,16 @@ class Store:
         self.flush()
 
     def flush(self) -> None:
-        payload = asdict(self.suite)
-        self.suite_path.write_text(json.dumps(payload, indent=2, default=str))
+        """Rewrite `suite.json` whole, so a reader never sees half of one.
+
+        Written beside itself and renamed over, which is atomic on one filesystem: an
+        interrupt mid-write leaves the previous complete file rather than a truncated
+        one that no report can parse.
+        """
+        payload = json.dumps(asdict(self.suite), indent=2, default=str)
+        partial = self.suite_path.with_name(f".{SUITE_FILE}.partial")
+        partial.write_text(payload)
+        os.replace(partial, self.suite_path)
 
 
 def read_suite(path: Path) -> dict[str, Any]:

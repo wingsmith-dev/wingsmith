@@ -16,9 +16,7 @@ means the endpoint spends one load point in trouble, not the rest of the ladder.
 from __future__ import annotations
 
 import os
-import sys
 import time
-import shlex
 import threading
 import subprocess
 
@@ -28,13 +26,13 @@ from urllib import request as urlrequest
 from pathlib import Path
 from datetime import UTC
 from datetime import datetime
+from dataclasses import replace
 from dataclasses import dataclass
 
 from hgrbench import metrics
 from hgrbench.plan import Cell
 from hgrbench.plan import Load
 from hgrbench.plan import Plan
-from hgrbench.plan import Model
 from hgrbench.plan import expand
 from hgrbench.plan import knee_cells
 from hgrbench.plan import sweep_specs
@@ -44,6 +42,7 @@ from hgrbench.harnesses import registry
 from hgrbench.harnesses.base import REDACTED
 from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
+from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import HarnessError
 from hgrbench.harnesses.base import pull
@@ -229,8 +228,10 @@ class Runner:
             return [measurement]
 
         measurements: list[Measurement] = []
-        for index, emission in enumerate(emissions):
-            point = cell if len(emissions) == 1 else self.relabel(cell, emission, index)
+        taken: set[str] = set()
+        for emission in emissions:
+            point = cell if len(emissions) == 1 else self.relabel(cell, emission, taken)
+            taken.add(point.id)
             measurement = Measurement.of(
                 point,
                 status=status,
@@ -323,24 +324,26 @@ class Runner:
                 "the harness exited cleanly and measured nothing; its own export reports no completed requests"
             )
 
-    def relabel(self, cell: Cell, emission, index: int) -> Cell:
+    def relabel(self, cell: Cell, emission: Emission, taken: set[str]) -> Cell:
         """A cell id for one point of a multi-point run.
 
         A harness that walks a ladder in one process produced several measurements
         from one cell, and they need distinct ids or they overwrite each other in
         every join the report does. The load point comes from what the harness
         recorded, not from what was asked for — in a self-calibrating sweep those
-        differ, and the harness is right.
+        differ, and the harness is right. Two points that report the same load are
+        told apart by their repeat number.
         """
-        from dataclasses import replace
-
         load = cell.load
         reported = emission.load or {}
         if reported.get("kind") == "concurrency" and reported.get("concurrency"):
             load = replace(load, concurrency=int(reported["concurrency"]))
         elif reported.get("request_rate"):
             load = replace(load, request_rate=float(reported["request_rate"]))
-        return replace(cell, load=load, repeat=cell.repeat + index * 0)
+        point = replace(cell, load=load)
+        while point.id in taken:
+            point = replace(point, repeat=point.repeat + 1)
+        return point
 
     def apply_derived(self, measurement: Measurement, summary) -> None:
         """Fill the fields this harness does not report, and say that we did."""
@@ -364,8 +367,8 @@ class Runner:
         self.say(f"{len(cells)} measurements to take")
         for index, cell in enumerate(cells, start=1):
             self.say(f"[{index}/{len(cells)}] {cell.harness} · {cell.model.name} · {cell.load.label}")
-            self.guard(cell)
             try:
+                self.guard(cell)
                 self.run_cell(cell)
             except subprocess.TimeoutExpired:
                 self.say(f"  timed out after {self.cell_timeout(cell)}s")
@@ -520,9 +523,9 @@ class Runner:
             passing: int | None = None
             breach: dict[str, object] | None = None
             for cell in knee_cells(self.plan, model):
-                self.guard(cell)
                 self.say(f"  rung c{cell.load.concurrency}")
                 try:
+                    self.guard(cell)
                     taken = self.run_cell(cell)
                 except (subprocess.TimeoutExpired, HarnessError) as exc:
                     breach = {"concurrency": cell.load.concurrency, "why": f"the harness failed: {exc}"}
@@ -596,18 +599,7 @@ class Runner:
 
     def guard(self, cell: Cell) -> None:
         """Refuse a cell a harness cannot express, before it fails inside a container."""
-        if cell.load.requests <= 0 and cell.load.seconds <= 0:
-            raise HarnessError(f"{cell.id}: a load point needs either `requests` or `seconds`")
-        if cell.harness in {"aiperf", "vllm-bench"} and cell.load.requests <= 0:
-            raise HarnessError(
-                f"{cell.id}: {cell.harness} counts requests, not seconds — give the load point a `requests`"
-            )
-        if not cell.model.tokenizer:
-            raise HarnessError(
-                f"{cell.model.name} has no tokenizer. Every one of these harnesses counts tokens "
-                "client-side and defaults the tokenizer to the served name, which is not a "
-                "Hugging Face repository — the run dies before it sends a request."
-            )
+        check_cell(cell)
 
     def report_cell(self, measurement: Measurement) -> None:
         ttft = measurement.readings.get(metrics.TTFT_P90)
@@ -632,6 +624,7 @@ class Runner:
 
     def run(self) -> None:
         """The whole suite: token, probe, images, matrix, saturation search."""
+        refuse_invalid(self.plan)
         self.token = self.resolve_token()
         if not self.options.dry_run:
             self.probe()
@@ -659,15 +652,68 @@ class Runner:
             self.store.flush()
 
 
-def shell(argv: list[str]) -> str:
-    """A command as a human would type it, for logs and error messages."""
-    return " ".join(shlex.quote(part) for part in argv)
+def check_cell(cell: Cell) -> None:
+    """Refuse a cell a harness cannot express, before it fails inside a container."""
+    if cell.load.requests <= 0 and cell.load.seconds <= 0:
+        raise HarnessError(f"{cell.id}: a load point needs either `requests` or `seconds`")
+    if cell.harness in {"aiperf", "vllm-bench"} and cell.load.requests <= 0:
+        raise HarnessError(f"{cell.id}: {cell.harness} counts requests, not seconds — give the load point a `requests`")
+    if not cell.model.tokenizer:
+        raise HarnessError(
+            f"{cell.model.name} has no tokenizer. Every one of these harnesses counts tokens "
+            "client-side and defaults the tokenizer to the served name, which is not a "
+            "Hugging Face repository — the run dies before it sends a request."
+        )
 
 
-def die(message: str) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(1)
+def plan_problems(plan: Plan) -> list[str]:
+    """Everything in the plan that would fail mid-run, found before the first request.
+
+    A plan is checked whole, ignoring `--harness` and `--model`, because a plan
+    is a committed document and one that is wrong for a harness nobody selected
+    today is still wrong.
+    """
+    found: list[str] = []
+    if plan.repeats < 1:
+        found.append(f"repeats is {plan.repeats}; it must be at least 1")
+    names = set(plan.harnesses) | set(plan.sweep.harnesses if plan.sweep.enabled else ())
+    if plan.knee.enabled:
+        names.add(plan.knee.harness)
+    for name in sorted(names):
+        try:
+            registry.get(name)
+        except KeyError as exc:
+            found.append(str(exc.args[0]))
+    if found:
+        return found
+    for load in plan.load:
+        if load.concurrency < 1:
+            found.append(f"load point {load.label}: concurrency must be at least 1")
+        if load.requests < 0 or load.seconds < 0 or load.request_rate < 0:
+            found.append(f"load point {load.label}: requests, seconds and request_rate cannot be negative")
+    cells = expand(plan)
+    if plan.knee.enabled:
+        if plan.knee.field not in metrics.UNITS:
+            found.append(f"knee field {plan.knee.field!r} is not a metric id; one of {', '.join(metrics.UNITS)}")
+        for model in plan.models:
+            cells += knee_cells(plan, model)
+    for cell in cells:
+        try:
+            check_cell(cell)
+        except HarnessError as exc:
+            found.append(str(exc))
+    for spec in sweep_specs(plan):
+        if not registry.get(spec.harness).sweeps:
+            found.append(f"{spec.harness} is in [sweep] and cannot walk a ladder in one process")
+        if spec.requests_per_rung <= 0 and spec.seconds_per_rung <= 0:
+            found.append(f"{spec.id}: a ladder needs requests_per_rung or seconds_per_rung")
+        if not spec.model.tokenizer:
+            found.append(f"{spec.model.name} has no tokenizer")
+    return list(dict.fromkeys(found))
 
 
-def models_of(plan: Plan) -> list[Model]:
-    return list(plan.models)
+def refuse_invalid(plan: Plan) -> None:
+    """Raise with every problem in the plan at once, rather than the first one mid-run."""
+    problems = plan_problems(plan)
+    if problems:
+        raise ValueError(f"{plan.source or plan.name} cannot run:\n  " + "\n  ".join(problems))

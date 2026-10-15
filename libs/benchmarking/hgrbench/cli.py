@@ -36,6 +36,7 @@ from hgrbench.store import read_suite
 from hgrbench.report import render
 from hgrbench.runner import Runner
 from hgrbench.runner import Options
+from hgrbench.runner import refuse_invalid
 from hgrbench.harnesses import registry
 
 
@@ -61,6 +62,7 @@ def run_id(plan: Plan, stamp: datetime) -> str:
 
 def cmd_run(args: argparse.Namespace) -> int:
     plan = load_plan(plan_path(args.plan))
+    refuse_invalid(plan)
     options = Options(
         hard=args.hard,
         dry_run=args.dry_run,
