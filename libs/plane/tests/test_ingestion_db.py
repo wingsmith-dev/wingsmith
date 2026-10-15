@@ -719,6 +719,25 @@ async def test_a_card_handed_to_the_next_pod_moves_to_its_allocation(sessions, c
     assert [r.uid for r in rows] == [successor]
 
 
+async def test_a_snapshot_that_drops_a_held_device_leaves_its_binding_alone(sessions, cluster) -> None:
+    """The device row is what the binding points at; deleting it freed a card a replica was running on."""
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    await sink.begin_resync(CLUSTER, "supply", "req-held")
+    await sink.apply_observed(observed("node.observed", reply_to="req-held", node_id=NODE))
+    await sink.apply_observed(
+        observed("device.observed", reply_to="req-held", device_id=DEVICE, node_id=NODE, topology_domain_id=DOMAIN)
+    )
+    await sink.end_resync(CLUSTER, "req-held", count=2, complete=True)
+
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, True)]
+    rows = await fetch(sessions, "SELECT allocatable, health FROM supply_device WHERE uid = :d", {"d": DEVICE_B})
+    assert rows == [(False, "unknown")]
+
+
 async def test_another_clusters_frame_cannot_take_over_an_allocation(sessions, cluster) -> None:
     await seed_deployment(sessions, cluster)
     other = await seed_cluster(sessions, OTHER_CLUSTER, "other")

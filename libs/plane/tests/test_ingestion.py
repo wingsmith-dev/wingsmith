@@ -690,6 +690,33 @@ def test_prune_statements_are_scoped_to_one_cluster() -> None:
         assert CLUSTER_ID in scalar_params(params)
 
 
+def test_a_device_a_live_allocation_holds_is_never_pruned() -> None:
+    """Deleting it cascades the binding away, and a card a replica is running on reads as free."""
+    sql, _ = compile_sql(statements.prune_devices(CLUSTER_ID, {"dev_1"}))
+    assert "supply_device.id NOT IN (SELECT bind_allocation_device.device_id" in sql
+    assert "bind_allocation_device.released_at IS NULL" in sql
+
+
+def test_a_held_device_the_snapshot_dropped_is_taken_out_of_placement_instead() -> None:
+    sql, params = compile_sql(
+        statements.orphan_held_devices(CLUSTER_ID, {"dev_1"}, parse_ts("2026-10-15T00:00:00.000Z"))
+    )
+    assert sql.startswith("UPDATE supply_device SET")
+    assert "supply_device.id IN (SELECT bind_allocation_device.device_id" in sql
+    assert False in params.values() and "unknown" in params.values()
+
+
+def test_a_node_whose_devices_are_held_is_retired_rather_than_deleted() -> None:
+    """A node's devices cascade with it, and their bindings with them."""
+    pruned, _ = compile_sql(statements.prune_nodes(CLUSTER_ID, {"nod_1"}))
+    doomed, _ = compile_sql(statements.doomed_nodes(CLUSTER_ID, {"nod_1"}))
+    retired, params = compile_sql(statements.retire_held_nodes(CLUSTER_ID, {"nod_1"}, None))
+    assert "supply_node.id NOT IN (SELECT supply_device.node_id" in pruned
+    assert "supply_node.id NOT IN (SELECT supply_device.node_id" in doomed
+    assert retired.startswith("UPDATE supply_node SET") and "supply_node.id IN (SELECT supply_device.node_id" in retired
+    assert "left" in params.values()
+
+
 # --------------------------------------------------------------------------- prune guard
 
 
@@ -952,8 +979,9 @@ async def test_a_supply_only_resync_leaves_demand_state_alone(caplog) -> None:
     with caplog.at_level(logging.INFO):
         await sink.end_resync(CLUSTER, "req-7", 0, True)
 
-    deletes = [str(s) for s in sessions.executed if str(s).upper().startswith("DELETE")]
-    assert not any("demand_replica" in d or "bind_allocation" in d for d in deletes)
+    targets = [str(s).split()[2] for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert "demand_replica" not in targets
+    assert "bind_allocation" not in targets
 
 
 async def test_a_full_resync_prunes_both_halves(caplog) -> None:

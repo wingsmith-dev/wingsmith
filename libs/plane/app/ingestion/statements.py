@@ -1186,6 +1186,22 @@ def workload_lifecycle(
     )
 
 
+def _live_bound_devices() -> Select:
+    """Every device some live allocation holds. A row in here must not be deleted.
+
+    A device row is what a binding points at, and the foreign key cascades: deleting
+    the device deletes the binding, and the accelerator a running replica holds reads
+    as free. The demand prune of the same snapshot has already released whatever it
+    did not name, so what is still held here is held by an allocation the cluster
+    did report.
+    """
+    return select(AllocationDevice.device_id).where(AllocationDevice.released_at.is_(None))
+
+
+def _nodes_holding_live_devices(cluster_id: UUID) -> Select:
+    return select(Device.node_id).where(Device.cluster_id == cluster_id, Device.id.in_(_live_bound_devices()))
+
+
 def doomed_nodes(cluster_id: UUID, keep: set[str]) -> Select:
     """The nodes a prune is about to delete, read before they are gone.
 
@@ -1196,7 +1212,11 @@ def doomed_nodes(cluster_id: UUID, keep: set[str]) -> Select:
     the node's uid in `details` and leaves `subject_id` null: pointing a foreign
     key at a row this statement is about to remove would take the event with it.
     """
-    return select(Node.uid, Node.name).where(Node.cluster_id == cluster_id, Node.uid.notin_(keep or {""}))
+    return select(Node.uid, Node.name).where(
+        Node.cluster_id == cluster_id,
+        Node.uid.notin_(keep or {""}),
+        Node.id.notin_(_nodes_holding_live_devices(cluster_id)),
+    )
 
 
 def doomed_workloads(cluster_id: UUID, keep: set[str]) -> Select:
@@ -1253,11 +1273,56 @@ def prune_deployment_replicas(cluster_id: UUID, deployment_id: UUID, keep: list[
 
 
 def prune_nodes(cluster_id: UUID, keep: set[str]) -> Delete:
-    return delete(Node).where(Node.cluster_id == cluster_id, Node.uid.notin_(keep or {""}))
+    """Forgets the nodes a complete snapshot did not name, except one whose devices are still held.
+
+    A node's devices go with it by cascade, and their bindings with them. Such a node
+    is retired instead (`retire_held_nodes`) and goes on a later snapshot.
+    """
+    return delete(Node).where(
+        Node.cluster_id == cluster_id,
+        Node.uid.notin_(keep or {""}),
+        Node.id.notin_(_nodes_holding_live_devices(cluster_id)),
+    )
+
+
+def retire_held_nodes(cluster_id: UUID, keep: set[str], moment: Any) -> Update:
+    """Marks gone a node the snapshot dropped while a live allocation still holds one of its devices."""
+    return (
+        update(Node)
+        .where(
+            Node.cluster_id == cluster_id,
+            Node.uid.notin_(keep or {""}),
+            Node.id.in_(_nodes_holding_live_devices(cluster_id)),
+        )
+        .values(condition="left", ready=False, observed_at=moment)
+    )
 
 
 def prune_devices(cluster_id: UUID, keep: set[str]) -> Delete:
-    return delete(Device).where(Device.cluster_id == cluster_id, Device.uid.notin_(keep or {""}))
+    """Forgets the devices a complete snapshot did not name, except one a live allocation holds."""
+    return delete(Device).where(
+        Device.cluster_id == cluster_id,
+        Device.uid.notin_(keep or {""}),
+        Device.id.notin_(_live_bound_devices()),
+    )
+
+
+def orphan_held_devices(cluster_id: UUID, keep: set[str], moment: Any) -> Update:
+    """Takes out of placement a device the snapshot dropped but an allocation still holds.
+
+    Kept rather than deleted so the binding survives (`_live_bound_devices`); made
+    unplaceable because nothing on the cluster reports on it any more. It goes on
+    the first snapshot after the allocation lets go of it.
+    """
+    return (
+        update(Device)
+        .where(
+            Device.cluster_id == cluster_id,
+            Device.uid.notin_(keep or {""}),
+            Device.id.in_(_live_bound_devices()),
+        )
+        .values(health="unknown", allocatable=False, observed_at=moment)
+    )
 
 
 def prune_topology_domains(cluster_id: UUID, keep: set[str]) -> Delete:

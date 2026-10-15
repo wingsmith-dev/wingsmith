@@ -650,6 +650,8 @@ class DatabaseSink:
             moment = now()
             going = (await db.execute(statements.doomed_nodes(resolved, epoch.present[NODE]))).all()
             leaving = (await db.execute(statements.doomed_workloads(resolved, epoch.present[WORKLOAD]))).all()
+            await db.execute(statements.orphan_held_devices(resolved, epoch.present[DEVICE], moment))
+            await db.execute(statements.retire_held_nodes(resolved, epoch.present[NODE], moment))
             devices = await db.execute(statements.prune_devices(resolved, epoch.present[DEVICE]))
             domains = await db.execute(statements.prune_topology_domains(resolved, epoch.present[TOPOLOGY]))
             workloads = await db.execute(statements.prune_discovered_workloads(resolved, epoch.present[WORKLOAD]))
