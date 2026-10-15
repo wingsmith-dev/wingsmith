@@ -556,7 +556,7 @@ func TestPrefetchToleratesTheCacheTaintByKey(t *testing.T) {
 	}
 }
 
-func TestPrefetchRunsUnprivileged(t *testing.T) {
+func TestPrefetchRunsWithoutEscalationAsTheImagesUser(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), prefetchImage, testOptions())
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -565,8 +565,10 @@ func TestPrefetchRunsUnprivileged(t *testing.T) {
 	if spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken {
 		t.Error("the prefetch job mounts a service-account token")
 	}
-	if sc := spec.SecurityContext; sc == nil || sc.RunAsNonRoot == nil || !*sc.RunAsNonRoot {
-		t.Errorf("pod security context = %+v, want non-root", sc)
+	// The image's own user, because the shared cache is owned by whoever wrote it first and
+	// fsGroup does not re-own a network volume.
+	if sc := spec.SecurityContext; sc == nil || sc.RunAsUser != nil || sc.RunAsNonRoot != nil || sc.FSGroup != nil || sc.SeccompProfile == nil {
+		t.Errorf("pod security context = %+v, want the image's user with a seccomp profile", sc)
 	}
 	if csc := spec.Containers[0].SecurityContext; csc == nil || csc.AllowPrivilegeEscalation == nil || *csc.AllowPrivilegeEscalation {
 		t.Errorf("container security context = %+v, want no privilege escalation", csc)

@@ -217,7 +217,7 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 					NodeSelector:                 map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
 					Tolerations:                  cacheTolerations(opts),
 					AutomountServiceAccountToken: ptr(false),
-					SecurityContext:              jobPodSecurityContext(),
+					SecurityContext:              prefetchPodSecurityContext(),
 					Volumes: []corev1.Volume{{
 						Name: "model-cache",
 						VolumeSource: corev1.VolumeSource{
@@ -229,7 +229,7 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 						Image:           image,
 						Command:         []string{"python3", "-c"},
 						Args:            []string{command},
-						SecurityContext: jobContainerSecurityContext(),
+						SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr(false)},
 						Env: []corev1.EnvVar{
 							{Name: "HF_HOME", Value: HFHome},
 							// The image's own home may belong to another uid; this one is
@@ -275,11 +275,24 @@ func taintToleration(key, value string) corev1.Toleration {
 	return corev1.Toleration{Key: key, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}
 }
 
-// jobUID is the user the benchmark and prefetch jobs run as. Fixed rather than taken from the
+// prefetchPodSecurityContext keeps the image's own user and capabilities, and adds the runtime's
+// default seccomp profile.
+//
+// Not jobPodSecurityContext: the prefetch writes into the shared model cache, whose directories
+// belong to whichever user wrote them first (root, for every prefetch rendered before this), and
+// fsGroup does not re-own an NFS or EFS volume. A fixed non-root uid would fail with EACCES on
+// such a cache. The benchmark job only reads that volume, so it can run as jobUID.
+func prefetchPodSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
+// jobUID is the user the benchmark job runs as. Fixed rather than taken from the
 // image, so runAsNonRoot holds for images whose USER is a name or root.
 const jobUID = 1000
 
-// jobPodSecurityContext is the pod-level context for the jobs this operator renders: non-root,
+// jobPodSecurityContext is the pod-level context for the benchmark job: non-root,
 // with the runtime's default seccomp profile, and a group that owns what they write.
 func jobPodSecurityContext() *corev1.PodSecurityContext {
 	return &corev1.PodSecurityContext{
