@@ -13,11 +13,22 @@ name: hangar
 # The image does bake a console bundle (see libs/plane/Dockerfile), but the source mount below
 # shadows the directory it lands in, so the api here serves the API alone and 404s on `/`. That is
 # the intended local shape: the dev server owns the console, and the deployed image owns both.
+#
+# The reactor runs inside the hub (HANGAR_REACTOR_ENABLED defaults on), so it has no service here.
+#
+# This is a local stack and nothing else. Every port is published on 127.0.0.1 only, the database
+# password is `hangar`, and HANGAR_APP_ENV=local turns admin authentication off: anyone who can
+# reach the api is an administrator. Do not publish these ports to a network, and do not deploy
+# this file. HANGAR_API_PORT and HANGAR_HUB_PORT move the host side of the two plane ports.
+
+# One image, built once by `migrate` (which every other plane service waits for) and reused by
+# name. Each service declaring its own `build` is the same image built three times.
+x-plane-image: &plane-image
+  image: hangar-plane:local
 
 x-plane: &plane
-  build:
-    context: ./libs
-    dockerfile: plane/Dockerfile
+  <<: *plane-image
+  pull_policy: never
   # The source is mounted over what the image baked, so an edit is a reload rather than a rebuild.
   # The image still owns the virtualenv at /opt/venv, which is why this is a mount of ./app and not
   # of the whole context: shadowing the installed dependencies with a host directory that has none
@@ -32,8 +43,9 @@ x-plane: &plane
     - ./libs/packages/contract:/app/contract:ro
   environment: &plane-env
     HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@db:5442/hangar
-    # Overrides the image's baked-in `production`. This file is the local stack, and `local` is
-    # what makes the admin password and the session secret optional — see config/settings.py.
+    # Overrides the image's baked-in `production`. `local` turns admin auth off and makes the admin
+    # password and signing secret optional (see config/settings.py), which is safe only because
+    # every port below is bound to 127.0.0.1. Clusters still need their own enrolment token.
     HANGAR_APP_ENV: local
     # `local` binds loopback by default, which inside a container is unreachable. The ports below
     # are published on the host's loopback only, so this does not put the API on the network.
@@ -69,6 +81,7 @@ services:
   # service rather than a step someone remembers. `service_completed_successfully` means a failed
   # migration stops the stack instead of leaving an api to discover it one query at a time.
   migrate:
+    <<: *plane-image
     build:
       context: ./libs
       dockerfile: plane/Dockerfile
