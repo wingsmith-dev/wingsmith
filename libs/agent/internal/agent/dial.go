@@ -127,7 +127,7 @@ func (d *Dialler) Dial(ctx context.Context, target string) (net.Conn, Peer, erro
 // live in exactly one place.
 type Peer struct {
 	// ID is the replica's stable identity. Never empty: a gateway that reported none is read as a
-	// single replica named by the address, which is the pre-A2 behaviour and correct for one.
+	// single replica named by the address, which is correct for one.
 	ID string
 	// Total is how many replicas the gateway reported, never below one.
 	Total int

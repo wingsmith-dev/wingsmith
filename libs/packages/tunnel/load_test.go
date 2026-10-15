@@ -16,11 +16,9 @@ import (
 // TestConnectorRolloutUnderLoad rolls every connector serving a cluster while
 // the cluster is carrying traffic, and requires that no caller notices.
 //
-// This is the shape of an ordinary Tuesday. The connector is a Deployment on the
-// data path, it gets rolled for an image bump like anything else, and if that
-// costs a burst of 502s then the tunnel has moved a routine deploy onto the
-// inference SLA — which is the failure mode rule 4 exists to prevent, arriving
-// through a different door.
+// The connector is a Deployment on the data path and gets rolled for an image
+// bump like anything else. If that costs a burst of 502s, a routine deploy has
+// become an inference outage.
 func TestConnectorRolloutUnderLoad(t *testing.T) {
 	t.Parallel()
 

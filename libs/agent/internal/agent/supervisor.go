@@ -58,8 +58,8 @@ type SupervisorConfig struct {
 // replica that took it and says how many there are; a dial that lands on a replica already at quota
 // is closed and retried, which is ordinary and not a failure. That is the pattern Konnectivity,
 // Teleport and ngrok each arrived at independently, and the reason it is the handshake that carries
-// the number rather than a call to the plane is rule 4: a cluster must be able to recover its own
-// data path while the control plane is down.
+// the number rather than a call to the plane is that a cluster must be able to recover its own data
+// path while the control plane is down.
 //
 // There is no periodic re-probe of the count, and there is a reason it is not needed here.
 // HANGAR_GATEWAY_REPLICAS lives in the gateway's pod spec, so changing it necessarily restarts every

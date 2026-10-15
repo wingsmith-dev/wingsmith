@@ -32,9 +32,8 @@ import (
 //
 // Churn folding into OutcomeUpstreamError is a decision, not an oversight. A
 // churn outcome that sat in availability's denominator but never its numerator
-// would inflate the number unfalsifiably, which shared-decisions §3.2 forbids by
-// name, and splitting it honestly means minting a new frozen objective version.
-// So an agent rollout counts slightly against serving availability: pessimistic
+// would inflate the number unfalsifiably, and splitting it honestly means a new
+// version of the published objectives. So an agent rollout counts slightly against serving availability: pessimistic
 // and honest, in that order. This distinction is still worth drawing here, because
 // it is what a fault label on a log line or a gateway-local counter needs.
 type Fault int

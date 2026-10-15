@@ -24,7 +24,7 @@
 // The agent is not the operator. A cluster runs both: the operator is a
 // leader-elected singleton on the control path, and the agent scales with
 // traffic on the data path. They share neither a process nor a connection,
-// because rule 4 says the data plane never crosses the control plane — if a
+// because the data plane never crosses the control plane — if a
 // request needed the operator's connection, control-plane uptime would become
 // the inference SLA.
 //

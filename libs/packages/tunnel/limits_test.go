@@ -619,14 +619,12 @@ func TestAnUnsetInnerBudgetFallsBackAboveTheDefault(t *testing.T) {
 	}
 }
 
-// The number itself is a claim about the fleet, and it is measured: one
-// 1M-context K3 sample ran 140k output tokens over 25 minutes before it was
-// killed. Non-streamed, that whole generation sits inside this timer and the old
-// five minutes cut it off at 300 seconds. This pins the floor so that a later
-// tidy-up cannot walk it back without saying so.
+// A long-context generation with no max_tokens cap can run for tens of minutes,
+// and non-streamed, all of it sits inside this timer. This pins the floor so
+// that a later tidy-up cannot walk it back without saying so.
 func TestTheDefaultCoversALongNonStreamedGeneration(t *testing.T) {
 	if DefaultResponseHeaderTimeout < 30*time.Minute {
-		t.Fatalf("default is %s; a 1M-context effort=max generation, non-streamed, does not finish in that",
+		t.Fatalf("default is %s; a long non-streamed generation does not finish in that",
 			DefaultResponseHeaderTimeout)
 	}
 }

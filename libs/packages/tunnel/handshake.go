@@ -99,7 +99,7 @@ type Accept struct {
 	// to a cluster cannot serve that cluster, and looks healthy from everywhere
 	// else — so it has to know how many there are. Asking the plane for the
 	// number would put the control plane between a cluster and the recovery of
-	// its own data path, which is rule 4 with the arrow reversed. Answering it on
+	// its own data path. Answering it on
 	// the connection the agent has already established costs nothing and cannot
 	// be unavailable.
 	//

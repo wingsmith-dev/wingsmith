@@ -91,7 +91,7 @@ const DefaultCacheTTL = 5 * time.Minute
 // has become unreachable.
 //
 // It is what makes a control-plane outage survivable for an agent that is
-// restarted during one — rule 4 in the other direction. It is bounded rather
+// restarted during one. It is bounded rather
 // than infinite because a token that has been rotated has to stop working
 // eventually, and an hour is short next to how long a rotation takes to reach
 // every cluster and long next to any plane outage worth having.

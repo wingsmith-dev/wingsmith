@@ -105,12 +105,10 @@ type PoolConfig struct {
 // header until the last token is generated, so for that shape this timer covers
 // the entire generation, prefill included.
 //
-// The number comes off a measurement rather than a guess. Nothing on this fleet
-// caps max_tokens, and on 2026-09-01 one 1M-context K3 sample ran 140k output
-// tokens at 93 tok/s — 25 minutes, and it was killed rather than finished, so
-// that is a floor and not a tail. Non-streamed, that whole generation sits
-// inside this timer, with 1M-context prefill in front of it. Forty-five minutes
-// covers the longest one anybody has watched, with room.
+// Nothing in the path caps max_tokens, and a long-context generation of 140k
+// output tokens at ~90 tok/s is about 25 minutes. Non-streamed, that whole
+// generation sits inside this timer, with prefill in front of it, so forty-five
+// minutes leaves room.
 //
 // It is still a bound and not the absence of one. A request waiting here holds
 // one of the agent's concurrent stream slots for the whole wait, so a frontend

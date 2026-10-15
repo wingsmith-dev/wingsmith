@@ -2,7 +2,7 @@
 // OpenAI-compatible Dynamo frontend Services and forwards tunnelled requests to
 // them.
 //
-// It is the cluster-local end of rule 4. A request arrives over a connection
+// It is the cluster-local end of the data path. A request arrives over a connection
 // the agent dialled outwards, and from here on it never leaves the cluster:
 // the address it is aimed at is a ClusterIP, resolved in the cluster, by asking
 // the cluster. Nothing in this package talks to the plane.
