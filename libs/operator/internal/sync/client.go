@@ -418,11 +418,11 @@ func (c *Client) session(ctx context.Context) error {
 
 // awaitLoops gives the session's goroutines a bounded chance to leave before the caller redials.
 //
-// Bounded, and that bound is the whole point. Joining them unconditionally is what turned one slow
-// apply into a seven-minute outage that logged nothing: every signal a stalled session has —
-// the error, the "hub session ended" line, the backoff, the reconnect, and the deferred
-// `connected = false` that readiness is read from — is downstream of this wait, so a reader stuck
-// inside a Kubernetes call suppressed all of them at once while the pod went on reporting Ready.
+// Bounded, and that bound is the whole point. Joined unconditionally, one slow apply becomes an
+// outage that logs nothing: every signal a stalled session has — the error, the "hub session
+// ended" line, the backoff, the reconnect, and the deferred `connected = false` that readiness is
+// read from — is downstream of this wait, so a reader stuck inside a Kubernetes call suppresses
+// all of them at once while the pod goes on reporting Ready.
 //
 // The connection is already severed by the caller, so a goroutine that outlives this cannot write
 // to a live socket, and a frame it applies late is one the next resume replays from the durable

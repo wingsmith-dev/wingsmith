@@ -171,14 +171,14 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, owner *v1a
 // prefetchIsPrunable reports whether this warm set is entitled to delete a download it does not
 // declare.
 //
-// "Not in my warm set" is not the same as "nothing asks for it", and treating the two as one was a
-// cluster tearing up its own work. On site-b a warm set was renamed — the plane moved from
-// `cache-clu-<cluster id>` to the cluster's name and back — which left two SyncedResources of kind
-// cache, each holding a different set. The prune here listed every Job in the workload namespace
-// and deleted the ones its own set did not name, so the stale object deleted the live object's
-// downloads and the live object recreated them, once every reconcile. A model in the middle of a
-// multi-hundred-gigabyte pull never finished one: its Job was replaced every few minutes and the
-// deployment gated on it waited on a download that kept starting over.
+// "Not in my warm set" is not the same as "nothing asks for it", and treating the two as one has a
+// cluster tearing up its own work. A renamed warm set — say from `cache-clu-<cluster id>` to the
+// cluster's name — leaves two SyncedResources of kind cache, each holding a different set. A prune
+// that listed every Job in the workload namespace and deleted the ones its own set did not name
+// would have the stale object delete the live object's downloads and the live object recreate
+// them, once every reconcile. A model in the middle of a multi-hundred-gigabyte pull would never
+// finish one: its Job replaced every few minutes and the deployment gated on it waiting on a
+// download that kept starting over.
 //
 // So a job with an owner that still exists and is not this one is left alone. The owner is read
 // back rather than trusted from the label, because the case that has to keep working is exactly the
@@ -233,11 +233,11 @@ const maxPrefetchAttempts = 4
 // gigabytes for nothing. An artifact is content-addressed, so a job that succeeded for one is
 // still correct.
 //
-// A *failed* one is not, and treating the mere existence of a Job object as a handled download was
-// a deadlock with no way out of it. site-b sat eight hours on a 306 GiB model whose Job had tipped
-// over its BackoffLimit when the node under it went NotReady: nothing retried it, the warm set
-// reported itself Ready over it, and the deployment gate waited on a completion that could no
-// longer come. Nothing in the cluster was wrong by then — only the record of it.
+// A *failed* one is not, and treating the mere existence of a Job object as a handled download is
+// a deadlock with no way out of it. A Job that tips over its BackoffLimit when the node under it
+// goes NotReady is never retried, the warm set reports itself Ready over it, and the deployment
+// gate waits on a completion that can no longer come. Nothing in the cluster is wrong by then —
+// only the record of it.
 //
 // It returns whether the artifact has run out of attempts, which the caller counts as pending. A
 // download that will not be tried again must not leave the warm set reporting itself dispatched.

@@ -357,9 +357,8 @@ func (r *SyncedResourceReconciler) runningAsDeclared(
 // deployment's name and the name can change. That works for everything rendered since the label
 // existed and for nothing rendered before it: an unlabelled object matches no selector, so the
 // listing above cannot see it, and the apply only ever touches the current name. Nothing else in
-// this operator would ever collect it, and in production one such object outlived a rename by days
-// — holding an accelerator and serving a second copy of the same model into the same namespace as
-// the live one.
+// this operator would ever collect it, and one left behind by a rename keeps holding an accelerator
+// and serving a second copy of the same model into the same namespace as the live one.
 //
 // It is found by name instead, and only by the one name that is safe to assume: `render.Name(id)`
 // is what `WorkloadName` falls back to for a deployment with no renderable name, so an object

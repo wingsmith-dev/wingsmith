@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	testGraphName = "kimi-k3"
+	testGraphName = "llama-70b"
 	testGraphUID  = types.UID("464b90c7-32e4-49b4-a3fe-83a991f240cc")
 	testComponent = "VllmDecodeWorker"
 )
@@ -124,9 +124,9 @@ func componentExists(t *testing.T, c client.Client, name string) bool {
 // Dynamo operator names a component deployment after a hash of its spec, so a serving edit makes a
 // new one and abandons the old — which keeps its accelerators and deadlocks a full node.
 func TestPruneSuperseded(t *testing.T) {
-	current := "kimi-k3-vllmdecodeworker-0a26de60"
-	stale := "kimi-k3-vllmdecodeworker-24273190"
-	older := "kimi-k3-vllmdecodeworker-bc2809b8"
+	current := "llama-70b-vllmdecodeworker-0a26de60"
+	stale := "llama-70b-vllmdecodeworker-24273190"
+	older := "llama-70b-vllmdecodeworker-bc2809b8"
 
 	cases := []struct {
 		name    string
@@ -210,7 +210,7 @@ func TestPruneSuperseded(t *testing.T) {
 		},
 		{
 			name:  "a status naming a generation that does not exist yet prunes nothing",
-			graph: graphDeployment("kimi-k3-vllmdecodeworker-ffffffff"),
+			graph: graphDeployment("llama-70b-vllmdecodeworker-ffffffff"),
 			objects: []*unstructured.Unstructured{
 				componentDeployment(componentOpts{name: stale, age: time.Hour}),
 			},
@@ -259,9 +259,9 @@ func TestPruneSupersededWithoutAGraphIsNotAnError(t *testing.T) {
 // forever, and the abandoned generation keeps its accelerators.
 func TestPruneSupersededIsNotBlockedByALongLivedSecondComponent(t *testing.T) {
 	const frontendComponent = "Frontend"
-	current := "kimi-k3-vllmdecodeworker-0a26de60"
-	stale := "kimi-k3-vllmdecodeworker-24273190"
-	frontend := "kimi-k3-frontend-9f13c7a2"
+	current := "llama-70b-vllmdecodeworker-0a26de60"
+	stale := "llama-70b-vllmdecodeworker-24273190"
+	frontend := "llama-70b-frontend-9f13c7a2"
 
 	graph := graphDeployment()
 	graph.Object["spec"] = map[string]any{"components": []any{
@@ -315,17 +315,17 @@ func rolling(obj *unstructured.Unstructured) *unstructured.Unstructured {
 	return obj
 }
 
-// TestPruneSupersededDuringARollingUpdate is the site-c deadlock of 2026-09-02.
+// TestPruneSupersededDuringARollingUpdate: a roll on a full node must not deadlock.
 //
 // While a roll is in progress Dynamo names both generations of the rolling component as current,
 // so neither is superseded by the status and nothing is pruned. On a node with no spare cards the
 // replacement stays Pending on `Insufficient nvidia.com/gpu` for as long as the original holds
 // them, and the original is current, so the roll never finishes on its own.
 func TestPruneSupersededDuringARollingUpdate(t *testing.T) {
-	next := "kimi-k3-vllmdecodeworker-9e753aa8"
-	previous := "kimi-k3-vllmdecodeworker-23d3a70e"
-	frontendNext := "kimi-k3-frontend-11111111"
-	frontendPrev := "kimi-k3-frontend-22222222"
+	next := "llama-70b-vllmdecodeworker-9e753aa8"
+	previous := "llama-70b-vllmdecodeworker-23d3a70e"
+	frontendNext := "llama-70b-frontend-11111111"
+	frontendPrev := "llama-70b-frontend-22222222"
 
 	cases := []struct {
 		name    string

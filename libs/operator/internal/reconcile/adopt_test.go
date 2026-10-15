@@ -219,9 +219,8 @@ func reconcileAdoptedWith(
 	return rep, got
 }
 
-// TestAnAdoptedWorkloadReportsWhatItIsRunning is the bug this path had in production: four adopted
-// deployments were serving and every one of them read `0/1` in the console, because not applying
-// anything was taken to mean there was nothing to say.
+// TestAnAdoptedWorkloadReportsWhatItIsRunning: an adopted deployment that is serving must not read
+// `0/1` in the console. Not applying anything does not mean there is nothing to say.
 func TestAnAdoptedWorkloadReportsWhatItIsRunning(t *testing.T) {
 	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 2)
 	digest := workload.Fingerprint(&live.Spec.Template.Spec)

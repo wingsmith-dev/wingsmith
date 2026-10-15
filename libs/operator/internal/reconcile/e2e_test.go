@@ -162,7 +162,7 @@ func newLive(t *testing.T) *live {
 // is a running reconciler — which a finished test no longer has. Deleting the namespace and
 // walking away leaves it Terminating forever, and the next run adds another.
 //
-// The same shape is true in production, and is worth knowing: uninstalling the operator from a
+// The same shape is true of a real install, and is worth knowing: uninstalling the operator from a
 // cluster without first letting it drain its own finalizers leaves every declared deployment
 // holding its namespace open.
 func (l *live) dropNamespace(name string) {

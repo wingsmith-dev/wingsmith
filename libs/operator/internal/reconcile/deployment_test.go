@@ -724,8 +724,8 @@ func rendered(t *testing.T, r *SyncedResourceReconciler, name string) bool {
 
 // TestARenamedWorkloadFromBeforeTheLabelIsCollected: the label is how a rendered object is found,
 // so one rendered before the label existed is invisible to the prune and nothing else would ever
-// collect it. In production one outlived a rename by days, holding a GPU and serving a duplicate
-// of the live model into the same namespace.
+// collect it, so it would go on holding a GPU and serving a duplicate of the live model into the
+// same namespace.
 func TestARenamedWorkloadFromBeforeTheLabelIsCollected(t *testing.T) {
 	legacy := legacyRendered(t, render.Name(testDeploymentID), nil)
 	r := &SyncedResourceReconciler{
@@ -818,7 +818,7 @@ func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 		PoolLabelKey:                   "hangar.io/pool",
 		EnginePullSecrets:              []string{"ghcr-engine"},
 		FrontendEnabled:                true,
-		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2",
+		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2",
 		FrontendReplicas:               3,
 		FrontendPullSecrets:            []string{"ghcr-hangar"},
 		FrontendCPU:                    "500m",
@@ -865,7 +865,7 @@ func stuckFrontendPods(n int) []*corev1.Pod {
 				Name: "main",
 				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
 					Reason:  "ImagePullBackOff",
-					Message: `Back-off pulling image "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"`,
+					Message: `Back-off pulling image "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"`,
 				}},
 			}},
 		}
@@ -1024,9 +1024,9 @@ func TestAFrontendStillComingUpIsDegradedAndNotADiagnosis(t *testing.T) {
 }
 
 // Dynamo holds a graph's set of components immutable after creation, so a cluster that turns one
-// frontend per model on cannot gain a frontend on the graphs it is already running. Observed on
-// cluster-site-c: every reconcile of an existing deployment was refused, requeued, and
-// refused again, and the only thing anywhere that said so was the same log line repeating.
+// frontend per model on cannot gain a frontend on the graphs it is already running. Without this,
+// every reconcile of an existing deployment is refused, requeued, and refused again, and the only
+// thing anywhere that says so is the same log line repeating.
 //
 // The remedy is a human's — deleting the graph reloads the weights — so what this pins is that the
 // operator stops, says which object and which command, and reports it rather than retrying.
@@ -1166,7 +1166,7 @@ func reconcileAgain(t *testing.T, r *SyncedResourceReconciler, res *v1alpha1.Syn
 	}
 }
 
-// The 2026-09-02 fleet reload, as a test.
+// A renderer change must not reload the fleet.
 //
 // Dynamo names each DynamoComponentDeployment after a hash of the component's whole pod template,
 // so any difference in what this operator renders — including an ownership label nothing reads —

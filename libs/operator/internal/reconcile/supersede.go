@@ -42,8 +42,7 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 // On a cluster with spare cards that is waste. On a saturated one it is a deadlock that cannot
 // resolve itself: the abandoned pod keeps its `nvidia.com/gpu` reservation while it crash-loops,
 // so the new pod sits in `FailedScheduling: Insufficient nvidia.com/gpu` forever and the model
-// never comes back. Observed on cluster-site-c, where three generations of one worker
-// were alive at once on a node with eight cards.
+// never comes back. Three generations of one worker can be alive at once on one node this way.
 //
 // The signal is the graph deployment's own status. `status.components[<component>].componentNames`
 // is Dynamo saying which objects are the current generation of that component; anything owned by
@@ -65,9 +64,8 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 //
 // A rolling update is the case where the status alone is not enough, and it is why `keep` is not
 // simply `current`. While `status.rollingUpdate.phase` is `InProgress`, Dynamo names *both*
-// generations of the rolling component in `componentNames` — observed on site-c on 2026-09-02, where
-// the list held `...-23d3a70e` and `...-9e753aa8` together. Nothing is superseded against that
-// set, so on a full node the roll never finishes: the new pod sits in `FailedScheduling:
+// generations of the rolling component in `componentNames`, for example `...-23d3a70e` and
+// `...-9e753aa8` together. Nothing is superseded against that set, so on a full node the roll never finishes: the new pod sits in `FailedScheduling:
 // Insufficient nvidia.com/gpu` and the old one holds all eight cards for as long as anybody is
 // willing to watch it. During a roll the newest current object of a component is the one kept and
 // the rest of that component's current objects are treated as superseded, which is the same

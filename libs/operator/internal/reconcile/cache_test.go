@@ -462,10 +462,9 @@ func failedPrefetch(attempts int) *batchv1.Job {
 	return job
 }
 
-// TestAFailedDownloadIsStartedAgain is the deadlock this pair of fixes exists for. A 306 GiB model
-// on site-b sat eight hours behind a Job that had tipped over its BackoffLimit when the node under it
-// went NotReady. Nothing retried it, because the reconciler read the existence of a Job object as
-// the download being handled, and no status was ever consulted.
+// TestAFailedDownloadIsStartedAgain: a Job that tipped over its BackoffLimit when the node under it
+// went NotReady must be retried. Reading the existence of a Job object as the download being
+// handled, without consulting its status, leaves the deployment waiting on it for good.
 func TestAFailedDownloadIsStartedAgain(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
@@ -612,11 +611,10 @@ func TestADispatchedWarmSetAsksToBeCalledAgain(t *testing.T) {
 	}
 }
 
-// TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack is what site-b hit: a prefetch Job deleted by
-// hand, nothing recreated it, and the warm set went on reporting itself dispatched over an artifact
-// with no download while the deployment gated on those weights sat in WeightsNotResident. The
-// recreate was never the missing part — ensurePrefetch already does it — the reconcile running
-// again was.
+// TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack: a prefetch Job deleted by hand must come
+// back, or the warm set goes on reporting itself dispatched over an artifact with no download
+// while the deployment gated on those weights sits in WeightsNotResident. ensurePrefetch does the
+// recreate; what this pins is that the reconcile runs again to call it.
 func TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
@@ -645,12 +643,10 @@ func TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack(t *testing.T) {
 	}
 }
 
-// The site-b outage of 2026-09-03, as a test.
-//
-// Two SyncedResources of kind cache existed at once — a rename left the old name behind holding a
-// stale set — and the prune deleted every download its own set did not name. The stale one tore up
-// the live one's jobs on every pass, the live one made them again, and a model in the middle of a
-// multi-hundred-gigabyte pull never reached the end of one.
+// Two SyncedResources of kind cache can exist at once — a rename leaves the old name behind holding
+// a stale set. A prune that deleted every download its own set did not name would have the stale
+// one tear up the live one's jobs on every pass and the live one make them again, and a model in
+// the middle of a multi-hundred-gigabyte pull would never reach the end of one.
 func TestAWarmSetDoesNotPruneWhatAnotherWarmSetOwns(t *testing.T) {
 	const otherArtifactID = "art_01j9x2ffffffffffffffffffff"
 

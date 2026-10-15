@@ -569,9 +569,8 @@ func TestLivenessTimeoutForcesReconnect(t *testing.T) {
 //
 // The hub pings at the WebSocket level and closes a session that has not ponged within 20 seconds,
 // and the library emits that pong only from inside conn.Read. So an apply done on the read
-// goroutine is a pause in the keepalive for as long as the apply lasts. In production that pause
-// was the leader-election burst at startup, the hub closed the session 24 seconds in, and the
-// operator's own view of the world stopped there.
+// goroutine is a pause in the keepalive for as long as the apply lasts, and a burst of slow applies
+// at startup is enough for the hub to close the session.
 func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
 	h := newFakeHub(t)
 	stall := newStallingHandler()
@@ -604,7 +603,7 @@ func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
 // The session's goroutines used to be joined before the session could report anything, so a handler
 // blocked on an unresponsive API server held up the error, the log line, the backoff, the redial,
 // and the deferred flag that readiness is read from — all at once. The pod stayed Ready and the
-// operator stayed silently disconnected for seven minutes. This handler ignores its context, which
+// operator stayed silently disconnected. This handler ignores its context, which
 // is the shape that caused it: a call that does not honour cancellation cannot be waited out.
 func TestAWedgedApplyStillRedials(t *testing.T) {
 	h := newFakeHub(t)

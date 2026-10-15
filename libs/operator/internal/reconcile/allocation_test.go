@@ -34,9 +34,8 @@ func gpuPod(name string, node string) corev1.Pod {
 	}
 }
 
-// TestAReplicaReportsTheCardsItHolds is the gap that left `bind_allocation` empty in production
-// while seven of eight accelerators were committed: the frame had a type, a decoder and a sink,
-// and nothing anywhere ever built one.
+// TestAReplicaReportsTheCardsItHolds: a replica's allocation frame must be built and sent, or
+// `bind_allocation` stays empty while the accelerators are committed.
 func TestAReplicaReportsTheCardsItHolds(t *testing.T) {
 	devices := fakeDevices{
 		observe.PodKey("dynamo", "gemma-decode-0"): {"GPU-aaaa", "GPU-bbbb"},
