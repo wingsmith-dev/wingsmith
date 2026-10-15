@@ -19,7 +19,7 @@ name: hangar
 # This is a local stack and nothing else. Every port is published on 127.0.0.1 only, the database
 # password is `hangar`, and HANGAR_APP_ENV=local turns admin authentication off: anyone who can
 # reach the api is an administrator. Do not publish these ports to a network, and do not deploy
-# this file. HANGAR_API_PORT and HANGAR_HUB_PORT move the host side of the two plane ports.
+# this file.
 
 # One image, built once by `migrate` (which every other plane service waits for) and reused by
 # name. Each service declaring its own `build` is the same image built three times.
@@ -43,9 +43,8 @@ x-plane: &plane
     - ./libs/packages/contract:/app/contract:ro
   environment: &plane-env
     HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@db:5442/hangar
-    # Overrides the image's baked-in `production`. `local` turns admin auth off and makes the admin
-    # password and signing secret optional (see config/settings.py), which is safe only because
-    # every port below is bound to 127.0.0.1. Clusters still need their own enrolment token.
+    # Overrides the image's baked-in `production`. This file is the local stack, and `local` is
+    # what makes the admin password and the session secret optional — see config/settings.py.
     HANGAR_APP_ENV: local
     # `local` binds loopback by default, which inside a container is unreachable. The ports below
     # are published on the host's loopback only, so this does not put the API on the network.
