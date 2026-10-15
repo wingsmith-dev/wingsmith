@@ -258,7 +258,8 @@ func killConnectorHolding(t *testing.T, kill func(*silentPeer, *testing.T), buil
 		_, _ = w.Write([]byte("served-by-survivor"))
 	}), Limits{})
 
-	pool := newPool(t, PoolConfig{})
+	retries := &retryLog{outcomes: newCounter()}
+	pool := newPool(t, PoolConfig{Observer: retries})
 	survivorConn := link(t, pool, "cluster-ap", survivor)
 
 	gatewaySide, peerSide := socketPair(t)
@@ -319,14 +320,19 @@ func killConnectorHolding(t *testing.T, kill func(*silentPeer, *testing.T), buil
 		}
 	}
 	want := 0
+	outcome := RetryWritten
 	if retried {
 		want = 1
+		outcome = RetryResent
 	}
 	for i := 0; i < inFlight; i++ {
 		id := fmt.Sprintf("req-%02d", i)
 		if got := served.get(id); got != want {
 			t.Errorf("%s was served %d times by the survivor, want %d", id, got, want)
 		}
+	}
+	if got := retries.outcomes.snapshot(); len(got) != 1 || got[outcome] != inFlight {
+		t.Errorf("retry outcomes = %v, want %d %q", got, inFlight, outcome)
 	}
 	eventually(t, 5*time.Second, "the killed tunnel to leave the pool", func() bool {
 		return pool.Live("cluster-ap") == 1
@@ -772,4 +778,15 @@ func mustRequest(t *testing.T) *http.Request {
 		t.Fatal(err)
 	}
 	return req
+}
+
+// retryLog counts what became of requests whose tunnel died.
+type retryLog struct {
+	outcomes *counter
+}
+
+func (*retryLog) TunnelOpened(string, int) {}
+func (*retryLog) TunnelClosed(string, int) {}
+func (r *retryLog) TunnelRetry(_ string, outcome string) {
+	r.outcomes.add(outcome)
 }

@@ -115,6 +115,27 @@ type Observer interface {
 	TunnelClosed(clusterID string, live int)
 }
 
+// RetryObserver is optionally implemented by an Observer to count what became
+// of requests whose tunnel died under them with no GOAWAY. The outcome is one
+// of the Retry constants.
+type RetryObserver interface {
+	TunnelRetry(clusterID, outcome string)
+}
+
+// What became of a request whose tunnel died. Closed set: these reach a metric
+// label.
+const (
+	// RetryResent is a request sent down another tunnel.
+	RetryResent = "resent"
+	// RetryWritten is a request not resent because its headers had been
+	// written and it is not idempotent, so the agent may already have
+	// forwarded it.
+	RetryWritten = "written"
+	// RetryExhausted is a request that could have been resent but had used its
+	// attempts, or whose body could not be produced again.
+	RetryExhausted = "exhausted"
+)
+
 // PoolConfig configures the gateway end.
 type PoolConfig struct {
 	// Limits are the HTTP/2 settings this end applies. Zero fields default.
@@ -546,14 +567,29 @@ func (t *clusterTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if first == nil {
 			first = err
 		}
-		if attempt >= maxTunnelAttempts || !retryAfterTunnelDeath(clone, err, wrote.Load()) {
+		if !retryAfterTunnelDeath(clone, err, wrote.Load()) {
+			if clone.Context().Err() == nil && isTunnelDeath(err) {
+				t.retried(RetryWritten)
+			}
+			return nil, worseOf(first, err)
+		}
+		if attempt >= maxTunnelAttempts {
+			t.retried(RetryExhausted)
 			return nil, worseOf(first, err)
 		}
 		rewound, ok := rewind(clone)
 		if !ok {
+			t.retried(RetryExhausted)
 			return nil, worseOf(first, err)
 		}
+		t.retried(RetryResent)
 		clone = rewound
+	}
+}
+
+func (t *clusterTransport) retried(outcome string) {
+	if observer, ok := t.pool.cfg.Observer.(RetryObserver); ok {
+		observer.TunnelRetry(t.clusterID, outcome)
 	}
 }
 
