@@ -283,13 +283,17 @@ func TestOperationCancelIsNotDeletion(t *testing.T) {
 
 func TestIdempotencyKeyReturnsTheSameOperation(t *testing.T) {
 	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-	first, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "k1", "--yes", "-o", "name")
-	second, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "k1", "--yes", "-o", "name")
+	first, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "retry-key-1", "--yes", "-o", "name")
+	second, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "retry-key-1", "--yes", "-o", "name")
 	if strings.TrimSpace(first) == "" {
 		t.Fatal("create printed no id")
 	}
 	if strings.TrimSpace(first) != strings.TrimSpace(second) {
 		t.Errorf("the same idempotency key made two operations: %q and %q", first, second)
+	}
+	out, _, _ := run(t, "operation", "get", strings.TrimSpace(first), "-o", "json")
+	if strings.Contains(out, "retry-key-1") {
+		t.Errorf("the idempotency key leaked into the operation: %s", out)
 	}
 }
 

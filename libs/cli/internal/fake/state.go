@@ -35,11 +35,14 @@ type state struct {
 	Policies        []api.Policy             `json:"policies"`
 	Allocations     []api.Allocation         `json:"allocations"`
 	Operations      []api.Operation          `json:"operations"`
-	Benchmarks      []api.BenchmarkRun       `json:"benchmarks"`
-	BenchmarkAsks   []api.BenchmarkRequest   `json:"benchmark_requests"`
-	Components      []api.Component          `json:"components"`
-	Events          []api.Event              `json:"events"`
-	AlertThresholds []api.AlertThreshold     `json:"alert_thresholds"`
+	// OperationKeys maps an Idempotency-Key to the operation it created. The
+	// plane keeps this beside the row, not in its parameters.
+	OperationKeys   map[string]string      `json:"operation_keys,omitempty"`
+	Benchmarks      []api.BenchmarkRun     `json:"benchmarks"`
+	BenchmarkAsks   []api.BenchmarkRequest `json:"benchmark_requests"`
+	Components      []api.Component        `json:"components"`
+	Events          []api.Event            `json:"events"`
+	AlertThresholds []api.AlertThreshold   `json:"alert_thresholds"`
 }
 
 // load reads a fixture document, falling back to the built-in seed. When a

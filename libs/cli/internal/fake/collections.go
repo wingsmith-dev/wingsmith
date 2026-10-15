@@ -1418,9 +1418,9 @@ func (b *Backend) CreateOperation(ctx context.Context, req api.OperationRequest,
 	if strings.TrimSpace(req.Type) == "" || strings.TrimSpace(req.Target) == "" {
 		return api.Operation{}, errs.New(errs.CodeInputRequired, "an operation needs a type and a target")
 	}
-	if idempotencyKey != "" {
+	if id, ok := b.state.OperationKeys[idempotencyKey]; ok && idempotencyKey != "" {
 		for _, op := range b.state.Operations {
-			if op.Parameters["idempotency_key"] == idempotencyKey {
+			if op.ID == id {
 				return op, nil
 			}
 		}
@@ -1433,9 +1433,6 @@ func (b *Backend) CreateOperation(ctx context.Context, req api.OperationRequest,
 	params := map[string]any{}
 	for k, v := range req.Parameters {
 		params[k] = v
-	}
-	if idempotencyKey != "" {
-		params["idempotency_key"] = idempotencyKey
 	}
 	op := api.Operation{
 		ID:          b.newUID("opr_"),
@@ -1453,6 +1450,12 @@ func (b *Backend) CreateOperation(ctx context.Context, req api.OperationRequest,
 		op.Reason = &reason
 	}
 	b.state.Operations = append([]api.Operation{op}, b.state.Operations...)
+	if idempotencyKey != "" {
+		if b.state.OperationKeys == nil {
+			b.state.OperationKeys = map[string]string{}
+		}
+		b.state.OperationKeys[idempotencyKey] = op.ID
+	}
 	return op, b.persist()
 }
 
