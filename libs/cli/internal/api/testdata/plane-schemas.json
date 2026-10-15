@@ -1,0 +1,2005 @@
+{
+ "AlertAcknowledgeRequest": {
+  "note": "string?"
+ },
+ "AlertSchema": {
+  "acknowledged_at": "string?",
+  "acknowledged_by": "string?",
+  "acknowledged_note": "string?",
+  "cluster_id": "string?",
+  "details": "object",
+  "fired_at": "string?",
+  "first_seen_at": "string",
+  "id": "string",
+  "last_seen_at": "string",
+  "notified_at": "string?",
+  "notify_error": "string?",
+  "occurrences": "integer",
+  "resolved_at": "string?",
+  "rule": "string",
+  "severity": "string",
+  "source": "string",
+  "state": "string",
+  "subject": "$AlertSubjectSchema",
+  "title": "string"
+ },
+ "AlertSubjectSchema": {
+  "id": "string?",
+  "type": "string"
+ },
+ "AlertThresholdCreateRequest": {
+  "dimensions": "object",
+  "enabled": "boolean",
+  "for_seconds": "integer?",
+  "lookback": "string?",
+  "objective": "string?",
+  "reason": "string?",
+  "rule": "string",
+  "severity": "string?",
+  "subject_id": "string?",
+  "subject_type": "string?",
+  "value": "number"
+ },
+ "AlertThresholdSchema": {
+  "comparison": "string",
+  "created_at": "string",
+  "dimensions": "object",
+  "enabled": "boolean",
+  "for_seconds": "integer?",
+  "id": "string",
+  "lookback": "string?",
+  "metric": "string",
+  "objective": "string?",
+  "reason": "string?",
+  "rule": "string",
+  "severity": "string?",
+  "subject": "$AlertSubjectSchema",
+  "updated_at": "string?",
+  "value": "number"
+ },
+ "AlertThresholdUpdateRequest": {
+  "dimensions": "object",
+  "enabled": "boolean",
+  "for_seconds": "integer?",
+  "lookback": "string?",
+  "objective": "string?",
+  "reason": "string?",
+  "severity": "string?",
+  "value": "number"
+ },
+ "AllocationDeviceSchema": {
+  "device": "string",
+  "device_uuid": "string",
+  "live": "boolean",
+  "node": "string",
+  "released_at": "string?"
+ },
+ "AllocationSchema": {
+  "acquired_at": "string?",
+  "cluster": "string",
+  "cluster_name": "string",
+  "created_at": "string",
+  "device_class": "string",
+  "device_count": "integer",
+  "devices": "[]$AllocationDeviceSchema",
+  "gang_complete": "boolean",
+  "id": "string",
+  "live": "boolean",
+  "observed_at": "string?",
+  "over_quota": "boolean",
+  "phase": "string",
+  "project": "string",
+  "project_slug": "string",
+  "released_at": "string?",
+  "replica": "string?",
+  "updated_at": "string?",
+  "workload": "string"
+ },
+ "ApiConfigSchema": {
+  "host": "string",
+  "port": "integer"
+ },
+ "AppConfigSchema": {
+  "allowed_origins": "[]string",
+  "debug": "boolean",
+  "env": "string",
+  "log_format": "string",
+  "log_level": "string"
+ },
+ "ArtifactBaselineCreateRequest": {
+  "dataset": "string",
+  "metric": "string",
+  "note": "string?",
+  "recorded_at": "string?",
+  "recorded_by": "string?",
+  "source_uri": "string?",
+  "tolerance_pct": "number",
+  "value": "number"
+ },
+ "ArtifactBaselineSchema": {
+  "artifact_id": "string",
+  "created_at": "string",
+  "dataset": "string",
+  "id": "string",
+  "metric": "string",
+  "note": "string?",
+  "recorded_at": "string",
+  "recorded_by": "string",
+  "revision": "string",
+  "source_uri": "string?",
+  "tolerance_pct": "number",
+  "updated_at": "string?",
+  "value": "number"
+ },
+ "ArtifactBaselineUpdateRequest": {
+  "note": "string?",
+  "recorded_at": "string?",
+  "recorded_by": "string?",
+  "source_uri": "string?",
+  "tolerance_pct": "number",
+  "value": "number"
+ },
+ "ArtifactCreateRequest": {
+  "base_artifact": "string?",
+  "digest": "string",
+  "format": "string?",
+  "kind": "string",
+  "licence": "string?",
+  "locations": "[]$ArtifactLocationRequest",
+  "metadata": "object",
+  "name": "string",
+  "parameter_count": "integer?",
+  "project": "string?",
+  "size_bytes": "integer",
+  "slug": "string",
+  "source": "string?",
+  "upstream": "$ArtifactUpstreamSchema?",
+  "verified": "boolean"
+ },
+ "ArtifactDraft": {
+  "digest": "string?",
+  "existing_id": "string?",
+  "format": "string?",
+  "kind": "string",
+  "metadata": "object",
+  "name": "string?",
+  "notes": "[]string",
+  "parameter_count": "integer?",
+  "reference": "string?",
+  "revision": "string?",
+  "source_scheme": "string?",
+  "source_uri": "string?",
+  "verified": "boolean"
+ },
+ "ArtifactFitLayoutSchema": {
+  "aggregate_gb": "number",
+  "context_length": "integer",
+  "device_count": "integer",
+  "node_count": "integer",
+  "pipeline_parallel": "integer",
+  "reason": "string",
+  "reduced": "boolean",
+  "required_gb": "number",
+  "supply_short": "boolean",
+  "tensor_parallel": "integer"
+ },
+ "ArtifactFitSchema": {
+  "aggregate_gb": "number",
+  "cluster_count": "integer",
+  "context_length": "integer",
+  "device_class": "string",
+  "device_count": "integer",
+  "devices_allocatable": "integer",
+  "devices_per_node": "integer",
+  "devices_total": "integer",
+  "fits": "boolean",
+  "in_catalog": "boolean",
+  "kv_counted": "boolean",
+  "label": "string",
+  "layouts": "[]$ArtifactFitLayoutSchema",
+  "memory_mib_per_device": "integer",
+  "node_count": "integer",
+  "pipeline_parallel": "integer",
+  "possible": "boolean",
+  "reason": "string",
+  "reduced": "boolean",
+  "required_gb": "number",
+  "supply_short": "boolean",
+  "tensor_parallel": "integer",
+  "weights_gb": "number"
+ },
+ "ArtifactFitmentSchema": {
+  "artifact_id": "string",
+  "concurrency": "integer",
+  "considered": "integer",
+  "context_length": "integer",
+  "items": "[]$ArtifactFitSchema",
+  "max_devices": "integer",
+  "note": "string?",
+  "quantization": "string",
+  "scope": "string",
+  "sizable": "boolean"
+ },
+ "ArtifactLocationRequest": {
+  "preferred": "boolean",
+  "region": "string?",
+  "scheme": "string",
+  "uri": "string"
+ },
+ "ArtifactLocationSchema": {
+  "preferred": "boolean",
+  "region": "string?",
+  "scheme": "string",
+  "uri": "string"
+ },
+ "ArtifactRefreshSchema": {
+  "artifact": "$ArtifactSchema",
+  "changed": "[]string",
+  "notes": "[]$ResolveNote",
+  "source": "string"
+ },
+ "ArtifactSchema": {
+  "base_artifact_id": "string?",
+  "created_at": "string",
+  "digest": "string",
+  "format": "string?",
+  "id": "string",
+  "kind": "string",
+  "licence": "string?",
+  "locations": "[]$ArtifactLocationSchema",
+  "metadata": "object",
+  "name": "string",
+  "parameter_count": "integer?",
+  "project_id": "string?",
+  "revision": "string",
+  "size_bytes": "integer",
+  "slug": "string",
+  "updated_at": "string?",
+  "upstream": "$ArtifactUpstreamSchema",
+  "verified": "boolean"
+ },
+ "ArtifactUpdateRequest": {
+  "format": "string?",
+  "kind": "string",
+  "licence": "string?",
+  "locations": "[]$ArtifactLocationRequest",
+  "metadata": "object",
+  "name": "string",
+  "parameter_count": "integer?",
+  "project": "string?",
+  "size_bytes": "integer",
+  "slug": "string",
+  "upstream": "$ArtifactUpstreamSchema"
+ },
+ "ArtifactUpstreamSchema": {
+  "context_length": "integer?",
+  "input_modalities": "[]string",
+  "licence": "string?",
+  "max_output_tokens": "integer?",
+  "provider": "string?",
+  "provider_model_id": "string?",
+  "reasoning": "boolean?",
+  "recorded_at": "string?",
+  "recorded_by": "string?",
+  "released_at": "string?",
+  "source_uri": "string?",
+  "structured_output_modes": "[]string",
+  "tool_calling": "boolean?"
+ },
+ "ArtifactUsageSchema": {
+  "artifact_id": "string",
+  "downstream_count": "integer",
+  "workload_count": "integer"
+ },
+ "AuthConfigSchema": {
+  "admin_auth": "string",
+  "admin_password_hash_set": "boolean",
+  "huggingface_token_set": "boolean",
+  "operator_token_set": "boolean",
+  "session_signing_secret_set": "boolean",
+  "session_ttl_seconds": "integer"
+ },
+ "BenchmarkBandSchema": {
+  "band": "string",
+  "incomplete": "[]string",
+  "requests": "integer",
+  "runs": "integer",
+  "ttft_avg_ms": "number?",
+  "ttft_p50_ms": "number?",
+  "ttft_p90_ms": "number?"
+ },
+ "BenchmarkCheckSchema": {
+  "comparator": "string",
+  "detail": "string?",
+  "id": "string",
+  "label": "string",
+  "observed": "number?",
+  "outcome": "string",
+  "threshold": "number?"
+ },
+ "BenchmarkCoverageSchema": {
+  "artifact_id": "string?",
+  "cluster_id": "string?",
+  "deployment_id": "string?",
+  "serving_digest": "string?"
+ },
+ "BenchmarkCurvePointSchema": {
+  "discard": "boolean",
+  "phase": "string",
+  "readings": "object",
+  "run": "string",
+  "step_index": "integer",
+  "step_value": "integer?"
+ },
+ "BenchmarkCurveSchema": {
+  "criteria_version": "string",
+  "knee": "$BenchmarkKneeSchema",
+  "points": "[]$BenchmarkCurvePointSchema",
+  "request": "string",
+  "serving_digest": "string?",
+  "step_field": "string"
+ },
+ "BenchmarkHarnessSchema": {
+  "description": "string",
+  "image": "string",
+  "levels": "[]string",
+  "max_probes": "integer?",
+  "name": "string",
+  "parameters": "[]$BenchmarkParameterSchema"
+ },
+ "BenchmarkKneeSchema": {
+  "found": "boolean",
+  "method": "string",
+  "metric": "string",
+  "reason": "string",
+  "step_index": "integer?",
+  "step_value": "integer?",
+  "threshold": "number?"
+ },
+ "BenchmarkParameterSchema": {
+  "default": "string|integer|number|boolean",
+  "description": "string",
+  "levels": "[]string",
+  "name": "string",
+  "type": "string"
+ },
+ "BenchmarkProvenanceSchema": {
+  "deployment_generation": "integer",
+  "engine_args": "object",
+  "model": "string",
+  "serving": "object",
+  "serving_digest": "string?"
+ },
+ "BenchmarkReadingSchema": {
+  "path": "string",
+  "unit": "string",
+  "value": "number?"
+ },
+ "BenchmarkRequestCreateRequest": {
+  "criteria": "string?",
+  "deadline": "string?",
+  "harness": "string",
+  "image": "string?",
+  "level": "string",
+  "mode": "string",
+  "parameters": "object",
+  "reason": "string?",
+  "steps": "[]integer",
+  "target": "string",
+  "tier": "string?"
+ },
+ "BenchmarkRequestSchema": {
+  "coverage": "[]$BenchmarkCoverageSchema",
+  "created_at": "string",
+  "criteria_version": "string",
+  "harness": "string",
+  "homogeneous": "boolean",
+  "id": "string",
+  "image": "string",
+  "level": "string",
+  "mode": "string",
+  "parameters": "object",
+  "phase": "string",
+  "reason": "string?",
+  "requested_by": "string",
+  "runs": "[]string",
+  "target_id": "string",
+  "tier": "string?",
+  "updated_at": "string?"
+ },
+ "BenchmarkRunCreateRequest": {
+  "criteria": "string?",
+  "deadline": "string?",
+  "deployment": "string",
+  "harness": "string",
+  "image": "string?",
+  "parameters": "object",
+  "reason": "string?",
+  "tier": "string?"
+ },
+ "BenchmarkRunSchema": {
+  "artifacts_uri": "string?",
+  "cluster_id": "string?",
+  "created_at": "string",
+  "deployment_id": "string?",
+  "discard": "boolean",
+  "endpoint_id": "string?",
+  "error": "string?",
+  "finished_at": "string?",
+  "harness": "string",
+  "harness_version": "string?",
+  "id": "string",
+  "image": "string",
+  "log_tail": "string?",
+  "operation_id": "string?",
+  "parameters": "object",
+  "phase": "string",
+  "provenance": "$BenchmarkProvenanceSchema",
+  "reason": "string?",
+  "request_id": "string?",
+  "requested_by": "string",
+  "started_at": "string?",
+  "step_index": "integer",
+  "summary": "object?",
+  "updated_at": "string?",
+  "vantage": "string?"
+ },
+ "BenchmarkVerdictSchema": {
+  "checks": "[]$BenchmarkCheckSchema",
+  "criteria_version": "string",
+  "outcome": "string",
+  "reason": "string?"
+ },
+ "BreakdownSchema": {
+  "key": "string",
+  "label": "string",
+  "samples": "[]$SampleSchema"
+ },
+ "CacheSchema": {
+  "kv_cache_dtype": "string?",
+  "kv_cache_fraction": "number?",
+  "prefix_cache_config": "object",
+  "prefix_cache_enabled": "boolean"
+ },
+ "CapabilitiesSchema": {
+  "asserted_at": "string?",
+  "asserted_by": "string?",
+  "input_modalities": "[]string",
+  "parallel_tool_calls": "boolean",
+  "prompt_cache_mode": "string",
+  "prompt_cache_ttl_seconds": "integer?",
+  "reasoning_supported": "boolean",
+  "source_uri": "string?",
+  "streaming_supported": "boolean",
+  "structured_output_modes": "[]string",
+  "tool_calling_supported": "boolean",
+  "tool_choice_modes": "[]string"
+ },
+ "ClusterCreateRequest": {
+  "capabilities": "object",
+  "display_name": "string?",
+  "labels": "object",
+  "metrics_label": "string?",
+  "name": "string",
+  "phase": "string",
+  "region": "string",
+  "residency": "string?",
+  "zone": "string?"
+ },
+ "ClusterHeadroomSchema": {
+  "free_devices": "integer",
+  "largest_contiguous_block": "integer",
+  "whole_nodes_free": "integer"
+ },
+ "ClusterRollupSchema": {
+  "cluster_id": "string",
+  "deployment_count": "integer",
+  "devices_allocatable": "integer",
+  "devices_allocated": "integer",
+  "devices_total": "integer",
+  "headroom": "$ClusterHeadroomSchema",
+  "nodes_ready": "integer",
+  "nodes_total": "integer",
+  "pool_count": "integer"
+ },
+ "ClusterSchema": {
+  "capabilities": "object",
+  "created_at": "string",
+  "display_name": "string?",
+  "enrolled_at": "string?",
+  "id": "string",
+  "labels": "object",
+  "metrics_label": "string?",
+  "name": "string",
+  "phase": "string",
+  "reachable": "boolean",
+  "region": "string",
+  "residency": "string?",
+  "revision": "string",
+  "serving": "$ClusterServingSchema?",
+  "sync": "$ClusterSyncSchema",
+  "updated_at": "string?",
+  "zone": "string?"
+ },
+ "ClusterServingRequest": {
+  "credential_id": "string?",
+  "enabled": "boolean",
+  "url": "string"
+ },
+ "ClusterServingSchema": {
+  "credential_id": "string?",
+  "enabled": "boolean",
+  "url": "string"
+ },
+ "ClusterSetupSchema": {
+  "chart_ref": "string",
+  "chart_version": "string?",
+  "enrolment_token": "string?",
+  "enrolment_token_set": "boolean",
+  "helm_command": "string",
+  "registry_login": "string?",
+  "registry_login_gh": "string?",
+  "values_yaml": "string"
+ },
+ "ClusterSyncSchema": {
+  "cloud": "string?",
+  "distribution": "string?",
+  "lag_ms": "integer?",
+  "last_error": "string?",
+  "last_seen_at": "string?",
+  "last_sync_at": "string?",
+  "multinode": "boolean",
+  "observed_region": "string?",
+  "operator_version": "string?",
+  "read_only": "boolean",
+  "state": "string"
+ },
+ "ClusterUpdateRequest": {
+  "capabilities": "object",
+  "display_name": "string?",
+  "labels": "object",
+  "metrics_label": "string?",
+  "phase": "string",
+  "region": "string",
+  "residency": "string?",
+  "zone": "string?"
+ },
+ "ClusterVerdict": {
+  "available_devices": "integer",
+  "cluster": "string",
+  "cluster_name": "string",
+  "domain": "string?",
+  "domain_free_devices": "integer",
+  "domain_identifier": "string?",
+  "feasible": "boolean",
+  "fit_slack": "integer",
+  "free_devices": "integer",
+  "largest_domain_free_devices": "integer",
+  "preemption": "$PreemptionPlan?",
+  "quota_headroom": "integer?",
+  "reasons": "[]$Rejection",
+  "reserved_devices": "integer"
+ },
+ "ComponentCreateRequest": {
+  "cluster": "string",
+  "config": "object",
+  "desired_version": "string",
+  "enabled": "boolean",
+  "kind": "string",
+  "name": "string"
+ },
+ "ComponentSchema": {
+  "behind": "boolean",
+  "cluster_id": "string",
+  "config": "object",
+  "created_at": "string",
+  "desired_version": "string",
+  "enabled": "boolean",
+  "id": "string",
+  "kind": "string",
+  "name": "string",
+  "revision": "string",
+  "status": "$ComponentStatusSchema",
+  "updated_at": "string?"
+ },
+ "ComponentStatusSchema": {
+  "healthy": "boolean",
+  "message": "string?",
+  "observed_at": "string?",
+  "observed_version": "string?",
+  "rollout_phase": "string"
+ },
+ "ComponentUpdateRequest": {
+  "config": "object",
+  "desired_version": "string",
+  "enabled": "boolean",
+  "kind": "string"
+ },
+ "ConfigSchema": {
+  "api": "$ApiConfigSchema",
+  "app": "$AppConfigSchema",
+  "auth": "$AuthConfigSchema",
+  "database": "$DatabaseConfigSchema",
+  "hub": "$HubConfigSchema",
+  "metrics": "$MetricsConfigSchema",
+  "reactor": "$ReactorConfigSchema",
+  "setup": "$SetupConfigSchema"
+ },
+ "DatabaseConfigSchema": {
+  "database": "string",
+  "driver": "string",
+  "echo": "boolean",
+  "host": "string",
+  "pool_max_overflow": "integer",
+  "pool_pre_ping": "boolean",
+  "pool_size": "integer",
+  "port": "integer?"
+ },
+ "DecisionRequest": {
+  "note": "string?",
+  "project": "string?"
+ },
+ "DeploymentAuthorityRequest": {
+  "authority": "string",
+  "fingerprint": "string?"
+ },
+ "DeploymentReplicaRollupSchema": {
+  "at_current_generation": "integer",
+  "failed": "integer",
+  "pending": "integer",
+  "ready": "integer",
+  "running": "integer",
+  "total": "integer"
+ },
+ "DeploymentRoleObservedSchema": {
+  "desired": "integer",
+  "ready": "integer",
+  "role": "string"
+ },
+ "DeploymentSchema": {
+  "admission_phase": "string",
+  "admission_reason": "string?",
+  "admitted_at": "string?",
+  "adopted_fingerprint": "string?",
+  "adopted_workload_id": "string?",
+  "authority": "string",
+  "cluster_id": "string",
+  "created_at": "string",
+  "desired_replicas": "integer",
+  "enabled": "boolean",
+  "generation": "integer",
+  "id": "string",
+  "max_replicas": "integer",
+  "min_replicas": "integer",
+  "name": "string",
+  "placed_at": "string?",
+  "queued_at": "string?",
+  "replicas": "$DeploymentReplicaRollupSchema",
+  "revision": "string",
+  "status": "$DeploymentStatusSchema?",
+  "updated_at": "string?",
+  "workload_id": "string",
+  "workload_name": "string"
+ },
+ "DeploymentStatusSchema": {
+  "desired_replicas": "integer",
+  "last_error_at": "string?",
+  "last_error_code": "string?",
+  "last_error_message": "string?",
+  "message": "string?",
+  "observed_at": "string?",
+  "observed_generation": "integer",
+  "phase": "string",
+  "ready_replicas": "integer",
+  "reason": "string?",
+  "roles": "[]$DeploymentRoleObservedSchema?",
+  "unavailable_replicas": "integer",
+  "updated_replicas": "integer"
+ },
+ "DeploymentUpdateRequest": {
+  "enabled": "boolean"
+ },
+ "DeviceClassInventorySchema": {
+  "allocatable": "integer",
+  "allocated": "integer",
+  "clusters": "[]string",
+  "devices": "integer",
+  "healthy": "integer",
+  "nodes": "integer"
+ },
+ "DeviceClassSchema": {
+  "aliases": "object",
+  "architecture": "string",
+  "form_factor": "string",
+  "in_catalog": "boolean",
+  "inventory": "$DeviceClassInventorySchema",
+  "label": "string",
+  "memory_mib": "integer",
+  "name": "string",
+  "vendor": "string"
+ },
+ "DeviceSchema": {
+  "allocatable": "boolean",
+  "cluster": "string",
+  "cluster_name": "string",
+  "compute_capability": "string?",
+  "created_at": "string",
+  "device_class": "string",
+  "device_index": "integer",
+  "device_uuid": "string",
+  "ecc_aggregate_errors": "integer",
+  "ecc_enabled": "boolean",
+  "ecc_pending_retirement": "boolean",
+  "ecc_volatile_errors": "integer",
+  "health": "string",
+  "health_reason": "string?",
+  "id": "string",
+  "memory_mib": "integer",
+  "mig_enabled": "boolean",
+  "mig_parent_device_uuid": "string?",
+  "mig_profile": "string?",
+  "model_name": "string?",
+  "node": "string",
+  "node_name": "string",
+  "observed_at": "string?",
+  "pci_address": "string?",
+  "throttle_reasons": "[]string",
+  "throttled": "boolean",
+  "topology": "$DeviceTopologySchema?",
+  "updated_at": "string?",
+  "vendor": "string"
+ },
+ "DeviceTopologySchema": {
+  "id": "string",
+  "identifier": "string",
+  "kind": "string"
+ },
+ "DiffusionSchema": {
+  "default_sampling_params": "object",
+  "model_class_name": "string?"
+ },
+ "DiscoveredWorkloadSchema": {
+  "cluster_id": "string",
+  "cluster_name": "string",
+  "decided_at": "string?",
+  "decided_by": "string?",
+  "deployment_id": "string?",
+  "devices_per_replica": "integer",
+  "devices_total": "integer",
+  "first_seen_at": "string?",
+  "id": "string",
+  "images": "[]string",
+  "kind": "string",
+  "labels": "object",
+  "model": "string?",
+  "name": "string",
+  "namespace": "string",
+  "node_ids": "[]string",
+  "note": "string?",
+  "observed_at": "string?",
+  "project_id": "string?",
+  "replicas_desired": "integer",
+  "replicas_ready": "integer",
+  "spec_fingerprint": "string?",
+  "status": "string"
+ },
+ "EndpointCreateRequest": {
+  "aliases": "[]string",
+  "enabled": "boolean",
+  "failover_order": "[]string",
+  "labels": "object",
+  "name": "string",
+  "project": "string",
+  "routing_strategy": "string",
+  "slug": "string",
+  "targets": "[]$EndpointTargetRequest",
+  "visibility": "string"
+ },
+ "EndpointSchema": {
+  "aliases": "[]string",
+  "created_at": "string",
+  "enabled": "boolean",
+  "failover_order": "[]string",
+  "id": "string",
+  "labels": "object",
+  "name": "string",
+  "project_id": "string",
+  "revision": "string",
+  "routing_strategy": "string",
+  "slug": "string",
+  "surface": "$EndpointSurfaceSchema",
+  "targets": "[]$EndpointTargetSchema",
+  "updated_at": "string?",
+  "visibility": "string"
+ },
+ "EndpointSurfaceSchema": {
+  "auth_mode": "string?",
+  "cors_enabled": "boolean?",
+  "error_shape": "string?",
+  "max_request_bytes": "integer?",
+  "output_length_params": "[]string",
+  "policy": "$endpoints_schemas_PolicySchema?",
+  "protocols": "[]string",
+  "request_timeout_seconds": "integer?",
+  "streaming_transport": "string?"
+ },
+ "EndpointTargetRequest": {
+  "deployment": "string",
+  "enabled": "boolean",
+  "role": "string",
+  "served_model_name": "string?",
+  "weight": "integer"
+ },
+ "EndpointTargetSchema": {
+  "deployment_id": "string",
+  "enabled": "boolean",
+  "role": "string",
+  "served_model_name": "string?",
+  "weight": "integer"
+ },
+ "EndpointUpdateRequest": {
+  "aliases": "[]string",
+  "enabled": "boolean",
+  "failover_order": "[]string",
+  "labels": "object",
+  "routing_strategy": "string",
+  "slug": "string",
+  "surface": "object",
+  "targets": "[]$EndpointTargetRequest",
+  "visibility": "string"
+ },
+ "EventSchema": {
+  "cluster_id": "string?",
+  "details": "object",
+  "id": "string",
+  "kind": "string",
+  "message": "string",
+  "occurred_at": "string",
+  "operation_id": "string?",
+  "recorded_at": "string",
+  "severity": "string",
+  "subject": "$EventSubjectSchema"
+ },
+ "EventSubjectSchema": {
+  "id": "string?",
+  "type": "string"
+ },
+ "ExpansionDecision": {
+  "desired": "integer",
+  "shares": "[]$Share",
+  "shortfall": "integer",
+  "splittable": "boolean",
+  "summary": "string",
+  "verdicts": "[]$ClusterVerdict",
+  "workload": "string"
+ },
+ "GatewayTenantSchema": {
+  "auth": "string",
+  "enabled": "boolean",
+  "host": "string?",
+  "id": "string",
+  "ingress": "string",
+  "key_hashes": "[]string",
+  "slug": "string"
+ },
+ "GatewayTenantTableSchema": {
+  "revision": "string",
+  "tenants": "[]$GatewayTenantSchema"
+ },
+ "HubConfigSchema": {
+  "host": "string",
+  "instance_id": "string",
+  "ownership_check_seconds": "number",
+  "path": "string",
+  "port": "integer",
+  "public_host": "string",
+  "public_url": "string",
+  "reaper_interval_seconds": "number",
+  "session_ttl_seconds": "integer"
+ },
+ "LoginRequest": {
+  "password": "string",
+  "slug": "string"
+ },
+ "LoginResponse": {
+  "access_token": "string",
+  "expires_in": "integer",
+  "kind": "string",
+  "refresh_token": "string",
+  "tenant": "string?"
+ },
+ "LogoutRequest": {
+  "refresh_token": "string"
+ },
+ "MetricRuleSchema": {
+  "comparison": "string",
+  "for_seconds": "integer",
+  "lookback": "string",
+  "measures": "string",
+  "metric": "string",
+  "name": "string",
+  "severity": "string",
+  "subject_type": "string",
+  "suggested_value": "number",
+  "unit": "string"
+ },
+ "MetricsConfigSchema": {
+  "remote_write_auth_secret": "string",
+  "remote_write_url": "string",
+  "shared_url": "string",
+  "sources": "[]$MetricsSourceConfigSchema",
+  "step": "string",
+  "timeout": "number",
+  "window": "string"
+ },
+ "MetricsSchema": {
+  "breakdown": "[]$BreakdownSchema",
+  "cluster": "string?",
+  "ref": "string",
+  "samples": "[]$SampleSchema",
+  "scope": "string",
+  "series": "[]$SeriesSchema",
+  "source": "$SourceSchema?",
+  "unavailable": "string?",
+  "window": "string"
+ },
+ "MetricsSourceConfigSchema": {
+  "cluster": "string",
+  "kind": "string",
+  "label": "string",
+  "url": "string"
+ },
+ "NodeConditionSchema": {
+  "message": "string",
+  "reason": "string",
+  "since": "string",
+  "status": "string",
+  "type": "string"
+ },
+ "NodeDeviceRollupSchema": {
+  "allocated": "integer",
+  "by_health": "object",
+  "device_class": "string?",
+  "total": "integer"
+ },
+ "NodeSchema": {
+  "cloud": "string?",
+  "cluster": "string",
+  "cluster_name": "string",
+  "condition": "string",
+  "conditions": "[]$NodeConditionSchema",
+  "cordoned": "boolean",
+  "cpu_arch": "string?",
+  "cpu_cores": "integer?",
+  "created_at": "string",
+  "devices": "$NodeDeviceRollupSchema",
+  "driver_version": "string?",
+  "id": "string",
+  "instance_type": "string?",
+  "joined_at": "string?",
+  "kernel_version": "string?",
+  "labels": "object",
+  "memory_mib": "integer?",
+  "name": "string",
+  "observed_at": "string?",
+  "operator_version": "string?",
+  "os_image": "string?",
+  "pool": "string?",
+  "pool_name": "string?",
+  "ready": "boolean",
+  "region": "string?",
+  "taints": "[]any",
+  "updated_at": "string?",
+  "zone": "string?"
+ },
+ "NodesSummarySchema": {
+  "cordoned": "integer",
+  "faulted_devices": "integer",
+  "ready": "integer",
+  "total": "integer"
+ },
+ "NotificationChannelCreateRequest": {
+  "enabled": "boolean",
+  "kind": "string",
+  "min_severity": "string",
+  "name": "string",
+  "webhook_url": "string"
+ },
+ "NotificationChannelSchema": {
+  "created_at": "string",
+  "enabled": "boolean",
+  "id": "string",
+  "kind": "string",
+  "min_severity": "string",
+  "name": "string",
+  "updated_at": "string?",
+  "webhook_hint": "string?"
+ },
+ "NotificationChannelUpdateRequest": {
+  "enabled": "boolean",
+  "min_severity": "string",
+  "name": "string",
+  "webhook_url": "string"
+ },
+ "NotificationTestResult": {
+  "delivered": "boolean",
+  "detail": "string?"
+ },
+ "OperationCreateRequest": {
+  "cluster": "string?",
+  "deadline": "string?",
+  "parameters": "object",
+  "reason": "string?",
+  "target": "string",
+  "type": "string"
+ },
+ "OperationSchema": {
+  "attempts": "integer",
+  "cancel_requested_at": "string?",
+  "cluster_id": "string?",
+  "created_at": "string",
+  "deadline_at": "string?",
+  "error": "string?",
+  "finished_at": "string?",
+  "id": "string",
+  "parameters": "object",
+  "phase": "string",
+  "reason": "string?",
+  "requested_by": "string",
+  "result": "object?",
+  "started_at": "string?",
+  "target": "$OperationTargetSchema",
+  "type": "string",
+  "updated_at": "string?"
+ },
+ "OperationSummarySchema": {
+  "by_phase": "object",
+  "failed_24h": "integer",
+  "succeeded_24h": "integer",
+  "total": "integer"
+ },
+ "OperationTargetSchema": {
+  "id": "string",
+  "type": "string"
+ },
+ "OverlaySchema": {
+  "dynamo": "object",
+  "pod_spec": "object"
+ },
+ "ParallelismSchema": {
+  "expert": "integer",
+  "pipeline": "integer",
+  "tensor": "integer"
+ },
+ "PercentilesSchema": {
+  "p50": "number?",
+  "p95": "number?",
+  "p99": "number?"
+ },
+ "PlacementDecision": {
+  "cluster": "string?",
+  "cluster_name": "string?",
+  "placed": "boolean",
+  "preemption": "$PreemptionPlan?",
+  "request": "string",
+  "summary": "string",
+  "verdicts": "[]$ClusterVerdict"
+ },
+ "PlacementExpandRequest": {
+  "workload": "string"
+ },
+ "PlacementPreviewRequest": {
+  "priority_class": "string?",
+  "project": "string",
+  "replicas": "integer",
+  "shape": "$PlacementShapeRequest?",
+  "workload": "string?"
+ },
+ "PlacementShapeRequest": {
+  "device_class": "string",
+  "device_count": "integer",
+  "device_memory_mib_min": "integer",
+  "requires_single_topology_domain": "boolean",
+  "tensor_parallel": "integer",
+  "topology_domain_kind": "string?"
+ },
+ "PolicyAttachmentRequest": {
+  "subject": "string",
+  "subject_type": "string"
+ },
+ "PolicyAttachmentSchema": {
+  "subject": "string?",
+  "subject_id": "string",
+  "subject_name": "string?",
+  "subject_type": "string"
+ },
+ "PolicyCreateRequest": {
+  "allowed_clusters": "[]string",
+  "allowed_device_classes": "[]string",
+  "allowed_regions": "[]string",
+  "allowed_residencies": "[]string",
+  "attachments": "[]$PolicyAttachmentRequest",
+  "denied_clusters": "[]string",
+  "description": "string?",
+  "enabled": "boolean",
+  "name": "string",
+  "rules": "object"
+ },
+ "PolicyUpdateRequest": {
+  "allowed_clusters": "[]string",
+  "allowed_device_classes": "[]string",
+  "allowed_regions": "[]string",
+  "allowed_residencies": "[]string",
+  "attachments": "[]$PolicyAttachmentRequest",
+  "denied_clusters": "[]string",
+  "description": "string?",
+  "enabled": "boolean",
+  "name": "string",
+  "rules": "object"
+ },
+ "PoolCreateRequest": {
+  "cluster": "string",
+  "device_class": "string",
+  "devices_per_node": "integer",
+  "enabled": "boolean",
+  "labels": "object",
+  "max_nodes": "integer",
+  "min_nodes": "integer",
+  "name": "string",
+  "node_shape": "object",
+  "taints": "[]any"
+ },
+ "PoolMembershipSchema": {
+  "devices_allocatable": "integer",
+  "devices_healthy": "integer",
+  "devices_total": "integer",
+  "nodes_cordoned": "integer",
+  "nodes_ready": "integer",
+  "nodes_total": "integer"
+ },
+ "PoolSchema": {
+  "cluster_id": "string",
+  "created_at": "string",
+  "device_class": "string",
+  "devices_per_node": "integer",
+  "enabled": "boolean",
+  "id": "string",
+  "labels": "object",
+  "max_nodes": "integer",
+  "membership": "$PoolMembershipSchema",
+  "min_nodes": "integer",
+  "name": "string",
+  "node_shape": "object",
+  "revision": "string",
+  "taints": "[]any",
+  "updated_at": "string?",
+  "within_declared_bounds": "boolean"
+ },
+ "PoolUpdateRequest": {
+  "device_class": "string",
+  "devices_per_node": "integer",
+  "enabled": "boolean",
+  "labels": "object",
+  "max_nodes": "integer",
+  "min_nodes": "integer",
+  "node_shape": "object",
+  "taints": "[]any"
+ },
+ "PreemptionPlan": {
+  "devices_reclaimed": "integer",
+  "victims": "[]$PreemptionVictim"
+ },
+ "PreemptionVictim": {
+  "deployment": "string?",
+  "devices_in_scope": "integer",
+  "devices_released": "integer",
+  "priority_value": "integer",
+  "project": "string",
+  "workload": "string"
+ },
+ "PriorityClassCreateRequest": {
+  "description": "string?",
+  "is_default": "boolean",
+  "name": "string",
+  "preemptible": "boolean",
+  "preempts": "boolean",
+  "value": "integer"
+ },
+ "PriorityClassSchema": {
+  "created_at": "string",
+  "description": "string?",
+  "id": "string",
+  "is_default": "boolean",
+  "name": "string",
+  "preemptible": "boolean",
+  "preempts": "boolean",
+  "revision": "string",
+  "updated_at": "string?",
+  "value": "integer"
+ },
+ "PriorityClassUpdateRequest": {
+  "description": "string?",
+  "is_default": "boolean",
+  "preemptible": "boolean",
+  "preempts": "boolean",
+  "value": "integer"
+ },
+ "ProjectCreateRequest": {
+  "default_priority_class": "string?",
+  "enabled": "boolean",
+  "name": "string",
+  "slug": "string",
+  "tenant": "string"
+ },
+ "ProjectSchema": {
+  "created_at": "string",
+  "default_priority_class": "string?",
+  "effective_enabled": "boolean",
+  "enabled": "boolean",
+  "id": "string",
+  "name": "string",
+  "revision": "string",
+  "slug": "string",
+  "tenant": "$ProjectTenantSchema",
+  "updated_at": "string?"
+ },
+ "ProjectTenantSchema": {
+  "enabled": "boolean",
+  "id": "string",
+  "name": "string",
+  "slug": "string"
+ },
+ "ProjectUpdateRequest": {
+  "default_priority_class": "string?",
+  "enabled": "boolean",
+  "name": "string"
+ },
+ "PromoteRequest": {
+  "artifact": "string",
+  "fingerprint": "string",
+  "name": "string?",
+  "priority_class": "string?",
+  "project": "string"
+ },
+ "QuotaCreateRequest": {
+  "cluster": "string?",
+  "device_class": "string",
+  "guaranteed_devices": "integer",
+  "limit_devices": "integer?",
+  "over_quota_enabled": "boolean",
+  "over_quota_weight": "number",
+  "project": "string"
+ },
+ "QuotaSchema": {
+  "cluster": "string?",
+  "cluster_name": "string?",
+  "created_at": "string",
+  "device_class": "string",
+  "guaranteed_devices": "integer",
+  "headroom_devices": "integer?",
+  "id": "string",
+  "limit_devices": "integer?",
+  "over_limit": "boolean",
+  "over_quota_enabled": "boolean",
+  "over_quota_weight": "number",
+  "project": "string",
+  "project_slug": "string",
+  "revision": "string",
+  "updated_at": "string?",
+  "usage": "$QuotaUsageSchema"
+ },
+ "QuotaUpdateRequest": {
+  "guaranteed_devices": "integer",
+  "limit_devices": "integer?",
+  "over_quota_enabled": "boolean",
+  "over_quota_weight": "number"
+ },
+ "QuotaUsageSchema": {
+  "allocated_devices": "integer",
+  "live_allocations": "integer",
+  "over_quota_devices": "integer"
+ },
+ "ReactorConfigSchema": {
+  "enabled": "boolean",
+  "event_batch": "integer",
+  "interval_seconds": "number",
+  "lease_seconds": "number",
+  "notify_timeout": "number"
+ },
+ "ReasoningSchema": {
+  "default_on": "boolean",
+  "parser": "string?",
+  "suppress_eos_until_think_end": "boolean",
+  "think_begin_token": "string?",
+  "think_end_token": "string?",
+  "transport": "string"
+ },
+ "RefreshRequest": {
+  "refresh_token": "string"
+ },
+ "RefreshResponse": {
+  "access_token": "string",
+  "expires_in": "integer",
+  "kind": "string",
+  "refresh_token": "string",
+  "tenant": "string?"
+ },
+ "Rejection": {
+  "code": "string",
+  "detail": "object",
+  "message": "string"
+ },
+ "ReservationSchema": {
+  "cluster": "string",
+  "cluster_name": "string",
+  "deployment": "string?",
+  "deployment_name": "string?",
+  "device_class": "string",
+  "devices": "integer",
+  "domain_kind": "string?",
+  "project": "string",
+  "requires_single_domain": "boolean",
+  "workload": "string",
+  "workload_name": "string?"
+ },
+ "ResolveNote": {
+  "level": "string",
+  "message": "string"
+ },
+ "ResolvedArtifact": {
+  "digest": "string",
+  "existing_id": "string?",
+  "format": "string?",
+  "kind": "string",
+  "licence": "string?",
+  "locations": "[]$ArtifactLocationRequest",
+  "metadata": "object",
+  "name": "string",
+  "notes": "[]$ResolveNote",
+  "parameter_count": "integer?",
+  "publisher": "$ArtifactUpstreamSchema",
+  "reference": "string",
+  "revision": "string?",
+  "serving": "$ServingDefaults",
+  "size_bytes": "integer",
+  "source_scheme": "string",
+  "source_uri": "string",
+  "upstream": "$UpstreamRecipe?",
+  "verified": "boolean"
+ },
+ "ResolvedEndpointSchema": {
+  "aliases": "[]string",
+  "failover_order": "[]string",
+  "id": "string",
+  "limits": "$ResolvedLimitsSchema?",
+  "name": "string",
+  "policy": "$endpoints_schemas_PolicySchema?",
+  "revision": "string",
+  "routing_strategy": "string",
+  "tenant_id": "string",
+  "upstreams": "[]$ResolvedUpstreamSchema",
+  "visibility": "string"
+ },
+ "ResolvedLimitsSchema": {
+  "burst_rpm": "integer?",
+  "committed_rpm": "integer?",
+  "committed_tpm": "integer?",
+  "enforced": "boolean",
+  "limit_scope": "string",
+  "max_concurrent_requests": "integer?",
+  "max_output_tokens": "integer?",
+  "on_exceed": "string",
+  "queue_timeout_ms": "integer?",
+  "ramp_up_seconds": "integer"
+ },
+ "ResolvedServingQuotaSchema": {
+  "availability_objective": "string",
+  "declared": "$ResolvedLimitsSchema",
+  "effective": "$ResolvedLimitsSchema",
+  "endpoint": "string",
+  "endpoint_name": "string",
+  "objective_window_seconds": "integer",
+  "project": "string",
+  "replica_index": "integer",
+  "replicas": "integer",
+  "revision": "string",
+  "standard": "$ServingQuotaStandardSchema",
+  "starved_replicas": "integer",
+  "success_rate_objective": "number?",
+  "workloads": "[]string"
+ },
+ "ResolvedServingQuotaTableSchema": {
+  "quotas": "[]$ResolvedServingQuotaSchema",
+  "replica_index": "integer",
+  "replicas": "integer",
+  "revision": "string"
+ },
+ "ResolvedTableSchema": {
+  "endpoints": "[]$ResolvedEndpointSchema",
+  "revision": "string"
+ },
+ "ResolvedUpstreamSchema": {
+  "admission_phase": "string",
+  "cluster_id": "string",
+  "cluster_name": "string",
+  "credential_id": "string?",
+  "deployment_id": "string",
+  "deployment_name": "string",
+  "output_modality": "string",
+  "role": "string",
+  "served_model_name": "string",
+  "url": "string",
+  "weight": "integer"
+ },
+ "ResourcesSchema": {
+  "cpu_cores": "integer?",
+  "disk_gib": "integer?",
+  "memory_mib": "integer?"
+ },
+ "RoleSchema": {
+  "engine_args": "object",
+  "max_batch_tokens": "integer?",
+  "role": "string",
+  "weight": "integer"
+ },
+ "RouterSchema": {
+  "kv_overlap_score_credit": "number?",
+  "mode": "string?",
+  "queue_policy": "string?",
+  "queue_threshold": "number?"
+ },
+ "RuleSchema": {
+  "default": "any",
+  "deny": "boolean",
+  "drop": "boolean",
+  "enum": "[]any?",
+  "key": "string",
+  "max": "number?",
+  "min": "number?",
+  "predicate": "string",
+  "route": "string",
+  "stream": "boolean?",
+  "value_from": "string",
+  "when_present": "string"
+ },
+ "SampleSchema": {
+  "metric": "string",
+  "title": "string",
+  "unit": "string",
+  "value": "number?"
+ },
+ "SeriesPointSchema": {
+  "at": "number",
+  "value": "number"
+ },
+ "SeriesSchema": {
+  "labels": "object",
+  "metric": "string",
+  "points": "[]$SeriesPointSchema",
+  "title": "string",
+  "unit": "string"
+ },
+ "ServedModelDetailSchema": {
+  "limits": "$ServingLimitsSchema?",
+  "model": "$ServedModelSchema",
+  "protocols": "[]string"
+ },
+ "ServedModelSchema": {
+  "created_at": "string",
+  "id": "string",
+  "model": "string",
+  "name": "string",
+  "replicas_desired": "integer",
+  "replicas_ready": "integer",
+  "state": "string"
+ },
+ "ServingBenchmarkSummarySchema": {
+  "graded_run_count": "integer",
+  "peak_output_tokens_per_second": "number?",
+  "run_count": "integer",
+  "serving_digest": "string"
+ },
+ "ServingDefaults": {
+  "context_length": "integer?",
+  "device_count": "integer",
+  "device_memory_mib_min": "integer",
+  "dtype": "string?",
+  "quantization": "string?"
+ },
+ "ServingDraft": {
+  "artifact": "$ArtifactDraft",
+  "artifact_name": "string?",
+  "artifact_ref": "string?",
+  "confident": "boolean",
+  "context_length": "integer?",
+  "cpu_cores": "integer?",
+  "device_class": "string?",
+  "device_count": "integer",
+  "dtype": "string?",
+  "engine": "string?",
+  "engine_args": "object",
+  "engine_runtime_image": "string?",
+  "engine_runtime_version": "string?",
+  "expert_parallel": "integer",
+  "imported_args": "object",
+  "kv_cache_fraction": "number?",
+  "max_batch_tokens": "integer?",
+  "memory_mib": "integer?",
+  "name": "string",
+  "notes": "[]string",
+  "output_modality": "string?",
+  "pipeline_parallel": "integer",
+  "quantization": "string?",
+  "tensor_parallel": "integer"
+ },
+ "ServingLimitsSchema": {
+  "enforced": "boolean",
+  "max_concurrent_requests": "integer?",
+  "requests_per_minute": "integer?",
+  "tokens_per_minute": "integer?"
+ },
+ "ServingOverviewSchema": {
+  "models": "[]$ServedModelSchema",
+  "tenant": "string",
+  "tenant_name": "string"
+ },
+ "ServingQuotaCreateRequest": {
+  "availability_objective": "string",
+  "burst_rpm": "integer?",
+  "committed_rpm": "integer?",
+  "committed_tpm": "integer?",
+  "endpoint": "string",
+  "enforced": "boolean",
+  "limit_scope": "string",
+  "max_concurrent_requests": "integer?",
+  "max_output_tokens": "integer?",
+  "objective_window_seconds": "integer",
+  "on_exceed": "string",
+  "queue_timeout_ms": "integer?",
+  "ramp_up_seconds": "integer",
+  "success_rate_objective": "number?"
+ },
+ "ServingQuotaSchema": {
+  "availability_objective": "string",
+  "burst_rpm": "integer?",
+  "committed_rpm": "integer?",
+  "committed_tpm": "integer?",
+  "created_at": "string",
+  "endpoint": "string",
+  "endpoint_name": "string",
+  "enforced": "boolean",
+  "id": "string",
+  "limit_scope": "string",
+  "max_concurrent_requests": "integer?",
+  "max_output_tokens": "integer?",
+  "objective_window_seconds": "integer",
+  "on_exceed": "string",
+  "project": "string",
+  "queue_timeout_ms": "integer?",
+  "ramp_up_seconds": "integer",
+  "revision": "string",
+  "standard": "$ServingQuotaStandardSchema",
+  "success_rate_objective": "number?",
+  "updated_at": "string?"
+ },
+ "ServingQuotaStandardSchema": {
+  "meets": "boolean",
+  "shortfalls": "[]string"
+ },
+ "ServingQuotaUpdateRequest": {
+  "availability_objective": "string",
+  "burst_rpm": "integer?",
+  "committed_rpm": "integer?",
+  "committed_tpm": "integer?",
+  "enforced": "boolean",
+  "limit_scope": "string",
+  "max_concurrent_requests": "integer?",
+  "max_output_tokens": "integer?",
+  "objective_window_seconds": "integer",
+  "on_exceed": "string",
+  "queue_timeout_ms": "integer?",
+  "ramp_up_seconds": "integer",
+  "success_rate_objective": "number?"
+ },
+ "ServingSchema": {
+  "context_overflow": "string",
+  "diffusion": "$DiffusionSchema?",
+  "max_images_per_request": "integer?",
+  "max_videos_per_request": "integer?",
+  "output_modality": "string?",
+  "reasoning": "$ReasoningSchema",
+  "stream_usage": "string",
+  "structured_output_backend": "string?",
+  "tool_call_parser": "string?"
+ },
+ "SetupConfigSchema": {
+  "chart_private": "boolean",
+  "chart_ref": "string",
+  "chart_version": "string",
+  "operator_image": "string"
+ },
+ "ShapeSchema": {
+  "device_class": "string",
+  "device_count": "integer",
+  "device_memory_mib_min": "integer",
+  "requires_single_topology_domain": "boolean",
+  "topology_domain_kind": "string?"
+ },
+ "Share": {
+  "cluster": "string",
+  "cluster_name": "string",
+  "replicas": "integer"
+ },
+ "SlaObjectiveSchema": {
+  "enforced": "boolean",
+  "success_rate": "number?",
+  "window_seconds": "integer"
+ },
+ "SlaReportSchema": {
+  "availability": "number?",
+  "definition": "string",
+  "definition_text": "string",
+  "endpoint": "string",
+  "endpoint_name": "string",
+  "error_budget_consumed": "number?",
+  "failure_ratio": "number?",
+  "latency": "$PercentilesSchema",
+  "met": "boolean?",
+  "objective": "$SlaObjectiveSchema?",
+  "partial": "boolean",
+  "period_end": "string",
+  "period_start": "string",
+  "requests": "integer?",
+  "ttft": "$PercentilesSchema",
+  "unavailable": "string?"
+ },
+ "SourceListSchema": {
+  "count": "integer",
+  "items": "[]$SourceSchema"
+ },
+ "SourceSchema": {
+  "cluster": "string",
+  "kind": "string",
+  "url": "string"
+ },
+ "TenantAPIKeyCreateRequest": {
+  "name": "string"
+ },
+ "TenantAPIKeySchema": {
+  "created_at": "string",
+  "id": "string",
+  "key": "string?",
+  "last_used_at": "string?",
+  "name": "string",
+  "revoked_at": "string?",
+  "tenant": "string"
+ },
+ "TenantCreateRequest": {
+  "auth": "string",
+  "enabled": "boolean",
+  "host": "string?",
+  "ingress": "string",
+  "name": "string",
+  "slug": "string"
+ },
+ "TenantSchema": {
+  "auth": "string",
+  "created_at": "string",
+  "enabled": "boolean",
+  "host": "string?",
+  "id": "string",
+  "ingress": "string",
+  "name": "string",
+  "project_count": "integer",
+  "revision": "string",
+  "slug": "string",
+  "updated_at": "string?"
+ },
+ "TenantTokenCreateRequest": {
+  "name": "string"
+ },
+ "TenantTokenSchema": {
+  "created_at": "string",
+  "id": "string",
+  "last_used_at": "string?",
+  "name": "string",
+  "revoked_at": "string?",
+  "tenant": "string",
+  "token": "string?"
+ },
+ "TenantUpdateRequest": {
+  "auth": "string",
+  "enabled": "boolean",
+  "host": "string?",
+  "ingress": "string",
+  "name": "string"
+ },
+ "TopologyDomainSchema": {
+  "attributes": "object",
+  "cluster": "string",
+  "cluster_name": "string",
+  "created_at": "string",
+  "device_count": "integer",
+  "id": "string",
+  "identifier": "string",
+  "kind": "string",
+  "link_bandwidth_gbps": "integer?",
+  "link_generation": "string?",
+  "node_names": "[]string",
+  "nodes": "[]string",
+  "observed_at": "string?",
+  "parent": "string?",
+  "spans_nodes": "boolean",
+  "updated_at": "string?"
+ },
+ "TopologySchema": {
+  "roles": "[]$RoleSchema",
+  "serving_topology": "string"
+ },
+ "TopologyViewSchema": {
+  "group_devices": "integer",
+  "roles": "[]$RoleSchema",
+  "serving_topology": "string"
+ },
+ "TunnelAuthRequest": {
+  "token": "string"
+ },
+ "TunnelIdentitySchema": {
+  "cluster_id": "string",
+  "cluster_name": "string"
+ },
+ "UpstreamDeployment": {
+  "display_name": "string",
+  "gpu_count": "integer",
+  "hardware": "string",
+  "nodes_by_memory": "integer",
+  "nodes_declared": "integer",
+  "strategies": "[]string",
+  "tensor_parallel": "integer"
+ },
+ "UpstreamRecipe": {
+  "args": "[]string",
+  "context_length": "integer?",
+  "default_strategy": "string?",
+  "deployments": "[]$UpstreamDeployment",
+  "docker_image": "string?",
+  "engine": "string",
+  "engine_version_min": "string?",
+  "env": "object",
+  "features_on": "[]string",
+  "features_opt_in": "[]string",
+  "kv_cache_dtype": "string?",
+  "max_model_len": "integer?",
+  "model_id": "string",
+  "nightly_required": "boolean",
+  "precision": "string?",
+  "reasoning_parser": "string?",
+  "replica_memory_mib_min": "integer?",
+  "requires_single_topology_domain": "boolean",
+  "snapshot_uri": "string",
+  "source": "string",
+  "source_uri": "string",
+  "strategies": "[]string",
+  "tensor_parallel": "integer?",
+  "tool_call_parser": "string?",
+  "variant": "string",
+  "verified_hardware": "[]string"
+ },
+ "WorkloadCreateRequest": {
+  "adapter_artifacts": "[]string",
+  "allowed_clusters": "[]string",
+  "allowed_regions": "[]string",
+  "cluster": "string?",
+  "cluster_floors": "object",
+  "deadline_at": "string?",
+  "desired_scale": "integer",
+  "enabled": "boolean",
+  "gang_size": "integer",
+  "kind": "string",
+  "labels": "object",
+  "max_clusters": "integer?",
+  "max_scale": "integer",
+  "min_scale": "integer",
+  "name": "string",
+  "note": "string?",
+  "overrides": "object",
+  "preemptible": "boolean",
+  "priority_class": "string?",
+  "project": "string",
+  "serving": "$WorkloadServingRequest",
+  "strategy": "string"
+ },
+ "WorkloadDeploymentSchema": {
+  "admission_phase": "string",
+  "admission_reason": "string?",
+  "admitted_at": "string?",
+  "authority": "string",
+  "cluster_id": "string",
+  "cluster_name": "string",
+  "desired_replicas": "integer",
+  "enabled": "boolean",
+  "generation": "integer",
+  "id": "string",
+  "live_digests": "object",
+  "max_replicas": "integer",
+  "min_replicas": "integer",
+  "name": "string",
+  "placed_at": "string?",
+  "queued_at": "string?",
+  "region": "string?",
+  "replicas": "$DeploymentReplicaRollupSchema",
+  "status": "$DeploymentStatusSchema?"
+ },
+ "WorkloadPlacementNodeSchema": {
+  "cluster": "string",
+  "device_count": "integer",
+  "node": "string"
+ },
+ "WorkloadPlacementSchema": {
+  "gpu_count": "integer",
+  "node_count": "integer",
+  "nodes": "[]$WorkloadPlacementNodeSchema",
+  "replicas": "[]$WorkloadReplicaPlacementSchema",
+  "workload": "string"
+ },
+ "WorkloadReplicaPlacementSchema": {
+  "allocation": "string",
+  "cluster": "string",
+  "device_count": "integer",
+  "devices": "[]string",
+  "gang_complete": "boolean",
+  "nodes": "[]string",
+  "replica": "string?"
+ },
+ "WorkloadRevisionSchema": {
+  "artifact": "string",
+  "created_at": "string",
+  "id": "string",
+  "note": "string?",
+  "number": "integer",
+  "reason": "string",
+  "serving": "object",
+  "serving_digest": "string"
+ },
+ "WorkloadRevisionUpdate": {
+  "note": "string?"
+ },
+ "WorkloadScaleSchema": {
+  "desired": "integer",
+  "max": "integer",
+  "min": "integer",
+  "placed": "integer",
+  "ready": "integer",
+  "unit": "string"
+ },
+ "WorkloadSchema": {
+  "adapter_artifact_ids": "[]string",
+  "artifact_tag": "string?",
+  "cluster_floors": "object",
+  "created_at": "string",
+  "deadline_at": "string?",
+  "deployments": "[]$WorkloadDeploymentSchema",
+  "finished_at": "string?",
+  "gang_size": "integer",
+  "id": "string",
+  "kind": "string",
+  "labels": "object",
+  "max_clusters": "integer?",
+  "name": "string",
+  "overrides": "object",
+  "paused": "boolean",
+  "phase": "string",
+  "pinned_cluster_id": "string?",
+  "preemptible": "boolean",
+  "priority_class": "string",
+  "project_id": "string",
+  "revision": "string",
+  "scale": "$WorkloadScaleSchema",
+  "served_model_name": "string",
+  "serving": "$WorkloadServingSchema",
+  "serving_digest": "string",
+  "started_at": "string?",
+  "strategy": "string",
+  "updated_at": "string?"
+ },
+ "WorkloadServingRequest": {
+  "artifact": "string",
+  "cache": "$CacheSchema",
+  "capabilities": "$CapabilitiesSchema",
+  "context_length": "integer",
+  "dtype": "string?",
+  "engine": "string",
+  "engine_args": "object",
+  "engine_runtime_image": "string?",
+  "engine_runtime_version": "string",
+  "frontend_image": "string?",
+  "imported_args": "object",
+  "max_batch_tokens": "integer?",
+  "overlay": "$OverlaySchema",
+  "parallelism": "$ParallelismSchema",
+  "quantization": "string?",
+  "resources": "$ResourcesSchema",
+  "router": "$RouterSchema",
+  "serving": "$ServingSchema",
+  "shape": "$ShapeSchema",
+  "topology": "$TopologySchema"
+ },
+ "WorkloadServingSchema": {
+  "artifact_id": "string",
+  "cache": "$CacheSchema",
+  "capabilities": "$CapabilitiesSchema",
+  "context_length": "integer",
+  "dtype": "string?",
+  "engine": "string",
+  "engine_args": "object",
+  "engine_runtime_image": "string?",
+  "engine_runtime_version": "string",
+  "frontend_image": "string?",
+  "imported_args": "object",
+  "max_batch_tokens": "integer?",
+  "overlay": "$OverlaySchema",
+  "parallelism": "$ParallelismSchema",
+  "quantization": "string?",
+  "resolved_engine_args": "object",
+  "resources": "$ResourcesSchema",
+  "router": "$RouterSchema",
+  "serving": "$ServingSchema",
+  "shape": "$ShapeSchema",
+  "topology": "$TopologyViewSchema"
+ },
+ "WorkloadServingUpdate": {
+  "cache": "$CacheSchema",
+  "capabilities": "$CapabilitiesSchema",
+  "context_length": "integer",
+  "dtype": "string?",
+  "engine": "string",
+  "engine_args": "object",
+  "engine_runtime_image": "string?",
+  "engine_runtime_version": "string",
+  "frontend_image": "string?",
+  "imported_args": "object",
+  "max_batch_tokens": "integer?",
+  "overlay": "$OverlaySchema",
+  "parallelism": "$ParallelismSchema",
+  "quantization": "string?",
+  "resources": "$ResourcesSchema",
+  "router": "$RouterSchema",
+  "serving": "$ServingSchema",
+  "shape": "$ShapeSchema",
+  "topology": "$TopologySchema"
+ },
+ "WorkloadUpdateRequest": {
+  "adapter_artifacts": "[]string",
+  "cluster_floors": "object",
+  "deadline_at": "string?",
+  "labels": "object",
+  "max_clusters": "integer?",
+  "name": "string",
+  "note": "string?",
+  "overrides": "object",
+  "preemptible": "boolean",
+  "priority_class": "string",
+  "serving": "$WorkloadServingUpdate",
+  "strategy": "string"
+ },
+ "endpoints_schemas_PolicySchema": {
+  "rules": "[]$RuleSchema",
+  "version": "integer"
+ },
+ "policies_schemas_PolicySchema": {
+  "allowed_clusters": "[]string",
+  "allowed_device_classes": "[]string",
+  "allowed_regions": "[]string",
+  "allowed_residencies": "[]string",
+  "attachments": "[]$PolicyAttachmentSchema",
+  "created_at": "string",
+  "denied_clusters": "[]string",
+  "description": "string?",
+  "enabled": "boolean",
+  "id": "string",
+  "name": "string",
+  "revision": "string",
+  "rules": "object",
+  "updated_at": "string?"
+ }
+}

@@ -5,6 +5,7 @@
             "digest": "sha256:abc",
             "verified": true,
             "name": "llama",
+            "slug": "llama",
             "kind": "weights",
             "format": null,
             "size_bytes": 0,
@@ -16,7 +17,26 @@
             "created_at": "2026-08-19T18:52:20.410324Z",
             "updated_at": null,
             "revision": "1787165540410324",
-            "locations": []
+            "locations": [],
+            "upstream": {
+                "provider": null,
+                "provider_model_id": null,
+                "released_at": null,
+                "licence": null,
+                "context_length": null,
+                "max_output_tokens": null,
+                "input_modalities": [
+                    "text"
+                ],
+                "reasoning": null,
+                "tool_calling": null,
+                "structured_output_modes": [
+                    "text"
+                ],
+                "source_uri": null,
+                "recorded_by": null,
+                "recorded_at": null
+            }
         }
     ],
     "count": 1,

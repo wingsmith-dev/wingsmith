@@ -42,14 +42,14 @@ sync are what is true right now.`,
 			{Title: "phase"},
 			{Title: "reachable"},
 			{Title: "sync"},
-			{Title: "agent", Wide: true},
+			{Title: "operator", Wide: true},
 			{Title: "lag", Align: ui.AlignRight, Wide: true},
 			{Title: "synced", Align: ui.AlignRight},
 		},
 		row: func(s ui.Style, c api.Cluster) []string {
 			return []string{
 				c.Name, c.ID, c.Region, clusterPhase(s, c), yesNo(s, c.Reachable),
-				syncState(s, c.Sync.State), orDash(str(c.Sync.AgentVersion)),
+				syncState(s, c.Sync.State), orDash(str(c.Sync.OperatorVersion)),
 				lagCell(c.Sync.LagMS), ago(c.Sync.LastSyncAt),
 			}
 		},
@@ -80,7 +80,7 @@ sync are what is true right now.`,
 			okv := app.KV()
 			okv.Add("reachable", yesNo(s, c.Reachable))
 			okv.Add("sync state", syncState(s, c.Sync.State))
-			okv.Add("agent", orDash(str(c.Sync.AgentVersion)))
+			okv.Add("operator", orDash(str(c.Sync.OperatorVersion)))
 			okv.Add("lag", lagCell(c.Sync.LagMS))
 			okv.Add("last sync", ago(c.Sync.LastSyncAt))
 			okv.Add("last seen", ago(c.Sync.LastSeenAt))
@@ -140,7 +140,7 @@ Capacity questions are answered per device; the counts here are a rollup.`,
 			{Title: "cordoned"},
 			{Title: "devices", Align: ui.AlignRight},
 			{Title: "unhealthy", Align: ui.AlignRight},
-			{Title: "agent", Wide: true},
+			{Title: "operator", Wide: true},
 			{Title: "seen", Align: ui.AlignRight},
 		},
 		row: func(s ui.Style, n api.Node) []string {
@@ -148,7 +148,7 @@ Capacity questions are answered per device; the counts here are a rollup.`,
 				n.Name, n.ID, n.ClusterName, orDash(str(n.PoolName)),
 				conditionColor(s, n.Condition), boolWord(n.Ready), warnIf(s, n.Cordoned),
 				strconv.Itoa(n.Devices.Total), countCell(s, n.Devices.Unhealthy()),
-				orDash(str(n.AgentVersion)), ago(n.ObservedAt),
+				orDash(str(n.OperatorVersion)), ago(n.ObservedAt),
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
@@ -176,7 +176,7 @@ Capacity questions are answered per device; the counts here are a rollup.`,
 			kv.Add("os image", orDash(str(n.OSImage)))
 			kv.Add("kernel", orDash(str(n.KernelVersion)))
 			kv.Add("driver", orDash(str(n.DriverVersion)))
-			kv.Add("agent", orDash(str(n.AgentVersion)))
+			kv.Add("operator", orDash(str(n.OperatorVersion)))
 			kv.Add("labels", labelString(n.Labels))
 			kv.Addf("taints", "%d", len(n.Taints))
 			kv.Add("joined", ago(n.JoinedAt))

@@ -93,9 +93,21 @@
         "overlay": {
           "pod_spec": {},
           "dynamo": {}
+        },
+        "topology": {
+          "serving_topology": "aggregated",
+          "roles": [],
+          "group_devices": 8
+        },
+        "router": {
+          "mode": null,
+          "queue_threshold": null,
+          "queue_policy": null,
+          "kv_overlap_score_credit": null
         }
       },
       "adapter_artifact_ids": [],
+      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
       "overrides": {},
       "labels": {
         "env": "prod"
@@ -144,9 +156,11 @@
             "failed": 0,
             "at_current_generation": 0
           },
-          "status": null
+          "status": null,
+          "live_digests": {}
         }
-      ]
+      ],
+      "artifact_tag": null
     },
     {
       "id": "wkl_01m0dsfeh294c34fkb2wfgzx6g",
@@ -235,9 +249,21 @@
         "overlay": {
           "pod_spec": {},
           "dynamo": {}
+        },
+        "topology": {
+          "serving_topology": "aggregated",
+          "roles": [],
+          "group_devices": 4
+        },
+        "router": {
+          "mode": null,
+          "queue_threshold": null,
+          "queue_policy": null,
+          "kv_overlap_score_credit": null
         }
       },
       "adapter_artifact_ids": [],
+      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
       "overrides": {},
       "labels": {
         "env": "prod"
@@ -286,9 +312,11 @@
             "failed": 0,
             "at_current_generation": 0
           },
-          "status": null
+          "status": null,
+          "live_digests": {}
         }
-      ]
+      ],
+      "artifact_tag": null
     },
     {
       "id": "wkl_01m0dsfehd4m2jqemsjnvwj7r4",
@@ -377,9 +405,21 @@
         "overlay": {
           "pod_spec": {},
           "dynamo": {}
+        },
+        "topology": {
+          "serving_topology": "aggregated",
+          "roles": [],
+          "group_devices": 2
+        },
+        "router": {
+          "mode": null,
+          "queue_threshold": null,
+          "queue_policy": null,
+          "kv_overlap_score_credit": null
         }
       },
       "adapter_artifact_ids": [],
+      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
       "overrides": {},
       "labels": {
         "hangar.io/alert": "off"
@@ -428,9 +468,11 @@
             "failed": 0,
             "at_current_generation": 0
           },
-          "status": null
+          "status": null,
+          "live_digests": {}
         }
-      ]
+      ],
+      "artifact_tag": null
     }
   ],
   "count": 3

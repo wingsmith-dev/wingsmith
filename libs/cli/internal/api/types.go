@@ -98,38 +98,49 @@ type Identity struct {
 // derived by the plane: never-connected and connected-then-dropped are not the
 // same fact.
 type ClusterSync struct {
-	State        string     `json:"state"`
-	LastSyncAt   *time.Time `json:"last_sync_at"`
-	LastSeenAt   *time.Time `json:"last_seen_at"`
-	AgentVersion *string    `json:"agent_version"`
-	LagMS        *int       `json:"lag_ms"`
-	LastError    *string    `json:"last_error"`
+	State           string     `json:"state"`
+	LastSyncAt      *time.Time `json:"last_sync_at"`
+	LastSeenAt      *time.Time `json:"last_seen_at"`
+	OperatorVersion *string    `json:"operator_version"`
+	LagMS           *int       `json:"lag_ms"`
+	LastError       *string    `json:"last_error"`
 	// Distribution, Cloud and ObservedRegion are what the cluster turned out to be, beside the
 	// region it was enrolled as. The two disagreeing is a misconfiguration worth seeing.
 	Distribution   *string `json:"distribution"`
 	Cloud          *string `json:"cloud"`
 	ObservedRegion *string `json:"observed_region"`
+	ReadOnly       bool    `json:"read_only"`
+	Multinode      bool    `json:"multinode"`
+}
+
+// ClusterServing is the cluster's data-plane address as configured.
+// CredentialID names a credential and never carries it.
+type ClusterServing struct {
+	URL          string  `json:"url"`
+	CredentialID *string `json:"credential_id"`
+	Enabled      bool    `json:"enabled"`
 }
 
 // Cluster is the declared enrolment record and the observed link state,
 // returned together and never merged: `phase` is what we asked for,
 // `reachable` and `sync` are what is true now.
 type Cluster struct {
-	ID           string         `json:"id"`
-	Name         string         `json:"name"`
-	DisplayName  *string        `json:"display_name"`
-	Region       string         `json:"region"`
-	Zone         *string        `json:"zone"`
-	Residency    *string        `json:"residency"`
-	Phase        string         `json:"phase"`
-	Labels       map[string]any `json:"labels"`
-	Capabilities map[string]any `json:"capabilities"`
-	EnrolledAt   *time.Time     `json:"enrolled_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    *time.Time     `json:"updated_at"`
-	Revision     string         `json:"revision"`
-	Reachable    bool           `json:"reachable"`
-	Sync         ClusterSync    `json:"sync"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	DisplayName  *string         `json:"display_name"`
+	Region       string          `json:"region"`
+	Zone         *string         `json:"zone"`
+	Residency    *string         `json:"residency"`
+	Phase        string          `json:"phase"`
+	Labels       map[string]any  `json:"labels"`
+	Capabilities map[string]any  `json:"capabilities"`
+	EnrolledAt   *time.Time      `json:"enrolled_at"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time      `json:"updated_at"`
+	Revision     string          `json:"revision"`
+	Reachable    bool            `json:"reachable"`
+	Sync         ClusterSync     `json:"sync"`
+	Serving      *ClusterServing `json:"serving"`
 
 	// MetricsLabel is the `cluster` label this cluster's series carry in the
 	// shared metrics store. Nil means it is not observable and its panels say so
@@ -149,8 +160,19 @@ const (
 // NodeDeviceRollup is how many devices a node has and how they split by
 // health. State only — no utilization, no temperature, no power.
 type NodeDeviceRollup struct {
-	Total    int            `json:"total"`
-	ByHealth map[string]int `json:"by_health"`
+	Total       int            `json:"total"`
+	ByHealth    map[string]int `json:"by_health"`
+	DeviceClass *string        `json:"device_class"`
+	Allocated   int            `json:"allocated"`
+}
+
+// NodeCondition is one Kubernetes node condition as the cluster reported it.
+type NodeCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+	Since   string `json:"since"`
 }
 
 // Healthy is the count of devices the operator reports as healthy.
@@ -163,33 +185,34 @@ func (r NodeDeviceRollup) Unhealthy() int { return r.Total - r.Healthy() }
 // `cordoned` is a boolean beside `condition` and never a value of it, because
 // draining is an Operation and the cordon is the state it leaves behind.
 type Node struct {
-	ID            string           `json:"id"`
-	Name          string           `json:"name"`
-	Cluster       string           `json:"cluster"`
-	ClusterName   string           `json:"cluster_name"`
-	Pool          *string          `json:"pool"`
-	PoolName      *string          `json:"pool_name"`
-	Condition     string           `json:"condition"`
-	Cordoned      bool             `json:"cordoned"`
-	Ready         bool             `json:"ready"`
-	InstanceType  *string          `json:"instance_type"`
-	Cloud         *string          `json:"cloud"`
-	Zone          *string          `json:"zone"`
-	Region        *string          `json:"region"`
-	CPUCores      *int             `json:"cpu_cores"`
-	MemoryMiB     *int             `json:"memory_mib"`
-	CPUArch       *string          `json:"cpu_arch"`
-	OSImage       *string          `json:"os_image"`
-	KernelVersion *string          `json:"kernel_version"`
-	DriverVersion *string          `json:"driver_version"`
-	AgentVersion  *string          `json:"agent_version"`
-	Labels        map[string]any   `json:"labels"`
-	Taints        []any            `json:"taints"`
-	Devices       NodeDeviceRollup `json:"devices"`
-	JoinedAt      *time.Time       `json:"joined_at"`
-	ObservedAt    *time.Time       `json:"observed_at"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     *time.Time       `json:"updated_at"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Cluster         string           `json:"cluster"`
+	ClusterName     string           `json:"cluster_name"`
+	Pool            *string          `json:"pool"`
+	PoolName        *string          `json:"pool_name"`
+	Condition       string           `json:"condition"`
+	Cordoned        bool             `json:"cordoned"`
+	Ready           bool             `json:"ready"`
+	InstanceType    *string          `json:"instance_type"`
+	Cloud           *string          `json:"cloud"`
+	Zone            *string          `json:"zone"`
+	Region          *string          `json:"region"`
+	CPUCores        *int             `json:"cpu_cores"`
+	MemoryMiB       *int             `json:"memory_mib"`
+	CPUArch         *string          `json:"cpu_arch"`
+	OSImage         *string          `json:"os_image"`
+	KernelVersion   *string          `json:"kernel_version"`
+	DriverVersion   *string          `json:"driver_version"`
+	OperatorVersion *string          `json:"operator_version"`
+	Conditions      []NodeCondition  `json:"conditions"`
+	Labels          map[string]any   `json:"labels"`
+	Taints          []any            `json:"taints"`
+	Devices         NodeDeviceRollup `json:"devices"`
+	JoinedAt        *time.Time       `json:"joined_at"`
+	ObservedAt      *time.Time       `json:"observed_at"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       *time.Time       `json:"updated_at"`
 }
 
 // DeviceTopology is the device's topology domain inlined for display. It is a
@@ -346,6 +369,7 @@ type Artifact struct {
 	// name and nothing has hashed anything.
 	Verified       bool               `json:"verified"`
 	Name           string             `json:"name"`
+	Slug           string             `json:"slug"`
 	Kind           string             `json:"kind"`
 	Format         *string            `json:"format"`
 	SizeBytes      int64              `json:"size_bytes"`
@@ -358,6 +382,25 @@ type Artifact struct {
 	UpdatedAt      *time.Time         `json:"updated_at"`
 	Revision       string             `json:"revision"`
 	Locations      []ArtifactLocation `json:"locations"`
+	Upstream       ArtifactUpstream   `json:"upstream"`
+}
+
+// ArtifactUpstream is what the model's publisher says about it, recorded with
+// who recorded it and from where. Every field is a claim, not a measurement.
+type ArtifactUpstream struct {
+	Provider              *string  `json:"provider"`
+	ProviderModelID       *string  `json:"provider_model_id"`
+	ReleasedAt            *string  `json:"released_at"`
+	Licence               *string  `json:"licence"`
+	ContextLength         *int     `json:"context_length"`
+	MaxOutputTokens       *int     `json:"max_output_tokens"`
+	InputModalities       []string `json:"input_modalities"`
+	Reasoning             *bool    `json:"reasoning"`
+	ToolCalling           *bool    `json:"tool_calling"`
+	StructuredOutputModes []string `json:"structured_output_modes"`
+	SourceURI             *string  `json:"source_uri"`
+	RecordedBy            *string  `json:"recorded_by"`
+	RecordedAt            *string  `json:"recorded_at"`
 }
 
 // ServingParallelism is the tensor/pipeline/expert split.
@@ -512,6 +555,36 @@ type ServingSpec struct {
 	Shape              ServingShape     `json:"shape"`
 	Resources          ServingResources `json:"resources"`
 	Overlay            ServingOverlay   `json:"overlay"`
+	// Topology is aggregated or disaggregated serving, with the per-role split
+	// and GroupDevices, the devices one replica of every role takes together.
+	Topology ServingTopology `json:"topology"`
+	Router   ServingRouter   `json:"router"`
+}
+
+// ServingRole is one role of a disaggregated topology (prefill, decode) and
+// its share of a replica.
+type ServingRole struct {
+	Role           string         `json:"role"`
+	Weight         int            `json:"weight"`
+	MaxBatchTokens *int           `json:"max_batch_tokens"`
+	EngineArgs     map[string]any `json:"engine_args"`
+}
+
+// ServingTopology is how a replica is laid out. GroupDevices is derived on
+// read and is never sent.
+type ServingTopology struct {
+	ServingTopology string        `json:"serving_topology"`
+	Roles           []ServingRole `json:"roles"`
+	GroupDevices    int           `json:"group_devices"`
+}
+
+// ServingRouter is the frontend's request router settings. A nil field is the
+// engine's own default.
+type ServingRouter struct {
+	Mode                 *string  `json:"mode"`
+	QueueThreshold       *float64 `json:"queue_threshold"`
+	QueuePolicy          *string  `json:"queue_policy"`
+	KVOverlapScoreCredit *float64 `json:"kv_overlap_score_credit"`
 }
 
 // ServingRequest is the serving configuration a workload is created with.
@@ -582,6 +655,9 @@ type WorkloadDeployment struct {
 	PlacedAt        *time.Time              `json:"placed_at"`
 	Replicas        DeploymentReplicaRollup `json:"replicas"`
 	Status          *DeploymentStatus       `json:"status"`
+	// LiveDigests is ready replicas per serving digest they came up on. Two
+	// entries is a rollout in progress.
+	LiveDigests map[string]int `json:"live_digests"`
 }
 
 // Workload is what you asked to run, globally: an artifact, the way to serve it,
@@ -608,23 +684,27 @@ type Workload struct {
 	// from a client. It is what a benchmark run and a wire frame both name, so
 	// "the same configuration" is one string rather than a comparison of eight
 	// fields.
-	ServingDigest      string               `json:"serving_digest"`
-	Serving            ServingSpec          `json:"serving"`
-	AdapterArtifactIDs []string             `json:"adapter_artifact_ids"`
-	Overrides          map[string]any       `json:"overrides"`
-	Labels             map[string]any       `json:"labels"`
-	Strategy           string               `json:"strategy"`
-	ClusterFloors      map[string]any       `json:"cluster_floors"`
-	MaxClusters        *int                 `json:"max_clusters"`
-	PinnedClusterID    *string              `json:"pinned_cluster_id"`
-	Scale              WorkloadScale        `json:"scale"`
-	StartedAt          *time.Time           `json:"started_at"`
-	FinishedAt         *time.Time           `json:"finished_at"`
-	DeadlineAt         *time.Time           `json:"deadline_at"`
-	CreatedAt          time.Time            `json:"created_at"`
-	UpdatedAt          *time.Time           `json:"updated_at"`
-	Revision           string               `json:"revision"`
-	Deployments        []WorkloadDeployment `json:"deployments"`
+	ServingDigest      string      `json:"serving_digest"`
+	Serving            ServingSpec `json:"serving"`
+	AdapterArtifactIDs []string    `json:"adapter_artifact_ids"`
+	// ServedModelName is the model id the engine registers under, read from the
+	// artifact's slug. It is reported, never declared.
+	ServedModelName string               `json:"served_model_name"`
+	ArtifactTag     *string              `json:"artifact_tag"`
+	Overrides       map[string]any       `json:"overrides"`
+	Labels          map[string]any       `json:"labels"`
+	Strategy        string               `json:"strategy"`
+	ClusterFloors   map[string]any       `json:"cluster_floors"`
+	MaxClusters     *int                 `json:"max_clusters"`
+	PinnedClusterID *string              `json:"pinned_cluster_id"`
+	Scale           WorkloadScale        `json:"scale"`
+	StartedAt       *time.Time           `json:"started_at"`
+	FinishedAt      *time.Time           `json:"finished_at"`
+	DeadlineAt      *time.Time           `json:"deadline_at"`
+	CreatedAt       time.Time            `json:"created_at"`
+	UpdatedAt       *time.Time           `json:"updated_at"`
+	Revision        string               `json:"revision"`
+	Deployments     []WorkloadDeployment `json:"deployments"`
 }
 
 // WorkloadCreateRequest is what it takes to run something, without saying where.
@@ -764,6 +844,16 @@ type DeploymentStatus struct {
 	LastErrorMessage    *string    `json:"last_error_message"`
 	LastErrorAt         *time.Time `json:"last_error_at"`
 	ObservedAt          *time.Time `json:"observed_at"`
+	// Roles is the per-role replica count of a disaggregated deployment, nil
+	// for an aggregated one.
+	Roles []DeploymentRoleObserved `json:"roles"`
+}
+
+// DeploymentRoleObserved is one role's desired and ready replicas.
+type DeploymentRoleObserved struct {
+	Role    string `json:"role"`
+	Desired int    `json:"desired"`
+	Ready   int    `json:"ready"`
 }
 
 // DiscoveredWorkload is something already running in a cluster that the plane
@@ -831,6 +921,9 @@ type EndpointTarget struct {
 	Weight       int    `json:"weight"`
 	Role         string `json:"role"`
 	Enabled      bool   `json:"enabled"`
+	// ServedModelName is the id the deployment's engine answers to, nil until
+	// the plane can resolve it.
+	ServedModelName *string `json:"served_model_name"`
 }
 
 // Endpoint is the stable public name clients call. Global and plane-only:
@@ -841,13 +934,15 @@ type Endpoint struct {
 	// Slug is what a client sends as `model`, and the key the gateway routes on. Name is the
 	// internal handle and routes nothing — the two are separate so that a public model id can be
 	// corrected without moving the handle every link and metric label holds.
-	Slug            string           `json:"slug"`
-	ProjectID       string           `json:"project_id"`
-	Visibility      string           `json:"visibility"`
-	RoutingStrategy string           `json:"routing_strategy"`
-	Enabled         bool             `json:"enabled"`
-	Targets         []EndpointTarget `json:"targets"`
-	FailoverOrder   []string         `json:"failover_order"`
+	Slug            string `json:"slug"`
+	ProjectID       string `json:"project_id"`
+	Visibility      string `json:"visibility"`
+	RoutingStrategy string `json:"routing_strategy"`
+	Enabled         bool   `json:"enabled"`
+	// Aliases are further model ids the gateway routes to this endpoint.
+	Aliases       []string         `json:"aliases"`
+	Targets       []EndpointTarget `json:"targets"`
+	FailoverOrder []string         `json:"failover_order"`
 	// Surface is the terms on which the served API is exposed. Declared state: the plane writes
 	// it, the gateway reads it off the resolved table, and nothing on a cluster ever sees it.
 	Surface   EndpointSurface `json:"surface"`
@@ -926,6 +1021,9 @@ type Tenant struct {
 	Slug         string     `json:"slug"`
 	Name         string     `json:"name"`
 	Enabled      bool       `json:"enabled"`
+	Ingress      string     `json:"ingress"`
+	Auth         string     `json:"auth"`
+	Host         *string    `json:"host"`
 	ProjectCount int        `json:"project_count"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    *time.Time `json:"updated_at"`
@@ -1323,6 +1421,7 @@ type BenchmarkRun struct {
 	Summary      json.RawMessage     `json:"summary"`
 	ArtifactsURI *string             `json:"artifacts_uri"`
 	Error        *string             `json:"error"`
+	LogTail      *string             `json:"log_tail"`
 	CreatedAt    time.Time           `json:"created_at"`
 	UpdatedAt    *time.Time          `json:"updated_at"`
 	StartedAt    *time.Time          `json:"started_at"`

@@ -27,13 +27,16 @@
         "state": "connected",
         "last_sync_at": "2026-08-19T18:01:02.574792Z",
         "last_seen_at": "2026-08-19T18:01:06.574792Z",
-        "agent_version": "0.4.2",
+        "operator_version": "0.4.2",
         "lag_ms": 4664009,
         "last_error": null,
         "distribution": null,
         "cloud": null,
-        "observed_region": null
-      }
+        "observed_region": null,
+        "read_only": false,
+        "multinode": false
+      },
+      "serving": null
     },
     {
       "id": "clu_01m0djye7mpwgb3ksr4b9xbby2",
@@ -59,13 +62,16 @@
         "state": "disconnected",
         "last_sync_at": "2026-08-19T18:01:02.574792Z",
         "last_seen_at": "2026-08-19T18:01:06.574792Z",
-        "agent_version": "0.4.1",
+        "operator_version": "0.4.1",
         "lag_ms": 4664009,
         "last_error": "stream closed by peer",
         "distribution": null,
         "cloud": null,
-        "observed_region": null
-      }
+        "observed_region": null,
+        "read_only": false,
+        "multinode": false
+      },
+      "serving": null
     },
     {
       "id": "clu_01m0djye81hnzae2p3ec50vsvc",
@@ -90,13 +96,16 @@
         "state": "never",
         "last_sync_at": null,
         "last_seen_at": null,
-        "agent_version": null,
+        "operator_version": null,
         "lag_ms": null,
         "last_error": "stream closed by peer",
         "distribution": null,
         "cloud": null,
-        "observed_region": null
-      }
+        "observed_region": null,
+        "read_only": false,
+        "multinode": false
+      },
+      "serving": null
     }
   ],
   "count": 3,

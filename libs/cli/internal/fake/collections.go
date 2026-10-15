@@ -252,7 +252,11 @@ func (b *Backend) hydrateWorkload(wl api.Workload) api.Workload {
 			Generation: d.Generation, Enabled: d.Enabled, Authority: d.Authority,
 			QueuedAt: d.QueuedAt, AdmittedAt: d.AdmittedAt, PlacedAt: d.PlacedAt,
 			Replicas: d.Replicas, Status: d.Status,
+			LiveDigests: map[string]int{},
 		})
+		if d.Replicas.Ready > 0 {
+			wl.Deployments[len(wl.Deployments)-1].LiveDigests[wl.ServingDigest] = d.Replicas.Ready
+		}
 		placed += d.DesiredReplicas
 		ready += d.Replicas.Ready
 	}
@@ -260,6 +264,13 @@ func (b *Backend) hydrateWorkload(wl api.Workload) api.Workload {
 	wl.Scale.Placed = placed
 	wl.Scale.Ready = ready
 	wl.Phase = workloadPhase(wl.Deployments)
+	// The model id the engine registers under is the artifact's slug, derived
+	// on read and never declared.
+	for _, a := range b.state.Artifacts {
+		if a.ID == wl.Serving.ArtifactID {
+			wl.ServedModelName = orElse(a.Slug, a.Name)
+		}
+	}
 	return wl
 }
 
@@ -1824,6 +1835,11 @@ func normalizeServing(sv api.ServingSpec) api.ServingSpec {
 	if sv.Shape.DeviceCount == 0 {
 		sv.Shape.DeviceCount = 1
 	}
+	sv.Topology.ServingTopology = orElse(sv.Topology.ServingTopology, "aggregated")
+	if sv.Topology.Roles == nil {
+		sv.Topology.Roles = []api.ServingRole{}
+	}
+	sv.Topology.GroupDevices = sv.Shape.DeviceCount
 	if sv.Capabilities.StructuredOutputModes == nil {
 		sv.Capabilities.StructuredOutputModes = []string{"text"}
 	}

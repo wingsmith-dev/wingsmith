@@ -53,7 +53,7 @@ func seed() *state {
 		if spec.syncState != "never_connected" {
 			sync.LastSyncAt = ptr(now.Add(-12 * time.Second))
 			sync.LastSeenAt = ptr(now.Add(-8 * time.Second))
-			sync.AgentVersion = strptr(spec.agent)
+			sync.OperatorVersion = strptr(spec.agent)
 			sync.LagMS = intptr(340)
 		}
 		if spec.lastError != "" {
@@ -124,28 +124,29 @@ func seed() *state {
 			})
 
 			st.Nodes = append(st.Nodes, api.Node{
-				ID:            nodeID,
-				Name:          nodeName,
-				Cluster:       clusterID,
-				ClusterName:   spec.name,
-				Pool:          strptr(poolID),
-				PoolName:      strptr(poolName),
-				Condition:     condition,
-				Cordoned:      cordoned,
-				Ready:         ready,
-				CPUCores:      intptr(192),
-				MemoryMiB:     intptr(2097152),
-				CPUArch:       strptr("amd64"),
-				OSImage:       strptr("Ubuntu 22.04.4 LTS"),
-				KernelVersion: strptr("5.15.0-119-generic"),
-				DriverVersion: strptr("550.90.07"),
-				AgentVersion:  strptr(spec.agent),
-				Labels:        map[string]any{"tier": "prod", "fabric": domainKind},
-				Taints:        []any{},
-				Devices:       api.NodeDeviceRollup{Total: spec.perNode, ByHealth: byHealth},
-				JoinedAt:      ptr(enrolled.Add(48 * time.Hour)),
-				ObservedAt:    ptr(now.Add(-20 * time.Second)),
-				CreatedAt:     enrolled,
+				ID:              nodeID,
+				Name:            nodeName,
+				Cluster:         clusterID,
+				ClusterName:     spec.name,
+				Pool:            strptr(poolID),
+				PoolName:        strptr(poolName),
+				Condition:       condition,
+				Cordoned:        cordoned,
+				Ready:           ready,
+				CPUCores:        intptr(192),
+				MemoryMiB:       intptr(2097152),
+				CPUArch:         strptr("amd64"),
+				OSImage:         strptr("Ubuntu 22.04.4 LTS"),
+				KernelVersion:   strptr("5.15.0-119-generic"),
+				DriverVersion:   strptr("550.90.07"),
+				OperatorVersion: strptr(spec.agent),
+				Labels:          map[string]any{"tier": "prod", "fabric": domainKind},
+				Taints:          []any{},
+				Conditions:      []api.NodeCondition{},
+				Devices:         api.NodeDeviceRollup{Total: spec.perNode, ByHealth: byHealth, DeviceClass: strptr(spec.class)},
+				JoinedAt:        ptr(enrolled.Add(48 * time.Hour)),
+				ObservedAt:      ptr(now.Add(-20 * time.Second)),
+				CreatedAt:       enrolled,
 			})
 
 			membership.NodesTotal++
@@ -299,6 +300,7 @@ func seed() *state {
 		ID:             artifactID,
 		Digest:         "sha256:7b1f0c0a2e4d6f8091a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f708",
 		Name:           "llama-3.1-70b-instruct",
+		Slug:           "meta-llama/llama-3.1-70b-instruct",
 		Kind:           "weights",
 		Format:         strptr("safetensors"),
 		SizeBytes:      141_000_000_000,
@@ -309,6 +311,12 @@ func seed() *state {
 		Revision:       revision(created),
 		Locations: []api.ArtifactLocation{
 			{Scheme: "s3", URI: "s3://hangar-weights/llama-3.1-70b", Region: strptr("us-east-1"), Preferred: true},
+		},
+		Upstream: api.ArtifactUpstream{
+			Provider: strptr("meta-llama"), ProviderModelID: strptr("Llama-3.1-70B-Instruct"),
+			Licence: strptr("llama-3.1"), ContextLength: intptr(131072),
+			InputModalities: []string{"text"}, StructuredOutputModes: []string{"text", "json_schema"},
+			ToolCalling: boolptr(true),
 		},
 	})
 
@@ -413,6 +421,7 @@ func seed() *state {
 	st.Endpoints = append(st.Endpoints, api.Endpoint{
 		ID: chatEndpoint, Name: "chat", Slug: "meta-llama/llama-3.3-70b-instruct", ProjectID: projectID,
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
+		Aliases: []string{"chat"},
 		Targets: []api.EndpointTarget{
 			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
 			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},

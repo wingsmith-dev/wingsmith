@@ -79,7 +79,7 @@ var freeform = map[string]bool{
 	"labels": true, "metadata": true, "capabilities": true, "engine_args": true,
 	"parameters": true, "config": true, "rules": true, "node_shape": true,
 	"attributes": true, "details": true, "overrides": true, "result": true,
-	"prefix_cache_config": true, "cluster_floors": true,
+	"prefix_cache_config": true, "cluster_floors": true, "live_digests": true,
 }
 
 func diff(path string, want, got any) []string {

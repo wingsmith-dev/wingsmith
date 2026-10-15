@@ -8,6 +8,7 @@
             "visibility": "private",
             "routing_strategy": "weighted",
             "enabled": true,
+            "aliases": [],
             "targets": [],
             "failover_order": [],
             "surface": {

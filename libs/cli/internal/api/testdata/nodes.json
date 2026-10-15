@@ -20,7 +20,8 @@
       "os_image": "Ubuntu 22.04.4 LTS",
       "kernel_version": "5.15.0-119-generic",
       "driver_version": "550.90.07",
-      "agent_version": "0.4.2",
+      "operator_version": "0.4.2",
+      "conditions": [],
       "labels": {
         "tier": "prod",
         "fabric": "nvswitch"
@@ -31,7 +32,9 @@
         "by_health": {
           "healthy": 7,
           "unhealthy": 1
-        }
+        },
+        "device_class": "h100-80",
+        "allocated": 0
       },
       "joined_at": "2026-05-11T18:01:14.574792Z",
       "observed_at": "2026-08-19T18:00:54.574792Z",
@@ -58,7 +61,8 @@
       "os_image": "Ubuntu 22.04.4 LTS",
       "kernel_version": "5.15.0-119-generic",
       "driver_version": "550.90.07",
-      "agent_version": "0.4.2",
+      "operator_version": "0.4.2",
+      "conditions": [],
       "labels": {
         "tier": "prod",
         "fabric": "nvswitch"
@@ -69,7 +73,9 @@
         "by_health": {
           "healthy": 7,
           "degraded": 1
-        }
+        },
+        "device_class": "h100-80",
+        "allocated": 0
       },
       "joined_at": "2026-05-12T18:01:14.574792Z",
       "observed_at": "2026-08-19T18:00:54.574792Z",
@@ -96,7 +102,8 @@
       "os_image": "Ubuntu 22.04.4 LTS",
       "kernel_version": "5.15.0-119-generic",
       "driver_version": "550.90.07",
-      "agent_version": "0.4.2",
+      "operator_version": "0.4.2",
+      "conditions": [],
       "labels": {
         "tier": "prod",
         "fabric": "nvswitch"
@@ -106,7 +113,9 @@
         "total": 8,
         "by_health": {
           "healthy": 8
-        }
+        },
+        "device_class": "h100-80",
+        "allocated": 0
       },
       "joined_at": "2026-05-13T18:01:14.574792Z",
       "observed_at": "2026-08-19T18:00:54.574792Z",
