@@ -1896,7 +1896,7 @@ class BenchmarkRequest(BaseMixin):
     __tablename__ = "ops_benchmark_request"
     __table_args__ = (
         CheckConstraint(
-            "(deployment_id IS NOT NULL)::int + (workload_id IS NOT NULL)::int + (endpoint_id IS NOT NULL)::int = 1",
+            "(deployment_id IS NOT NULL)::int + (workload_id IS NOT NULL)::int + (endpoint_id IS NOT NULL)::int <= 1",
             name="ck_ops_benchmark_request_one_target",
         ),
     )
@@ -1905,13 +1905,13 @@ class BenchmarkRequest(BaseMixin):
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     level: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     deployment_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="SET NULL"), nullable=True, index=True
     )
     workload_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("demand_workload.id", ondelete="SET NULL"), nullable=True, index=True
     )
     endpoint_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="SET NULL"), nullable=True, index=True
     )
     harness: Mapped[str] = mapped_column(String(32), nullable=False)
     image: Mapped[str] = mapped_column(String(512), nullable=False, server_default="")
@@ -1967,13 +1967,7 @@ class BenchmarkRun(BaseMixin):
     """
 
     __tablename__ = "ops_benchmark_run"
-    __table_args__ = (
-        Index("ix_ops_benchmark_run_deployment_seq", "deployment_id", "seq"),
-        CheckConstraint(
-            "deployment_id IS NOT NULL OR endpoint_id IS NOT NULL",
-            name="ck_ops_benchmark_run_owner",
-        ),
-    )
+    __table_args__ = (Index("ix_ops_benchmark_run_deployment_seq", "deployment_id", "seq"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -1981,10 +1975,10 @@ class BenchmarkRun(BaseMixin):
         DBUUID, ForeignKey("ops_benchmark_request.id", ondelete="CASCADE"), nullable=True, index=True
     )
     deployment_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="SET NULL"), nullable=True, index=True
     )
     endpoint_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="SET NULL"), nullable=True, index=True
     )
     cluster_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True

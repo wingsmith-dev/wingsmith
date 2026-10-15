@@ -257,24 +257,27 @@ def test_benchmark_request_is_declared_and_holds_no_phase_or_verdict() -> None:
     assert not columns & {"phase", "summary", "verdict", "started_at", "finished_at", "vantage"}
 
 
-def test_benchmark_request_targets_exactly_one_level() -> None:
+def test_benchmark_request_targets_at_most_one_level_and_outlives_it() -> None:
     from app.db.models import BenchmarkRequest
 
     table = inspect(BenchmarkRequest).local_table
-    names = {c.name for c in table.constraints}
-    assert "ck_ops_benchmark_request_one_target" in names
+    check = next(c for c in table.constraints if c.name == "ck_ops_benchmark_request_one_target")
+    assert str(check.sqltext).endswith("<= 1")
     for column in ("deployment_id", "workload_id", "endpoint_id"):
         assert table.columns[column].nullable is True
+        assert [fk.ondelete for fk in table.columns[column].foreign_keys] == ["SET NULL"], column
 
 
-def test_benchmark_run_hangs_off_a_request_and_owns_a_deployment_or_an_endpoint() -> None:
+def test_benchmark_run_hangs_off_a_request_and_outlives_its_deployment_or_endpoint() -> None:
     from app.db.models import BenchmarkRun
 
     table = inspect(BenchmarkRun).local_table
     assert {"request_id", "endpoint_id", "step_index", "discard", "serving"} <= set(table.columns.keys())
     assert table.columns["deployment_id"].nullable is True
     assert table.columns["cluster_id"].nullable is True
-    assert "ck_ops_benchmark_run_owner" in {c.name for c in table.constraints}
+    for column in ("deployment_id", "endpoint_id"):
+        assert [fk.ondelete for fk in table.columns[column].foreign_keys] == ["SET NULL"], column
+    assert "ck_ops_benchmark_run_owner" not in {c.name for c in table.constraints}
 
 
 def test_artifact_baseline_is_unique_per_dataset_and_metric() -> None:
