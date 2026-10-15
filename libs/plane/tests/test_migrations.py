@@ -153,6 +153,34 @@ def test_the_recipe_fold_downgrades_and_upgrades_with_data(scratch) -> None:
     assert second == first, "a round trip does not move any configuration's identity"
 
 
+def test_the_recipe_fold_downgrade_links_runs_to_their_recipe_version(scratch) -> None:
+    _alembic(scratch, "upgrade", BEFORE)
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn, conn.cursor() as cur:
+        _seed(cur)
+    _alembic(scratch, "upgrade", AFTER)
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        # w1 holds the run. Give it an older namesake in another project so the downgrade
+        # rebuilds it as version 2 of recipe "w1", and drop w2, the other workload with its digest.
+        conn.execute("DELETE FROM demand_workload WHERE uid = 'wkl_w2'")
+        tenant = conn.execute("SELECT tenant_id FROM bind_project WHERE slug = 'core'").fetchone()[0]
+        other = conn.execute(
+            "INSERT INTO bind_project (uid, tenant_id, name, slug) VALUES ('prj_o', %s, 'other', 'other') RETURNING id",
+            (tenant,),
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE demand_workload SET project_id = %s, name = 'w1', created_at = now() - interval '1 day'"
+            " WHERE uid = 'wkl_w3'",
+            (other,),
+        )
+
+    _alembic(scratch, "downgrade", BEFORE)
+    with psycopg.connect(_dsn(scratch)) as conn:
+        linked = conn.execute(
+            "SELECT b.recipe_version, r.version, r.name FROM ops_benchmark_run b JOIN demand_recipe r ON r.id = b.recipe_id"
+        ).fetchall()
+    assert linked == [(2, 2, "w1")]
+
+
 def test_a_workload_with_no_deployment_stops_the_upgrade_unless_asked(scratch) -> None:
     before, after = "8f4ccc237d91", "e5b2c73a9d18"
     _alembic(scratch, "upgrade", before)

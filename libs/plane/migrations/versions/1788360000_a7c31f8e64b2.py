@@ -330,8 +330,9 @@ def downgrade() -> None:
         sa.text(
             """
             UPDATE ops_benchmark_run b
-               SET recipe_id = w.recipe_id, recipe_version = 1
+               SET recipe_id = r.id, recipe_version = r.version
               FROM demand_workload w
+              JOIN demand_recipe r ON r.id = w.recipe_id
              WHERE w.serving_digest = b.serving_digest
             """
         )
