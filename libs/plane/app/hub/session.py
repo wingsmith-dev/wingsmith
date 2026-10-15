@@ -160,6 +160,14 @@ class SessionConfig:
     send_queue_size: int = 1024
     replay_capacity: int = 4096
     ownership_check_interval: float = 10.0
+    resync_interval: float = 900.0
+    """How often a live session restreams the cluster's whole declared state.
+
+    Live dispatch is a wakeup, and a wakeup can be lost: a hub mid-restart, a
+    listener reconnecting, a session that was not attached yet. A cluster that
+    missed one keeps running what it last knew, and nothing else would ever tell
+    it otherwise while the session stays up. This bounds that drift.
+    """
 
 
 def now_ts() -> str:
@@ -178,9 +186,15 @@ class OperatorSession:
     __slots__ = (
         "_close_reason",
         "_closing",
+        "_deferred",
+        "_drained",
+        "_full_resync",
         "_last_recv",
         "_outbound",
+        "_released",
+        "_resync_again",
         "_stopped",
+        "_synced",
         "claims",
         "config",
         "connection",
@@ -227,6 +241,18 @@ class OperatorSession:
         self._closing = False
         self._close_reason: str | None = None
         self._stopped = asyncio.Event()
+        self._full_resync = False
+        self._synced = False
+        """Whether this connection finished bringing the operator up to date.
+
+        Until it has, the session is not resumable: a resume replays only what was
+        sent, and a snapshot cut off half way would resume as a silently shorter one.
+        """
+        self._deferred: list[tuple[str, Struct, str | None]] | None = []
+        """Live sends held back while a snapshot streams, or `None` when sends go straight out."""
+        self._resync_again = False
+        self._drained = asyncio.Event()
+        self._released = asyncio.Event()
 
     # ----------------------------------------------------------------- lifecycle
 
@@ -256,7 +282,13 @@ class OperatorSession:
             await self._mark_disconnected()
             if self.state is not None:
                 self.live.unregister(self.state.cluster_id, self)
-                self.registry.disconnected(self.state.session_id)
+                if self._synced:
+                    self.registry.disconnected(self.state.session_id)
+                else:
+                    # A connection that never finished its snapshot or its replay leaves a session
+                    # whose replay buffer holds part of a stream. Resuming it would deliver that
+                    # part and nothing after it, so the next hello starts over instead.
+                    self.registry.drop(self.state.session_id)
             self._stopped.set()
             logger.info(
                 "hub.session.close principal=%s session=%s",
@@ -270,6 +302,7 @@ class OperatorSession:
             asyncio.create_task(self._write_loop(), name="hub-write"),
             asyncio.create_task(self._liveness_loop(), name="hub-liveness"),
             asyncio.create_task(self._ownership_loop(), name="hub-ownership"),
+            asyncio.create_task(self._sync_loop(), name="hub-sync"),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -339,13 +372,13 @@ class OperatorSession:
 
         await self._mark_connected(hello)
 
-        if full_resync:
-            await self._stream_full_resync()
-        else:
+        # Bounded by the replay buffer and written before anything else can take a seq, so the
+        # resumed stream reaches the peer in order. A full resync is not sent here: it can be any
+        # size, and it streams from `_sync_loop` once the writer and the reader are running.
+        self._full_resync = full_resync
+        if not full_resync:
             for frame in state.replay.pending():
                 await self._send_now(frame)
-
-        await self._replay_open_operations()
 
     async def _mark_connected(self, hello: Hello) -> None:
         """Reports the peer as reachable, and learns the cluster's canonical uid.
@@ -436,28 +469,67 @@ class OperatorSession:
 
         return existing, False
 
+    async def _sync_loop(self) -> None:
+        """Brings the operator up to date, opens live dispatch, then keeps it up to date.
+
+        A task beside the reader and the writer rather than a step of the handshake. A
+        snapshot is as large as the cluster's declared state, and every frame of it
+        enters the outbound queue and the replay buffer; streamed before the writer
+        existed, a snapshot past the queue's size could only fail, and every
+        reconnect would fail the same way. Here the writer drains while this fills,
+        and the reader takes the acknowledgements that free the replay buffer.
+
+        Live sends that arrive meanwhile are held and sent after the snapshot, never
+        inside it. Inside, a deployment deleted after the snapshot read it would be
+        resurrected by the snapshot frame that follows the deletion; after, the
+        renderer's current answer is the last word.
+        """
+        if self._full_resync:
+            await self._stream_full_resync()
+        await self._replay_open_operations()
+        self._synced = True
+        await self._release_deferred()
+
+        while True:
+            await asyncio.sleep(self.config.resync_interval)
+            self._deferred = []
+            await self._stream_full_resync()
+            await self._replay_open_operations()
+            await self._release_deferred()
+
+    async def _release_deferred(self) -> None:
+        """Sends what live dispatch handed over during a snapshot, or restreams if too much did."""
+        while True:
+            held, self._deferred = self._deferred or [], None
+            for type_name, payload, reply_to in held:
+                await self._send_flow(type_name, payload, reply_to=reply_to)
+            if not self._resync_again:
+                return
+            self._resync_again = False
+            self._deferred = []
+            await self._stream_full_resync()
+
     async def _stream_full_resync(self) -> None:
         """Streams the hub's complete declared state, terminated by a sequenced `stream.end`."""
-        request = self._frame("resync.begin", ResyncBegin(scope="all"))
-        request_id = msgjson.decode(request, type=RawEnvelope).id
-        await self._enqueue(request)
+        request_id = await self._send_flow("resync.begin", ResyncBegin(scope="all"))
 
         count = 0
         complete = True
         try:
             async for type_name, payload in self.desired.iter_desired(self._state.cluster_id, "all"):
-                await self._send(type_name, payload, reply_to=request_id)
+                await self._send_flow(type_name, payload, reply_to=request_id)
                 count += 1
         except Backpressure:
             raise
         except Exception as exc:  # noqa: BLE001 - a snapshot that fails midway must end incomplete, not crash
             complete = False
-            logger.warning("hub.resync.truncated error=%s", exc)
+            logger.warning("hub.resync.truncated cluster=%s error=%s", self._state.cluster_id, exc)
 
-        await self._send("stream.end", StreamEnd(count=count, complete=complete), reply_to=request_id)
+        await self._send_flow("stream.end", StreamEnd(count=count, complete=complete), reply_to=request_id)
+        logger.info("hub.resync.sent cluster=%s count=%s complete=%s", self._state.cluster_id, count, complete)
 
     async def _replay_open_operations(self) -> None:
-        """Re-sends every operation this cluster has not finished, on any session start.
+        """Re-sends every operation this cluster has not finished, on session start and on every resync.
 
         Outside the resync stream on purpose, and not counted in its `stream.end`:
         a snapshot is authoritative over what it omits, so an operation inside one
@@ -465,21 +537,22 @@ class OperatorSession:
         would cancel work half done. The frames go down as ordinary
         `operation.desired`, which is the same thing live dispatch sends.
 
-        Every session start, not only a full resync. A resume replays what this
-        hub sent and never had acknowledged; it says nothing about an operation
-        created while nothing was connected, whose notification found no session
-        to push to and was dropped. This is the only thing that closes that gap.
-        Re-sending one the operator is already running is safe — it drops a
-        redelivery of an operation in flight — and is the intended recovery path.
+        Every session start, not only a full resync, and again after every
+        periodic resync. A resume replays what this hub sent and never had
+        acknowledged; it says nothing about an operation created while nothing was
+        connected, or whose notification was lost while the session was up. This
+        is what closes that gap. Re-sending one the operator is already running is
+        safe — it drops a redelivery of an operation in flight — and is the
+        intended recovery path.
 
         A source that cannot answer must not cost the connection: the operator is
-        connected and correct without these, and the next reconnect tries again.
+        connected and correct without these, and the next pass tries again.
         """
         if not isinstance(self.desired, OperationSource):
             return
         try:
             async for type_name, payload in self.desired.iter_open_operations(self._state.cluster_id):
-                await self._send(type_name, payload)
+                await self._send_flow(type_name, payload)
         except Backpressure:
             raise
         except Exception as exc:  # noqa: BLE001 - unsent operations are retried on the next connect
@@ -524,6 +597,7 @@ class OperatorSession:
         state = self._state
         if envelope.ack:
             state.replay.release(envelope.ack)
+            self._released.set()
 
         if envelope.type == "hello":
             raise ProtocolViolation("hello sent twice on one connection")
@@ -628,6 +702,7 @@ class OperatorSession:
     async def _write_loop(self) -> None:
         while True:
             frame = await self._outbound.get()
+            self._drained.set()
             await self.connection.send(frame.decode())
 
     async def _liveness_loop(self) -> None:
@@ -666,7 +741,20 @@ class OperatorSession:
                 raise self._refusal(state.cluster_id, refusal)
 
     async def send_desired(self, type_name: str, payload: Struct, reply_to: str | None = None) -> None:
-        """Queues declared state for the operator. The public seam for the registry track."""
+        """Queues declared state for the operator. The seam live dispatch sends through.
+
+        Held while a snapshot is streaming (see `_sync_loop`). The hold is bounded by
+        the replay buffer: past that, it is dropped and the snapshot is simply sent
+        again once this one ends, which carries everything the dropped sends would
+        have.
+        """
+        if self._deferred is not None:
+            if len(self._deferred) >= self.config.replay_capacity:
+                self._deferred.clear()
+                self._resync_again = True
+            else:
+                self._deferred.append((type_name, payload, reply_to))
+            return
         await self._send(type_name, payload, reply_to=reply_to)
 
     async def _flush_ack(self) -> None:
@@ -681,6 +769,45 @@ class OperatorSession:
             await self._close(exc.close_code, str(exc))
             raise
         await self._enqueue(frame)
+
+    async def _send_flow(self, type_name: str, payload: Struct, reply_to: str | None = None) -> str:
+        """Sends one frame of a stream, waiting for room rather than failing for want of it.
+
+        A stream is something this side chose to send all at once, so it yields to the
+        rest of the session: it keeps half the outbound queue and a quarter of the
+        replay buffer free for the frames the reader and the pinger must never be
+        refused, and waits for the writer to drain and the peer to acknowledge.
+
+        A peer that stops acknowledging for a whole liveness window is not coming
+        back, and that is the one case that still ends in `Backpressure`.
+
+        The seq is taken only once there is room, with no await between taking it and
+        queueing the frame, so the queue stays in seq order whatever else is sending.
+        Returns the frame's id, which is what a resync's frames reply to.
+        """
+        state = self._state
+        queue_limit = max(1, self.config.send_queue_size // 2)
+        replay_limit = max(1, state.replay.capacity - max(1, state.replay.capacity // 4))
+        sequenced = type_name not in UNSEQUENCED_TYPES
+        while True:
+            if self._outbound.qsize() >= queue_limit:
+                self._drained.clear()
+                await self._drained.wait()
+                continue
+            if sequenced and len(state.replay) >= replay_limit:
+                self._released.clear()
+                try:
+                    async with asyncio.timeout(self.config.liveness_timeout):
+                        await self._released.wait()
+                except TimeoutError:
+                    exc = Backpressure("peer stopped acknowledging a stream; closing so resume can repair it")
+                    await self._close(exc.close_code, str(exc))
+                    raise exc from None
+                continue
+            break
+        frame = self._frame(type_name, payload, reply_to=reply_to)
+        self._outbound.put_nowait(frame)
+        return msgjson.decode(frame, type=RawEnvelope).id
 
     async def _enqueue(self, frame: bytes) -> None:
         """Queues one encoded frame, closing the connection rather than dropping it (§6)."""

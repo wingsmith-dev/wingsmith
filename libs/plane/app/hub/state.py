@@ -48,6 +48,10 @@ class ReplayBuffer:
         return len(self._frames)
 
     @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    @property
     def full(self) -> bool:
         return len(self._frames) >= self._capacity
 

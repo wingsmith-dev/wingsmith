@@ -569,17 +569,21 @@ async def test_silence_past_the_liveness_timeout_closes_the_connection() -> None
 
 async def test_a_full_outbound_buffer_closes_the_connection() -> None:
     gate = asyncio.Event()
+    gate.set()
     harness = Harness(
         config=SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=2),
         send_gate=gate,
     )
     await harness.start()
-    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
-    await until(lambda: harness.session.state is not None)
+    await harness.hello()
+    await harness.connection.next_of_type("stream.end")
+    await until(lambda: harness.session._deferred is None)
+    gate.clear()
 
     with pytest.raises(Backpressure):
         for _ in range(8):
             await harness.session.send_desired("deployment.desired", desired_payload())
+            await settle()
 
     assert harness.connection.closed.is_set(), "hub -> operator never drops; it closes instead"
     assert harness.connection.close_code == 1013
@@ -589,17 +593,130 @@ async def test_a_full_outbound_buffer_closes_the_connection() -> None:
 
 async def test_a_full_replay_buffer_closes_the_connection() -> None:
     harness = Harness(
-        registry=SessionRegistry(replay_capacity=2),
+        registry=SessionRegistry(replay_capacity=4),
         config=SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64),
     )
     await harness.start()
     await harness.hello()
+    await harness.connection.next_of_type("stream.end")
+    await until(lambda: harness.session._deferred is None)
 
     with pytest.raises(Backpressure):
         for _ in range(8):
             await harness.session.send_desired("deployment.desired", desired_payload())
 
     assert harness.connection.closed.is_set()
+    await harness.stop()
+
+
+class ManyDesired:
+    """A `DesiredSource` with a declared state larger than any buffer the session has."""
+
+    def __init__(self, count: int, stall_after: int | None = None) -> None:
+        self.count = count
+        self.stall_after = stall_after
+
+    async def iter_desired(self, cluster_id: str, scope: str):
+        for index in range(self.count):
+            if index == self.stall_after:
+                await asyncio.Event().wait()
+            yield "deployment.desired", desired_payload()
+
+
+async def acknowledge_until_stream_end(harness: Harness) -> dict[str, Any]:
+    """Plays an operator that applies and acknowledges everything it is sent."""
+    while True:
+        doc = await harness.connection.next_frame(timeout=2)
+        if doc.get("seq") is not None:
+            harness.connection.push(frame("ack", {}, ack=doc["seq"]))
+        if doc["type"] == "stream.end":
+            return doc
+
+
+async def test_a_snapshot_larger_than_both_buffers_streams_whole() -> None:
+    """A snapshot past the queue's size used to be enqueued before the writer existed and fail
+    on every reconnect, so a large enough cluster could never be brought up to date."""
+    source = ManyDesired(100)
+    harness = Harness(
+        registry=SessionRegistry(replay_capacity=16),
+        config=SessionConfig(ping_interval=60, liveness_timeout=5, send_queue_size=8),
+        desired=source,
+    )
+    await harness.start()
+    await harness.hello()
+
+    end = await acknowledge_until_stream_end(harness)
+
+    assert end["payload"] == {"count": 100, "complete": True}
+    assert not harness.connection.closed.is_set()
+    await harness.stop()
+
+
+async def test_a_peer_that_stops_acknowledging_a_snapshot_is_closed_rather_than_waited_on_forever() -> None:
+    harness = Harness(
+        registry=SessionRegistry(replay_capacity=8),
+        config=SessionConfig(ping_interval=60, liveness_timeout=0.1, send_queue_size=8),
+        desired=ManyDesired(50),
+    )
+    await harness.start()
+    await harness.hello()
+
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=2)
+    assert harness.connection.close_code == 1013
+    await harness.stop()
+
+
+async def test_a_session_whose_snapshot_was_cut_off_is_not_resumable() -> None:
+    """Resuming it would replay the part that was sent, then nothing: a shorter snapshot, silently."""
+    registry = SessionRegistry(replay_capacity=64)
+    first = Harness(registry=registry, desired=ManyDesired(40, stall_after=5))
+    await first.start()
+    welcome = await first.hello()
+    for _ in range(5):
+        await first.connection.next_of_type("deployment.desired")
+    await first.stop()
+
+    assert welcome["payload"]["session_id"] not in registry
+
+    second = Harness(registry=registry)
+    await second.start()
+    answer = await second.hello(session_id=welcome["payload"]["session_id"], resume_from=1)
+    assert answer["payload"]["full_resync"] is True
+    await second.stop()
+
+
+async def test_live_sends_during_a_snapshot_follow_it_rather_than_land_inside_it() -> None:
+    """Inside, a deletion sent before the snapshot's own frame for the same deployment would be undone."""
+    gate = asyncio.Event()
+    harness = Harness(desired=ManyDesired(3), send_gate=gate)
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
+    await until(lambda: harness.session.state is not None)
+
+    await harness.session.send_desired("deployment.desired", desired_payload())
+    gate.set()
+
+    end = await harness.connection.next_of_type("stream.end")
+    live = await harness.connection.next_of_type("deployment.desired")
+    assert end["payload"]["count"] == 3
+    assert live["reply_to"] is None
+    assert live["seq"] > end["seq"]
+    await harness.stop()
+
+
+async def test_a_live_session_restreams_its_declared_state_on_an_interval() -> None:
+    """A lost wakeup leaves a cluster running what it last knew; nothing else would correct it."""
+    harness = Harness(
+        config=SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, resync_interval=0.02),
+        desired=ManyDesired(2),
+    )
+    await harness.start()
+    await harness.hello()
+
+    first = await harness.connection.next_of_type("stream.end")
+    second = await harness.connection.next_of_type("stream.end")
+    assert first["payload"] == second["payload"] == {"count": 2, "complete": True}
+    assert second["seq"] > first["seq"]
     await harness.stop()
 
 

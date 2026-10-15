@@ -71,9 +71,8 @@ class LiveSessions:
     and a writer announcing a change holds the uid while an operator configured
     by hand announces a name. Keyed by the handshake identity alone, every
     notification for a cluster that named itself would find no session and be
-    dropped in silence — invisible for declared state, which the next resync
-    repairs, and fatal for an operation, which is deliberately outside that
-    snapshot and would then wait for a reconnect that may never come.
+    dropped in silence, and the cluster would learn of the change only at the
+    session's next periodic resync.
     """
 
     __slots__ = ("_sessions",)

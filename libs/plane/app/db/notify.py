@@ -14,12 +14,15 @@ clever. The receiver re-reads the current row and sends what the database says
 now, so Postgres stays the single source of truth and two hints that arrive out
 of order cannot deliver stale state between them.
 
-It also means **a lost notification is not a correctness bug**. Notifies are
-dropped when nothing is listening, when a hub is mid-restart, when the listening
-connection is reconnecting; every one of those leaves the cluster running what it
-last knew, and the next `full_resync` — on the operator's own reconnect, which
-liveness bounds (PROTOCOL §5) — repairs it. The guarantee is latency, not
-delivery, and nothing downstream may assume otherwise.
+A notification can be lost. Notifies are dropped when nothing is listening, when
+a hub is mid-restart, when the listening connection is reconnecting, and when the
+session they were meant for is still bringing its operator up to date. Each of
+those leaves the cluster running what it last knew. What repairs it is a full
+snapshot: every live session restreams the cluster's declared state on an
+interval (`SessionConfig.resync_interval`, fifteen minutes by default), and every
+reconnect that cannot resume starts with one. So a lost notification costs at most
+that interval of drift, never more; the guarantee here is latency, not delivery,
+and nothing downstream may assume otherwise.
 """
 
 from typing import Protocol
