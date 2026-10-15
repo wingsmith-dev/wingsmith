@@ -91,11 +91,20 @@ def all_probes() -> list[Probe]:
     return [_PROBES[key] for key in sorted(_PROBES)]
 
 
+class UnknownProbe(LookupError):
+    """A probe id this version of the package does not define."""
+
+
 def get(id: str) -> Probe:
     if id not in _PROBES:
         known = ", ".join(sorted(_PROBES))
-        raise SystemExit(f"no probe {id!r}: one of {known}")
+        raise UnknownProbe(f"no probe {id!r}: one of {known}")
     return _PROBES[id]
+
+
+def find(id: str) -> Probe | None:
+    """The probe with this id, or None; for reading runs a different version may have written."""
+    return _PROBES.get(id)
 
 
 def select(only: tuple[str, ...] = (), skip_heavy: bool = True) -> list[Probe]:

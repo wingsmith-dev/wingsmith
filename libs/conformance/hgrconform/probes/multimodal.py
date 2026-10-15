@@ -23,7 +23,6 @@ from typing import Any
 
 from hgrconform.session import Session
 from hgrconform.session import dig
-from hgrconform.probes.registry import Skip
 from hgrconform.probes.registry import probe
 
 
@@ -184,8 +183,6 @@ def audio(session: Session) -> dict[str, Any]:
     data instead — those are different statuses and different error types, which is the
     whole observation.
     """
-    if not session.profile.supports("audio"):
-        raise Skip("profile claims no audio modality")
     body = session.body(
         max_tokens=16,
         messages=[
@@ -226,8 +223,6 @@ def video(session: Session) -> dict[str, Any]:
     on; an endpoint that names it something else is a finding for the profile, not a
     branch in this probe.
     """
-    if not session.profile.supports("video"):
-        raise Skip("profile claims no video modality")
     body = session.body(
         max_tokens=16,
         messages=[

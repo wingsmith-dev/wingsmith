@@ -18,8 +18,10 @@ from typing import Any
 from pathlib import Path
 from dataclasses import field
 from dataclasses import asdict
+from dataclasses import fields
 from dataclasses import dataclass
 
+from hgrconform.facts import ERROR
 from hgrconform.facts import Fact
 from hgrconform.profile import Profile
 
@@ -99,7 +101,7 @@ def read_run(path: Path) -> Run:
             base_url=entry["base_url"],
             model=entry["model"],
         )
-        endpoint.facts = {probe: Fact(**fact) for probe, fact in entry["facts"].items()}
+        endpoint.facts = {probe: _fact(probe, fact) for probe, fact in entry["facts"].items()}
         endpoints[role] = endpoint
     return Run(
         run_id=raw["run_id"],
@@ -108,6 +110,22 @@ def read_run(path: Path) -> Run:
         probe_ids=raw.get("probe_ids", []),
         endpoints=endpoints,
     )
+
+
+_FACT_FIELDS = {f.name for f in fields(Fact)}
+
+
+def _fact(probe: str, raw: dict[str, Any]) -> Fact:
+    """A stored fact, read tolerantly: a run written by another version still loads.
+
+    Keys this version does not know are dropped and missing ones take their defaults,
+    so a field added or removed between versions does not make every older run
+    unreadable. A fact with no status at all is recorded as an error, never as observed.
+    """
+    known = {key: value for key, value in raw.items() if key in _FACT_FIELDS}
+    known.setdefault("probe", probe)
+    known.setdefault("status", ERROR)
+    return Fact(**known)
 
 
 def latest_run(results: Path) -> Path | None:

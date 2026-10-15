@@ -28,14 +28,28 @@ from hgrconform.probes.registry import Skip
 from hgrconform.probes.registry import Probe
 
 
-def run_probes(probes: list[Probe], profile: Profile, role: str, store: Store, verbose: bool = True) -> None:
-    """Ask every probe of one endpoint, recording each answer before asking the next."""
+def run_probes(
+    probes: list[Probe],
+    profile: Profile,
+    role: str,
+    store: Store,
+    verbose: bool = True,
+    ask_anyway: tuple[str, ...] = (),
+) -> None:
+    """Ask every probe of one endpoint, recording each answer before asking the next.
+
+    `ask_anyway` names capabilities to probe for even though this profile does not
+    claim them. In a run with a reference it is what the other endpoint claims: an
+    endpoint that leaves video out of its profile is still asked about video when the
+    reference serves it, so the diff shows what it actually does instead of a skip
+    its own profile produced.
+    """
     store.run.endpoints[role] = Endpoint.of(role, profile)
     session = Session(profile=profile, evidence_dir=store.evidence_dir(role))
 
     try:
         for probe in probes:
-            fact = _run_one(probe, session, profile)
+            fact = _run_one(probe, session, profile, ask_anyway)
             store.record(role, fact)
             if verbose:
                 _print(role, fact, probe)
@@ -43,14 +57,16 @@ def run_probes(probes: list[Probe], profile: Profile, role: str, store: Store, v
         session.close()
 
 
-def _run_one(probe: Probe, session: Session, profile: Profile) -> Fact:
-    missing = [capability for capability in probe.requires if not profile.supports(capability)]
+def _run_one(probe: Probe, session: Session, profile: Profile, ask_anyway: tuple[str, ...] = ()) -> Fact:
+    unclaimed = [capability for capability in probe.requires if not profile.supports(capability)]
+    missing = [capability for capability in unclaimed if capability not in ask_anyway]
     if missing:
         return Fact(
             probe=probe.id,
             status=SKIPPED,
             notes=[f"profile does not claim {', '.join(missing)}"],
         )
+    notes = [f"asked although the profile does not claim {', '.join(unclaimed)}"] if unclaimed else []
 
     before = len(session.exchanges)
     started = time.monotonic()
@@ -70,7 +86,7 @@ def _run_one(probe: Probe, session: Session, profile: Profile) -> Fact:
         exchanges=session.exchanges[before:],
         duration_seconds=round(time.monotonic() - started, 3),
         error=error,
-        notes=[error] if status == SKIPPED and error else [],
+        notes=notes + ([error] if status == SKIPPED and error else []),
     )
 
 

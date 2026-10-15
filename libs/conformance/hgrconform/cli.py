@@ -21,8 +21,11 @@ from pathlib import Path
 from datetime import UTC
 from datetime import datetime
 from importlib import resources
+from dataclasses import field
+from dataclasses import dataclass
 
 from hgrconform.facts import Fact
+from hgrconform.facts import Difference
 from hgrconform.facts import compare
 from hgrconform.store import Run
 from hgrconform.store import Store
@@ -68,11 +71,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.results) / f"{stamp.strftime('%Y%m%d-%H%M%S')}-{target.name}"
     store = Store(root, Run(run_id=root.name, started_at=stamp.isoformat(), probe_ids=[p.id for p in probes]))
 
+    # With a reference, each endpoint is asked about everything either one claims, so a
+    # capability one profile leaves out is observed rather than skipped on that side.
+    claimed: tuple[str, ...] = ()
+    if reference:
+        claimed = (*target.modalities, *target.protocols, *reference.modalities, *reference.protocols)
+
     print(f"{target.name} -> {target.base_url} ({len(probes)} probes)")
-    run_probes(probes, target, TARGET, store)
+    run_probes(probes, target, TARGET, store, ask_anyway=claimed)
     if reference:
         print(f"{reference.name} -> {reference.base_url}")
-        run_probes(probes, reference, REFERENCE, store)
+        run_probes(probes, reference, REFERENCE, store, ask_anyway=claimed)
 
     store.run.finished_at = datetime.now(UTC).isoformat()
     store.flush()
@@ -92,33 +101,71 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return _diff(read_run(path), args.verbose)
 
 
-# TODO: this exit code is never read by anything but a person — see "Known gap: this
-# detects, it does not guard" in the README before wiring it to a cron or a deploy gate.
-def _diff(run: Run, verbose: bool) -> int:
-    """Report every key on which the two endpoints disagreed, and return 1 if any did."""
+@dataclass
+class Comparison:
+    """What diffing a run's two endpoints found, before anything is printed."""
+
+    differences: list[Difference] = field(default_factory=list)
+    uncompared: list[tuple[registry.Probe, Fact]] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+
+
+def compare_run(run: Run) -> Comparison:
+    """Every key on which the two endpoints disagreed, plus what could not be compared.
+
+    A probe with a result on one side only is a `not-run` difference, never a silent
+    gap: an interrupted run, or a reference that errored before reaching a probe, must
+    not read as agreement. A probe this version no longer defines is listed by id
+    rather than dropped, so an old run read by a newer package still accounts for it.
+    """
     if REFERENCE not in run.endpoints:
-        raise SystemExit("this run has no reference endpoint; re-run with --reference")
+        raise ValueError("this run has no reference endpoint; re-run with --reference")
 
     target = run.endpoints[TARGET]
     reference = run.endpoints[REFERENCE]
-    differences = []
-    uncompared = []
+    result = Comparison()
     for probe_id in run.probe_ids:
-        probe = registry.get(probe_id)
+        probe = registry.find(probe_id)
         here = target.facts.get(probe_id)
         there = reference.facts.get(probe_id)
+        if probe is None:
+            result.unknown.append(probe_id)
+            continue
         if here is None or there is None:
+            result.differences.append(
+                Difference(
+                    probe=probe_id,
+                    key="",
+                    target=here.status if here else "absent",
+                    reference=there.status if there else "absent",
+                    kind="not-run",
+                )
+            )
             continue
         if not probe.compare:
             if here.usable:
-                uncompared.append((probe, here))
+                result.uncompared.append((probe, here))
             continue
         if here.status == "skipped" and there.status == "skipped":
             continue
-        differences.extend(compare(here, there, probe.compare))
+        result.differences.extend(compare(here, there, probe.compare))
+    return result
 
-    print(f"\n{target.profile_name} vs {reference.profile_name}")
-    _print_uncompared(uncompared)
+
+# This exit code is read only by a person today. See "Running it unattended" in the
+# README before wiring it to a schedule or a deploy gate.
+def _diff(run: Run, verbose: bool) -> int:
+    """Report every key on which the two endpoints disagreed, and return 1 if any did."""
+    try:
+        result = compare_run(run)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    print(f"\n{run.endpoints[TARGET].profile_name} vs {run.endpoints[REFERENCE].profile_name}")
+    _print_uncompared(result.uncompared)
+    if result.unknown:
+        print("not compared, unknown to this version of hgrconform: " + ", ".join(result.unknown) + "\n")
+    differences = result.differences
     if not differences:
         print("no differences on the compared keys")
         return 0
