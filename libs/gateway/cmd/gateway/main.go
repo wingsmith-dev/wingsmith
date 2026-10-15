@@ -242,9 +242,7 @@ func main() {
 	// Hosts a request's remote media may be fetched from by an engine; unset
 	// allows every URL. See serving.MediaURLPolicy.
 	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("HANGAR_GATEWAY_MEDIA_URL_HOSTS"), ","))
-	drainDelay := envDurationDefault("HANGAR_GATEWAY_DRAIN_DELAY", 5*time.Second)
-	drainTimeout := envDurationDefault("HANGAR_GATEWAY_DRAIN_TIMEOUT", 20*time.Second)
-	tunnelDrainTimeout := envDurationDefault("HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT", 5*time.Second)
+	drain, grace := readDrainPlan()
 
 	srv := &http.Server{
 		Addr: *listenAddr,
@@ -330,15 +328,16 @@ func main() {
 	// Not-ready first, and before anything is closed. Endpoint removal takes a
 	// while to reach every kube-proxy and load balancer, and the requests that
 	// arrive inside that window are precisely the ones a rollout severs, so the
-	// listeners keep accepting for drainDelay after readiness drops.
+	// listeners keep accepting for drain.delay after readiness drops.
 	readiness.Drain()
-	slog.Info("gateway: draining", "delay", drainDelay, "timeout", drainTimeout, "tunnel_timeout", tunnelDrainTimeout)
-	time.Sleep(drainDelay)
+	slog.Info("gateway: draining", "grace", grace, "delay", drain.delay, "timeout", drain.requests, "tunnel_timeout", drain.tunnels)
+	time.Sleep(drain.delay)
 
 	// Each request listener gets the whole drain budget, concurrently, rather
 	// than the second one getting whatever the first left over. A request
-	// still running when the budget ends is cut; the pod's grace period must
-	// cover drainDelay + drainTimeout + tunnelDrainTimeout and a few seconds.
+	// still running when the budget ends is cut. The phases are cut from
+	// HANGAR_GATEWAY_SHUTDOWN_GRACE (drain.go), which must match the pod's
+	// terminationGracePeriodSeconds.
 	var wg sync.WaitGroup
 	for _, s := range []struct {
 		name string
@@ -350,7 +349,7 @@ func main() {
 		wg.Add(1)
 		go func(name string, srv *http.Server) {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), drain.requests)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
 				slog.Error("gateway: shutdown did not finish in the drain budget, cutting what is left", "listener", name, "err", err)
@@ -364,14 +363,14 @@ func main() {
 	// drained above are being carried by these tunnels, and a GOAWAY sent first
 	// would cut the generations that Shutdown was waiting for.
 	if listener != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), tunnelDrainTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), drain.tunnels)
 		if err := listener.Shutdown(ctx); err != nil {
 			slog.Error("gateway: tunnel drain failed", "err", err)
 		}
 		cancel()
 	}
 	if metricsSrv != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), metricsShutdownTimeout)
 		if err := metricsSrv.Shutdown(ctx); err != nil {
 			slog.Error("gateway: metrics shutdown failed", "err", err)
 		}

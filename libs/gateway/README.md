@@ -105,7 +105,8 @@ caller on the internet can send an unknown `Host`.
 | `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
 | `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
 | `HANGAR_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows every URL. See [Remote media](#remote-media) |
-| `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | shutdown phases, default `5s` / `20s` / `5s`; see [Shutdown](#shutdown) |
+| `HANGAR_GATEWAY_SHUTDOWN_GRACE` | the pod's `terminationGracePeriodSeconds`, default `30s`; the drain phases are cut from it, see [Shutdown](#shutdown) |
+| `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | override one shutdown phase; at the default grace they are `5s` / `16s` / `5s` |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 Only the plane URL and the service token are required; nothing else is fatal by its absence. That is
@@ -177,11 +178,17 @@ whole `HANGAR_GATEWAY_DRAIN_TIMEOUT` to finish what they are serving, concurrent
 running when that ends is cut. The tunnel listener is drained after them, under its own
 `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT`, because the requests being drained ride those tunnels.
 
-The defaults add up to 30 seconds, which fits Kubernetes' default termination grace period, and
-they bound how long a generation can survive a rollout. To carry longer generations through one,
-raise `HANGAR_GATEWAY_DRAIN_TIMEOUT` and set the pod's `terminationGracePeriodSeconds` to at least
-the sum of the three plus a few seconds. The agent's own drain on the cluster side is separate and
-needs the same treatment.
+The phases are cut from `HANGAR_GATEWAY_SHUTDOWN_GRACE`, which must equal the pod's
+`terminationGracePeriodSeconds`: up to 5 seconds each for the delay and the tunnel drain, 1 second
+for the metrics listener, 3 seconds left unspent before the kubelet's `SIGKILL`, and the rest to the
+request listeners. At the default 30 seconds that is `5s` / `16s` / `5s`, ending at 27 seconds. A
+phase set explicitly is used as given, and the gateway logs a warning at startup when the phases
+together outlast the grace period.
+
+That budget bounds how long a generation can survive a rollout. To carry longer generations through
+one, raise `terminationGracePeriodSeconds` and `HANGAR_GATEWAY_SHUTDOWN_GRACE` together; the extra
+time goes to the request listeners. The agent's own drain on the cluster side is separate and needs
+the same treatment.
 
 ## What it never keeps
 
