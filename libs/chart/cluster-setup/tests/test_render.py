@@ -342,6 +342,56 @@ def test_read_only_operations_add_only_their_own_rbac(chart, allowed, jobs, node
     assert configured == ",".join(k.strip() for k in allowed.split(","))
 
 
+# What the operator's manager reads through its cache, which spans the release
+# and workload namespaces (libs/operator/internal/reconcile/manager.go).
+# controller-runtime opens an informer per type in each cached namespace, so
+# each of these needs get/list/watch in both or the cache never syncs and the
+# manager exits. The store reads SyncedResources read-only or not; the
+# reconciler watches the rest only on a managed cluster.
+CACHED_ALWAYS = ["syncedresources"]
+CACHED_RECONCILE = ["jobs", "dynamographdeployments", "pods", "deployments", "statefulsets"]
+
+
+def _can_watch(roles, resource: str, namespace: str) -> bool:
+    for (role, ns), rules in roles.items():
+        if ns not in (None, namespace):
+            continue
+        if all(_grants(rules, resource, verb) for verb in ("get", "list", "watch")):
+            return True
+    return False
+
+
+@pytest.mark.parametrize(
+    "values, cached",
+    [
+        ({}, CACHED_ALWAYS),
+        ({"cluster.allowedOperations": "benchmark"}, CACHED_ALWAYS),
+        ({"cluster.readOnly": False}, CACHED_ALWAYS + CACHED_RECONCILE),
+        ({"cluster.readOnly": False, "workloadNamespace.name": "hangar-system"},
+         CACHED_ALWAYS + CACHED_RECONCILE),
+    ],
+)
+def test_operator_can_watch_every_cached_type_in_both_namespaces(chart, values, cached):
+    docs = render(chart, **values)
+    roles = _operator_rules(docs)
+    workloads = values.get("workloadNamespace.name", "dynamo")
+    for resource in cached:
+        for ns in ("hangar-system", workloads):
+            assert _can_watch(roles, resource, ns), (resource, ns)
+
+
+def test_shared_namespace_renders_one_role_and_no_namespace(chart):
+    docs = render(chart, **{"cluster.readOnly": False, "workloadNamespace.name": "hangar-system"})
+    keys = [(d["kind"], d["metadata"].get("namespace"), d["metadata"]["name"])
+            for d in docs if "metadata" in d]
+    assert len(keys) == len(set(keys)), [k for k in keys if keys.count(k) > 1]
+    assert not [d for d in docs if d["kind"] == "Namespace"]
+    roles = _operator_rules(docs)
+    own = roles[("Role/hangar-operator", "hangar-system")]
+    assert _grants(own, "leases", "update")
+    assert _grants(own, "dynamographdeployments", "create")
+
+
 def test_unknown_operation_is_refused(chart):
     assert "cordon, drain and benchmark" in refusal(chart, **{"cluster.allowedOperations": "reboot"})
 

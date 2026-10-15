@@ -1,7 +1,8 @@
 {{- include "cluster-setup.validate" . -}}
-{{- if .Values.workloadNamespace.create }}
+{{- if and .Values.workloadNamespace.create (ne (include "cluster-setup.workloadNamespace" .) .Release.Namespace) }}
 # The namespace the operator renders DynamoGraphDeployments into. The release
-# namespace is left to `helm --create-namespace`.
+# namespace is left to `helm --create-namespace`, including when the workloads
+# share it.
 #
 # Kept on `helm uninstall`: it holds every model the plane placed here and the
 # model-weight cache, and deleting a namespace deletes all of it. Delete it by

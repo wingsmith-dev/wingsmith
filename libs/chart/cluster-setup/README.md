@@ -210,6 +210,8 @@ is a permission boundary and not only a setting the operator honours:
 |---|---|---|
 | read nodes, pods, deployments, statefulsets | always | cluster |
 | write its own CRDs, lease and events | always | release namespace |
+| read its own SyncedResources | always | workload namespace |
+| read Jobs and DynamoGraphDeployments | `readOnly: false` | release namespace |
 | write DynamoGraphDeployments, prefetch Jobs; delete stale DynamoComponentDeployments | `readOnly: false` | workload namespace |
 | create benchmark Jobs, read their logs, list Services | `benchmark` allowed | workload namespace |
 | patch nodes | `cordon` or `drain` allowed | cluster |
@@ -218,6 +220,12 @@ is a permission boundary and not only a setting the operator honours:
 On a read-only cluster the operations come from `cluster.allowedOperations`
 (empty by default, so none); on a managed cluster all three are on. A read-only
 install with no operations has no write access outside the release namespace.
+
+The two cross-namespace reads are there because the operator's cache spans both
+namespaces and opens a watch for each type it reads in each of them; without
+them the cache never syncs and the operator exits. If `workloadNamespace.name`
+is the release namespace, the chart renders one Role with both sets of rules and
+leaves creating that namespace to `helm --create-namespace`.
 
 What this does not bound: on a managed cluster the plane decides what runs in
 the workload namespace, including the engine and benchmark images, so whoever

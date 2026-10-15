@@ -252,3 +252,98 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The operator's own state in the release namespace: the leader-election lease,
+the local copy of declared state and the stream cursor. Written read-only or
+not; a read-only operator still stores what the plane declares so that leaving
+read-only starts from a complete view.
+*/}}
+{{- define "cluster-setup.operatorStateRules" -}}
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]
+- apiGroups: [coordination.k8s.io]
+  resources: [leases]
+  verbs: [create, get, list, patch, update, watch]
+- apiGroups: [hangar.dev]
+  resources: [syncedresources]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [hangar.dev]
+  resources: [syncedresources/status]
+  verbs: [get, patch, update]
+- apiGroups: [hangar.dev]
+  resources: [streamcheckpoints]
+  verbs: [create, get, list, patch, update, watch]
+{{- end -}}
+
+{{/*
+What the operator renders into the workload namespace: graph deployments and
+prefetch Jobs when it reconciles, benchmark Jobs, their logs and the frontend
+Service when benchmarks are allowed. Empty on a read-only cluster with no
+benchmark.
+*/}}
+{{- define "cluster-setup.operatorWorkloadRules" -}}
+{{- $ops := splitList "," (include "cluster-setup.operations" .) -}}
+{{- $reconcile := not .Values.cluster.readOnly -}}
+{{- $benchmark := has "benchmark" $ops -}}
+{{- if or $reconcile $benchmark }}
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]
+- apiGroups: [batch]
+  resources: [jobs]
+  verbs: [create, delete, get, list, watch]
+- apiGroups: [batch]
+  resources: [jobs/status]
+  verbs: [get]
+{{- end }}
+{{- if $reconcile }}
+- apiGroups: [nvidia.com]
+  resources: [dynamographdeployments]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [nvidia.com]
+  resources: [dynamographdeployments/status]
+  verbs: [get]
+# Not an object this operator renders. It is where the Dynamo operator writes
+# down that it could not do what a graph deployment asked, and the graph's own
+# condition only names the child rather than repeating why. `delete` is here for
+# one narrow reason: Dynamo creates one of these per spec hash and never collects
+# the one it superseded, so an edited recipe leaves a crash-looping worker
+# holding a full replica's worth of accelerators and the replacement can never
+# schedule. See supersede.go in the operator for the guards on which one is
+# removed.
+- apiGroups: [nvidia.com]
+  resources: [dynamocomponentdeployments]
+  verbs: [delete, get, list, watch]
+{{- end }}
+{{- if $benchmark }}
+- apiGroups: [""]
+  resources: [services]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [pods/log]
+  verbs: [get]
+{{- end }}
+{{- end -}}
+
+{{/* Binds the operator's Role in one namespace. Takes (list $ namespace). */}}
+{{- define "cluster-setup.operatorRoleBinding" -}}
+{{- $ := index . 0 -}}
+{{- $ns := index . 1 }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hangar-operator
+  namespace: {{ $ns }}
+  labels:
+    {{- include "cluster-setup.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hangar-operator
+subjects:
+  - kind: ServiceAccount
+    name: hangar-operator
+    namespace: {{ $.Release.Namespace }}
+{{- end -}}
