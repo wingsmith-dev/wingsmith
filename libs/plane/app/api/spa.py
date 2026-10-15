@@ -19,6 +19,8 @@ from litestar import get
 from litestar.response import File
 from litestar.exceptions import NotFoundException
 
+from app.core.params import ACCEPTS_ANY_QUERY
+
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
@@ -30,12 +32,48 @@ client would parse the console's HTML as a response body instead of seeing the
 """
 
 
+CSP_DIRECTIVES = (
+    "default-src 'self'",
+    "script-src 'self'",
+    # Inline style: toast and popover libraries insert <style> elements at runtime.
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+)
+CONTENT_SECURITY_POLICY = "; ".join(CSP_DIRECTIVES)
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+"""Sent with every file the console route serves.
+
+The console holds an admin session in the browser, so it gets the headers a
+page holding a credential should: no framing (clickjacking), no script from
+anywhere but this origin, no MIME sniffing of a bundle file into something
+executable, and no URL (which can carry a cluster or tenant name) leaked in
+`Referer`. `connect-src 'self'` holds because, served from here, the console
+calls the API on its own origin.
+"""
+
+
 def has_console() -> bool:
     return (STATIC_DIR / "index.html").is_file()
 
 
+def _file(path: pathlib.Path, media_type: str | None) -> File:
+    return File(path=path, media_type=media_type, content_disposition_type="inline", headers=SECURITY_HEADERS)
+
+
 def _index() -> File:
-    return File(path=STATIC_DIR / "index.html", media_type="text/html", content_disposition_type="inline")
+    return _file(STATIC_DIR / "index.html", "text/html")
 
 
 class ConsoleRoutes(Controller):
@@ -44,8 +82,9 @@ class ConsoleRoutes(Controller):
     tags = ["Console"]
     include_in_schema = False
 
-    @get(["/", "/{path:path}"], sync_to_thread=False)
+    @get(["/", "/{path:path}"], sync_to_thread=False, opt={ACCEPTS_ANY_QUERY: True})
     def console(self, path: str = "") -> File:
+        """A query string here belongs to the client-side router, so it is not checked."""
         normalized = path.strip("/")
         if normalized.split("/", 1)[0] in RESERVED_PREFIXES:
             raise NotFoundException()
@@ -63,4 +102,4 @@ class ConsoleRoutes(Controller):
         if not target.is_file():
             return _index()
         media_type, _ = mimetypes.guess_type(str(target))
-        return File(path=target, media_type=media_type, content_disposition_type="inline")
+        return _file(target, media_type)

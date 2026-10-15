@@ -20,6 +20,16 @@ from litestar import Request
 from app.core.exceptions import UnknownParameter
 
 
+ACCEPTS_ANY_QUERY = "accepts_any_query"
+"""Handler `opt` key that exempts a handler from this check.
+
+For handlers whose query string is not addressed to the API at all: the
+console's catch-all serves `index.html`, and the query string on a console URL
+belongs to the client-side router (`/clusters?phase=active`). Checking it
+against the handler's signature answered every such reload with a 400 JSON body.
+"""
+
+
 _cache: WeakKeyDictionary[Any, dict[frozenset[str], frozenset[str]]] = WeakKeyDictionary()
 
 
@@ -41,6 +51,8 @@ async def reject_unknown_params(request: Request) -> None:
 
     handler = request.route_handler
     if getattr(handler.fn, "__module__", "").startswith("litestar."):
+        return
+    if handler.opt.get(ACCEPTS_ANY_QUERY):
         return
 
     accepted = _accepted(handler, frozenset(request.path_params))
