@@ -148,3 +148,16 @@ func TestFindRepoFindsThisCheckout(t *testing.T) {
 		t.Fatalf("FindRepo = %s, which does not hold libs/transit", root)
 	}
 }
+
+func TestAStageWhereEveryRequestWasCutOffDidNotHoldTheObjective(t *testing.T) {
+	cut := stage(4, 3, 0, time.Millisecond)
+	cut.Sample.Censored = 3
+	report := &Report{Stages: []Stage{cut}}
+	report.Verdict(SLO{})
+	if report.Stages[0].MetObjective || report.Err() == nil {
+		t.Fatal("a stage with nothing settled cannot have held the objective")
+	}
+	if !strings.Contains(report.Bottleneck, "3 requests were still running") {
+		t.Fatalf("bottleneck = %q", report.Bottleneck)
+	}
+}

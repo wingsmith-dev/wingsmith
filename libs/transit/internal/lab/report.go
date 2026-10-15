@@ -34,7 +34,7 @@ func DefaultSLO() SLO {
 
 // Met reports whether a stage held the objective.
 func (s SLO) Met(sample load.Sample) bool {
-	if sample.Requests == 0 {
+	if sample.Requests-sample.Censored == 0 {
 		return false
 	}
 	if sample.SuccessRate < s.SuccessRate {
@@ -144,6 +144,9 @@ func bottleneck(failed, carried *Stage) string {
 	for fault, count := range stage.Sample.Faults {
 		reasons = append(reasons, fmt.Sprintf("%d requests ended as %s", count, fault))
 	}
+	if stage.Sample.Censored > 0 {
+		reasons = append(reasons, fmt.Sprintf("%d requests were still running when the drain ended", stage.Sample.Censored))
+	}
 	if len(reasons) == 0 {
 		if failed == nil {
 			return "not reached: every stage held the objective, so the number below is a floor and not a limit"
@@ -192,6 +195,9 @@ func (r *Report) WriteText(w io.Writer) {
 			round(s.GapP99), round(s.GapJitter), s.Throughput, s.TokenRate, legs)
 		if len(s.Faults) > 0 {
 			fmt.Fprintf(w, "      faults: %s\n", faultLine(s.Faults))
+		}
+		if s.Censored > 0 {
+			fmt.Fprintf(w, "      cut:    %d still running when the drain ended, counted in TTFT at the time they were cut\n", s.Censored)
 		}
 		if len(stage.Usage) > 0 {
 			fmt.Fprintf(w, "      cost:   %s\n", usageLine(stage.Usage))

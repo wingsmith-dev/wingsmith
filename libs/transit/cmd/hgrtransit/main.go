@@ -80,7 +80,8 @@ func synthetic(ctx context.Context, args []string) error {
 	conns := fs.Int("conns", 2, "tunnels each agent holds to each gateway replica")
 	streams := fs.Int("streams", 0, "per-tunnel stream limit the agent advertises, 0 for the tunnel default of 256")
 	ramp := fs.String("ramp", "8,32,128", "concurrency stages")
-	hold := fs.Duration("hold", 15*time.Second, "how long each stage runs")
+	hold := fs.Duration("hold", 15*time.Second, "how long each stage starts requests")
+	drain := fs.Duration("drain", load.DefaultDrain, "how long a stage's in-flight requests get to finish before they are cut off and reported as censored")
 	ttft := fs.String("ttft", "200ms", "the frontend's time to first token")
 	itl := fs.String("itl", "10ms", "the frontend's inter-token delay")
 	tokens := fs.String("tokens", "64", "how many tokens the frontend emits")
@@ -103,6 +104,9 @@ func synthetic(ctx context.Context, args []string) error {
 	stages, err := load.ParseStages(*ramp, *hold)
 	if err != nil {
 		return err
+	}
+	for i := range stages {
+		stages[i].Drain = *drain
 	}
 	root := *repo
 	if root == "" {
@@ -146,7 +150,8 @@ func live(ctx context.Context, args []string) error {
 	url := fs.String("url", "", "the gateway's base URL")
 	model := fs.String("model", "", "a model the target actually serves")
 	ramp := fs.String("ramp", "1,2,4", "concurrency stages")
-	hold := fs.Duration("hold", 20*time.Second, "how long each stage runs")
+	hold := fs.Duration("hold", 20*time.Second, "how long each stage starts requests")
+	drain := fs.Duration("drain", load.DefaultDrain, "how long a stage's in-flight requests get to finish before they are cut off and reported as censored")
 	prompt := fs.Int("prompt-bytes", 512, "request body padding")
 	stream := fs.Bool("stream", true, "ask for SSE")
 	successRate := fs.Float64("slo-success", 0.999, "the success rate the capacity number is reported under")
@@ -163,6 +168,9 @@ func live(ctx context.Context, args []string) error {
 	stages, err := load.ParseStages(*ramp, *hold)
 	if err != nil {
 		return err
+	}
+	for i := range stages {
+		stages[i].Drain = *drain
 	}
 	for _, stage := range stages {
 		if stage.Concurrency > *ceiling {

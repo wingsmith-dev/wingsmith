@@ -71,13 +71,26 @@ type Outcome struct {
 	Status int
 	// Fault buckets a failure for the report, empty on success.
 	Fault string
+	// Censored marks a request the harness cut off at the end of a stage's
+	// drain, which says nothing about whether the system would have served it.
+	// It is neither a success nor a failure; Total is how long it had run, and
+	// TTFT is set only if its first token arrived.
+	Censored bool
 }
 
 // Stage is one step of a ramp.
 type Stage struct {
 	Concurrency int
-	Duration    time.Duration
+	// Duration is how long workers keep starting requests.
+	Duration time.Duration
+	// Drain is how long requests still in flight when Duration ends are given
+	// to finish before they are cut off and recorded as censored. Zero takes
+	// DefaultDrain.
+	Drain time.Duration
 }
+
+// DefaultDrain is the drain a stage gets when it names none.
+const DefaultDrain = 30 * time.Second
 
 // NewClient builds the generator's HTTP client.
 //
@@ -106,9 +119,38 @@ func NewClient(concurrency int) *http.Client {
 // this system — a caller of an inference API waits for its answer — and it is
 // also the only one under which a saturated hop shows up as latency rather than
 // as an unbounded queue in the generator.
+//
+// When the stage's duration ends, workers stop starting requests and the ones
+// in flight are left to finish for up to the stage's drain. Cancelling them at
+// the boundary instead would drop exactly the slowest requests of every stage,
+// and a percentile computed over the survivors is optimistic by construction.
+// Whatever is still running when the drain ends is cut off and returned with
+// Censored set, so the report can say how many there were.
 func Run(ctx context.Context, client *http.Client, req Request, stage Stage) []Outcome {
-	deadline, cancel := context.WithTimeout(ctx, stage.Duration)
-	defer cancel()
+	hold, stopStarting := context.WithTimeout(ctx, stage.Duration)
+	defer stopStarting()
+	inflight, cutOff := context.WithCancel(ctx)
+	defer cutOff()
+
+	drain := stage.Drain
+	if drain <= 0 {
+		drain = DefaultDrain
+	}
+	finished := make(chan struct{})
+	go func() {
+		select {
+		case <-finished:
+			return
+		case <-hold.Done():
+		}
+		timer := time.NewTimer(drain)
+		defer timer.Stop()
+		select {
+		case <-finished:
+		case <-timer.C:
+			cutOff()
+		}
+	}()
 
 	var mu sync.Mutex
 	outcomes := make([]Outcome, 0, 1024)
@@ -120,7 +162,7 @@ func Run(ctx context.Context, client *http.Client, req Request, stage Stage) []O
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for deadline.Err() == nil {
+			for hold.Err() == nil {
 				n := live.Add(1)
 				for {
 					was := peak.Load()
@@ -128,15 +170,15 @@ func Run(ctx context.Context, client *http.Client, req Request, stage Stage) []O
 						break
 					}
 				}
-				out := one(deadline, client, req)
+				out := one(inflight, client, req)
 				live.Add(-1)
-				// A request the stage's own deadline cut short is not a
-				// failure of the system under test, and counting it as one
-				// would put a fixed number of fabricated errors into every
-				// stage — enough, at a short hold, to fail an objective the
-				// path actually met.
-				if deadline.Err() != nil && (out.Fault == "canceled" || out.Fault == "timeout") {
-					return
+				// A request the harness itself cut off is not a failure of the
+				// system under test. Counting it as one would put fabricated
+				// errors into every stage; dropping it would hide the slowest
+				// requests. It is kept, marked.
+				if inflight.Err() != nil && out.Fault != "" {
+					out.Fault = ""
+					out.Censored = true
 				}
 				mu.Lock()
 				outcomes = append(outcomes, out)
@@ -145,6 +187,7 @@ func Run(ctx context.Context, client *http.Client, req Request, stage Stage) []O
 		}()
 	}
 	wg.Wait()
+	close(finished)
 	return outcomes
 }
 
@@ -211,16 +254,42 @@ func one(ctx context.Context, client *http.Client, req Request) Outcome {
 }
 
 // chunk is the part of an SSE frame this generator reads: the far end's own
-// write timestamp, when it sets one.
+// write timestamp, when it sets one, and whatever content the choices carry.
 type chunk struct {
 	WriteNs int64 `json:"transit_write_ns"`
+	Choices []struct {
+		Text  string `json:"text"`
+		Delta struct {
+			Content          string          `json:"content"`
+			ReasoningContent string          `json:"reasoning_content"`
+			Reasoning        string          `json:"reasoning"`
+			ToolCalls        json.RawMessage `json:"tool_calls"`
+		} `json:"delta"`
+	} `json:"choices"`
 }
 
-// readStream times each SSE frame as it arrives.
+// content reports whether a frame carries anything generated. A frame that
+// only names the role, an empty delta, or the usage chunk is not a token: an
+// engine sends the role chunk before prefill finishes, and timing TTFT from it
+// would measure the engine's eagerness rather than its first token.
+func (c chunk) content() bool {
+	for _, choice := range c.Choices {
+		d := choice.Delta
+		if choice.Text != "" || d.Content != "" || d.ReasoningContent != "" || d.Reasoning != "" {
+			return true
+		}
+		if len(d.ToolCalls) > 0 && !bytes.Equal(d.ToolCalls, []byte("null")) && !bytes.Equal(d.ToolCalls, []byte("[]")) {
+			return true
+		}
+	}
+	return false
+}
+
+// readStream times each SSE frame that carries content as it arrives.
 //
-// A frame carrying no content — the usage chunk, the terminator — is not a
-// token and must not enter the inter-token distribution, or every stream would
-// show a fictitious final gap of zero.
+// A frame carrying no content — the role chunk, the usage chunk, the
+// terminator — is not a token and must not enter the inter-token distribution,
+// or every stream would show a fictitious final gap of zero.
 func readStream(body io.Reader, start time.Time, out *Outcome) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64<<10), 4<<20)
@@ -229,14 +298,15 @@ func readStream(body io.Reader, start time.Time, out *Outcome) {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		out.Bytes += int64(len(line)) + 1
-		if !bytes.HasPrefix(line, []byte("data: ")) {
+		if !bytes.HasPrefix(line, []byte("data:")) {
 			continue
 		}
-		payload := line[len("data: "):]
+		payload := bytes.TrimSpace(line[len("data:"):])
 		if bytes.Equal(payload, []byte("[DONE]")) {
 			continue
 		}
-		if !bytes.Contains(payload, []byte(`"delta"`)) {
+		var frame chunk
+		if err := json.Unmarshal(payload, &frame); err != nil || !frame.content() {
 			continue
 		}
 
@@ -244,9 +314,8 @@ func readStream(body io.Reader, start time.Time, out *Outcome) {
 		out.Tokens++
 		if out.Tokens == 1 {
 			out.TTFT = now.Sub(start)
-			var first chunk
-			if err := json.Unmarshal(payload, &first); err == nil && first.WriteNs > 0 {
-				out.Return = now.Sub(time.Unix(0, first.WriteNs))
+			if frame.WriteNs > 0 {
+				out.Return = now.Sub(time.Unix(0, frame.WriteNs))
 			}
 		} else {
 			out.Gaps = append(out.Gaps, now.Sub(previous))
@@ -327,8 +396,19 @@ type Sample struct {
 	Requests    int            `json:"requests"`
 	Succeeded   int            `json:"succeeded"`
 	Faults      map[string]int `json:"faults,omitempty"`
-	SuccessRate float64        `json:"success_rate"`
+	// Censored is how many requests were still running when the stage's drain
+	// ended. They count towards Requests and towards neither Succeeded nor
+	// Faults, and the success rate is taken over the rest.
+	Censored    int     `json:"censored,omitempty"`
+	SuccessRate float64 `json:"success_rate"`
+	// Elapsed is first request sent to last request ended, drain included. The
+	// rates are per second of it.
+	Elapsed time.Duration `json:"elapsed"`
 
+	// The TTFT percentiles include censored requests: the ones whose first
+	// token arrived at its real time, and the ones whose first token never did
+	// at the time they were cut off, which is a lower bound on their TTFT.
+	// Leaving those out would make p99 better the worse the tail was.
 	TTFTP50 time.Duration `json:"ttft_p50"`
 	TTFTP90 time.Duration `json:"ttft_p90"`
 	TTFTP99 time.Duration `json:"ttft_p99"`
@@ -372,7 +452,27 @@ func Summarise(stage Stage, outcomes []Outcome) Sample {
 
 	var ttft, total, inbound, ret, gaps []time.Duration
 	tokens := 0
+	var first, end time.Time
 	for _, out := range outcomes {
+		if !out.Start.IsZero() {
+			if first.IsZero() || out.Start.Before(first) {
+				first = out.Start
+			}
+			if done := out.Start.Add(out.Total); done.After(end) {
+				end = done
+			}
+		}
+		if out.Censored {
+			sample.Censored++
+			tokens += out.Tokens
+			gaps = append(gaps, out.Gaps...)
+			if out.Tokens > 0 {
+				ttft = append(ttft, out.TTFT)
+			} else {
+				ttft = append(ttft, out.Total)
+			}
+			continue
+		}
 		if out.Fault != "" {
 			sample.Faults[out.Fault]++
 			continue
@@ -392,7 +492,9 @@ func Summarise(stage Stage, outcomes []Outcome) Sample {
 	if len(sample.Faults) == 0 {
 		sample.Faults = nil
 	}
-	sample.SuccessRate = float64(sample.Succeeded) / float64(sample.Requests)
+	if settled := sample.Requests - sample.Censored; settled > 0 {
+		sample.SuccessRate = float64(sample.Succeeded) / float64(settled)
+	}
 
 	sort.Slice(ttft, func(i, j int) bool { return ttft[i] < ttft[j] })
 	sort.Slice(total, func(i, j int) bool { return total[i] < total[j] })
@@ -408,8 +510,11 @@ func Summarise(stage Stage, outcomes []Outcome) Sample {
 	sample.GapP50, sample.GapP99, sample.GapMax = quantile(gaps, 0.50), quantile(gaps, 0.99), last(gaps)
 	sample.GapJitter = stddev(gaps)
 
-	seconds := stage.Duration.Seconds()
-	if seconds > 0 {
+	sample.Elapsed = end.Sub(first)
+	if sample.Elapsed <= 0 {
+		sample.Elapsed = stage.Duration
+	}
+	if seconds := sample.Elapsed.Seconds(); seconds > 0 {
 		sample.Throughput = float64(sample.Succeeded) / seconds
 		sample.TokenRate = float64(tokens) / seconds
 		sample.TokensMin = sample.TokenRate * 60
