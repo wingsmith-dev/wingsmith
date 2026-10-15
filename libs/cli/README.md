@@ -315,9 +315,10 @@ and the plane's schemas disagree, the plane is right and the schema test fails.
   separate facts; a component has `desired_version` beside `status.observed_version`.
 - **No `/v1/whoami`** — human access is a single admin, so `hgr whoami` reports the configured
   context and whether `/health` answers.
-- **No project header** — the configured project is used as a listing filter and as the
-  project new workloads belong to. `X-Hangar-Project` is not sent; the plane does not scope
-  requests by it.
+- **No project header** — the configured project (`--project`, `HANGAR_PROJECT` or
+  `context.project`) limits every listing that takes a project filter and is the project new
+  workloads belong to; `--project ''` lists every project. `X-Hangar-Project` is not sent; the
+  plane does not scope requests by it.
 - **Writes** — every `POST /v1/operations` carries an `Idempotency-Key`: `--idempotency-key`
   when given, otherwise a fresh one per invocation, reported in the agent envelope's
   `meta.idempotency_key` so a retry can reuse it. Conditional updates send `If-Match` against

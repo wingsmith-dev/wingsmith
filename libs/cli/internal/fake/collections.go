@@ -179,9 +179,10 @@ func (b *Backend) Pool(ctx context.Context, ref string) (api.Pool, error) {
 }
 
 func (b *Backend) Artifacts(ctx context.Context, o api.ListOpts) (api.Page[api.Artifact], error) {
+	project := b.projectRef(o.Project)
 	return collect(b, b.state.Artifacts, o, func(a api.Artifact) bool {
 		return eqFold(o.Kind, a.Kind) && eqFold(o.Format, deref(a.Format)) &&
-			refEqPtr(o.Project, a.ProjectID, nil) &&
+			refEqPtr(project, a.ProjectID, nil) &&
 			contains(o.Search, a.Name, a.ID, a.Digest)
 	})
 }
@@ -202,8 +203,9 @@ func (b *Backend) Workloads(ctx context.Context, o api.ListOpts) (api.Page[api.W
 	for _, wl := range b.state.Workloads {
 		hydrated = append(hydrated, b.hydrateWorkload(wl))
 	}
+	project := b.projectRef(o.Project)
 	return collect(b, hydrated, o, func(wl api.Workload) bool {
-		return refEq(o.Project, wl.ProjectID) && eqFold(o.Kind, wl.Kind) &&
+		return refEq(project, wl.ProjectID) && eqFold(o.Kind, wl.Kind) &&
 			eqFold(o.Phase, wl.Phase) && refEq(o.Artifact, wl.Serving.ArtifactID) &&
 			eqFold(o.Class, wl.Serving.Shape.DeviceClass) &&
 			eqFold(o.ServingDigest, wl.ServingDigest) &&
@@ -488,10 +490,11 @@ func (b *Backend) DeleteWorkload(ctx context.Context, ref string) error {
 
 func (b *Backend) Deployments(ctx context.Context, o api.ListOpts) (api.Page[api.Deployment], error) {
 	cluster := b.clusterRef(o.Cluster)
+	project := b.projectRef(o.Project)
 	return collect(b, b.state.Deployments, o, func(d api.Deployment) bool {
 		return refEq(cluster, d.ClusterID) &&
 			refEq(o.Workload, d.WorkloadID, d.WorkloadName) &&
-			refEq(o.Project, b.workloadProject(d.WorkloadID)) &&
+			refEq(project, b.workloadProject(d.WorkloadID)) &&
 			eqFold(o.Phase, d.AdmissionPhase)
 	})
 }
@@ -738,8 +741,9 @@ func optional(v string) *string {
 }
 
 func (b *Backend) Endpoints(ctx context.Context, o api.ListOpts) (api.Page[api.Endpoint], error) {
+	project := b.projectRef(o.Project)
 	return collect(b, b.state.Endpoints, o, func(e api.Endpoint) bool {
-		return refEq(o.Project, e.ProjectID) &&
+		return refEq(project, e.ProjectID) &&
 			contains(o.Search, e.Name, e.ID, e.Slug) &&
 			labelsMatch(e.Labels, o.Labels)
 	})
@@ -796,8 +800,9 @@ func (b *Backend) Quota(ctx context.Context, ref string) (api.Quota, error) {
 // request by the gateway, and they share a word and nothing else.
 func (b *Backend) ServingQuotas(ctx context.Context, o api.ListOpts) (api.Page[api.ServingQuota], error) {
 	endpoint := b.endpointRef(o.Endpoint)
+	project := b.projectRef(o.Project)
 	return collect(b, b.state.ServingQuotas, o, func(q api.ServingQuota) bool {
-		return refEq(endpoint, q.Endpoint, q.EndpointName) && refEq(o.Project, q.Project) &&
+		return refEq(endpoint, q.Endpoint, q.EndpointName) && refEq(project, q.Project) &&
 			boolEq(o.Enforced, q.Enforced) && eqFold(o.Scope, q.LimitScope)
 	})
 }
@@ -1726,6 +1731,20 @@ func (b *Backend) DeleteAlertThreshold(ctx context.Context, ref string) error {
 
 // clusterRef turns a cluster name into its id where it can, so that a filter
 // naming a cluster matches rows that carry only the id.
+// projectRef turns a project id or slug into its id, as the plane's project
+// filter takes either. An unknown reference is kept, and matches nothing.
+func (b *Backend) projectRef(ref string) string {
+	if ref == "" {
+		return ""
+	}
+	for _, p := range b.state.Projects {
+		if p.ID == ref || strings.EqualFold(p.Slug, ref) {
+			return p.ID
+		}
+	}
+	return ref
+}
+
 func (b *Backend) clusterRef(ref string) string {
 	if ref == "" {
 		return ""

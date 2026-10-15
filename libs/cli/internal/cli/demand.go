@@ -59,7 +59,7 @@ control plane never stores or serves them.`,
 		bind: func(f *filters, cmd *cobra.Command) {
 			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind, e.g. weights|adapter")
 			cmd.Flags().StringVar(&f.format, "format", "", "filter by format, e.g. safetensors")
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			f.bindSearch(cmd, "substring match on name or digest")
 			f.bindLabels(cmd)
 		},
@@ -202,7 +202,7 @@ cluster and wait on quota in another.`,
 		bind: func(f *filters, cmd *cobra.Command) {
 			cmd.Flags().StringVar(&f.cluster, "cluster", "", "limit to one cluster")
 			cmd.Flags().StringVar(&f.workload, "workload", "", "limit to one workload's shares")
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by admission phase: pending|admitted|placed|running")
 		},
 		groupKey: func(by string, d api.Deployment) (string, string, error) {
@@ -369,7 +369,7 @@ yet.`,
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind: service|task|gang")
 			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by phase: pending|admitted|placed|running")
 			cmd.Flags().StringVar(&f.artifact, "artifact", "", "limit to one artifact")
@@ -1203,7 +1203,7 @@ without clients noticing.`,
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			cmd.Flags().StringVar(&f.artifact, "artifact", "", "endpoints serving one artifact")
 			f.bindSearch(cmd, "substring match on name")
 			f.bindLabels(cmd)

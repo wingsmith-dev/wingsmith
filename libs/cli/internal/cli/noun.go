@@ -97,6 +97,9 @@ func (n noun[T]) runList(app *App, cmd *cobra.Command, f *filters) error {
 	if err != nil {
 		return err
 	}
+	if f.byProject && app.projectSet {
+		opts.Project = app.Project
+	}
 	ctx, cancel := app.RequestContext()
 	defer cancel()
 
@@ -375,7 +378,6 @@ type filters struct {
 	health     string
 	phase      string
 	region     string
-	project    string
 	tenant     string
 	kind       string
 	typ        string
@@ -421,6 +423,11 @@ type filters struct {
 	until string
 
 	groupBy string
+
+	// byProject marks a listing whose endpoint takes a project filter. The
+	// filter is the global --project (or HANGAR_PROJECT, or context.project),
+	// not a flag of its own, so the configured project reaches it.
+	byProject bool
 }
 
 func (f *filters) bindCommon(cmd *cobra.Command) {
@@ -455,7 +462,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Limit: f.limit, Cursor: f.cursor, All: f.all, Search: f.search, Labels: labels,
 		Cluster: f.cluster, Pool: f.pool, Node: f.node, Class: f.class, Health: f.health,
 		Architecture: f.arch,
-		Phase:        f.phase, Region: f.region, Project: f.project, Tenant: f.tenant, Kind: f.kind,
+		Phase:        f.phase, Region: f.region, Tenant: f.tenant, Kind: f.kind,
 		Type: f.typ, Name: f.name, Engine: f.engine, Artifact: f.artifact,
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,

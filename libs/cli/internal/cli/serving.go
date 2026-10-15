@@ -63,7 +63,7 @@ commitment before it bites.`,
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
 			cmd.Flags().StringVar(&f.endpoint, "endpoint", "", "limit to one endpoint")
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			cmd.Flags().StringVar(&f.scope, "scope", "", "filter by limit scope: per_replica|divided")
 			cmd.Flags().BoolVar(&f.enforced, "enforced", false, "only enforced quotas (--enforced=false for shadow mode)")
 		},

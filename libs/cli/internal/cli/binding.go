@@ -176,7 +176,7 @@ across all of them. over_limit and headroom are computed by the plane.`,
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
-			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			f.byProject = true
 			cmd.Flags().StringVar(&f.cluster, "cluster", "", "limit to one cluster")
 			cmd.Flags().StringVar(&f.class, "class", "", "filter by device class")
 			cmd.Flags().BoolVar(&f.overQuotaEnabled, "over-quota-enabled", false, "only quotas that may burst")

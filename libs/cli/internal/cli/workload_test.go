@@ -39,3 +39,37 @@ func TestWorkloadCreateTakesTheProjectFromAnywhereItCanBeSet(t *testing.T) {
 		t.Fatalf("--project before the verb was ignored: exit %d %s", code, errOut)
 	}
 }
+
+// The configured project limits every listing that takes a project filter,
+// from the flag, the environment or the context, and an explicit --project ''
+// lifts it.
+func TestTheConfiguredProjectLimitsListings(t *testing.T) {
+	names := func(t *testing.T, args ...string) []string {
+		t.Helper()
+		out, errOut, code := run(t, append(args, "-o", "name")...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d %s", args, code, errOut)
+		}
+		return strings.Fields(out)
+	}
+	for _, noun := range []string{"workload", "endpoint", "deployment", "quota", "allocation"} {
+		t.Run(noun, func(t *testing.T) {
+			t.Setenv("HANGAR_PROJECT", "")
+			all := names(t, noun, "ls")
+			if len(all) == 0 {
+				t.Fatalf("the seed has no %s to filter", noun)
+			}
+			if got := names(t, noun, "ls", "--project", "core"); len(got) != len(all) {
+				t.Errorf("--project core (the slug) listed %v, want %v", got, all)
+			}
+
+			t.Setenv("HANGAR_PROJECT", "nonexistent")
+			if got := names(t, noun, "ls"); len(got) != 0 {
+				t.Errorf("HANGAR_PROJECT=nonexistent still listed %v", got)
+			}
+			if got := names(t, noun, "ls", "--project", ""); len(got) != len(all) {
+				t.Errorf("--project '' listed %v, want every project's %v", got, all)
+			}
+		})
+	}
+}

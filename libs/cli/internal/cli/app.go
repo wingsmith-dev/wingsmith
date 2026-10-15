@@ -210,7 +210,7 @@ commands. --fake answers from an offline copy of the plane.`,
 	g := &app.flags
 	f.StringVarP(&g.output, "output", "o", "", "output format: auto|human|wide|json|jsonl|yaml|tsv|name|template=…|jsonpath=…")
 	f.StringVar(&g.context, "context", "", "named context from the config file")
-	f.StringVar(&g.project, "project", "", "project new objects belong to, and the filter on listings that take one")
+	f.StringVar(&g.project, "project", "", "project new workloads belong to and listings are limited to ('' for every project)")
 	f.StringVar(&g.server, "server", "", "control plane base URL")
 	f.StringVar(&g.token, "token", "", "API token (prefer HANGAR_TOKEN)")
 	f.StringVar(&g.configPath, "config", "", "path to the config file")
@@ -307,7 +307,13 @@ func (a *App) setup(cmd *cobra.Command) error {
 	if v := firstNonEmpty(g.token, os.Getenv("HANGAR_TOKEN")); v != "" {
 		a.Context.Token = v
 	}
-	a.Project = firstNonEmpty(g.project, os.Getenv("HANGAR_PROJECT"), a.Context.Project)
+	// An explicit --project '' clears a project set in the environment or the
+	// context, so a listing can span every project.
+	if fl := cmd.Flag("project"); fl != nil && fl.Changed {
+		a.Project = g.project
+	} else {
+		a.Project = firstNonEmpty(os.Getenv("HANGAR_PROJECT"), a.Context.Project)
+	}
 	a.projectSet = a.Project != ""
 	if !a.projectSet {
 		a.Project = "default"
