@@ -76,14 +76,17 @@ index in `compare`. The shape of the answer goes in `compare`; the raw values st
 
 The same goes for the model's own decisions. Whether it called a tool when the choice
 was left to it, how many it called, whether it named the colour of an image or the
-direction a square moved in a clip, whether it used a tool result: each is one sample
+direction a square moved in a clip, whether it used a tool result, whether it recalled
+a number from an earlier turn: each is one sample
 of the model's judgement, and two honest runs of one model disagree on a single sample
 often enough that comparing it reports noise. Those readings are kept as evidence for
 a person (`hgrconform show <run> <probe>`) and never compared. Rates are compared only
-as buckets, over enough samples that every bucket can be reached (`eos.suppression`).
+as buckets, over enough samples that every bucket can be reached and one stray sample
+cannot cross a bucket line (`eos.suppression`, 50 samples by default and never fewer
+than 40).
 
-The deliberate exceptions are `tokens.prompt_accounting` and the prompt counts in the
-`video` probes, which compare reported prompt token counts directly. Two endpoints
+The deliberate exceptions are `tokens.prompt_accounting`, `basics.multi_turn` and the
+prompt counts in the `video` probes, which compare reported prompt token counts directly. Two endpoints
 serving one model must tokenize identically, and must turn one committed clip into
 the same number of tokens, so there the number *is* the answer.
 

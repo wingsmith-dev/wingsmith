@@ -45,14 +45,16 @@ def completion(session: Session) -> dict[str, Any]:
     id="basics.multi_turn",
     title="A three-turn conversation stays coherent and terminates normally",
     requirement="Earlier turns are carried: no empty or garbled output, and a correct finish_reason",
-    compare=("status", "finish_reason", "has_content", "recalled"),
+    compare=("status", "finish_reason", "has_content", "prompt_tokens"),
 )
 def multi_turn(session: Session) -> dict[str, Any]:
-    """Whether the endpoint carries earlier turns, checked with a fact only the history holds.
+    """Whether the endpoint carries earlier turns, read from what it was charged for.
 
-    The recall test is deliberately trivial — a number stated in turn one and asked
-    for in turn three. Anything harder starts measuring the model rather than the
-    endpoint, and the endpoint is what this package is about.
+    `prompt_tokens` is the comparable reading. Two endpoints serving one model turn
+    one five-message conversation into the same number of tokens, and one that drops
+    or truncates earlier turns charges fewer. Whether the answer recalls the number
+    stated in turn one is kept as evidence and not compared: it is a single sample of
+    the model's own answer, and two honest runs can disagree on it.
     """
     messages = [
         {"role": "user", "content": "Remember the number 4173. Reply with OK."},
@@ -67,6 +69,7 @@ def multi_turn(session: Session) -> dict[str, Any]:
         "status": response.status,
         "finish_reason": response.at("choices.0.finish_reason"),
         "has_content": bool(content.strip()),
+        "prompt_tokens": response.at("usage.prompt_tokens"),
         "recalled": "4173" in content,
         "turns": len(messages),
     }

@@ -148,8 +148,15 @@ def test_every_eos_bucket_is_reachable_at_the_minimum_sample_size() -> None:
 
     n = eos.MIN_SAMPLES
     reached = {eos._bucket(count, n) for count in range(n + 1)}
-    assert reached == {"none", "rare", "occasional", "frequent"}
+    assert reached == {"rare", "occasional", "frequent"}
     assert eos._bucket(0, 0) == "no-samples"
+
+
+def test_one_empty_sample_never_moves_the_eos_bucket() -> None:
+    from hgrconform.probes import eos
+
+    for n in (eos.MIN_SAMPLES, eos.SAMPLES, 200):
+        assert eos._bucket(0, n) == eos._bucket(1, n) == "rare"
 
 
 def test_a_small_eos_override_is_raised_to_the_minimum(monkeypatch) -> None:

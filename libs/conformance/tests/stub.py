@@ -14,7 +14,9 @@ Three modes:
                   model may vary: ids, completion token counts, chunk counts, trailing
                   whitespace, and the model's own decisions — whether it calls a tool
                   when the choice is left to it, how many, whether it uses a tool
-                  result, and whether it reads an image or a video correctly
+                  result, whether it reads an image or a video correctly, whether
+                  it recalls an earlier turn, and whether one reasoning request in
+                  a run ends early with an empty answer
 
 `noisy` is the important one. Two `noisy` instances with different seeds are two
 honest endpoints that agree about everything a diff should care about and agree
@@ -36,6 +38,7 @@ import os
 import sys
 import json
 import base64
+import threading
 
 from http.server import ThreadingHTTPServer
 from http.server import BaseHTTPRequestHandler
@@ -48,6 +51,9 @@ LEAKY = QUIRK == "leaky"
 MODEL = "gpt-oss-120b"
 MAX_BODY = 32 * 1024 * 1024
 N = [SEED]
+# One stray EOS per run, on the noisy twin whose coin lands yes.
+STRAY_EOS = [NOISY and SEED % 2 == 1]
+STRAY_LOCK = threading.Lock()
 
 
 def jitter(lo, hi):
@@ -160,7 +166,12 @@ def answer(messages, media):
             return "Red." if coin() else "It is too dark to tell."
         return "A red square moves across a black background."
     if any("remember" in text_of(message.get("content")).lower() for message in messages):
-        return "4173"
+        return "4173" if coin() else "I don't recall a number."
+    if "train leaves" in prompt:
+        with STRAY_LOCK:
+            stray, STRAY_EOS[0] = STRAY_EOS[0], False
+        if stray:
+            return ""
     return "OK"
 
 

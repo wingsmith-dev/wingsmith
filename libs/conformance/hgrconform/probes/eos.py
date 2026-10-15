@@ -10,11 +10,14 @@ The rate itself is not comparable — two runs of fifty samples never agree on a
 — so the compared key is the bucket the rate falls in. The raw rate, the counts, the
 finish reasons and the sample size stay in the observation as evidence.
 
-The buckets are only as fine as the sample allows. The smallest non-zero rate a run
-of `n` samples can observe is `1/n`, so a bucket whose ceiling is below that can
-never be reached and two endpoints differing only there would always agree.
-`MIN_SAMPLES` is chosen so every bucket is reachable, and a smaller override is
-raised to it rather than honoured.
+The buckets are only as fine as the sample allows, and no coarser than one sample
+must never cross. Zero is not a bucket of its own: an endpoint that suppresses EOS
+well still lets one through now and then, and "never in this run" against "once in
+this run" is a coin toss between two honest endpoints, not a difference between
+them. The lowest bucket therefore runs from zero up to `RARE_BELOW`, and
+`MIN_SAMPLES` keeps `1/n` at or under half of that line, so it takes at least two
+empty samples to leave it. Every bucket stays reachable at that size, and a smaller
+override is raised to it rather than honoured.
 
 Samples run concurrently, because serial execution of even the reduced default makes
 this probe unusable. That is safe: `Session` locks the step that writes evidence,
@@ -36,8 +39,8 @@ from hgrconform.probes.registry import probe
 
 SAMPLES = 50
 WORKERS = 8
-# Upper bounds of the non-zero buckets. `rare` needs 1/n below its ceiling to be
-# reachable at all, which is where MIN_SAMPLES comes from.
+# Upper bounds of the buckets. `rare` includes zero. MIN_SAMPLES puts 1/n at half of
+# RARE_BELOW, so one empty sample on its own never leaves `rare`.
 RARE_BELOW = 0.05
 OCCASIONAL_BELOW = 0.20
 MIN_SAMPLES = 40
@@ -75,12 +78,12 @@ def _bucket(count: int, total: int) -> str:
     a rate of zero reads as "this endpoint never suppressed EOS" — a clean answer
     manufactured out of no evidence, indistinguishable in a diff from an endpoint
     that genuinely never did it. No successful sample is its own bucket.
+
+    A rate of zero is not: it shares `rare` with the rates one stray sample produces.
     """
     if total <= 0:
         return "no-samples"
     rate = count / total
-    if rate <= 0:
-        return "none"
     if rate < RARE_BELOW:
         return "rare"
     if rate < OCCASIONAL_BELOW:
@@ -103,9 +106,10 @@ def suppression(session: Session) -> dict[str, Any]:
     is the shape the requirement describes — a truncation or a content filter arriving
     as an empty body is a different defect and says so through its own finish reason.
 
-    Only the buckets are compared. Whether any sample at all came back empty, and the
-    set of finish reasons seen, both turn on a single rare event in a run of fifty,
-    so two honest endpoints disagree on them by chance.
+    Only the buckets are compared, and neither of them separates none from one.
+    Whether any sample at all came back empty, and the set of finish reasons seen,
+    both turn on a single rare event in a run of fifty, so two honest endpoints
+    disagree on them by chance; they stay in the observation as evidence.
     """
     thinking = session.profile.thinking
     if thinking.syntax == "none" and not thinking.default_on:
