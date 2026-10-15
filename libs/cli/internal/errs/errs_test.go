@@ -89,8 +89,8 @@ func TestNewFormatsAndCarriesDocs(t *testing.T) {
 	if e.Code != CodeNotFound {
 		t.Errorf("code = %v", e.Code)
 	}
-	if !strings.HasSuffix(e.Docs, string(CodeNotFound)) {
-		t.Errorf("docs = %q, want a link ending in the code", e.Docs)
+	if e.Docs != DocsURL || !strings.HasPrefix(e.Docs, "https://github.com/hangar-dev/hangar/") {
+		t.Errorf("docs = %q, want the error table in the repository", e.Docs)
 	}
 }
 

@@ -159,11 +159,15 @@ func As(err error) *Error {
 	return Wrap(err, CodeInternal, "%s", err.Error())
 }
 
+// DocsURL is where the error codes are documented. It is the CLI's own README
+// in the repository; `hgr explain <code>` prints the same thing offline.
+const DocsURL = "https://github.com/hangar-dev/hangar/blob/main/libs/cli/README.md#errors-and-exit-codes"
+
 func docsURL(code Code) string {
 	if code == CodeOK {
 		return ""
 	}
-	return "https://docs.hangar.dev/cli/errors/" + string(code)
+	return DocsURL
 }
 
 // Explanation is the long-form description surfaced by `hgr explain`.
