@@ -179,9 +179,9 @@ func live(ctx context.Context, args []string) error {
 		}
 	}
 
-	token := os.Getenv("HANGAR_GATEWAY_TOKEN")
+	token := os.Getenv("HANGAR_API_KEY")
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "hgrtransit: HANGAR_GATEWAY_TOKEN is unset, sending no credential")
+		fmt.Fprintln(os.Stderr, "hgrtransit: HANGAR_API_KEY is unset, sending no credential")
 	}
 
 	report, err := lab.RunLive(ctx, lab.LiveOptions{

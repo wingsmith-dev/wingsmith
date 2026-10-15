@@ -102,6 +102,9 @@ The fake plane answers the three routes the plane allows the gateway's service p
 gateway's plane client by `go test`, and `HANGAR_TRANSIT_E2E=1 go test ./internal/lab/` boots the
 real gateway and agent against it.
 
+`live` sends `HANGAR_API_KEY` as its bearer token: a tenant API key for the endpoint under
+test.
+
 Useful flags on `synthetic`:
 
 | Flag | Asks |
