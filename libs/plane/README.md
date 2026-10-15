@@ -156,7 +156,8 @@ caller spending its budget locks out itself, not the operator. Behind a proxy, s
 or every caller shares the proxy's budget.
 
 **Cross-site writes.** A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is neither the plane's
-own nor in `ALLOWED_ORIGINS` is `403`, and a request body that is not JSON is `415`.
+own nor in `ALLOWED_ORIGINS` is `403`, and a request body that is not JSON is `415`. Every response
+carries `frame-ancestors 'none'` and `X-Frame-Options: DENY`, so no other site can frame the console.
 
 **Local mode.** Under `APP_ENV=local`, `ADMIN_AUTH` defaults to `disabled`: a request with no
 credential resolves to the admin principal, the API binds `127.0.0.1`, and the process logs a

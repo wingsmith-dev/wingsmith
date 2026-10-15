@@ -4,6 +4,7 @@ from importlib import metadata
 from litestar import Litestar
 from litestar.di import Provide
 from litestar.config.cors import CORSConfig
+from litestar.datastructures import ResponseHeader
 from litestar.openapi.config import OpenAPIConfig
 
 from app.db import engine
@@ -60,6 +61,18 @@ def _openapi_config() -> OpenAPIConfig:
     return OpenAPIConfig(title="Hangar", version=_version())
 
 
+SECURITY_HEADERS = [
+    ResponseHeader(name="Content-Security-Policy", value="frame-ancestors 'none'"),
+    ResponseHeader(name="X-Frame-Options", value="DENY"),
+    ResponseHeader(name="X-Content-Type-Options", value="nosniff"),
+    ResponseHeader(name="Referrer-Policy", value="no-referrer"),
+]
+"""Sent on every response, the console's included. No other site may frame the
+console, so a page cannot overlay it to steer an operator's clicks. These are
+the headers that hold for every response; a script and style policy for the
+console's bundle belongs with the bundle."""
+
+
 def create_app() -> Litestar:
     """Builds the HTTP application.
 
@@ -96,6 +109,7 @@ def create_app() -> Litestar:
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
         guards=[authenticate],
+        response_headers=SECURITY_HEADERS,
         dependencies={"context": Provide(request_context)},
     )
     return routes.init_app(app)

@@ -20,7 +20,9 @@ from app.core.context import SERVICE_ONLY
 from app.core.context import PUBLIC_ROUTES
 from app.core.context import GATEWAY_ROUTES
 from app.core.context import TENANT_SURFACE
+from app.core.context import authorize
 from app.core.context import is_public
+from app.core.exceptions import Forbidden
 
 
 SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
@@ -159,3 +161,17 @@ def test_health_and_login_stay_public():
     with TestClient(app=create_app()) as client:
         assert client.get("/health").status_code == 200
         assert client.post("/v1/auth/login", json={"password": "nope"}).status_code == 401
+
+
+def test_an_operator_principal_is_refused_by_the_policy_itself():
+    """No HTTP credential resolves to an operator, and the policy refuses one even if it did."""
+    operator = AuthManager.operator_principal(cluster_uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa", cluster_name="alpha")
+    for method, route in [("GET", "/v1/clusters"), ("POST", "/v1/clusters/{ref}/enrolment-token"), *GATEWAY_ROUTES]:
+        with pytest.raises(Forbidden):
+            authorize(operator, method, route)
+
+
+def test_every_response_refuses_to_be_framed(client):
+    response = client.get("/health")
+    assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+    assert response.headers["x-frame-options"] == "DENY"
