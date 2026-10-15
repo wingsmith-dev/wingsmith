@@ -30,8 +30,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          SyncedResource is the operator's durable local copy of one piece of desired state received
-          from the plane.
+          SyncedResource is one declared object from the plane — a deployment, an artifact, a cache or a
+          cluster component — held in the cluster so the operator keeps reconciling it through a
+          control-plane outage.
         properties:
           apiVersion:
             description: |-
@@ -53,8 +54,9 @@ spec:
           spec:
             description: |-
               SyncedResourceSpec is the durable local copy of one piece of desired state received from the
-              hub. The payload is held opaquely on purpose: the operator persists and reconciles desired
-              state without depending on the domain schema, which the plane owns.
+              hub. The payload is held as it arrived rather than as typed fields: the wire schema evolves with
+              the plane, and the CRD stays a faithful copy of what the plane said rather than this operator's
+              reading of it.
             properties:
               adopt:
                 description: |-
@@ -188,7 +190,7 @@ spec:
               phase:
                 description: |-
                   Phase is a coarse reconcile outcome. It is not an operation: long-running, failable work
-                  is modelled separately, as operations on the sync stream.
+                  such as a drain or a benchmark travels as an operation frame and never lands here.
                 type: string
             type: object
         type: object
