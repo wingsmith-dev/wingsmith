@@ -59,7 +59,9 @@ Each cluster also needs the `operator` and `agent` images, which the
 ## Configuration
 
 Every plane setting is an environment variable with a `HANGAR_` prefix; the full table is in
-[`libs/plane/README.md`](../../libs/plane/README.md). The ones a deployment must decide:
+[`libs/plane/README.md`](../../libs/plane/README.md). The gateway's are in
+[`libs/gateway/README.md`](../../libs/gateway/README.md). The ones a deployment must decide, for the
+plane:
 
 | Variable | Set on | What |
 |---|---|---|
@@ -72,6 +74,7 @@ Every plane setting is an environment variable with a `HANGAR_` prefix; the full
 | `HANGAR_TUNNEL_GATEWAY` | api | `host:port` of the gateway's tunnel listener, written into setup values |
 | `HANGAR_OPERATOR_IMAGE` / `HANGAR_AGENT_IMAGE` | api | the images clusters install, pinned to a tag |
 | `HANGAR_SETUP_CHART_REF` / `HANGAR_SETUP_CHART_VERSION` | api | where clusters pull `cluster-setup` from |
+| `HANGAR_SETUP_CHART_PRIVATE` | api | `true` if that chart registry needs a `helm registry login`, which adds the login step to every cluster's setup instructions |
 | `HANGAR_IMAGE_PULL_SECRET_*` | api | only if your registry is private |
 | `HANGAR_ALLOWED_ORIGINS` | api | only if the console is served from a different origin |
 
@@ -81,9 +84,19 @@ deployment fails at boot rather than running open.
 To generate the admin password hash with the image you built:
 
 ```sh
-docker run --rm -it registry.example.com/hangar/plane:<tag> \
-  python -c "import getpass; from app.auth.manager import AuthManager; print(AuthManager.hash_admin_password(getpass.getpass()))"
+docker run --rm -it registry.example.com/hangar/plane:<tag> python -m app.auth hash
 ```
+
+For the gateway:
+
+| Variable | What |
+|---|---|
+| `HANGAR_PLANE_URL` | the plane api's base URL as the gateway reaches it, e.g. the api's in-cluster Service. Required |
+| `HANGAR_GATEWAY_SERVICE_TOKEN` | the same value as on the api. Required: the gateway exits at boot without this and `HANGAR_PLANE_URL` |
+| `HANGAR_GATEWAY_REPLICAS` | the replica count, see Networking below |
+| `HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY` | PEM pair the tunnel listener terminates TLS with |
+| `HANGAR_GATEWAY_PUBLIC_LISTEN` | address of the public, tenant-identified listener; off unless set |
+| `HANGAR_GATEWAY_CREDENTIALS` | optional path to a mounted JSON file of `{"<credential id>": {"<header>": "<value>"}}`, for clusters whose serving address sits behind a credential the plane refers to by id. Leave it unset when no serving address does |
 
 Human access is a single admin role; see [SECURITY.md](../../SECURITY.md) for the full auth model.
 
@@ -94,7 +107,7 @@ Human access is a single admin role; see [SECURITY.md](../../SECURITY.md) for th
 | plane HTTP (`api`, `:8000`) | the console in a browser, `hgr` | HTTPS ingress. Or keep it private and use `kubectl port-forward` |
 | hub (`:8001`, `/v1/hub/sync`) | every cluster's operator | HTTPS ingress that supports WebSocket upgrades and long-lived connections; raise idle timeouts well above a minute |
 | gateway tunnel (`:8443`) | every cluster's agent | TCP passthrough (an L4 load balancer or an ingress TCP route), with TLS terminated by the gateway itself via `HANGAR_GATEWAY_TUNNEL_TLS_CERT`/`_KEY`. The tunnel is HTTP/2 after a custom handshake, so an HTTP ingress cannot proxy it |
-| gateway internal (`:8080`) | your own services that call models | ClusterIP only. It has no authentication, so restrict it with a NetworkPolicy and never give it an ingress |
+| gateway internal (`:8080`) | your own services that call models | ClusterIP only. It has no authentication and reaches every enabled tenant's models, so restrict it with a NetworkPolicy and never give it an ingress |
 | gateway public (`HANGAR_GATEWAY_PUBLIC_LISTEN`) | tenants calling directly | HTTPS ingress on a wildcard host, one subdomain per tenant. Off unless set |
 
 Clusters only make outbound connections, to the hub and to the tunnel listener. The plane and the
