@@ -2,15 +2,12 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   Artifact,
   ArtifactBaseline,
-  ArtifactBaselineCreateRequest,
-  ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactFitment,
   ArtifactRefresh,
   ArtifactUpdateRequest,
   ArtifactUsage,
   Deployment,
-  DeploymentUpdateRequest,
   Endpoint,
   EndpointCreateRequest,
   EndpointUpdateRequest,
@@ -162,38 +159,6 @@ export function fetchArtifactBaselines(
   )
 }
 
-export function createArtifactBaseline(
-  ref: string,
-  body: ArtifactBaselineCreateRequest
-): Promise<ArtifactBaseline> {
-  return api.post<ArtifactBaseline>(
-    `/artifacts/${encodeURIComponent(ref)}/baselines`,
-    body
-  )
-}
-
-export function updateArtifactBaseline(
-  ref: string,
-  baseline: string,
-  body: ArtifactBaselineUpdateRequest,
-  revision?: string
-): Promise<ArtifactBaseline> {
-  return api.patch<ArtifactBaseline>(
-    `/artifacts/${encodeURIComponent(ref)}/baselines/${encodeURIComponent(baseline)}`,
-    body,
-    { ifMatch: revision }
-  )
-}
-
-export function deleteArtifactBaseline(
-  ref: string,
-  baseline: string
-): Promise<void> {
-  return api.delete<void>(
-    `/artifacts/${encodeURIComponent(ref)}/baselines/${encodeURIComponent(baseline)}`
-  )
-}
-
 export function fetchWorkloads(
   filters: WorkloadFilters = {},
   cursor?: string,
@@ -260,18 +225,6 @@ export function fetchWorkloadRevisions(
   )
 }
 
-/** One revision, by `wkr_` id or by the number the history lists it under. */
-export function fetchWorkloadRevision(
-  ref: string,
-  revision: string,
-  project?: string
-): Promise<WorkloadRevision> {
-  return api.get<WorkloadRevision>(
-    `/workloads/${encodeURIComponent(ref)}/revisions/${encodeURIComponent(revision)}`,
-    { project }
-  )
-}
-
 /** Writes why a configuration was chosen. The only write a revision accepts. */
 export function annotateWorkloadRevision(
   ref: string,
@@ -305,25 +258,6 @@ export function fetchDeployment(
   return api.get<Deployment>(`/deployments/${encodeURIComponent(ref)}`, {
     cluster,
   })
-}
-
-/**
- * The only write a deployment takes on its own. There is no create and no
- * delete: placement creates a deployment when it expands a workload, and
- * removing one is a `workload.drain` or a scale change.
- */
-export function updateDeployment(
-  ref: string,
-  body: DeploymentUpdateRequest,
-  revision?: string
-): Promise<Deployment> {
-  return api.patch<Deployment>(
-    `/deployments/${encodeURIComponent(ref)}`,
-    body,
-    {
-      ifMatch: revision,
-    }
-  )
 }
 
 export function fetchEndpoints(

@@ -149,9 +149,3 @@ export interface ListResponse<T> {
   count: number
   next_cursor: string | null
 }
-
-/** The pagination params every collection accepts. */
-export interface PageParams {
-  limit?: number
-  cursor?: string
-}

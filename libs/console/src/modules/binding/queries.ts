@@ -15,20 +15,15 @@ import {
   deleteQuota,
   deleteServingQuota,
   fetchPolicies,
-  fetchPolicy,
-  fetchPriorityClass,
   fetchPriorityClasses,
-  fetchProject,
   fetchProjects,
   fetchTenant,
   fetchTenantKeys,
   fetchTenants,
   mintTenantKey,
   revokeTenantKey,
-  fetchQuota,
   fetchQuotas,
   fetchResolvedServingQuotas,
-  fetchServingQuota,
   fetchServingQuotas,
   updatePolicy,
   updatePriorityClass,
@@ -157,14 +152,6 @@ export function useProjectOptions() {
   )
 }
 
-export function useProject(ref: string) {
-  return useQuery({
-    queryKey: ["projects", "detail", ref],
-    queryFn: () => fetchProject(ref),
-    enabled: !!ref,
-  })
-}
-
 export function useCreateProject() {
   const client = useQueryClient()
   return useMutation({
@@ -206,14 +193,6 @@ export function useQuotas(filters: QuotaFilters = {}) {
   )
 }
 
-export function useQuota(ref: string) {
-  return useQuery({
-    queryKey: ["quotas", "detail", ref],
-    queryFn: () => fetchQuota(ref),
-    enabled: !!ref,
-  })
-}
-
 export function useCreateQuota() {
   const client = useQueryClient()
   return useMutation({
@@ -250,14 +229,6 @@ export function useServingQuotas(filters: ServingQuotaFilters = {}) {
   return useCursorList(["serving-quotas", filters], (cursor) =>
     fetchServingQuotas(filters, cursor)
   )
-}
-
-export function useServingQuota(ref: string) {
-  return useQuery({
-    queryKey: ["serving-quotas", "detail", ref],
-    queryFn: () => fetchServingQuota(ref),
-    enabled: !!ref,
-  })
 }
 
 /** Every endpoint, drained — a serving quota is declared against exactly one. */
@@ -317,14 +288,6 @@ export function usePriorityClasses(filters: PriorityClassFilters = {}) {
   )
 }
 
-export function usePriorityClass(ref: string) {
-  return useQuery({
-    queryKey: ["priority-classes", "detail", ref],
-    queryFn: () => fetchPriorityClass(ref),
-    enabled: !!ref,
-  })
-}
-
 /** Every class, drained — a project's default is chosen from these by name. */
 export function usePriorityClassOptions() {
   return useAllPages(["priority-classes", "options"], (cursor) =>
@@ -369,14 +332,6 @@ export function usePolicies(filters: PolicyFilters = {}) {
   return useCursorList(["policies", filters], (cursor) =>
     fetchPolicies(filters, cursor)
   )
-}
-
-export function usePolicy(ref: string) {
-  return useQuery({
-    queryKey: ["policies", "detail", ref],
-    queryFn: () => fetchPolicy(ref),
-    enabled: !!ref,
-  })
 }
 
 export function useCreatePolicy() {

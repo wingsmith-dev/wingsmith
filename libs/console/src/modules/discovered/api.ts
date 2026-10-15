@@ -26,16 +26,6 @@ export function fetchDiscoveredWorkloads(
   })
 }
 
-export function fetchDiscoveredWorkload(
-  ref: string,
-  cluster?: string
-): Promise<DiscoveredWorkload> {
-  return api.get<DiscoveredWorkload>(
-    `/discovered/${encodeURIComponent(ref)}`,
-    cluster ? { cluster } : undefined
-  )
-}
-
 export function trackDiscoveredWorkload(
   ref: string,
   body: DecisionRequest = {}

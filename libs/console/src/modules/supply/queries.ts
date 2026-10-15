@@ -4,7 +4,6 @@ import {
   createPool,
   deletePool,
   fetchDevice,
-  fetchDeviceClass,
   fetchDeviceClasses,
   fetchDevices,
   fetchNode,
@@ -68,14 +67,6 @@ export function useDeviceClasses(filters: DeviceClassFilters = {}) {
     queryKey: ["device-classes", filters],
     queryFn: () => fetchDeviceClasses(filters),
     staleTime: 5 * 60 * 1000,
-  })
-}
-
-export function useDeviceClass(name: string) {
-  return useQuery({
-    queryKey: ["device-classes", "detail", name],
-    queryFn: () => fetchDeviceClass(name),
-    enabled: !!name,
   })
 }
 

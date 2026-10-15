@@ -18,11 +18,6 @@ export const ALERT_STATES = ["pending", "firing", "acknowledged", "resolved"]
 
 export const ALERT_SEVERITIES = ["info", "warning", "error", "critical"]
 
-/** Still someone's problem. A resolved alert is history and stops polling. */
-export function isOpenAlert(state: string): boolean {
-  return state !== "resolved"
-}
-
 export function comparisonWord(comparison: string): string {
   if (comparison === "above") return "above"
   if (comparison === "below") return "below"

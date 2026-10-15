@@ -83,7 +83,6 @@ export {
 export type {
   HttpMethod,
   ListResponse,
-  PageParams,
   QueryValue,
   RequestOptions,
   Transport,

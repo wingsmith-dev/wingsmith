@@ -69,11 +69,3 @@ export function temperatureTone(
   if (celsius >= 80) return "warn"
   return "ok"
 }
-
-export function utilizationTone(
-  percent: number | null
-): "ok" | "warn" | "danger" {
-  if (percent === null) return "ok"
-  if (percent < 5) return "warn"
-  return "ok"
-}

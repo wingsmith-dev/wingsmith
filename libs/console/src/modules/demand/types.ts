@@ -69,30 +69,6 @@ export interface ArtifactBaseline {
   revision: string
 }
 
-export interface ArtifactBaselineCreateRequest {
-  dataset: string
-  metric: string
-  value: number
-  tolerance_pct?: number
-  source_uri?: string | null
-  recorded_by: string
-  recorded_at?: string | null
-  note?: string | null
-}
-
-/**
- * Dataset and metric are absent: they are the row's identity, unique per
- * artifact, so moving one is a different baseline and not an edit to this one.
- */
-export interface ArtifactBaselineUpdateRequest {
-  value?: number
-  tolerance_pct?: number
-  source_uri?: string | null
-  recorded_by?: string
-  recorded_at?: string | null
-  note?: string | null
-}
-
 /** `ArtifactSchema` — immutable, content-addressed bytes. Identity is the digest. */
 export interface Artifact {
   id: string
@@ -1147,24 +1123,6 @@ export interface DeploymentStatus {
  */
 export type DeploymentAuthority = "observed" | "managed"
 
-/** Taking management, or giving it back. `fingerprint` is required only when taking it. */
-export interface DeploymentAuthorityRequest {
-  authority: DeploymentAuthority
-  fingerprint?: string | null
-}
-
-/**
- * A partial update of one cluster's copy.
- *
- * Everything a workload declares is absent: it is declared once, globally, and a
- * per-cluster override would be a second answer to a question that already has one.
- * Scale is absent because shares are derived by placement from the workload total,
- * not asserted per cluster.
- */
-export interface DeploymentUpdateRequest {
-  enabled?: boolean
-}
-
 /** `EndpointTargetSchema`. Named by deployment id; the cluster is not repeated. */
 export interface EndpointTarget {
   deployment_id: string
@@ -1253,22 +1211,6 @@ export interface EndpointPolicy {
   version: number
   rules: PolicyRule[]
 }
-
-export const ENDPOINT_PROTOCOLS = [
-  "openai.chat",
-  "openai.completions",
-  "openai.responses",
-  "openai.embeddings",
-] as const
-export const AUTH_MODES = ["none", "api_key", "mtls"] as const
-/** One member on purpose: the gateway never reads an upstream response body. */
-export const ERROR_SHAPES = ["passthrough"] as const
-export const STREAMING_TRANSPORTS = ["sse", "none"] as const
-export const OUTPUT_LENGTH_PARAMS = [
-  "max_tokens",
-  "max_completion_tokens",
-  "max_output_tokens",
-] as const
 
 /**
  * `EndpointSchema` — the stable public name clients call. Global and

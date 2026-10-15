@@ -79,11 +79,6 @@ export function groupDevices(workload: Workload): number | null {
   return roles.reduce((total, role) => total + role.weight * per, 0)
 }
 
-/** Devices one role costs inside a group. */
-export function roleDevices(workload: Workload, role: WorkloadRole): number {
-  return role.weight * workload.serving.shape.device_count
-}
-
 export interface RoleReadiness {
   role: ServingRole
   ready: number

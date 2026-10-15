@@ -35,10 +35,6 @@ export function fetchAlerts(
   return api.list<Alert>("/alerts", { ...filters, cursor, limit })
 }
 
-export function fetchAlert(ref: string): Promise<Alert> {
-  return api.get<Alert>(`/alerts/${encodeURIComponent(ref)}`)
-}
-
 /**
  * Silences an alert without claiming it is over. A `POST` to a sub-path rather
  * than a `PATCH` of `state`: it is a transition with preconditions, not a field
@@ -69,10 +65,6 @@ export function fetchAlertThresholds(
     cursor,
     limit,
   })
-}
-
-export function fetchAlertThreshold(ref: string): Promise<AlertThreshold> {
-  return api.get<AlertThreshold>(`/alert-thresholds/${encodeURIComponent(ref)}`)
 }
 
 export function createAlertThreshold(

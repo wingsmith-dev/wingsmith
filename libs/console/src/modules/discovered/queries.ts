@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCursorList } from "@/lib/paginate"
 import {
-  fetchDiscoveredWorkload,
   fetchServingDraft,
   fetchDiscoveredWorkloads,
   dismissDiscoveredWorkload,
@@ -17,26 +16,6 @@ export function useDiscoveredWorkloads(filters: DiscoveredFilters = {}) {
   return useCursorList(["discovered", filters], (cursor) =>
     fetchDiscoveredWorkloads(filters, cursor)
   )
-}
-
-export function useDiscoveredWorkload(ref: string, cluster?: string) {
-  return useQuery({
-    queryKey: ["discovered", "detail", ref, cluster],
-    queryFn: () => fetchDiscoveredWorkload(ref, cluster),
-    enabled: !!ref,
-  })
-}
-
-/**
- * How many sightings nobody has looked at yet. Its own small query so the
- * sidebar can carry the count without the list page being mounted.
- */
-export function useUndecidedCount() {
-  const query = useQuery({
-    queryKey: ["discovered", "undecided"],
-    queryFn: () => fetchDiscoveredWorkloads({ status: "new" }, undefined, 100),
-  })
-  return query.data?.items.length ?? 0
 }
 
 function useDecision(

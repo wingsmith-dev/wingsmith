@@ -13,15 +13,6 @@ export function discoveryStatusTone(status: string): StatusTone {
   return STATUS_TONES[status as DiscoveryStatus] ?? "neutral"
 }
 
-/** What each decision means, said once so the table and the dialogs agree. */
-export const STATUS_MEANING: Record<DiscoveryStatus, string> = {
-  new: "seen, nobody has decided",
-  tracked: "in the inventory, still not ours to reconcile",
-  ignored: "deliberately left alone",
-  dismissed: "removed from the list; still running, never touched",
-  promoted: "declared — managed as a deployment",
-}
-
 /** `namespace/name`, which is how an operator refers to it in the cluster. */
 export function workloadLabel(workload: {
   namespace: string

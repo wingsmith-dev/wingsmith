@@ -6,7 +6,6 @@ import type {
   EndpointSurface,
   PolicyRule,
   ServingCapabilities,
-  ServingReasoning,
   ServingBehaviour,
   Workload,
   WorkloadDeployment,
@@ -604,18 +603,6 @@ export function resolvedEngineArgs(
   return { ...resolved, ...servingArgs(engine, serving) }
 }
 
-/** Whether anything about reasoning was declared rather than left at its default. */
-export function reasoningDeclared(reasoning: ServingReasoning): boolean {
-  return Boolean(
-    reasoning.default_on ||
-    reasoning.parser ||
-    reasoning.transport === "inline_tags" ||
-    reasoning.think_begin_token ||
-    reasoning.think_end_token ||
-    reasoning.suppress_eos_until_think_end
-  )
-}
-
 /**
  * How much of a declared thing is actually honoured, and by what.
  *
@@ -679,21 +666,6 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
       note: "The request terms this endpoint sells. The gateway reads them off the resolved table and applies every rule whose scope matches, enforcing what it understands and counting what it does not.",
     },
   }
-
-/**
- * The scope a rule was measured on, as one line.
- *
- * An empty scope is not a gap: an unscoped rule applies to every route and both
- * transport modes, which is exactly what a v1 policy meant. Saying "any" says so
- * rather than leaving a blank an operator reads as missing data.
- */
-export function policyRuleScope(rule: PolicyRule): string {
-  const parts: string[] = [rule.route || "any route"]
-  if (rule.stream === true) parts.push("streaming")
-  if (rule.stream === false) parts.push("non-streaming")
-  if (rule.when_present) parts.push(`when ${rule.when_present} is sent`)
-  return parts.join(" · ")
-}
 
 /**
  * What one rule says, in the order the terms are read.
@@ -776,20 +748,6 @@ export function emptyCapabilities(): ServingCapabilities {
   }
 }
 
-/** The surface an endpoint that says nothing is exposed on. */
-export function emptySurface(): EndpointSurface {
-  return {
-    protocols: ["openai.chat"],
-    auth_mode: "none",
-    error_shape: "passthrough",
-    max_request_bytes: null,
-    request_timeout_seconds: null,
-    streaming_transport: "sse",
-    cors_enabled: false,
-    output_length_params: ["max_tokens"],
-  }
-}
-
 /** An upstream block with nothing claimed and nobody having claimed it. */
 export function emptyUpstream(): ArtifactUpstream {
   return {
@@ -807,26 +765,4 @@ export function emptyUpstream(): ArtifactUpstream {
     recorded_by: null,
     recorded_at: null,
   }
-}
-
-/**
- * Whether the publisher's claim says anything at all.
- *
- * `input_modalities` defaulting to `["text"]` is not a claim — it is the shape
- * of an empty block — so it does not count, and neither does an empty modes
- * list. Without this a console would demand provenance for a block nobody
- * touched.
- */
-export function upstreamClaimed(upstream: ArtifactUpstream): boolean {
-  return Boolean(
-    upstream.provider ||
-    upstream.provider_model_id ||
-    upstream.context_length !== null ||
-    upstream.max_output_tokens !== null ||
-    upstream.reasoning !== null ||
-    upstream.tool_calling !== null ||
-    upstream.structured_output_modes.length > 0 ||
-    upstream.licence ||
-    upstream.released_at
-  )
 }

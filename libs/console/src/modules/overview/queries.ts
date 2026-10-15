@@ -78,16 +78,6 @@ export function useRecentOperations() {
 }
 
 /**
- * The newest events, one page deep. Events are append-only and unbounded, so
- * this is the only panel here that is deliberately not a total.
- */
-export function useRecentEvents() {
-  return useCursorList(["overview", "events"], (cursor) =>
-    fetchEvents({}, cursor, ACTIVITY_LIMIT)
-  )
-}
-
-/**
  * Operations still in flight. Queried per open phase rather than filtered
  * client-side off a page of all operations: a fleet with a long operation
  * history would push the running ones off the first page entirely.

@@ -254,45 +254,6 @@ export function isOpen(phase: string): boolean {
 }
 
 /**
- * Whether two runs may be compared.
- *
- * The plane's guarantee is narrow and this is it: same harness, same version,
- * same image. A release that redefined a percentile is exactly what a same-tool
- * comparison gets wrong without this check, and across harnesses there is no
- * shared definition to compare against at all. The image is part of it because
- * a run may override the harness's pinned one, and two runs that pulled
- * different bytes are not the same tool however their versions read.
- */
-export function comparable(a: BenchmarkRun, b: BenchmarkRun): boolean {
-  return (
-    a.harness === b.harness &&
-    a.harness_version === b.harness_version &&
-    a.image === b.image
-  )
-}
-
-/**
- * The runs an aggregate may count.
- *
- * A discarded run is a warm-up. It is kept and shown — the warm-up is sometimes
- * itself the thing that failed — and it is counted by nothing.
- */
-export function counted(runs: BenchmarkRun[]): BenchmarkRun[] {
-  return runs.filter((run) => !run.discard)
-}
-
-/**
- * The one target a request names, whichever of the three it is.
- *
- * A run carries the ids it has and nulls for the ones its level does not, so
- * asking a run "what were you measuring" without its request gives a partial
- * answer at deployment level and an empty one at endpoint level.
- */
-export function runTarget(run: BenchmarkRun): string | null {
-  return run.endpoint_id ?? run.deployment_id ?? null
-}
-
-/**
  * One number a curve read resolved, or a named absence where it could not.
  *
  * `value` is null and `path` still says where the plane looked, which is the

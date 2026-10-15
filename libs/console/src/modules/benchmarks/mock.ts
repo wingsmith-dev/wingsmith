@@ -248,40 +248,6 @@ export function mockTranscript(id: string): AgentTurn[] {
   }))
 }
 
-/* ---- evaluation --------------------------------------------------------- */
-
-export interface DatasetScore {
-  dataset: string
-  metric: string
-  score: number
-  /** The published number for this model, when the artifact declares one. */
-  claimed: number | null
-  examples: number
-  ms: number
-}
-
-const DATASETS: [string, string, number, number | null, number][] = [
-  ["gsm8k", "accuracy", 0.947, 0.951, 1319],
-  ["math-500", "accuracy", 0.812, 0.83, 500],
-  ["humaneval", "pass@1", 0.884, 0.89, 164],
-  ["mbpp", "pass@1", 0.796, null, 500],
-  ["mmlu-pro", "accuracy", 0.741, 0.752, 1200],
-  ["ifeval", "strict-prompt", 0.868, 0.871, 541],
-  ["gpqa-diamond", "accuracy", 0.573, 0.59, 198],
-]
-
-export function mockScores(id: string): DatasetScore[] {
-  const next = seed(id)
-  return DATASETS.map(([dataset, metric, score, claimed, examples]) => ({
-    dataset,
-    metric,
-    score: Number((score + (next() - 0.5) * 0.03).toFixed(3)),
-    claimed,
-    examples,
-    ms: 40_000 + Math.floor(next() * 400_000),
-  }))
-}
-
 /* ---- walkable rows ------------------------------------------------------ */
 
 /**

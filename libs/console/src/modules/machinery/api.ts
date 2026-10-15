@@ -95,10 +95,6 @@ export function fetchEvents(
   return api.list<PlaneEvent>("/events", { ...filters, cursor, limit })
 }
 
-export function fetchEvent(ref: string): Promise<PlaneEvent> {
-  return api.get<PlaneEvent>(`/events/${encodeURIComponent(ref)}`)
-}
-
 export function fetchAllocations(
   filters: AllocationFilters = {},
   cursor?: string,

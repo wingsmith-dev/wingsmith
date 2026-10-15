@@ -4,9 +4,7 @@ import {
   acknowledgeAlert,
   createAlertThreshold,
   deleteAlertThreshold,
-  fetchAlert,
   fetchAlertRules,
-  fetchAlertThreshold,
   fetchAlertThresholds,
   fetchAlerts,
   resolveAlert,
@@ -32,14 +30,6 @@ export function useAlerts(filters: AlertFilters = {}) {
     (cursor) => fetchAlerts(filters, cursor),
     { refetchInterval: POLL_MS }
   )
-}
-
-export function useAlert(ref: string) {
-  return useQuery({
-    queryKey: ["alerts", "detail", ref],
-    queryFn: () => fetchAlert(ref),
-    enabled: !!ref,
-  })
 }
 
 export function useAcknowledgeAlert() {
@@ -74,14 +64,6 @@ export function useAlertThresholdOptions() {
   return useAllPages(["alert-thresholds", "options"], (cursor) =>
     fetchAlertThresholds({}, cursor, 200)
   )
-}
-
-export function useAlertThreshold(ref: string) {
-  return useQuery({
-    queryKey: ["alert-thresholds", "detail", ref],
-    queryFn: () => fetchAlertThreshold(ref),
-    enabled: !!ref,
-  })
 }
 
 /** The catalogue of rules a threshold may name. Code, not data, so it does not move. */

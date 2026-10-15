@@ -91,10 +91,3 @@ export function runKind(harness: string): RunKind {
 export function runKindMeta(harness: string): RunKindMeta {
   return RUN_KINDS[runKind(harness)]
 }
-
-/** The harness names behind one kind, for narrowing a list request. */
-export function harnessesOf(kind: RunKind): string[] {
-  return Object.entries(BY_HARNESS)
-    .filter(([, value]) => value === kind)
-    .map(([name]) => name)
-}

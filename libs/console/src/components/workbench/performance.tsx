@@ -1,7 +1,7 @@
 import { BandTable } from "@/components/benchmarks/band-table"
 import { LoadCurvePanel } from "@/components/benchmarks/curve"
 import { StatRow, StatTile } from "@/components/workbench/stats"
-import { BenchmarkSummaryView } from "@/components/benchmarks/summary-view"
+import {} from "@/components/benchmarks/summary-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { asStatBlock, kneeTile } from "@/modules/benchmarks/display"
 import {
@@ -127,24 +127,4 @@ function peakThroughput(runs: BenchmarkRun[] | undefined): number | null {
     if (best === null || value > best) best = value
   }
   return best
-}
-
-/** The run view for a load measurement: whatever the harness emitted, as it emitted it. */
-export function PerformanceRun({ run }: { run: BenchmarkRun }) {
-  if (!run.summary)
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-xs text-muted-foreground">
-            This run produced no summary. A run that failed before its harness
-            wrote one has its reason on the record above and its raw output
-            behind the artifacts link.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  return <BenchmarkSummaryView summary={run.summary} />
 }

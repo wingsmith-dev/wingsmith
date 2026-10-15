@@ -8,11 +8,9 @@ import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   annotateWorkloadRevision,
   createArtifact,
-  createArtifactBaseline,
   createEndpoint,
   createWorkload,
   deleteArtifact,
-  deleteArtifactBaseline,
   deleteEndpoint,
   deleteWorkload,
   fetchArtifact,
@@ -31,8 +29,6 @@ import {
   refreshArtifact,
   resolveArtifact,
   updateArtifact,
-  updateArtifactBaseline,
-  updateDeployment,
   updateEndpoint,
   updateWorkload,
   type ArtifactFilters,
@@ -43,13 +39,10 @@ import {
 import { artifactSource } from "./display"
 import type { Artifact, FitmentParams } from "./types"
 import type {
-  ArtifactBaselineCreateRequest,
-  ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
   ArtifactUsage,
   Deployment,
-  DeploymentUpdateRequest,
   EndpointCreateRequest,
   EndpointUpdateRequest,
   Workload,
@@ -265,41 +258,6 @@ export function useArtifactBaselines(ref: string) {
   )
 }
 
-export function useCreateArtifactBaseline(ref: string) {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (body: ArtifactBaselineCreateRequest) =>
-      createArtifactBaseline(ref, body),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] }),
-  })
-}
-
-export function useUpdateArtifactBaseline(ref: string) {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: {
-      baseline: string
-      body: ArtifactBaselineUpdateRequest
-      revision?: string
-    }) => updateArtifactBaseline(ref, vars.baseline, vars.body, vars.revision),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] }),
-  })
-}
-
-/** Invalidates benchmarks too: a verdict is graded against these rows. */
-export function useDeleteArtifactBaseline(ref: string) {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (baseline: string) => deleteArtifactBaseline(ref, baseline),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] })
-      client.invalidateQueries({ queryKey: ["benchmarks"] })
-    },
-  })
-}
-
 /**
  * The phases a workload or deployment has stopped moving in.
  *
@@ -470,22 +428,6 @@ export function useDeploymentOptions() {
   return useAllPages(["deployments", "options"], (cursor) =>
     fetchDeployments({}, cursor, 200)
   )
-}
-
-/** Enabling or disabling one cluster's copy. The only write a deployment takes. */
-export function useUpdateDeployment() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: {
-      ref: string
-      body: DeploymentUpdateRequest
-      revision?: string
-    }) => updateDeployment(vars.ref, vars.body, vars.revision),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["deployments"] })
-      client.invalidateQueries({ queryKey: ["workloads"] })
-    },
-  })
 }
 
 export function useEndpoints(filters: EndpointFilters = {}) {

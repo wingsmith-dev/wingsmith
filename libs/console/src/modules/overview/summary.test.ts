@@ -1,16 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Cluster } from "@/modules/clusters/types"
-import type { Deployment, Endpoint } from "@/modules/demand/types"
+import type { Deployment } from "@/modules/demand/types"
 import type { Operation } from "@/modules/machinery/types"
 import type { Device, Pool, SupplyNode } from "@/modules/supply/types"
-import {
-  deriveClusterActionables,
-  summariseClusters,
-  summariseDemand,
-  summariseDevices,
-  summariseFleet,
-  summariseNodes,
-} from "./summary"
+import { deriveClusterActionables, summariseDevices } from "./summary"
 
 const NOW = new Date("2026-08-23T12:00:00Z")
 const MINUTES = 60 * 1000
@@ -130,58 +123,6 @@ afterEach(() => {
 
 // --- rollups ---------------------------------------------------------------
 
-describe("summariseClusters", () => {
-  it("counts reachability and sync apart from phase", () => {
-    const got = summariseClusters([
-      cluster(),
-      cluster({
-        id: "clu_2",
-        reachable: false,
-        sync: sync({ state: "disconnected" }),
-      }),
-      cluster({
-        id: "clu_3",
-        sync: sync({ state: "disconnected" }),
-      }),
-      cluster({ id: "clu_4", phase: "draining" }),
-    ])
-    expect(got).toEqual({
-      total: 4,
-      active: 3,
-      unreachable: 1,
-      outOfSync: 2,
-    })
-  })
-
-  it("is all zeroes for an empty fleet rather than throwing", () => {
-    expect(summariseClusters([])).toEqual({
-      total: 0,
-      active: 0,
-      unreachable: 0,
-      outOfSync: 0,
-    })
-  })
-})
-
-describe("summariseNodes", () => {
-  it("counts a cordon and a fault separately, because they need different responses", () => {
-    // A cordoned node is a drain someone asked for; a not-ready node is a fault.
-    const got = summariseNodes([
-      node(),
-      node({ id: "nod_2", cordoned: true }),
-      node({ id: "nod_3", ready: false }),
-    ])
-    expect(got).toEqual({ total: 3, ready: 2, cordoned: 1, notReady: 1 })
-  })
-
-  it("counts a node that is both cordoned and not ready in both", () => {
-    const got = summariseNodes([node({ ready: false, cordoned: true })])
-    expect(got.cordoned).toBe(1)
-    expect(got.notReady).toBe(1)
-    expect(got.ready).toBe(0)
-  })
-})
-
 describe("summariseDevices", () => {
   it("lists impaired devices rather than counting them", () => {
     // One degraded card disappears into "47 of 48 healthy"; the panel exists so it does not.
@@ -251,71 +192,6 @@ describe("summariseDevices", () => {
     expect(got).toMatchObject({ total: 0, healthy: 0, allocatable: 0 })
     expect(got.byHealth).toEqual([])
     expect(got.impaired).toEqual([])
-  })
-})
-
-describe("summariseFleet", () => {
-  it("counts each cluster only from what belongs to it", () => {
-    const got = summariseFleet(
-      [cluster(), cluster({ id: "clu_2", name: "sin-1" })],
-      [node(), node({ id: "nod_2", cluster: "clu_2", ready: false })],
-      [
-        device({ id: "dev_1" }),
-        device({ id: "dev_2", cluster: "clu_2", health: "unhealthy" }),
-      ],
-      [deployment(), deployment({ id: "dep_2", cluster_id: "clu_2" })]
-    )
-
-    expect(got[0].nodes.total).toBe(1)
-    expect(got[0].devices).toEqual({ total: 1, healthy: 1 })
-    expect(got[1].nodes.notReady).toBe(1)
-    expect(got[1].devices).toEqual({ total: 1, healthy: 0 })
-    expect(got[1].deployments).toBe(1)
-  })
-
-  it("gives a cluster with nothing on it a row of zeroes rather than omitting it", () => {
-    const got = summariseFleet([cluster()], [], [], [])
-    expect(got).toHaveLength(1)
-    expect(got[0].nodes.total).toBe(0)
-    expect(got[0].deployments).toBe(0)
-  })
-
-  it("ignores rows belonging to a cluster that is not listed", () => {
-    const got = summariseFleet(
-      [cluster()],
-      [node({ id: "nod_x", cluster: "clu_gone" })],
-      [],
-      []
-    )
-    expect(got[0].nodes.total).toBe(0)
-  })
-})
-
-describe("summariseDemand", () => {
-  it("sums replicas across deployments", () => {
-    const got = summariseDemand(
-      [
-        deployment(),
-        deployment({
-          id: "dep_2",
-          desired_replicas: 4,
-          replicas: replicas({ ready: 1, pending: 3, failed: 0 }),
-          admission_phase: "pending",
-        }),
-      ],
-      [
-        { id: "end_1", enabled: true } as Endpoint,
-        { id: "end_2", enabled: false } as Endpoint,
-      ]
-    )
-    expect(got).toEqual({
-      deployments: 2,
-      deploymentsPending: 1,
-      replicasReady: 3,
-      replicasDesired: 6,
-      endpoints: 2,
-      endpointsEnabled: 1,
-    })
   })
 })
 

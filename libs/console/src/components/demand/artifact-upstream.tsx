@@ -1,20 +1,15 @@
-import { ChoiceSet, ChoiceSetField } from "@/components/demand/choice-set"
-import {
-  DeclaredSection,
-  EnforcementBadge,
-} from "@/components/demand/enforcement"
-import { Provenance, ProvenanceFields } from "@/components/demand/provenance"
-import { Field, FieldGrid } from "@/components/layout/field"
+import { ChoiceSetField } from "@/components/demand/choice-set"
+import { DeclaredSection } from "@/components/demand/enforcement"
+import { ProvenanceFields } from "@/components/demand/provenance"
 import {
   FormGrid,
   NumberField,
   SelectField,
   TextField,
 } from "@/components/layout/form"
-import { Dash } from "@/components/layout/mono"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatAbsolute } from "@/lib/format"
-import { upstreamClaimed } from "@/modules/demand/display"
+import {} from "@/components/layout/mono"
+import {} from "@/lib/format"
+import {} from "@/modules/demand/display"
 import {
   INPUT_MODALITIES,
   STRUCTURED_OUTPUT_MODES,
@@ -164,73 +159,4 @@ export function UpstreamFields({
       />
     </DeclaredSection>
   )
-}
-
-/** The claim with the provenance under it, never the claim on its own. */
-export function UpstreamCard({ upstream }: { upstream: ArtifactUpstream }) {
-  const claimed = upstreamClaimed(upstream)
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          Upstream
-          <EnforcementBadge kind="asserted" />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!claimed ? (
-          <p className="font-mono text-2xs text-muted-foreground">
-            Nobody recorded the publisher's claim, so a workload built on these
-            weights has nothing to be compared against.
-          </p>
-        ) : (
-          <FieldGrid>
-            <Field label="Provider">
-              <Dash>{upstream.provider}</Dash>
-            </Field>
-            <Field label="Provider model id">
-              <Dash>{upstream.provider_model_id}</Dash>
-            </Field>
-            <Field label="Context length">
-              <Dash>{upstream.context_length?.toLocaleString()}</Dash>
-            </Field>
-            <Field label="Max output tokens">
-              <Dash>{upstream.max_output_tokens?.toLocaleString()}</Dash>
-            </Field>
-            <Field label="Reasoning">{claim(upstream.reasoning)}</Field>
-            <Field label="Tool calling">{claim(upstream.tool_calling)}</Field>
-            <Field label="Input modalities" className="sm:col-span-2">
-              <ChoiceSet value={upstream.input_modalities} />
-            </Field>
-            <Field label="Structured output modes" className="sm:col-span-2">
-              <ChoiceSet value={upstream.structured_output_modes} />
-            </Field>
-            <Field label="Licence as published">
-              <Dash>{upstream.licence}</Dash>
-            </Field>
-            <Field label="Released">
-              {upstream.released_at ? (
-                formatAbsolute(upstream.released_at)
-              ) : (
-                <Dash>{null}</Dash>
-              )}
-            </Field>
-          </FieldGrid>
-        )}
-        <Provenance
-          claimed={claimed}
-          value={{
-            by: upstream.recorded_by,
-            at: upstream.recorded_at,
-            uri: upstream.source_uri,
-          }}
-        />
-      </CardContent>
-    </Card>
-  )
-}
-
-function claim(value: boolean | null): string {
-  if (value === null) return "not stated"
-  return value ? "claimed" : "not supported"
 }

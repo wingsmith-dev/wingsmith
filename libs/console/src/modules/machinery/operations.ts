@@ -68,10 +68,6 @@ export function operationsForPrefix(prefix: string): OperationDefinition[] {
   )
 }
 
-export function operationLabel(type: string): string {
-  return OPERATION_REGISTRY[type as OperationType]?.label ?? derivedLabel(type)
-}
-
 export interface Applicability {
   enabled: boolean
   reason: string | null

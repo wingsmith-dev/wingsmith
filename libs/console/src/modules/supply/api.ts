@@ -99,10 +99,6 @@ export async function fetchDeviceClasses(
   return result.items
 }
 
-export function fetchDeviceClass(name: string): Promise<DeviceClass> {
-  return api.get<DeviceClass>(`/device-classes/${encodeURIComponent(name)}`)
-}
-
 export function fetchTopologyDomains(
   filters: TopologyFilters = {},
   cursor?: string,
@@ -113,10 +109,6 @@ export function fetchTopologyDomains(
     cursor,
     limit,
   })
-}
-
-export function fetchTopologyDomain(ref: string): Promise<TopologyDomain> {
-  return api.get<TopologyDomain>(`/topology-domains/${encodeURIComponent(ref)}`)
 }
 
 export function fetchPools(

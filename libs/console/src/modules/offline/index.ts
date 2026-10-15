@@ -867,38 +867,6 @@ collection({
     (q.get("until") === undefined || e.occurred_at <= q.get("until")!),
 })
 
-const operationsCollection = collection({
-  path: "/operations",
-  singular: "operation",
-  rows: () => operations,
-  filter: (o, q) =>
-    eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), o.cluster_id) &&
-    eq(q.get("type"), o.type) &&
-    eq(q.get("phase"), o.phase) &&
-    eq(q.get("target"), o.target.id) &&
-    eq(q.get("actor"), o.requested_by),
-})
-
-/**
- * Runs, and the harness catalogue the form is built from.
- *
- * The catalogue is duplicated here rather than derived from anything: offline
- * mode is a copy of the plane's answers, and the plane is where that table
- * actually lives. If the two drift, the demo shows a field the real plane would
- * refuse — which is a bug in the demo and not in the design.
- */
-const benchmarksCollection = collection({
-  path: "/benchmarks",
-  singular: "benchmark run",
-  rows: () => benchmarkRuns,
-  filter: (b, q) =>
-    eq(q.get("deployment"), b.deployment_id) &&
-    eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), b.cluster_id) &&
-    eq(q.get("harness"), b.harness) &&
-    eq(q.get("phase"), b.phase) &&
-    eq(q.get("actor"), b.requested_by),
-})
-
 const HARNESSES: BenchmarkHarness[] = [
   {
     name: "aiperf",
@@ -1540,8 +1508,6 @@ registerFixtures([
     },
   },
 ])
-
-export { operationsCollection, benchmarksCollection }
 
 /**
  * The plane's effective configuration. Static: it describes a process, and the

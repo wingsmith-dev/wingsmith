@@ -108,20 +108,6 @@ export const AUTO_WHERE: WhereChoice = {
   fabric: null,
 }
 
-/**
- * Whether a choice narrows placement without taking the decision off it.
- *
- * The two middle modes are the same kind of thing at two granularities, which is why
- * they share this predicate: both are an allow-list placement still chooses inside, and
- * neither skips a capacity check. Only `pin` does that.
- */
-export function narrows(choice: WhereChoice): boolean {
-  return (
-    (choice.mode === "region" && choice.regions.length > 0) ||
-    (choice.mode === "clusters" && choice.allowed.length > 0)
-  )
-}
-
 const MODES: { value: WhereMode; label: string; caption: string }[] = [
   {
     value: "auto",

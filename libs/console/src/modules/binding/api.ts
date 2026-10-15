@@ -124,10 +124,6 @@ export function fetchProjects(
   return api.list<Project>("/projects", { ...filters, cursor, limit })
 }
 
-export function fetchProject(ref: string): Promise<Project> {
-  return api.get<Project>(`/projects/${encodeURIComponent(ref)}`)
-}
-
 export function createProject(body: ProjectCreateRequest): Promise<Project> {
   return api.post<Project>("/projects", body)
 }
@@ -152,10 +148,6 @@ export function fetchQuotas(
   limit?: number
 ): Promise<ListResponse<Quota>> {
   return api.list<Quota>("/quotas", { ...filters, cursor, limit })
-}
-
-export function fetchQuota(ref: string): Promise<Quota> {
-  return api.get<Quota>(`/quotas/${encodeURIComponent(ref)}`)
 }
 
 export function createQuota(body: QuotaCreateRequest): Promise<Quota> {
@@ -186,10 +178,6 @@ export function fetchServingQuotas(
     cursor,
     limit,
   })
-}
-
-export function fetchServingQuota(ref: string): Promise<ServingQuota> {
-  return api.get<ServingQuota>(`/serving-quotas/${encodeURIComponent(ref)}`)
 }
 
 export function createServingQuota(
@@ -247,10 +235,6 @@ export function fetchPriorityClasses(
   })
 }
 
-export function fetchPriorityClass(ref: string): Promise<PriorityClass> {
-  return api.get<PriorityClass>(`/priority-classes/${encodeURIComponent(ref)}`)
-}
-
 export function createPriorityClass(
   body: PriorityClassCreateRequest
 ): Promise<PriorityClass> {
@@ -282,10 +266,6 @@ export function fetchPolicies(
   limit?: number
 ): Promise<ListResponse<Policy>> {
   return api.list<Policy>("/policies", { ...filters, cursor, limit })
-}
-
-export function fetchPolicy(ref: string): Promise<Policy> {
-  return api.get<Policy>(`/policies/${encodeURIComponent(ref)}`)
 }
 
 export function createPolicy(body: PolicyCreateRequest): Promise<Policy> {
