@@ -174,3 +174,61 @@ func TestPlaintextHubNeedsTheDevFlagAndIsWarnedAbout(t *testing.T) {
 		t.Errorf("warnings = %v, want one for ws:// and one for skip-verify", got)
 	}
 }
+
+func TestTheFabricIsDeclaredWholeOrNotAtAll(t *testing.T) {
+	base := map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x"}
+	cases := []struct {
+		name string
+		env  map[string]string
+		ok   bool
+	}{
+		{"none", nil, true},
+		{"efa", map[string]string{"HANGAR_FABRIC": "efa", "HANGAR_FABRIC_DEVICES": "16"}, true},
+		{"rdma with a resource", map[string]string{"HANGAR_FABRIC": "rdma", "HANGAR_FABRIC_DEVICES": "8", "HANGAR_FABRIC_RESOURCE": "rdma/ib"}, true},
+		{"devices without a fabric", map[string]string{"HANGAR_FABRIC_DEVICES": "16"}, false},
+		{"fabric without devices", map[string]string{"HANGAR_FABRIC": "efa"}, false},
+		{"rdma without a resource", map[string]string{"HANGAR_FABRIC": "rdma", "HANGAR_FABRIC_DEVICES": "8"}, false},
+		{"unknown fabric", map[string]string{"HANGAR_FABRIC": "infiniband", "HANGAR_FABRIC_DEVICES": "8"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, k := range []string{"HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_RESOURCE", "HANGAR_FABRIC_PRIVILEGED"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range base {
+				t.Setenv(k, v)
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			_, err := Load()
+			if (err == nil) != tc.ok {
+				t.Fatalf("error = %v, want ok=%v", err, tc.ok)
+			}
+		})
+	}
+}
+
+// Privileged follows the fabric that needs it, and nothing else.
+func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
+	t.Setenv("HANGAR_CLUSTER_ID", "c")
+	t.Setenv("HANGAR_HUB_URL", "wss://h/x")
+	t.Setenv("HANGAR_FABRIC", "efa")
+	t.Setenv("HANGAR_FABRIC_DEVICES", "16")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.FabricPrivileged {
+		t.Error("EFA needs privileged workers to register GPU memory")
+	}
+
+	t.Setenv("HANGAR_FABRIC", "rdma")
+	t.Setenv("HANGAR_FABRIC_RESOURCE", "rdma/ib")
+	if c, err = Load(); err != nil {
+		t.Fatal(err)
+	}
+	if c.FabricPrivileged {
+		t.Error("a non-EFA fabric runs privileged without asking")
+	}
+}

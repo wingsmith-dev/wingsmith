@@ -141,25 +141,26 @@ type Config struct {
 	// initialisation rather than failing. A cluster sets it once it has installed one of them.
 	Multinode bool
 
-	// EFADevices is how many Elastic Fabric Adapter interfaces a worker pod asks for.
-	//
-	// A per-cluster fact, like Multinode: the resource only exists where the AWS EFA device
-	// plugin is installed and the instance type carries the NICs. Zero means ask for none, which
-	// is what every cluster did before this existed.
-	//
-	// It is not cosmetic. Without the resource the plugin does not mount /dev/infiniband into the
-	// container, so NIXL's UCX layer finds no RDMA transport and falls back to TCP over the pod
-	// network. Prefill/decode disaggregation moves the whole KV cache of every request across
-	// that link -- on Kimi K3 at 38k input tokens it is ~1.8GB per request -- and on TCP it ran
-	// at ~300MB/s, 6.1s per transfer, against a fabric that should do far better. Aggregated
-	// serving never crosses a node for KV and so was never affected, which is precisely what made
-	// the resulting benchmark comparison look like a verdict on disaggregation.
-	EFADevices int
+	// GPUTolerationKey and GPUTolerationValue are the taint GPU workers tolerate. The key
+	// defaults to nvidia.com/gpu; an empty value tolerates any value of it.
+	GPUTolerationKey   string
+	GPUTolerationValue string
+
+	// Fabric is the RDMA fabric workers move KV over: empty for none, "efa" for AWS Elastic
+	// Fabric Adapter, or "rdma" for another RDMA device plugin. Without the fabric resource the
+	// device plugin mounts no /dev/infiniband and NIXL falls back to TCP over the pod network.
+	Fabric string
+
+	// FabricDevices is how many fabric interfaces a worker pod asks for.
+	FabricDevices int
 
 	// FabricResource is the extended-resource name for those interfaces. Empty uses the AWS EFA
-	// plugin's name, which is what our EC2 pools advertise; a bare-metal or non-EC2 pool uses a
-	// different plugin with a different name and sets this.
+	// plugin's name under "efa"; "rdma" requires it.
 	FabricResource string
+
+	// FabricPrivileged runs fabric workers privileged with host IPC. Defaults to true for "efa",
+	// whose GPU memory registration needs it, and false otherwise.
+	FabricPrivileged bool
 
 	// NIXLBackends names the NIXL plugins the KV connector registers, comma-separated. Empty
 	// keeps vLLM's default of UCX. On EC2 this wants LIBFABRIC: EFA is a libfabric provider, and
@@ -363,7 +364,10 @@ func Load() (*Config, error) {
 		FrontendGlobalDynamoNamespace:  l.bool("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", true),
 
 		Multinode:             l.bool("HANGAR_MULTINODE", false),
-		EFADevices:            l.int("HANGAR_EFA_DEVICES", 0),
+		GPUTolerationKey:      env("HANGAR_GPU_TOLERATION_KEY", "nvidia.com/gpu"),
+		GPUTolerationValue:    env("HANGAR_GPU_TOLERATION_VALUE", ""),
+		Fabric:                strings.ToLower(env("HANGAR_FABRIC", "")),
+		FabricDevices:         l.int("HANGAR_FABRIC_DEVICES", 0),
 		FabricResource:        env("HANGAR_FABRIC_RESOURCE", ""),
 		NIXLBackends:          envList("HANGAR_NIXL_BACKENDS"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
@@ -375,6 +379,8 @@ func Load() (*Config, error) {
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
+
+	c.FabricPrivileged = l.bool("HANGAR_FABRIC_PRIVILEGED", c.Fabric == "efa")
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
 	if err != nil {
@@ -448,6 +454,23 @@ func (c *Config) validate() error {
 	// the default for what somebody wrote.
 	if c.FrontendEnabled && c.FrontendReplicas < 1 {
 		return fmt.Errorf("HANGAR_FRONTEND_REPLICAS must be at least 1; set HANGAR_FRONTEND_ENABLED=false to render no frontend")
+	}
+	switch c.Fabric {
+	case "", "efa", "rdma":
+	default:
+		return fmt.Errorf("HANGAR_FABRIC must be empty, efa or rdma, got %q", c.Fabric)
+	}
+	if c.FabricDevices < 0 {
+		return fmt.Errorf("HANGAR_FABRIC_DEVICES must not be negative")
+	}
+	if c.Fabric == "" && c.FabricDevices > 0 {
+		return fmt.Errorf("HANGAR_FABRIC_DEVICES is set but HANGAR_FABRIC is not; name the fabric (efa or rdma)")
+	}
+	if c.Fabric != "" && c.FabricDevices == 0 {
+		return fmt.Errorf("HANGAR_FABRIC=%s requests no interfaces; set HANGAR_FABRIC_DEVICES", c.Fabric)
+	}
+	if c.Fabric == "rdma" && strings.TrimSpace(c.FabricResource) == "" {
+		return fmt.Errorf("HANGAR_FABRIC=rdma needs HANGAR_FABRIC_RESOURCE, the device plugin's resource name")
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("HANGAR_LOG_FORMAT must be json or text")

@@ -12,7 +12,6 @@
 package render
 
 import (
-	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -98,21 +97,27 @@ type Options struct {
 	// a cluster turns it on when it has installed the thing that makes it true.
 	MultinodeEnabled bool
 
-	// EFADevices is how many Elastic Fabric Adapter interfaces a worker pod requests.
-	//
-	// Zero asks for none, which is what this operator did until a disaggregated benchmark was
-	// measured moving KV at ~300MB/s: without the `vpc.amazonaws.com/efa` resource the device
-	// plugin mounts no /dev/infiniband, UCX finds no RDMA transport, and NIXL sends the KV cache
-	// over TCP. A p6-b300.48xlarge advertises 16, and one worker owns the whole node, so 16 is
-	// the value for that pool. Per-cluster because the resource does not exist without the AWS
-	// EFA device plugin, and asking for a resource no node advertises leaves the pod Pending
-	// forever.
-	EFADevices int
+	// GPUTolerationKey and GPUTolerationValue are the taint GPU workers tolerate. An empty key
+	// means GPUResource; an empty value tolerates any value of the key.
+	GPUTolerationKey   string
+	GPUTolerationValue string
 
-	// FabricResource is the extended-resource name to ask for, when EFADevices is non-zero.
-	// Empty means defaultFabricResource, the AWS EFA plugin's name. See that constant for why
-	// this is not hardcoded.
+	// Fabric names the RDMA fabric workers move KV over: "" for none, FabricEFA for AWS Elastic
+	// Fabric Adapter, or FabricRDMA for any other RDMA device plugin. A per-cluster fact: the
+	// resource exists only where the device plugin is installed, and asking for a resource no
+	// node advertises leaves the pod Pending.
+	Fabric string
+
+	// FabricDevices is how many fabric interfaces a worker pod requests. Zero requests none.
+	FabricDevices int
+
+	// FabricResource is the extended-resource name for those interfaces. Empty is the AWS EFA
+	// plugin's name under FabricEFA, and required under FabricRDMA.
 	FabricResource string
+
+	// FabricPrivileged runs fabric workers privileged with host IPC, which NVIDIA's EFA guide
+	// requires for registering GPU memory with the NIC. Only honoured when a fabric is set.
+	FabricPrivileged bool
 
 	// NIXLBackends names the NIXL plugins the KV connector should register, most specific first.
 	// Empty leaves vLLM's default of ["UCX"]. See nixlBackendsFragment for why EC2 needs
@@ -175,17 +180,9 @@ type Options struct {
 	AnthropicAPIEnabled    bool
 	AnthropicStripPreamble bool
 
-	// FrontendGlobalNamespace sets globalDynamoNamespace on the frontend component. Nil means
-	// true, which is today's behaviour on every cluster: the chart's frontend and every worker
-	// this operator renders both run with it on, and both pods carry DYN_NAMESPACE=dynamo, so
-	// everything on a cluster discovers everything else.
-	//
-	// It is a setting and not a constant because whether the namespace can be narrowed — a
-	// frontend that sees only its own model's workers — is unresolved and cannot be settled by
-	// reading anything. It needs an experiment on a live cluster: whether a worker registered in
-	// a per-deployment namespace is discovered by a second frontend at all, and whether two
-	// frontends in one namespace both attempt registration of every model. The point of the
-	// field is that the answer becomes one value on one cluster rather than a code change.
+	// FrontendGlobalNamespace sets globalDynamoNamespace on every component of the graph, the
+	// workers as well as the frontend: a frontend in a narrower namespace than its workers would
+	// discover none of them. Nil means true, the shared Dynamo namespace.
 	FrontendGlobalNamespace *bool
 }
 
@@ -456,7 +453,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			"name":                  role.Component,
 			"type":                  role.Type,
 			"replicas":              int64(role.Replicas),
-			"globalDynamoNamespace": true,
+			"globalDynamoNamespace": globalNamespace(opts),
 			"podTemplate": map[string]any{
 				"metadata": map[string]any{"labels": ownershipLabels(in, role)},
 				"spec":     podMap,
@@ -1052,56 +1049,57 @@ func workerProbes() (liveness, readiness *corev1.Probe) {
 	return probe("/live", 30, 15, 6), probe("/health", 10, 10, 3)
 }
 
-// defaultFabricResource is what the AWS EFA device plugin advertises, which is what our clusters
-// run on today. It is a default and not a constant on purpose: the resource name is a property of
-// whoever supplies the compute, not of the fabric.
-//
-// On EC2 the plugin is the AWS one and the name is this. On bare metal, or any provider using the
-// upstream RDMA plugins, it is something else entirely -- `rdma/hca`, `rdma/ib`, or a vendor name
-// -- and the number of interfaces differs with the chassis. Anyone bringing up a non-EC2 pool sets
-// FabricResource and EFADevices to whatever `kubectl get node -o json` shows under allocatable.
-// Asking for a name no node advertises leaves the pod Pending with no other symptom, so the wrong
-// value here looks like a scheduling problem rather than a configuration one.
-const defaultFabricResource = "vpc.amazonaws.com/efa"
+// GPUResource is the extended resource a worker asks for its accelerators by. Hangar targets
+// NVIDIA GPUs through the NVIDIA device plugin, and discovery reads the same name.
+const GPUResource = corev1.ResourceName("nvidia.com/gpu")
 
-// efaHugePages is what NVIDIA's own EFA-on-AWS guide requests alongside FI_EFA_USE_HUGE_PAGE=1.
+// The fabrics a cluster can declare.
+const (
+	FabricEFA  = "efa"
+	FabricRDMA = "rdma"
+)
+
+// efaResource is the extended resource the AWS EFA device plugin advertises.
+const efaResource = "vpc.amazonaws.com/efa"
+
+// efaHugePages is what NVIDIA's EFA-on-AWS guide requests alongside FI_EFA_USE_HUGE_PAGE=1.
 const efaHugePages = "5120Mi"
 
-// fabricEnv is what libfabric needs to choose EFA and use it properly.
-//
-// FI_PROVIDER pins the provider rather than letting libfabric pick; the shm and tcp providers
-// are also present and either would "work" while moving nothing over the fabric.
-//
-// FI_EFA_USE_DEVICE_RDMA turns on the device's own RDMA read/write rather than emulating it in
-// software. FI_EFA_ENABLE_SHM* are off because NIXL transfers here are always between nodes, and
-// the shm path adds a fork-unsafe mapping for a case that cannot occur.
-//
-// The rest is the tuning block from the same guide. FI_EFA_MR_MAX_CACHED_SIZE=0 disables the
-// size ceiling on the memory-registration cache, which matters because a K3 KV transfer registers
-// a large contiguous region and re-registering it per transfer is most of what makes a slow
-// fabric look like a slow model.
-// fabricSecurityContext widens a worker container so NIXL can register GPU memory with the NIC.
-//
-// This is the most invasive thing this operator renders, so it is worth being plain about it: a
-// privileged container is not meaningfully isolated from its node. It is here because NVIDIA's
-// EFA-on-AWS guide requires it for fi_mr_reg against CUDA VRAM and says IPC_LOCK alone is not
-// enough, and because the failure without it is silent -- the KV path falls back and reports
-// success while running at a fraction of the fabric's speed.
-//
-// Two things bound it. It applies only where a cluster has declared a fabric, so every cluster
-// that has not renders exactly the container it always did. And it applies to GPU worker pods,
-// which on these pools own their whole node and run nothing but an inference engine.
-//
-// If NIXL ever registers VRAM without this -- the DMA-BUF path on a 5.12+ kernel is the likely
-// route -- delete it. It is a workaround for a driver interface, not a design decision.
+// fabricOn says whether worker pods request fabric interfaces at all.
+func fabricOn(opts Options) bool {
+	return opts.Fabric != "" && opts.FabricDevices > 0
+}
+
+// fabricResource is the extended resource the declared fabric is requested by.
+func fabricResource(opts Options) (corev1.ResourceName, error) {
+	if name := strings.TrimSpace(opts.FabricResource); name != "" {
+		return corev1.ResourceName(name), nil
+	}
+	if opts.Fabric == FabricEFA {
+		return efaResource, nil
+	}
+	return "", fmt.Errorf("fabric %q needs a resource name; set HANGAR_FABRIC_RESOURCE", opts.Fabric)
+}
+
+// fabricPrivileged says whether a worker runs privileged with host IPC for its fabric.
+func fabricPrivileged(opts Options) bool {
+	return fabricOn(opts) && opts.FabricPrivileged
+}
+
+// fabricSecurityContext widens a fabric worker so NIXL can register GPU memory with the NIC:
+// IPC_LOCK for pinned memory, and privileged where the cluster says its fabric needs it (EFA
+// does, for fi_mr_reg against CUDA memory). A privileged container is not isolated from its
+// node, which is why it is opt-in per cluster and limited to GPU workers that own their node.
+// Delete the privileged half once NIXL registers through DMA-BUF instead.
 func fabricSecurityContext(opts Options) *corev1.SecurityContext {
-	if opts.EFADevices == 0 {
+	if !fabricOn(opts) {
 		return nil
 	}
-	return &corev1.SecurityContext{
-		Privileged:   ptr(true),
-		Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"IPC_LOCK"}},
+	sc := &corev1.SecurityContext{Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"IPC_LOCK"}}}
+	if fabricPrivileged(opts) {
+		sc.Privileged = ptr(true)
 	}
+	return sc
 }
 
 // hugePagesAllowed says whether Kubernetes will accept a huge-page request on this container.
@@ -1113,10 +1111,10 @@ func hugePagesAllowed(requests corev1.ResourceList) bool {
 	return cpu || mem
 }
 
-// fabricEnvFor returns nothing when no fabric is declared, and turns huge pages off when the
-// pod could not reserve any.
+// fabricEnvFor is libfabric's EFA configuration, on an EFA fabric only, with huge pages turned
+// off when the pod could not reserve any.
 func fabricEnvFor(opts Options, hugePages bool) []corev1.EnvVar {
-	if opts.EFADevices == 0 {
+	if !fabricOn(opts) || opts.Fabric != FabricEFA {
 		return nil
 	}
 	env := fabricEnv()
@@ -1130,6 +1128,8 @@ func fabricEnvFor(opts Options, hugePages bool) []corev1.EnvVar {
 	return env
 }
 
+// fabricEnv pins libfabric to the EFA provider (shm and tcp would also "work" while moving
+// nothing over the fabric) and applies the tuning from NVIDIA's EFA-on-AWS guide.
 func fabricEnv() []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{Name: "FI_PROVIDER", Value: "efa"},
@@ -1146,8 +1146,8 @@ func fabricEnv() []corev1.EnvVar {
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
-	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
-	limits := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
+	requests := corev1.ResourceList{GPUResource: *resource.NewQuantity(int64(devices), resource.DecimalSI)}
+	limits := corev1.ResourceList{GPUResource: *resource.NewQuantity(int64(devices), resource.DecimalSI)}
 	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
 		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
 	}
@@ -1158,32 +1158,22 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		requests[corev1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(*n)*1024*1024*1024, resource.BinarySI)
 	}
 
-	// EFA is requested by count on both sides, as the device plugin requires: it is an extended
-	// resource, so it is not overcommittable and request must equal limit.
-	//
-	// Every worker asks, not only the disaggregated ones. A prefill/decode pair needs it for the
-	// KV handoff, but the resource is per-node and one worker owns its node, so a worker that
-	// does not use the fabric costs nothing by holding it, whereas a worker that needs it and did
-	// not ask silently runs on TCP -- which is the failure this exists to prevent, and it is
-	// invisible in every health signal we have.
-	if opts.EFADevices > 0 {
-		name := corev1.ResourceName(cmp.Or(strings.TrimSpace(opts.FabricResource), defaultFabricResource))
-		count := *resource.NewQuantity(int64(opts.EFADevices), resource.DecimalSI)
+	// The fabric is an extended resource, so request equals limit. Every worker asks: the
+	// resource is per node and one worker owns its node, and a worker that needed it and did not
+	// ask silently runs KV transfers over TCP.
+	if fabricOn(opts) {
+		name, err := fabricResource(opts)
+		if err != nil {
+			return nil, err
+		}
+		count := *resource.NewQuantity(int64(opts.FabricDevices), resource.DecimalSI)
 		requests[name] = count
 		limits[name] = count
 
-		// libfabric's EFA provider takes its bounce buffers from huge pages when
-		// FI_EFA_USE_HUGE_PAGE is on, and the pod must ask for them by name or the allocation
-		// fails inside the provider rather than at admission. The host reserves them at boot
-		// (efa-hugepages-reserve.sh); this claims a slice.
-		//
-		// Only when the deployment has declared cpu or memory. Kubernetes rejects a container
-		// that asks for huge pages and neither -- "HugePages require cpu or memory" -- and it
-		// rejects it at Deployment creation, where the message reaches the Dynamo operator's
-		// log and nothing else: the DGD simply sits at observedGeneration=0 with no pods. The
-		// env var is set from the same condition in fabricEnvFor, because asking libfabric to
-		// use huge pages the pod never reserved is the failure this pairing exists to avoid.
-		if hugePagesAllowed(requests) {
+		// EFA's bounce buffers come from huge pages the host reserves at boot, claimed here by
+		// name. Kubernetes rejects a huge-page request without cpu or memory, so it is made only
+		// when one is declared, and fabricEnvFor turns FI_EFA_USE_HUGE_PAGE off to match.
+		if opts.Fabric == FabricEFA && hugePagesAllowed(requests) {
 			huge := resource.MustParse(efaHugePages)
 			requests[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
 			limits[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
@@ -1253,16 +1243,9 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 	spec := &corev1.PodSpec{
 		ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
 		NodeSelector:     podNodeSelector(in, opts),
-		// NIXL registers CUDA VRAM with the EFA NIC through fi_mr_reg, and NVIDIA's EFA-on-AWS
-		// guide is explicit that IPC_LOCK alone does not permit it. See fabricSecurityContext
-		// for what that widens and why it is scoped the way it is.
-		HostIPC: opts.EFADevices > 0,
-		Tolerations: []corev1.Toleration{{
-			Key:      "nvidia.com/gpu",
-			Operator: corev1.TolerationOpEqual,
-			Value:    "true",
-			Effect:   corev1.TaintEffectNoSchedule,
-		}},
+		// Paired with the privileged context; see fabricSecurityContext.
+		HostIPC:     fabricPrivileged(opts),
+		Tolerations: []corev1.Toleration{taintToleration(gpuTolerationKey(opts), opts.GPUTolerationValue)},
 		Volumes: append(localModelVolume(opts), []corev1.Volume{
 			{
 				Name: "model-cache",
@@ -1375,11 +1358,6 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 		replicas = defaultFrontendReplicas
 	}
 
-	global := true
-	if opts.FrontendGlobalNamespace != nil {
-		global = *opts.FrontendGlobalNamespace
-	}
-
 	return map[string]any{
 		// `type: frontend` is what earns the component its ports and the command it runs;
 		// `name: Frontend` is what the two label-based lookups match on. Different fields
@@ -1387,7 +1365,7 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 		"name":                  FrontendComponent,
 		"type":                  "frontend",
 		"replicas":              int64(replicas),
-		"globalDynamoNamespace": global,
+		"globalDynamoNamespace": globalNamespace(opts),
 		"podTemplate": map[string]any{
 			"metadata": map[string]any{"labels": ownershipLabels(in, workerRole{})},
 			"spec":     podMap,
@@ -1746,6 +1724,22 @@ func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) err
 			"express the change without rewriting spec.components",
 		in.Deployment.DeploymentID, FrontendComponent, FrontendComponent,
 	)
+}
+
+// globalNamespace is the globalDynamoNamespace every component of a graph renders with.
+func globalNamespace(opts Options) bool {
+	if opts.FrontendGlobalNamespace != nil {
+		return *opts.FrontendGlobalNamespace
+	}
+	return true
+}
+
+// gpuTolerationKey is the taint key GPU workers tolerate.
+func gpuTolerationKey(opts Options) string {
+	if key := strings.TrimSpace(opts.GPUTolerationKey); key != "" {
+		return key
+	}
+	return string(GPUResource)
 }
 
 // NodeSelector puts the replica on accelerator nodes, plus whatever the plane constrained.

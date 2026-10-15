@@ -126,8 +126,12 @@ func RenderOptions(cfg *config.Config) render.Options {
 		PrefetchMemory:      cfg.PrefetchMemory,
 		PrefetchMemoryLimit: cfg.PrefetchMemoryLimit,
 		MultinodeEnabled:    cfg.Multinode,
-		EFADevices:          cfg.EFADevices,
+		GPUTolerationKey:    cfg.GPUTolerationKey,
+		GPUTolerationValue:  cfg.GPUTolerationValue,
+		Fabric:              cfg.Fabric,
+		FabricDevices:       cfg.FabricDevices,
 		FabricResource:      cfg.FabricResource,
+		FabricPrivileged:    cfg.FabricPrivileged,
 		NIXLBackends:        cfg.NIXLBackends,
 		EnginePullSecrets:   cfg.EnginePullSecrets,
 

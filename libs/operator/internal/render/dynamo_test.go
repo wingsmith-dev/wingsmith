@@ -718,10 +718,9 @@ func TestTheFrontendReplicaCountAndNamespaceAreClusterSettings(t *testing.T) {
 	if frontend["globalDynamoNamespace"] != false {
 		t.Fatalf("globalDynamoNamespace = %v", frontend["globalDynamoNamespace"])
 	}
-	// Narrowing the frontend must not narrow the worker: the two flags are separate decisions
-	// and flipping both at once is the migration nobody asked for.
-	if worker := componentNamed(t, obj, WorkerComponent); worker["globalDynamoNamespace"] != true {
-		t.Fatalf("the worker's namespace flag followed the frontend's: %v", worker)
+	// The workers follow: a frontend in a narrower namespace than its workers discovers none.
+	if worker := componentNamed(t, obj, WorkerComponent); worker["globalDynamoNamespace"] != false {
+		t.Fatalf("the worker stayed in the global namespace the frontend left: %v", worker)
 	}
 }
 
@@ -1757,7 +1756,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 		t.Fatal("asked for EFA on a cluster that declared none; the pod would stay Pending forever")
 	}
 
-	on, err := podSpec(in, Options{EFADevices: 16}, workerRole{Role: "decode"})
+	on, err := podSpec(in, Options{Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true}, workerRole{Role: "decode"})
 	if err != nil {
 		t.Fatalf("render with EFA on: %v", err)
 	}
@@ -1778,7 +1777,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	// The resource name is a property of the compute supplier, not of the fabric: EC2 runs the
 	// AWS plugin, bare metal runs something else advertising a different name. Baking in the AWS
 	// name would strand every non-EC2 pool on TCP with no symptom but a Pending pod.
-	bare, err := podSpec(in, Options{EFADevices: 8, FabricResource: "rdma/hca"}, workerRole{Role: "decode"})
+	bare, err := podSpec(in, Options{Fabric: FabricRDMA, FabricDevices: 8, FabricResource: "rdma/hca"}, workerRole{Role: "decode"})
 	if err != nil {
 		t.Fatalf("render with a non-AWS fabric resource: %v", err)
 	}
@@ -1794,7 +1793,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	// all 16 interfaces present -- indistinguishable from the TCP numbers. Without privileged,
 	// fi_mr_reg cannot register CUDA VRAM. Each of these fails silently on its own, so the render
 	// asserts all of them together.
-	full, err := podSpec(in, Options{EFADevices: 16, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
+	full, err := podSpec(in, Options{Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
 	if err != nil {
 		t.Fatalf("render full fabric: %v", err)
 	}
@@ -1828,7 +1827,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	withMem := testInputs()
 	mib := int64(524288)
 	withMem.Deployment.Serving.Resources.MemoryMiB = &mib
-	sized, err := podSpec(withMem, Options{EFADevices: 16, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
+	sized, err := podSpec(withMem, Options{Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
 	if err != nil {
 		t.Fatalf("render with memory declared: %v", err)
 	}
@@ -1863,7 +1862,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 
 	// Aggregated workers ask too. One worker owns its node, so holding an interface it may not
 	// use costs nothing, while a worker that needed it and did not ask fails silently.
-	agg, err := podSpec(testInputs(), Options{EFADevices: 16}, workerRole{})
+	agg, err := podSpec(testInputs(), Options{Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true}, workerRole{})
 	if err != nil {
 		t.Fatalf("render aggregated: %v", err)
 	}
@@ -1960,7 +1959,7 @@ func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16, JITCacheOptIn: true}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true, JITCacheOptIn: true}
 
 	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
 	if err != nil {
@@ -1981,7 +1980,7 @@ func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 func TestJITCacheIsOptIn(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true}
 
 	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
 	if err != nil {
@@ -2007,4 +2006,60 @@ func containerEnv(c corev1.Container, name string) string {
 		}
 	}
 	return ""
+}
+
+// The GPU taint is tolerated whatever value the cluster gave it, unless a value is configured.
+func TestWorkersTolerateTheConfiguredGPUTaint(t *testing.T) {
+	spec, err := podSpec(testInputs(), Options{}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tol := spec.Tolerations; len(tol) != 1 || tol[0].Key != "nvidia.com/gpu" || tol[0].Operator != corev1.TolerationOpExists {
+		t.Errorf("tolerations = %+v, want Exists on nvidia.com/gpu", tol)
+	}
+
+	spec, err = podSpec(testInputs(), Options{GPUTolerationKey: "example.com/accelerator", GPUTolerationValue: "present"}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tol := spec.Tolerations; len(tol) != 1 || tol[0].Key != "example.com/accelerator" ||
+		tol[0].Operator != corev1.TolerationOpEqual || tol[0].Value != "present" {
+		t.Errorf("tolerations = %+v, want the configured key and value", tol)
+	}
+}
+
+// A fabric that does not need privilege does not get it, and EFA's libfabric settings stay on EFA.
+func TestANonEFAFabricIsNeitherPrivilegedNorEFATuned(t *testing.T) {
+	in := testInputs()
+	mib := int64(524288)
+	in.Deployment.Serving.Resources.MemoryMiB = &mib
+	spec, err := podSpec(in, Options{Fabric: FabricRDMA, FabricDevices: 8, FabricResource: "rdma/ib"}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.HostIPC {
+		t.Error("hostIPC on a fabric that did not ask for privilege")
+	}
+	sc := spec.Containers[0].SecurityContext
+	if sc == nil || sc.Privileged != nil {
+		t.Errorf("security context = %+v, want IPC_LOCK without privilege", sc)
+	}
+	for _, e := range spec.Containers[0].Env {
+		if strings.HasPrefix(e.Name, "FI_") {
+			t.Errorf("%s set on a non-EFA fabric", e.Name)
+		}
+	}
+	if _, ok := spec.Containers[0].Resources.Requests[corev1.ResourceHugePagesPrefix+"2Mi"]; ok {
+		t.Error("EFA huge pages requested on a non-EFA fabric")
+	}
+	if got := spec.Containers[0].Resources.Requests["rdma/ib"]; got.Value() != 8 {
+		t.Errorf("asked for %d rdma/ib, want 8", got.Value())
+	}
+}
+
+// Without a resource name a non-EFA fabric cannot be requested, and the render says so.
+func TestANonEFAFabricNeedsAResourceName(t *testing.T) {
+	if _, err := podSpec(testInputs(), Options{Fabric: FabricRDMA, FabricDevices: 8}, workerRole{}); err == nil {
+		t.Fatal("rendered a fabric request with no resource name")
+	}
 }
