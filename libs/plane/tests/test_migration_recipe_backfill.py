@@ -1,14 +1,9 @@
 """The recipe-to-workload backfill, run against a database that actually has recipes.
 
-This file exists because the ordinary harness cannot catch what it is testing. Every
-other database test starts from `alembic upgrade head` on an EMPTY database, so
-`a7c31f8e64b2`'s backfill found nothing, took its `if digests:` guard, and never
-executed a statement. The migration reached production with its two `UPDATE`s never
-once having run, and failed there on `function unnest(unknown) is not unique`.
-
-So this migrates to the revision BEFORE it, writes rows the way the old schema
-wanted them, and then upgrades — which is the only arrangement in which the backfill
-has anything to do.
+Every other database test starts from `alembic upgrade head` on an empty database, where
+`a7c31f8e64b2`'s backfill finds nothing and never executes a statement. So this migrates
+to the revision before it, writes rows the way the old schema wanted them, and then
+upgrades, which is the only arrangement in which the backfill has anything to do.
 """
 
 import os
@@ -129,7 +124,7 @@ def _seed(cur) -> dict[str, uuid.UUID]:
 
 
 def test_the_backfill_runs_and_agrees_with_the_plane(scratch) -> None:
-    """The statement that failed in production, executed against rows that make it run.
+    """The backfill, executed against rows that make it run.
 
     Asserted on more than "it did not raise": the two workloads that shared a recipe
     must land on ONE digest, the third on a different one, and the benchmark run must
@@ -165,10 +160,10 @@ def test_the_backfill_runs_and_agrees_with_the_plane(scratch) -> None:
 
 
 def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> None:
-    """A migration that hashes differently from the application is worse than no digest.
+    """The migration's frozen digest agrees with the plane's for a configuration of that era.
 
-    It would split one configuration into two populations silently — the rows would
-    look fine, and only a benchmark rollup would quietly report half of what it had.
+    A migration that hashed differently would split one configuration into two populations,
+    and only a benchmark rollup would show it.
     """
     from types import SimpleNamespace
 
@@ -223,16 +218,8 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
         "overlay",
         "serving",
     )
-    # `serving_topology` is stated rather than selected, and it is not in `names` because the
-    # SELECT cannot supply it: `demand_workload.serving_topology` arrives with disaggregation,
-    # many revisions after the one under test. Listing it there put one more name than the row
-    # had values, and `zip` dropped it silently — which is how this became an `AttributeError`
-    # in `serving_digest` rather than a failed assertion. The literal is what the migration's
-    # own SELECT says, and it is the truth about this point in history: everything was
-    # aggregated, and the digest omits the field entirely for those.
+    # `serving_topology` is stated rather than selected: the column arrives with disaggregation,
+    # after the revision under test, and everything was aggregated then.
     workload = SimpleNamespace(**dict(zip(names, row[2:], strict=True)), serving_topology="aggregated")
-    # `slug=None` and not an omitted attribute: `demand_artifact.slug` is created a revision
-    # after the one under test, so nothing had a slug when this backfill ran. The stub in the
-    # migration says the same thing, and the two must agree or this asserts against a digest
-    # neither the migration nor the plane would produce.
+    # `slug=None`: `demand_artifact.slug` is created a revision after the one under test.
     assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid, slug=None), ())
