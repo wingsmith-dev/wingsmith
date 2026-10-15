@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -560,5 +561,49 @@ func TestAnExplicitEndpointAnswersForEveryDeployment(t *testing.T) {
 	}
 	if got.String() != "http://vllm:8000" {
 		t.Fatalf("URLFor = %q, want the override", got)
+	}
+}
+
+// TestDiscoveryAgeCountsFromTheLastAnswer pins what the staleness gauge and
+// readiness read. An answer that found nothing still resets it: what goes stale
+// is the agent's view of the cluster, and an empty namespace is a current view.
+func TestDiscoveryAgeCountsFromTheLastAnswer(t *testing.T) {
+	ctx := context.Background()
+	now := time.Unix(1000, 0)
+	clock := func() time.Time { return now }
+	client := fake.NewClientset()
+	resolver, err := New(Config{Namespace: testNamespace, Services: client.CoreV1().Services(testNamespace), Now: clock})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+
+	now = now.Add(time.Minute)
+	if got := resolver.DiscoveryAge(); got != time.Minute {
+		t.Fatalf("age before any pass = %s, want a minute from construction", got)
+	}
+	if err := resolver.Refresh(ctx); !errors.Is(err, ErrNoFrontend) {
+		t.Fatalf("refresh = %v, want ErrNoFrontend", err)
+	}
+	if got := resolver.DiscoveryAge(); got != 0 {
+		t.Fatalf("age after an answer = %s, want 0", got)
+	}
+
+	client.PrependReactor("list", "services", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("the api server is gone")
+	})
+	now = now.Add(10 * time.Minute)
+	if err := resolver.Refresh(ctx); err == nil {
+		t.Fatal("refresh succeeded against an api server that is down")
+	}
+	if got := resolver.DiscoveryAge(); got != 10*time.Minute {
+		t.Fatalf("age after a failed pass = %s, want 10m", got)
+	}
+
+	fixed, err := New(Config{Endpoint: "frontend:8000", Now: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fixed.DiscoveryAge(); got != 0 {
+		t.Fatalf("a configured endpoint aged %s, want 0", got)
 	}
 }

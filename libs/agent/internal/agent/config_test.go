@@ -49,6 +49,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.HealthAddr != ":8081" {
 		t.Errorf("HealthAddr = %q, want :8081", cfg.HealthAddr)
 	}
+	if cfg.DiscoveryStaleAfter != 5*time.Minute {
+		t.Errorf("DiscoveryStaleAfter = %s, want 5m", cfg.DiscoveryStaleAfter)
+	}
 }
 
 // A cluster is configured with one address and never with a list of replicas. The chart used to
@@ -81,6 +84,11 @@ func TestValidateNamesTheSetting(t *testing.T) {
 		{"CA without TLS", map[string]string{"HANGAR_TUNNEL_CA_FILE": "/etc/ca.pem"}, "HANGAR_TUNNEL_CA_FILE"},
 		{"bad log format", map[string]string{"HANGAR_LOG_FORMAT": "logfmt"}, "HANGAR_LOG_FORMAT"},
 		{"bad log level", map[string]string{"HANGAR_LOG_LEVEL": "chatty"}, "HANGAR_LOG_LEVEL"},
+		{"negative staleness", map[string]string{"HANGAR_FRONTEND_DISCOVERY_STALE_AFTER": "-1m"}, "HANGAR_FRONTEND_DISCOVERY_STALE_AFTER"},
+		{"staleness inside one interval", map[string]string{
+			"HANGAR_FRONTEND_DISCOVERY_INTERVAL":    "1m",
+			"HANGAR_FRONTEND_DISCOVERY_STALE_AFTER": "30s",
+		}, "HANGAR_FRONTEND_DISCOVERY_STALE_AFTER"},
 	}
 
 	for _, tc := range cases {

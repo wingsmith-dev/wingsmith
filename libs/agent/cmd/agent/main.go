@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -75,6 +76,7 @@ func run() error {
 	}
 
 	metrics := agent.NewMetrics()
+	metrics.WatchDiscovery(resolver.DiscoveryAge)
 	supervisor, err := agent.NewSupervisor(agent.SupervisorConfig{
 		Gateway:         cfg.Gateway,
 		ConnsPerGateway: cfg.ConnsPerGateway,
@@ -91,7 +93,7 @@ func run() error {
 
 	probes := agent.NewProbeServer(agent.ProbeConfig{
 		Addr:     cfg.HealthAddr,
-		Ready:    supervisor.Ready,
+		Ready:    readiness(supervisor.Ready, resolver.DiscoveryAge, cfg.DiscoveryStaleAfter),
 		Coverage: supervisor.Coverage,
 		Expected: supervisor.Expected,
 		Metrics:  metrics,
@@ -136,6 +138,27 @@ func run() error {
 	wg.Wait()
 	log.Info("agent: stopped")
 	return nil
+}
+
+// readiness is the agent's readiness probe: the supervisor's own check, then frontend discovery
+// having heard from the API server within staleAfter.
+//
+// Stale discovery does not stop the agent forwarding; it keeps the addresses it last saw, which is
+// right through an API server blip. Past staleAfter those addresses may no longer be where the
+// frontends are, and a failing probe is how a person finds out before the requests do.
+func readiness(tunnels func() error, discoveryAge func() time.Duration, staleAfter time.Duration) func() error {
+	return func() error {
+		if err := tunnels(); err != nil {
+			return err
+		}
+		if staleAfter <= 0 {
+			return nil
+		}
+		if age := discoveryAge(); age > staleAfter {
+			return fmt.Errorf("frontend discovery has had no answer from the API server for %s", age.Round(time.Second))
+		}
+		return nil
+	}
 }
 
 // newResolver builds the frontend lookup: the configured override if there is one, otherwise a

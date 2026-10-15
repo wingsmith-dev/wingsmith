@@ -96,6 +96,12 @@ type Config struct {
 	// frontend package's default.
 	DiscoveryInterval time.Duration
 
+	// DiscoveryStaleAfter fails readiness once frontend discovery has gone this long without an
+	// answer from the API server. The agent keeps forwarding to the addresses it last saw either
+	// way; readiness is how somebody finds out those addresses can no longer change. Zero turns
+	// the check off.
+	DiscoveryStaleAfter time.Duration
+
 	// ResponseHeaderTimeout is the fleet-wide bound on how long a serving runtime may hold a
 	// request without sending a response header. It is the gateway's number, not this agent's:
 	// the agent's own proxy to the frontend runs at tunnel.InnerHopTimeout of it.
@@ -139,6 +145,7 @@ func Load() (*Config, error) {
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
 		DiscoveryInterval:     r.duration("HANGAR_FRONTEND_DISCOVERY_INTERVAL", 0),
+		DiscoveryStaleAfter:   r.duration("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER", 5*time.Minute),
 		ResponseHeaderTimeout: r.duration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
 		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
 	}
@@ -224,6 +231,13 @@ func (c *Config) validate() error {
 	}
 	if c.HealthAddr == "" {
 		return fmt.Errorf("HANGAR_HEALTH_ADDR must not be empty")
+	}
+	if c.DiscoveryStaleAfter < 0 {
+		return fmt.Errorf("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER must not be negative; 0 turns the check off")
+	}
+	if c.DiscoveryStaleAfter > 0 && c.DiscoveryStaleAfter <= c.DiscoveryInterval {
+		return fmt.Errorf("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER must be longer than HANGAR_FRONTEND_DISCOVERY_INTERVAL, " +
+			"or readiness fails between two healthy passes")
 	}
 	if c.InferenceEndpoint == "" && c.WorkloadNamespace == "" {
 		return fmt.Errorf("HANGAR_WORKLOAD_NAMESPACE must not be empty unless HANGAR_INFERENCE_ENDPOINT is set")

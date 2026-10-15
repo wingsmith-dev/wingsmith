@@ -97,6 +97,8 @@ type Config struct {
 	Services Services
 	// Interval is how often discovery re-runs. Zero means defaultInterval.
 	Interval time.Duration
+	// Now replaces the clock. For tests.
+	Now func() time.Time
 }
 
 // Resolver yields the current frontend addresses.
@@ -126,8 +128,13 @@ type Resolver struct {
 	// anything and Run has nothing to do.
 	fixed *url.URL
 
+	now func() time.Time
+
 	mu      sync.RWMutex
 	current frontends
+	// answered is when the API server last answered a discovery pass, or when
+	// the resolver was built if it never has.
+	answered time.Time
 }
 
 // frontends is one discovery pass: the cluster's shared frontend, and the
@@ -172,10 +179,15 @@ func New(cfg Config) (*Resolver, error) {
 		services:  cfg.Services,
 		namespace: cfg.Namespace,
 		interval:  cfg.Interval,
+		now:       cfg.Now,
 	}
 	if resolver.interval <= 0 {
 		resolver.interval = defaultInterval
 	}
+	if resolver.now == nil {
+		resolver.now = time.Now
+	}
+	resolver.answered = resolver.now()
 
 	if cfg.Endpoint != "" {
 		parsed, err := parseEndpoint(cfg.Endpoint)
@@ -280,7 +292,12 @@ func (r *Resolver) Refresh(ctx context.Context) error {
 		return nil
 	}
 
-	found, err := r.discover(ctx)
+	found, answered, err := r.discover(ctx)
+	if answered {
+		r.mu.Lock()
+		r.answered = r.now()
+		r.mu.Unlock()
+	}
 	if err != nil && !errors.Is(err, ErrAmbiguousFrontend) {
 		return err
 	}
@@ -303,6 +320,20 @@ func (r *Resolver) Refresh(ctx context.Context) error {
 	}
 	r.current = found
 	return err
+}
+
+// DiscoveryAge is how long it has been since the API server last answered a
+// discovery pass, counted from when the resolver was built if it never has.
+// An answer that found no frontend, or a conflicted one, still counts: this
+// measures whether the addresses can be refreshed at all, not what they are.
+// Zero for a configured endpoint, which is never refreshed.
+func (r *Resolver) DiscoveryAge() time.Duration {
+	if r.fixed != nil {
+		return 0
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.now().Sub(r.answered)
 }
 
 // Run refreshes until the context ends. It returns as soon as the address is
@@ -344,10 +375,13 @@ func (r *Resolver) Run(ctx context.Context) {
 // whose API server has gone quiet keeps forwarding to the frontends it last
 // saw. Refresh is what holds onto them; returning an empty set here would
 // discard them instead.
-func (r *Resolver) discover(ctx context.Context) (frontends, error) {
+//
+// answered reports whether the API server answered the List, whatever the pass
+// then made of the answer.
+func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ error) {
 	services, err := r.services.List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return frontends{}, fmt.Errorf("look for the inference frontend in %s: %w", r.namespace, err)
+		return frontends{}, false, fmt.Errorf("look for the inference frontend in %s: %w", r.namespace, err)
 	}
 
 	found := map[string][]corev1.Service{}
@@ -363,7 +397,7 @@ func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 	}
 
 	if len(found) == 0 {
-		return frontends{}, fmt.Errorf(
+		return frontends{}, true, fmt.Errorf(
 			"%w: no service in %s selects %s=%s; set the endpoint override if this cluster "+
 				"fronts its models with something else",
 			ErrNoFrontend, r.namespace, ComponentLabel, componentFrontend)
@@ -379,7 +413,7 @@ func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 		}
 		address, err := serviceURL(services[0])
 		if err != nil {
-			return frontends{}, err
+			return frontends{}, true, err
 		}
 		if key == "" {
 			discovered.shared = address
@@ -387,7 +421,7 @@ func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 		}
 		discovered.byDeployment[key] = address
 	}
-	return discovered, errors.Join(conflicts...)
+	return discovered, true, errors.Join(conflicts...)
 }
 
 // deploymentOf reads the routing key off a frontend Service, or empty for the

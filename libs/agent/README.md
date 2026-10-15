@@ -38,6 +38,15 @@ readiness failure: `hangar_agent_gateways_expected` against the number of
 `hangar_agent_gateway_up` series, with `hangar_agent_dial_duplicates_total` as the one to watch if
 coverage never settles.
 
+## Stale frontend discovery
+
+Discovery re-reads the frontend Services every `HANGAR_FRONTEND_DISCOVERY_INTERVAL` (30s by
+default). When the API server stops answering, the agent keeps forwarding to the addresses it last
+saw, and `hangar_agent_frontend_discovery_age_seconds` grows. Past
+`HANGAR_FRONTEND_DISCOVERY_STALE_AFTER` (5m by default, `0` turns it off) `/readyz` fails, because
+those addresses no longer follow a redeployed frontend. Two Services claiming the same deployment
+are skipped and logged on their own; every other deployment keeps refreshing.
+
 ## Why it is not part of libs/gateway
 
 Separate module, deliberately. It runs in a cluster we operate but do not deploy from here, on that

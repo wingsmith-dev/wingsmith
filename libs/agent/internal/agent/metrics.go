@@ -2,6 +2,7 @@ package agent
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -101,6 +102,15 @@ func NewMetrics() *Metrics {
 		m.failures.WithLabelValues(reason).Add(0)
 	}
 	return m
+}
+
+// WatchDiscovery publishes how long frontend discovery has gone without an answer from the API
+// server, read from age at every scrape.
+func (m *Metrics) WatchDiscovery(age func() time.Duration) {
+	m.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "hangar_agent_frontend_discovery_age_seconds",
+		Help: "Seconds since frontend discovery last got an answer from the API server. Requests keep going to the addresses last seen while it grows, but those addresses no longer follow a redeployed frontend.",
+	}, func() float64 { return age().Seconds() }))
 }
 
 // Registry exposes the registry so a caller can register its own collectors on it.

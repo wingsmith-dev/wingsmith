@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	dto "github.com/prometheus/client_model/go"
 )
@@ -22,6 +23,19 @@ func TestMetricsTrackReportsAReachedReplicaWithNoTunnelAsZero(t *testing.T) {
 	}
 	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("gateway_up = %v, want 0", got)
+	}
+}
+
+func TestDiscoveryAgeIsReadAtScrape(t *testing.T) {
+	m := NewMetrics()
+	age := time.Minute
+	m.WatchDiscovery(func() time.Duration { return age })
+	if got := gaugeValue(t, m, "hangar_agent_frontend_discovery_age_seconds", nil); got != 60 {
+		t.Errorf("discovery age = %v, want 60", got)
+	}
+	age = 2 * time.Minute
+	if got := gaugeValue(t, m, "hangar_agent_frontend_discovery_age_seconds", nil); got != 120 {
+		t.Errorf("discovery age after a minute more = %v, want 120", got)
 	}
 }
 
