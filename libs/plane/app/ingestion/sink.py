@@ -12,6 +12,7 @@ would acknowledge state that was never written.
 """
 
 import time
+import datetime as dt
 
 from uuid import UUID
 from typing import Any
@@ -188,8 +189,9 @@ class DatabaseSink:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:
         self._sessions = sessions
-        self._stamps: dict[UUID, tuple[float, int]] = {}
-        """Per cluster, when its sync state was last stamped and how many frames have landed since."""
+        self._stamps: dict[UUID, tuple[float, int, dt.datetime | None]] = {}
+        """Per cluster: when its sync state was last stamped, how many frames have landed since,
+        and when the latest of them did."""
         self._epochs: dict[str, dict[str, tuple[str | None, ResyncEpoch]]] = {}
         """Open snapshots, by cluster and then by request, with the session each arrived on.
 
@@ -228,18 +230,31 @@ class DatabaseSink:
     async def _stamp(self, db: AsyncSession, cluster_id: UUID) -> None:
         """Records that a frame landed, writing the sync-state row at most once a `SYNC_STAMP_SECONDS`.
 
-        The frames in between are not lost from the count: the next write bumps
-        `observed_generation` by every one of them. `last_sync_at` lags by at most
-        the interval, which nothing reads at finer grain than seconds.
+        The frames in between are not lost from the count: they are written by the
+        next frame past the interval, or, once frames stop, by the session's next
+        liveness write (`_sync_state`), which comes every `HUB_OWNERSHIP_CHECK_SECONDS`.
+        So `last_sync_at` and `observed_generation` trail the last frame by at most
+        the larger of the two intervals, not until whenever the next frame arrives.
         """
         moment = time.monotonic()
-        last, pending = self._stamps.get(cluster_id, (float("-inf"), 0))
+        last, pending, _ = self._stamps.get(cluster_id, (float("-inf"), 0, None))
         pending += 1
         if moment - last < SYNC_STAMP_SECONDS:
-            self._stamps[cluster_id] = (last, pending)
+            self._stamps[cluster_id] = (last, pending, now())
             return
         await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=pending))
-        self._stamps[cluster_id] = (moment, 0)
+        self._stamps[cluster_id] = (moment, 0, None)
+
+    def _take_unstamped(self, cluster_id: UUID) -> tuple[int, dt.datetime | None]:
+        """Hands over the frames `_stamp` has counted but not written, and when the last one landed."""
+        last, pending, landed = self._stamps.get(cluster_id, (float("-inf"), 0, None))
+        if pending:
+            self._stamps[cluster_id] = (last, 0, None)
+        return pending, landed
+
+    def _restore_unstamped(self, cluster_id: UUID, pending: int, landed: dt.datetime | None) -> None:
+        last, more, later = self._stamps.get(cluster_id, (float("-inf"), 0, None))
+        self._stamps[cluster_id] = (last, pending + more, later or landed)
 
     async def _enter(self, db: AsyncSession, cluster_ref: str, session_id: str | None) -> UUID:
         """Opens a write for one cluster: resolve it, serialise on it, and check the claim.
@@ -833,14 +848,26 @@ class DatabaseSink:
         displaced session is most likely to get wrong, because its last act is to
         report the cluster it no longer serves as gone. Skipped silently rather
         than raised — the session is closing either way.
+
+        Also writes whatever `_stamp` is still holding for the cluster, so the tail of
+        a burst reaches the row within one liveness interval of its last frame.
         """
-        async with self.sessions.begin() as db:
-            cluster_id = await self._cluster_id(db, cluster_uid)
-            if session_id is not None and not await self._holds(db, cluster_id, session_id):
-                logger.info("ingestion.sync_state.fenced cluster=%s session=%s", cluster_uid, session_id)
-                return None
-            await db.execute(statements.upsert_sync_state(cluster_id, values))
-            return await db.scalar(select(Cluster.uid).where(Cluster.id == cluster_id))
+        cluster_id: UUID | None = None
+        pending, landed = 0, None
+        try:
+            async with self.sessions.begin() as db:
+                cluster_id = await self._cluster_id(db, cluster_uid)
+                if session_id is not None and not await self._holds(db, cluster_id, session_id):
+                    logger.info("ingestion.sync_state.fenced cluster=%s session=%s", cluster_uid, session_id)
+                    return None
+                pending, landed = self._take_unstamped(cluster_id)
+                stamped = values if landed is None else {"last_sync_at": landed, **values}
+                await db.execute(statements.upsert_sync_state(cluster_id, stamped, bump=pending))
+                return await db.scalar(select(Cluster.uid).where(Cluster.id == cluster_id))
+        except BaseException:
+            if cluster_id is not None and pending:
+                self._restore_unstamped(cluster_id, pending, landed)
+            raise
 
 
 class DatabaseDesiredSource:

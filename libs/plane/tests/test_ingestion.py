@@ -1018,6 +1018,42 @@ async def test_a_burst_of_frames_restamps_the_sync_row_once() -> None:
     assert sink._stamps[CLUSTER_ID][1] == 4, "the frames since are counted into the next stamp"
 
 
+async def test_the_tail_of_a_burst_is_written_by_the_next_liveness_touch() -> None:
+    """A quiet cluster's next frame can be a resync away; the touch comes every ownership poll."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    for _ in range(5):
+        await sink.apply_observed(observed_frame("node.observed"))
+    sessions.executed.clear()
+
+    await sink.touch(CLUSTER)
+
+    stamps = [s for s in sessions.executed if "supply_cluster_sync_state" in str(s)]
+    assert len(stamps) == 1
+    params = stamps[0].compile().params
+    assert "last_sync_at" in params
+    assert 4 in params.values(), "the four frames held back are counted in"
+    assert sink._stamps[CLUSTER_ID][1] == 0
+
+
+async def test_a_touch_that_fails_keeps_the_frames_it_was_carrying(monkeypatch) -> None:
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    for _ in range(3):
+        await sink.apply_observed(observed_frame("node.observed"))
+
+    async def refuse_the_stamp(self, statement) -> FakeResult:
+        if "supply_cluster_sync_state" in str(statement):
+            raise RuntimeError("write failed")
+        return FakeResult(self.owner.cluster_id)
+
+    monkeypatch.setattr(FakeSession, "execute", refuse_the_stamp)
+    with pytest.raises(RuntimeError):
+        await sink.touch(CLUSTER)
+
+    assert sink._stamps[CLUSTER_ID][1] == 2
+
+
 async def test_a_reply_cannot_reach_another_clusters_snapshot() -> None:
     sink = DatabaseSink(FakeSessions())
     await sink.begin_resync("clu_other", "supply", "req-x")
