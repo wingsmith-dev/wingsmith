@@ -1,8 +1,17 @@
 """The field maps, read against one export per harness.
 
-Each fixture is a run of 100 requests in which 5 failed, shaped the way that harness
-writes its export. The AIPerf one spreads its 5 failures over two error types, which
-is the case that tells a request count from a count of kinds.
+Two kinds of fixture. The `captured` ones are real AIPerf 0.12.0 exports, recorded
+against `fixtures/failing_stub.py` with only the local artifact directory and port
+rewritten: one run of 20 requests in which every fourth failed, and one in which
+nothing did. They pin every AIPerf path this package reads, and the one fact a
+hand-written file can only assume — that `error_request_count` is absent, not zero,
+on a clean run.
+
+The `with-failures` ones are written by hand, one per harness, each a run of 100
+requests in which 5 failed with the same latencies, so a test can ask whether the
+four harnesses read the same run as the same numbers. The AIPerf one spreads its 5
+failures over two error types, which is the case that tells a request count from a
+count of kinds.
 """
 
 from __future__ import annotations
@@ -35,6 +44,29 @@ def test_aiperf_errors_are_failed_requests_not_error_types() -> None:
 
     assert readings[metrics.ERROR_COUNT] == 5.0
     assert readings[metrics.REQUEST_COUNT] == 95.0
+
+
+def test_a_captured_aiperf_export_counts_failed_requests() -> None:
+    summary = _load("aiperf-0.12.0-captured-with-failures.json")
+    assert summary["aiperf_version"] == "0.12.0"
+    assert summary["error_request_count"] == {"unit": "requests", "avg": 5.0}
+
+    readings = metrics.read("aiperf", "0.12.0", summary)
+
+    assert {field_id: r.missing for field_id, r in readings.items() if r.missing} == {}
+    assert readings[metrics.ERROR_COUNT].value == 5.0
+    assert readings[metrics.REQUEST_COUNT].value == 15.0
+
+
+def test_a_captured_clean_aiperf_export_reads_zero_failures() -> None:
+    summary = _load("aiperf-0.12.0-captured-clean.json")
+    assert "error_request_count" not in summary
+
+    readings = metrics.read("aiperf", "0.12.0", summary)
+
+    assert {field_id: r.missing for field_id, r in readings.items() if r.missing} == {}
+    assert readings[metrics.ERROR_COUNT].value == 0.0
+    assert readings[metrics.REQUEST_COUNT].value == 20.0
 
 
 def test_aiperf_omits_the_error_count_when_nothing_failed() -> None:
