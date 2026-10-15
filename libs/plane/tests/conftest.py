@@ -1,12 +1,13 @@
-"""Fixtures shared by the database-backed suites.
+"""Fixtures for the database-backed suites (`-m database`).
 
-The migrated test database and the session factory live here rather than in one test
-module, so a second suite that needs them imports nothing: pytest fixtures crossing
-module boundaries by import shadow their own parameters, and the linter is right to
-complain about it.
+They need `HANGAR_TEST_DATABASE_URL`, a Postgres URL with rights to create databases; `just
+test-db` sets it. Nothing here touches the database that URL names: the schema is migrated once
+into `hangar_test_template`, and each test module gets its own copy, dropped when it finishes.
+Without the variable, or with no server behind it, a database test fails instead of skipping.
 """
 
 import os
+import re
 import uuid
 import subprocess
 
@@ -23,6 +24,7 @@ import psycopg
 
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import URL
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -30,27 +32,59 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 ROOT = Path(__file__).resolve().parents[1]
 
-ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
-TEST_DATABASE = "hangar_ingestion_test"
+DATABASE_URL_VAR = "HANGAR_TEST_DATABASE_URL"
+DATABASE_PREFIX = "hangar_test_"
+TEMPLATE_DATABASE = DATABASE_PREFIX + "template"
 
 CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 
 
-@pytest.fixture(scope="session")
-def database() -> str:
-    """A freshly migrated test database, or a skip when nothing is listening."""
-    admin = make_url(ADMIN_URL)
+def admin_url() -> URL:
+    """The server the database suites run against, from the environment and nowhere else."""
+    raw = os.environ.get(DATABASE_URL_VAR, "").strip()
+    if not raw:
+        pytest.fail(f"database tests need {DATABASE_URL_VAR}; `just test-db` sets it", pytrace=False)
+    return make_url(raw)
+
+
+def admin_connection(admin: URL) -> psycopg.Connection:
     dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
     try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
+        return psycopg.connect(dsn, connect_timeout=3, autocommit=True)
     except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
+        pytest.fail(f"no database at {admin.host}:{admin.port} ({exc})", pytrace=False)
 
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
 
-    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
+def scratch_name(admin: URL, suffix: str) -> str:
+    """A database name this harness owns, so creating and dropping it can never hit a real one."""
+    name = DATABASE_PREFIX + re.sub(r"[^a-z0-9_]", "_", suffix.lower())
+    name = name[:63]
+    if name == admin.database:
+        pytest.fail(f"{DATABASE_URL_VAR} names {name}, which the test suite drops; point it elsewhere", pytrace=False)
+    return name
+
+
+def recreate(admin: URL, name: str, template: str | None = None) -> str:
+    """Drops and creates one scratch database and returns its URL."""
+    assert name.startswith(DATABASE_PREFIX)
+    with admin_connection(admin) as connection:
+        connection.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        source = f' TEMPLATE "{template}"' if template else ""
+        connection.execute(f'CREATE DATABASE "{name}"{source}')
+    return admin.set(database=name).render_as_string(hide_password=False)
+
+
+def drop(admin: URL, name: str) -> None:
+    assert name.startswith(DATABASE_PREFIX)
+    with admin_connection(admin) as connection:
+        connection.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+@pytest.fixture(scope="session")
+def database_template():
+    """The migrated schema every module's database is copied from."""
+    admin = admin_url()
+    url = recreate(admin, scratch_name(admin, "template"))
     subprocess.run(
         ["uv", "run", "alembic", "upgrade", "head"],
         cwd=ROOT,
@@ -58,11 +92,42 @@ def database() -> str:
         capture_output=True,
         env={**os.environ, "HANGAR_DATABASE_URL": url},
     )
-    return url
+    yield admin
+    drop(admin, TEMPLATE_DATABASE)
+
+
+@pytest.fixture(scope="module")
+def database(request, database_template: URL):
+    """A migrated database of this test module's own, including the rows migrations seed."""
+    admin = database_template
+    name = scratch_name(admin, request.module.__name__.rsplit(".", 1)[-1])
+    url = recreate(admin, name, template=TEMPLATE_DATABASE)
+    yield url
+    drop(admin, name)
+
+
+@pytest.fixture
+async def db(database: str):
+    """One session on a database emptied of every row, migration seeds included."""
+    engine = create_async_engine(database, poolclass=NullPool)
+    async with engine.begin() as connection:
+        tables = await connection.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")
+        )
+        names = ", ".join(f'"{row[0]}"' for row in tables)
+        if names:
+            await connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with sessions() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture
 async def sessions(database: str):
+    """A session factory on a database cleared of clusters, operations, events and alerts."""
     engine = create_async_engine(database, poolclass=NullPool)
     async with engine.begin() as connection:
         await connection.execute(text("TRUNCATE supply_cluster RESTART IDENTITY CASCADE"))

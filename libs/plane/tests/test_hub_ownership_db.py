@@ -5,22 +5,14 @@ is one only a real database can show: N concurrent claimants for one `cluster_id
 exactly one winner in the row, never a torn or duplicated one. `test_hub_session.py`
 covers the session-level behaviour (displacement, self-eviction) against
 `MemoryClaimStore`; this file covers the SQL.
-
-Marked `database` and skipped with no reachable server, matching `test_ingestion_db.py`.
 """
 
-import os
 import asyncio
-import subprocess
-
-from pathlib import Path
 
 import pytest
-import psycopg
 
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -31,36 +23,7 @@ from app.hub.ownership import ClusterClaimService
 
 pytestmark = pytest.mark.database
 
-ROOT = Path(__file__).resolve().parents[1]
-
-ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
-TEST_DATABASE = "hangar_ownership_test"
-
 CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
-
-
-@pytest.fixture(scope="session")
-def database() -> str:
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
-
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
-
-    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
-    subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
-    )
-    return url
 
 
 @pytest.fixture

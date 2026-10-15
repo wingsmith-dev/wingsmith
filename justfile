@@ -212,6 +212,7 @@ test-db *args:
     set -euo pipefail
     if [ -z "${HANGAR_TEST_DATABASE_URL:-}" ] && command -v docker >/dev/null 2>&1; then
       docker compose up -d --wait db
+      export HANGAR_TEST_DATABASE_URL=postgresql+psycopg://hangar:hangar@localhost:5442/hangar
     fi
     (cd {{_plane}} && uv run pytest -m database {{args}})
 
@@ -237,6 +238,7 @@ cov *args:
       marker=""
     elif command -v docker >/dev/null 2>&1; then
       docker compose up -d --wait db
+      export HANGAR_TEST_DATABASE_URL=postgresql+psycopg://hangar:hangar@localhost:5442/hangar
       marker=""
     else
       echo "warn: no Postgres — plane coverage omits the database-backed suite (undercount)" >&2

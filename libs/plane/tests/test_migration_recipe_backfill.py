@@ -21,14 +21,16 @@ import psycopg
 from sqlalchemy.engine import make_url
 
 from tests.conftest import ROOT
-from tests.conftest import ADMIN_URL
+from tests.conftest import drop
+from tests.conftest import recreate
+from tests.conftest import admin_url
+from tests.conftest import scratch_name
 
 
 pytestmark = pytest.mark.database
 
 BEFORE = "d8f1a4c96b23"
 AFTER = "a7c31f8e64b2"
-SCRATCH = "hangar_migration_test"
 
 
 def _alembic(url: str, *args: str) -> None:
@@ -42,25 +44,13 @@ def _alembic(url: str, *args: str) -> None:
 
 
 @pytest.fixture
-def scratch() -> str:
-    """A database of its own, because this test drives alembic rather than reading rows.
-
-    It cannot share the suite's database: that one is migrated to head once per
-    session and every other test expects it to stay there.
-    """
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} ({exc})")
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{SCRATCH}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{SCRATCH}"')
-    url = admin.set(database=SCRATCH).render_as_string(hide_password=False)
+def scratch():
+    """A database of its own, because this test drives alembic rather than reading rows."""
+    admin = admin_url()
+    name = scratch_name(admin, "migration")
+    url = recreate(admin, name)
     yield url
-    with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{SCRATCH}" WITH (FORCE)')
+    drop(admin, name)
 
 
 def _seed(cur) -> dict[str, uuid.UUID]:

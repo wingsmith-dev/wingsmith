@@ -8,23 +8,15 @@ short of executing the UPDATE and then reading the schema can see that.
 
 So each module here runs `create → get → list → patch → delete` through its service against a
 migrated database and asserts the returned schema is whole, with `updated_at` and `revision`
-checked after the patch. The suite is marked `database` and deselected by default (`addopts`);
-with no reachable server every test skips rather than fails.
+checked after the patch. The suite is marked `database` and deselected by default (`addopts`).
 """
-
-import os
-import subprocess
-
-from pathlib import Path
 
 import bcrypt
 import pytest
 import msgspec
-import psycopg
 
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -98,59 +90,6 @@ from app.modules.priority_classes.services import PriorityClassService
 
 
 pytestmark = pytest.mark.database
-
-
-ROOT = Path(__file__).resolve().parents[1]
-
-ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
-TEST_DATABASE = "hangar_modules_test"
-
-
-# --------------------------------------------------------------------------- database
-
-
-@pytest.fixture(scope="session")
-def database() -> str:
-    """A freshly migrated test database, or a skip when nothing is listening."""
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
-
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
-
-    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
-    subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
-    )
-    return url
-
-
-@pytest.fixture
-async def db(database: str):
-    """One empty database and one session per test, with the app's own session settings."""
-    engine = create_async_engine(database, poolclass=NullPool)
-    async with engine.begin() as connection:
-        tables = await connection.execute(
-            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")
-        )
-        names = ", ".join(f'"{row[0]}"' for row in tables)
-        if names:
-            await connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with sessions() as session:
-            yield session
-    finally:
-        await engine.dispose()
 
 
 # --------------------------------------------------------------------------- seeds

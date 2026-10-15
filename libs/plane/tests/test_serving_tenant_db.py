@@ -5,20 +5,9 @@ the other half — that inside the one surface it can reach, it sees its own row
 and no others — and that is a property of a query, which no fake session can show.
 """
 
-import os
-import subprocess
-
-from pathlib import Path
-
 import pytest
-import psycopg
 
-from sqlalchemy import text
-from sqlalchemy.pool import NullPool
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.auth import AuthManager
 from app.core.ids import TENANT
@@ -37,52 +26,6 @@ from app.modules.serving.services import ServingService
 
 
 pytestmark = pytest.mark.database
-
-ROOT = Path(__file__).resolve().parents[1]
-ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
-TEST_DATABASE = "hangar_serving_test"
-
-
-@pytest.fixture(scope="session")
-def database() -> str:
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
-
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
-
-    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
-    subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
-    )
-    return url
-
-
-@pytest.fixture
-async def db(database: str):
-    engine = create_async_engine(database, poolclass=NullPool)
-    async with engine.begin() as connection:
-        tables = await connection.execute(
-            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")
-        )
-        names = ", ".join(f'"{row[0]}"' for row in tables)
-        if names:
-            await connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with sessions() as session:
-            yield session
-    finally:
-        await engine.dispose()
 
 
 async def served(db: AsyncSession, slug: str, model: str, enabled: bool = True) -> Tenant:
