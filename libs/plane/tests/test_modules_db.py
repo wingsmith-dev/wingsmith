@@ -639,7 +639,7 @@ async def test_bumping_the_runtime_version_moves_the_derived_image(db: AsyncSess
 async def test_a_hand_pinned_runtime_image_survives_a_version_bump(db: AsyncSession) -> None:
     """The override is the whole reason the field is writable, so re-deriving must not eat it."""
     _, _, _, workload = await a_workload(db)
-    pinned = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    pinned = "registry.example/vllm-runtime:1.4.0-custom"
 
     service = WorkloadService(db)
     await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_image=pinned)))
@@ -938,20 +938,20 @@ async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) ->
     """
     cluster, project, artifact = await an_environment(db)
     service = WorkloadService(db)
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    pinned = "registry.example/vllm-runtime:1.4.0-frontend.1"
     created = await service.create(
         WorkloadCreateRequest(
             cluster=cluster.id,
-            serving=a_serving(artifact.id, engine_runtime_version="1.4.0-patched.1", frontend_image=pinned),
-            name="kimi-k3-mxfp4-tp8-1024k",
+            serving=a_serving(artifact.id, engine_runtime_version="1.4.0", frontend_image=pinned),
+            name="model-tp8",
             project=project.id,
         )
     )
     assert created.serving.frontend_image == pinned
-    assert created.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    assert created.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0"
     assert (await service.get(created.id)).serving.frontend_image == pinned
 
-    later = "ghcr.io/hangar-dev/vllm-runtime:1.4.1-patched.1-hgr3"
+    later = "registry.example/vllm-runtime:1.4.1-frontend.2"
     patched = await service.update(
         created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=later))
     )
@@ -972,13 +972,11 @@ async def test_bumping_the_runtime_version_moves_the_worker_and_leaves_the_front
     `update` re-derives `engine_runtime_image` from the new version whenever the stored one is
     the plane's own derivation, which is what makes a version bump reach the cluster.
     `frontend_image` has no derivation to re-run and must be left exactly where it is:
-    a frontend pinned because it is the only build that tokenizes this model is pinned
-    against the engine moving, not with it. Re-deriving it, or clearing it on the way
-    past, would put Kimi K3 back on the frontend that answered `/v1/models` empty — and
-    the engine-image tests above cannot see that, because they never set the field.
+    a frontend pinned because it is the only build that serves this model stays pinned
+    when the engine moves.
     """
     _, _, _, workload = await a_workload(db)
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    pinned = "registry.example/vllm-runtime:1.4.0-frontend.1"
 
     service = WorkloadService(db)
     await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=pinned)))
@@ -1011,7 +1009,7 @@ async def test_the_frontend_image_reaches_the_cluster_on_the_desired_stream(db: 
     there is no second frame to keep in step with it.
     """
     cluster, _, _, deployment = await a_deployment(db)
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    pinned = "registry.example/vllm-runtime:1.4.0-frontend.1"
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
     payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
