@@ -48,10 +48,13 @@ jobs:
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::$TAG points at a commit that is not on main"; exit 1
           fi
-          chart="$(yq -r .version libs/chart/cluster-setup/Chart.yaml)"
-          if [ "$chart" != "$version" ]; then
-            echo "::error::libs/chart/cluster-setup/Chart.yaml has version $chart; bump it to $version before tagging $TAG"; exit 1
-          fi
+          # appVersion is the image tag the chart defaults to, and only $version is published.
+          for key in version appVersion; do
+            chart="$(yq -r ".$key" libs/chart/cluster-setup/Chart.yaml)"
+            if [ "$chart" != "$version" ]; then
+              echo "::error::libs/chart/cluster-setup/Chart.yaml has $key $chart; set it to $version before tagging $TAG"; exit 1
+            fi
+          done
           echo "version=$version" >>"$GITHUB_OUTPUT"
           echo "owner=${OWNER,,}" >>"$GITHUB_OUTPUT"
 
@@ -149,11 +152,10 @@ jobs:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.3
+      # Adds the dependencies' repositories, builds them in and packages, from a clean checkout so
+      # nothing the working tree ignores can reach the archive.
       - name: package
-        run: |
-          helm dependency build libs/chart/cluster-setup
-          # appVersion is the image tag the chart defaults to, so it is the version just pushed.
-          helm package libs/chart/cluster-setup --app-version "$VERSION" -d "$RUNNER_TEMP/chart"
+        run: scripts/chart-package.sh "$VERSION" "$RUNNER_TEMP/chart"
       - name: push and sign
         env:
           GH_ACTOR: ${{ github.actor }}

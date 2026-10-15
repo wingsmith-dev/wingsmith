@@ -227,13 +227,25 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      # The release binary, checked against its published digest. Building it needs a newer Go
+      # than the one the modules here are tested with.
+      - name: install kubeconform
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kubeconform.tar.gz" \
+            "https://github.com/yannh/kubeconform/releases/download/$KUBECONFORM_VERSION/kubeconform-linux-amd64.tar.gz"
+          echo "$KUBECONFORM_SHA256  $RUNNER_TEMP/kubeconform.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/kubeconform.tar.gz" -C "$RUNNER_TEMP/bin" kubeconform
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
       - run: just chart-lint
       - run: scripts/chart-kubeconform.sh
+      # What release.yml publishes, built here so a broken dependency or a stale appVersion fails
+      # the pull request and not the tag.
+      - name: package as a release would
+        run: scripts/chart-package.sh "$(yq -r .version libs/chart/cluster-setup/Chart.yaml)" "$RUNNER_TEMP/chart"
 
   generated:
     name: generated code
