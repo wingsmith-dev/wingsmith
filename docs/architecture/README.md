@@ -546,8 +546,9 @@ reads.
 
 Merging them gives one object that is globally unique but reconciled by N clusters at once, which is
 two writers on one record. The lifetimes also differ by orders of magnitude: an Endpoint is a contract
-whose name clients depend on, and a Deployment is disposable, recreated on every serving
-configuration edit, engine upgrade or cluster drain. And the indirection exists either way, because
+whose name clients depend on, and a Deployment lives only as long as its workload is placed on that
+cluster: a serving configuration edit or engine upgrade updates it in place (its generation goes up),
+and a drain or re-placement deletes it. And the indirection exists either way, because
 the gateway needs "public name to weighted upstreams" regardless; split, it is a first-class object
 that can be versioned, audited and exposed.
 
