@@ -44,7 +44,7 @@ The full design, with the reasoning behind each choice, is in
 | [`libs/console`](libs/console/README.md) | TypeScript | The web console (React, TanStack Router). Talks to the plane's HTTP API only. Runs against built-in fixtures with no backend. |
 | [`libs/cli`](libs/cli/README.md) | Go | `hgr`, the command line. Same API as the console, with stable JSON output and an offline `--fake` backend. |
 | [`libs/chart`](libs/chart/cluster-setup/README.md) | Helm | `cluster-setup`, everything a cluster installs to be managed by Hangar: the operator, the agent, CRDs, the DCGM exporter, and optional monitoring. |
-| [`libs/packages/contract`](libs/packages/contract/README.md) | Markdown, JSON | The plane-operator wire protocol, the HTTP API spec, the device-class table, and the fixture corpus both sides test against. |
+| [`libs/packages/contract`](libs/packages/contract/README.md) | Markdown, JSON | The plane-operator wire protocol, the HTTP API's conventions with its generated [route reference](libs/packages/contract/REFERENCE.md) and [OpenAPI schema](libs/packages/contract/openapi.json), the device-class table, and the fixture corpus both sides test against. |
 | [`libs/packages/tunnel`](libs/packages/tunnel) | Go | Both ends of the gateway-agent tunnel. Its own module because neither side owns it. |
 | [`hangar-runtime`](hangar-runtime/README.md) | Python, Docker | Patches and image layers carried on top of vendor inference images, each with the condition under which it is deleted. |
 | [`libs/benchmarking`](libs/benchmarking/README.md) | Python | `hgrbench`. Runs four load generators against an OpenAI-compatible endpoint and reports them side by side. |
