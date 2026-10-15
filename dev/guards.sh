@@ -3,6 +3,7 @@
 # with a reason on stderr when the thing it guards is unsafe, and is silent otherwise.
 #
 #   guards.sh clean-tree [--ignored] [path...]   no uncommitted, untracked (or ignored) files
+#   guards.sh head-context <path>                 HEAD's tree at <path> as a tar, for docker build -
 #   guards.sh e2e-context                         print the kube context e2e may use, or refuse
 #   guards.sh image-unpublished <ref>             refuse if the image tag already exists
 #   guards.sh chart-unpublished <ref> <version>   refuse if the chart version already exists
@@ -30,6 +31,15 @@ case "${1:-}" in
       echo "$dirty" >&2
       die "the tree is not clean${*:+ under $*}; commit, stash or remove the files above first"
     fi
+    ;;
+
+  head-context)
+    # A release image is built from the commit its tag names, not from the directory: a file git
+    # ignores (a local values file, a key, a kubeconfig) sits on disk beside the source, and a
+    # docker context of the directory would carry it into the image.
+    path="${2:?usage: guards.sh head-context <path>}"
+    [ "$(git cat-file -t "HEAD:${path}" 2>/dev/null)" = tree ] || die "$path is not a directory in HEAD"
+    git archive --format=tar "HEAD:${path}"
     ;;
 
   e2e-context)
@@ -67,7 +77,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: guards.sh clean-tree [--ignored] [path...] | e2e-context | image-unpublished <ref> | chart-unpublished <ref> <version>" >&2
+    echo "usage: guards.sh clean-tree [--ignored] [path...] | head-context <path> | e2e-context | image-unpublished <ref> | chart-unpublished <ref> <version>" >&2
     exit 2
     ;;
 esac

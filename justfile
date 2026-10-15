@@ -620,14 +620,18 @@ chart-push tag="":
 
 # ── Images ────────────────────────────────────────────────────────────────────
 
-# The tag every image agrees on by default: the commit being built. Only a clean tree is built,
-# so the tag names exactly the source that went into the image.
+# The tag every image agrees on by default: the commit being built. The image is built from that
+# commit's tree, so the tag names exactly the source that went into it.
 _release-tag:
     @git rev-parse --short=7 HEAD
 
 # `dockerfile` is relative to `context`, which is not always the module's own directory: the
 # gateway and the agent share `libs/packages/tunnel` through a `replace`, so both build from
 # `libs/`, and a narrower context fails at `go mod download`.
+#
+# The context is HEAD's tree at `context`, piped in from `git archive`, never the directory itself:
+# whatever git ignores there (local values, keys, a kubeconfig) stays out of the image. A dirty
+# tree is still refused, because its edits would silently not be in what gets built.
 #
 # There is no `latest`. A tag is pushed once and never moved; a new build is a new tag.
 # Build a component image from a clean tree  [plane|operator|gateway|agent|evalscope] [tag]
@@ -650,10 +654,10 @@ build target tag="":
       exit 1
     fi
     base="{{registry}}/{{target}}"
-    echo "building ${base}:${tag} ({{platform}}) from ${context}"
-    docker build --platform {{platform}} \
+    echo "building ${base}:${tag} ({{platform}}) from ${context} at $(git rev-parse --short=7 HEAD)"
+    {{_guards}} head-context "${context}" | docker build --platform {{platform}} \
       --build-arg VERSION="${tag}" \
-      -f "${context}/${dockerfile}" -t "${base}:${tag}" "${context}"
+      -f "${dockerfile}" -t "${base}:${tag}" -
 
 # Build a component image from a clean tree and push it under a tag the registry does not have yet  [target] [tag]
 push target tag="":

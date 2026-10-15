@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import os
+import tarfile
 import subprocess
 
 from pathlib import Path
@@ -79,6 +81,32 @@ def test_clean_tree_is_scoped_to_the_paths_given(repo: Path) -> None:
     (repo / "elsewhere.txt").write_text("x\n")
     assert run("clean-tree", "chart", cwd=repo).returncode == 0
     assert run("clean-tree", cwd=repo).returncode == 1
+
+
+def head_context(repo: Path, path: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(["bash", str(GUARDS), "head-context", path], cwd=repo, capture_output=True, check=False)
+
+
+def test_head_context_is_the_committed_tree_and_nothing_on_disk_beside_it(repo: Path) -> None:
+    (repo / "chart" / "values.prod.local.yaml").write_text("token: x\n")
+    (repo / "chart" / "untracked.yaml").write_text("b: 1\n")
+    (repo / "chart" / "values.yaml").write_text("a: edited\n")
+    done = head_context(repo, "chart")
+    assert done.returncode == 0, done.stderr
+    with tarfile.open(fileobj=io.BytesIO(done.stdout)) as tar:
+        assert sorted(m.name for m in tar.getmembers() if m.isfile()) == ["values.yaml"]
+        member = tar.extractfile("values.yaml")
+        assert member is not None
+        assert member.read() == b"a: 1\n"
+
+
+def test_head_context_refuses_a_path_not_in_head(repo: Path) -> None:
+    (repo / "fresh").mkdir()
+    (repo / "fresh" / "Dockerfile").write_text("FROM scratch\n")
+    done = head_context(repo, "fresh")
+    assert done.returncode == 1
+    assert b"not a directory in HEAD" in done.stderr
+    assert done.stdout == b""
 
 
 KUBECTL = """
