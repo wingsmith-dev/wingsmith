@@ -346,10 +346,25 @@ def test_the_api_binds_loopback_in_local_unless_told_otherwise():
 
 
 def test_settings_read_only_prefixed_names():
-    loaded = load({"DATABASE_URL": "postgresql+psycopg://elsewhere/db", "APP_ENV": "production"})
+    loaded = load({"DATABASE_URL": "postgresql+psycopg://elsewhere/db", "APP_ENV": "local"})
     assert loaded.DATABASE_URL == Settings().DATABASE_URL
-    assert loaded.APP_ENV == "local"
-    assert load({"HANGAR_APP_ENV": "production"}).APP_ENV == "production"
+    assert loaded.APP_ENV == "production"
+    assert load({"HANGAR_APP_ENV": "local"}).APP_ENV == "local"
+
+
+def test_an_unconfigured_plane_is_production_and_refuses_to_boot():
+    """Started with no environment at all, the plane fails closed rather than opening as admin."""
+    loaded = load({})
+    assert loaded.APP_ENV == "production"
+    assert resolved_admin_auth(loaded) == "enabled"
+    with pytest.raises(RuntimeError, match="HANGAR_APP_ENV=local"):
+        validate(loaded)
+
+
+def test_a_bare_app_env_cannot_switch_auth_off():
+    """A leftover `APP_ENV=local` in a shell or a container is ignored, so it cannot open the API."""
+    loaded = load({"APP_ENV": "local", "ADMIN_AUTH": "disabled"})
+    assert resolved_admin_auth(loaded) == "enabled"
 
 
 def test_validate_is_frictionless_in_local_with_nothing_configured():

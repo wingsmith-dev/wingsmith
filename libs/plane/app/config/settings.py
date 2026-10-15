@@ -22,7 +22,15 @@ class Settings:
     unrelated is never picked up.
     """
 
-    APP_ENV: str = "local"
+    APP_ENV: str = "production"
+    """`local` on a developer's machine, anything else for a deployment.
+
+    Defaults to `production`, so a plane started without saying otherwise fails
+    closed: admin auth on, and no boot without `SESSION_SIGNING_SECRET` and
+    `ADMIN_PASSWORD_HASH`. `local` is opt-in (`HANGAR_APP_ENV=local`, which the
+    compose stack sets); it is what lets admin auth be off and the secrets be
+    unset."""
+
     APP_DEBUG: bool = False
     APP_LOG_LEVEL: str = "INFO"
     APP_LOG_FORMAT: str = "console"
@@ -421,12 +429,13 @@ def validate(s: "Settings") -> None:
     if s.APP_ENV == "local":
         return
 
+    hint = f"(APP_ENV is {s.APP_ENV!r}; a development checkout sets HANGAR_APP_ENV=local)"
     if s.ADMIN_AUTH == "disabled":
-        raise RuntimeError("ADMIN_AUTH=disabled is allowed only when APP_ENV is 'local'")
+        raise RuntimeError(f"ADMIN_AUTH=disabled is allowed only when APP_ENV is 'local' {hint}")
     if not s.SESSION_SIGNING_SECRET:
-        raise RuntimeError("SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local'")
+        raise RuntimeError(f"SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local' {hint}")
     if not s.ADMIN_PASSWORD_HASH:
-        raise RuntimeError("ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local'")
+        raise RuntimeError(f"ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local' {hint}")
 
 
 def load(env: dict[str, str] | None = None) -> Settings:

@@ -10,6 +10,12 @@ import os
 import uuid
 import subprocess
 
+
+# The plane defaults to `production`, which refuses to boot without its secrets. The suite is a
+# developer's checkout, and tests that need `production` behaviour patch it in themselves. Set before
+# anything imports `app.config`, which reads the environment once.
+os.environ.setdefault("HANGAR_APP_ENV", "local")
+
 from pathlib import Path
 
 import pytest

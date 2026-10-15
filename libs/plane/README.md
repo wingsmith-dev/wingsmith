@@ -47,10 +47,12 @@ issue some reads straight from their services.
 
 ## Running
 
-Both processes read the same environment and the same database.
+Both processes read the same environment and the same database. `APP_ENV` defaults to
+`production`, which will not boot without its secrets, so a checkout says it is local:
 
 ```bash
 uv sync
+export HANGAR_APP_ENV=local
 uv run python -m app.api            # HTTP API on :8000
 uv run python -m app.api --reload   # with autoreload
 uv run python -m app.hub            # operator hub on :8001
@@ -88,7 +90,7 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 
 | Variable | Default |
 |---|---|
-| `APP_ENV` | `local` (the image bakes `production`) |
+| `APP_ENV` | `production` — `local` is opt-in, and compose sets it |
 | `APP_DEBUG` | `false` |
 | `APP_LOG_LEVEL` / `APP_LOG_FORMAT` | `INFO` / `console` (`json` in production) |
 | `API_HOST` / `API_PORT` | unset — `127.0.0.1` when `APP_ENV=local`, `0.0.0.0` otherwise / `8000` |
@@ -159,7 +161,8 @@ or every caller shares the proxy's budget.
 own nor in `ALLOWED_ORIGINS` is `403`, and a request body that is not JSON is `415`. Every response
 carries `frame-ancestors 'none'` and `X-Frame-Options: DENY`, so no other site can frame the console.
 
-**Local mode.** Under `APP_ENV=local`, `ADMIN_AUTH` defaults to `disabled`: a request with no
+**Local mode.** `APP_ENV` defaults to `production`, so a plane started with no environment fails
+closed. Under `APP_ENV=local`, which has to be asked for, `ADMIN_AUTH` defaults to `disabled`: a request with no
 credential resolves to the admin principal, the API binds `127.0.0.1`, and the process logs a
 warning at startup. Outside `local` the plane refuses to boot with `ADMIN_AUTH=disabled`, without
 `SESSION_SIGNING_SECRET`, or without `ADMIN_PASSWORD_HASH`. Keep the admin API off the public
