@@ -174,8 +174,6 @@ CREATES = {
     "/v1/alert-thresholds",
     "/v1/artifacts",
     "/v1/artifacts/{ref:str}/baselines",
-    "/v1/auth/login",
-    "/v1/auth/refresh",
     "/v1/benchmarks",
     "/v1/benchmarks/requests",
     "/v1/clusters",

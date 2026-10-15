@@ -110,7 +110,7 @@ class AuthRoutes(Controller):
     tags = ["Main"]
     dependencies = {"svc": Provide(auth_svc_generator)}
 
-    @post("/login")
+    @post("/login", status_code=status_codes.HTTP_200_OK)
     async def login(self, request: Request, data: LoginRequest, svc: AuthService) -> LoginResponse:
         """One form, two credentials, told apart by the slug the caller names.
 
@@ -160,7 +160,7 @@ class AuthRoutes(Controller):
             expires_in=settings.SESSION_TTL_SECONDS,
         )
 
-    @post("/refresh")
+    @post("/refresh", status_code=status_codes.HTTP_200_OK)
     async def refresh(self, data: RefreshRequest, svc: AuthService) -> RefreshResponse:
         result = await svc.rotate_refresh_token(data.refresh_token)
         if result is None:
