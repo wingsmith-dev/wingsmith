@@ -2,7 +2,7 @@
 
 `GET` list and `GET` one. There is no `POST /v1/devices` — a device is
 discovered, not created, and writing to it is a category error rather than a
-validation failure. Device reset goes through `POST /v1/operations`.
+validation failure. No operation acts on a single device yet.
 
 The `class` filter is spelled `class` on the wire and `device_class` in Python,
 because the wire name is the object model's and the Python name has to avoid the
