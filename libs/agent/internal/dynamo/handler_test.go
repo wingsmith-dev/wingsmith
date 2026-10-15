@@ -500,3 +500,47 @@ func TestAFrontendThatSaysNothingIsStillGivenUpOn(t *testing.T) {
 		t.Errorf("took %s to give up on a 200ms bound", elapsed)
 	}
 }
+
+// A failure in the cluster is the server's, and its error type has to say so: a client that
+// branches on invalid_request_error does not retry, and a frontend outage is worth retrying.
+func TestAServerFailureIsTypedAsOne(t *testing.T) {
+	for _, tc := range []struct {
+		target Target
+		status int
+	}{
+		{fixedTarget{err: ErrNoFrontend}, http.StatusServiceUnavailable},
+		{fixedTarget{err: errors.New("broken")}, http.StatusInternalServerError},
+	} {
+		recorder := httptest.NewRecorder()
+		NewHandler(tc.target, 0).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		if recorder.Code != tc.status {
+			t.Fatalf("status = %d, want %d", recorder.Code, tc.status)
+		}
+		var envelope errorEnvelope
+		if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope.Error.Type != "server_error" {
+			t.Errorf("a %d is typed %q, want server_error", tc.status, envelope.Error.Type)
+		}
+	}
+}
+
+// The gateway puts the caller's address in X-Forwarded-For. On a tunnel the peer address is the
+// gateway's, so replacing the header with it would lose the caller.
+func TestForwardedForIsAppendedTo(t *testing.T) {
+	seen := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Header.Get("X-Forwarded-For")
+	}))
+	defer upstream.Close()
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{}`))
+	request.Header.Set("X-Forwarded-For", "203.0.113.7")
+	NewHandler(targetFor(t, upstream), 0).ServeHTTP(httptest.NewRecorder(), request)
+
+	got := <-seen
+	if !strings.HasPrefix(got, "203.0.113.7, ") {
+		t.Errorf("X-Forwarded-For = %q, want the caller's address kept first", got)
+	}
+}

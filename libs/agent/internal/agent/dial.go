@@ -174,8 +174,13 @@ func (d *Dialler) secure(ctx context.Context, target string, raw net.Conn) (net.
 		cfg = cfg.Clone()
 		cfg.ServerName = host
 	}
+	// Bounded by DialTimeout like the connect. ctx is the supervisor's and lives as long as the
+	// process, so a gateway that accepts TCP and never answers the TLS hello would otherwise hold
+	// this worker forever.
+	handshakeCtx, cancel := context.WithTimeout(ctx, d.dialer.Timeout)
+	defer cancel()
 	conn := tls.Client(raw, cfg)
-	if err := conn.HandshakeContext(ctx); err != nil {
+	if err := conn.HandshakeContext(handshakeCtx); err != nil {
 		return nil, fmt.Errorf("agent: TLS handshake with %s: %w", target, err)
 	}
 	return conn, nil

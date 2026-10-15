@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -54,6 +55,7 @@ type targetKey struct{}
 const (
 	idleConnsPerHost = 64
 	idleTimeout      = 90 * time.Second
+	dialTimeout      = 10 * time.Second
 )
 
 // NewHandler builds the agent's local proxy.
@@ -158,6 +160,10 @@ func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
 			}
 			r.SetURL(upstream)
 			r.Out.Host = upstream.Host
+			// Appended to, not replaced: the gateway already put the caller's
+			// address in X-Forwarded-For, and the peer address on a tunnel is
+			// only the gateway's.
+			r.Out.Header["X-Forwarded-For"] = r.In.Header["X-Forwarded-For"]
 			r.SetXForwarded()
 		},
 		// Flush every write. Completions with "stream": true are SSE, and the
@@ -166,6 +172,9 @@ func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
 		// The tunnel on the other side of this handler cannot un-buffer it.
 		FlushInterval: -1,
 		Transport: &http.Transport{
+			// The frontend is a ClusterIP in this cluster; a connect that takes
+			// longer than this is a Service with no ready endpoints.
+			DialContext:           (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext,
 			MaxIdleConnsPerHost:   idleConnsPerHost,
 			IdleConnTimeout:       idleTimeout,
 			ResponseHeaderTimeout: headerTimeout,
@@ -198,10 +207,17 @@ type errorBody struct {
 	Code    string `json:"code"`
 }
 
+// writeError answers with the OpenAI error shape. A 5xx is the server's fault
+// and says so in its type: a client that branches on invalid_request_error
+// would otherwise treat a cluster outage as a malformed request and not retry.
 func writeError(w http.ResponseWriter, status int, code, message string) {
+	kind := "invalid_request_error"
+	if status >= http.StatusInternalServerError {
+		kind = "server_error"
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(errorEnvelope{
-		Error: errorBody{Message: message, Type: "invalid_request_error", Code: code},
+		Error: errorBody{Message: message, Type: kind, Code: code},
 	})
 }

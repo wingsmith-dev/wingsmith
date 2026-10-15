@@ -310,3 +310,44 @@ func TestADialToACoveredReplicaReturnsItsPeer(t *testing.T) {
 		t.Errorf("hello carried covered = %v", got)
 	}
 }
+
+// A gateway that accepts TCP and then says nothing must not hold a dial forever: the TLS handshake
+// is bounded by the dial timeout, not by the process lifetime.
+func TestATLSHandshakeThatNeverAnswersTimesOut(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+		}
+	}()
+
+	cfg := dialConfig(ln.Addr().String())
+	cfg.TLSEnabled = true
+	cfg.DialTimeout = 200 * time.Millisecond
+	dialler, err := NewDialler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := dialler.Dial(context.Background(), ln.Addr().String(), nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a dial to a gateway that never answered TLS succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the TLS handshake was not bounded by the dial timeout")
+	}
+}
