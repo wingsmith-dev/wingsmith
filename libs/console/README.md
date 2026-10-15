@@ -12,11 +12,11 @@ pnpm install
 pnpm dev            # dev server on :5273 (route tree regenerated on change)
 pnpm build          # production build, then type-check
 pnpm typecheck
-pnpm lint           # ESLint
+pnpm lint           # ESLint, then knip for dead files, dependencies and exports
 pnpm format         # Prettier (format:check to verify)
-pnpm test           # Vitest, once
+pnpm test           # Vitest, once, with coverage; fails below the floor in vitest.config.ts
 pnpm test:watch
-pnpm test:coverage  # fails below the floor in vitest.config.ts
+pnpm test:coverage  # the same run
 ```
 
 From the repo root, `just setup` installs everything and `just dev` runs the plane in compose

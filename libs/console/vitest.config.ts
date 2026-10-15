@@ -30,13 +30,13 @@ export default defineConfig({
         "src/main.tsx",
         "src/components/ui/**",
       ],
-      // A floor, not a target: `test:coverage` fails if a change drops below it.
-      // Raise it when coverage rises.
+      // A floor, not a target: `pnpm test` (what CI runs) collects coverage and
+      // fails if a change drops below it. Raise it when coverage rises.
       thresholds: {
-        lines: 38,
-        statements: 38,
-        functions: 36,
-        branches: 75,
+        lines: 40,
+        statements: 40,
+        functions: 38,
+        branches: 78,
       },
     },
   },
