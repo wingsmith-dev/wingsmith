@@ -85,40 +85,16 @@ type Config struct {
 	BackoffMin time.Duration
 	BackoffMax time.Duration
 
-	// ReadOnly runs the operator as an observer: it reports what the cluster has, and declines
-	// every path that would write to it.
-	//
-	// This is how a cluster is first pointed at a plane. Without it, nothing writes either —
-	// but only because no deployment has been declared yet, which is safety by emptiness and
-	// lasts exactly until someone declares one. The two write paths are the reconciler, which
-	// renders declared state into Kubernetes objects, and the operations executor, which
-	// cordons, drains and benchmarks; both are refused here unless AllowedOperations names one.
-	//
-	// Declared state still arrives and is still stored in its CRDs. The local copy is inert
-	// without the controller that reads it, and keeping it means turning this off later starts
-	// from a complete view rather than waiting for the next resync.
+	// ReadOnly runs the operator as an observer: it reports what the cluster has and refuses
+	// every write, both the reconciler and every operation kind. This is how a cluster is first
+	// pointed at a plane. Declared state still arrives and is stored in its CRDs, so turning this
+	// off later starts from a complete view.
 	ReadOnly bool
 
-	// AllowedOperations are the operation kinds a read-only operator will still perform.
-	//
-	// It exists because "read-only" was one word for two different guarantees, and a cluster
-	// turned out to want them separately: the plane may not *own* what runs here — no
-	// reconciler, nothing converged, nothing taken over — and may still be asked for specific,
-	// bounded things. Benchmarking is the case that forced the split. It writes to the cluster,
-	// so refusing it under a blanket read-only was right, but the alternative was turning on
-	// reconciliation to get it, which is a far larger decision than "measure this".
-	//
-	// An allowlist and not a second boolean, because the kinds are not interchangeable. A
-	// benchmark is additive, self-limiting and disposable; a drain on a cluster this plane does
-	// not manage is destructive and hard to undo. A boolean would have repeated exactly the
-	// mistake ReadOnly made, one level down.
-	//
-	// Empty is the default and preserves the old behaviour precisely: a read-only operator that
-	// refuses everything. Widening is opt-in per kind and per cluster, which is what keeps this
-	// from quietly granting an existing cluster more than it had.
-	//
-	// Ignored when ReadOnly is false — an operator that is not read-only performs every kind it
-	// implements, and a second gate there would be a second meaning again.
+	// AllowedOperations are the operation kinds (cordon, drain, benchmark) a writing operator
+	// performs. Empty, the default, means none. Each kind is opt-in per cluster because they
+	// differ in blast radius: a benchmark runs an allowlisted harness image, a drain evicts
+	// serving pods. Ignored when ReadOnly is set.
 	AllowedOperations []string
 
 	// LeaderElection enables controller-runtime leader election.

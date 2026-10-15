@@ -39,7 +39,7 @@ func drainClient(refuse interceptor.Funcs, objects ...client.Object) client.Clie
 func runDrain(t *testing.T, c client.Client, op wire.OperationDesired) *recorder {
 	t.Helper()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default()})
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), Allowed: allKinds})
 	e.Bind(rec)
 
 	payload, err := json.Marshal(op)

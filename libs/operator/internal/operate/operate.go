@@ -71,12 +71,11 @@ type Executor struct {
 	ClusterID string
 	Log       *slog.Logger
 
-	// ReadOnly refuses every operation instead of performing it, except the kinds Allowed
-	// names. See config.Config.ReadOnly and config.Config.AllowedOperations.
+	// ReadOnly refuses every operation. See config.Config.ReadOnly.
 	ReadOnly bool
 
-	// Allowed are the operation kinds a read-only operator will still perform. Empty means
-	// none, which is what read-only meant before the two were separable.
+	// Allowed are the operation kinds this operator performs when it is not read-only. Empty
+	// means none: every kind is opt-in per cluster. See config.Config.AllowedOperations.
 	Allowed []string
 
 	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
@@ -433,17 +432,18 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 // pending until it timed out, and a timeout says the cluster was slow when what happened is that
 // it was asked for something it cannot do.
 //
-// A read-only operator refuses here rather than at the handler, so that a refusal travels the same
-// route as any other failure: an `operation.observed` that says why. Dropping the frame would be
-// the silence this function exists to avoid, and the plane would read a cluster that declines to
-// act as one that never answered.
+// A refused kind is refused here rather than at the handler, so that the refusal travels the same
+// route as any other failure: an `operation.observed` that says why.
 func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
-	if e.ReadOnly && !e.permits(op.Kind) {
+	if e.ReadOnly {
+		return nil, fmt.Errorf("this operator is read-only and performs no operations, so not %q", op.Kind)
+	}
+	if !e.permits(op.Kind) {
 		if len(e.Allowed) == 0 {
-			return nil, fmt.Errorf("this operator is read-only and will not perform %q", op.Kind)
+			return nil, fmt.Errorf("this operator allows no operations (HANGAR_ALLOWED_OPERATIONS is empty), so not %q", op.Kind)
 		}
 		return nil, fmt.Errorf(
-			"this operator is read-only and performs only %s, not %q",
+			"this operator performs only %s, not %q",
 			strings.Join(e.Allowed, ", "), op.Kind,
 		)
 	}
@@ -459,12 +459,7 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 	}
 }
 
-// permits reports whether a read-only operator will still perform this kind.
-//
-// The refusal it guards is deliberately a failure and not silence: an operation the cluster
-// declines still travels back as an `operation.observed` saying why, because a plane that reads a
-// refusal as a timeout learns the cluster was slow rather than that it was asked for something it
-// is not configured to do.
+// permits reports whether this operator is configured to perform this kind.
 func (e *Executor) permits(kind string) bool {
 	for _, allowed := range e.Allowed {
 		if allowed == kind {

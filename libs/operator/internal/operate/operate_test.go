@@ -26,6 +26,9 @@ import (
 
 const testCluster = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 
+// allKinds is the allowlist of an operator configured to perform everything it implements.
+var allKinds = []string{KindCordon, KindDrain, KindBenchmark}
+
 // recorder collects what the executor reported instead of sending it.
 type recorder struct {
 	mu     sync.Mutex
@@ -107,7 +110,7 @@ func runOperationOn(t *testing.T, readOnly bool, op wire.OperationDesired, objec
 	}
 	c := builder.Build()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), ReadOnly: readOnly})
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), ReadOnly: readOnly, Allowed: allKinds})
 	e.Bind(rec)
 
 	payload, err := json.Marshal(op)
@@ -361,6 +364,7 @@ func laneExecutor(t *testing.T, probe *laneProbe, depth int, objects ...client.O
 	e := New(&Executor{
 		Client:         c,
 		ClusterID:      testCluster,
+		Allowed:        allKinds,
 		Log:            discardLogger(),
 		Render:         render.Options{Namespace: benchNS},
 		Benchmark:      render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000"},
