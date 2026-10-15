@@ -1,12 +1,14 @@
-# The enrolment token is a credential and does not ship here. Auth is stubbed: a static bearer
-# token, no rotation — an open question. Before applying this bundle, create it out of
-# band, e.g.:
+# A development bundle for a local cluster talking to a plane on the host. Production clusters
+# install the operator with the cluster-setup chart instead.
+#
+# The enrolment token is a credential and does not ship here. Issue one for this cluster from the
+# plane, then create the Secret before applying this bundle:
 #
 #   kubectl create secret generic hangar-operator -n hangar-system \
-#     --from-literal=enrolment-token=<real-token>
+#     --from-literal=enrolment-token=<token>
 #
-# 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod
-# fails to start rather than silently dialling the hub with a placeholder credential.
+# 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod fails
+# to start rather than dialling the hub with no credential.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,7 +16,11 @@ metadata:
   namespace: hangar-system
 data:
   HANGAR_CLUSTER_ID: dev-cluster
-  HANGAR_HUB_URL: ws://host.docker.internal:8080/v1/hub/sync
+  # The plane's hub listens on 8001 (`just dev-up`). Plaintext ws:// carries the enrolment token
+  # unencrypted, so the operator refuses it unless HANGAR_HUB_ALLOW_INSECURE is set; use wss://
+  # anywhere but a local loop.
+  HANGAR_HUB_URL: ws://host.docker.internal:8001/v1/hub/sync
+  HANGAR_HUB_ALLOW_INSECURE: "true"
   HANGAR_LOG_LEVEL: info
   HANGAR_LOG_FORMAT: json
   HANGAR_NAMESPACE: hangar-system
@@ -22,56 +28,27 @@ data:
   HANGAR_LIVENESS_TIMEOUT: 30s
   HANGAR_SEND_QUEUE_SIZE: "1024"
   HANGAR_LEADER_ELECTION: "true"
-  # Observe and report, write nothing. This is what a cluster is pointed at a plane with the
-  # first time: the reconciler is never registered and every operation is refused, so the only
-  # traffic is outbound. The RBAC in rbac/role.yaml is deliberately unchanged — this is a
-  # behavioural switch, not a permission one, and narrowing the role would mean two bundles to
-  # keep in step. Set to "false" when the cluster should start serving what the plane declares.
+  # Observe and report, write nothing: no reconciler and no operations. This is how a cluster is
+  # first pointed at a plane. Set to "false" when the cluster should serve what the plane declares.
   HANGAR_READ_ONLY: "true"
-  # The exceptions to the line above: operation kinds a read-only operator will still perform,
-  # comma-separated. Empty means none, which is what read-only meant when it was one word for
-  # two guarantees — the plane does not own what runs here, and the plane may not be asked for
-  # anything either. Those turned out to be separate questions: benchmarking writes to the
-  # cluster, so refusing it under a blanket read-only was right, but the alternative was turning
-  # on reconciliation to get it. An allowlist and not a second boolean because the kinds are not
-  # interchangeable — a benchmark is additive and disposable, a drain on an unmanaged cluster is
-  # not. Widen it per cluster in overlays/, never here.
+  # Operation kinds a writing operator performs, comma-separated: cordon, drain, benchmark. Empty
+  # means none. Ignored while HANGAR_READ_ONLY is true.
   HANGAR_ALLOWED_OPERATIONS: ""
-  # The in-cluster DCGM exporter, scraped for device identity only (ADR 0007). Point this at
-  # whatever Service the cluster runs it under; empty disables the scrape and device ids fall
-  # back to the hangar.dev/device-uuids annotation and then to <node>-gpu<index>. No RBAC is
-  # needed: this is an ordinary HTTP GET to a Service DNS name, not a Kubernetes API call.
-  HANGAR_DCGM_ENDPOINT: http://dcgm-exporter.platform.svc.cluster.local:9400/metrics
+  # The node label that names a node's pool, the pool holding GPU nodes, and the pool (and its
+  # taint) model-prefetch jobs run on.
+  HANGAR_POOL_LABEL_KEY: hangar.dev/pool
+  HANGAR_GPU_POOL_VALUE: gpu
+  HANGAR_CACHE_POOL_VALUE: cache
+  HANGAR_CACHE_TAINT_KEY: hangar.dev/cache
+  # The in-cluster DCGM exporter's metrics URL, scraped for device identity only (ADR 0007).
+  # Empty disables the scrape; device ids then come from the hangar.dev/device-uuids annotation
+  # or fall back to <node>-gpu<index>.
+  HANGAR_DCGM_ENDPOINT: ""
   HANGAR_DCGM_TIMEOUT: 5s
-  # Where a benchmark aims its load: this cluster's own OpenAI-compatible frontend. It is a
-  # cluster-local address by construction, and that is the point — a benchmark generates real
-  # inference traffic, and rule 4 says none of that crosses the control plane. The plane names
-  # the deployment and the model; how this cluster exposes its frontend is a local fact.
-  # Empty: the operator finds the frontend by asking for the Service that selects Dynamo's
-  # Frontend component. Set it only on a cluster whose frontend Dynamo did not label.
+  # Where a benchmark aims its load. Empty finds the Service that selects Dynamo's Frontend
+  # component; set it only when the frontend is something Dynamo did not label.
   HANGAR_INFERENCE_ENDPOINT: ""
-  # A run that wedged against an endpoint which stopped answering would otherwise hold its
-  # operation open forever. This bounds one whose request carried no deadline of its own.
   HANGAR_BENCHMARK_TIMEOUT: 30m
-  # Where a run's raw per-request records go. Those are telemetry — one row per request, never
-  # joined — so they belong in object storage and not in the sync stream. Left empty because
-  # nothing uploads them yet: reporting a URI with nothing at it would be worse than reporting
-  # none. See docs/wip.md.
   HANGAR_BENCHMARK_ARTIFACT_BASE: ""
-  # What one run's load generator requests. A load generator is an HTTP client: it opens
-  # connections, reads streamed tokens, and counts. No CPU limit is set anywhere, so this is a
-  # scheduling floor rather than a cap and a run bursts into whatever the node has idle. Raise it
-  # on a cluster where a high-concurrency run would otherwise be co-scheduled with work that
-  # starves it — a generator short of CPU does not fail, it reports its own latency as the
-  # engine's.
   HANGAR_BENCHMARK_CPU: 500m
   HANGAR_BENCHMARK_MEMORY: 1Gi
-  # Which node pool downloads weights, and the taint it tolerates to get there. The prefetch job
-  # is a network and disk job with no accelerator in it, so it belongs anywhere but a GPU node —
-  # a pool of its own where one exists, and the general-purpose pool where one does not. Both are
-  # here rather than left to the binary's defaults because a value that exists only in Go is one
-  # nobody finds until a job sits Pending: the scheduler's answer to a pool that does not exist
-  # is silence, and the deployment waiting on those weights reports only that they are not
-  # resident.
-  HANGAR_CACHE_POOL_VALUE: cache
-  HANGAR_CACHE_TAINT_KEY: hangar.io/cache
