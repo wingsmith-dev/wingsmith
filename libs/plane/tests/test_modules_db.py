@@ -292,6 +292,17 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
+async def test_a_cluster_with_a_pinned_workload_and_its_deployment_refuses_to_be_deleted(db: AsyncSession) -> None:
+    """The holds query against real rows: force skips If-Match, never the drain."""
+    cluster, _, _, _ = await a_deployment(db)
+    service = ClusterService(db)
+    with pytest.raises(Conflict) as refused:
+        await service.delete(cluster.id, force=True)
+    assert refused.value.detail["deployments"] == 1
+    assert refused.value.detail["pinned_workloads"] == 1
+    assert (await service.get(cluster.id)).id == cluster.id
+
+
 async def test_a_registered_cluster_is_labelled_for_the_metrics_store_by_its_own_name(db: AsyncSession) -> None:
     """The chart stamps `external_labels.cluster` from the same name (ADR 0011)."""
     service = ClusterService(db)
