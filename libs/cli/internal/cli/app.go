@@ -302,7 +302,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 	if err := a.connect(); err != nil {
 		return err
 	}
-	if a.Backend.Simulated() {
+	if a.Backend != nil && a.Backend.Simulated() {
 		a.Out.AddMeta("simulated", true)
 	}
 	a.Out.AddMeta("project", a.Project)
@@ -353,11 +353,17 @@ func (a *App) connect() error {
 		if err != nil {
 			return err
 		}
+		b.HasToken = a.Context.Token != ""
 		a.Backend = b
 		return nil
 	}
 	server, err := a.server()
 	if err != nil {
+		// logout still clears a stored token with no server to revoke it on,
+		// and login reports the missing server itself.
+		if a.authOptional {
+			return nil
+		}
 		return err
 	}
 	if a.Context.Token == "" && !a.authOptional {
@@ -370,8 +376,30 @@ func (a *App) connect() error {
 	if err != nil {
 		return err
 	}
+	a.renewSessions(c)
 	a.Backend = c
 	return nil
+}
+
+// renewSessions lets the client renew an expired session with the stored
+// refresh token and write the rotated pair back. Only when the token in use is
+// the stored one: a token from --token or HANGAR_TOKEN is somebody else's
+// session, and renewing the stored one in its place would switch identities.
+func (a *App) renewSessions(c *api.Client) {
+	name := a.Cfg.CurrentContext
+	stored := a.Cfg.Context(name)
+	if stored.RefreshToken == "" || stored.Token != a.Context.Token {
+		return
+	}
+	c.RefreshToken = stored.RefreshToken
+	c.OnRefresh = func(r api.LoginResult) error {
+		current := a.Cfg.Context(name)
+		current.Token = r.AccessToken
+		current.RefreshToken = r.RefreshToken
+		a.Cfg.SetContext(name, current)
+		a.Context.Token = r.AccessToken
+		return a.Cfg.Save()
+	}
 }
 
 // server is the control plane URL for this invocation. There is no default:

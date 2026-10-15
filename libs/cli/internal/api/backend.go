@@ -11,6 +11,8 @@ import "context"
 // assuming the first page was all of it.
 type Backend interface {
 	Identity(ctx context.Context) (Identity, error)
+	Login(ctx context.Context, req LoginRequest) (LoginResult, error)
+	Logout(ctx context.Context, refreshToken string) error
 
 	Clusters(ctx context.Context, opts ListOpts) (Page[Cluster], error)
 	Cluster(ctx context.Context, ref string) (Cluster, error)

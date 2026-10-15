@@ -193,11 +193,12 @@ var explanations = map[Code]Explanation{
 	CodeAuthRequired: {
 		Summary: "No credentials are available for the active context.",
 		Detail:  "The CLI found no token in the config file, HANGAR_TOKEN, or --token.",
-		Fixes:   []string{"export HANGAR_TOKEN=…", "hgr config set context.token <token>", "hgr context ls"},
+		Fixes:   []string{"hgr login", "hgr context ls"},
 	},
 	CodeAuthExpired: {
-		Summary: "The stored credentials are no longer valid.",
-		Fixes:   []string{"Issue a fresh token and store it with `hgr config set context.token`"},
+		Summary: "The session has expired and could not be renewed.",
+		Detail:  "The access token expired and the plane refused the stored refresh token, or none was stored.",
+		Fixes:   []string{"hgr login"},
 	},
 	CodeForbidden: {
 		Summary: "The credentials are valid but lack permission.",

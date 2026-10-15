@@ -59,9 +59,9 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 func (c *Client) Simulated() bool { return false }
 
 // Identity reports the configured context and whether the plane answers.
-// There is no `/v1/whoami`: auth is one static token and the plane resolves
-// every caller to the same principal, so inventing a user here would be
-// fiction. `/health` is the only thing that can be truthfully asked.
+// The plane has no identity endpoint — a human is the one admin, and a tenant
+// login is scoped to its own serving view — so `/health` is the only thing
+// that can be truthfully asked.
 func (c *Client) Identity(ctx context.Context) (Identity, error) {
 	id := Identity{Server: c.Server, Project: c.Scope, HasToken: c.Token != ""}
 	var health struct {

@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/hangar-dev/hangar/libs/cli/internal/api"
 	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
@@ -12,90 +14,60 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newLoginCmd trades the admin password for a short-lived session token and
-// stores it in the active context, so subsequent commands are authenticated.
+// newLoginCmd trades the admin password for a session and stores it in the
+// active context, so subsequent commands are authenticated.
 //
-// It runs before a token exists, which is why it is annotated auth-optional and
-// builds its own client with an empty token rather than reaching for the
-// backend setup refused to construct.
+// The password never travels on the command line, where it would land in shell
+// history and in the process table: it comes from stdin, the environment, or a
+// no-echo prompt.
 func newLoginCmd(app *App) *cobra.Command {
 	var (
-		password string
-		slug     string
+		passwordStdin bool
+		slug          string
 	)
 	cmd := &cobra.Command{
-		Use:   "login [password]",
-		Short: "Trade the admin password for a session token",
-		Long: `Log in to the control plane and store a session token in the active context.
+		Use:   "login",
+		Short: "Log in to the control plane as the admin",
+		Long: `Log in to the control plane and store the session in the active context.
 
-The password is read from, in order: the positional argument, --password,
-$HANGAR_ADMIN_PASSWORD, then an interactive no-echo prompt. The token it returns
-is short-lived (~900s) and signed; re-run this when it expires. The long-lived
-alternative is a static operator token pasted with 'hgr config set context.token'.
+Human access to a plane is a single admin login. The password is read from
+stdin with --password-stdin, else from $HANGAR_ADMIN_PASSWORD, else from a
+no-echo prompt. It is never accepted as an argument.
 
-The token is never printed, in any output mode.`,
-		Example: `  hgr login
-  hgr login --slug admin
+The session is an access token that lasts about 15 minutes and a refresh token
+that renews it. The CLI renews it on its own when it expires; run login again
+when the refresh token is refused too. The server you log in to is stored
+beside the session, so --server on login sets it for later commands.
+
+Neither token is ever printed, in any output mode.`,
+		Example: `  hgr login --server http://localhost:8000
+  printf '%s' "$ADMIN_PASSWORD" | hgr login --password-stdin
   HANGAR_ADMIN_PASSWORD=… hgr login --no-input`,
-		Args:        cobra.MaximumNArgs(1),
+		Args:        cobra.NoArgs,
 		Annotations: map[string]string{annotationAuthOptional: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pw := password
-			if len(args) == 1 {
-				pw = args[0]
-			}
-			if pw == "" {
-				pw = os.Getenv("HANGAR_ADMIN_PASSWORD")
-			}
-			if pw == "" {
-				if app.NoInput {
-					return errs.New(errs.CodeInputRequired, "a password is required and prompting is disabled").
-						WithCause("no argument, no --password, and $HANGAR_ADMIN_PASSWORD is unset").
-						WithFix("Pass it in the environment", "HANGAR_ADMIN_PASSWORD=… hgr login")
-				}
-				got, err := app.Ask.Secret("admin password", "--password")
+			server := "fake://local"
+			if app.Backend == nil || !app.Backend.Simulated() {
+				s, err := app.server()
 				if err != nil {
 					return err
 				}
-				pw = got
-			}
-			if pw == "" {
-				return errs.New(errs.CodeInputRequired, "an empty password cannot be used to log in")
+				server = s
 			}
 
-			server, err := app.server()
-			if err != nil {
-				return err
-			}
-			client, err := api.NewClient(server, "", app.Project, Version, app.Timeout)
+			pw, err := readPassword(app, passwordStdin)
 			if err != nil {
 				return err
 			}
 
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			res, err := client.Login(ctx, api.LoginRequest{Password: pw, Slug: slug})
+			res, err := app.Backend.Login(ctx, api.LoginRequest{Password: pw, Slug: slug})
 			if err != nil {
 				return err
 			}
 
-			// Persist to the stored context, not to the flag/env overlay, so the
-			// token round-trips exactly like `hgr config set context.token`.
-			name := app.Cfg.CurrentContext
-			stored := app.Cfg.Context("")
-			// The token belongs to the server that issued it, so a login with
-			// --server records that server beside it.
-			stored.Server = server
-			stored.Token = res.AccessToken
-			if res.RefreshToken != "" {
-				stored.RefreshToken = res.RefreshToken
-			}
-			app.Cfg.SetContext(name, stored)
-			if err := app.Cfg.Save(); err != nil {
-				return err
-			}
-
-			return app.Emit(&output.Result{
+			result := &output.Result{
 				Command: cmdPath(cmd),
 				Data: map[string]any{
 					"server":     server,
@@ -110,52 +82,134 @@ The token is never printed, in any output mode.`,
 				Next: []errs.Action{
 					{Description: "See what the CLI is pointed at", Command: "hgr whoami"},
 				},
-			})
-		},
-	}
-	fl := cmd.Flags()
-	fl.StringVar(&password, "password", "", "admin password (prefer $HANGAR_ADMIN_PASSWORD or the prompt)")
-	fl.StringVar(&slug, "slug", "admin", "principal slug to log in as")
-	return group(cmd, "meta")
-}
-
-// newLogoutCmd clears the stored session token and best-effort revokes it on
-// the plane. It is auth-optional so it still clears a token the plane has
-// already expired.
-func newLogoutCmd(app *App) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:         "logout",
-		Short:       "Clear the stored session token",
-		Long:        `Remove the token from the active context and best-effort revoke it server-side.`,
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{annotationAuthOptional: "true"},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			server := app.Context.Server
-			if app.Context.Token != "" && server != "" {
-				if client, err := api.NewClient(server, app.Context.Token, app.Project, Version, app.Timeout); err == nil {
-					ctx, cancel := app.RequestContext()
-					_ = client.Logout(ctx, app.Context.RefreshToken)
-					cancel()
-				}
+			}
+			if app.Backend.Simulated() {
+				result.Warnings = append(result.Warnings, "the fake backend issued this session, so nothing was stored")
+				return app.Emit(result)
 			}
 
+			// Persist to the stored context, not to the flag/env overlay, so the
+			// session round-trips exactly like `hgr config set context.token`.
+			// The tokens belong to the server that issued them, so it is
+			// recorded beside them.
 			name := app.Cfg.CurrentContext
 			stored := app.Cfg.Context("")
-			stored.Token = ""
-			stored.RefreshToken = ""
+			stored.Server = server
+			stored.Token = res.AccessToken
+			stored.RefreshToken = res.RefreshToken
 			app.Cfg.SetContext(name, stored)
 			if err := app.Cfg.Save(); err != nil {
 				return err
 			}
+			return app.Emit(result)
+		},
+	}
+	fl := cmd.Flags()
+	fl.BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin")
+	fl.StringVar(&slug, "slug", "admin", "principal to log in as")
+	return group(cmd, "meta")
+}
 
-			return app.Emit(&output.Result{
+// readPassword takes the password from stdin, the environment or a prompt, in
+// that order. One trailing newline is dropped from stdin, so `echo` works.
+func readPassword(app *App, fromStdin bool) (string, error) {
+	var pw string
+	switch {
+	case fromStdin:
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", errs.Wrap(err, errs.CodeInputRequired, "cannot read the password from stdin")
+		}
+		pw = strings.TrimRight(line, "\r\n")
+	case os.Getenv("HANGAR_ADMIN_PASSWORD") != "":
+		pw = os.Getenv("HANGAR_ADMIN_PASSWORD")
+	case app.NoInput:
+		return "", errs.New(errs.CodeInputRequired, "a password is required and prompting is disabled").
+			WithCause("--password-stdin was not given and $HANGAR_ADMIN_PASSWORD is unset").
+			WithFlag("--password-stdin").
+			WithFix("Pipe it in", "hgr login --password-stdin < password-file")
+	default:
+		got, err := app.Ask.Secret("admin password", "--password-stdin")
+		if err != nil {
+			return "", err
+		}
+		pw = got
+	}
+	if pw == "" {
+		return "", errs.New(errs.CodeInputRequired, "an empty password cannot be used to log in")
+	}
+	return pw, nil
+}
+
+// newLogoutCmd revokes the session on the plane and clears it from the active
+// context. It is auth-optional so it still clears a session the plane has
+// already expired, and it clears the local copy even when revocation fails —
+// but it says so, because a session that was not revoked is still usable until
+// its refresh token expires.
+func newLogoutCmd(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Revoke the session and clear it from the context",
+		Long: `Revoke the stored refresh token on the plane and remove both tokens from the
+active context.
+
+If the plane cannot be reached or refuses, the tokens are still removed locally
+and a warning says the session was not revoked.`,
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{annotationAuthOptional: "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			server := app.Context.Server
+			result := &output.Result{
 				Command: cmdPath(cmd),
-				Data:    map[string]any{"server": server},
 				Names:   []string{server},
-				Human: func(w io.Writer, s ui.Style, width int) {
-					fmt.Fprintf(w, "%s logged out of %s\n", s.Tick(), s.Bold(server))
-				},
-			})
+			}
+			if app.Backend != nil && app.Backend.Simulated() {
+				result.Data = map[string]any{"server": "fake://local", "revoked": false}
+				result.Warnings = []string{"the fake backend holds no session, so nothing was revoked or cleared"}
+				result.Human = func(w io.Writer, s ui.Style, width int) {
+					fmt.Fprintf(w, "%s nothing to log out of\n", s.Tick())
+				}
+				return app.Emit(result)
+			}
+
+			stored := app.Cfg.Context("")
+			revoked := false
+			switch {
+			case stored.RefreshToken == "" && stored.Token == "":
+			case stored.RefreshToken == "":
+				result.Warnings = append(result.Warnings,
+					"no refresh token is stored, so nothing was revoked on the plane; the access token expires on its own")
+			case app.Backend == nil:
+				result.Warnings = append(result.Warnings,
+					"no server is configured, so the session was not revoked on the plane")
+			default:
+				ctx, cancel := app.RequestContext()
+				err := app.Backend.Logout(ctx, stored.RefreshToken)
+				cancel()
+				if err != nil {
+					result.Warnings = append(result.Warnings,
+						"the session was not revoked on the plane: "+errs.As(err).Message)
+				} else {
+					revoked = true
+				}
+			}
+
+			stored.Token = ""
+			stored.RefreshToken = ""
+			app.Cfg.SetContext(app.Cfg.CurrentContext, stored)
+			if err := app.Cfg.Save(); err != nil {
+				return err
+			}
+
+			result.Data = map[string]any{"server": server, "revoked": revoked}
+			result.Human = func(w io.Writer, s ui.Style, width int) {
+				if revoked {
+					fmt.Fprintf(w, "%s logged out of %s\n", s.Tick(), s.Bold(orDash(server)))
+					return
+				}
+				fmt.Fprintf(w, "%s cleared the local session for %s\n", s.Tick(), s.Bold(orDash(server)))
+			}
+			return app.Emit(result)
 		},
 	}
 	return group(cmd, "meta")

@@ -30,6 +30,10 @@ type Backend struct {
 	polls map[string]int
 	// minted keeps ids unique within one process even inside a microsecond.
 	minted int
+	// HasToken is whether the caller's context holds a token. The fake never
+	// reads it, but whoami reports it, and claiming one that is not there
+	// would make the fake disagree with the config it is running beside.
+	HasToken bool
 }
 
 // New builds a fake backend from the built-in seed. A path may point at a
@@ -72,8 +76,28 @@ func (b *Backend) Identity(ctx context.Context) (api.Identity, error) {
 	if err := b.injected(); err != nil {
 		return api.Identity{}, err
 	}
-	return api.Identity{Server: "fake://local", HasToken: true, Reachable: true, Simulated: true}, nil
+	return api.Identity{Server: "fake://local", HasToken: b.HasToken, Reachable: true, Simulated: true}, nil
 }
+
+// Login accepts any non-empty password and hands back a session that works
+// only here. Nothing leaves the process: the fake is sealed, and a login
+// against it must never reach a real plane.
+func (b *Backend) Login(ctx context.Context, req api.LoginRequest) (api.LoginResult, error) {
+	if err := b.injected(); err != nil {
+		return api.LoginResult{}, err
+	}
+	if req.Password == "" {
+		return api.LoginResult{}, errs.New(errs.CodeAuthRequired, "invalid credentials")
+	}
+	kind := "admin"
+	if req.Slug != "" && req.Slug != "admin" {
+		kind = "tenant"
+	}
+	return api.LoginResult{AccessToken: "fake-access", RefreshToken: "fake-refresh", ExpiresIn: 900, Kind: kind}, nil
+}
+
+// Logout has nothing to revoke.
+func (b *Backend) Logout(ctx context.Context, refreshToken string) error { return b.injected() }
 
 // --- pagination ------------------------------------------------------------
 
