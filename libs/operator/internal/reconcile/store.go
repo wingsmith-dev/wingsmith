@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	stdsync "sync"
@@ -11,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
@@ -51,6 +53,11 @@ type Store struct {
 	Client    client.Client
 	Namespace string
 	Log       *slog.Logger
+
+	// Reader reads the API server directly. Optional: left nil, Client is used, which is what the
+	// tests want. The revision check reads through it, because a cached copy one write behind
+	// would let an older revision pass the check and overwrite a newer one.
+	Reader client.Reader
 
 	// Checkpoint marks the local view as an invalid resume base for the duration of a resync
 	// epoch. Without it, a crash part-way through a snapshot would leave a half-pruned local
@@ -93,6 +100,12 @@ func (s *Store) handleDesired(ctx context.Context, e *syncpkg.Envelope) error {
 	return nil
 }
 
+// errTerminating withholds the ack for a declaration whose previous copy is still being torn
+// down. Patching it would hand the new revision to an object the API server is about to delete,
+// and the frame would be acknowledged and then lost with it. Refused, the sync client retries the
+// frame until the old copy is gone and the new one can be created.
+var errTerminating = errors.New("previous copy is still being torn down")
+
 func (s *Store) apply(ctx context.Context, d desiredState) error {
 	key := types.NamespacedName{Namespace: s.Namespace, Name: d.Name}
 	if d.Deleted {
@@ -103,37 +116,51 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 		return nil
 	}
 
-	var existing v1alpha1.SyncedResource
-	err := s.Client.Get(ctx, key, &existing)
-	switch {
-	case apierrors.IsNotFound(err):
-		obj := &v1alpha1.SyncedResource{
-			ObjectMeta: metav1.ObjectMeta{Namespace: key.Namespace, Name: key.Name},
-			Spec: v1alpha1.SyncedResourceSpec{
-				Kind:      d.Kind,
-				Revision:  d.Revision,
-				Payload:   rawOrNil(d.Object),
-				Authority: d.Authority,
-				Adopt:     d.Adopt,
-			},
+	// Read uncached and written under an optimistic lock, so the revision compared is the one
+	// that is stored and a write that raced this one is retried against it rather than undone.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var existing v1alpha1.SyncedResource
+		err := s.reader().Get(ctx, key, &existing)
+		switch {
+		case apierrors.IsNotFound(err):
+			obj := &v1alpha1.SyncedResource{
+				ObjectMeta: metav1.ObjectMeta{Namespace: key.Namespace, Name: key.Name},
+				Spec: v1alpha1.SyncedResourceSpec{
+					Kind:      d.Kind,
+					Revision:  d.Revision,
+					Payload:   rawOrNil(d.Object),
+					Authority: d.Authority,
+					Adopt:     d.Adopt,
+				},
+			}
+			return s.Client.Create(ctx, obj)
+		case err != nil:
+			return err
 		}
-		return s.Client.Create(ctx, obj)
-	case err != nil:
-		return err
-	}
 
-	if existing.Spec.Revision > d.Revision {
-		s.Log.Debug("ignoring stale desired state", "name", d.Name,
-			"have", existing.Spec.Revision, "got", d.Revision)
-		return nil
+		if !existing.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("%s: %w", d.Name, errTerminating)
+		}
+		if existing.Spec.Revision > d.Revision {
+			s.Log.Debug("ignoring stale desired state", "name", d.Name,
+				"have", existing.Spec.Revision, "got", d.Revision)
+			return nil
+		}
+		patch := client.MergeFromWithOptions(existing.DeepCopy(), client.MergeFromWithOptimisticLock{})
+		existing.Spec.Kind = d.Kind
+		existing.Spec.Revision = d.Revision
+		existing.Spec.Payload = rawOrNil(d.Object)
+		existing.Spec.Authority = d.Authority
+		existing.Spec.Adopt = d.Adopt
+		return s.Client.Patch(ctx, &existing, patch)
+	})
+}
+
+func (s *Store) reader() client.Reader {
+	if s.Reader != nil {
+		return s.Reader
 	}
-	patch := client.MergeFrom(existing.DeepCopy())
-	existing.Spec.Kind = d.Kind
-	existing.Spec.Revision = d.Revision
-	existing.Spec.Payload = rawOrNil(d.Object)
-	existing.Spec.Authority = d.Authority
-	existing.Spec.Adopt = d.Adopt
-	return s.Client.Patch(ctx, &existing, patch)
+	return s.Client
 }
 
 // Resync implements sync.Handler. The hub could not honour the resume point, so the local copy is

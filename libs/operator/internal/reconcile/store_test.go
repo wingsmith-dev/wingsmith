@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -279,5 +280,101 @@ func TestResyncSnapshotHonoursDeletions(t *testing.T) {
 	}
 	if got := localNames(t, c); !equal(got, []string{"keep-a"}) {
 		t.Fatalf("got %v, want [keep-a]", got)
+	}
+}
+
+// terminating is a declared deployment the API server is deleting and a finalizer is holding open.
+func terminating(name string, rev int64) *v1alpha1.SyncedResource {
+	now := metav1.Now()
+	return &v1alpha1.SyncedResource{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNS, Name: name,
+			DeletionTimestamp: &now, Finalizers: []string{renderedFinalizer},
+		},
+		Spec: v1alpha1.SyncedResourceSpec{Kind: "deployment", Revision: rev},
+	}
+}
+
+// TestARedeclarationOnATerminatingResourceIsWithheld: a deployment deleted and declared again
+// before teardown finished used to be patched onto the dying object, acknowledged, and then
+// deleted with it. The frame is refused until the old copy is gone.
+func TestARedeclarationOnATerminatingResourceIsWithheld(t *testing.T) {
+	s, c := newStore(t, []client.Object{terminating("dep-a", 1)}, nil)
+
+	err := s.Handle(context.Background(), desired(t, "dep_a", 2))
+	if !errors.Is(err, errTerminating) {
+		t.Fatalf("a declaration over a terminating copy must be refused, got %v", err)
+	}
+	var got v1alpha1.SyncedResource
+	if err := c.Get(context.Background(), client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.Revision != 1 {
+		t.Fatalf("the terminating copy was written to: revision %d", got.Spec.Revision)
+	}
+}
+
+// TestTheRevisionCheckReadsPastAStaleCache: the cache can be a write behind. Compared against it,
+// an older revision looked newer than what was stored and overwrote it.
+func TestTheRevisionCheckReadsPastAStaleCache(t *testing.T) {
+	stored := &v1alpha1.SyncedResource{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: "dep-a"},
+		Spec:       v1alpha1.SyncedResourceSpec{Kind: "deployment", Revision: 3},
+	}
+	s, direct := newStore(t, []client.Object{stored}, nil)
+	s.Reader = direct
+	// The cached client answers with a copy one write behind.
+	s.Client = interceptor.NewClient(direct.(client.WithWatch), interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if err := c.Get(ctx, key, obj, opts...); err != nil {
+				return err
+			}
+			if res, ok := obj.(*v1alpha1.SyncedResource); ok {
+				res.Spec.Revision = 1
+			}
+			return nil
+		},
+	})
+
+	if err := s.Handle(context.Background(), desired(t, "dep_a", 2)); err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.SyncedResource
+	if err := direct.Get(context.Background(), client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.Revision != 3 {
+		t.Fatalf("revision 2 overwrote revision 3 through a stale read: now %d", got.Spec.Revision)
+	}
+}
+
+// TestAConflictingWriteIsRetriedAgainstWhatIsStored: the patch carries the resourceVersion it
+// read, so a write that lands in between is a conflict to re-read, never an overwrite.
+func TestAConflictingWriteIsRetriedAgainstWhatIsStored(t *testing.T) {
+	stored := &v1alpha1.SyncedResource{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: "dep-a"},
+		Spec:       v1alpha1.SyncedResourceSpec{Kind: "deployment", Revision: 1},
+	}
+	conflicts := 0
+	s, c := newStore(t, []client.Object{stored}, &interceptor.Funcs{
+		Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			if conflicts == 0 {
+				conflicts++
+				return apierrors.NewConflict(v1alpha1.GroupVersion.WithResource("syncedresources").GroupResource(),
+					obj.GetName(), errors.New("modified concurrently"))
+			}
+			return c.Patch(ctx, obj, patch, opts...)
+		},
+	})
+
+	if err := s.Handle(context.Background(), desired(t, "dep_a", 2)); err != nil {
+		t.Fatalf("a conflict must be retried, got %v", err)
+	}
+	var got v1alpha1.SyncedResource
+	if err := c.Get(context.Background(), client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if conflicts != 1 || got.Spec.Revision != 2 {
+		t.Fatalf("want one conflict then revision 2, got %d conflicts and revision %d", conflicts, got.Spec.Revision)
 	}
 }

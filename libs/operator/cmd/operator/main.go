@@ -111,6 +111,7 @@ func run() error {
 
 	store := &reconcile.Store{
 		Client:     mgr.GetClient(),
+		Reader:     mgr.GetAPIReader(),
 		Namespace:  cfg.Namespace,
 		Log:        log,
 		Checkpoint: cursor,

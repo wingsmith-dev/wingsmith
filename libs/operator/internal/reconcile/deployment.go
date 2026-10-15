@@ -347,7 +347,9 @@ func (r *SyncedResourceReconciler) holdOpen(ctx context.Context, res *v1alpha1.S
 	if controllerutil.ContainsFinalizer(res, renderedFinalizer) {
 		return nil
 	}
-	patch := client.MergeFrom(res.DeepCopy())
+	// Under an optimistic lock: finalizers are a list, and a plain merge patch replaces the whole
+	// list with this copy's, dropping any finalizer written since it was read.
+	patch := client.MergeFromWithOptions(res.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	controllerutil.AddFinalizer(res, renderedFinalizer)
 	if err := r.Client.Patch(ctx, res, patch); err != nil {
 		return fmt.Errorf("add finalizer to %s: %w", res.Name, err)
@@ -374,7 +376,7 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 		}
 	}
 
-	patch := client.MergeFrom(res.DeepCopy())
+	patch := client.MergeFromWithOptions(res.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	controllerutil.RemoveFinalizer(res, renderedFinalizer)
 	if err := r.Client.Patch(ctx, res, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("release finalizer on %s: %w", res.Name, err)
