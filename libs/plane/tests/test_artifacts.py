@@ -237,10 +237,41 @@ def test_conditional_update_reads_if_match_from_the_header():
     assert parameter.default.header == "If-Match"
 
 
-def test_delete_refuses_while_a_workload_still_names_the_artifact():
+class RestrictedDelete:
+    """A session and repository whose delete trips the RESTRICT foreign key a workload holds."""
+
+    def __init__(self) -> None:
+        self.rolled_back = False
+        self.committed = False
+
+    async def delete(self, row) -> None:
+        from sqlalchemy.exc import IntegrityError
+
+        raise IntegrityError("DELETE", {}, Exception("still referenced"))
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+async def test_delete_refuses_while_a_workload_still_names_the_artifact():
+    from app.core.exceptions import Conflict
     from app.modules.artifacts.services import ArtifactService
 
-    assert "Refuses" in (ArtifactService.delete.__doc__ or "")
+    fake = RestrictedDelete()
+    service = ArtifactService(db=fake)
+    service.repo = fake
+
+    async def one(ref):
+        return object(), None, None
+
+    service._one = one
+
+    with pytest.raises(Conflict, match="still referenced by a workload"):
+        await service.delete("llama")
+    assert fake.rolled_back and not fake.committed
 
 
 GPT_OSS_CONFIG = {

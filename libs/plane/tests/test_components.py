@@ -170,9 +170,30 @@ def test_there_is_no_endpoint_that_writes_the_observed_half():
     assert not any(name.startswith("set_status") or "observed" in name for name in vars(ComponentService))
 
 
-def test_the_service_owns_the_commit_and_the_repository_only_flushes():
-    import inspect
+class RecordingSession:
+    """Records which session calls the repository makes, so committing can be caught by behaviour."""
 
-    source = inspect.getsource(ComponentRepository)
-    assert "commit" not in source
-    assert "flush" in source
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def add(self, row) -> None:
+        self.calls.append("add")
+
+    async def delete(self, row) -> None:
+        self.calls.append("delete")
+
+    async def flush(self) -> None:
+        self.calls.append("flush")
+
+    async def commit(self) -> None:
+        self.calls.append("commit")
+
+
+async def test_the_service_owns_the_commit_and_the_repository_only_flushes():
+    session = RecordingSession()
+    repository = ComponentRepository(db=session)
+
+    await repository.add(object())
+    await repository.delete(object())
+
+    assert session.calls == ["add", "flush", "delete", "flush"]
