@@ -492,7 +492,8 @@ conformance-test *args:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
-# Helm's crds/ dir is a plain copy, never templated — kept in step by hand when the CRDs change.
+# Helm's crds/ dir is a plain copy, never templated. It mirrors the hangar.dev_* files exactly, so
+# a CRD renamed or removed at the source does not linger in the chart.
 # Copy the hangar CRDs into the chart from their source of truth in libs/operator/deploy/crd
 chart-sync-crds:
     #!/usr/bin/env bash
@@ -529,8 +530,8 @@ chart-lint:
       --set hfToken.create=true --set hfToken.value=hf_lint \
       --set serving.enabled=true --set serving.host=lint.example.com \
       --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend >/dev/null
-    # The frontend and the engine are configured separately, and either can pull a private runtime
-    # image. In both cases the credential must be copied from the release namespace into the
+    # The frontend and the engine are configured separately, and either can pull its image from a
+    # private registry. In both cases the credential must be copied from the release namespace into the
     # workload namespace. The key is `frontend.imagePullSecrets` and not `operator.frontend.*`:
     # the pull secret is common to both frontend modes, so it stayed at `frontend.*` when the
     # per-model knobs moved under `frontend.perModel.*`.
@@ -632,33 +633,55 @@ chart-lint:
 # Subcharts (dcgm-exporter, dynamo-platform) pull anonymously; only the push needs a login
 # (`helm registry login`). Chart.yaml's version is the release; a tag overrides appVersion, which
 # names the operator image.
-# Package the chart and push it to the OCI registry  [tag]
+#
+# What is pushed is the committed chart, not the directory: it is packaged from `git archive`, so a
+# values file kept beside it and ignored by git cannot ride along. Before that the whole tree goes
+# through scripts/check-leaks.sh (which reads a denylist; see its header), the chart directory must
+# match HEAD, and a version already in the registry is refused rather than overwritten.
+# Package the committed chart and push it to the OCI registry  [tag]
 chart-push tag="":
     #!/usr/bin/env bash
     set -euo pipefail
+    scripts/check-leaks.sh tree
     just chart-sync-crds
+    {{_guards}} clean-tree {{_chart}}
     just chart-lint
     work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-    helm dependency build {{_chart}}
+    git archive --format=tar HEAD {{_chart}} | tar -x -C "$work"
+    chart="$work/{{_chart}}"
+    helm dependency build "$chart"
     args=()
     [ -n "{{tag}}" ] && args+=(--app-version "{{tag}}")
-    helm package {{_chart}} "${args[@]}" -d "$work"
-    helm push "$work"/cluster-setup-*.tgz {{chart_oci}}
-    echo "pushed chart to {{chart_oci}}/cluster-setup"
+    helm package "$chart" ${args[@]+"${args[@]}"} -d "$work/out"
+    pkg="$(ls "$work"/out/cluster-setup-*.tgz)"
+    meta="$(helm show chart "$pkg")"
+    version="$(awk '/^version:/ {print $2}' <<<"$meta")"
+    app="$(awk '/^appVersion:/ {print $2}' <<<"$meta" | tr -d "\"'")"
+    if [ -z "$app" ] || [ "$app" = latest ]; then
+      echo "error: appVersion is '${app}'; pass the operator image tag: just chart-push <tag>" >&2
+      exit 1
+    fi
+    {{_guards}} chart-unpublished "{{chart_oci}}/cluster-setup" "$version"
+    helm push "$pkg" {{chart_oci}}
+    echo "pushed cluster-setup ${version} (appVersion ${app}) to {{chart_oci}}"
 
 # ── Images ────────────────────────────────────────────────────────────────────
 
-# The tag every image agrees on by default: the commit being built
+# The tag every image agrees on by default: the commit being built. Only a clean tree is built,
+# so the tag names exactly the source that went into the image.
 _release-tag:
     @git rev-parse --short=7 HEAD
 
 # `dockerfile` is relative to `context`, which is not always the module's own directory: the
 # gateway and the agent share `libs/packages/tunnel` through a `replace`, so both build from
 # `libs/`, and a narrower context fails at `go mod download`.
-# Build a component image  [plane|operator|gateway|agent|evalscope] [tag]
+#
+# There is no `latest`. A tag is pushed once and never moved; a new build is a new tag.
+# Build a component image from a clean tree  [plane|operator|gateway|agent|evalscope] [tag]
 build target tag="":
     #!/usr/bin/env bash
     set -euo pipefail
+    {{_guards}} clean-tree
     case "{{target}}" in
       plane)     context={{_libs}};     dockerfile=plane/Dockerfile ;;
       gateway)   context={{_libs}};     dockerfile=gateway/Dockerfile ;;
@@ -669,19 +692,24 @@ build target tag="":
     esac
     tag="{{tag}}"
     [ -n "$tag" ] || tag="$(just _release-tag)"
+    if [ "$tag" = latest ]; then
+      echo "error: 'latest' is not a release tag; leave the tag out to use the commit" >&2
+      exit 1
+    fi
     base="{{registry}}/{{target}}"
     echo "building ${base}:${tag} ({{platform}}) from ${context}"
     docker build --platform {{platform}} \
       --build-arg VERSION="${tag}" \
-      -f "${context}/${dockerfile}" -t "${base}:${tag}" -t "${base}:latest" "${context}"
+      -f "${context}/${dockerfile}" -t "${base}:${tag}" "${context}"
 
-# Build a component image and push it, with :latest beside the tag  [target] [tag]
+# Build a component image from a clean tree and push it under a tag the registry does not have yet  [target] [tag]
 push target tag="":
     #!/usr/bin/env bash
     set -euo pipefail
+    {{_guards}} clean-tree
     tag="{{tag}}"
     [ -n "$tag" ] || tag="$(just _release-tag)"
+    {{_guards}} image-unpublished "{{registry}}/{{target}}:${tag}"
     just build {{target}} "$tag"
     docker push "{{registry}}/{{target}}:${tag}"
-    docker push "{{registry}}/{{target}}:latest"
-    echo "pushed {{registry}}/{{target}}:${tag} and :latest"
+    echo "pushed {{registry}}/{{target}}:${tag}"
