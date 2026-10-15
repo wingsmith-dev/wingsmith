@@ -34,7 +34,7 @@ bandwidth we do not care about at this scale.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `hello` | op → hub | `cluster_id`, `operator_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** |
+| `hello` | op → hub | `cluster_id`, `operator_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** `cluster_id` must name the cluster the enrolment token belongs to, and `operator_version` is checked against the plane's release line (PROTOCOL §1). |
 | `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** `reply_to` is the `hello`'s id. |
 | `ping` / `pong` | either | empty. **Unsequenced.** |
 | `error` | either | `code`, `message`, `retryable` |
@@ -185,8 +185,8 @@ fragment of one, which is the point — nothing in a cluster ever needs to know 
 A receiver renders exactly the number it is sent and must never sum, scale, or re-derive it against
 anything else.
 
-`min_replicas` is what is rendered; `max_replicas` is a ceiling for an autoscaler that does not
-exist yet, and nothing reads it.
+`min_replicas` is what is rendered; `max_replicas` is reserved for an autoscaler on the roadmap,
+and nothing reads it today.
 
 `deployment.observed.desired_replicas` reports what this cluster rendered — the operator's own
 `min_replicas`, echoed back so the plane can see that render and declaration agree. The plane sums
@@ -252,14 +252,13 @@ number as the image's, and `vllm-runtime:0.28.0` is an address that has never ex
 **The serving block carries two images, because a frontend and a worker are two binaries.**
 `serving.engine_runtime_image` is what loads the weights. `serving.frontend_image` is what
 this model's own Dynamo frontend runs, and it is a field of its own rather than a reuse of the
-first because the two are versioned separately and the difference is not theoretical. Kimi K3
-arrived on a worker running the stock `vllm-runtime:1.4.0-patched.1` and served: 191.74 GiB
-across eight devices, loaded and healthy. The cluster's frontend, one version later, refused the
-model's tokenizer — `Unsupported tiktoken model_type 'kimi_k3'` — and answered `/v1/models` with an
-empty list. The tokenizer table is compiled into the frontend binary, so the fix was a frontend
-build and the worker correctly stayed where it was. One image field cannot say that, and a plane
-that only had one would have had to move the image every model on that cluster is served through
-in order to reach one of them.
+first because the two are versioned separately and the difference is not theoretical. A new model
+can load and serve on a worker whose runtime build already knows its tokenizer while the cluster's
+frontend, built from a different release, refuses that tokenizer and answers `/v1/models` with an
+empty list. The tokenizer table is compiled into the frontend binary, so the fix is a frontend
+build and the worker correctly stays where it is. One image field cannot say that, and a plane
+that only had one would have to move the image every model on that cluster is served through in
+order to reach one of them.
 
 `frontend_image` is empty in the ordinary case, and **empty means the cluster decides**. What a
 cluster runs its frontends on is a local fact: the operator holds it and the plane does not, so
