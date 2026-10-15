@@ -92,10 +92,22 @@ class Harness:
     command: Callable[[Cell, Context], Invocation]
     read: Callable[[Cell, Context], list[Emission]]
     description: str
+    digest: str = ""
+    """The digest of the multi-arch index `image` named when it was pinned.
+
+    The tag is kept for people to read; the digest is what runs. A tag can be moved
+    to a different build, and a run that cannot say which build it measured cannot
+    be reproduced.
+    """
     build_context: str = ""
     notes: tuple[str, ...] = ()
     sweep_command: Callable[[Context, Any], Invocation] | None = None
     sweep_read: Callable[[Context, Any], list[Emission]] | None = None
+
+    @property
+    def reference(self) -> str:
+        """What to resolve and pull: the pinned index when there is one, else the image."""
+        return f"{repository(self.image)}@{self.digest}" if self.digest else self.image
 
     @property
     def sweeps(self) -> bool:
@@ -113,29 +125,63 @@ def host_arch() -> str:
     return "amd64" if machine in {"x86_64", "amd64"} else "arm64"
 
 
+def repository(image: str) -> str:
+    """An image reference without its tag or digest.
+
+    The tag separator is the last `:` in the last path segment, so a registry port
+    (`localhost:5000/name`) is not mistaken for one.
+    """
+    name = image.split("@", 1)[0]
+    head, _, last = name.rpartition("/")
+    if ":" in last:
+        last = last.rsplit(":", 1)[0]
+    return f"{head}/{last}" if head else last
+
+
 def resolve_digest(image: str, arch: str) -> str:
     """The image reference pinned to the digest of this architecture's variant.
 
-    Returns the image unchanged when it is not in a registry we can query — a
-    locally built image has no manifest list and needs no pinning, because it was
-    built here and is already the right architecture.
+    Fails rather than falling back to the tag. A registry that cannot be queried, an
+    answer that is not a manifest list, or a list without this architecture all mean
+    the run would measure an image nobody can name afterwards, and on Apple silicon a
+    tag can quietly resolve to an amd64 variant that hangs under emulation. Images
+    built locally never come here: they were built for this machine and have no
+    registry to ask.
     """
     probe = subprocess.run(["docker", "manifest", "inspect", image], capture_output=True, text=True)
     if probe.returncode != 0:
-        return image
+        detail = probe.stderr.strip() or f"exit {probe.returncode}"
+        raise HarnessError(f"could not read the manifest of {image} to pin it by digest: {detail}")
     try:
         payload = json.loads(probe.stdout)
-    except json.JSONDecodeError:
-        return image
-    manifests = payload.get("manifests")
+    except json.JSONDecodeError as exc:
+        raise HarnessError(f"the manifest of {image} is not JSON: {exc}") from exc
+    manifests = payload.get("manifests") if isinstance(payload, dict) else None
     if not manifests:
-        return image
+        if "@sha256:" in image:
+            return image
+        raise HarnessError(f"{image} is a single-architecture image named by tag; pin it by digest instead")
     for entry in manifests:
         platform = entry.get("platform", {})
         if platform.get("architecture") == arch and platform.get("os") == "linux":
-            repo = image.rsplit(":", 1)[0] if ":" in image.rsplit("/", 1)[-1] else image
-            return f"{repo}@{entry['digest']}"
+            return f"{repository(image)}@{entry['digest']}"
     raise HarnessError(f"{image} has no linux/{arch} variant")
+
+
+def recorded_version(found: object, harness: Harness) -> tuple[str, list[str]]:
+    """The version an export says produced it, or the pinned image's, said out loud.
+
+    The field maps are chosen by version, so a missing one cannot be left blank. When
+    the export does not record it, the version is the one the pinned image digest was
+    published as, and the measurement carries a note saying so rather than presenting
+    an inferred version as a reported one.
+    """
+    if isinstance(found, str) and found.strip():
+        return found.strip(), []
+    return harness.pinned_version, [
+        f"the export does not record its {harness.name} version; read as {harness.pinned_version}, "
+        f"the version of the pinned image {harness.reference}"
+    ]
 
 
 def image_exists(image: str) -> bool:

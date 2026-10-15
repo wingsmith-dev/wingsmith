@@ -157,7 +157,7 @@ class Runner:
                     self.build(harness)
                 self.images[name] = harness.image
                 continue
-            pinned = resolve_digest(harness.image, self.arch)
+            pinned = resolve_digest(harness.reference, self.arch)
             if not image_exists(pinned):
                 self.say(f"pulling {harness.image} for linux/{self.arch}")
                 pull(pinned)
@@ -284,8 +284,7 @@ class Runner:
         if completed <= 0:
             measurement.status = "no requests completed"
             measurement.notes.append(
-                "the harness exited cleanly and measured nothing; its own export reports "
-                "no completed requests"
+                "the harness exited cleanly and measured nothing; its own export reports no completed requests"
             )
 
     def relabel(self, cell: Cell, emission, index: int) -> Cell:
@@ -605,7 +604,7 @@ class Runner:
         if not self.options.dry_run:
             self.prepare_images(harnesses)
         else:
-            self.images = {name: registry.get(name).image for name in harnesses}
+            self.images = {name: registry.get(name).reference for name in harnesses}
         self.store.suite.notes.extend(
             f"{name}: {registry.get(name).image} → {self.images.get(name, 'unresolved')}" for name in harnesses
         )

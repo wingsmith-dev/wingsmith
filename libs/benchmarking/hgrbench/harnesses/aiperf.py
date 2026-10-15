@@ -20,9 +20,11 @@ from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import find_one
 from hgrbench.harnesses.base import read_json
 from hgrbench.harnesses.base import shell_command
+from hgrbench.harnesses.base import recorded_version
 
 
 IMAGE = "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0"
+DIGEST = "sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d"
 PINNED_VERSION = "0.12.0"
 ARTIFACTS = "/artifacts"
 EXPORT = "profile_export_aiperf.json"
@@ -66,13 +68,14 @@ def read(cell: Cell, ctx: Context) -> list[Emission]:
     """AIPerf's own export, and the version that wrote it."""
     export = find_one(ctx.results_dir, EXPORT)
     summary = read_json(export)
-    version = str(summary.get("aiperf_version") or PINNED_VERSION)
+    version, notes = recorded_version(summary.get("aiperf_version"), HARNESS)
     return [
         Emission(
             summary=summary,
             version=version,
             load_label=cell.load.label,
             load={"kind": "concurrency", "concurrency": cell.load.concurrency},
+            notes=notes,
         )
     ]
 
@@ -80,6 +83,7 @@ def read(cell: Cell, ctx: Context) -> list[Emission]:
 HARNESS = Harness(
     name="aiperf",
     image=IMAGE,
+    digest=DIGEST,
     pinned_version=PINNED_VERSION,
     command=command,
     read=read,

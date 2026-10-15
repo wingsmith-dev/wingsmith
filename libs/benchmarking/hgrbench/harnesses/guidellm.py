@@ -12,8 +12,9 @@ Two profiles matter to us and the difference is a safety question:
   benchmark 2 is `throughput` — deliberately unbounded, `max_concurrency` defaulting
   to 512 — and the remaining rates are `linspace` between the two rates *this*
   server actually achieved. It adapts per model, which is genuinely better data, and
-  its second leg is an overload by construction. It is behind `--hard` for that
-  reason, and pinned to a `max_concurrency` even then.
+  its second leg is an overload by construction. No plan key reaches it: only the
+  explicit ladder is wired, and wiring the sweep would need its own `--hard` gate and
+  a `max_concurrency` cap first.
 
 The CLI was rewritten in 0.7. `guidellm benchmark` does not exist, and neither do
 `--target`, `--rate-type`, `--rate`, `--max-seconds` or `--max-requests`; every
@@ -46,9 +47,11 @@ from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import read_json
 from hgrbench.harnesses.base import shell_command
+from hgrbench.harnesses.base import recorded_version
 
 
-IMAGE = "ghcr.io/vllm-project/guidellm:latest"
+IMAGE = "ghcr.io/vllm-project/guidellm:v0.7.3"
+DIGEST = "sha256:e3ad2371bfa8e42f2c3d1251b62d0d9c9706c27ae2143c8c048eb5fc6aebb558"
 PINNED_VERSION = "0.7.3"
 RESULTS = "/results"
 EXPORT = "benchmarks.json"
@@ -120,13 +123,7 @@ def _run(
     requests_per_point: int,
     seconds_per_point: int,
 ) -> Invocation:
-    backend = (
-        "kind=openai_http,"
-        f"target={ctx.endpoint_url},"
-        f"model={model},"
-        f"api_key=${TOKEN_ENV},"
-        "validate_backend=false"
-    )
+    backend = f"kind=openai_http,target={ctx.endpoint_url},model={model},api_key=${TOKEN_ENV},validate_backend=false"
     parts = [
         "guidellm run",
         f'--backend "{backend}"',
@@ -177,7 +174,7 @@ def read(cell: Cell, ctx: Context) -> list[Emission]:
 
 def _emissions(ctx: Context) -> list[Emission]:
     payload = read_json(ctx.results_dir / EXPORT)
-    version = str((payload.get("metadata") or {}).get("guidellm_version") or PINNED_VERSION)
+    version, version_notes = recorded_version((payload.get("metadata") or {}).get("guidellm_version"), HARNESS)
     benchmarks = payload.get("benchmarks")
     if not isinstance(benchmarks, list) or not benchmarks:
         raise ValueError(f"{EXPORT} holds no benchmarks")
@@ -191,8 +188,9 @@ def _emissions(ctx: Context) -> list[Emission]:
                 load_label=label,
                 load=load,
                 notes=[
+                    *version_notes,
                     "input token counts include the chat template, so they read higher than "
-                    "the raw prompt budget and higher than AIPerf's for the same request"
+                    "the raw prompt budget and higher than AIPerf's for the same request",
                 ],
             )
         )
@@ -202,6 +200,7 @@ def _emissions(ctx: Context) -> list[Emission]:
 HARNESS = Harness(
     name="guidellm",
     image=IMAGE,
+    digest=DIGEST,
     pinned_version=PINNED_VERSION,
     command=command,
     read=read,

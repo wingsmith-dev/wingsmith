@@ -128,6 +128,8 @@ def cmd_harnesses(_args: argparse.Namespace) -> int:
         print(f"{name}")
         print(f"  {harness.description}")
         print(f"  image      {harness.image}")
+        if harness.digest:
+            print(f"  pinned at  {harness.digest}")
         if harness.build_context:
             print(f"  built from {harness.build_context}")
         print(f"  reads      {fields} canonical fields at {harness.pinned_version}")
