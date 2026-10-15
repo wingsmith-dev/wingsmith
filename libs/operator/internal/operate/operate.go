@@ -401,8 +401,8 @@ func (e *Executor) concluded(id string) (wire.OperationObserved, bool) {
 // remember records a conclusion so a replay of the operation is answered rather than re-run.
 //
 // A retryable refusal is not remembered: it says "not now", and the plane asking again under the
-// same id is how it retries. The set is bounded, oldest first out; a replay older than that is
-// rare and the plane deduplicates conclusions on its side too.
+// same id is how it retries. The set is bounded, oldest first out, and lives only as long as the
+// process; nodeOperationsAnnotation and a benchmark's Job carry the record across a restart.
 func (e *Executor) remember(id string, frame wire.OperationObserved) {
 	if frame.Phase != "succeeded" && frame.Phase != "failed" {
 		return
@@ -508,10 +508,8 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 		)
 	}
 	switch op.Kind {
-	case KindCordon:
-		return e.cordon(ctx, op)
-	case KindDrain:
-		return e.drain(ctx, op)
+	case KindCordon, KindDrain:
+		return e.nodeOperation(ctx, op)
 	case KindBenchmark:
 		return e.benchmark(ctx, op)
 	default:
@@ -529,15 +527,109 @@ func (e *Executor) permits(kind string) bool {
 	return false
 }
 
-// cordon marks a node schedulable or not.
+// nodeOperationsAnnotation records the last few node operations concluded on a node, as
+// space-separated id=phase pairs, oldest first.
 //
-// One wire kind covers both directions because they are one mechanism, and the parameter says
-// which way. A separate `uncordon` kind would double the vocabulary to express a boolean.
-func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
+// The executor's in-memory set answers a replay while the process lives. This one survives a
+// restart or a leader change, which is when a replay is most likely: the plane never received
+// the terminal frame, so it sends the operation again to an operator that has no memory of it.
+// Kept on the node because a drain already needs to patch it, so the record costs no extra
+// permission; a benchmark's record is its Job, which a replay re-attaches to by name.
+const nodeOperationsAnnotation = "hangar.dev/operations"
+
+// maxNodeOperations bounds the record on one node.
+const maxNodeOperations = 8
+
+// nodeOperation resolves the node an operation targets, answers a replay from the record on the
+// node, performs the operation, and records its conclusion there.
+func (e *Executor) nodeOperation(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
 	node, err := e.node(ctx, op.Target)
 	if err != nil {
 		return nil, err
 	}
+	if err := e.inGPUPool(node, op); err != nil {
+		return nil, err
+	}
+	if phase, ok := recordedOperation(node, op.OperationID); ok {
+		e.Log.Info("operation already concluded on this node; answering the replay", "operation", op.OperationID, "node", node.Name, "phase", phase)
+		result := map[string]string{"node": node.Name, "replayed": "true"}
+		if phase != "succeeded" {
+			return result, fmt.Errorf("operation %s already %s on %s; send a new operation to try again", op.OperationID, phase, node.Name)
+		}
+		return result, nil
+	}
+
+	var result map[string]string
+	if op.Kind == KindDrain {
+		result, err = e.drain(ctx, op, node)
+	} else {
+		result, err = e.cordon(ctx, op, node)
+	}
+	// A cancelled operation is not a conclusion the plane will ask about again under this id.
+	if ctx.Err() != context.Canceled {
+		phase := "succeeded"
+		if err != nil {
+			phase = "failed"
+		}
+		e.recordOperation(node.Name, op.OperationID, phase)
+	}
+	return result, err
+}
+
+// inGPUPool refuses a node outside the accelerator pool unless the operation sets force=true.
+// Hangar places work only on that pool, and a wrong node id should not be enough to cordon or
+// drain a system node.
+func (e *Executor) inGPUPool(node *corev1.Node, op wire.OperationDesired) error {
+	key, value := e.Render.PoolLabelKey, e.Render.GPUPoolValue
+	if key == "" || value == "" || boolParam(op.Parameters, "force", false) {
+		return nil
+	}
+	if node.Labels[key] == value {
+		return nil
+	}
+	return fmt.Errorf("node %s is not in the %s=%s pool; set force=true to %s it anyway", node.Name, key, value, op.Kind)
+}
+
+// recordedOperation returns the phase the node's record holds for an operation.
+func recordedOperation(node *corev1.Node, id string) (string, bool) {
+	for _, entry := range strings.Fields(node.Annotations[nodeOperationsAnnotation]) {
+		if recorded, phase, ok := strings.Cut(entry, "="); ok && recorded == id {
+			return phase, true
+		}
+	}
+	return "", false
+}
+
+// recordOperation appends a conclusion to the node's record, dropping the oldest past the bound.
+// A failure to record is logged, not reported: the operation itself is already over.
+func (e *Executor) recordOperation(nodeName, id, phase string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var node corev1.Node
+	if err := e.Client.Get(ctx, client.ObjectKey{Name: nodeName}, &node); err != nil {
+		e.Log.Warn("could not record the operation on its node", "operation", id, "node", nodeName, "error", err)
+		return
+	}
+	entries := strings.Fields(node.Annotations[nodeOperationsAnnotation])
+	entries = append(entries, id+"="+phase)
+	if len(entries) > maxNodeOperations {
+		entries = entries[len(entries)-maxNodeOperations:]
+	}
+	patch := client.MergeFrom(node.DeepCopy())
+	if node.Annotations == nil {
+		node.Annotations = map[string]string{}
+	}
+	node.Annotations[nodeOperationsAnnotation] = strings.Join(entries, " ")
+	if err := e.Client.Patch(ctx, &node, patch); err != nil {
+		e.Log.Warn("could not record the operation on its node", "operation", id, "node", nodeName, "error", err)
+	}
+}
+
+// cordon marks a node schedulable or not.
+//
+// One wire kind covers both directions because they are one mechanism, and the parameter says
+// which way. A separate `uncordon` kind would double the vocabulary to express a boolean.
+func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired, node *corev1.Node) (map[string]string, error) {
 	want := boolParam(op.Parameters, "cordon", true)
 	if node.Spec.Unschedulable == want {
 		return map[string]string{"node": node.Name, "changed": "false"}, nil
@@ -561,13 +653,8 @@ func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired) (map[st
 // Only Hangar-managed pods holding accelerators are evicted. Agents, exporters and CSI drivers stay
 // so the plane can still see the node, and accelerator pods this operator did not place stay unless
 // the operation sets `force=true`; how many were left is in the result.
-func (e *Executor) drain(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
-	node, err := e.node(ctx, op.Target)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := e.cordon(ctx, cordoning(op)); err != nil {
+func (e *Executor) drain(ctx context.Context, op wire.OperationDesired, node *corev1.Node) (map[string]string, error) {
+	if _, err := e.cordon(ctx, cordoning(op), node); err != nil {
 		return nil, err
 	}
 
