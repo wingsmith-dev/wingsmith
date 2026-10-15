@@ -32,9 +32,28 @@ operator                                            hub
 with `welcome` or closes with a typed error. A connection that has not completed the handshake
 within 10 seconds is closed.
 
-**Auth is stubbed.** A static bearer token identifies the cluster; there is no user auth on this
-link and no per-cluster credential rotation yet. The seam exists — the hub resolves a token to a
-`cluster_id` — so replacing it later touches one function.
+**Each cluster authenticates with its own enrolment token.** The bearer token on the connect is
+the cluster's enrolment token, issued by the plane when the cluster is registered
+(`POST /v1/clusters/{ref}/enrolment-token`, [`API.md`](API.md) §6) and stored there only as a hash.
+There is no shared or fleet-wide operator credential: anything that is not shaped like an enrolment
+token is turned away before the handshake, and a well-formed one that resolves to no cluster gets a
+socket that closes with `4401`. The token, not `hello`, decides which cluster the session speaks for:
+`hello.cluster_id` must name that same cluster, by uid or by name, or the hub closes with a protocol
+error, so one cluster's credential can never write another cluster's observed state.
+
+Whether the cluster may hold a session is asked at `hello` and again on every ownership poll for as
+long as the session lives. A cluster that is not registered, has been disabled, or whose enrolment
+token was rotated after this session opened is refused with an `error` (`code: unavailable`,
+`retryable: true`) and a `4403` close, so disabling a cluster or rotating a leaked token cuts a live
+session instead of waiting for the operator to reconnect, and re-enabling it needs no restart on the
+cluster's side. The hub's check has no off switch, unlike the API's local `ADMIN_AUTH=disabled`: a
+port-forward does not protect a socket that cluster agents dial in to over the network.
+
+**`hello.operator_version` is checked against the plane's release line.** A release-shaped version
+(`0.4.2`, `v0.4.2`) outside the major the plane speaks is refused with `retryable: false` and a
+protocol-error close, because a different major is free to change what a frame means. A version that
+is not release-shaped — `dev`, a commit — is a build from source and is admitted, with a log line on
+the hub. An operator that omits the field is read as the latter.
 
 ## 2. Envelope
 
@@ -55,7 +74,7 @@ Every frame is a single JSON object. There are no bare payloads.
 
 | Field | Meaning |
 |---|---|
-| `v` | envelope version. Bump only for changes to the envelope itself, never for payloads. |
+| `v` | envelope version. Bump only for changes to the envelope itself, never for payloads. Each side reads a range of versions (§9). |
 | `type` | `<noun>.<verb>`, lowercase, dot-separated. The payload schema is a function of this and nothing else. |
 | `id` | ULID, unique per frame per direction. |
 | `seq` | monotonic per direction per session, starting at 1, or absent on unsequenced frames. See §4. |
@@ -260,6 +279,21 @@ run a test that round-trips every fixture. That corpus is the only thing standin
 ## 9. Changing this document
 
 Additive payload fields are safe and need no version bump. Removing or retyping a field, or
-changing envelope semantics, requires a new `v` and a period where the hub speaks both. Since the
-hub is upgraded before the operators are, the hub is always the side that carries compatibility
+changing envelope semantics, requires a new `v` and a period where both versions are spoken. Since
+the hub is upgraded before the operators are, the hub is always the side that carries compatibility
 code.
+
+**Each side writes one envelope version and reads a range.** The plane and the operator each hold
+the version they write and the oldest they still read (`ENVELOPE_VERSION` and
+`MIN_ENVELOPE_VERSION` in `libs/plane/app/hub/messages.py`, `EnvelopeVersion` and
+`MinEnvelopeVersion` in `libs/operator/internal/wire/envelope.go`), and accept any frame whose `v`
+falls in `[min, current]`. Today both are `1`. A version change is rolled out by widening the hub's
+range first, then moving the operators, then the hub's writer, then raising the floor once no
+operator on the old version is left — never by a flag day. A frame outside the range closes the
+connection: the hub answers it with an `error` carrying `retryable: false`, because reconnecting
+cannot change the peer's version, and the operator drops the session with an error naming the range
+it reads.
+
+There is no version negotiation on `hello`: neither side proposes a version and neither side
+answers with one. The range is fixed per build, and the release-line check in §1 is what refuses a
+peer too far away for the range to cover.
