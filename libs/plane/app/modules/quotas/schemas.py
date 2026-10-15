@@ -21,7 +21,12 @@ class QuotaUsageSchema(Struct):
 
 
 class QuotaSchema(Struct):
-    """A guaranteed floor and a fair share, with usage beside it, never merged.
+    """A device ceiling per project and device class, with usage beside it, never merged.
+
+    Placement enforces the ceiling only: `limit_devices`, or the lower of it and
+    `guaranteed_devices` when `over_quota_enabled` is false. `guaranteed_devices`
+    is not reserved for the project against other projects, and `over_quota_weight`
+    is recorded but not read: there is no fair-share division of spare capacity.
 
     `cluster` is null when the quota spans every cluster, and usage is then
     summed across all of them. `over_limit` and `headroom_devices` are derived
@@ -74,7 +79,8 @@ class QuotaUpdateRequest(Struct):
 class ResolvedLimitsSchema(Struct):
     """The traffic ceiling for one endpoint, flattened for a hop that holds it in memory.
 
-    Declared only. There is no observed counterpart on this payload because its
+    Declared only, and not read by the gateway yet, so nothing enforces it today.
+    There is no observed counterpart on this payload because its
     reader is the thing doing the observing, and handing the gateway back its own
     measurements would be a round trip whose only possible effect is to be stale.
 
@@ -121,6 +127,10 @@ class ServingQuotaStandardSchema(Struct):
 
 class ServingQuotaSchema(Struct):
     """One endpoint's committed request rate, token rate and concurrency.
+
+    Advisory today. The gateway does not read serving quotas, so nothing refuses a
+    request over these numbers; `enforced` records whether the operator wants them
+    enforced once something does.
 
     Every field here is declared. There is no `usage`, and there is deliberately
     no observed sibling of the shape `QuotaSchema.usage` has: a device quota's

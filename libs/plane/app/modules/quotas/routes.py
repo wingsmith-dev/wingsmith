@@ -2,9 +2,10 @@
 
 Two unrelated objects live here and the names are close enough to be dangerous.
 A `Quota` is devices, checked once by placement when a workload is admitted. A
-`ServingQuota` is traffic — RPM, TPM, concurrency — checked on every request by
-the gateway, in front of the clusters. Different table, different enforcer,
-different moment, and no field in common.
+`ServingQuota` is traffic — RPM, TPM, concurrency — declared for an endpoint and
+not enforced yet: the gateway does not read serving quotas, so every limit here
+is advisory until it does. Different table, different consumer, and no field in
+common.
 
 Declared limits and observed usage arrive together and stay apart — `usage` is
 counted over live allocations at read time and never folded into the declared
@@ -94,8 +95,9 @@ class QuotaRoutes(Controller):
 class ServingQuotaRoutes(Controller):
     """Serving quotas: the traffic a served endpoint is committed to carry.
 
-    Declared here, enforced in the gateway, and measured nowhere in this process.
-    No handler reads a counter, calls the metrics backend or reports a rate — the
+    Declared here and not enforced anywhere yet: the gateway does not read these,
+    so `enforced` records what the operator wants once it does, and every limit is
+    advisory today. No handler reads a counter, calls the metrics backend or reports a rate — the
     observed half of these numbers is on the metrics surface, and folding it in
     here would put the data plane's measurements on the control plane's read path.
     """
@@ -143,7 +145,9 @@ class ServingQuotaRoutes(Controller):
         replica_index: int = 0,
         if_none_match: str | None = Parameter(header="If-None-Match", default=None),
     ) -> Response[ResolvedServingQuotaTableSchema | None]:
-        """What each gateway replica enforces, for a fleet of a stated size.
+        """What each gateway replica would enforce, for a fleet of a stated size.
+
+        No gateway reads this table yet; it is the shape enforcement will consume.
 
         Unpaginated, like the routing table: a caller that assembled half of it
         would enforce half its commitments. `replicas` and `replica_index` are the

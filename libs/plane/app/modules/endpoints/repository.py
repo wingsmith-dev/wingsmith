@@ -116,7 +116,8 @@ class EndpointRepository:
         The serving quota is the sixth entity and joins 1:1 on its unique
         endpoint FK, so it multiplies no rows and the per-endpoint grouping above
         is unaffected. It is here rather than on a surface of its own because the
-        gateway enforces it on the request path and already polls this table.
+        gateway already polls this table, so it is where enforcement will read it.
+        The gateway does not enforce serving quotas yet.
 
         The workload and artifact come along for one reason: the name the engine
         answers to. A client calls an endpoint by its public name, and the

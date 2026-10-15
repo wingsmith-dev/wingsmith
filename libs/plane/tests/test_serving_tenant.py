@@ -18,6 +18,7 @@ from app.core.context import TENANT_SURFACE
 from app.core.context import authorize
 from app.core.exceptions import Forbidden
 from app.modules.serving.services import ServingService
+from app.modules.serving.services import limits_of
 
 
 SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
@@ -210,3 +211,12 @@ def test_the_tenant_scoped_surface_takes_no_tenant_from_the_caller():
 
     for handler in (ServingRoutes.overview, ServingRoutes.model, ServingRoutes.model_metrics):
         assert "tenant" not in handler.__annotations__
+
+
+def test_a_tenant_is_never_told_a_serving_limit_is_enforced():
+    """No gateway reads serving quotas yet, so the operator's switch is not a promise."""
+    quota = SimpleNamespace(committed_rpm=600, committed_tpm=None, max_concurrent_requests=8, enforced=True)
+    limits = limits_of(quota)
+    assert (limits.requests_per_minute, limits.tokens_per_minute, limits.max_concurrent_requests) == (600, None, 8)
+    assert limits.enforced is False
+    assert limits_of(None) is None

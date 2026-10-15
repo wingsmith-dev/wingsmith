@@ -36,6 +36,8 @@ class ServingLimitsSchema(Struct):
     """What was committed on one model. Every field is null when nothing was sold.
 
     Null is uncommitted and never zero — an absent limit is not a limit of nothing.
+    `enforced` is false until the gateway enforces serving quotas, which it does not
+    yet, so these numbers are the agreed terms and not limits a request will hit.
     """
 
     requests_per_minute: int | None

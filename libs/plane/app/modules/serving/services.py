@@ -15,6 +15,23 @@ from .schemas import ServedModelDetailSchema
 from .repository import ServingRepository
 
 
+def limits_of(quota: ServingQuota | None) -> ServingLimitsSchema | None:
+    """The terms a tenant's model is served under, as the tenant may read them.
+
+    `enforced` is false whatever the operator set: the gateway does not read serving
+    quotas yet, and telling a tenant a limit is enforced when no request is ever
+    refused over it would be a promise nothing keeps.
+    """
+    if quota is None:
+        return None
+    return ServingLimitsSchema(
+        requests_per_minute=quota.committed_rpm,
+        tokens_per_minute=quota.committed_tpm,
+        max_concurrent_requests=quota.max_concurrent_requests,
+        enforced=False,
+    )
+
+
 class ServingService:
     """The read-only view one tenant has of what we serve them.
 
@@ -90,19 +107,9 @@ class ServingService:
             .scalars()
             .first()
         )
-        limits = (
-            ServingLimitsSchema(
-                requests_per_minute=quota.committed_rpm,
-                tokens_per_minute=quota.committed_tpm,
-                max_concurrent_requests=quota.max_concurrent_requests,
-                enforced=quota.enforced,
-            )
-            if quota is not None
-            else None
-        )
         return ServedModelDetailSchema(
             model=self._model(row),
-            limits=limits,
+            limits=limits_of(quota),
             protocols=list(endpoint.surface.get("protocols") or []),
         )
 
