@@ -45,6 +45,8 @@ from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
+from hgrbench.harnesses.base import HarnessError
+from hgrbench.harnesses.base import quote
 from hgrbench.harnesses.base import read_json
 from hgrbench.harnesses.base import shell_command
 from hgrbench.harnesses.base import recorded_version
@@ -123,24 +125,33 @@ def _run(
     requests_per_point: int,
     seconds_per_point: int,
 ) -> Invocation:
-    backend = f"kind=openai_http,target={ctx.endpoint_url},model={model},api_key=${TOKEN_ENV},validate_backend=false"
+    for label, value in (("endpoint", ctx.endpoint_url), ("model", model), ("tokenizer", tokenizer)):
+        if "," in value:
+            raise HarnessError(f"GuideLLM separates its settings with commas, so its {label} cannot contain one")
+    # The key is the one value the in-container shell must expand, so it sits between
+    # two single-quoted halves and the shell joins the three into one word.
+    backend = (
+        quote(f"kind=openai_http,target={ctx.endpoint_url},model={model},api_key=")
+        + f'"${TOKEN_ENV}"'
+        + quote(",validate_backend=false")
+    )
     parts = [
         "guidellm run",
-        f'--backend "{backend}"',
-        f'--data "kind=synthetic_text,prompt_tokens={input_tokens},output_tokens={output_tokens}"',
-        f'--tokenizer "kind=huggingface_auto,model={tokenizer}"',
-        f'--profile "{profile}"',
+        f"--backend {backend}",
+        f"--data {quote(f'kind=synthetic_text,prompt_tokens={input_tokens},output_tokens={output_tokens}')}",
+        f"--tokenizer {quote(f'kind=huggingface_auto,model={tokenizer}')}",
+        f"--profile {quote(profile)}",
     ]
     if override:
-        parts.append(f'--override "{override[0]}" "{override[1]}"')
+        parts.append(f"--override {quote(override[0])} {quote(override[1])}")
     if requests_per_point:
-        parts.append(f'--constraint "kind=max_requests,count={requests_per_point}"')
+        parts.append(f"--constraint {quote(f'kind=max_requests,count={requests_per_point}')}")
     if seconds_per_point:
-        parts.append(f'--constraint "kind=max_duration,seconds={seconds_per_point}"')
+        parts.append(f"--constraint {quote(f'kind=max_duration,seconds={seconds_per_point}')}")
     parts += [
-        '--metrics "kind=generative,sample_size=50"',
-        f'--output "kind=json,path={RESULTS}/{EXPORT}"',
-        f'--output "kind=csv,path={RESULTS}/benchmarks.csv"',
+        f"--metrics {quote('kind=generative,sample_size=50')}",
+        f"--output {quote(f'kind=json,path={RESULTS}/{EXPORT}')}",
+        f"--output {quote(f'kind=csv,path={RESULTS}/benchmarks.csv')}",
         "--disable-console-interactive",
         "--disable-progress",
     ]

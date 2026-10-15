@@ -37,7 +37,9 @@ from hgrbench.harnesses.base import Harness
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import HarnessError
+from hgrbench.harnesses.base import quote
 from hgrbench.harnesses.base import read_json
+from hgrbench.harnesses.base import double_quoted
 from hgrbench.harnesses.base import shell_command
 from hgrbench.harnesses.vllm_bench import IMAGE
 from hgrbench.harnesses.vllm_bench import BUILD_CONTEXT
@@ -79,8 +81,11 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
     --result-filename run=N.json`, plus one `--<key> <value>` per matrix entry. So
     this side must not pass any of those, and must pass everything else.
 
-    The token is written as `${HGR_BENCH_TOKEN}` inside a single-quoted `--header`,
-    which the container's shell expands when the sweep spawns the bench command.
+    The bench command is quoted twice, because it is split twice: the sweep runs
+    `shlex.split` over it, so every value in it is quoted for that, and the whole
+    line is then one double-quoted argument to the container's shell. That shell
+    expands `${HGR_BENCH_TOKEN}` inside the single-quoted `--header` and nothing
+    else, and the sweep then splits a header that already carries the token.
     """
     params = ctx.results_dir / "bench_params.json"
     params.write_text(json.dumps(bench_params(spec), indent=2))
@@ -89,10 +94,10 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
         [
             f"python3 {SERVE_ENTRYPOINT}",
             "--backend openai-chat",
-            f"--base-url {ctx.endpoint_url}",
+            f"--base-url {quote(ctx.endpoint_url)}",
             "--endpoint /v1/chat/completions",
-            f"--model {spec.model.name}",
-            f"--tokenizer {spec.model.tokenizer}",
+            f"--model {quote(spec.model.name)}",
+            f"--tokenizer {quote(spec.model.tokenizer)}",
             "--dataset-name random",
             "--ignore-eos",
             "--temperature 0",
@@ -107,7 +112,7 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
             f"python3 {SWEEP_ENTRYPOINT} serve",
             f'--serve-cmd "python3 {FAKE_HEALTH} --host 127.0.0.1 --port {FAKE_HEALTH_PORT}"',
             '--after-bench-cmd "true"',
-            f'--bench-cmd "{bench}"',
+            f"--bench-cmd {double_quoted(bench)}",
             f"--bench-params {RESULTS}/bench_params.json",
             f"--num-runs {spec.num_runs}",
             f"-o {RESULTS}",

@@ -252,6 +252,31 @@ def redacted(argv: list[str], token: str) -> str:
     return " ".join(shlex.quote(part) for part in shown)
 
 
+def quote(value: object) -> str:
+    """One value for the in-container shell, as a single word it will not expand.
+
+    Every value interpolated into a harness script goes through this, so a model
+    name, tokenizer or URL with a space, a quote or a `$` in it reaches the tool as
+    written. The token is the one thing deliberately left for that shell to expand,
+    and it is never passed through here.
+    """
+    return shlex.quote(str(value))
+
+
+def double_quoted(text: str) -> str:
+    """`text` inside double quotes, with only `$TOKEN_ENV` left for the shell to expand.
+
+    For the one place a script has to hand a whole command line to a tool that
+    splits it again itself: the outer shell must expand the token, and must not
+    expand or split anything else.
+    """
+    marker = "\x00token\x00"
+    held = text.replace(f"${{{TOKEN_ENV}}}", marker).replace(f"${TOKEN_ENV}", marker)
+    for char in ("\\", '"', "$", "`"):
+        held = held.replace(char, "\\" + char)
+    return '"' + held.replace(marker, f"${{{TOKEN_ENV}}}") + '"'
+
+
 def with_token(ctx: Context) -> dict[str, str]:
     """The docker CLI's extra environment for a run: the token under its one agreed name."""
     return {TOKEN_ENV: ctx.token} if ctx.has_token else {}

@@ -17,6 +17,7 @@ from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
+from hgrbench.harnesses.base import quote
 from hgrbench.harnesses.base import find_one
 from hgrbench.harnesses.base import read_json
 from hgrbench.harnesses.base import shell_command
@@ -28,10 +29,6 @@ DIGEST = "sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902
 PINNED_VERSION = "0.12.0"
 ARTIFACTS = "/artifacts"
 EXPORT = "profile_export_aiperf.json"
-
-
-def _quote(value: str) -> str:
-    return "'" + value.replace("'", "'\\''") + "'"
 
 
 def command(cell: Cell, ctx: Context) -> Invocation:
@@ -47,12 +44,12 @@ def command(cell: Cell, ctx: Context) -> Invocation:
     """
     args = [
         "aiperf profile",
-        f"--model {_quote(cell.model.name)}",
-        f"--url {_quote(ctx.endpoint_url)}",
+        f"--model {quote(cell.model.name)}",
+        f"--url {quote(ctx.endpoint_url)}",
         "--endpoint-type 'chat'",
         "--streaming",
         f'-H "Authorization: Bearer ${TOKEN_ENV}"',
-        f"--tokenizer {_quote(cell.model.tokenizer)}",
+        f"--tokenizer {quote(cell.model.tokenizer)}",
         f"--concurrency {cell.load.concurrency}",
         f"--request-count {cell.load.requests}",
         f"--synthetic-input-tokens-mean {cell.input_tokens}",

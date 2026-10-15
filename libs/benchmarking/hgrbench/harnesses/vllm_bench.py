@@ -37,6 +37,7 @@ from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
+from hgrbench.harnesses.base import quote
 from hgrbench.harnesses.base import read_json
 from hgrbench.harnesses.base import shell_command
 
@@ -65,10 +66,10 @@ def command(cell: Cell, ctx: Context) -> Invocation:
     args = [
         f"python3 {ENTRYPOINT}",
         "--backend openai-chat",
-        f"--base-url {ctx.endpoint_url}",
+        f"--base-url {quote(ctx.endpoint_url)}",
         "--endpoint /v1/chat/completions",
-        f"--model {cell.model.name}",
-        f"--tokenizer {cell.model.tokenizer}",
+        f"--model {quote(cell.model.name)}",
+        f"--tokenizer {quote(cell.model.tokenizer)}",
         "--dataset-name random",
         f"--random-input-len {cell.input_tokens}",
         f"--random-output-len {cell.output_tokens}",
