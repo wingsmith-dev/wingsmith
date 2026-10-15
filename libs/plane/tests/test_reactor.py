@@ -356,6 +356,22 @@ def test_settling_an_alert_forgets_its_channels():
     assert not ledger.waiting("alr_1", "firing", "chn_bad")
 
 
+def test_an_alert_state_that_stopped_being_due_is_forgotten_even_with_a_channel_failing():
+    from app.reactor.loop import DeliveryLedger
+
+    ledger = DeliveryLedger()
+    ledger.record("alr_1", "firing", "chn_ok")
+    ledger.failed("alr_1", "firing", "chn_bad")
+    ledger.record("alr_2", "firing", "chn_ok")
+
+    ledger.keep_only({("alr_1", "resolved"), ("alr_2", "firing")})
+
+    assert not ledger.told("alr_1", "firing", "chn_ok")
+    assert not ledger.waiting("alr_1", "firing", "chn_bad")
+    assert ledger.told("alr_2", "firing", "chn_ok")
+    assert len(ledger) == 1
+
+
 # --------------------------------------------------------------------------- repair
 
 

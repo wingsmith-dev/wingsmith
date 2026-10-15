@@ -169,10 +169,24 @@ class DeliveryLedger:
         self._backoff[key] = (failures, min(2 ** (failures - 1) - 1, self.MAX_BACKOFF_TICKS))
 
     def settle(self, alert: str, state: str) -> None:
-        """Forgets an alert state once every channel has it, or once it is no longer current."""
+        """Forgets an alert state once every channel has it."""
         self._told.pop((alert, state), None)
         for key in [key for key in self._backoff if key[:2] == (alert, state)]:
             del self._backoff[key]
+
+    def keep_only(self, current: set[tuple[str, str]]) -> None:
+        """Forgets every alert state not in `current`, the ones still waiting to be announced.
+
+        An alert that changed state, or was marked notified another way, while one of its
+        channels was failing is never settled; this is what drops it.
+        """
+        for key in [key for key in self._told if key not in current]:
+            del self._told[key]
+        for key in [key for key in self._backoff if key[:2] not in current]:
+            del self._backoff[key]
+
+    def __len__(self) -> int:
+        return len(self._told) + len(self._backoff)
 
 
 LATE = LateCommits()
@@ -314,6 +328,7 @@ async def send_pending(
     channels = (await db.execute(select(NotificationChannel).where(NotificationChannel.enabled.is_(True)))).scalars()
     configured = list(channels)
     due = await alert_store.due_for_notice(db)
+    ledger.keep_only({(alert.uid, alert.state) for alert in due})
     if not due:
         return
     rows = (await db.execute(select(Cluster.id, Cluster.name))).all()
