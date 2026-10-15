@@ -8,16 +8,27 @@ This product includes software developed by the vLLM project
 Files under libs/benchmarking/images/vllm-bench/upstream/ are copied verbatim
 from vLLM v0.28.0 and keep their original copyright and license headers.
 
-Container images
-----------------
-The Dockerfiles under hangar-runtime build images that bundle third-party
-binaries under their own licenses, which apply to anyone who redistributes a
-built image:
+Third-party dependencies with notice or source obligations
+----------------------------------------------------------
+Most dependencies are under permissive licenses (MIT, BSD, Apache-2.0, ISC).
+The ones below carry obligations beyond keeping a copyright line. Each is used
+unmodified, as a separate package, and keeps its own license.
 
-- hangar-runtime/worker/vllm-omni/video installs PyAV wheels whose bundled
-  FFmpeg is built with libx264 (GPL-2.0-or-later). Corresponding source is
-  published by the PyAV project (https://github.com/PyAV-Org/pyav-ffmpeg).
-- hangar-runtime/worker/vllm/efa installs AWS libfabric and rdma-core
-  (BSD/GPL-2.0 dual-licensed).
-- hangar-runtime/worker/vllm/nixl-mamba-prefill ships modified vLLM source files
-  (Apache-2.0); the modifications are the patches in that directory.
+Redistributed in built images:
+
+- psycopg and psycopg-pool (https://www.psycopg.org/), LGPL-3.0-only, in the
+  plane image. Installed as separate, replaceable Python packages. Source:
+  https://github.com/psycopg/psycopg
+- certifi (https://github.com/certifi/python-certifi), MPL-2.0, in the plane
+  and conformance environments. Source is available at that address.
+- Geist Mono and Plus Jakarta Sans fonts, via @fontsource-variable,
+  SIL Open Font License 1.1, bundled into the console and the plane image
+  that serves it. Geist Mono is copyright Vercel; Plus Jakarta Sans is
+  copyright The Plus Jakarta Sans Project Authors. License text:
+  https://openfontlicense.org
+
+Used only at build time, not shipped in any image or bundle:
+
+- lightningcss (MPL-2.0), the console's CSS compiler.
+- caniuse-lite (CC-BY-4.0), browser support data from caniuse.com, read
+  during the console build.
