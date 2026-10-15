@@ -161,10 +161,7 @@ model whose weights are already loaded stays loaded.`,
 // newDecisionCmd builds track and ignore, which differ only in the word they
 // record. Neither sends anything to a cluster, so neither asks to confirm.
 func newDecisionCmd(app *App, decision string) *cobra.Command {
-	var (
-		project string
-		note    string
-	)
+	var note string
 	short := "Add a discovered workload to the inventory"
 	long := `Track a workload the operator found running.
 
@@ -194,10 +191,11 @@ only says we have looked at it and do not want it in the default listing;
 			if err != nil {
 				return err
 			}
-			out, err := app.Backend.DecideWorkload(ctx, found.ID, decision, api.DecisionRequest{
-				Project: project,
-				Note:    note,
-			})
+			req := api.DecisionRequest{Note: note}
+			if decision == decisionTracked && app.projectSet {
+				req.Project = app.Project
+			}
+			out, err := app.Backend.DecideWorkload(ctx, found.ID, decision, req)
 			if err != nil {
 				return err
 			}
@@ -213,11 +211,7 @@ only says we have looked at it and do not want it in the default listing;
 			})
 		},
 	}
-	fl := cmd.Flags()
-	fl.StringVar(&note, "note", "", "why — it outlives the person who ran it")
-	if decision == decisionTracked {
-		fl.StringVar(&project, "project", "", "the project that owns it")
-	}
+	cmd.Flags().StringVar(&note, "note", "", "why — it outlives the person who ran it")
 	return cmd
 }
 
@@ -319,7 +313,6 @@ func newRestoreWorkloadCmd(app *App) *cobra.Command {
 func newPromoteCmd(app *App) *cobra.Command {
 	var (
 		artifact      string
-		project       string
 		name          string
 		priorityClass string
 	)
@@ -344,10 +337,11 @@ running, so cataloguing it cannot scale it as a side effect.`,
   hgr discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if artifact == "" || project == "" {
+			if artifact == "" || !app.projectSet {
 				return errs.New(errs.CodeInputRequired, "promote needs --artifact and --project").
-					WithCause("the plane has to know what this workload is and who owns it")
+					WithCause("the plane has to know what this workload is and who owns it; --project may also come from HANGAR_PROJECT or context.project")
 			}
+			project := app.Project
 			ctx, cancel := app.RequestContext()
 			defer cancel()
 
@@ -375,7 +369,6 @@ running, so cataloguing it cannot scale it as a side effect.`,
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&artifact, "artifact", "", "the weights this workload is running")
-	fl.StringVar(&project, "project", "", "the project that owns it")
 	fl.StringVar(&name, "name", "", "workload name, defaulting to the discovered workload's own")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
 	return cmd

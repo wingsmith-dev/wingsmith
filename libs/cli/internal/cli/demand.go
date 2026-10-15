@@ -164,7 +164,7 @@ workload can be running in one region and queued on quota in another.`,
 		example: `  hgr deployment ls
   hgr deployment ls --cluster iad-1 --phase placed
   hgr deployment ls --workload chat
-  hgr deployment get chat-iad`,
+  hgr deployment get chat`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Deployment], error) {
 			return b.Deployments(ctx, o)
 		},
@@ -320,22 +320,21 @@ func workloadNoun() noun[api.Workload] {
 		aliases: []string{"workloads", "wkl"},
 		group:   "demand",
 		short:   "What you asked to run, across every cluster it may use",
-		long: `A workload is an artifact, the way to serve it, a kind, a priority and a
-total scale — and no cluster.
+		long: `A workload is an artifact, the way to serve it, a priority and a total
+number of replicas. It does not name a cluster.
 
-Placement expands it into one deployment per cluster, and each of those carries
-that cluster's share of the total. "Run gpt-20b on asia and europe" is one
-workload, two deployments, one replica each.
+Placement expands it into one deployment per cluster, and each deployment
+carries that cluster's share of the total. Serving one model in two regions is
+one workload with two deployments.
 
-kind is what makes it splittable: service and task fan out across clusters, a
-gang is atomic and always has exactly one deployment, because ranks that are
-co-scheduled cannot straddle clusters. The scale numbers are counted in
-replicas for a service, ranks for a gang, completions for a task.`,
+Workloads today are long-running inference services. Batch tasks and gang
+scheduled jobs are on the roadmap; the kind field is there for them, but
+nothing runs them yet.`,
 		example: `  hgr workload ls
-  hgr workload ls --kind gang --phase pending
+  hgr workload ls --phase pending
   hgr workload get chat
-  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --scale 8
-  hgr workload scale chat 12`,
+  hgr workload create assistant --project core --artifact llama-3.1-70b-instruct --class h100-80 --context-length 8192
+  hgr workload scale chat 4`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Workload], error) {
 			return b.Workloads(ctx, o)
 		},
@@ -559,7 +558,6 @@ func writeServing(app *App, w io.Writer, s ui.Style, wl api.Workload) {
 func newWorkloadCreateCmd(app *App) *cobra.Command {
 	var (
 		artifact      string
-		project       string
 		cluster       string
 		priorityClass string
 		kind          string
@@ -626,19 +624,20 @@ needs --output-modality image|video instead of --context-length. --model-class
 and --sampling-default go into the worker's stage configuration; the second is
 how a distilled model gets its step count, because omni defaults every model to
 50 inference steps.`,
-		Example: `  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --scale 8
-  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --devices 8 --tensor-parallel 8
-  hgr workload create sweep --artifact llama-3.1-70b --class h100-80 --kind task --scale 200
-  hgr workload create train --artifact llama-3.1-70b --class h100-80 --kind gang --gang-size 64
-  hgr workload create z-image-turbo --artifact z-image-turbo --project initech-inference \
-    --class h100-80gb-sxm --engine omni --engine-runtime-version 1.4.1 \
+		Example: `  hgr workload create assistant --project core --artifact llama-3.1-70b-instruct \
+    --class h100-80 --context-length 8192 --scale 2
+  hgr workload create assistant-tp8 --project core --artifact llama-3.1-70b-instruct \
+    --class h100-80 --devices 8 --tensor-parallel 8 --context-length 32768
+  hgr workload create z-image-turbo --project core --artifact llama-3.1-70b-instruct \
+    --class h100-80 --engine omni --engine-runtime-version 1.4.1 \
     --output-modality image --sampling-default num_inference_steps=8`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if artifact == "" || project == "" {
+			if artifact == "" || !app.projectSet {
 				return errs.New(errs.CodeInputRequired, "a workload needs --artifact and --project").
-					WithCause("what to run, and who is charged for it")
+					WithCause("what to run, and who is charged for it; --project may also come from HANGAR_PROJECT or context.project")
 			}
+			project := app.Project
 			omni := isOmniEngine(engine)
 			if class == "" || (!omni && contextLength <= 0) {
 				return errs.New(errs.CodeInputRequired, "a workload needs --class and --context-length").
@@ -755,17 +754,16 @@ how a distilled model gets its step count, because omni defaults every model to
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&artifact, "artifact", "", "the weights to run")
-	fl.StringVar(&project, "project", "", "the project that owns it")
 	fl.StringVar(&cluster, "cluster", "", "pin to one cluster, overruling placement")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
-	fl.StringVar(&kind, "kind", "service", "service|task|gang")
+	fl.StringVar(&kind, "kind", "service", "service; task and gang are on the roadmap and nothing runs them yet")
 	fl.IntVar(&scale, "scale", 1, "total across every cluster it may use")
 	fl.IntVar(&minScale, "min-scale", 1, "lower bound on the total (default: --scale)")
 	fl.IntVar(&maxScale, "max-scale", 1, "upper bound on the total (default: --scale)")
 	fl.StringVar(&strategy, "strategy", "pack", "pack|spread")
 	fl.IntVar(&maxClusters, "max-clusters", 0, "cap how many clusters may hold a share")
 	fl.StringArrayVar(&floors, "floor", nil, "per-cluster minimum share (CLUSTER=N, repeatable)")
-	fl.IntVar(&gangSize, "gang-size", 1, "ranks that must be co-scheduled, for --kind gang")
+	fl.IntVar(&gangSize, "gang-size", 1, "ranks that must be co-scheduled, for --kind gang (roadmap)")
 	fl.BoolVar(&preemptible, "preemptible", false, "may be evicted for something of higher priority")
 	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
 	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
@@ -1090,9 +1088,9 @@ This is the answer to "it says placed and nothing is happening". The status on
 ` + "`hgr deployment get`" + ` only ever shows the latest conclusion, so a deployment that
 waited an hour on cold weights and one that came up instantly look identical
 once they are up.`,
-		Example: `  hgr deployment events chat-iad
-  hgr deployment events chat-iad --since 1h
-  hgr deployment events chat-iad --severity error`,
+		Example: `  hgr deployment events chat
+  hgr deployment events chat --since 1h
+  hgr deployment events chat --severity error`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()

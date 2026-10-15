@@ -340,7 +340,7 @@ being scheduled onto, and it is the row to act on.`,
 		example: `  hgr device-class ls
   hgr device-class ls --present
   hgr device-class ls --cluster iad-1
-  hgr device-class get h100-80gb-sxm`,
+  hgr device-class get h100-80`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DeviceClass], error) {
 			return b.DeviceClasses(ctx, o)
 		},

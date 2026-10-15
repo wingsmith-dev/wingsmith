@@ -35,8 +35,8 @@ The result is stored in the harness's own shape and is not normalised. Two runs
 compare when their harness and version match; across harnesses there is no shared
 definition to compare against, and this CLI does not invent one. Use -o json and
 jq to read a summary whose shape you know.`,
-		example: `  hgr benchmark ls --deployment llama-70b-prod
-  hgr benchmark run llama-70b-prod --param concurrency=64 --wait
+		example: `  hgr benchmark ls --deployment chat
+  hgr benchmark run chat --param concurrency=64 --wait
   hgr benchmark get bmk_01m0dj…
   hgr benchmark get bmk_01m0dj… -o json | jq .summary.time_to_first_token`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.BenchmarkRun], error) {
@@ -635,8 +635,8 @@ now.
 --image overrides the harness's pinned image for this run alone. Leave it alone
 unless you are reaching for a release the plane has not pinned yet: runs that
 did not use the same image are not the same comparison group.`,
-		Example: `  hgr benchmark run llama-70b-prod
-  hgr benchmark run llama-70b-prod --param concurrency=64 --param request_count=500 --wait
+		Example: `  hgr benchmark run chat
+  hgr benchmark run chat --param concurrency=64 --param request_count=500 --wait
   hgr benchmark run dep_01m0dj… --param output_tokens_mean=1024 --reason "long-generation check"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
