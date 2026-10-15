@@ -9,19 +9,30 @@ carry them. Individual choices, with the alternatives they beat, are recorded as
 
 ## 1. What this is, and what it is not
 
-Hangar is a control plane that manages **many GPU clusters** and serves **many models across them**:
-enrolment, capacity, placement, model lifecycle, serving configuration, quota, and operations. The
-nearest reference point is Run:ai, a hosted control plane over a per-cluster install that carries a
-scheduler, an admission layer, CRDs and a sync agent.
+Hangar is a control plane that serves **many models across several Kubernetes GPU clusters**:
+cluster enrolment, device inventory, placement, model lifecycle, serving configuration, quota, and
+operations, plus the gateway that routes inference requests to the cluster serving each model.
+Inside each cluster, a model is served by rendering it into an **NVIDIA Dynamo** graph
+(`DynamoGraphDeployment`); Dynamo, with vLLM, SGLang or TensorRT-LLM inside it, is the only serving
+runtime Hangar drives today.
 
-Three scoping decisions frame everything below.
+It is pre-release and built for one organisation operating its own clusters, run by a single
+operator or a small team sharing one admin role. What is not built yet is listed in the
+[roadmap](../roadmap.md); this document describes the system as it works today and says so where a
+design reserves room for more.
+
+Four scoping decisions frame everything below.
 
 **It is standalone.** Hangar owns its own database, its own deployment and its own vocabulary. A
 system that wants to sell or meter inference on top of it talks to it through its API.
 
-**Inference first, general workloads carried.** The near-term product is model serving, but the
-object model can hold training and batch without a rewrite. The reasons are economic rather than
-aesthetic (§9.2).
+**Inference serving only, for now.** Everything Hangar renders today is a long-running model
+server. The object model reserves room for batch and gang-scheduled work (§11.2), but no renderer
+for them exists.
+
+**NVIDIA Dynamo inside the cluster.** The plane never sends Kubernetes manifests (§3.2), so a second
+renderer is possible, but the operator renders only Dynamo graphs. A cluster has to run the Dynamo
+platform, which the `cluster-setup` chart installs.
 
 **The organisation running Hangar owns every cluster it manages.** No clusters belonging to a third
 party, no air-gapped installs. This simplifies exactly one object (Pool, §5.1) and it is easy to
@@ -32,11 +43,43 @@ What it deliberately is not:
 - **Not a device scheduler.** The scheduler inside each cluster picks cards. Hangar picks clusters.
 - **Not a Kubernetes dashboard.** Showing an operator CRD trees and asking them to reconstruct
   intent is the thing being replaced.
+- **Not a training or batch platform.** It does not run jobs to completion, and it does not preempt.
 - **Not in the request path of the control plane.** Inference traffic goes through a separate data
-  plane (§7) that keeps serving when the control plane is down.
+  plane (§7) that keeps serving when the control plane is down, though a gateway that restarts
+  during a control-plane outage cannot come back up (§7.1).
 - **Not a per-cluster configuration repository.** A cluster is registered, handed a token and a
   `values.yaml`, and installs itself. There is no directory per cluster anywhere in the repository;
   the plane's registry is the list of clusters.
+
+### 1.1 Where it sits among related projects
+
+Most of the projects below work inside one cluster, or in front of endpoints that already exist.
+Hangar's layer is the one above a set of clusters: which clusters a model runs on, what each one
+is told to run, and how a request finds it.
+
+| Project | What it does | Relation to Hangar |
+|---|---|---|
+| **NVIDIA Dynamo** (operator and Planner) | Serves a model inside one cluster: frontend, KV-aware router, disaggregated prefill/decode workers; the Planner scales workers against latency targets | Hangar renders into it. Each Hangar deployment becomes one `DynamoGraphDeployment` in one cluster |
+| **llm-d** | Kubernetes-native distributed inference inside a cluster: vLLM, an inference scheduler on the Gateway API Inference Extension, disaggregation | An in-cluster alternative to Dynamo. Not a renderer Hangar has |
+| **KServe** | Model-serving CRDs (`InferenceService`) per cluster, with autoscaling and many runtimes | Per-cluster serving. Hangar does not render KServe objects |
+| **AIBrix** | Control-plane components for vLLM in one cluster: LLM-aware gateway, autoscaler, LoRA management, distributed KV cache | Same layer as Dynamo's own control plane, inside one cluster |
+| **SkyServe** (SkyPilot) | Serves a model across clouds and regions by provisioning its own VMs or pods and load-balancing across them | Provisions compute itself; Hangar manages clusters you already run and leaves provisioning to you |
+| **LiteLLM, Envoy AI Gateway** | API gateways in front of model providers: one API, keys, rate limits, cost tracking | Route to endpoints that already exist. Hangar's gateway is narrower (no billing, no provider catalog) and is fed by the plane's knowledge of what runs where |
+| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar deliberately leaves to the cluster. Hangar does not preempt or run training |
+
+NVIDIA has signalled multi-cluster coordination for Dynamo. If that ships, the overlap with Hangar
+is cross-cluster placement and routing. What Hangar adds on top of a single cluster's Dynamo today:
+
+- **Clusters that only dial out.** No kubeconfig in a central database and no inbound port on any
+  cluster, for the control stream and for inference traffic (§2, §7.2).
+- **Adoption before management.** Models already running in a cluster are observed and can be put
+  under management deliberately, without a restart (§6.4).
+- **Tenants and endpoints across clusters.** One public model name, per-tenant hosts and API keys,
+  per-tenant KV-cache isolation, and weighted or ordered routing to deployments on several clusters.
+- **Fleet inventory per device.** Device identity and health from DCGM, a device-class table shared
+  by plane and operator, and placement against it (§5).
+- **Measurement of the serving path.** Conformance probes of an endpoint against a reference
+  provider (`hgrconform`), load tests (`hgrbench`) and request-path measurement (`hgrtransit`).
 
 ---
 
@@ -171,7 +214,9 @@ them pass through the control plane.
 If any of them did, **the control plane's availability would become the inference SLA**. A control
 plane is allowed to be down for an hour in a way an endpoint is not. The plane says where things go;
 it never carries them. The gateway is the one Hangar process in the request path, and it is built to
-keep serving from the last routing table it loaded when the plane is unreachable (§7.1).
+keep serving from the last routing table it loaded when the plane is unreachable. It does depend on
+the plane to start: a gateway that restarts during a plane outage cannot load a table and stays
+down (§7.1).
 
 ---
 
@@ -227,8 +272,10 @@ story for any model large enough to need tensor parallelism. It is also the thin
 retrofitted: schedulers that started with `gpus: int` and added topology later ended up with a
 second scheduler beside the first.
 
-With devices modelled with topology edges from the start, gang scheduling, tensor-parallel placement
-and "eight GPUs in one fabric" are queries. Added later, they are rewrites.
+With devices modelled with topology edges from the start, "eight GPUs in one fabric" is a query
+over observed state. Placement uses it to choose only clusters where a workload that declares a
+topology requirement fits inside one domain; which devices it lands on stays the cluster
+scheduler's job. Added later, this would have been a rewrite.
 
 ### 5.3 Heterogeneity is a scheduling constraint
 
@@ -249,7 +296,7 @@ Neither is expensive if designed in. Both are painful once placement assumes dev
 | Object | Kind | Holds |
 |---|---|---|
 | **Artifact** | declared | immutable, content-addressed weights: digest, size, format, licence, one or more locations |
-| **Workload** | declared, plane-only | what you asked to run, globally: the artifact and a reproducible way to serve it (engine and version, quantization, TP/PP/EP, context length, KV and prefix cache configuration, engine arguments, the resulting device shape and class), plus kind (`service`, `task` or `gang`), total scale bounds, priority, and which clusters it may use. Has many Deployments |
+| **Workload** | declared, plane-only | what you asked to run, globally: the artifact and a reproducible way to serve it (engine and version, quantization, TP/PP/EP, context length, KV and prefix cache configuration, engine arguments, the resulting device shape and class), plus kind (only `service` is rendered; `task` and `gang` are reserved), total scale bounds, priority, and which clusters it may use. Has many Deployments |
 | **Deployment** | declared | one workload on one cluster, with **that cluster's share** of the scale. The unit the operator reconciles, carrying the serving configuration inlined |
 | **Replica** | observed | a running instance on named devices, with readiness and engine version |
 | **Endpoint** | declared, plane-only | the stable public name clients call; resolves to N deployments with weights, failover and canary |
@@ -320,17 +367,17 @@ An operator only ever sees its own cluster, so a Deployment is still exactly the
 The replica count it obeys is this cluster's share, never the workload total, and the operator never
 sums or re-derives it.
 
-**Splittability is a property of kind, and placement enforces it.** `service` and `task` may be split
-across clusters; `gang` may not, because its ranks must be co-scheduled, so a gang workload always
-has exactly one Deployment. A split gang is broken, not degraded, so placement rejects it rather than
-ranking it lower. Nothing below Workload branches on kind except the operator, deciding which
-Kubernetes object to render, which is §3.2 working as intended.
+**Splittability is a property of kind.** A `service` may be split across clusters. The reserved
+kinds carry their own rule for when they are built: a `gang` may not be split, because its ranks
+must be co-scheduled, so it would always have exactly one Deployment. Nothing below Workload is meant
+to branch on kind except the operator, deciding which Kubernetes object to render, which is §3.2
+working as intended. Today the operator renders `service` only (§11.2).
 
 **Scale is declared as a total and derived per cluster.** Workload carries total min/max/desired,
 optional per-cluster floors, and an optional cap on how many clusters it spreads over; placement
-derives each Deployment's share. The unit is set by kind: replicas for `service`, ranks for `gang`,
-completions for `task`. The default fill strategy is **pack** rather than spread, so spreading is
-opt-in.
+derives each Deployment's share as a fixed replica count. The maximum is reserved for an autoscaler
+that does not exist yet ([roadmap](../roadmap.md)). The default fill strategy is **pack** rather than
+spread, so spreading is opt-in.
 
 **Placement constraints are Policy, not new fields.** Policy already carries allowed regions,
 residencies, device classes and allowed or denied clusters (§8). Explicit cluster pinning survives as
@@ -364,7 +411,10 @@ values somebody meant.
 ## 7. The data plane
 
 The gateway, the tunnel and the agent are how a request reaches a model. None of them is part of the
-control plane, and none of them depends on it being up.
+control plane, and while they are running none of them needs it to be up. The exceptions are at
+start-up: the gateway needs the plane to load its first routing table, and an agent that redials
+needs the gateway to verify its token, which the gateway can answer from cache for up to an hour
+without the plane.
 
 ### 7.1 Gateway
 
@@ -376,6 +426,9 @@ keeps a copy in memory and refreshes it on a timer, so nothing is joined per req
   order of days, and a control-plane outage must not stop traffic to models that are running fine.
 - **It boots with no table**: it refuses to start. Coming up empty would answer everything with
   `model_not_found`, which reads as an outage of the models rather than the misconfiguration it is.
+  The table is held in memory only, so this includes a gateway restarted while the plane is down:
+  a restart, eviction or scale-up during a plane outage leaves that replica out until the plane
+  returns. Persisting the last table is on the [roadmap](../roadmap.md).
 - **An endpoint has no upstreams**: `503 no_capacity`, never `404`. "No such model" and "nowhere to
   send it" are different answers and a caller acts differently on each.
 
@@ -388,6 +441,12 @@ listener has no ingress, so reaching it is the proof; on the public listener the
 tenant, and a tenant that declares `auth: api_key` must present a key belonging to it. Another
 tenant's model reads as `404`, never `403`
 ([ADR 0016](../decisions/0016-the-listener-is-the-guard-tenant-identity-replaces-the-shared-token.md)).
+
+**The gateway is one failure domain.** It is a single deployment, wherever it runs, so if every
+replica is down every model is unreachable through Hangar, in every region. Run several replicas
+across zones; regional gateways are not designed yet. Its internal listener has no authentication
+and must be kept off any ingress and behind a NetworkPolicy
+([deploying the plane](../operations/deploy-plane.md)).
 
 Because it sees every request, including those that never reach a cluster, the gateway is the one
 honest source of a failure rate. It counts each request under a closed set of outcomes, keeping
@@ -427,13 +486,17 @@ rollout. The frontend's router mode is declared on the workload rather than rend
 |---|---|---|
 | **Tenant / Project** | declared | the unit quota attaches to |
 | **Quota** | declared | guaranteed floor plus over-quota fair share, per project per cluster per device class |
-| **PriorityClass** | declared | what preempts what |
+| **PriorityClass** | declared | a priority and a `preemptible` flag; recorded, not yet acted on |
 | **Policy** | declared | placement constraints: region, residency, device class, cost ceiling, allowed clusters. Attachable to tenant, endpoint, workload or cluster |
 | **Allocation** | observed | devices currently committed to a replica |
 
-Quota with overcommit is the real product primitive in this group. A guaranteed floor plus fair-share
-access to otherwise idle capacity is what makes GPU economics work at all, and it is why a plain
-namespace quota is not enough: a hard cap leaves expensive hardware idle while someone queues.
+Quota is the primitive this group is designed around: a guaranteed floor per project, cluster and
+device class, checked by placement at admission, with room for an over-quota share of idle
+capacity. A plain namespace quota is not enough because it is a hard cap per cluster, with no
+notion of a device class or of the fleet.
+
+A second, unrelated quota, **ServingQuota**, declares an endpoint's committed request rate, token
+rate and concurrency. It is stored and shown but not yet enforced by the gateway.
 
 ---
 
@@ -443,7 +506,7 @@ namespace quota is not enough: a hard cap leaves expensive hardware idle while s
 |---|---|---|
 | **Component** | declared bundle, observed rollout | what is installed in a cluster and at what version: the operator, the agent, serving runtime, exporters, collectors, cache tier |
 | **Operation** | operation | typed, long-running, failable: drain, cordon, reboot, device reset, cache warm, rolling update, component upgrade. Carries target, requester, reason, phase, deadline, result |
-| **Event** | observed | node joined, device degraded, load failed, OOM, preemption |
+| **Event** | observed | node joined, device degraded, load failed, OOM |
 | **CacheEntry** | observed | residency of an artifact on a cluster or node, against the declared warm-set |
 | **Credential** | declared | registry pulls, Hugging Face tokens, artifact-store access; scoped, never cluster-admin |
 
@@ -528,8 +591,9 @@ The connection lifecycle, envelope, resume and backpressure rules are specified 
 ### 10.3 Shipping
 
 The control plane is a pet; inference clusters are cattle, and they ship differently. The plane and
-the gateway are deployed where the control plane runs. The operator and the agent are published as
-images and pulled by each cluster through the `cluster-setup` Helm chart (`libs/chart`) on that
+the gateway are images you run yourself, against a Postgres you operate and back up; there is no
+chart for them yet ([deploying the plane](../operations/deploy-plane.md)). The operator and the
+agent are images each cluster pulls through the `cluster-setup` Helm chart (`libs/chart`) on that
 cluster's own `helm upgrade`. A cluster is created by registering it, which mints its enrolment token
 and renders its values, and then installing the chart in it.
 
@@ -564,29 +628,29 @@ that can be versioned, audited and exposed.
 The only real case for merging is certainty that it will be one cluster per model, with no canary,
 permanently. That does not survive a second region.
 
-### 11.2 Inference first, with general workloads carried from day one
+### 11.2 Inference first, with room reserved for other workloads
 
-The expensive part is not adding training later. It is that **serving-only placement and queue-based
-placement are different schedulers**, and retrofitting a queue onto a reconciler that assumes
-"desired replicas, always admitted" means rewriting placement.
+Hangar serves models. It does not run training or batch jobs, and it does not preempt anything.
+The object model was nevertheless shaped so that adding them later does not mean rewriting
+placement, because **serving-only placement and queue-based placement are different schedulers**,
+and retrofitting a queue onto a reconciler that assumes "desired replicas, always admitted" is the
+expensive part.
 
-A service runs forever, scales on traffic and has an Endpoint. A training or batch job queues, runs to
-completion, needs gang scheduling (all N devices or none) and has a deadline. Four accommodations are
-made now, all cheap now and expensive later:
+A service runs forever, scales on traffic and has an Endpoint. A training or batch job queues, runs
+to completion, needs gang scheduling (all N devices or none) and has a deadline. Four things were
+put in place for that, and this is how far each one goes today:
 
-1. **One Workload root with a kind discriminator**, `service | task | gang`, and one placement path
-   for all three. Endpoints attach only to `service`.
-2. **An explicit admission phase**: `pending → admitted → placed → running`. For serving, admission
-   succeeds immediately. The state costs almost nothing now; adding it later changes every consumer's
-   state machine.
-3. **PriorityClass on everything from the start**, even with two values.
-4. **Atomic gang allocation**: N devices together or not at all. Multi-node tensor parallelism needs
-   this for serving anyway.
+| Accommodation | Today |
+|---|---|
+| **One Workload root with a kind discriminator**, `service \| task \| gang`, and one placement path | Only `service` is rendered. The operator has no renderer for `task` or `gang`, so those kinds never reach a cluster. |
+| **An explicit admission phase**: `pending → admitted → placed → running` | Built, and used by serving: admission succeeds unless quota refuses it. |
+| **PriorityClass on every workload** | Recorded. Nothing acts on priority or on the `preemptible` flag, and placement does not count devices held by preemptible work as available. |
+| **Atomic allocation inside one topology domain** | Built in placement for workloads that declare a topology requirement, which multi-node tensor parallelism needs for serving anyway. |
 
-The reason to want both in one system is economic: **inference is spiky, training soaks the trough,
-and training is preempted when inference scales up.** Built as two systems, that is impossible, and
-most of the value of a mixed fleet is lost. Preemption is not a later feature; it is the reason for the
-unification.
+The motivation for wanting both kinds of work in one system is a mixed fleet: batch work fills the
+capacity serving leaves idle and yields when serving scales up. That depends on task and gang
+rendering and on preemption, all of which are on the [roadmap](../roadmap.md) and none of which is
+built.
 
 ### 11.3 Deferred on purpose
 
@@ -625,12 +689,42 @@ The rest arrive on a trigger rather than a schedule:
 1. **Where does a product-facing Model catalog live?** §6.1 treats it as UI metadata grouping
    artifacts. If it becomes the unit of pricing and public listing, it acquires weight it may not
    survive as a view.
-2. **Multi-cluster Endpoint semantics.** Weighted split and failover are goals; the failure detection
-   and cutover mechanism, and whether the gateway or the plane owns it, are unresolved.
+2. **Multi-cluster Endpoint semantics.** The gateway already splits by weight or fails over in a
+   declared order to the first cluster it holds a tunnel to. Failure detection beyond that, the
+   cutover mechanism, and whether the gateway or the plane owns it, are unresolved.
 3. **Where does autoscaling decide?** Traffic-driven replica count is a hot signal that lives near the
    gateway, but scale bounds are declared in the plane. The split needs the same care as §3.3.
-4. **Enrolment identity.** Each cluster authenticates with a token minted at registration; how that
-   credential is rotated is not yet specified.
+4. **Enrolment identity.** Each cluster authenticates with a token minted for it alone; how that
+   credential is rotated without a gap is not yet specified.
+5. **Regional gateways.** One gateway deployment is one failure domain for all inference. Whether
+   gateways should be per region or per cluster, and how the routing table is scoped to each, is
+   not designed.
+
+---
+
+## 14. Known limitations
+
+Behaviour that is true today and worth knowing before you depend on it. Unbuilt features are in the
+[roadmap](../roadmap.md); security limitations are also listed in [SECURITY.md](../../SECURITY.md).
+
+- **Editing a disaggregated workload's roles or device shape reloads every worker.** Dynamo hashes
+  one worker spec across every worker component in the graph, so changing a role or reshaping the
+  devices renames both roles' objects and every worker reloads its weights, which can take tens of
+  minutes for a large model. The rollout keeps the old generation up while the new one starts, so
+  the peak device need is the old footprint plus the new one; on a cluster sized for one of them the
+  new generation waits for devices the old one has not released. The API returns this cost with the
+  edit (`unavailability`) rather than refusing it.
+- **The gateway cannot start while the plane is down** (§7.1), and it is one failure domain for
+  inference everywhere.
+- **The metrics `cluster` label is not authenticated.** Any cluster with write credentials can write
+  series under another cluster's label
+  ([ADR 0012](../decisions/0012-the-plane-is-the-source-of-the-metrics-write-htpasswd.md)).
+- **One admin role.** Human access is a single operator with full rights; there are no per-user
+  accounts, roles or SSO.
+- **One serving runtime.** Clusters must run NVIDIA Dynamo, and workloads are rendered only as
+  Dynamo graphs.
+- **The `hangar.dev` API group is interim.** CRDs are `v1alpha1` with no conversion, and the group
+  name may change before the first release.
 
 ---
 
@@ -655,3 +749,4 @@ The rest arrive on a trigger rather than a schedule:
 | [0015](../decisions/0015-the-frontend-router-is-declared-on-the-workload.md) | The frontend router is declared on the Workload |
 | [0016](../decisions/0016-the-listener-is-the-guard-tenant-identity-replaces-the-shared-token.md) | The listener is the guard; tenant identity replaces the shared token |
 | [0017](../decisions/0017-video-input-is-bounded-in-decoded-bytes-not-frames.md) | Video input is bounded in decoded bytes, not frames |
+| [0018](../decisions/0018-the-inference-tunnel-is-our-own-http2-role-reversal.md) | The inference tunnel is our own HTTP/2 role reversal, with its threat model |
