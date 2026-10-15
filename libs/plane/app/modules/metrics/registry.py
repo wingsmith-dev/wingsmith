@@ -6,12 +6,8 @@ module is the vocabulary of the measurement road — `gpu.utilization`,
 `inference.ttft`, what unit each is in, and how a set of them collapses into one
 number for a scope.
 
-There is no PromQL here, and that is the point. A metric used to carry the
-expression that answered it, which made the API's vocabulary a Prometheus
-vocabulary: an upstream rename was a change to the thing clients name, and a
-metric that could only be answered from inventory — an hourly cost per node —
-had nowhere to live. The expressions moved to `promql.py`, which is one
-backend's dialect keyed by these names. Adding ClickHouse or an OTel store is a
+There is no PromQL here. The expressions live in `promql.py`, one backend's dialect keyed by
+these names, so an upstream rename never changes the names clients use. Another store is a
 second dialect table and a second `Backend`, not a change to anything here.
 
 `SCOPES` is the other half of the vocabulary: the dimensions a measurement can

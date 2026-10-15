@@ -219,9 +219,7 @@ class BenchmarkRepository:
     async def baselines(self, artifact_id: UUID | None) -> list[ArtifactBaseline]:
         """The quality floors declared for one artifact, or nothing when none are.
 
-        Nothing is not an empty grade. A dataset with no declared baseline is
-        `inconclusive`, which is the whole reason the floors are a table somebody
-        signs rather than a number the harness happens to have produced before.
+        A dataset with no declared baseline grades `inconclusive`, not empty.
         """
         if artifact_id is None:
             return []

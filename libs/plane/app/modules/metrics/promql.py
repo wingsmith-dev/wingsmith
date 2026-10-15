@@ -9,17 +9,15 @@ preference order rather than one hardcoded name, because upstream renames and
 we find out by a panel going blank. `vllm:time_per_output_token_seconds` became
 `vllm:inter_token_latency_seconds` and `vllm:gpu_cache_usage_perc` became
 `vllm:kv_cache_usage_perc`; both are still listed, first, so a cluster that has
-not been upgraded keeps answering. Names DCGM does not emit today —
+not been upgraded keeps answering. Names DCGM does not emit by default —
 `DCGM_FI_DEV_CLOCK_THROTTLE_REASONS`, the ECC aggregates — stay listed for the
 same reason in the other direction: the panel reads "no data" until the
 exporter's field csv is extended, and then it works with no code change.
 
-**Labels.** `hostname`, lowercase, is what the deployed dcgm-exporter emits;
-`Hostname` matched zero series and emptied every node and pool panel. The
-workload's pod is `exported_pod`, never `pod` — `pod` belongs to the exporter.
-And `cluster` is on every series because the fleet remote-writes into one store,
-so a query without it sums two inference clusters and two database clusters
-into one number.
+**Labels.** dcgm-exporter emits `hostname`, lowercase. The workload's pod is
+`exported_pod`, never `pod`, which belongs to the exporter. `cluster` is on every series
+because clusters remote-write into a shared store, so a query without it sums every cluster
+in that store into one number.
 """
 
 import logging

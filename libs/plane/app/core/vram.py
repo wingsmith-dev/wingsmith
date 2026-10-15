@@ -19,7 +19,7 @@ nest the language config under ``text_config``; DeepSeek/GLM/Kimi use MLA
 (latent attention) where the KV cache is a compressed latent vector rather than
 ``num_key_value_heads x head_dim``, and write that latent under two different
 names; many modern repos ship natively quantized (``quantization_config``), so
-fp16 weight sizing overcounts by up to 4x; and the largest of them are no longer
+fp16 weight sizing overcounts by up to 4x; and the largest are often not
 quantized uniformly at all — an ``expert_dtype`` holds the routed experts at a
 narrower precision than the headline one, and on a large MoE the experts are the
 checkpoint.
@@ -63,11 +63,8 @@ twenty percent is a card count.
 _FIXED_PER_DEVICE_GB = 1.0
 """CUDA context, captured graphs and allocator slack, per device.
 
-Per *device*, which is the whole point of it being here rather than folded into a
-fraction of the weights. This cost is roughly constant per GPU and grows with how many
-GPUs a replica uses; it has nothing to do with how big the model is. Sizing it as a
-share of the weights made a 2.8T model reserve almost four hundred gigabytes for CUDA
-context, which is more than a node.
+Charged per device rather than as a fraction of the weights: the cost is roughly constant
+per GPU and grows with how many GPUs a replica uses, independent of model size.
 """
 
 _ACTIVATION_TENSORS = 4
@@ -314,13 +311,10 @@ def expert_params(config: dict | None) -> int | None:
 def expert_quant_method(config: dict | None) -> str | None:
     """The precision the routed experts are stored at, when the repo declares one.
 
-    A checkpoint is not obliged to hold every tensor at one precision, and the large
-    ones no longer do. DeepSeek-V4-Pro declares ``quantization_config.quant_method:
-    fp8`` and ``expert_dtype: fp4``: the dense trunk is 8-bit, the experts are 4-bit,
-    and the experts are 94% of the parameters. Sizing all 1.65 T at the headline fp8
-    charged 1,537 GiB for a checkpoint that is about 960 GB on disk — over by 1.6x,
-    which put the model on two H200 nodes and refused the one node vLLM publishes a
-    recipe for.
+    A checkpoint need not hold every tensor at one precision. DeepSeek-V4-Pro declares
+    ``quantization_config.quant_method: fp8`` and ``expert_dtype: fp4``: the dense trunk is
+    8-bit and the experts, 94% of the parameters, are 4-bit. Sizing everything at the
+    headline precision would overcount such a checkpoint by about 1.6x.
 
     Returns ``None`` when nothing is declared, which means "the same as everything
     else" and leaves the single-precision sizing exactly as it was. A declared dtype
@@ -794,10 +788,8 @@ class Layout:
     propose rather than a last resort, and the nodes a replica spans are one
     fabric-connected unit rather than a set of islands.
 
-    That is why a fit no longer stops at one node. It used to, on the reasoning that
-    spanning was a promise the plane could not keep. With a backend fabric it plainly
-    can, and the ceiling meant nothing larger than a single chassis of VRAM could ever
-    be reported as fitting at all — which is wrong for every frontier model there is.
+    So a fit may span nodes; capping it at one would report every model larger than a
+    single chassis of VRAM as unplaceable.
     """
 
     device_count: int
@@ -885,8 +877,8 @@ class Sizing:
 class Intent:
     """What somebody wants to serve, independent of what they want to serve it on.
 
-    The separation is the point: an intent is stated once and then fitted against
-    every card in the catalogue, which is what makes the answers comparable. A
+    An intent is stated once and then fitted against every card in the catalogue, which
+    keeps the answers comparable. A
     context window fitted per-card would compare a full window on one class against
     a truncated one on another and call them both a fit.
     """
@@ -1098,10 +1090,8 @@ def impossible(
 def _weights_words(sizing: Sizing) -> str:
     """The weight terms as a person can check them: how many parameters, at what precision.
 
-    The whole of why :func:`weight_terms` exists. A refusal that names only a total and
-    a headline precision cannot be argued with by somebody who knows the checkpoint is
-    mixed; one that says "1.5 T routed experts at fp4, 103 B dense at fp8" can be
-    checked against the repo in a minute.
+    A refusal that says "1.5 T routed experts at fp4, 103 B dense at fp8" can be checked
+    against the repository; one that names only a total and a headline precision cannot.
     """
     return ", ".join(f"{term.params / 1e9:,.0f}B {term.label} at {term.quantization}" for term in weight_terms(sizing))
 

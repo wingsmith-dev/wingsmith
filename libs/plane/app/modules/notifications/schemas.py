@@ -8,12 +8,9 @@ from app.core.schemas import UnsetType
 class NotificationChannelSchema(Struct):
     """A configured destination for firing alerts.
 
-    `webhook_hint` where a `webhook_url` might be expected, and that is the whole
-    point of it: a Slack incoming webhook is a bearer credential wearing a URL's
-    clothes, and anyone who can read it can post into the channel forever. The hint
-    is the host and the last few characters — enough to tell two webhooks apart in a
-    list, not enough to use. There is no route that returns the real value; changing
-    it means writing a new one.
+    A Slack incoming webhook is a bearer credential, so it is never returned. `webhook_hint` is
+    the host and the last few characters, enough to tell two webhooks apart; changing the
+    webhook means writing a new one.
     """
 
     id: str
@@ -27,7 +24,7 @@ class NotificationChannelSchema(Struct):
 
 
 class NotificationChannelCreateRequest(Struct):
-    """`webhook_url` is write-only and required for `slack`, which is the only kind today."""
+    """`webhook_url` is write-only and required for `slack`, the only kind supported."""
 
     name: str
     webhook_url: str
@@ -44,12 +41,8 @@ class NotificationChannelUpdateRequest(Struct):
 
 
 class NotificationTestResult(Struct):
-    """What `POST /{ref}/test` answers.
-
-    A 200 with `delivered: false` rather than a 5xx, because the failure being
-    reported is Slack's and not the plane's — and because the reason is the useful
-    part. A caller pasting a webhook in wants to be told `slack answered 404`, not
-    handed an error page about Hangar.
+    """What `POST /{ref}/test` answers: 200, with `delivered: false` and Slack's reason in `detail`
+    when the webhook refused the message, since that failure is Slack's and not the plane's.
     """
 
     delivered: bool

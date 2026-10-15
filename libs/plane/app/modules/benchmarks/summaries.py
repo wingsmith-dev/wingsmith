@@ -37,12 +37,11 @@ class Adapter(NamedTuple):
 
     `max_version` is exclusive and `None` means open-ended. A run whose version
     falls outside every range for its harness is not graded against a map
-    written for a different one — it is `inconclusive`, which is the whole
-    reason the range is recorded.
+    written for a different one; it is `inconclusive`.
 
     `display` is the half of the map a verdict cannot see. `read` searches
     `fields` and nothing else, so a number named here is readable for a chart and
-    is a named miss to a check — which is the point. The aggregate output rate is
+    is a named miss to a check. The aggregate output rate is
     the reason the split exists: it is the y-axis of every load curve, and it
     clears a per-stream floor under every possible condition, so a check that
     could reach it would be a check that can never fail.

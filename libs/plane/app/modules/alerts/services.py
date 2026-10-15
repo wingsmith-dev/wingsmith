@@ -35,14 +35,9 @@ from .repository import AlertThresholdRepository
 class AlertService:
     """Read, acknowledge, resolve. Deliberately no create and no delete.
 
-    An alert is derived, so nothing may declare one — that half is the reactor's
-    and the module convention would normally make this read-only outright. The
-    exception is the acknowledgement, which is the one thing about an alert that
-    only a human can know and the reason the row exists rather than a log line.
-
-    No delete, either. Resolving is the way an alert ends; deleting one removes the
-    record that it ever happened, which is exactly what nobody wants three weeks
-    later when the same thing recurs.
+    Alerts are derived by the reactor, so nothing declares one; acknowledgement is the one
+    human input. Resolving is how an alert ends, and there is no delete, so the record of an
+    alert outlives it.
     """
 
     def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:

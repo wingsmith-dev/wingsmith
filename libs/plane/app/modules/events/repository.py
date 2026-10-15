@@ -63,9 +63,7 @@ SUBJECT_DETAIL_KEYS = {
 longer be found by the identifier a reader holds — the join that resolves
 `dep_...` to a uuid returns nothing once the row is gone. For the kinds listed
 here the public id is also written into `details`, and the filter falls back to
-it, which is what makes "what happened to the deployment I just deleted"
-answerable. It is the timeline of a thing that no longer exists that is worth
-keeping; the row never was.
+it, so the timeline of a deleted object stays queryable by its public id.
 """
 
 
@@ -73,9 +71,7 @@ def subject_subquery(ref: str):
     """Turns a public id into the row id `Event.subject_id` actually holds.
 
     Events are written with the subject's primary key, not its `nod_...` id, so
-    a filter by public id has to go through the subject's own table. The prefix
-    says which table that is, which is the one thing a prefixed identifier is
-    unambiguously good for.
+    a filter by public id has to go through the subject's own table, which the prefix names.
     """
     if not is_uid(ref):
         raise Invalid(f"subject {ref!r} is not an identifier", {"subject": ref})

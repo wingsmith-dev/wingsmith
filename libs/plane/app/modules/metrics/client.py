@@ -1,16 +1,8 @@
-"""A small PromQL client.
+"""A small PromQL client over `urllib`, run in a worker thread per query.
 
-Deliberately stdlib. The plane has no HTTP client dependency today, and adding
-one would mean the running API cannot serve this module until the process is
-reinstalled and restarted; `urllib` in a worker thread costs one thread per
-query and nothing else. `Client` is the seam — swapping in httpx later is a
-change to this file alone.
-
-Failures here are not the plane's failures. A metrics store that is down, slow,
-or misconfigured must not present as a 500 from Hangar, because the inventory
-answer is still perfectly good: `MetricsUnavailable` carries the reason through
-to the response so the console can say *why* a panel is empty instead of
-rendering a zero that looks like an idle GPU.
+A metrics store that is down, slow or misconfigured is not a plane failure: the services catch
+`MetricsUnavailable` and report its reason as `unavailable` on the answer, so the console can say
+why a panel is empty instead of drawing a zero that looks like an idle GPU.
 """
 
 import json
@@ -25,7 +17,7 @@ from .sources import Source
 
 
 class MetricsUnavailable(PlaneError):
-    """The metrics store could not answer. Never a 5xx: nothing is wrong here."""
+    """The metrics store could not answer. Services report it on the answer; if it escapes, it is a 503."""
 
     code = "metrics_unavailable"
     status = 503

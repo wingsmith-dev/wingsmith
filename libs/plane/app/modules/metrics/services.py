@@ -28,9 +28,8 @@ The three scoping joins, and how much each can be trusted:
   Both are reported to the client as scope `deployment`; which one answered is
   visible in the selector, not the schema.
 
-Every one of them is narrowed by cluster first. The fleet remote-writes into one
-store holding four clusters, two of which are databases, so an unscoped query
-does not answer for a cluster — it answers for all of them at once.
+Every one of them is narrowed by cluster first. A shared store usually holds more than one cluster,
+and an unscoped query would answer for all of them at once.
 
 A workload is the one object that spans clusters, and it is not a fourth join: it
 is the device join and the deployment join, run once per cluster it landed in and

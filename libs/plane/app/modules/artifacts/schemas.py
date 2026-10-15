@@ -111,11 +111,8 @@ class ArtifactRefreshSchema(Struct):
     """The result of re-reading an artifact's own source. See `ArtifactService.refresh`.
 
     `changed` names the fields the re-read actually moved, dotted for metadata keys
-    (`metadata.shape`). It is the point of the response: an artifact registered before
-    the plane knew to extract an attention shape looks identical afterwards except for
-    that one key, and a console that could only say "refreshed" would leave the person
-    guessing whether anything happened. An empty list means the source still says
-    exactly what we already recorded, which is a successful refresh and not a failure.
+    (`metadata.shape`). An empty list means the source still says exactly what was
+    recorded, which is a successful refresh and not a failure.
 
     `notes` is the draft's own remarks, unfiltered, because they are about the source
     and not about the diff — a repo that has since become gated says so here.

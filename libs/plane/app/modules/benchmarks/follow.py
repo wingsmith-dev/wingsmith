@@ -43,10 +43,9 @@ DEFAULT_MESSAGES = {
 }
 """Why a run ended, when the only thing that knows is the operation.
 
-`succeeded` is in here and reads like a contradiction, which is the point: an
-operation that succeeded while its run never reported means the executor
-finished and sent nothing, and a run left saying `succeeded` with an empty
-summary would be indistinguishable from a measurement of nothing.
+`succeeded` is listed because an operation that succeeded while its run never reported
+means the executor finished and sent nothing; the run fails rather than claiming a
+measurement of nothing.
 """
 
 

@@ -134,12 +134,7 @@ class NotificationChannelService:
         await self.db.commit()
 
     async def test(self, ref: str) -> NotificationTestResult:
-        """Posts a sample message, so a pasted webhook is verified before an incident does it.
-
-        Sends the same shape a real alert would rather than a plain "hello": the
-        thing worth checking is not only that the URL works but that the message is
-        legible in whatever channel it lands in.
-        """
+        """Posts a sample alert to the channel, in the same shape a real alert takes."""
         channel = await self.repo.get(ref)
         if channel is None:
             raise NotFound(f"no notification channel {ref!r}")

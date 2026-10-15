@@ -60,9 +60,8 @@ DEFAULT_BRANCH: Final = "main"
 """The branch a reader should be sent to, which is the one the corpus develops on.
 
 Not the branch the snapshot was taken from — that is a commit, and `snapshot_uri`
-is where it is written. The distinction is the whole of why there are two
-properties: a permalink says what we stored and a branch link says what upstream
-says now, and a person following a link from a form wants the second one.
+is where it is written. A permalink says what was stored and a branch link says what
+upstream says now; a person following a link from a form wants the second.
 """
 
 _MIB_PER_GB: Final = 1024

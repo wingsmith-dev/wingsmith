@@ -55,10 +55,8 @@ class KubernetesError(Exception):
 class SecretStore(Protocol):
     """What the reconciler actually needs, so it can be tested without a cluster.
 
-    Two methods, both keyed by namespace/name/key. A fake implementing this is
-    three lines, which is the point: the reconciler's logic — render, compare,
-    skip or write — is the part worth testing, and it should not require a live
-    API server to reach.
+    Two methods, both keyed by namespace/name/key, so the reconciler's render, compare,
+    skip-or-write logic is testable with a three-line fake instead of an API server.
     """
 
     async def read_secret_key(self, namespace: str, name: str, key: str) -> str | None:

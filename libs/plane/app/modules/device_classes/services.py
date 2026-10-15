@@ -42,7 +42,7 @@ def catalog(
     architecture: str | None = None,
     present: bool | None = None,
 ) -> list[DeviceClassSchema]:
-    """Merges the dictionary with the fleet. Pure, and the whole of the logic.
+    """Merges the device dictionary with the fleet's inventory. Pure.
 
     Ordered by how much of it we own, then by name: the classes an operator
     works with every day come first without anyone having to sort, and the long
