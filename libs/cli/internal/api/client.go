@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -26,6 +28,13 @@ type Client struct {
 	Scope   string
 	HTTP    *http.Client
 	Version string
+
+	// RefreshToken, when set, renews an expired session once: a 401 on any
+	// call outside /v1/auth is answered by trading it for a new pair and
+	// retrying. The plane rotates the refresh token on every use, so OnRefresh
+	// is told the new pair and must store it, or the next renewal fails.
+	RefreshToken string
+	OnRefresh    func(LoginResult) error
 }
 
 // NewClient builds a client against the given base URL.
@@ -645,6 +654,63 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 }
 
 func (c *Client) send(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) error {
+	resp, payload, err := c.do(ctx, method, path, q, body, headers)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized && c.canRefresh(path) {
+		if err := c.refresh(ctx); err != nil {
+			return err
+		}
+		resp, payload, err = c.do(ctx, method, path, q, body, headers)
+		if err != nil {
+			return err
+		}
+	}
+	if resp.StatusCode >= 400 {
+		return httpError(resp, payload)
+	}
+	if out == nil || resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	if err := json.Unmarshal(payload, out); err != nil {
+		return errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
+	}
+	return nil
+}
+
+func (c *Client) canRefresh(path string) bool {
+	return c.RefreshToken != "" && !strings.HasPrefix(path, "/v1/auth/")
+}
+
+// refresh renews the session once. A refresh token the plane refuses means the
+// session is over, which is AUTH_EXPIRED and a login, not a retry.
+func (c *Client) refresh(ctx context.Context) error {
+	rt := c.RefreshToken
+	c.RefreshToken = ""
+	res, err := c.Refresh(ctx, rt)
+	if err != nil {
+		e := errs.As(err)
+		if e.Code != errs.CodeAuthRequired && e.Code != errs.CodeForbidden {
+			return err
+		}
+		return errs.Wrap(err, errs.CodeAuthExpired, "the session has expired").
+			WithCause("the plane refused the stored refresh token").
+			WithFix("Log in again", "hgr login")
+	}
+	c.Token = res.AccessToken
+	if c.OnRefresh != nil {
+		if err := c.OnRefresh(res); err != nil {
+			return err
+		}
+	}
+	c.RefreshToken = res.RefreshToken
+	return nil
+}
+
+// do sends one request and reads the whole response. Status codes are the
+// caller's business; only a request that never got an answer is an error here.
+func (c *Client) do(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string) (*http.Response, []byte, error) {
 	u := c.Server + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -654,14 +720,14 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return errs.Wrap(err, errs.CodeInternal, "cannot encode request body")
+			return nil, nil, errs.Wrap(err, errs.CodeInternal, "cannot encode request body")
 		}
 		reader = bytes.NewReader(encoded)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, u, reader)
 	if err != nil {
-		return errs.Wrap(err, errs.CodeInternal, "cannot build request")
+		return nil, nil, errs.Wrap(err, errs.CodeInternal, "cannot build request")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "hgr/"+c.Version)
@@ -680,25 +746,33 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return errs.Wrap(err, errs.CodeTimeout, "request to %s timed out", c.Server)
-		}
-		return errs.Wrap(err, errs.CodeNetwork, "cannot reach the control plane at %s", c.Server).
-			WithFix("Run offline against the fake backend", "hgr --fake cluster ls")
+		return nil, nil, transportError(ctx, err, c.Server)
 	}
 	defer resp.Body.Close()
-
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if resp.StatusCode >= 400 {
-		return httpError(resp, payload)
+	return resp, payload, nil
+}
+
+// transportError says why a request got no answer. An interrupt is not a
+// timeout, and neither is a refused connection: the first is the caller
+// stopping, the second is the plane not being there, and only a deadline or
+// the client's own timeout is TIMEOUT.
+func transportError(ctx context.Context, err error, server string) error {
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		return errs.Wrap(err, errs.CodeInterrupted, "interrupted")
+	case errors.Is(ctx.Err(), context.DeadlineExceeded), isTimeout(err):
+		return errs.Wrap(err, errs.CodeTimeout, "request to %s timed out", server).
+			WithFix("Allow longer", "--timeout 2m")
 	}
-	if out == nil || resp.StatusCode == http.StatusNoContent {
-		return nil
-	}
-	if err := json.Unmarshal(payload, out); err != nil {
-		return errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
-	}
-	return nil
+	return errs.Wrap(err, errs.CodeNetwork, "cannot reach the control plane at %s", server).
+		WithFix("Check the server", "hgr context").
+		WithFix("Run offline against the fake backend", "hgr --fake cluster ls")
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 // wireError is the plane's error body: `code` is the contract and is what the
