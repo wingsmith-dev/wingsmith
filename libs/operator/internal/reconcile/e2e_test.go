@@ -14,10 +14,10 @@
 // Kubernetes *does* to an object after it is written — garbage collection, finalizers, defaulting
 // — has to be tested somewhere the controller-manager is running.
 //
-// Run with: go test -tags e2e ./internal/reconcile/ -run E2E -v
-// It needs a cluster in the current kubecontext (any local one — kind, orbstack, k3s), the
-// SyncedResource CRD from deploy/crd/, and deploy/crd/testing_dynamographdeployments.yaml.
-// It creates and deletes its own namespaces and never touches anything outside them.
+// Run with `just e2e`, or: go test -tags e2e ./internal/reconcile/ -run E2E -v
+// It needs the SyncedResource CRD from deploy/crd/ and deploy/crd/testing_dynamographdeployments.yaml.
+// It creates and deletes its own namespaces and briefly patches one node, so it runs only against a
+// kind- context, or the context HANGAR_E2E_CONTEXT names; anything else is refused.
 package reconcile
 
 import (
@@ -37,6 +37,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -98,6 +100,67 @@ func (c *capture) sawReason(reason string) bool {
 	return false
 }
 
+// e2eContext is the context this suite may write to: the one HANGAR_E2E_CONTEXT names, or else
+// the current context when it is a kind cluster. The same rule as dev/guards.sh e2e-context, so a
+// direct `go test` is refused where `just e2e` would be.
+func e2eContext(current, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if current == "" {
+		return "", fmt.Errorf("no current kube context; `just cluster-up` creates a local one")
+	}
+	if !strings.HasPrefix(current, "kind-") {
+		return "", fmt.Errorf("refusing to run e2e against %q: it is not a kind- context. "+
+			"Set HANGAR_E2E_CONTEXT=%s to run it there anyway", current, current)
+	}
+	return current, nil
+}
+
+// e2eConfig loads the kubeconfig the usual way and pins the client to the context e2eContext
+// allows, so the current context changing mid-run cannot move the suite onto another cluster.
+func e2eConfig(t *testing.T) *rest.Config {
+	t.Helper()
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	raw, err := rules.Load()
+	if err != nil {
+		t.Skipf("no kubeconfig available: %v", err)
+	}
+	explicit := os.Getenv("HANGAR_E2E_CONTEXT")
+	if raw.CurrentContext == "" && explicit == "" {
+		t.Skip("no kube context; `just cluster-up` creates a local one")
+	}
+	name, err := e2eContext(raw.CurrentContext, explicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw.Contexts[name]; !ok {
+		t.Fatalf("no kube context named %q", name)
+	}
+	config, err := clientcmd.NewNonInteractiveClientConfig(*raw, name, &clientcmd.ConfigOverrides{}, rules).ClientConfig()
+	if err != nil {
+		t.Fatalf("kube context %q: %v", name, err)
+	}
+	return config
+}
+
+func TestE2EContextIsKindOrNamed(t *testing.T) {
+	for _, tc := range []struct {
+		current, explicit, want string
+		refused                 bool
+	}{
+		{current: "kind-hangar", want: "kind-hangar"},
+		{current: "prod-eu", refused: true},
+		{current: "", refused: true},
+		{current: "prod-eu", explicit: "staging", want: "staging"},
+	} {
+		got, err := e2eContext(tc.current, tc.explicit)
+		if tc.refused != (err != nil) || got != tc.want {
+			t.Errorf("e2eContext(%q, %q) = %q, %v", tc.current, tc.explicit, got, err)
+		}
+	}
+}
+
 // live is one test's cluster: two namespaces, a client, and a reconciler pointed at them.
 type live struct {
 	client     client.Client
@@ -110,10 +173,7 @@ type live struct {
 func newLive(t *testing.T) *live {
 	t.Helper()
 
-	config, err := ctrl.GetConfig()
-	if err != nil {
-		t.Skipf("no kubecontext available: %v", err)
-	}
+	config := e2eConfig(t)
 
 	scheme := clientgoscheme.Scheme
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
