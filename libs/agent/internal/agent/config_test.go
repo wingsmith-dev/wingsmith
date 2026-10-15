@@ -179,3 +179,49 @@ func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
 		})
 	}
 }
+
+// A value that is set and unreadable fails the load. It used to fall back to the default, so
+// HANGAR_TUNNEL_TLS=flase quietly meant TLS on and HANGAR_TUNNEL_INSECURE_SKIP_VERIFY=ture meant off.
+func TestLoadRefusesValuesItCannotParse(t *testing.T) {
+	for key, value := range map[string]string{
+		"HANGAR_TUNNEL_TLS":                  "flase",
+		"HANGAR_TUNNEL_INSECURE_SKIP_VERIFY": "ture",
+		"HANGAR_TUNNEL_CONNS_PER_GATEWAY":    "two",
+		"HANGAR_TUNNEL_DIAL_TIMEOUT":         "10",
+		"HANGAR_DRAIN_TIMEOUT":               "a minute",
+	} {
+		t.Run(key, func(t *testing.T) {
+			env := minimal()
+			env[key] = value
+			_, err := load(t, env)
+			if err == nil {
+				t.Fatalf("Load accepted %s=%q", key, value)
+			}
+			if !strings.Contains(err.Error(), key) {
+				t.Errorf("error %q does not name %s", err, key)
+			}
+		})
+	}
+}
+
+func TestWarningsNameTheWeakenedSetting(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{"tls off", Config{TLSEnabled: false}, "HANGAR_TUNNEL_TLS"},
+		{"skip verify", Config{TLSEnabled: true, TLSInsecureSkipVerify: true}, "HANGAR_TUNNEL_INSECURE_SKIP_VERIFY"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			warnings := tc.cfg.Warnings()
+			if len(warnings) != 1 || !strings.Contains(warnings[0], tc.want) {
+				t.Errorf("warnings = %q, want one naming %s", warnings, tc.want)
+			}
+		})
+	}
+	if warnings := (&Config{TLSEnabled: true}).Warnings(); len(warnings) != 0 {
+		t.Errorf("a verified TLS config warned: %q", warnings)
+	}
+}

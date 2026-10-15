@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -114,28 +115,35 @@ type Config struct {
 }
 
 // Load reads configuration from the environment, applying defaults and validating the result.
+//
+// A value that is set and cannot be parsed fails the load. Falling back to the default instead
+// turned a typo such as HANGAR_TUNNEL_TLS=flase into a silently different agent.
 func Load() (*Config, error) {
+	r := &envReader{}
 	c := &Config{
 		ClusterID:             env("HANGAR_CLUSTER_ID", ""),
 		Gateway:               env("HANGAR_TUNNEL_GATEWAY", ""),
 		EnrolmentToken:        env("HANGAR_ENROLMENT_TOKEN", ""),
-		ConnsPerGateway:       envInt("HANGAR_TUNNEL_CONNS_PER_GATEWAY", 2),
-		MaxConcurrentStreams:  envInt("HANGAR_TUNNEL_MAX_CONCURRENT_STREAMS", 0),
-		TLSEnabled:            envBool("HANGAR_TUNNEL_TLS", true),
+		ConnsPerGateway:       r.int("HANGAR_TUNNEL_CONNS_PER_GATEWAY", 2),
+		MaxConcurrentStreams:  r.int("HANGAR_TUNNEL_MAX_CONCURRENT_STREAMS", 0),
+		TLSEnabled:            r.bool("HANGAR_TUNNEL_TLS", true),
 		TLSServerName:         env("HANGAR_TUNNEL_SERVER_NAME", ""),
 		TLSCAFile:             env("HANGAR_TUNNEL_CA_FILE", ""),
-		TLSInsecureSkipVerify: envBool("HANGAR_TUNNEL_INSECURE_SKIP_VERIFY", false),
-		DialTimeout:           envDuration("HANGAR_TUNNEL_DIAL_TIMEOUT", 10*time.Second),
-		HandshakeTimeout:      envDuration("HANGAR_TUNNEL_HANDSHAKE_TIMEOUT", 10*time.Second),
-		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
-		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
-		DrainTimeout:          envDuration("HANGAR_DRAIN_TIMEOUT", 60*time.Second),
+		TLSInsecureSkipVerify: r.bool("HANGAR_TUNNEL_INSECURE_SKIP_VERIFY", false),
+		DialTimeout:           r.duration("HANGAR_TUNNEL_DIAL_TIMEOUT", 10*time.Second),
+		HandshakeTimeout:      r.duration("HANGAR_TUNNEL_HANDSHAKE_TIMEOUT", 10*time.Second),
+		BackoffMin:            r.duration("HANGAR_BACKOFF_MIN", time.Second),
+		BackoffMax:            r.duration("HANGAR_BACKOFF_MAX", 30*time.Second),
+		DrainTimeout:          r.duration("HANGAR_DRAIN_TIMEOUT", 60*time.Second),
 		HealthAddr:            env("HANGAR_HEALTH_ADDR", ":8081"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
-		DiscoveryInterval:     envDuration("HANGAR_FRONTEND_DISCOVERY_INTERVAL", 0),
-		ResponseHeaderTimeout: envDuration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
+		DiscoveryInterval:     r.duration("HANGAR_FRONTEND_DISCOVERY_INTERVAL", 0),
+		ResponseHeaderTimeout: r.duration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
 		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
+	}
+	if err := errors.Join(r.errs...); err != nil {
+		return nil, err
 	}
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
@@ -148,6 +156,20 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// Warnings are settings that load but weaken the tunnel, to be logged once the logger exists.
+func (c *Config) Warnings() []string {
+	var warnings []string
+	if !c.TLSEnabled {
+		warnings = append(warnings, "HANGAR_TUNNEL_TLS is off: the enrolment token and every request "+
+			"cross the network in cleartext unless something in front terminates TLS")
+	}
+	if c.TLSEnabled && c.TLSInsecureSkipVerify {
+		warnings = append(warnings, "HANGAR_TUNNEL_INSECURE_SKIP_VERIFY is on: the gateway's certificate "+
+			"is not checked, so anything that can intercept the dial receives the enrolment token")
+	}
+	return warnings
 }
 
 func (c *Config) validate() error {
@@ -237,37 +259,45 @@ func env(key, def string) string {
 	return def
 }
 
-func envBool(key string, def bool) bool {
+// envReader reads typed values and remembers every one it could not parse.
+type envReader struct {
+	errs []error
+}
+
+func (r *envReader) bool(key string, def bool) bool {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
 		return def
 	}
-	b, err := strconv.ParseBool(v)
+	b, err := strconv.ParseBool(strings.TrimSpace(v))
 	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s %q is not a boolean", key, v))
 		return def
 	}
 	return b
 }
 
-func envInt(key string, def int) int {
+func (r *envReader) int(key string, def int) int {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
 		return def
 	}
-	n, err := strconv.Atoi(v)
+	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s %q is not an integer", key, v))
 		return def
 	}
 	return n
 }
 
-func envDuration(key string, def time.Duration) time.Duration {
+func (r *envReader) duration(key string, def time.Duration) time.Duration {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
 		return def
 	}
-	d, err := time.ParseDuration(v)
+	d, err := time.ParseDuration(strings.TrimSpace(v))
 	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s %q is not a duration such as 30s", key, v))
 		return def
 	}
 	return d
