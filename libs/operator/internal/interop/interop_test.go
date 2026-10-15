@@ -5,8 +5,11 @@ package interop
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
@@ -22,8 +25,8 @@ func TestHandshake(t *testing.T) {
 	waitFor(t, "a live session", func() bool { return h.state().Session != nil })
 	state := h.state()
 
-	if len(state.AuthHeaders) == 0 || state.AuthHeaders[0] != "Bearer "+token {
-		t.Fatalf("hub saw authorization %q, want %q", state.AuthHeaders, "Bearer "+token)
+	if len(state.AuthHeaders) == 0 || state.AuthHeaders[0] != "Bearer "+h.token {
+		t.Fatalf("hub saw authorization %q, want %q", state.AuthHeaders, "Bearer "+h.token)
 	}
 	if state.Session.ClusterID != clusterID {
 		t.Fatalf("hub bound the session to cluster %q, want %q", state.Session.ClusterID, clusterID)
@@ -38,6 +41,29 @@ func TestHandshake(t *testing.T) {
 	waitFor(t, "the operator to record the session", func() bool {
 		return store.mustLoad(t).SessionID == state.Session.SessionID
 	})
+}
+
+// TestOnlyTheEnrolmentTokenOpensASession: the hub refuses a shared operator token and an
+// enrolment token it never minted before the upgrade, so neither gets a session.
+func TestOnlyTheEnrolmentTokenOpensASession(t *testing.T) {
+	h := startHub(t, "--desired-count", "0")
+	for _, bad := range []string{"interop-token", "hgro1.unknown"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		conn, resp, err := websocket.Dial(ctx, h.url(), &websocket.DialOptions{
+			HTTPHeader: http.Header{"Authorization": []string{"Bearer " + bad}},
+		})
+		cancel()
+		if err == nil {
+			_ = conn.CloseNow()
+			t.Fatalf("token %q opened a session", bad)
+		}
+		if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("token %q: want 401 before the upgrade, got %v", bad, err)
+		}
+	}
+	if h.state().Connections != 0 {
+		t.Fatal("a refused token reached the session handler")
+	}
 }
 
 // TestResumeAcrossClientRestart is the claim the whole pull architecture rests on: a second
@@ -192,6 +218,10 @@ func TestLossyForcesFreshSession(t *testing.T) {
 
 // TestWithheldAckReplays is PROTOCOL §4: a frame the receiver cannot apply is not acknowledged
 // and the sender sends it again. There is no nack, in either direction.
+//
+// Downward, the operator retries a refused frame in place before it gives up on the session, so a
+// frame refused once is applied on the retry, in order, without a reconnect, and the cursor only
+// passes it once it has applied.
 func TestWithheldAckReplays(t *testing.T) {
 	h := startHub(t, "--desired-count", "0")
 	store := newFileStore(t)
@@ -204,36 +234,20 @@ func TestWithheldAckReplays(t *testing.T) {
 	refused := h.push(typeDesired, 1)[0]
 	after := h.push(typeDesired, 1)[0]
 
-	waitFor(t, "the frame after the hole to arrive", func() bool {
-		for _, f := range rec.snapshot() {
-			if f.Seq != nil && *f.Seq == after {
-				return true
-			}
-		}
-		return false
-	})
-	stayTrue(t, "the connection surviving a withheld ack", 300*time.Millisecond, func() bool {
-		return h.state().Connections == 1
-	})
-	if got := store.mustLoad(t).AppliedSeq; got >= refused {
-		t.Fatalf("cursor advanced to %d past the refused frame %d; the ack must be withheld", got, refused)
-	}
-	if pending := h.state().Session.ReplayPending; pending < 2 {
-		t.Fatalf("hub released %d frames it was never acknowledged for", 2-pending)
-	}
-
-	h.kill()
-	waitFor(t, "the refused frame to be replayed and applied", func() bool {
+	waitFor(t, "the refused frame to be retried and everything applied", func() bool {
 		return store.mustLoad(t).AppliedSeq >= after
 	})
-	seen := 0
+	var order []uint64
 	for _, f := range rec.snapshot() {
-		if f.Seq != nil && *f.Seq == refused {
-			seen++
+		if f.Seq != nil && (*f.Seq == refused || *f.Seq == after) {
+			order = append(order, *f.Seq)
 		}
 	}
-	if seen != 1 {
-		t.Fatalf("the refused frame was applied %d times, want 1 (refused once, then replayed)", seen)
+	if len(order) != 2 || order[0] != refused || order[1] != after {
+		t.Fatalf("applied %v, want the refused frame %d once and then %d", order, refused, after)
+	}
+	if got := h.state().Connections; got != 1 {
+		t.Fatalf("a frame refused once cost a reconnect: %d connections", got)
 	}
 
 	// Upward: the hub's sink refuses one frame, and the operator replays it from its own buffer.

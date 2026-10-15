@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,7 +28,6 @@ import (
 )
 
 const (
-	token     = "interop-token"
 	clusterID = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
 
 	typeDesired  = "deployment.desired"
@@ -64,24 +62,24 @@ type hub struct {
 	t    *testing.T
 	cmd  *exec.Cmd
 	port int
+	// token is the enrolment token the hub minted for clusterID at startup, the only credential
+	// it opens a session for.
+	token string
 }
 
 // hubScript is the Python launcher that wraps the plane's hub with the control surface these
 // tests drive. It lives beside them so the gate needs nothing outside libs/.
 const hubScript = "libs/operator/internal/interop/testdata/hub.py"
 
-// startHub launches the Python hub on an ephemeral port and waits for /health.
+// startHub launches the Python hub on an ephemeral port, enrols clusterID, and waits for /health.
 //
-// A checkout without the launcher skips rather than fails: the suite cannot say anything about
-// the hub without it, and a missing harness is not a protocol regression.
+// The launcher is run from libs/plane so that uv resolves the plane's environment and the hub it
+// wraps is the plane's own.
 func startHub(t *testing.T, args ...string) *hub {
 	t.Helper()
 	root := repoRoot()
 	script := filepath.Join(root, filepath.FromSlash(hubScript))
-	if _, err := os.Stat(script); errors.Is(err, os.ErrNotExist) {
-		t.Skipf("interop hub launcher %s is not in this checkout; nothing to run against", hubScript)
-	}
-	full := append([]string{"run", "python", script, "--port", "0"}, args...)
+	full := append([]string{"run", "python", script, "--port", "0", "--cluster-id", clusterID}, args...)
 	cmd := exec.Command("uv", full...)
 	cmd.Dir = filepath.Join(root, "libs", "plane")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -119,23 +117,35 @@ func startHub(t *testing.T, args ...string) *hub {
 
 	scanner := bufio.NewScanner(stdout)
 	deadline := time.After(60 * time.Second)
-	found := make(chan int, 1)
+	type announced struct {
+		port  int
+		token string
+	}
+	found := make(chan announced, 1)
 	go func() {
+		var token string
 		for scanner.Scan() {
 			line := scanner.Text()
+			if v, ok := strings.CutPrefix(line, "HUB_TOKEN "); ok {
+				token = v
+			}
 			if port, ok := strings.CutPrefix(line, "HUB_PORT "); ok {
 				n, err := strconv.Atoi(port)
 				if err == nil {
-					found <- n
+					found <- announced{port: n, token: token}
 					return
 				}
 			}
 		}
 	}()
 	select {
-	case h.port = <-found:
+	case a := <-found:
+		h.port, h.token = a.port, a.token
 	case <-deadline:
 		t.Fatal("hub did not announce a port within 60s")
+	}
+	if h.token == "" {
+		t.Fatal("hub announced a port without an enrolment token")
 	}
 
 	h.waitHealthy()
@@ -282,7 +292,7 @@ func (h *hub) sentTypes(typeName string) []frameInfo {
 func (h *hub) dialRaw(ctx context.Context) *websocket.Conn {
 	h.t.Helper()
 	conn, _, err := websocket.Dial(ctx, h.url(), &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + h.token}},
 	})
 	if err != nil {
 		h.t.Fatalf("raw dial: %v", err)
@@ -502,7 +512,7 @@ func startClient(t *testing.T, h *hub, store checkpoint.Store, handler syncpkg.H
 	opts := syncpkg.Options{
 		HubURL:            h.url(),
 		ClusterID:         clusterID,
-		Token:             token,
+		Token:             h.token,
 		OperatorVersion:   "interop",
 		HeartbeatInterval: 100 * time.Millisecond,
 		LivenessTimeout:   time.Second,
