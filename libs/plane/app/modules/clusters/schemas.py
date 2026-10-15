@@ -105,8 +105,8 @@ class ClusterSetupSchema(Struct):
     `values_yaml` is one editable file: the plane-filled identity (cluster id, hub
     URL, operator image) on top and the cluster's own infra facts as blanks below.
     `values_filename` is the name the console saves it under and the helm command
-    reads, `hangar-<cluster>-values.yaml`, so it is never confused with the
-    chart's own `values.yaml`. `registry_login` is the `helm registry login` a private chart
+    reads, `values.<cluster>.local.yaml`, so it is never confused with the
+    chart's own `values.yaml` and is git- and helm-ignored. `registry_login` is the `helm registry login` a private chart
     registry needs before the pull — `None` when the registry serves anonymously.
     `registry_login_gh` is the same login done with an existing `gh` session
     instead of a hand-made token, and is `None` for any registry that is not

@@ -1,6 +1,9 @@
 import inspect
 import datetime as dt
 
+from fnmatch import fnmatch
+from pathlib import Path
+
 import yaml
 import pytest
 import msgspec
@@ -161,20 +164,32 @@ async def test_the_fleet_registry_token_is_shared_at_mint_only_when_opted_in(hub
 async def test_the_values_file_is_named_after_the_cluster(hub):
     """A bare values.yaml saved next to the chart overwrites the chart's own."""
     setup = await setup_service(FakeCluster(name="alpha")).setup_instructions("alpha")
-    assert setup.values_filename == "hangar-alpha-values.yaml"
-    assert "-f hangar-alpha-values.yaml" in setup.helm_command
-    assert "values.yaml" not in setup.helm_command.replace("hangar-alpha-values.yaml", "")
+    assert setup.values_filename == "values.alpha.local.yaml"
+    assert "-f values.alpha.local.yaml" in setup.helm_command
+    assert "-f values.yaml" not in setup.helm_command
 
 
 async def test_the_helm_command_quotes_a_hostile_cluster_name(hub):
     """An older row the schema would now refuse still must not add a flag or a command."""
     setup = await setup_service(FakeCluster(name="x; rm -rf ~")).setup_instructions("x")
     assert "--kube-context 'x; rm -rf ~'" in setup.helm_command
-    assert "-f 'hangar-x; rm -rf ~-values.yaml'" in setup.helm_command
+    assert "-f 'values.x; rm -rf ~.local.yaml'" in setup.helm_command
 
 
 def test_values_filename():
-    assert values_filename("eu-west-1a") == "hangar-eu-west-1a-values.yaml"
+    assert values_filename("eu-west-1a") == "values.eu-west-1a.local.yaml"
+
+
+@pytest.mark.parametrize("ignore_file", [".gitignore", "libs/chart/cluster-setup/.helmignore"])
+def test_the_values_file_is_ignored_by_git_and_helm(ignore_file):
+    """The download carries the enrolment token; saved in a checkout it must not be committed or packaged."""
+    root = Path(__file__).resolve().parents[3]
+    patterns = [
+        line.strip().lstrip("/")
+        for line in (root / ignore_file).read_text().splitlines()
+        if line.strip() and not line.startswith(("#", "!"))
+    ]
+    assert any(fnmatch(values_filename("eu-west-1a"), p) for p in patterns)
 
 
 def values(**overrides) -> SetupValues:

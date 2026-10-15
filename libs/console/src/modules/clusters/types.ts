@@ -106,7 +106,7 @@ export interface Cluster {
 export interface ClusterSetup {
   helm_command: string
   values_yaml: string
-  /** `hangar-<cluster>-values.yaml`: what to save `values_yaml` as; the helm command reads this name. */
+  /** `values.<cluster>.local.yaml`: what to save `values_yaml` as; the helm command reads this name. */
   values_filename: string
   chart_ref: string
   chart_version: string | null

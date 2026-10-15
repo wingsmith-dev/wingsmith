@@ -251,8 +251,11 @@ def values_filename(cluster_name: str) -> str:
 
     Named after the cluster so it neither overwrites the chart's own
     `values.yaml` when saved next to it nor gets mistaken for another cluster's.
+    The `.local.yaml` suffix is what the repository's `.gitignore` and the
+    chart's `.helmignore` already drop, so a copy that carries the enrolment
+    token and lands in a checkout is neither committed nor packaged.
     """
-    return f"hangar-{cluster_name}-values.yaml"
+    return f"values.{cluster_name}.local.yaml"
 
 
 class SetupValues(Struct):
