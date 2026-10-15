@@ -21,6 +21,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
 	"github.com/hangar-dev/hangar/libs/operator/internal/config"
@@ -214,15 +215,30 @@ func run() error {
 		},
 	})
 
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return healthSrv.Run(gctx) })
-	g.Go(func() error { return client.Run(gctx) })
-	g.Go(func() error { return observer.Run(gctx) })
+	// The hub session, the observation loop and the demand resync run inside the manager, so that
+	// with leader election on they run only in the replica holding the lease, exactly like the
+	// controller. Outside it every replica dialled the hub and streamed its own snapshots, and the
+	// hub displaced one session with the other on every reconnect. A replica waiting for the lease
+	// reports not ready, since it holds no hub session.
+	leaderOnly := map[string]func(context.Context) error{
+		"hub session": client.Run,
+		"observation": observer.Run,
+	}
 	// Read-only has no reconciler and nothing it rendered to state. A snapshot from here would be
 	// an empty claim of completeness over deployments somebody else owns.
 	if reconciler != nil {
-		g.Go(func() error { return reconciler.RunDemandResync(gctx, cfg.ResyncInterval) })
+		leaderOnly["demand resync"] = func(ctx context.Context) error {
+			return reconciler.RunDemandResync(ctx, cfg.ResyncInterval)
+		}
 	}
+	for name, run := range leaderOnly {
+		if err := mgr.Add(manager.RunnableFunc(run)); err != nil {
+			return fmt.Errorf("register %s: %w", name, err)
+		}
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return healthSrv.Run(gctx) })
 	g.Go(func() error {
 		if cfg.ReadOnly {
 			log.Info("starting manager without the reconcile loop", "read_only", true)

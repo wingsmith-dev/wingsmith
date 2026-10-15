@@ -61,6 +61,10 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 		LeaderElection:          cfg.LeaderElection,
 		LeaderElectionID:        "hangar-operator." + api.Group,
 		LeaderElectionNamespace: cfg.Namespace,
+		// Safe because the process exits as soon as the manager stops, and every loop that needs
+		// the lease runs inside the manager. Releasing on the way out lets the replacement pod
+		// take over at once instead of waiting out the lease.
+		LeaderElectionReleaseOnCancel: true,
 		// Both namespaces, not one. Declared state lives in the operator's own namespace and
 		// what it renders lives in the workload namespace, and the reconciler reads back what
 		// it wrote — a prefetch job's completion is the gate a deployment waits on. A cache
