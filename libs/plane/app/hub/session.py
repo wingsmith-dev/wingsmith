@@ -254,10 +254,14 @@ class OperatorSession:
         self._stopped = asyncio.Event()
         self._full_resync = False
         self._synced = False
-        """Whether this connection finished bringing the operator up to date.
+        """Whether the operator has everything this connection set out to send it.
 
-        Until it has, the session is not resumable: a resume replays only what was
-        sent, and a snapshot cut off half way would resume as a silently shorter one.
+        False from the start of every snapshot, the first and each periodic one,
+        until the live sends held during it have gone out. A session that ends
+        while it is False is not resumable: a resume replays only what was sent, so
+        a snapshot cut off half way would resume as a silently shorter one, and the
+        held sends, which live on this connection rather than in the session, would
+        be lost. The next hello gets a full resync instead, which carries both.
         """
         self._deferred: list[tuple[str, Struct, str | None]] | None = []
         """Live sends held back while a snapshot streams, or `None` when sends go straight out."""
@@ -296,9 +300,9 @@ class OperatorSession:
                 if last:
                     await self._mark_disconnected()
                 if last and not self._synced:
-                    # A connection that never finished its snapshot or its replay leaves a session
-                    # whose replay buffer holds part of a stream. Resuming it would deliver that
-                    # part and nothing after it, so the next hello starts over instead.
+                    # Ended mid-snapshot, first or periodic, or with live sends still held (see
+                    # `_synced`). Resuming would deliver part of a stream and nothing after it, so
+                    # the next hello starts over with a full resync instead.
                     self.registry.drop(self.state.session_id)
             self._stopped.set()
             logger.info(
@@ -507,15 +511,17 @@ class OperatorSession:
         if self._full_resync:
             await self._stream_full_resync()
         await self._replay_open_operations()
-        self._synced = True
         await self._release_deferred()
+        self._synced = True
 
         while True:
             await asyncio.sleep(self.config.resync_interval)
+            self._synced = False
             self._deferred = []
             await self._stream_full_resync()
             await self._replay_open_operations()
             await self._release_deferred()
+            self._synced = True
 
     async def _release_deferred(self) -> None:
         """Sends what live dispatch handed over during a snapshot, or restreams if too much did."""

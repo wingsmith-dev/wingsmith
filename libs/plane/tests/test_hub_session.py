@@ -791,6 +791,61 @@ async def test_a_session_whose_snapshot_was_cut_off_is_not_resumable() -> None:
     await second.stop()
 
 
+class StallsOnPass:
+    """A `DesiredSource` whose snapshot hangs half way on one pass, the first or a periodic one."""
+
+    def __init__(self, count: int, stall_pass: int) -> None:
+        self.count = count
+        self.stall_pass = stall_pass
+        self.passes = 0
+
+    async def iter_desired(self, cluster_id: str, scope: str):
+        self.passes += 1
+        for index in range(self.count):
+            if self.passes == self.stall_pass and index == 1:
+                await asyncio.Event().wait()
+            yield "deployment.desired", desired_payload()
+
+
+async def test_a_session_whose_periodic_snapshot_was_cut_off_is_not_resumable() -> None:
+    """The live sends held during it go with it: the next hello gets a full resync, which carries them."""
+    registry = SessionRegistry(replay_capacity=64)
+    source = StallsOnPass(3, stall_pass=2)
+    first = Harness(
+        registry=registry,
+        config=SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, resync_interval=0.02),
+        desired=source,
+    )
+    await first.start()
+    welcome = await first.hello()
+    await first.connection.next_of_type("stream.end")
+    await until(lambda: source.passes == 2)
+    await first.session.send_desired("deployment.desired", desired_payload())
+    assert first.session._deferred, "held while the snapshot streams"
+    await first.stop()
+
+    session_id = welcome["payload"]["session_id"]
+    assert session_id not in registry
+
+    second = Harness(registry=registry)
+    await second.start()
+    answer = await second.hello(session_id=session_id, resume_from=1)
+    assert answer["payload"]["full_resync"] is True
+    await second.stop()
+
+
+async def test_a_session_between_snapshots_stays_resumable() -> None:
+    registry = SessionRegistry(replay_capacity=64)
+    first = Harness(registry=registry, desired=ManyDesired(2))
+    await first.start()
+    welcome = await first.hello()
+    await first.connection.next_of_type("stream.end")
+    await until(lambda: first.session._synced)
+    await first.stop()
+
+    assert welcome["payload"]["session_id"] in registry
+
+
 async def test_live_sends_during_a_snapshot_follow_it_rather_than_land_inside_it() -> None:
     """Inside, a deletion sent before the snapshot's own frame for the same deployment would be undone."""
     gate = asyncio.Event()
