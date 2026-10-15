@@ -98,7 +98,7 @@ spec:
                 - name: DYN_ENABLE_ANTHROPIC_API
                   value: {{ .Values.frontend.anthropicApi.enabled | quote }}
                 - name: DYN_STRIP_ANTHROPIC_PREAMBLE
-                  value: {{ .Values.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+                  value: {{ .Values.frontend.anthropicApi.stripPreamble | quote }}
                 # The same fixed seed the operator sets on every worker, and it has
                 # to be the same on both ends or it buys nothing. KV-aware routing
                 # decides which worker already holds a prefix by hashing block

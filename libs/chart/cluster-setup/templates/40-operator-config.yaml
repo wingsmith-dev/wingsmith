@@ -61,7 +61,7 @@ data:
   HANGAR_FRONTEND_ENABLED: {{ eq .Values.frontend.mode "per-model" | quote }}
   HANGAR_FRONTEND_REPLICAS: {{ .Values.frontend.replicas | quote }}
   HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.frontend.anthropicApi.enabled | quote }}
-  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.frontend.anthropicApi.stripPreamble | quote }}
   HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.frontend.perModel.globalDynamoNamespace | quote }}
   {{- with .Values.frontend.perModel.image }}
   HANGAR_FRONTEND_IMAGE: {{ . | quote }}

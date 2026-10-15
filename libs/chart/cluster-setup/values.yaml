@@ -80,9 +80,10 @@ imagePullSecret:
 
 # ── What this cluster's hardware looks like ───────────────────────────────────
 
-# All three are required. The operator's own default label key is not the one any
-# cluster here uses, so an empty value discovers no pools rather than falling back
-# usefully, and a `cacheValue` naming a pool that does not exist leaves prefetch
+# All three are required: the node label that names a pool, its value on the GPU
+# nodes, and its value on the nodes that download model weights. The operator's
+# own default key is unlikely to match your nodes, so an empty value discovers no
+# pools, and a `cacheValue` naming a pool that does not exist leaves prefetch
 # jobs Pending.
 pools:
   labelKey: ""
@@ -109,7 +110,7 @@ modelCache:
   create: true
   pvcName: model-cache
   # Required, and must be ReadWriteMany — a cluster's default class is usually RWO
-  # and breaks the shared mount. e.g. an EFS-backed class.
+  # and breaks the shared mount. e.g. an NFS- or EFS-backed class.
   storageClass: ""
   accessMode: ReadWriteMany
   size: 500Gi
@@ -117,10 +118,9 @@ modelCache:
   # empty to read them from the shared volume as before.
   #
   # The shared volume is where weights are kept; it is a poor place to load them from.
-  # Measured on a p6-b300.48xlarge reading Kimi-K3 over EFS: 1.47 GB/s per node, half of
-  # each NFS read's latency spent queued on the client. Four nodes loading together cost
-  # 19% over one alone, so the ceiling is per-client rather than the filesystem's, and
-  # 1.4 TB against it is ~16 minutes of a GPU node doing nothing.
+  # A network filesystem's read throughput is bounded per client, so loading a model of
+  # a terabyte or more straight from it keeps a GPU node idle for many minutes, and
+  # more nodes loading at once do not make any one of them faster.
   #
   # Set it only where the nodes have a disk that can hold a model. The instance store on
   # a GPU node usually can and its root volume usually cannot; on a node with neither,
@@ -128,8 +128,8 @@ modelCache:
   # wrong answer here costs a slow start and never a failed one.
   #
   # The mirror outlives the pod and is wiped with the node, which on spot capacity means
-  # a reclaimed node pays the copy once more. That is the same copy it would have paid
-  # reading over NFS, moved earlier.
+  # a reclaimed node pays the copy once more. That is the same read it would have paid
+  # loading from the shared volume, moved earlier.
   localDir: ""
 
 # An override, not the switch. Leave it off.
@@ -161,18 +161,17 @@ multinode:
 # The high-speed fabric a worker pod asks for, so that NIXL can move the KV cache
 # over RDMA instead of falling back to TCP on the pod network.
 #
-# `devices: 0` asks for nothing, which is what every cluster did before this
-# existed, and is correct for any pool without the interfaces. It is not a
-# cosmetic default: with no request the device plugin mounts no /dev/infiniband,
-# UCX finds no RDMA transport, and prefill/decode disaggregation ships the whole
-# KV cache of every request over TCP. On Kimi K3 at 38k input tokens that is
-# ~1.8GB per request, measured at ~300MB/s and 6.1s per transfer. Aggregated
-# serving never crosses a node for KV, so it is unaffected -- which is what makes
-# the mistake look like a verdict on disaggregation rather than on the pod spec.
+# `devices: 0` asks for nothing, which is correct for any pool without the
+# interfaces. It is not a cosmetic default: with no request the device plugin
+# mounts no /dev/infiniband, UCX finds no RDMA transport, and prefill/decode
+# disaggregation ships the whole KV cache of every request over TCP, which on a
+# long prompt is gigabytes and seconds per request. Aggregated serving never
+# crosses a node for KV, so it is unaffected -- which is what makes the mistake
+# look like a verdict on disaggregation rather than on the pod spec.
 #
 # `resource` is the extended-resource name, which belongs to whoever supplies the
 # compute rather than to the fabric. Empty means the AWS EFA device plugin's name,
-# which is what our EC2 pools advertise. A bare-metal or non-EC2 pool runs a
+# `vpc.amazonaws.com/efa`. A bare-metal or non-EC2 pool runs a
 # different plugin -- `rdma/hca`, `rdma/ib`, a vendor name -- and carries a
 # different number of interfaces per chassis. Read both off the node:
 #   kubectl get node <n> -o jsonpath='{.status.allocatable}'
@@ -183,18 +182,15 @@ fabric:
   resource: ""
   # NIXL plugins the KV connector registers. Empty leaves vLLM's default of UCX.
   #
-  # On EC2 this must be LIBFABRIC. EFA is a libfabric provider; NIXL ships
-  # libplugin_UCX.so and libplugin_LIBFABRIC.so side by side and defaults to the
-  # wrong one. Measured here with all 16 interfaces mounted and UCX still
-  # selected: 5.6-5.9s per transfer, ~39MB/s, the same as before the devices
-  # existed. NVIDIA's EFA guide calls this "a silent-failure path -- getting it
-  # wrong manifests as ~100s TTFT", which is exactly what we saw and spent a
-  # night attributing to the topology.
+  # On EFA this must be LIBFABRIC. EFA is a libfabric provider; NIXL ships
+  # libplugin_UCX.so and libplugin_LIBFABRIC.so side by side and defaults to UCX,
+  # which with the interfaces mounted still moves KV at TCP speed. NVIDIA's EFA
+  # guide calls this a silent-failure path that shows up as very long TTFT.
   #
   # The runtime image must also carry libfabric itself. NVIDIA's published image
-  # ships the plugin but not the library (`libfabric.so.1 => not found`), and the
-  # EKS host's EFA install is the minimal profile with no libfabric either. Ours
-  # is appended registry-side; see hangar-runtime/frontend.
+  # ships the plugin but not the library (`libfabric.so.1 => not found`), and a
+  # minimal host EFA install has none either, so build a runtime image that adds
+  # it.
   nixlBackends: []
 
 dcgm:
@@ -230,9 +226,11 @@ operator:
       # Extra labels, for a Prometheus that selects PodMonitors by label.
       labels: {}
   engine:
-    # Secrets in the workload namespace presented when pulling a workload's `engine_runtime_image`.
-    # Empty for the NVIDIA runtime images, which are anonymous; set this when a
-    # model needs a private build such as the GLM 5.3 runtime in GHCR.
+    # Secrets in the workload namespace presented when pulling a workload's
+    # `engine_runtime_image`. Empty for the NVIDIA runtime images, which are
+    # anonymous; set this when a model runs a runtime image you built and pushed
+    # to a private registry. The chart copies `imagePullSecret` into the
+    # workload namespace under the name given here.
     imagePullSecrets: []
   resources:
     requests:
@@ -278,8 +276,8 @@ agent:
   # shape this bounds the whole generation. Every hop on the path — the gateway,
   # the tunnel, this agent — arms the same timer and only the smallest of them is
   # ever observed, so raising this alone does nothing: a cluster that needs longer
-  # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway in
-  # the plane's own infra/ too, and the same value in both places.
+  # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway's
+  # deployment too, and the same value in both places.
   responseHeaderTimeout: ""
   # A proxy, not a runtime: it copies bytes and holds streams open. No CPU limit,
   # because throttling the data path is latency on every token.
@@ -296,21 +294,17 @@ agent:
 # `mode` is the one switch, because the two topologies are alternatives and not
 # options that compose: a cluster that renders a frontend per model has no use
 # for a shared one, and running both leaves a second way in that nothing routes
-# to. Earlier versions of this chart spelled the choice as two booleans in two
-# blocks — `frontend.enabled` here and `operator.frontend.enabled` under the
-# operator — which could be set to contradict each other, and defaulted to the
-# topology ADR 0013 replaced.
+# to.
 #
 #   per-model  the operator renders a Frontend into each model's own graph, on
-#              that model's own image. A frontier model's runtime stops being a
-#              fleet-wide lowest common denominator, which is the whole point:
-#              on 2026-09-01 one cluster frontend failed registration on Kimi
-#              K3's tokenizer and `GET /v1/models` returned an empty list — not
-#              K3's entry, the list. See docs/decisions/0013-*.md.
+#              that model's own image, so one model's runtime is not every
+#              model's lowest common denominator: a shared frontend that cannot
+#              load one model's tokenizer can empty `GET /v1/models` for all of
+#              them. See docs/decisions/0013-*.md.
 #
 #   shared     one frontend for the cluster, every model served through it and
-#              discovered over `globalDynamoNamespace`. What this chart did
-#              before ADR 0013 and what a cluster still falls back to.
+#              discovered over `globalDynamoNamespace`. Every model must then be
+#              servable by that one image.
 #
 #   none       no frontend from this chart. For the first install of a brand-new
 #              cluster, and for a frontend somebody else installed — pair it with
@@ -345,35 +339,30 @@ frontend:
   # frontend image. Empty for the NVIDIA runtime, which nvcr.io serves
   # anonymously.
   #
-  # It exists because a frontend image is not always NVIDIA's. Both bugs that
-  # made Kimi K3 unusable -- tool-call ids reused across turns, and extended
-  # thinking forced on through `/v1/messages` -- are in the frontend binary, so
-  # the fix is a patched runtime and the fix ships as an image.
-  # `hangar-runtime/frontend/` builds it and it lands in a private GHCR repository,
-  # which needs a credential where nvcr.io needs none.
+  # It exists because a frontend image is not always NVIDIA's: a fix to the
+  # frontend binary ships as a patched runtime image, often from a private
+  # registry, which needs a credential where nvcr.io needs none.
   #
   # Naming one here is also what renders the credential into the workload
-  # namespace at all: a
-  # pull Secret is namespaced, and the copy the operator and agent use is in the
-  # release namespace, where no frontend pod can read it.
+  # namespace at all: a pull Secret is namespaced, and the copy the operator and
+  # agent use is in the release namespace, where no frontend pod can read it.
   imagePullSecrets: []
 
   # The Anthropic Messages API (`/v1/messages`), which the frontend serves
-  # natively and leaves off by default. On, because a cluster that serves an
-  # OpenAI surface and not this one cannot be used by Anthropic-protocol clients
-  # at all — Claude Code among them — and the alternative is a translating proxy
-  # per client, which puts a second implementation of the wire on somebody's
-  # laptop.
+  # natively and leaves off by default. On, because a cluster that serves only
+  # the OpenAI surface cannot be used by Anthropic-protocol clients at all, and
+  # the alternative is a translating proxy per client.
   #
   # NVIDIA marks it experimental. It is additive: a route that did not exist
   # before, reached only by callers that ask for it, so turning it on cannot
   # change what an OpenAI-compatible caller already gets.
   anthropicApi:
     enabled: true
-    # Drops the Claude Code billing preamble from the system prompt. Dynamo's own
-    # flag, and its own reasoning: fewer tokens, and a prompt that starts the same
-    # way every time is a prompt the prefix cache can actually hit.
-    stripClaudeCodePreamble: true
+    # Drops the per-request billing preamble some Anthropic-protocol clients put
+    # at the top of the system prompt (Dynamo's DYN_STRIP_ANTHROPIC_PREAMBLE):
+    # fewer tokens, and a prompt that starts the same way every time is one the
+    # prefix cache can hit.
+    stripPreamble: true
 
   # ── mode: per-model ─────────────────────────────────────────────────────
   #
@@ -386,11 +375,11 @@ frontend:
     # carries the frontend and the engine together.
     image: ""
     # Whether each rendered frontend watches every Dynamo namespace on the
-    # cluster or only its own graph's. True is today's behaviour and the only one
-    # that currently works: the workers are pinned to the global namespace, so a
+    # cluster or only its own graph's. True is the only setting that currently
+    # works: the workers are pinned to the global namespace, so a
     # frontend narrowed to its own graph discovers nothing at all.
     #
-    # This is also the open edge of ADR 0013. While it is true, every frontend
+    # This is also the open edge of ADR 0013: while it is true, every frontend
     # still discovers every worker, so a model one of them cannot tokenize still
     # empties that frontend's model list — the blast radius is not yet contained.
     # Narrowing both halves costs a restart of every worker on the cluster; see
@@ -527,8 +516,7 @@ monitoring:
     # a GPU cluster is mostly per-request histogram cardinality. `node_*`, `kube_*`
     # and `container_*` match nothing today (this chart ships no node-exporter and
     # no kube-state-metrics) and stay listed so adding either needs no write-path
-    # change. Carried over verbatim from the stack this replaced, so the central
-    # store's series set keeps its shape.
+    # change.
     keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|dynamo_.*|up|kubelet_volume_stats_.*"
     # The default needs nothing set: the username is `cluster.id` and the password
     # is the enrolment Secret, whose bcrypt verifier the plane published to the
@@ -629,7 +617,14 @@ dcgm-exporter:
       memory: 256Mi
 
 # The Dynamo operator + NATS, the bus Dynamo's Frontend and workers use for
-# request/response and KV-cache events; the hangar operator never touches it. NATS
+# request/response and KV-cache events; the hangar operator never touches it.
+#
+# The Dynamo operator is a cluster-wide controller with cluster-admin-equivalent
+# RBAC: Secrets in every namespace, ClusterRoles and ClusterRoleBindings, CRDs
+# and admission webhooks. The README's "The Dynamo subchart" lists it. Set
+# `enabled: false` to install the Dynamo platform (1.4.x) yourself instead.
+#
+# NATS
 # must be turned on explicitly — 1.4.x defaults `global.nats.install` to false, and
 # without it Dynamo's deployments have nothing to route over. etcd and KAI stay off
 # at their subchart defaults; component discovery is the Kubernetes API.
@@ -643,8 +638,7 @@ dcgm-exporter:
 # separate release — sets `enabled` alone and leaves `install` false, or it gets two
 # Grove operators reconciling the same CRDs.
 #
-# Both default off, which is what every cluster in the fleet is already running.
-# Turning `install` on is a cluster-wide change: it adds CRDs, a controller
+# Both default off. Turning `install` on is a cluster-wide change: it adds CRDs, a controller
 # deployment and three admission webhooks that intercept `grove.io` objects, so it
 # is a deliberate act on a cluster meant to serve a model too large for one node,
 # not a default. NVIDIA's own note is that production installs are recommended to
@@ -664,8 +658,7 @@ dcgm-exporter:
 # subchart renders its PodMonitors only if the monitoring.coreos.com CRDs exist AT
 # INSTALL TIME, so whether a cluster has Dynamo metrics depends on the order two
 # unrelated charts were installed in — and the failure is a clean install emitting
-# no `vllm:` series. That is the trap that took the fleet dark. Pinned off it
-# cannot fire either way: the metrics agent scrapes Dynamo's pods from its own
+# no `vllm:` series. Pinned off it cannot fire either way: the metrics agent scrapes Dynamo's pods from its own
 # config, so these objects are never needed, and a cluster that later grows the
 # CRDs for some other reason will not start double-scraping every worker.
 dynamo-platform:

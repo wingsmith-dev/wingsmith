@@ -532,3 +532,28 @@ def test_operator_metrics_off_and_pod_monitor(chart):
     monitor = get(docs, "PodMonitor", "hangar-operator", "hangar-system")
     assert monitor["metadata"]["labels"]["release"] == "kps"
     assert monitor["spec"]["podMetricsEndpoints"][0]["port"] == "metrics"
+
+
+# ── docs and values hygiene ──────────────────────────────────────────────────
+
+
+def test_shipped_files_name_no_removed_paths_or_deployment_history():
+    import re
+
+    banned = re.compile(r"hangar-runtime|infra/|HANGAR_OPERATOR_TOKEN|placeholder\.hangar|"
+                        r"sync\.hangar\.dev|Kimi|GLM|p6-b300|Claude Code|helm registry login",
+                        re.IGNORECASE)
+    for path in CHART.rglob("*"):
+        if path.is_file() and "tests" not in path.parts and path.suffix in (
+                ".yaml", ".yml", ".tpl", ".txt", ".md", ".lock"):
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                assert not banned.search(line), f"{path.relative_to(CHART)}:{n}: {line.strip()}"
+
+
+def test_frontend_preamble_switch_reaches_both_modes(chart):
+    shared = render(chart, **{"frontend.mode": "shared", "frontend.anthropicApi.stripPreamble": False})
+    env_vars = {e["name"]: e["value"] for e in get(shared, "DynamoGraphDeployment", "inference")
+                ["spec"]["components"][0]["podTemplate"]["spec"]["containers"][0]["env"]}
+    assert env_vars["DYN_STRIP_ANTHROPIC_PREAMBLE"] == "false"
+    data = get(shared, "ConfigMap", "hangar-operator")["data"]
+    assert data["HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE"] == "false"

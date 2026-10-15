@@ -1,38 +1,76 @@
 # cluster-setup
 
-The tier-2 install that turns a cluster the cloud already prepared (GPUs
-schedulable, storage classes bound, a TLS edge) into one the hangar plane can
-manage. It installs, in one release:
+The install that turns a Kubernetes cluster with schedulable GPUs and a
+ReadWriteMany storage class into one the hangar plane can manage. It installs,
+in one release:
 
-- the workload namespace (`dynamo` by default) and the shared `model-cache` PVC the operator mounts by name, both kept on `helm uninstall`;
+- the workload namespace (`dynamo` by default) and the shared `model-cache` PVC
+  the operator mounts by name, both kept on `helm uninstall`;
 - **dcgm-exporter** (subchart) — the exporter the operator scrapes for device identity;
 - the **Dynamo platform** (subchart) — operator, NATS, and the `DynamoGraphDeployment` CRD;
 - the **hangar operator** and its CRDs, RBAC, config, and Deployment;
 - optionally, the **serving agent** — the cluster's end of the inference tunnel;
-- optionally, the serving `Certificate` + Traefik `IngressRoute`.
+- optionally, the serving `Certificate` + Traefik `IngressRoute`;
+- ingress NetworkPolicies for the operator, agent, inference frontends and NATS.
 
 ## Install
 
-```sh
-# one-time: authenticate Helm to the chart registry
-helm registry login ghcr.io
+No chart or image is published yet, so install from this repository and run
+the operator and agent images from a registry of your own. From the repository
+root, with Docker and [just](https://github.com/casey/just):
 
-helm upgrade --install hangar-cluster \
-  oci://ghcr.io/hangar-dev/charts/cluster-setup --version <v> \
+```sh
+# Where your images go. Your cluster's nodes must be able to pull from it.
+export HANGAR_REGISTRY=registry.example.com/hangar
+
+# Tag the images with the chart's appVersion, so the chart's default tag finds them.
+version=$(sed -n 's/^appVersion: "\(.*\)"/\1/p' libs/chart/cluster-setup/Chart.yaml)
+just push operator "$version"
+just push agent "$version"
+
+# The two subcharts are pulled from their public repositories; no login needed.
+helm dependency build libs/chart/cluster-setup
+
+helm upgrade --install hangar-cluster libs/chart/cluster-setup \
   --namespace hangar-system --create-namespace \
-  -f values.yaml
+  -f values.yaml \
+  --set operator.image.repository="$HANGAR_REGISTRY/operator" \
+  --set agent.image.repository="$HANGAR_REGISTRY/agent"
 ```
 
-`values.yaml` is one file the register-cluster screen renders and you edit. The
-top block is filled in — cluster id, hub URL, operator image, and (when you
-generate the enrolment token there) `enrolmentToken.value`, so the chart creates
-the operator secret itself. Below a divider is a commented skeleton of this
-cluster's own infra facts left blank for you to fill: the pool label scheme, the
-RWX storage class, the Hugging Face token (`hfToken.create: true` +
-`hfToken.value`, which makes the chart create `hf-token-secret`), and the serving
-host. Generate the token, download the values, edit the blanks, install. Only
-when driving the chart by hand (no plane) do you set
-`enrolmentToken.existingSecret` and create that secret yourself.
+`just push` builds for `linux/amd64` (`HANGAR_PLATFORM` to change it). If the
+registry needs a credential to pull, see [Images and pull
+secrets](#images-and-pull-secrets).
+
+`values.yaml` is one file the plane's register-cluster screen renders and you
+edit. The top block is filled in: cluster id, hub URL, and (when you generate
+the enrolment token there) `enrolmentToken.value`, so the chart creates the
+operator Secret itself. Below a divider is a commented skeleton of this
+cluster's own infra facts for you to fill: the pool label scheme, the RWX
+storage class, the Hugging Face token (`hfToken.create: true` +
+`hfToken.value`, which makes the chart create `hf-token-secret`), and the
+serving host. Generate the token, download the values, edit the blanks,
+install.
+
+The enrolment token is this cluster's alone: mint it on the register screen or
+with `POST /v1/clusters/{ref}/enrolment-token`. The plane has no shared token a
+cluster could use instead. When driving the chart by hand, create the Secret
+yourself with that token and set `enrolmentToken.existing: true`.
+
+### Images and pull secrets
+
+The chart runs two images of its own, the operator and the serving agent, both
+from `operator.image` and `agent.image`. Everything else it installs (Dynamo,
+NATS, dcgm-exporter, Prometheus) comes from public registries and needs no
+credential.
+
+If your registry needs one, set `imagePullSecret`: `name` alone references a
+`kubernetes.io/dockerconfigjson` Secret you created in the release namespace,
+and `create: true` with `registry`, `username` and `token` has the chart create
+it. It is attached to the operator and agent ServiceAccounts. A model's engine
+or frontend image in a private registry needs the same credential in the
+workload namespace: name it in `operator.engine.imagePullSecrets` or
+`frontend.imagePullSecrets`, and the chart copies the Secret there.
 
 ## Frontend topology
 
@@ -40,7 +78,7 @@ when driving the chart by hand (no plane) do you set
 
 | mode | what a request lands on |
 |---|---|
-| `per-model` (default) | the operator renders a Frontend into each model's own graph, on that model's own image — ADR 0013 |
+| `per-model` (default) | the operator renders a Frontend into each model's own graph, on that model's own image ([ADR 0013](../../../docs/decisions/0013-one-frontend-per-model-routed-by-a-forwarded-deployment-id.md)) |
 | `shared` | the one cluster-wide frontend this chart installs; every model must be servable by its single image |
 | `none` | neither; for a first install, or beside `agent.frontendEndpoint` for a frontend installed elsewhere |
 
@@ -124,12 +162,44 @@ One address, and it stays one. Coverage does have to be complete — the tunnel 
 so a gateway replica can only answer a request for this cluster if it is itself holding one of this
 cluster's tunnels — but the replicas are not named here. Each accepted handshake says which replica
 took the dial and how many there are, so the agent redials this one address until it has found them
-all. Scaling the gateway is a change in the plane's own repository and never an edit to this file,
+all. Scaling the gateway is a change to the plane's deployment and never an edit to this file,
 which is the point: a fleet where some clusters got the edit and others did not would be served by
 different numbers of replicas with nothing anywhere saying so.
 
 `serving.enabled` — the Traefik `IngressRoute` and its `Certificate` — is the older public-ingress
-path and stays as the fallback. It is off on every cluster we run.
+path, off by default. The frontend behind it authenticates nobody, so the chart refuses the route
+unless `serving.middlewares` names a Traefik Middleware that does.
+
+## The Dynamo subchart
+
+`dynamo-platform` (NVIDIA's chart, pinned at 1.4.1) is on by default because the
+operator renders every model as a `DynamoGraphDeployment` and nothing serves
+without it. It is a cluster-wide controller with broad permissions, and you
+should know what you are granting before you install it. Its ClusterRoles let
+the Dynamo operator, cluster-wide:
+
+- create, read, update and delete **Secrets** and ServiceAccounts in any namespace;
+- create and update **ClusterRoles and ClusterRoleBindings**, and Roles and
+  RoleBindings, which is enough to grant itself or anything else further access;
+- create, update and delete **CustomResourceDefinitions** and mutating and
+  validating **admission webhooks** (it applies the `DynamoGraphDeployment` CRD
+  itself and injects into pods it manages);
+- create and delete Pods, Deployments, Jobs, Services, Ingresses, PVCs and HPAs,
+  read nodes and pod logs.
+
+In practice that is cluster-admin. NVIDIA's chart has a namespace-restricted
+mode (`dynamo-platform.dynamo-operator.namespaceRestriction`), but marks it for
+development and testing only, so this chart does not turn it on. If the Dynamo
+platform is already installed on the cluster, or you want to install it
+yourself, set `dynamo-platform.enabled: false` and install a 1.4.x release
+separately; the hangar operator only needs the `DynamoGraphDeployment` CRD and
+a Dynamo operator reconciling it.
+
+The subchart also brings NATS, which Dynamo's frontends and workers use for
+requests and KV-cache events. NATS has no client authentication here: the
+Dynamo operator hands every pod an unauthenticated URL. The `hangar-nats`
+NetworkPolicy is what keeps other namespaces off it, so leave `networkPolicy`
+on unless your CNI does not enforce it.
 
 ## Operator permissions
 
@@ -234,9 +304,14 @@ kubectl apply --server-side -f crds/
 
 The hangar CRDs in `crds/` are a copy of the source of truth in
 `libs/operator/deploy/crd/`, so run `just chart-sync-crds` whenever those
-change. `just
-chart-lint` renders the chart offline; `just chart-push` packages and publishes
-it. The subcharts (`dcgm-exporter`, `dynamo-platform`) pull anonymously — no NGC
+change. `just chart-lint` renders the chart offline, and `tests/` holds render
+tests for its behaviour:
+
+```sh
+uv run --no-project --with pyyaml --with pytest pytest libs/chart/cluster-setup/tests
+```
+
+`just chart-push` packages the chart and pushes it to `HANGAR_CHART_OCI`. The subcharts (`dcgm-exporter`, `dynamo-platform`) pull anonymously — no NGC
 account is needed. The Dynamo operator applies the `DynamoGraphDeployment` CRD
 from its own image (`upgradeCRD`, on by default), so there is no separate CRD
 chart to vendor.

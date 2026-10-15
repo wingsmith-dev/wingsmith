@@ -191,7 +191,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 {{- $gateway := include "cluster-setup.gatewayAddress" . -}}
 {{- if not $gateway -}}
-{{- fail "agent.enabled is true but agent.gateway.address is empty — set it to the gateway's public tunnel address, as host:port. There is no default: an agent with nowhere to dial installs cleanly and carries nothing, and the gateway sees this cluster as unreachable with no reason attached. One address, not a list of replicas: how many replicas there are is reported in the handshake, so the agent finds them all from this one name (infra/80-gateway.yaml)." -}}
+{{- fail "agent.enabled is true but agent.gateway.address is empty — set it to the gateway's public tunnel address, as host:port. There is no default: an agent with nowhere to dial installs cleanly and carries nothing, and the gateway sees this cluster as unreachable with no reason attached. One address, not a list of replicas: how many replicas there are is reported in the handshake, so the agent finds them all from this one name." -}}
 {{- end -}}
 {{- if contains "," $gateway -}}
 {{- fail "agent.gateway.address holds a comma-separated list, but it takes one address. Earlier values named every gateway replica; the agent now discovers them from the handshake, so give it the gateway's single public tunnel address and delete the rest." -}}
