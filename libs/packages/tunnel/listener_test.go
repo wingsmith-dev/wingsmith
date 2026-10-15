@@ -284,10 +284,9 @@ func TestDialsThatDoNotAuthenticateAreRefusedWithAReason(t *testing.T) {
 }
 
 // TestAPlaneOutageOnlyAffectsNewDialsAndNotEvenAllOfThose is the property the
-// whole verification path exists to keep. The token is checked once per
-// connection, so a tunnel that is already up cannot be affected by the plane at
-// all, and a connector that redials during an outage is let back in on the answer
-// the listener already has.
+// whole verification path exists to keep. A plane that cannot be reached never
+// closes a tunnel that is already up, and a connector that redials during an
+// outage is let back in on the answer the listener already has.
 func TestAPlaneOutageOnlyAffectsNewDialsAndNotEvenAllOfThose(t *testing.T) {
 	verifier := &stubVerifier{clusters: map[string]string{"tok-ap": "clu_ap"}}
 	// A TTL short enough that the second dial has to ask the plane again, and a

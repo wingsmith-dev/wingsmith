@@ -821,6 +821,18 @@ func (p *Pool) MarkDead(cc *http2.ClientConn) {
 	}
 }
 
+// Evict severs every tunnel to one cluster and returns how many there were. It
+// is for a credential that must stop working now; Listener.Revoke calls it.
+func (p *Pool) Evict(clusterID string) int {
+	p.mu.Lock()
+	conns := p.snapshotLocked(clusterID)
+	p.mu.Unlock()
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+	return len(conns)
+}
+
 // Shutdown drains every tunnel: GOAWAY out, then wait for the streams already
 // on them.
 //

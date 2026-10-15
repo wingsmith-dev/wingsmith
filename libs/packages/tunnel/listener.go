@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"slices"
 	"sync"
@@ -45,10 +46,10 @@ func (i Identity) claims(claimed string) bool {
 // Verifier resolves an enrolment token to the cluster it belongs to.
 //
 // The gateway holds no cluster token material: it has no list of hashes, no
-// database, and nothing to keep in sync with the plane. It asks, once per
-// connection, and remembers the answer. That is the whole of the trust model on
-// this listener — TLS for confidentiality, the token for identity, no CA and no
-// mTLS.
+// database, and nothing to keep in sync with the plane. It asks when a tunnel
+// opens and again every ReverifyInterval while it stays open, and remembers the
+// answer for CacheTTL. That is the whole of the trust model on this listener —
+// TLS for confidentiality, the token for identity, no CA and no mTLS.
 //
 // A Verifier returns ErrRejected only for a definitive no. Anything else is
 // read as "the plane could not be reached", which is a different situation with
@@ -112,19 +113,32 @@ var ErrListenerClosed = errors.New("tunnel: listener closed")
 // own dial timeout decides how long it waits.
 const DefaultMaxHandshakes = 128
 
+// RevocationObserver is optionally implemented by a DialObserver to count
+// tunnels closed because their token stopped verifying.
+type RevocationObserver interface {
+	TunnelRevoked(clusterID string)
+}
+
 // DefaultCacheTTL is how long a verified token is reused without asking the
-// plane again.
-const DefaultCacheTTL = 5 * time.Minute
+// plane again. It bounds how long a revoked token keeps opening tunnels, and
+// with DefaultReverifyInterval how long one keeps an open tunnel.
+const DefaultCacheTTL = time.Minute
+
+// DefaultReverifyInterval is how often the token behind an open tunnel is
+// checked again. A tunnel whose token the plane now refuses, or now resolves to
+// a different cluster, is closed. One that cannot be checked because the plane
+// is unreachable is kept: an outage of the control plane must not take the data
+// path with it.
+const DefaultReverifyInterval = time.Minute
 
 // DefaultCacheGrace is how long a verified token stays usable after the plane
 // has become unreachable.
 //
 // It is what makes a control-plane outage survivable for an agent that is
 // restarted during one. It is bounded rather
-// than infinite because a token that has been rotated has to stop working
-// eventually, and an hour is short next to how long a rotation takes to reach
-// every cluster and long next to any plane outage worth having.
-const DefaultCacheGrace = time.Hour
+// than infinite because a token that has been revoked has to stop working
+// eventually, even for new dials during an outage.
+const DefaultCacheGrace = 15 * time.Minute
 
 // ListenerConfig configures the tunnel listener.
 type ListenerConfig struct {
@@ -154,6 +168,9 @@ type ListenerConfig struct {
 	// CacheGrace is how long a verified token survives a plane that cannot be
 	// reached. Zero means DefaultCacheGrace.
 	CacheGrace time.Duration
+	// ReverifyInterval is how often an open tunnel's token is checked again.
+	// Zero means DefaultReverifyInterval; negative turns re-verification off.
+	ReverifyInterval time.Duration
 	// MaxHandshakes bounds how many dials may be mid-handshake at once. Zero
 	// means DefaultMaxHandshakes.
 	MaxHandshakes int
@@ -205,6 +222,9 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 	}
 	if cfg.MaxHandshakes <= 0 {
 		cfg.MaxHandshakes = DefaultMaxHandshakes
+	}
+	if cfg.ReverifyInterval == 0 {
+		cfg.ReverifyInterval = DefaultReverifyInterval
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -335,11 +355,67 @@ func (l *Listener) handle(ctx context.Context, conn net.Conn, release func()) {
 		"cluster", clusterID, "agent", hello.Agent, "remote", remote,
 		"capacity", adopted.Capacity(), "live", l.cfg.Pool.Live(clusterID))
 
-	<-adopted.Done()
+	l.watchToken(ctx, adopted, hello.Token)
 	slog.Info("gateway: tunnel closed",
 		"cluster", clusterID, "remote", remote,
 		"held", time.Since(adopted.Opened).Round(time.Second).String(),
 		"live", l.cfg.Pool.Live(clusterID))
+}
+
+// watchToken re-verifies an open tunnel's token until the tunnel ends, and
+// closes the tunnel if the token is refused or now names another cluster.
+//
+// The token is held in memory for as long as the tunnel is open; that is the
+// cost of being able to revoke it. A plane that cannot be reached keeps the
+// tunnel, for the same reason it keeps new dials working from the cache.
+func (l *Listener) watchToken(ctx context.Context, conn *Conn, token string) {
+	if l.cfg.ReverifyInterval < 0 {
+		<-conn.Done()
+		return
+	}
+	for {
+		// Jittered so the tunnels a rollout opened together do not all ask at once.
+		wait := l.cfg.ReverifyInterval + time.Duration(rand.Int64N(int64(l.cfg.ReverifyInterval)/10+1))
+		timer := time.NewTimer(wait)
+		select {
+		case <-conn.Done():
+			timer.Stop()
+			return
+		case <-ctx.Done():
+			timer.Stop()
+			<-conn.Done()
+			return
+		case <-timer.C:
+		}
+
+		checkCtx, cancel := context.WithTimeout(ctx, l.cfg.HandshakeTimeout)
+		identity, err := l.resolve(checkCtx, token)
+		cancel()
+		switch {
+		case err == nil && identity.ClusterID == conn.ClusterID:
+			continue
+		case err == nil, errors.Is(err, ErrRejected):
+			slog.Warn("gateway: tunnel token no longer valid, closing the tunnel",
+				"cluster", conn.ClusterID, "remote", conn.RemoteAddr, "resolves_to", identity.ClusterID, "err", err)
+			if observer, ok := l.cfg.Dials.(RevocationObserver); ok {
+				observer.TunnelRevoked(conn.ClusterID)
+			}
+			_ = conn.Close()
+			return
+		default:
+			slog.Debug("gateway: could not re-verify a tunnel token, keeping the tunnel",
+				"cluster", conn.ClusterID, "err", err)
+		}
+	}
+}
+
+// Revoke closes every tunnel to a cluster and forgets every cached answer that
+// named it, so the next dial with any of its tokens asks the plane. It is the
+// path for a credential known to be compromised, where waiting for the next
+// re-verification is too slow. It returns how many tunnels were closed.
+func (l *Listener) Revoke(clusterID string) int {
+	l.cache.forgetCluster(clusterID)
+	return l.cfg.Pool.Evict(clusterID)
 }
 
 // authenticate reads the handshake and answers it. The deadline it sets is
@@ -443,8 +519,8 @@ func (l *Listener) accept(identity Identity) Accept {
 // A fresh cache entry answers without a plane call at all, so an agent that
 // reconnects in a loop cannot turn a rollout into a load test of the control
 // plane. A stale entry answers when the plane cannot be reached, which is what
-// keeps a control-plane outage off the data path: existing tunnels are never
-// re-checked, and an agent restarted during an outage still gets in.
+// keeps a control-plane outage off the data path: an agent restarted during an
+// outage still gets in, and re-verification keeps the tunnels it already has.
 func (l *Listener) resolve(ctx context.Context, token string) (Identity, error) {
 	if identity, fresh, ok := l.cache.lookup(token); ok && fresh {
 		return identity, nil
@@ -529,10 +605,11 @@ func (l *Listener) stopAccepting() {
 // tokenCache remembers which cluster a token resolved to.
 //
 // A slice scanned in constant time rather than a map: the fleet is tens of
-// clusters, the scan is once per connection and never per request, and it means
+// clusters, the scan is per dial and per re-verification and never per request,
+// and it means
 // no comparison in this path can be short-circuited on a secret. The tokens
-// themselves are not kept — only their digests, so a heap dump of a long-lived
-// gateway does not hand over every cluster's credential.
+// themselves are not kept here — only their digests. The tokens of open tunnels
+// are held by the goroutine re-verifying each one, and no longer than that.
 type tokenCache struct {
 	ttl   time.Duration
 	grace time.Duration
@@ -603,6 +680,20 @@ func (c *tokenCache) forget(token string) {
 	kept := c.entries[:0]
 	for _, entry := range c.entries {
 		if subtle.ConstantTimeCompare(digest[:], entry.digest[:]) == 1 {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	c.entries = kept
+}
+
+// forgetCluster drops every entry that resolved to clusterID.
+func (c *tokenCache) forgetCluster(clusterID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	kept := c.entries[:0]
+	for _, entry := range c.entries {
+		if entry.identity.ClusterID == clusterID {
 			continue
 		}
 		kept = append(kept, entry)
