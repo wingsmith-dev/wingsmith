@@ -64,12 +64,28 @@
 //
 // The token behind every open tunnel is re-verified with the plane every
 // ReverifyInterval, and a verified answer is cached for CacheTTL, so a token
-// the plane stops accepting loses its tunnels within about the sum of the two —
-// two minutes with the defaults. For a token known to be leaked, revoke or
-// rotate it in the plane first, so a redial is refused, and then call
-// Listener.Revoke on each gateway replica to close the cluster's tunnels at
-// once. A plane that cannot be reached never closes a tunnel; it only stops
-// new dials whose token is not cached, after CacheGrace.
+// the plane stops accepting loses its tunnels within about the sum of the two:
+// a little over two minutes with the defaults. For a leaked token, revoke or
+// rotate it in the plane and either wait that long or restart the gateway
+// replicas; a replica starts with an empty cache, so every agent redials and
+// is verified afresh. Listener.Revoke closes one cluster's tunnels at once for
+// an embedder that has its own trusted signal to call it from; the gateway in
+// this repository does not expose it.
+//
+// A plane that cannot be reached never closes a tunnel; it only stops new
+// dials whose token is not cached, after CacheGrace. That is only safe if an
+// outsider cannot make the plane look unreachable. The verifier is handed the
+// dial's source (DialSource) so the plane can charge failed guesses to the
+// address that made them rather than to the gateway, and a source that keeps
+// failing is stopped at the listener before it reaches the plane at all.
+//
+// # Per-source limits
+//
+// MaxHandshakesPerSource and SourceFailures key on the dial's source address.
+// They assume the listener sees the agent's own address. Behind a load
+// balancer or Service that rewrites it, every agent shares a few node
+// addresses and the limits would throttle them together; such a deployment
+// should preserve the client address or set both limits negative.
 //
 // Reachability is measured here and nowhere else. Observed state has exactly
 // one writer — ingestion, fed by the operator's sync stream — and the gateway
