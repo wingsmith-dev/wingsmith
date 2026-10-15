@@ -39,6 +39,11 @@ REQUIRED = {
 def chart(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     work = tmp_path_factory.mktemp("chart") / "cluster-setup"
     shutil.copytree(CHART, work, ignore=shutil.ignore_patterns("tests", "charts", "__pycache__"))
+    notes_txt = (work / "templates" / "NOTES.txt").read_text()
+    (work / "templates" / "_test_notes.tpl").write_text(
+        '{{- define "test.notes" -}}\n' + notes_txt + "\n{{- end -}}\n")
+    (work / "templates" / "zz-test-notes.yaml").write_text(
+        'kind: RenderedNotes\ntext: {{ include "test.notes" . | quote }}\n')
     meta = work / "Chart.yaml"
     meta.write_text(meta.read_text().split("dependencies:")[0])
     (work / "Chart.lock").unlink(missing_ok=True)
@@ -74,6 +79,15 @@ def refusal(chart: pathlib.Path, **values: object) -> str:
     result = helm(chart, values)
     assert result.returncode != 0, f"rendered, but should have refused: {values}"
     return result.stderr
+
+
+def notes(chart: pathlib.Path, **values: object) -> str:
+    """NOTES.txt as rendered. `helm template` never renders it, so the fixture
+    wraps it in a define and a test-only object that carries the text."""
+    for d in render(chart, **values):
+        if d.get("kind") == "RenderedNotes":
+            return d["text"]
+    raise AssertionError("NOTES.txt was not rendered")
 
 
 def find(docs: list[dict], kind: str, name: str, namespace: str | None = None) -> dict | None:
@@ -124,3 +138,74 @@ def test_package_keeps_vendored_subcharts_and_drops_stray_archives(chart, tmp_pa
     finally:
         (chart / "stray.tgz").unlink()
         shutil.rmtree(chart / "charts")
+
+
+# ── enrolment token ──────────────────────────────────────────────────────────
+
+AGENT_ON = {
+    "cluster.readOnly": False,
+    "agent.enabled": True,
+    "agent.gateway.address": "gateway.example.com:443",
+    "frontend.mode": "per-model",
+}
+MONITORING_ON = {
+    "monitoring.enabled": True,
+    "cluster.region": "region-1",
+    "monitoring.remoteWrite.url": "https://metrics.example.com/api/v1/write",
+}
+
+
+def _roll_keys(docs: list[dict]) -> dict[str, str | None]:
+    out = {}
+    for name in ("hangar-operator", "hangar-agent"):
+        d = find(docs, "Deployment", name)
+        if d is not None:
+            out[name] = d["spec"]["template"]["metadata"].get("annotations", {}).get(
+                "rollout/enrolment-token")
+    return out
+
+
+def test_token_annotation_is_not_a_digest_of_the_token(chart):
+    import hashlib
+
+    token = REQUIRED["enrolmentToken.value"]
+    docs = render(chart, **AGENT_ON)
+    keys = _roll_keys(docs)
+    assert set(keys) == {"hangar-operator", "hangar-agent"}
+    digests = {
+        hashlib.sha256(token.encode()).hexdigest(),
+        hashlib.sha256(f"enrolment-token:{token}".encode()).hexdigest(),
+    }
+    for key in keys.values():
+        assert key
+        assert not any(d.startswith(key) for d in digests)
+    for d in docs:
+        assert "checksum/enrolment-token" not in yaml.safe_dump(d)
+
+
+def test_token_rotation_rolls_the_operator_and_agent(chart):
+    before = _roll_keys(render(chart, **AGENT_ON))
+    after = _roll_keys(render(chart, **AGENT_ON, **{"enrolmentToken.value": "rotated-token"}))
+    again = _roll_keys(render(chart, **AGENT_ON))
+    assert before == again
+    for name in before:
+        assert before[name] != after[name]
+
+
+def test_existing_secret_renders_no_token_annotation(chart):
+    docs = render(chart, **{"enrolmentToken.value": "", "enrolmentToken.existing": True})
+    assert _roll_keys(docs) == {"hangar-operator": None}
+
+
+def test_notes_never_point_at_a_fleet_token(chart):
+    text = notes(chart, **{"enrolmentToken.value": "", "enrolmentToken.existing": True})
+    assert "HANGAR_OPERATOR_TOKEN" not in text
+    assert "/v1/clusters/lint/enrolment-token" in text
+    assert "HANGAR_OPERATOR_TOKEN" not in (chart / "values.yaml").read_text()
+
+
+def test_metrics_agent_mounts_only_the_password_key(chart):
+    docs = render(chart, **MONITORING_ON)
+    agent = get(docs, "Deployment", "hangar-metrics-agent")
+    (volume,) = [v for v in agent["spec"]["template"]["spec"]["volumes"] if v["name"] == "remote-write"]
+    assert volume["secret"]["items"] == [{"key": "enrolment-token", "path": "enrolment-token"}]

@@ -260,6 +260,15 @@ spec:
         - name: remote-write
           secret:
             secretName: {{ include "cluster-setup.remoteWriteSecret" . }}
+            # Only the keys basic_auth reads, so an enrolment Secret created by
+            # hand with other keys in it does not hand them to this pod too.
+            items:
+              {{- if not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}
+              - key: {{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
+                path: {{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
+              {{- end }}
+              - key: {{ include "cluster-setup.remoteWritePasswordKey" . }}
+                path: {{ include "cluster-setup.remoteWritePasswordKey" . }}
         - name: wal
           emptyDir:
             sizeLimit: {{ .Values.monitoring.agent.walSizeLimit }}

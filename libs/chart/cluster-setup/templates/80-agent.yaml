@@ -134,12 +134,12 @@ spec:
         # the operator's is, because that object lives in this same file and
         # including it here would render this annotation into its own input.
         checksum/config: {{ printf "%s|%s|%s|%s|%s" .Values.cluster.id (include "cluster-setup.gatewayAddress" .) .Values.agent.frontendEndpoint .Values.cluster.logLevel .Values.agent.responseHeaderTimeout | sha256sum }}
-        # Same reasoning as the operator's, and the same domain separation: the
-        # token is a `secretKeyRef` resolved once at pod start, so a rotation
-        # without this leaves live tunnels authenticated by a credential the plane
-        # has already invalidated, and the break lands on some later re-dial
-        # rather than on the upgrade that caused it.
-        checksum/enrolment-token: {{ printf "enrolment-token:%s" .Values.enrolmentToken.value | sha256sum }}
+        # Same reasoning as the operator's: the token is a `secretKeyRef` resolved
+        # once at pod start, so a rotation without this leaves live tunnels
+        # authenticated by a credential the plane has already invalidated.
+        {{- with include "cluster-setup.enrolmentTokenRollKey" . }}
+        rollout/enrolment-token: {{ . | quote }}
+        {{- end }}
     spec:
       serviceAccountName: hangar-agent
       # Preferred, not required: two replicas on one node is a single node drain

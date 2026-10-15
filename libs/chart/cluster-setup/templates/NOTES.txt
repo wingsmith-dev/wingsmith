@@ -13,10 +13,11 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
 
 ⚠  The operator reads its enrolment token from the Secret
    `{{ .Values.enrolmentToken.existingSecret }}` in {{ .Release.Namespace }}. If you have not created
-   it yet, the pod will not start:
+   it yet, the pod will not start. Use the token minted for this cluster, on the
+   register screen or with POST /v1/clusters/{{ .Values.cluster.id }}/enrolment-token:
 
      kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.enrolmentToken.existingSecret }} \
-       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's hgro1. enrolment token from the console's register screen>
+       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's enrolment token, hgro1....>
 {{- end }}
 {{- if not .Values.hfToken.create }}
 

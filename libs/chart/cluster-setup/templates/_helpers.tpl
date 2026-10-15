@@ -96,6 +96,21 @@ name the separate basicAuth Secret.
 {{- end -}}
 {{- end -}}
 
+{{/*
+A value that changes when the enrolment token does, for the pod annotation that
+rolls the operator and agent on a rotation. Not a digest of the token: a
+Deployment's annotations are readable by anything with `get deployments`, a
+wider audience than `get secrets`. derivePassword is a scrypt-stretched
+derivation keyed by the cluster id, so the annotation is neither the plane's
+lookup key nor cheap to test a guessed token against. Empty when the token is
+not in values (a Secret created out of band), which rolls nothing.
+*/}}
+{{- define "cluster-setup.enrolmentTokenRollKey" -}}
+{{- with .Values.enrolmentToken.value -}}
+{{- derivePassword 1 "maximum" . (toString $.Values.cluster.id) "enrolment-token.hangar.dev" | sha256sum | trunc 16 -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Common labels on hangar-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
 app.kubernetes.io/name: hangar-operator

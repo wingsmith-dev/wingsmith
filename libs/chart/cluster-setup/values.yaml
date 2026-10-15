@@ -21,10 +21,21 @@ cluster:
   logLevel: info
   logFormat: json
 
-# This cluster's identity, and the only credential it needs. Three things verify
-# the same string: the operator against the hub, the agent on the tunnel, and the
-# metrics agent as remote-write basic auth. The register screen mints it and
-# renders it as `value`, and the chart creates the Secret.
+# This cluster's enrolment token: its identity to the plane, minted for this
+# cluster alone, on the register screen or with
+# `POST /v1/clusters/{ref}/enrolment-token`. It is shown once; the register
+# screen renders it here as `value`, and the chart creates the Secret from it.
+# The plane has no fleet-wide token a cluster could use instead: the hub refuses
+# any session that is not opened with the token minted for that cluster.
+#
+# It is mounted only in the pods that present it, and each is checked by the
+# plane against what it stored when it minted the token:
+#   - the operator, to the hub (`cluster.hubUrl`);
+#   - the serving agent, to the gateway on the tunnel, when `agent.enabled`;
+#   - the metrics agent, as the remote-write basic-auth password, when
+#     `monitoring.enabled` with `basicAuth.useEnrolmentToken` (ADR 0012).
+# Re-minting it on the register screen invalidates the old one everywhere at
+# once; install the new values and the pods that hold it restart.
 enrolmentToken:
   existingSecret: hangar-operator
   secretKey: enrolment-token
