@@ -314,20 +314,6 @@ func (h *fakeHub) setStallHello(v bool) {
 	h.mu.Unlock()
 }
 
-// ackWatcher records every ack the operator sends on any frame, including bare ack frames, which
-// the hub's own bookkeeping ignores.
-func (h *fakeHub) observedAcks() []uint64 {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]uint64, 0, len(h.upward))
-	for _, e := range h.upward {
-		if e.Ack != nil {
-			out = append(out, *e.Ack)
-		}
-	}
-	return out
-}
-
 func mustEnvelope(t *testing.T, typ MessageType, payload any) *Envelope {
 	t.Helper()
 	e, err := newEnvelope(typ, payload)
