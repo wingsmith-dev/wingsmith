@@ -49,6 +49,8 @@ from app.hub.messages import Envelope
 from app.hub.messages import StreamEnd
 from app.hub.messages import RawEnvelope
 from app.hub.messages import ResyncBegin
+from app.hub.standing import Standing
+from app.hub.standing import OpenStanding
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 from app.modules.clusters.enrolment import schedule_promote_on_enrolment
@@ -60,6 +62,8 @@ logger = getLogger(__name__)
 CLOSE_PROTOCOL_ERROR = 1002
 CLOSE_INTERNAL_ERROR = 1011
 CLOSE_TRY_AGAIN_LATER = 1013
+CLOSE_UNAUTHORIZED = 4401
+CLOSE_FORBIDDEN = 4403
 
 MAX_FRAME_BYTES = 8 << 20
 
@@ -89,14 +93,34 @@ class UnknownType(Exception):
 
 
 class ProtocolViolation(Exception):
-    """A peer did something the contract forbids. The connection does not survive it."""
+    """A peer did something the contract forbids. The connection does not survive it.
 
-    __slots__ = ("close_code", "code")
+    `retryable` is what the `error` frame tells the operator, and the operator stops
+    redialling on a refusal that says it is not: only say so when no reconnect can
+    succeed until somebody changes something on the cluster's side.
+    """
 
-    def __init__(self, message: str, code: str = "invalid", close_code: int = CLOSE_PROTOCOL_ERROR) -> None:
+    __slots__ = ("close_code", "code", "retryable")
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "invalid",
+        close_code: int = CLOSE_PROTOCOL_ERROR,
+        retryable: bool = True,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.close_code = close_code
+        self.retryable = retryable
+
+
+class Refused(ProtocolViolation):
+    """The peer is who it says it is and may not hold a session: wrong credential, or a cluster
+    the registry does not admit. Closed in the 4xxx range the server's own refusal uses."""
+
+    def __init__(self, message: str, code: str, close_code: int, retryable: bool = True) -> None:
+        super().__init__(message, code=code, close_code=close_code, retryable=retryable)
 
 
 class Backpressure(ProtocolViolation):
@@ -160,12 +184,14 @@ class OperatorSession:
         "claims",
         "config",
         "connection",
+        "credential",
         "desired",
         "instance",
         "live",
         "principal",
         "registry",
         "sink",
+        "standing",
         "state",
     )
 
@@ -180,9 +206,14 @@ class OperatorSession:
         claims: ClaimStore | None = None,
         instance: str | None = None,
         live: LiveSessions | None = None,
+        standing: Standing | None = None,
+        credential: str | None = None,
     ) -> None:
         self.connection = connection
         self.principal = principal
+        self.standing: Standing = OpenStanding() if standing is None else standing
+        self.credential = credential
+        """The digest of the enrolment token this connection opened with, so a rotation is seen."""
         self.config = SessionConfig() if config is None else config
         self.registry = SessionRegistry(self.config.replay_capacity) if registry is None else registry
         self.sink: Sink = MemorySink() if sink is None else sink
@@ -207,7 +238,7 @@ class OperatorSession:
                 await self._handshake()
             except ProtocolViolation as exc:
                 logger.warning("hub.session.handshake_failed reason=%s", exc)
-                await self._try_send(self._safe_frame(Error(code=exc.code, message=str(exc), retryable=True)))
+                await self._try_send(self._safe_frame(Error(code=exc.code, message=str(exc), retryable=exc.retryable)))
                 await self._close(exc.close_code, str(exc))
                 return
             except TimeoutError:
@@ -276,21 +307,18 @@ class OperatorSession:
 
         hello = envelope.payload
         assert isinstance(hello, Hello)
-        if not hello.cluster_id:
-            raise ProtocolViolation("hello carries no cluster_id")
-        if self.principal.scope is not None and hello.cluster_id not in (
-            self.principal.scope,
-            self.principal.name,
-        ):
-            raise ProtocolViolation(
-                f"hello cluster_id {hello.cluster_id!r} does not match the enrolment token's cluster"
-            )
+        cluster_uid = self._admitted_cluster(hello)
+        refusal = await self.standing.refusal(cluster_uid, self.credential)
+        if refusal is not None:
+            raise self._refusal(cluster_uid, refusal)
 
-        state, full_resync = self._resolve_session(hello)
+        state, full_resync = self._resolve_session(cluster_uid, hello)
         self.state = state
         await self.claims.claim(state.cluster_id, state.session_id, self.instance)
         self.registry.connected(state.session_id)
         self.live.register(state.cluster_id, self)
+        if hello.cluster_id != state.cluster_id:
+            self.live.alias(hello.cluster_id, self)
 
         if not full_resync:
             state.rewind_inbound()
@@ -329,12 +357,13 @@ class OperatorSession:
         """
         if not isinstance(self.sink, Liveness):
             return
+        cluster_id = self._state.cluster_id
         try:
-            canonical = await self.sink.mark_connected(hello.cluster_id, hello.operator_version)
+            canonical = await self.sink.mark_connected(cluster_id, hello.operator_version)
         except Exception:
-            logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", hello.cluster_id, exc_info=True)
+            logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", cluster_id, exc_info=True)
             return
-        if canonical and canonical != hello.cluster_id:
+        if canonical and canonical != cluster_id:
             self.live.alias(canonical, self)
         if canonical:
             schedule_promote_on_enrolment(canonical)
@@ -349,7 +378,42 @@ class OperatorSession:
                 "hub.session.sync_state_failed phase=disconnect cluster=%s", self.state.cluster_id, exc_info=True
             )
 
-    def _resolve_session(self, hello: Hello) -> tuple[SessionState, bool]:
+    def _admitted_cluster(self, hello: Hello) -> str:
+        """The cluster this connection speaks for: the one its enrolment token is bound to.
+
+        Only a per-cluster principal opens a session. The shared fleet token named no
+        cluster, so a session opened with it believed whichever one `hello` claimed to
+        be — any holder could write any cluster's observed state. The server no longer
+        resolves that token at all; this is the same rule held where it matters, so a
+        caller that builds a session some other way cannot reintroduce it.
+
+        The session is keyed by the token's cluster uid, not by what `hello` said. An
+        operator configured by hand may introduce itself by name, and the name is
+        accepted as long as it names the same cluster.
+        """
+        scope = self.principal.scope
+        if self.principal.kind != "operator" or not scope:
+            raise Refused(
+                "the hub only admits a cluster's own enrolment token",
+                code="invalid",
+                close_code=CLOSE_UNAUTHORIZED,
+                retryable=False,
+            )
+        if not hello.cluster_id:
+            raise ProtocolViolation("hello carries no cluster_id")
+        if hello.cluster_id not in (scope, self.principal.name):
+            raise ProtocolViolation(
+                f"hello cluster_id {hello.cluster_id!r} does not match the enrolment token's cluster"
+            )
+        return scope
+
+    @staticmethod
+    def _refusal(cluster_uid: str, reason: str) -> Refused:
+        """What a registry refusal closes with. Retryable: re-enabling a cluster must not need a restart."""
+        logger.warning("hub.session.refused cluster=%s reason=%s", cluster_uid, reason)
+        return Refused(f"cluster {cluster_uid}: {reason}", code="unavailable", close_code=CLOSE_FORBIDDEN)
+
+    def _resolve_session(self, cluster_uid: str, hello: Hello) -> tuple[SessionState, bool]:
         """Decides whether the requested resume point can be honoured (PROTOCOL §4).
 
         A fresh session is issued — and `full_resync` set — when the operator declares itself
@@ -359,16 +423,16 @@ class OperatorSession:
         if hello.lossy:
             if hello.session_id:
                 self.registry.drop(hello.session_id)
-            return self.registry.create(hello.cluster_id), True
+            return self.registry.create(cluster_uid), True
 
         existing = self.registry.get(hello.session_id)
-        if existing is None or existing.cluster_id != hello.cluster_id:
-            return self.registry.create(hello.cluster_id), True
+        if existing is None or existing.cluster_id != cluster_uid:
+            return self.registry.create(cluster_uid), True
 
         resume_from = hello.resume_from or 0
         if resume_from > existing.next_seq - 1 or not existing.replay.retains(resume_from):
             self.registry.drop(existing.session_id)
-            return self.registry.create(hello.cluster_id), True
+            return self.registry.create(cluster_uid), True
 
         return existing, False
 
@@ -584,6 +648,11 @@ class OperatorSession:
 
         Nothing pushes a displaced session a notification — it may be mid-stream on a
         different pod than the one that displaced it — so it has to ask (ADR 0005).
+
+        The same poll asks whether the cluster may still hold a session at all. A
+        cluster disabled in the registry, or one whose enrolment token was rotated
+        out from under this connection, is cut here within one interval rather than
+        on whatever reconnect the operator happens to make next.
         """
         while True:
             await asyncio.sleep(self.config.ownership_check_interval)
@@ -592,6 +661,9 @@ class OperatorSession:
                 continue
             if not await self.claims.owns(state.cluster_id, state.session_id):
                 raise Displaced(state.cluster_id)
+            refusal = await self.standing.refusal(state.cluster_id, self.credential)
+            if refusal is not None:
+                raise self._refusal(state.cluster_id, refusal)
 
     async def send_desired(self, type_name: str, payload: Struct, reply_to: str | None = None) -> None:
         """Queues declared state for the operator. The public seam for the registry track."""

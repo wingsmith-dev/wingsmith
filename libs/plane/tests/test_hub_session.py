@@ -15,6 +15,7 @@ import pytest
 
 from msgspec import json as msgjson
 
+from app.auth import Principal
 from app.auth import AuthManager
 from app.hub.sink import MemorySink
 from app.hub.state import SessionState
@@ -28,6 +29,11 @@ from app.hub.messages import DeviceObserved
 from app.hub.messages import OperationTarget
 from app.hub.messages import OperationDesired
 from app.hub.messages import DeploymentDesired
+from app.hub.standing import ROTATED
+from app.hub.standing import UNKNOWN
+from app.hub.standing import DISABLED
+from app.hub.standing import MemoryStanding
+from app.hub.standing import judge
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 
@@ -35,6 +41,9 @@ from app.hub.ownership import MemoryClaimStore
 FIXTURES = Path(__file__).resolve().parents[2] / "packages" / "contract" / "fixtures"
 
 CLUSTER = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
+
+OPERATOR = AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="alpha")
+"""What a connection opened with this cluster's enrolment token runs as."""
 
 
 def desired_payload() -> DeploymentDesired:
@@ -129,6 +138,9 @@ class Harness:
         instance: str | None = None,
         desired: Any | None = None,
         live: Any | None = None,
+        principal: Principal | None = None,
+        standing: Any | None = None,
+        credential: str | None = None,
     ) -> None:
         self.connection = FakeConnection(send_gate=send_gate)
         self.live = live
@@ -137,7 +149,7 @@ class Harness:
         self.claims = claims or MemoryClaimStore()
         self.session = OperatorSession(
             self.connection,
-            AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="us-cluster-1"),
+            OPERATOR if principal is None else principal,
             registry=self.registry,
             sink=self.sink,
             config=config or SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64),
@@ -145,6 +157,8 @@ class Harness:
             instance=instance or "hub-test",
             desired=desired,
             live=live,
+            standing=standing,
+            credential=credential,
         )
         self.task: asyncio.Task[None] | None = None
 
@@ -219,6 +233,89 @@ async def test_handshake_timeout_closes_the_connection() -> None:
     await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
     assert harness.connection.close_code == 1002
     await harness.stop()
+
+
+# --------------------------------------------------------------------------- who may hold a session
+
+
+async def test_the_shared_fleet_principal_opens_no_session() -> None:
+    """It names no cluster, so `hello` would decide which cluster's state it writes."""
+    harness = Harness(principal=Principal(id="operator", kind="operator", name="operator", scope=None))
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
+
+    error = await harness.connection.next_of_type("error")
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert error["payload"]["retryable"] is False, "no reconnect with the same token can succeed"
+    assert harness.connection.close_code == 4401
+    assert harness.session.state is None
+    await harness.stop()
+
+
+async def test_a_hello_for_another_cluster_is_refused() -> None:
+    harness = Harness()
+    await harness.start()
+    harness.connection.push(
+        frame("hello", {"cluster_id": "clu_01J9X2BBBBBBBBBBBBBBBBBBBB", "operator_version": "0.4.2", "lossy": False})
+    )
+
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert harness.connection.close_code == 1002
+    await harness.stop()
+
+
+async def test_a_hello_by_name_is_keyed_by_the_tokens_cluster() -> None:
+    harness = Harness()
+    await harness.start()
+    await harness.hello(cluster_id="alpha")
+
+    assert harness.session.state is not None
+    assert harness.session.state.cluster_id == CLUSTER
+    await harness.stop()
+
+
+@pytest.mark.parametrize("reason", [UNKNOWN, DISABLED])
+async def test_a_cluster_the_registry_does_not_admit_gets_no_session_and_no_snapshot(reason: str) -> None:
+    """An unknown cluster's empty snapshot, sent as complete, is an instruction to delete everything."""
+    standing = MemoryStanding()
+    standing.refusals[CLUSTER] = reason
+    sink = MemorySink()
+    harness = Harness(standing=standing, sink=sink)
+    await harness.start()
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
+
+    error = await harness.connection.next_of_type("error")
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert reason in error["payload"]["message"]
+    assert error["payload"]["retryable"] is True, "re-enabling the cluster must not need an operator restart"
+    assert harness.connection.close_code == 4403
+    assert not [doc for doc in harness.connection.frames() if doc["type"] in ("welcome", "stream.end")]
+    assert sink.connections == []
+    await harness.stop()
+
+
+@pytest.mark.parametrize("reason", [DISABLED, ROTATED])
+async def test_disabling_or_rotating_a_cluster_cuts_its_live_session(reason: str) -> None:
+    standing = MemoryStanding()
+    config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
+    harness = Harness(standing=standing, config=config)
+    await harness.start()
+    await harness.hello()
+    assert not harness.connection.closed.is_set()
+
+    standing.refusals[CLUSTER] = reason
+
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert harness.connection.close_code == 4403
+    await harness.stop()
+
+
+def test_standing_is_judged_on_the_registry_row_and_the_token_the_session_opened_with() -> None:
+    assert judge(None, None, None) == UNKNOWN
+    assert judge("disabled", "abc", "abc") == DISABLED
+    assert judge("active", "new", "old") == ROTATED
+    assert judge("draining", "abc", "abc") is None
+    assert judge("pending", "abc", None) is None
 
 
 # --------------------------------------------------------------------------- resume
@@ -754,7 +851,8 @@ async def test_a_session_that_said_its_name_is_dispatchable_by_uid() -> None:
     reconnect, which for an operation is the only thing that would ever carry it.
     """
     live = LiveSessions()
-    harness = Harness(sink=NamingSink(), live=live)
+    principal = AuthManager.operator_principal(cluster_uid=CLUSTER, cluster_name="us-cluster-1")
+    harness = Harness(sink=NamingSink(), live=live, principal=principal)
     await harness.start()
     await harness.hello(cluster_id="us-cluster-1")
     await until(lambda: live.get(CLUSTER) is not None)

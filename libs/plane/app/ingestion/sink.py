@@ -53,6 +53,7 @@ from app.ingestion.resync import WORKLOAD
 from app.ingestion.resync import ALLOCATION
 from app.ingestion.resync import ResyncEpoch
 from app.ingestion.resync import decide
+from app.ingestion.statements import UnknownCluster
 from app.ingestion.statements import MalformedObservation
 from app.modules.benchmarks.follow import follows_operation
 
@@ -156,19 +157,6 @@ def _regressed(before, payload) -> bool:
     if before.observed_generation != payload.generation:
         return False
     return before.phase in SETTLED_PHASES
-
-
-class UnknownCluster(Exception):
-    """A frame arrived for a cluster with no registry entry.
-
-    Raised rather than ignored: a cluster the plane has never heard of is not
-    something ingestion may create — clusters are declared — and acknowledging
-    its state would silently discard it.
-    """
-
-    def __init__(self, cluster_ref: str) -> None:
-        super().__init__(f"no cluster registered as {cluster_ref}")
-        self.cluster_ref = cluster_ref
 
 
 class DatabaseSink:

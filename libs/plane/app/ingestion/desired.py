@@ -54,6 +54,7 @@ from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
+from app.ingestion.statements import UnknownCluster
 from app.ingestion.statements import cluster_ref_clause
 from app.modules.workloads.services import resolved_engine_args
 
@@ -79,10 +80,15 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
     Order matters to the receiver: artifacts precede the deployments that
     reference them, so a cluster applying the stream in order never holds a
     deployment pointing at weights it has not been told about.
+
+    An unknown cluster raises instead of yielding nothing. The session ends a
+    snapshot that raised as incomplete, which the operator leaves alone; an empty
+    one ended as complete would be read as "nothing is declared here" and pruned
+    against.
     """
     cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
-        return
+        raise UnknownCluster(cluster_uid)
 
     if scope in SUPPLY_SCOPES:
         for payload in await _components(db, cluster_uid, cluster_id):

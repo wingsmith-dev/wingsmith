@@ -106,6 +106,21 @@ class MalformedObservation(Exception):
     """
 
 
+class UnknownCluster(Exception):
+    """A frame arrived for, or a snapshot was asked of, a cluster with no registry entry.
+
+    Raised rather than ignored on both sides of the seam. Ingestion may not create a
+    cluster — clusters are declared — and acknowledging its state would silently
+    discard it. A snapshot of a cluster that does not exist is not an empty snapshot:
+    sent as one, complete, it tells the operator the plane declares nothing there,
+    and the operator deletes everything it manages.
+    """
+
+    def __init__(self, cluster_ref: str) -> None:
+        super().__init__(f"no cluster registered as {cluster_ref}")
+        self.cluster_ref = cluster_ref
+
+
 def observed_uid(wire_id: str, prefix: str) -> str:
     """The public id an observed row carries.
 
