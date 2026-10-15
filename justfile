@@ -16,8 +16,10 @@ _conform  := "libs/conformance"
 _libs     := "libs"
 
 _go_mods  := _operator + " " + _cli + " " + _gateway + " " + _agent + " " + _tunnel + " " + _transit
-# libs/benchmarking is absent on purpose: it has no dependencies and runs on the system python3.
+# libs/benchmarking is absent on purpose: it has no dependencies, so it runs through
+# `uv run --no-project` with nothing to install.
 _py_mods  := _plane + " " + _conform
+_bench_py := "PYTHONPATH=" + _bench + " uv run --no-project --python 3.12"
 
 _kind_config := "dev/kind-cluster.yaml"
 _kind_name   := "hangar"
@@ -194,19 +196,19 @@ lint:
     done
     (cd {{_console}} && pnpm run lint && pnpm run typecheck)
 
-# Run every lib's default test suite: pytest, go test, vitest  [no database, no cluster]
+# Run every lib's default test suite: pytest, go test -race, vitest  [no database, no cluster]
 test:
     #!/usr/bin/env bash
     set -euo pipefail
     (cd {{_plane}} && uv run pytest)
+    (cd {{_conform}} && uv run --locked python -m pytest tests -q)
+    {{_bench_py}} --with pytest pytest {{_bench}}/tests -q -p no:cacheprovider
+    # The dev scripts run in the plane's virtualenv, so their tests decode against its schemas.
+    uv run --project {{_plane}} pytest dev/tests -q -p no:cacheprovider
     for d in {{_go_mods}}; do
-      (cd "$d" && go test ./...)
+      (cd "$d" && go test -race ./...)
     done
     (cd {{_console}} && pnpm run test)
-    # The runtime patches ship inside a vendor image, so they have no project to be a test target
-    # of. The video geometry is stdlib-only on purpose and runs anywhere; the rest of that patch is
-    # only checkable inside the image.
-    python3 hangar-runtime/worker/vllm/kimi-k3-video/tests/test_geometry.py
 
 # Run the database-backed tests against the Postgres in compose.yml
 test-db *args:
@@ -259,16 +261,24 @@ cov *args:
 
 # ── Interop ───────────────────────────────────────────────────────────────────
 
+# The hub half of the interop harness, which the Go side launches; keep in step with
+# libs/operator/internal/interop/harness_test.go.
+_interop_hub := "test/interop/hub.py"
+
 # Run the cross-language interop gate: the real Go client against the real Python hub
 interop *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ ! -f {{_interop_hub}} ]; then
+      echo "interop: skipped, {{_interop_hub}} (the hub half of the harness) is not in this checkout" >&2
+      exit 0
+    fi
     if ! command -v uv >/dev/null 2>&1; then
       echo "error: uv is not installed — the harness spawns the Python hub with it" >&2
       exit 1
     fi
     (cd {{_plane}} && uv sync --quiet)
-    (cd {{_operator}} && go test -tags interop -count=1 -timeout 900s ./internal/interop/ {{args}})
+    (cd {{_operator}} && go test -race -tags interop -count=1 -timeout 900s ./internal/interop/ {{args}})
 
 # The fake client is a model of the API and no model at all of the controllers behind it: a
 # rendered workload carrying a cross-namespace owner reference is stored happily by the fake and
@@ -295,7 +305,7 @@ e2e *args:
 
 # ── Gate ──────────────────────────────────────────────────────────────────────
 
-# Everything a change has to pass: format, lint, every suite, and the interop gate
+# Everything a change has to pass: format, lint, every suite, the chart, and the interop gate
 check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -303,6 +313,7 @@ check:
     just lint
     just test
     just test-db
+    just chart-lint
     just interop
 
 # ── Request path ──────────────────────────────────────────────────────────────
