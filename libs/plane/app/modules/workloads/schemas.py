@@ -671,3 +671,38 @@ class WorkloadUpdateRequest(Struct):
     mutable thing about a revision: what the configuration was is a fact, why it changed is
     often understood later.
     """
+
+
+class WorkloadScaleParameters(Struct):
+    """`workload.scale`: new totals. An absent bound is left where it is."""
+
+    min: int | None = None
+    max: int | None = None
+    desired: int | None = None
+
+
+class WorkloadPauseParameters(Struct):
+    """`workload.pause`: `true` parks the workload, `false` brings it back."""
+
+    paused: bool = True
+
+
+class WorkloadReshapeParameters(Struct):
+    """`workload.reshape`: the topology to flip to, and the count stated in the new unit.
+
+    `desired` is required in practice and optional here only so its absence is refused
+    with the reason rather than with a decoding error. `min` and `max` default to it.
+    """
+
+    topology: str
+    desired: int | None = None
+    min: int | None = None
+    max: int | None = None
+    roles: list[RoleSchema] = []
+    note: str | None = None
+
+
+class WorkloadDrainParameters(Struct):
+    """`workload.drain`: the cluster to take the workload off."""
+
+    cluster: str

@@ -1,14 +1,13 @@
 import datetime as dt
 
+import msgspec
+
 from sqlalchemy import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import NODE
-from app.core.ids import DEVICE
-from app.core.ids import ARTIFACT
 from app.core.ids import WORKLOAD
-from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
@@ -40,18 +39,13 @@ TYPES: dict[str, tuple[str, str]] = {
     "node.drain": (NODE, "drain"),
     "node.cordon": (NODE, "cordon"),
     "node.uncordon": (NODE, "cordon"),
-    "node.reboot": (NODE, "reboot"),
-    "device.reset": (DEVICE, "device_reset"),
-    "cache.warm": (ARTIFACT, "cache_warm"),
     "workload.scale": (WORKLOAD, "scale"),
     "workload.pause": (WORKLOAD, "pause"),
     "workload.reshape": (WORKLOAD, "reshape"),
     "workload.drain": (WORKLOAD, "drain"),
-    "deployment.roll": (DEPLOYMENT, "roll"),
     "deployment.benchmark": (DEPLOYMENT, "benchmark"),
-    "component.upgrade": (COMPONENT, "upgrade"),
 }
-"""Every operation type, the id prefix its target must carry, and the wire kind.
+"""Every operation type something carries out, the id prefix its target must carry, and the wire kind.
 
 The second element is what a `node.drain` targeting `dev_...` is checked
 against: the type names the kind of thing it acts upon, so a mismatched prefix
@@ -59,6 +53,14 @@ is a category error at creation and not a failure discovered inside the cluster
 an hour later. The third is the `operation.desired` kind the dispatcher will
 send; `uncordon` shares `cordon` because the wire kind names the mechanism and
 the parameters say which direction.
+"""
+
+NOT_SUPPORTED_YET = frozenset({"node.reboot", "device.reset", "cache.warm", "deployment.roll", "component.upgrade"})
+"""Operation types that are on the roadmap and that no operator executes.
+
+Refused at creation with a reason rather than recorded as `pending`, because a
+pending operation nothing will ever pick up reads as a stuck cluster. They stay
+named here so a listing can still filter on a type an older plane recorded.
 """
 
 PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.reshape", "workload.drain"})
@@ -75,6 +77,24 @@ They reach a terminal phase inside the request that created them. The plane's ha
 synchronous — re-expansion either finds room or does not — and how far the clusters
 have got with the result is a question the deployments already answer.
 """
+
+
+def workload_parameters(type_name: str, parameters: dict) -> object | None:
+    """Decodes a plane-executed operation's parameters into their typed struct, or refuses them.
+
+    Done at creation so a malformed parameter block is a 400 on the request rather
+    than an operation recorded and then failed.
+    """
+    from app.modules.workloads.services import OPERATION_PARAMETERS
+
+    shape = OPERATION_PARAMETERS.get(type_name)
+    if shape is None:
+        return None
+    try:
+        return msgspec.convert(parameters or {}, shape)
+    except msgspec.ValidationError as exc:
+        raise Invalid(f"invalid parameters for {type_name}: {exc}", {"type": type_name}) from exc
+
 
 PENDING = "pending"
 OPEN_PHASES = frozenset({"pending", "running"})
@@ -173,7 +193,7 @@ class OperationService:
         actor: str | None = None,
         since: dt.datetime | None = None,
     ) -> ListResponse[OperationSchema]:
-        if kind is not None and kind not in TYPES:
+        if kind is not None and kind not in TYPES and kind not in NOT_SUPPORTED_YET:
             raise Invalid(f"unknown operation type {kind!r}", {"allowed": sorted(TYPES)})
         if phase is not None and phase not in PHASES:
             raise Invalid(f"unknown phase {phase!r}", {"allowed": sorted(PHASES)})
@@ -239,9 +259,15 @@ class OperationService:
         The phase written here is `pending` and nothing else: the plane records
         that somebody asked for this, and the cluster is what makes it happen.
         """
+        if data.type in NOT_SUPPORTED_YET:
+            raise Invalid(
+                f"{data.type} is not supported yet: no operator carries it out",
+                {"type": data.type, "supported": sorted(TYPES)},
+            )
         if data.type not in TYPES:
             raise Invalid(f"unknown operation type {data.type!r}", {"allowed": sorted(TYPES)})
         prefix, _ = TYPES[data.type]
+        parameters = workload_parameters(data.type, data.parameters)
 
         parsed = parse_target(data.target)
         if parsed.prefix != prefix:
@@ -299,7 +325,7 @@ class OperationService:
         )
         if data.type in PLANE_EXECUTED:
             await self.repo.add(operation)
-            await self._execute(operation, target, data.parameters)
+            await self._execute(operation, target, parameters)
             return await self.get(operation.uid)
 
         try:
@@ -317,33 +343,26 @@ class OperationService:
             await self._announce(cluster_uid, operation.uid)
         return await self.get(operation.uid)
 
-    async def _execute(self, operation: Operation, target, parameters: dict) -> None:
-        """Carries out a plane-executed operation and closes it in the same write.
+    async def _execute(self, operation: Operation, target, parameters: object) -> None:
+        """Carries out a plane-executed operation and closes it in one commit.
 
-        The operation row and the shares it moves are committed together on purpose:
-        a scale that succeeded but left no record of having been asked for, or a
+        The workload change is flushed, not committed, by the workload service; the
+        operation's terminal phase is written beside it and the two commit together.
+        A scale that succeeded but left no record of having been asked for, or a
         record of a scale that never landed, are both worse than either outcome on
-        its own.
+        its own. Clusters are woken only after that commit.
 
-        A refusal from placement — no cluster with the quota, a gang that fits
-        nowhere whole — is the operation failing, not the request being malformed.
-        It is caught and written to `error` so it reads back as a failed operation
-        with a reason, which is what a caller polling this is waiting for.
+        A refusal from placement — no cluster with the quota, nowhere the shape fits
+        — is the operation failing, not the request being malformed. The change is
+        rolled back and the operation alone is committed as `failed` with the reason,
+        which is what a caller polling this is waiting for.
         """
         from app.modules.workloads.services import WorkloadService
 
-        now = dt.datetime.now(dt.UTC)
-        operation.started_at = now
+        operation.started_at = dt.datetime.now(dt.UTC)
         service = WorkloadService(self.db, notifier=self.notifier)
         try:
-            if operation.type == "workload.scale":
-                result = await service.rescale(target.uid, parameters)
-            elif operation.type == "workload.pause":
-                result = await service.set_paused(target.uid, bool(parameters.get("paused", True)))
-            elif operation.type == "workload.reshape":
-                result = await service.reshape(target.uid, parameters)
-            else:
-                result = await service.drain(target.uid, parameters.get("cluster"))
+            change = await service.change(operation.type, target.uid, parameters)
         except (Invalid, NotFound, Conflict) as exc:
             await self.db.rollback()
             await self.repo.add(operation)
@@ -353,9 +372,10 @@ class OperationService:
             await self.db.commit()
             return
         operation.phase = "succeeded"
-        operation.result = result
+        operation.result = change.result
         operation.finished_at = dt.datetime.now(dt.UTC)
         await self.db.commit()
+        await service.announce(change)
 
     async def cancel(self, ref: str) -> OperationSchema:
         """Records that the plane wants the operation stopped.

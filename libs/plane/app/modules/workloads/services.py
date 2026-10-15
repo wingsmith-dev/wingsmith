@@ -3,6 +3,9 @@ from __future__ import annotations
 import datetime as dt
 
 from uuid import UUID
+from typing import NamedTuple
+from dataclasses import field
+from dataclasses import dataclass
 from collections.abc import Sequence
 
 import msgspec
@@ -54,7 +57,6 @@ from .views import _status
 from .views import _revision
 from .views import derive_phase
 from .views import _revision_view
-from .schemas import RoleSchema
 from .schemas import TopologySchema
 from .schemas import WorkloadSchema
 from .schemas import WorkloadScaleSchema
@@ -65,8 +67,12 @@ from .schemas import WorkloadUpdateRequest
 from .schemas import WorkloadRevisionSchema
 from .schemas import WorkloadRevisionUpdate
 from .schemas import WorkloadServingRequest
+from .schemas import WorkloadDrainParameters
+from .schemas import WorkloadPauseParameters
 from .schemas import WorkloadPlacementSchema
+from .schemas import WorkloadScaleParameters
 from .schemas import WorkloadDeploymentSchema
+from .schemas import WorkloadReshapeParameters
 from .schemas import WorkloadPlacementNodeSchema
 from .schemas import WorkloadReplicaPlacementSchema
 from .serving import serving_view
@@ -147,6 +153,47 @@ def _reshape_unavailability(before_devices: int, after_devices: int) -> dict:
             "generation holds its devices until the new one is up"
         ),
     }
+
+
+class Announcement(NamedTuple):
+    """One deployment a committed write changed, and the generation the cluster should read."""
+
+    cluster_uid: str
+    uid: str
+    generation: int
+
+
+@dataclass
+class WorkloadChange:
+    """What a workload write did before it is committed: the result to report and the clusters to wake.
+
+    The write methods that return one flush and never commit, so a caller that records
+    something about the change — an operation closing as succeeded — commits both in
+    one transaction and then calls `WorkloadService.announce`.
+    """
+
+    result: dict = field(default_factory=dict)
+    announcements: list[Announcement] = field(default_factory=list)
+    placed: int | None = None
+
+    def touch(self, cluster_uid: str, deployment: Deployment) -> None:
+        self.announcements.append(Announcement(cluster_uid, deployment.uid, deployment.generation))
+
+    def touch_rest(self, deployment_rows: list) -> None:
+        """Announces every deployment in `deployment_rows` this change has not already announced."""
+        announced = {a.uid for a in self.announcements}
+        for row in deployment_rows:
+            if row[0].uid not in announced:
+                self.touch(row.cluster_uid, row[0])
+
+
+OPERATION_PARAMETERS: dict[str, type] = {
+    "workload.scale": WorkloadScaleParameters,
+    "workload.pause": WorkloadPauseParameters,
+    "workload.reshape": WorkloadReshapeParameters,
+    "workload.drain": WorkloadDrainParameters,
+}
+"""The typed parameters of each plane-executed operation, decoded at the operations boundary."""
 
 
 class WorkloadService:
@@ -1057,7 +1104,7 @@ class WorkloadService:
             await self._announce(deployment_row.cluster_uid, deployment.uid, deployment.generation)
         return await self.get(workload.uid)
 
-    async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> dict:
+    async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> WorkloadChange:
         """Re-expands a workload and moves the per-cluster deployments onto the answer.
 
         Three outcomes per cluster, and they are deliberately not the same write: a
@@ -1070,6 +1117,8 @@ class WorkloadService:
         workload that landed on the same split is common — anything that touches the
         workload re-derives it — and making every one of those a new generation would
         have clusters restarting replicas to arrive where they already are.
+
+        Flushes and never commits: the caller decides what else lands in the same write.
         """
         started = dt.datetime.now(dt.UTC)
         decision = await self._expand(workload, exclude)
@@ -1077,7 +1126,7 @@ class WorkloadService:
         await self._trace_expansion(workload, decision, started, now)
         shares = {s.cluster: s for s in decision.shares if s.replicas > 0}
         existing = {r.cluster_uid: r for r in deployment_rows}
-        touched: list[tuple[str, str, int]] = []
+        change = WorkloadChange()
 
         for cluster_uid, row in existing.items():
             deployment = row[0]
@@ -1090,7 +1139,7 @@ class WorkloadService:
                     {"workload_id": workload.uid},
                 )
                 await self.db.delete(deployment)
-                touched.append((cluster_uid, deployment.uid, deployment.generation))
+                change.touch(cluster_uid, deployment)
                 continue
             if deployment.desired_replicas != share.replicas:
                 deployment.min_replicas = share.replicas
@@ -1103,7 +1152,7 @@ class WorkloadService:
                     f"{workload.name} was scaled to {share.replicas} on {share.cluster_name}",
                     {"workload_id": workload.uid, "generation": str(deployment.generation)},
                 )
-                touched.append((cluster_uid, deployment.uid, deployment.generation))
+                change.touch(cluster_uid, deployment)
 
         if shares:
             clusters = await self.repo.clusters_by_uid(list(shares))
@@ -1133,51 +1182,55 @@ class WorkloadService:
                     f"{workload.name} was placed on {share.cluster_name}",
                     {"workload_id": workload.uid, "cluster": share.cluster_name},
                 )
-                touched.append((cluster_uid, deployment.uid, deployment.generation))
+                change.touch(cluster_uid, deployment)
 
-        return {
+        change.placed = decision.placed
+        change.result = {
             "summary": decision.summary,
             "shares": {s.cluster: s.replicas for s in decision.shares if s.replicas > 0},
-            "touched": [uid for _, uid, _ in touched],
-            "_announce": touched,
+            "touched": [a.uid for a in change.announcements],
         }
+        return change
 
-    async def _finish(self, result: dict) -> dict:
-        """Commits the reconciliation, then wakes each cluster whose share moved."""
-        announcements = result.pop("_announce")
+    async def announce(self, change: WorkloadChange) -> None:
+        """Wakes each cluster a committed change touched. Call only after the commit."""
+        for item in change.announcements:
+            await self._announce(item.cluster_uid, item.uid, item.generation)
+
+    async def _commit(self, change: WorkloadChange) -> dict:
         await self.db.commit()
-        for cluster_uid, uid, generation in announcements:
-            await self._announce(cluster_uid, uid, generation)
-        return result
+        await self.announce(change)
+        return change.result
 
-    async def rescale(self, ref: str, parameters: dict) -> dict:
-        """Changes what was asked for, then re-expands it across clusters.
+    async def change_scale(self, ref: str, parameters: WorkloadScaleParameters) -> WorkloadChange:
+        """Changes what was asked for, then re-expands it across clusters. Does not commit.
 
         The totals are validated against the kind before anything is placed, so a
-        gang asked for a rank count its `gang_size` cannot honour is refused here
-        rather than discovered by an engine that has already started moving shares.
+        total the kind cannot honour is refused here rather than discovered by an
+        engine that has already started moving shares.
 
         Absent parameters leave their bound alone. Sending only `desired` is the
         common case and must not silently widen or narrow the range around it.
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
-        min_scale = parameters.get("min", workload.min_scale)
-        max_scale = parameters.get("max", workload.max_scale)
-        desired = parameters.get("desired", workload.desired_scale)
-        for name, value in (("min", min_scale), ("max", max_scale), ("desired", desired)):
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise Invalid(f"{name} must be an integer", {name: value})
+        min_scale = workload.min_scale if parameters.min is None else parameters.min
+        max_scale = workload.max_scale if parameters.max is None else parameters.max
+        desired = workload.desired_scale if parameters.desired is None else parameters.desired
         check_scale(min_scale, desired, max_scale, workload.kind, workload.gang_size)
 
         workload.min_scale = min_scale
         workload.max_scale = max_scale
         workload.desired_scale = desired
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
-        return await self._finish(await self._reconcile(workload, deployment_rows))
+        return await self._reconcile(workload, deployment_rows)
 
-    async def set_paused(self, ref: str, paused: bool) -> dict:
-        """Parks a workload without forgetting what it was, or brings it back.
+    async def rescale(self, ref: str, parameters: WorkloadScaleParameters) -> dict:
+        """`change_scale`, committed and announced."""
+        return await self._commit(await self.change_scale(ref, parameters))
+
+    async def change_paused(self, ref: str, paused: bool) -> WorkloadChange:
+        """Parks a workload without forgetting what it was, or brings it back. Does not commit.
 
         Pausing disables every cluster's copy rather than deleting them or zeroing
         the workload's totals: the shares are what the workload should return to,
@@ -1189,18 +1242,17 @@ class WorkloadService:
         has to say so itself. `_reconcile` announces a cluster only when its share
         moved, and a pause leaves the shares exactly where they were — so a workload
         that comes back to the split it left moves nothing, announces nothing, and
-        the clusters never hear that the deployments are enabled again. The row read
-        `enabled` while the cluster still had no copy of it.
+        the clusters never hear that the deployments are enabled again.
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
         if workload.paused == paused:
-            return {"paused": paused, "unchanged": True}
+            return WorkloadChange(result={"paused": paused, "unchanged": True})
         workload.paused = paused
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
 
         if paused:
-            announcements = []
+            change = WorkloadChange(result={"paused": True})
             for deployment_row in deployment_rows:
                 deployment = deployment_row[0]
                 deployment.enabled = False
@@ -1211,29 +1263,26 @@ class WorkloadService:
                     f"{workload.name} was paused",
                     {"workload_id": workload.uid, "generation": str(deployment.generation)},
                 )
-                announcements.append((deployment_row.cluster_uid, deployment.uid, deployment.generation))
-            await self.db.commit()
-            for cluster_uid, uid, generation in announcements:
-                await self._announce(cluster_uid, uid, generation)
-            return {"paused": True}
+                change.touch(deployment_row.cluster_uid, deployment)
+            await self.db.flush()
+            return change
 
         for deployment_row in deployment_rows:
             deployment_row[0].enabled = True
             await bump_generation(self.db, deployment_row[0])
-        result = await self._reconcile(workload, deployment_rows)
-        announced = {uid for _, uid, _ in result["_announce"]}
-        result["_announce"].extend(
-            (deployment_row.cluster_uid, deployment_row[0].uid, deployment_row[0].generation)
-            for deployment_row in deployment_rows
-            if deployment_row[0].uid not in announced
-        )
-        result["paused"] = False
-        return await self._finish(result)
+        change = await self._reconcile(workload, deployment_rows)
+        change.touch_rest(deployment_rows)
+        change.result["paused"] = False
+        return change
 
-    async def reshape(self, ref: str, parameters: dict) -> dict:
+    async def set_paused(self, ref: str, paused: bool) -> dict:
+        """`change_paused`, committed and announced."""
+        return await self._commit(await self.change_paused(ref, paused))
+
+    async def change_topology(self, ref: str, parameters: WorkloadReshapeParameters) -> WorkloadChange:
         """Flips a workload between aggregated and disaggregated serving, and re-expands it.
 
-        An operation rather than a `PATCH` on rule 1's own test: it changes the device footprint
+        Does not commit. An operation rather than a `PATCH`: it changes the device footprint
         per unit, so it can sit pending on quota for as long as quota withholds the capacity —
         the failure mode `workload.scale` already exists to carry. A field write would report
         success the moment the plane accepted the intent.
@@ -1252,7 +1301,7 @@ class WorkloadService:
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
-        target = parameters.get("topology")
+        target = parameters.topology
         current = workload.serving_topology or AGGREGATED
         if target not in SERVING_TOPOLOGIES:
             raise Invalid(
@@ -1264,34 +1313,15 @@ class WorkloadService:
                 f"{workload.name} already serves {current}: a reshape changes which processes exist",
                 {"workload": workload.uid, "serving_topology": current},
             )
-        desired = parameters.get("desired")
-        if not isinstance(desired, int) or isinstance(desired, bool):
+        desired = parameters.desired
+        if desired is None:
             raise Invalid(
                 "workload.reshape needs an explicit desired count: the unit under it changes with "
                 "the topology, so inheriting the old number would reinterpret it silently",
                 {"parameters": ["desired"], "desired": desired},
             )
-        min_scale = parameters.get("min", desired)
-        max_scale = parameters.get("max", desired)
-        for name, value in (("min", min_scale), ("max", max_scale)):
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise Invalid(f"{name} must be an integer", {name: value})
-
-        declared = parameters.get("roles") or []
-        if not isinstance(declared, list) or any(not isinstance(item, dict) for item in declared):
-            raise Invalid("roles is a list of {role, weight}", {"roles": declared})
-        try:
-            roles_block = [
-                RoleSchema(
-                    role=str(item["role"]),
-                    weight=item.get("weight", 1),
-                    max_batch_tokens=item.get("max_batch_tokens"),
-                    engine_args=item.get("engine_args") or {},
-                )
-                for item in declared
-            ]
-        except KeyError as exc:
-            raise Invalid("every role names itself", {"roles": declared}) from exc
+        min_scale = desired if parameters.min is None else parameters.min
+        max_scale = desired if parameters.max is None else parameters.max
 
         artifact = await self.repo.artifact_of(workload)
         if artifact is None:
@@ -1299,7 +1329,7 @@ class WorkloadService:
         stored_roles = await self.repo.roles_of(workload)
         request = serving_request(workload, artifact, stored_roles)
         await self._seed_revision(workload, request, workload.serving_digest)
-        request.topology = TopologySchema(serving_topology=target, roles=roles_block)
+        request.topology = TopologySchema(serving_topology=target, roles=list(parameters.roles))
         check_serving_request(request, artifact)
         check_scale(min_scale, desired, max_scale, workload.kind, workload.gang_size)
 
@@ -1308,8 +1338,8 @@ class WorkloadService:
         roles = await self.repo.replace_roles(workload, declared_roles(request.topology))
         apply_serving(workload, request, artifact, roles)
         await self.record_revision(workload, artifact, roles, "reshaped")
-        if "note" in parameters:
-            await self._note(workload, parameters["note"])
+        if parameters.note is not None:
+            await self._note(workload, parameters.note)
         after_unit = group_devices(workload.device_count, roles)
         workload.min_scale = min_scale
         workload.max_scale = max_scale
@@ -1329,22 +1359,21 @@ class WorkloadService:
                     "serving_topology": target,
                 },
             )
-        result = await self._reconcile(workload, deployment_rows)
-        announced = {uid for _, uid, _ in result["_announce"]}
-        result["_announce"].extend(
-            (deployment_row.cluster_uid, deployment_row[0].uid, deployment_row[0].generation)
-            for deployment_row in deployment_rows
-            if deployment_row[0].uid not in announced
-        )
-        result["topology"] = {"from": current, "to": target}
-        result["roles"] = {role.role: role.weight for role in roles}
-        result["devices_per_unit"] = {"before": before_unit, "after": after_unit}
-        result["scale"] = {"min": min_scale, "desired": desired, "max": max_scale}
-        result["unavailability"] = _reshape_unavailability(before_total, after_unit * desired)
-        return await self._finish(result)
+        change = await self._reconcile(workload, deployment_rows)
+        change.touch_rest(deployment_rows)
+        change.result["topology"] = {"from": current, "to": target}
+        change.result["roles"] = {role.role: role.weight for role in roles}
+        change.result["devices_per_unit"] = {"before": before_unit, "after": after_unit}
+        change.result["scale"] = {"min": min_scale, "desired": desired, "max": max_scale}
+        change.result["unavailability"] = _reshape_unavailability(before_total, after_unit * desired)
+        return change
 
-    async def drain(self, ref: str, cluster: str | None) -> dict:
-        """Takes a workload off one cluster and re-expands what is left elsewhere.
+    async def reshape(self, ref: str, parameters: WorkloadReshapeParameters) -> dict:
+        """`change_topology`, committed and announced."""
+        return await self._commit(await self.change_topology(ref, parameters))
+
+    async def change_drain(self, ref: str, cluster: str | None) -> WorkloadChange:
+        """Takes a workload off one cluster and re-expands what is left elsewhere. Does not commit.
 
         A drain is not a scale-down: the totals are untouched, so the share the
         drained cluster was carrying is offered to the others. If none of them can
@@ -1371,7 +1400,7 @@ class WorkloadService:
                 {"workload": workload.uid, "cluster": cluster},
             )
 
-        announcements = []
+        drained = WorkloadChange()
         for deployment_row in draining:
             deployment = deployment_row[0]
             await self._record(
@@ -1381,14 +1410,30 @@ class WorkloadService:
                 {"workload_id": workload.uid},
             )
             await self.db.delete(deployment)
-            announcements.append((deployment_row.cluster_uid, deployment.uid, deployment.generation))
+            drained.touch(deployment_row.cluster_uid, deployment)
         await self.db.flush()
 
         remaining = [r for r in deployment_rows if r[0].cluster_id != found.id]
-        result = await self._reconcile(workload, remaining, exclude=found.uid)
-        result["_announce"] = announcements + result["_announce"]
-        result["drained"] = cluster
-        return await self._finish(result)
+        change = await self._reconcile(workload, remaining, exclude=found.uid)
+        change.announcements = drained.announcements + change.announcements
+        change.result["drained"] = cluster
+        return change
+
+    async def drain(self, ref: str, cluster: str | None) -> dict:
+        """`change_drain`, committed and announced."""
+        return await self._commit(await self.change_drain(ref, cluster))
+
+    async def change(self, operation_type: str, ref: str, parameters: object) -> WorkloadChange:
+        """Applies one plane-executed operation with its decoded parameters. Does not commit."""
+        if isinstance(parameters, WorkloadScaleParameters):
+            return await self.change_scale(ref, parameters)
+        if isinstance(parameters, WorkloadPauseParameters):
+            return await self.change_paused(ref, parameters.paused)
+        if isinstance(parameters, WorkloadReshapeParameters):
+            return await self.change_topology(ref, parameters)
+        if isinstance(parameters, WorkloadDrainParameters):
+            return await self.change_drain(ref, parameters.cluster)
+        raise Invalid(f"{operation_type} is not a workload operation", {"type": operation_type})
 
     async def delete(self, ref: str) -> None:
         """Deletes the workload and every cluster's copy of it.

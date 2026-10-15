@@ -1813,7 +1813,7 @@ async def test_only_open_operations_are_replayed_to_a_reconnecting_cluster(db: A
 
     pending = await service.create(OperationCreateRequest(type="node.drain", target=node))
     running = await service.create(OperationCreateRequest(type="node.cordon", target=node))
-    finished = await service.create(OperationCreateRequest(type="node.reboot", target=node))
+    finished = await service.create(OperationCreateRequest(type="node.uncordon", target=node))
     elsewhere = await service.create(OperationCreateRequest(type="node.drain", target=other_node))
     await db.execute(
         text("UPDATE ops_operation SET phase = :phase WHERE uid = :uid"), {"phase": "running", "uid": running.id}

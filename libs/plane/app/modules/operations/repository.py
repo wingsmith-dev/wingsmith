@@ -216,8 +216,7 @@ class OperationRepository:
         """Loads the target row and, where it has one, the cluster it belongs to.
 
         A cluster is its own cluster and an artifact belongs to none — artifacts
-        are global, which is why `cache.warm` is the one type that has to be told
-        which cluster to warm.
+        are global, so an operation on one has to be told which cluster it is for.
         """
         parsed = parse_target(ref)
         model = parsed.model

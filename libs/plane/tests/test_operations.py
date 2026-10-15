@@ -15,12 +15,16 @@ from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
 from app.modules.operations.routes import OperationRoutes
+from app.modules.workloads.schemas import WorkloadPauseParameters
+from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.operations.schemas import OperationSchema
 from app.modules.operations.schemas import OperationCreateRequest
 from app.modules.operations.services import TYPES
 from app.modules.operations.services import PHASES
 from app.modules.operations.services import TERMINAL_PHASES
+from app.modules.operations.services import OperationService
 from app.modules.operations.services import wire_kind
+from app.modules.operations.services import workload_parameters
 from app.modules.operations.repository import TARGET_KINDS
 from app.modules.operations.repository import OperationRepository
 from app.modules.operations.repository import target_kind
@@ -59,20 +63,9 @@ MATRIX = [
     ("node.cordon", DEPLOYMENT, False),
     ("node.uncordon", NODE, True),
     ("node.uncordon", COMPONENT, False),
-    ("node.reboot", NODE, True),
-    ("node.reboot", DEVICE, False),
-    ("device.reset", DEVICE, True),
-    ("device.reset", NODE, False),
-    ("device.reset", CLUSTER, False),
-    ("cache.warm", ARTIFACT, True),
-    ("cache.warm", DEPLOYMENT, False),
-    ("cache.warm", NODE, False),
-    ("deployment.roll", DEPLOYMENT, True),
     ("deployment.benchmark", DEPLOYMENT, True),
     ("deployment.benchmark", NODE, False),
     ("deployment.benchmark", ARTIFACT, False),
-    ("deployment.roll", COMPONENT, False),
-    ("deployment.roll", NODE, False),
     ("workload.scale", WORKLOAD, True),
     ("workload.scale", DEPLOYMENT, False),
     ("workload.scale", CLUSTER, False),
@@ -82,9 +75,6 @@ MATRIX = [
     ("workload.pause", DEPLOYMENT, False),
     ("workload.drain", WORKLOAD, True),
     ("workload.drain", NODE, False),
-    ("component.upgrade", COMPONENT, True),
-    ("component.upgrade", DEPLOYMENT, False),
-    ("component.upgrade", CLUSTER, False),
 ]
 
 
@@ -114,9 +104,44 @@ def test_uncordon_shares_the_cordon_wire_kind():
     assert wire_kind("node.uncordon") == wire_kind("node.cordon") == "cordon"
 
 
-def test_wire_kinds_are_named_for_the_mechanism_not_the_type():
-    assert wire_kind("device.reset") == "device_reset"
-    assert wire_kind("cache.warm") == "cache_warm"
+@pytest.mark.parametrize(
+    ("type_name", "prefix"),
+    [
+        ("node.reboot", NODE),
+        ("device.reset", DEVICE),
+        ("cache.warm", ARTIFACT),
+        ("deployment.roll", DEPLOYMENT),
+        ("component.upgrade", COMPONENT),
+    ],
+)
+async def test_an_operation_no_operator_performs_is_refused_at_creation(type_name, prefix):
+    data = OperationCreateRequest(type=type_name, target=new_uid(prefix))
+    with pytest.raises(Invalid, match="not supported yet"):
+        await OperationService(db=None).create(data)
+
+
+@pytest.mark.parametrize(
+    ("type_name", "parameters"),
+    [
+        ("workload.scale", {"desired": "four"}),
+        ("workload.scale", {"desired": True}),
+        ("workload.pause", {"paused": "yes"}),
+        ("workload.reshape", {"desired": 2}),
+        ("workload.reshape", {"topology": "disaggregated", "roles": [{"weight": 2}]}),
+        ("workload.drain", {}),
+    ],
+)
+async def test_malformed_workload_parameters_are_refused_before_anything_is_recorded(type_name, parameters):
+    data = OperationCreateRequest(type=type_name, target=new_uid(WORKLOAD), parameters=parameters)
+    with pytest.raises(Invalid, match="invalid parameters"):
+        await OperationService(db=None).create(data)
+
+
+def test_workload_parameters_decode_to_their_typed_struct():
+    decoded = workload_parameters("workload.scale", {"desired": 3})
+    assert decoded == WorkloadScaleParameters(desired=3)
+    assert workload_parameters("workload.pause", {}) == WorkloadPauseParameters(paused=True)
+    assert workload_parameters("node.drain", {"anything": 1}) is None
 
 
 # ------------------------------------------------------------------- targets

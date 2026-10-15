@@ -432,10 +432,10 @@ def test_placement_is_a_read_only_route():
 
 @pytest.mark.parametrize("kind", ["task", "gang"])
 async def test_a_kind_no_operator_renders_is_refused_at_creation(kind):
-    from app.modules.workloads.services import WorkloadService
     from app.modules.workloads.schemas import ShapeSchema
     from app.modules.workloads.schemas import WorkloadCreateRequest
     from app.modules.workloads.schemas import WorkloadServingRequest
+    from app.modules.workloads.services import WorkloadService
 
     data = WorkloadCreateRequest(
         serving=WorkloadServingRequest(
