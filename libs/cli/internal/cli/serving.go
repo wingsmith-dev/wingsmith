@@ -369,7 +369,7 @@ func resolvedServingTable(app *App, w io.Writer, s ui.Style, table api.ResolvedS
 		fmt.Fprintf(w, "%s\n", s.Dim("no committed limits to resolve"))
 		return
 	}
-	fmt.Fprintf(w, "%s\n", s.Dim(fmt.Sprintf("%d replica(s) · replica %d", table.Replicas, table.ReplicaIndex)))
+	fmt.Fprintf(w, "%s\n", s.Dim(fmt.Sprintf("%s · replica %d", countWord(table.Replicas, "replica"), table.ReplicaIndex)))
 	for i, q := range table.Quotas {
 		if i > 0 {
 			fmt.Fprintln(w)

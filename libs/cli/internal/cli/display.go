@@ -227,3 +227,11 @@ func orDashInt(v *int) string {
 	}
 	return strconv.Itoa(*v)
 }
+
+// countWord is "1 replica" or "2 replicas", for nouns that take an s.
+func countWord(n int, singular string) string {
+	if n == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %ss", n, singular)
+}

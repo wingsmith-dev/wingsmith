@@ -106,7 +106,7 @@ func (n noun[T]) runList(app *App, cmd *cobra.Command, f *filters) error {
 		step.Fail("failed")
 		return err
 	}
-	step.Done("%d %s", page.Count, n.pluralName())
+	step.Done("%s", n.count(page.Count))
 
 	names := make([]string, 0, len(page.Items))
 	rows := make([][]string, 0, len(page.Items))
@@ -558,6 +558,14 @@ func columnTitles(cols []ui.Column) []string {
 }
 
 // pluralName is what a listing of this noun is called.
+// count is "1 cluster" or "3 clusters".
+func (n noun[T]) count(c int) string {
+	if c == 1 {
+		return "1 " + n.name
+	}
+	return fmt.Sprintf("%d %s", c, n.pluralName())
+}
+
 func (n noun[T]) pluralName() string {
 	if n.plurally != "" {
 		return n.plurally

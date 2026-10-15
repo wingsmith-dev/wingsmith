@@ -302,7 +302,7 @@ func newExplainCmd(app *App) *cobra.Command {
 						}
 						kv.Add(key, s.Cyan(f))
 					}
-					if e.Retryabl {
+					if e.TypicallyRetryable {
 						kv.Add("retryable", "yes")
 					}
 					kv.Render(w)

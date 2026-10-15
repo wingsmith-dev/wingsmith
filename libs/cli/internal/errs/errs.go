@@ -83,14 +83,14 @@ type Action struct {
 // Error is the CLI's single error type. Every failure path produces one so
 // that human, JSON, and agent renderings stay identical in substance.
 type Error struct {
-	Code        Code     `json:"code"`
-	Message     string   `json:"message"`
-	Cause       string   `json:"cause,omitempty"`
-	Retryable   bool     `json:"retryable,omitempty"`
-	RetryAfterS int      `json:"retry_after_s,omitempty"`
-	Remediation []Action `json:"remediation,omitempty"`
-	Docs        string   `json:"docs,omitempty"`
-	RequiredFlg string   `json:"required_flag,omitempty"`
+	Code         Code     `json:"code"`
+	Message      string   `json:"message"`
+	Cause        string   `json:"cause,omitempty"`
+	Retryable    bool     `json:"retryable,omitempty"`
+	RetryAfterS  int      `json:"retry_after_s,omitempty"`
+	Remediation  []Action `json:"remediation,omitempty"`
+	Docs         string   `json:"docs,omitempty"`
+	RequiredFlag string   `json:"required_flag,omitempty"`
 
 	wrapped error
 }
@@ -148,7 +148,7 @@ func (e *Error) WithRetry(afterSeconds int) *Error {
 
 // WithFlag records the flag that would have satisfied the request.
 func (e *Error) WithFlag(flag string) *Error {
-	e.RequiredFlg = flag
+	e.RequiredFlag = flag
 	return e
 }
 
@@ -177,12 +177,12 @@ func docsURL(code Code) string {
 
 // Explanation is the long-form description surfaced by `hgr explain`.
 type Explanation struct {
-	Code     Code     `json:"code"`
-	Exit     int      `json:"exit_code"`
-	Summary  string   `json:"summary"`
-	Detail   string   `json:"detail"`
-	Fixes    []string `json:"common_fixes"`
-	Retryabl bool     `json:"typically_retryable"`
+	Code               Code     `json:"code"`
+	Exit               int      `json:"exit_code"`
+	Summary            string   `json:"summary"`
+	Detail             string   `json:"detail"`
+	Fixes              []string `json:"common_fixes"`
+	TypicallyRetryable bool     `json:"typically_retryable"`
 }
 
 var explanations = map[Code]Explanation{
@@ -232,30 +232,30 @@ var explanations = map[Code]Explanation{
 		Fixes:   []string{"hgr quota ls"},
 	},
 	CodeCapacityUnavailable: {
-		Summary:  "No cluster has devices matching the workload's device shape.",
-		Detail:   "Cluster selection is global and coarse: a device class unavailable in one region is often available in another.",
-		Fixes:    []string{"hgr device ls", "hgr cluster ls"},
-		Retryabl: true,
+		Summary:            "No cluster has devices matching the workload's device shape.",
+		Detail:             "Cluster selection is global and coarse: a device class unavailable in one region is often available in another.",
+		Fixes:              []string{"hgr device ls", "hgr cluster ls"},
+		TypicallyRetryable: true,
 	},
 	CodeTimeout: {
-		Summary:  "The operation did not complete within the deadline.",
-		Fixes:    []string{"Raise --timeout for one request, or --wait-timeout for a --wait", "Poll with `hgr operation get <id>`"},
-		Retryabl: true,
+		Summary:            "The operation did not complete within the deadline.",
+		Fixes:              []string{"Raise --timeout for one request, or --wait-timeout for a --wait", "Poll with `hgr operation get <id>`"},
+		TypicallyRetryable: true,
 	},
 	CodeRateLimited: {
-		Summary:  "Too many requests in a short window.",
-		Fixes:    []string{"Back off and retry", "Batch calls with -o json instead of polling"},
-		Retryabl: true,
+		Summary:            "Too many requests in a short window.",
+		Fixes:              []string{"Back off and retry", "Batch calls with -o json instead of polling"},
+		TypicallyRetryable: true,
 	},
 	CodeServerError: {
-		Summary:  "The control plane returned an unexpected error.",
-		Fixes:    []string{"Retry", "hgr version"},
-		Retryabl: true,
+		Summary:            "The control plane returned an unexpected error.",
+		Fixes:              []string{"Retry", "hgr version"},
+		TypicallyRetryable: true,
 	},
 	CodeNetwork: {
-		Summary:  "The control plane could not be reached.",
-		Fixes:    []string{"Check --server and any proxy settings", "Run offline against the fake: hgr --fake …"},
-		Retryabl: true,
+		Summary:            "The control plane could not be reached.",
+		Fixes:              []string{"Check --server and any proxy settings", "Run offline against the fake: hgr --fake …"},
+		TypicallyRetryable: true,
 	},
 	CodeConfirmationRequired: {
 		Summary: "A destructive operation was not confirmed.",

@@ -389,7 +389,7 @@ being scheduled onto, and it is the row to act on.`,
 			}
 			kv.Addf("devices", "%d total · %d healthy · %d free · %d allocated",
 				c.Inventory.Devices, c.Inventory.Healthy, c.Inventory.Allocatable, c.Inventory.Allocated)
-			kv.Addf("spread", "%d nodes · %s", c.Inventory.Nodes, orDash(strings.Join(c.Inventory.Clusters, ", ")))
+			kv.Addf("spread", "%s · %s", countWord(c.Inventory.Nodes, "node"), orDash(strings.Join(c.Inventory.Clusters, ", ")))
 			for dialect, names := range c.Aliases {
 				kv.Addf("alias "+dialect, "%s", strings.Join(names, ", "))
 			}

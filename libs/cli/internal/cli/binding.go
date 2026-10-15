@@ -190,7 +190,7 @@ the console cannot disagree about what they mean.`,
 			kv.Add("project", q.ProjectSlug)
 			kv.Add("cluster", orDefault(str(q.ClusterName), "all clusters"))
 			kv.Add("device class", q.DeviceClass)
-			kv.Addf("guaranteed", "%d devices", q.GuaranteedDevices)
+			kv.Add("guaranteed", countWord(q.GuaranteedDevices, "device"))
 			kv.Add("limit", num(q.LimitDevices))
 			kv.Addf("over-quota weight", "%g", q.OverQuotaWeight)
 			kv.Add("over-quota enabled", yesNo(s, q.OverQuotaEnabled))

@@ -128,7 +128,6 @@ func widest(v []int) int {
 		if x > v[best] {
 			best = i
 		}
-		_ = x
 	}
 	return best
 }

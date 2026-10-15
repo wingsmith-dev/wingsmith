@@ -190,8 +190,8 @@ func TestBuildersCompose(t *testing.T) {
 	if !e.Retryable || e.RetryAfterS != 30 {
 		t.Errorf("retry = %v after %d", e.Retryable, e.RetryAfterS)
 	}
-	if e.RequiredFlg != "--force" {
-		t.Errorf("required flag = %q", e.RequiredFlg)
+	if e.RequiredFlag != "--force" {
+		t.Errorf("required flag = %q", e.RequiredFlag)
 	}
 }
 

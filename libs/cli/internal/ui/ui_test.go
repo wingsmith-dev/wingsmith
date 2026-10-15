@@ -31,8 +31,8 @@ func TestPromptingWhenDisabledFailsRatherThanBlocking(t *testing.T) {
 	if e.Code != errs.CodeInputRequired {
 		t.Errorf("code = %v, want input required", e.Code)
 	}
-	if e.RequiredFlg != "--cluster" {
-		t.Errorf("the error does not name the flag that would have answered it: %q", e.RequiredFlg)
+	if e.RequiredFlag != "--cluster" {
+		t.Errorf("the error does not name the flag that would have answered it: %q", e.RequiredFlag)
 	}
 	if len(e.Remediation) == 0 {
 		t.Error("the refusal offers no way to supply the value")
@@ -136,8 +136,8 @@ func TestConfirmWithNoTerminalNamesTheFlag(t *testing.T) {
 	if e.Code != errs.CodeConfirmationRequired {
 		t.Errorf("code = %v, want confirmation required", e.Code)
 	}
-	if e.RequiredFlg != "--yes" {
-		t.Errorf("required flag = %q, want --yes", e.RequiredFlg)
+	if e.RequiredFlag != "--yes" {
+		t.Errorf("required flag = %q, want --yes", e.RequiredFlag)
 	}
 }
 
