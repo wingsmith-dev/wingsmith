@@ -1,8 +1,8 @@
 // Package agent is the hangar agent: the process that runs inside a GPU cluster
 // and gives the gateway a way in without anything dialling inwards.
 //
-// It owns three things and delegates the rest. It dials out to every gateway
-// replica, keeps those connections up, and reports how many of them are
+// It owns three things and delegates the rest. It dials out to the gateway,
+// keeps a tunnel up to every gateway replica, and reports how many of them are
 // established. The wire itself belongs to libs/packages/tunnel, which serves
 // HTTP/2 on a connection this package hands it; the cluster-local hop belongs to
 // internal/dynamo, which finds this cluster's OpenAI-compatible Dynamo frontend
@@ -11,17 +11,19 @@
 // It is not the operator, and it is deliberately a different binary. A cluster
 // runs both: the operator is a leader-elected singleton on the control path, and
 // the agent scales with traffic on the data path. Sharing a process would put
-// control-plane uptime in front of inference, which is the one thing rule 4
-// forbids.
+// control-plane uptime in front of inference.
 //
-// # Why the targets are a list
+// # One address, every replica
 //
-// The gateway has stable per-pod identity — a StatefulSet behind a headless
-// Service — and this dials each of those names rather than one load-balanced
-// name. Coverage then becomes a fact instead of a hope: a gateway
-// replica can only serve a cluster it holds a tunnel to, so a dial that a load
-// balancer sent to the wrong replica is not a connection, it is a gap that only
-// shows up as ErrNoTunnel under traffic. Each target is kept up independently
-// and each target's tunnel count is exported, so partial coverage is visible
-// before it is an incident rather than after.
+// The agent is configured with one gateway address, normally a load-balanced
+// name, and never with a list of replicas. A gateway replica can only serve a
+// cluster it holds a tunnel to, so coverage still has to be complete; the
+// handshake is what makes that possible without a list. Every accepted dial
+// names the replica that took it and how many replicas there are, so the
+// Supervisor redials the one address until each replica holds its quota of
+// tunnels, and tells the gateway on every dial which replicas are already
+// covered so a landing on one of them is answered rather than adopted. Scaling
+// the gateway is then a change to the gateway alone. Coverage per replica is
+// exported, so a replica the load balancer never reaches is visible as a gap in
+// hangar_agent_gateway_up rather than as ErrNoTunnel under traffic.
 package agent

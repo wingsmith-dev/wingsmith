@@ -61,7 +61,7 @@ func TestProbesServeMetrics(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("metrics = %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "hangar_agent_target_up") {
+	if !strings.Contains(rec.Body.String(), "hangar_agent_gateway_up") {
 		t.Error("the probe listener does not serve the agent's metrics")
 	}
 }

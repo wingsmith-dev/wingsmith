@@ -59,7 +59,7 @@ func NewMetrics() *Metrics {
 		Help: "Established tunnels to each gateway replica.",
 	}, []string{labelGateway})
 	m.up = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_agent_target_up",
+		Name: "hangar_agent_gateway_up",
 		Help: "1 when at least one tunnel to the gateway replica is established.",
 	}, []string{labelGateway})
 	m.attempts = prometheus.NewCounter(prometheus.CounterOpts{

@@ -20,8 +20,8 @@ func TestMetricsTrackReportsAReachedReplicaWithNoTunnelAsZero(t *testing.T) {
 	if got := gaugeValue(t, m, "hangar_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("tunnels = %v, want an explicit 0", got)
 	}
-	if got := gaugeValue(t, m, "hangar_agent_target_up", map[string]string{"gateway": testGateway}); got != 0 {
-		t.Errorf("target_up = %v, want 0", got)
+	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
+		t.Errorf("gateway_up = %v, want 0", got)
 	}
 }
 
@@ -31,16 +31,16 @@ func TestMetricsFollowTunnelState(t *testing.T) {
 	m.dialled()
 	m.tunnelOpened(testGateway, 1)
 
-	if got := gaugeValue(t, m, "hangar_agent_target_up", map[string]string{"gateway": testGateway}); got != 1 {
-		t.Errorf("target_up after opening = %v, want 1", got)
+	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 1 {
+		t.Errorf("gateway_up after opening = %v, want 1", got)
 	}
 
 	m.tunnelClosed(testGateway, 0, 12)
 	if got := gaugeValue(t, m, "hangar_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("tunnels after closing = %v, want 0", got)
 	}
-	if got := gaugeValue(t, m, "hangar_agent_target_up", map[string]string{"gateway": testGateway}); got != 0 {
-		t.Errorf("target_up after closing = %v, want 0", got)
+	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
+		t.Errorf("gateway_up after closing = %v, want 0", got)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestMetricsForgetARetiredReplica(t *testing.T) {
 	m.tunnelOpened(testGateway, 1)
 	m.forget(testGateway)
 
-	for _, name := range []string{"hangar_agent_tunnels", "hangar_agent_target_up"} {
+	for _, name := range []string{"hangar_agent_tunnels", "hangar_agent_gateway_up"} {
 		if _, err := seriesFor(m, name, map[string]string{"gateway": testGateway}); err == nil {
 			t.Errorf("%s still carries the retired replica", name)
 		}

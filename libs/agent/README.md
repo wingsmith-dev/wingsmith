@@ -35,7 +35,7 @@ control-plane uptime would be the inference SLA.
 and one tunnel is enough to be ready — an agent that waited for full coverage would fail its own
 rollout because one gateway replica happened to be restarting. The shortfall is a metric, not a
 readiness failure: `hangar_agent_gateways_expected` against the number of
-`hangar_agent_target_up` series, with `hangar_agent_dial_duplicates_total` as the one to watch if
+`hangar_agent_gateway_up` series, with `hangar_agent_dial_duplicates_total` as the one to watch if
 coverage never settles.
 
 ## Why it is not part of libs/gateway
