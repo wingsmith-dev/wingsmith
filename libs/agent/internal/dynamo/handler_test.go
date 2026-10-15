@@ -258,12 +258,12 @@ func call(t *testing.T, handler http.Handler) string {
 	return recorder.Body.String()
 }
 
-// theResolverAnswersPerDeployment is a compile-time assertion and not
-// decoration. main.go hands the handler a *Resolver as a Target, so a Resolver
+// The Resolver is asserted to answer per deployment at compile time, and that
+// is not decoration. main.go hands the handler a *Resolver as a Target, so a Resolver
 // that stopped satisfying DeploymentTarget would still build, still start, and
 // still serve — every request quietly falling back to the shared frontend, with
 // nothing in a log saying the per-model routing had stopped happening.
-var theResolverAnswersPerDeployment DeploymentTarget = (*Resolver)(nil)
+var _ DeploymentTarget = (*Resolver)(nil)
 
 // setTarget is a Target that answers per deployment, which is what a cluster
 // rendering a frontend per model looks like from the handler.
