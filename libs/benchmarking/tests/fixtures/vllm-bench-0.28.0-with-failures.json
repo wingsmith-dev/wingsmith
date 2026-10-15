@@ -1,0 +1,19 @@
+{
+  "version": "0.28.0",
+  "completed": 95,
+  "failed": 5,
+  "total_input_tokens": 209000,
+  "total_output_tokens": 24320,
+  "request_throughput": 1.45,
+  "output_throughput": 372.0,
+  "mean_ttft_ms": 410.0,
+  "p50_ttft_ms": 380.0,
+  "p90_ttft_ms": 620.0,
+  "p99_ttft_ms": 910.0,
+  "mean_itl_ms": 21.5,
+  "p90_itl_ms": 24.0,
+  "mean_e2el_ms": 5900.0,
+  "p50_e2el_ms": 5800.0,
+  "p90_e2el_ms": 6400.0,
+  "p99_e2el_ms": 7100.0
+}

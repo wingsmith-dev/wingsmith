@@ -1,16 +1,24 @@
 """What each harness's own export calls the numbers we compare across harnesses.
 
-This module is `libs/plane/app/modules/benchmarks/summaries.py` for the local
-runner, and deliberately the same idea: a harness's result is stored exactly as
-the tool emitted it, and normalisation happens only through an explicit map that
-says *for this harness, between these versions, the P90 time-to-first-token is at
-this path, in these units*. No fuzzy search, no shared output schema, and a path
-that does not resolve is a named miss rather than a silent zero.
+A harness's result is stored exactly as the tool emitted it, and normalisation
+happens only through an explicit map that says *for this harness, between these
+versions, the P90 time-to-first-token is at this path, in these units*. No fuzzy
+search, no shared output schema, and a path that does not resolve is a named miss
+rather than a silent zero.
 
-The field ids are shared with the plane on purpose. `ttft.p90` means the same
-number here as it does there, so a local finding and a cluster benchmark can be
-put in one sentence — and so a map written here can be lifted into the plane's
-module when a harness graduates to running in a cluster.
+The plane's benchmarks module reads AIPerf with the same idea, in
+`libs/plane/app/modules/benchmarks/summaries.py`. The two are separate copies on
+purpose: this package has no dependencies and runs from a checkout without the
+plane installed, so it cannot import the plane's module. What they share is the
+contract, and it has to be kept in step by hand:
+
+- the field ids (`ttft.p90`, `request.errors`, ...) mean the same number in both
+  places, so a local finding and a cluster benchmark can be put in one sentence;
+- the AIPerf paths are the same paths, so a correction to one (the error count
+  read from `error_request_count`, for instance) is made in both in one change.
+
+`tests/test_metrics.py` pins the paths read here against a fixture of each
+harness's export, so a drift on this side fails a test rather than a chart.
 
 Three facts about these three harnesses make the map non-trivial, and each is why
 `Field` carries what it carries:
@@ -18,7 +26,10 @@ Three facts about these three harnesses make the map non-trivial, and each is wh
 - GuideLLM reports `request_latency` in **seconds** while every token timing in
   the same file is in milliseconds. `scale` converts, so a field id means one unit
   everywhere.
-- AIPerf reports failures as a list, not a count. `kind="length"` reads its length.
+- AIPerf reports failed requests as `error_request_count`, and only when one
+  failed. Its `error_summary` beside it is a list of error *types*, so its length
+  is not a request count. `absent` says what a missing path means for a field that
+  a harness leaves out when it is zero.
 - Each harness splits its metrics differently — GuideLLM by outcome
   (successful/errored/incomplete/total), vLLM by percentile in a flat key. Reading
   GuideLLM's `.total` where we meant `.successful` would quietly mix failed
@@ -51,15 +62,16 @@ SECONDS_TO_MS = 1000.0
 class Field(NamedTuple):
     """One number an adapter knows how to find, and what it is measured in.
 
-    `kind="length"` reads the length of a list rather than a number, which is how
-    a harness that reports failures as a list of strings answers "how many".
+    `absent` is the value of a field the harness omits rather than reports as
+    zero. It applies only when the export itself is an object, so an unreadable
+    export still reads as a miss rather than as zero failures.
     """
 
     id: str
     path: tuple[str | int, ...]
     unit: str
     scale: float = 1.0
-    kind: str = "value"
+    absent: float | None = None
 
 
 class Adapter(NamedTuple):
@@ -188,7 +200,7 @@ AIPERF_0_4 = Adapter(
         Field(OUTPUT_SPEED_TOTAL, ("output_token_throughput", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_THROUGHPUT, ("request_throughput", "avg"), REQUESTS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
-        Field(ERROR_COUNT, ("error_summary",), COUNT, kind="length"),
+        Field(ERROR_COUNT, ("error_request_count", "avg"), COUNT, absent=0.0),
         Field(INPUT_TOKENS_MEAN, ("input_sequence_length", "avg"), TOKENS),
         Field(OUTPUT_TOKENS_MEAN, ("output_sequence_length", "avg"), TOKENS),
     ),
@@ -379,8 +391,6 @@ def _resolve(summary: Any, path: tuple[str | int, ...]) -> Any:
 
 
 def _number(node: Any, field: Field) -> float | None:
-    if field.kind == "length":
-        return float(len(node)) if isinstance(node, (list, tuple)) else None
     if isinstance(node, bool) or not isinstance(node, (int, float)):
         return None
     return float(node) * field.scale
@@ -398,7 +408,11 @@ def read(harness: str, version: str, summary: Any) -> dict[str, Reading]:
         return {}
     readings: dict[str, Reading] = {}
     for field in adapter.fields:
-        value = _number(_resolve(summary, field.path), field)
+        node = _resolve(summary, field.path)
+        if node is None and field.absent is not None and isinstance(summary, dict) and summary:
+            value: float | None = field.absent
+        else:
+            value = _number(node, field)
         dotted = ".".join(str(step) for step in field.path)
         readings[field.id] = Reading(value, field.unit, None if value is not None else dotted)
     return readings

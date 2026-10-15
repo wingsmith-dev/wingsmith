@@ -1,0 +1,205 @@
+{
+  "metadata": {
+    "guidellm_version": "0.7.3"
+  },
+  "benchmarks": [
+    {
+      "config": {
+        "strategy": {
+          "type_": "concurrent",
+          "streams": 8
+        }
+      },
+      "metrics": {
+        "time_to_first_token_ms": {
+          "successful": {
+            "mean": 410.0,
+            "percentiles": {
+              "p50": 380.0,
+              "p90": 620.0,
+              "p99": 910.0
+            }
+          },
+          "errored": {
+            "mean": 820.0,
+            "percentiles": {
+              "p50": 760.0,
+              "p90": 1240.0,
+              "p99": 1820.0
+            }
+          },
+          "total": {
+            "mean": 451.00000000000006,
+            "percentiles": {
+              "p50": 380.0,
+              "p90": 620.0,
+              "p99": 910.0
+            }
+          }
+        },
+        "inter_token_latency_ms": {
+          "successful": {
+            "mean": 21.5,
+            "percentiles": {
+              "p50": 20.9,
+              "p90": 24.0,
+              "p99": 31.2
+            }
+          },
+          "errored": {
+            "mean": 43.0,
+            "percentiles": {
+              "p50": 41.8,
+              "p90": 48.0,
+              "p99": 62.4
+            }
+          },
+          "total": {
+            "mean": 23.650000000000002,
+            "percentiles": {
+              "p50": 20.9,
+              "p90": 24.0,
+              "p99": 31.2
+            }
+          }
+        },
+        "request_latency": {
+          "successful": {
+            "mean": 5.9,
+            "percentiles": {
+              "p50": 5.8,
+              "p90": 6.4,
+              "p99": 7.1
+            }
+          },
+          "errored": {
+            "mean": 11.8,
+            "percentiles": {
+              "p50": 11.6,
+              "p90": 12.8,
+              "p99": 14.2
+            }
+          },
+          "total": {
+            "mean": 6.490000000000001,
+            "percentiles": {
+              "p50": 5.8,
+              "p90": 6.4,
+              "p99": 7.1
+            }
+          }
+        },
+        "output_tokens_per_second": {
+          "successful": {
+            "mean": 372.0,
+            "percentiles": {
+              "p50": 370.0,
+              "p90": 380.0,
+              "p99": 390.0
+            }
+          },
+          "errored": {
+            "mean": 744.0,
+            "percentiles": {
+              "p50": 740.0,
+              "p90": 760.0,
+              "p99": 780.0
+            }
+          },
+          "total": {
+            "mean": 409.20000000000005,
+            "percentiles": {
+              "p50": 370.0,
+              "p90": 380.0,
+              "p99": 390.0
+            }
+          }
+        },
+        "requests_per_second": {
+          "successful": {
+            "mean": 1.45,
+            "percentiles": {
+              "p50": 1.4,
+              "p90": 1.5,
+              "p99": 1.6
+            }
+          },
+          "errored": {
+            "mean": 2.9,
+            "percentiles": {
+              "p50": 2.8,
+              "p90": 3.0,
+              "p99": 3.2
+            }
+          },
+          "total": {
+            "mean": 1.595,
+            "percentiles": {
+              "p50": 1.4,
+              "p90": 1.5,
+              "p99": 1.6
+            }
+          }
+        },
+        "prompt_token_count": {
+          "successful": {
+            "mean": 2087.0,
+            "percentiles": {
+              "p50": 2087.0,
+              "p90": 2087.0,
+              "p99": 2087.0
+            }
+          },
+          "errored": {
+            "mean": 4174.0,
+            "percentiles": {
+              "p50": 4174.0,
+              "p90": 4174.0,
+              "p99": 4174.0
+            }
+          },
+          "total": {
+            "mean": 2295.7000000000003,
+            "percentiles": {
+              "p50": 2087.0,
+              "p90": 2087.0,
+              "p99": 2087.0
+            }
+          }
+        },
+        "output_token_count": {
+          "successful": {
+            "mean": 256.0,
+            "percentiles": {
+              "p50": 256.0,
+              "p90": 256.0,
+              "p99": 256.0
+            }
+          },
+          "errored": {
+            "mean": 512.0,
+            "percentiles": {
+              "p50": 512.0,
+              "p90": 512.0,
+              "p99": 512.0
+            }
+          },
+          "total": {
+            "mean": 281.6,
+            "percentiles": {
+              "p50": 256.0,
+              "p90": 256.0,
+              "p99": 256.0
+            }
+          }
+        },
+        "request_totals": {
+          "successful": 95,
+          "errored": 5,
+          "incomplete": 0,
+          "total": 100
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "aiperf_version": "0.12.0",
+  "time_to_first_token": {
+    "unit": "ms",
+    "avg": 410.0,
+    "p50": 380.0,
+    "p90": 620.0,
+    "p99": 910.0,
+    "min": 190.0,
+    "max": 1001.0000000000001,
+    "std": 41.0
+  },
+  "inter_token_latency": {
+    "unit": "ms",
+    "avg": 21.5,
+    "p50": 20.9,
+    "p90": 24.0,
+    "p99": 31.2,
+    "min": 10.45,
+    "max": 34.32,
+    "std": 2.15
+  },
+  "request_latency": {
+    "unit": "ms",
+    "avg": 5900.0,
+    "p50": 5800.0,
+    "p90": 6400.0,
+    "p99": 7100.0,
+    "min": 2900.0,
+    "max": 7810.000000000001,
+    "std": 590.0
+  },
+  "output_token_throughput_per_user": {
+    "unit": "tokens/sec/user",
+    "avg": 46.5,
+    "p50": 47.0,
+    "p90": 50.1,
+    "p99": 52.3,
+    "min": 23.5,
+    "max": 57.53,
+    "std": 4.65
+  },
+  "output_token_throughput": {
+    "unit": "tokens/sec",
+    "avg": 372.0
+  },
+  "request_throughput": {
+    "unit": "requests/sec",
+    "avg": 1.45
+  },
+  "request_count": {
+    "unit": "requests",
+    "avg": 95
+  },
+  "error_request_count": {
+    "unit": "requests",
+    "avg": 5
+  },
+  "input_sequence_length": {
+    "unit": "tokens",
+    "avg": 2000.0,
+    "p50": 2000.0,
+    "p90": 2000.0,
+    "p99": 2000.0,
+    "min": 1000.0,
+    "max": 2200.0,
+    "std": 200.0
+  },
+  "output_sequence_length": {
+    "unit": "tokens",
+    "avg": 256.0,
+    "p50": 256.0,
+    "p90": 256.0,
+    "p99": 256.0,
+    "min": 128.0,
+    "max": 281.6,
+    "std": 25.6
+  },
+  "error_summary": [
+    {
+      "error_details": {
+        "code": 503,
+        "type": "ServiceUnavailable",
+        "message": "upstream unavailable"
+      },
+      "count": 3
+    },
+    {
+      "error_details": {
+        "code": 429,
+        "type": "TooManyRequests",
+        "message": "rate limited"
+      },
+      "count": 2
+    }
+  ]
+}
