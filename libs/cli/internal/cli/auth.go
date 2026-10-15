@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/config"
 	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 	"github.com/hangar-dev/hangar/libs/cli/internal/output"
 	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
@@ -64,7 +63,10 @@ The token is never printed, in any output mode.`,
 				return errs.New(errs.CodeInputRequired, "an empty password cannot be used to log in")
 			}
 
-			server := firstNonEmpty(app.Context.Server, config.DefaultServer)
+			server, err := app.server()
+			if err != nil {
+				return err
+			}
 			client, err := api.NewClient(server, "", app.Project, Version, app.Timeout)
 			if err != nil {
 				return err
@@ -81,6 +83,9 @@ The token is never printed, in any output mode.`,
 			// token round-trips exactly like `hgr config set context.token`.
 			name := app.Cfg.CurrentContext
 			stored := app.Cfg.Context("")
+			// The token belongs to the server that issued it, so a login with
+			// --server records that server beside it.
+			stored.Server = server
 			stored.Token = res.AccessToken
 			if res.RefreshToken != "" {
 				stored.RefreshToken = res.RefreshToken
@@ -125,11 +130,11 @@ func newLogoutCmd(app *App) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{annotationAuthOptional: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			server := firstNonEmpty(app.Context.Server, config.DefaultServer)
-			if app.Context.Token != "" {
+			server := app.Context.Server
+			if app.Context.Token != "" && server != "" {
 				if client, err := api.NewClient(server, app.Context.Token, app.Project, Version, app.Timeout); err == nil {
 					ctx, cancel := app.RequestContext()
-					_ = client.Logout(ctx)
+					_ = client.Logout(ctx, app.Context.RefreshToken)
 					cancel()
 				}
 			}

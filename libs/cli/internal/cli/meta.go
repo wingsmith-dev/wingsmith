@@ -64,10 +64,10 @@ func newContextCmd(app *App) *cobra.Command {
 			c := app.Context
 			data := map[string]any{
 				"current_context": app.Cfg.CurrentContext,
-				"server":          firstNonEmpty(c.Server, config.DefaultServer),
+				"server":          c.Server,
 				"project":         app.Project,
 				"authenticated":   c.Token != "",
-				"simulated":       app.Backend.Simulated(),
+				"simulated":       app.UseFake(),
 				"config_path":     app.Cfg.Path(),
 			}
 			return app.Emit(&output.Result{
@@ -76,10 +76,10 @@ func newContextCmd(app *App) *cobra.Command {
 				Human: func(w io.Writer, s ui.Style, width int) {
 					kv := app.KV()
 					kv.Add("context", app.Cfg.CurrentContext)
-					kv.Add("server", firstNonEmpty(c.Server, config.DefaultServer))
+					kv.Add("server", orDefault(c.Server, s.Dim("none — hgr config set context.server <url>")))
 					kv.Add("project", app.Project)
 					kv.Add("token", tokenState(c))
-					if app.Backend.Simulated() {
+					if app.UseFake() {
 						kv.Add("backend", s.Amber("fake (offline)"))
 					}
 					kv.Add("config", app.Cfg.Path())
@@ -89,7 +89,7 @@ func newContextCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newContextListCmd(app), newContextUseCmd(app))
-	return group(cmd, "meta")
+	return localCmd(group(cmd, "meta"))
 }
 
 func tokenState(c config.Context) string {
@@ -116,7 +116,7 @@ func newContextListCmd(app *App) *cobra.Command {
 			out := make([]row, 0, len(names))
 			for _, n := range names {
 				c := app.Cfg.Contexts[n]
-				out = append(out, row{n, firstNonEmpty(c.Server, config.DefaultServer), c.Project, n == app.Cfg.CurrentContext})
+				out = append(out, row{n, c.Server, c.Project, n == app.Cfg.CurrentContext})
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
@@ -138,7 +138,7 @@ func newContextListCmd(app *App) *cobra.Command {
 						if r.Current {
 							mark = s.Green("*")
 						}
-						t.Row(mark, r.Name, r.Server, orDash(r.Project))
+						t.Row(mark, r.Name, orDash(r.Server), orDash(r.Project))
 					}
 					t.Render(w)
 				},
@@ -249,7 +249,7 @@ func newConfigCmd(app *App) *cobra.Command {
 			},
 		},
 	)
-	return group(cmd, "meta")
+	return localCmd(group(cmd, "meta"))
 }
 
 func newExplainCmd(app *App) *cobra.Command {
@@ -310,7 +310,7 @@ func newExplainCmd(app *App) *cobra.Command {
 			})
 		},
 	}
-	return group(cmd, "meta")
+	return localCmd(group(cmd, "meta"))
 }
 
 func newVersionCmd(app *App) *cobra.Command {
@@ -337,5 +337,5 @@ func newVersionCmd(app *App) *cobra.Command {
 			})
 		},
 	}
-	return group(cmd, "meta")
+	return localCmd(group(cmd, "meta"))
 }

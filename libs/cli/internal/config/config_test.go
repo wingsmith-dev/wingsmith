@@ -332,26 +332,105 @@ func TestEnvBoolAcceptsTheUsualSpellings(t *testing.T) {
 	}
 }
 
-// TestDescribeNeverPrintsACredential — context listings are the most likely thing to end up in a
-// screenshot or a paste.
-func TestDescribeNeverPrintsACredential(t *testing.T) {
-	c := Context{Server: "https://plane.example", Token: "hgr_pat_0123456789abcdef", Project: "prj_1"}
-	got := c.Describe()
-	if strings.Contains(got, "0123456789abcdef") {
-		t.Fatalf("Describe leaked the token: %q", got)
+// A value that would break every later command is refused when it is typed.
+// `output` is checked by whatever the command layer installs; here a stand-in
+// refuses one spelling to prove the hook is consulted.
+func TestSetRefusesValuesThatWouldBreakLaterCommands(t *testing.T) {
+	ValidateOutput = func(v string) error {
+		if v == "nonsense" {
+			return errs.New(errs.CodeUsage, "bad format")
+		}
+		return nil
 	}
-	if !strings.Contains(got, "prj_1") || !strings.Contains(got, "https://plane.example") {
-		t.Errorf("Describe = %q, want the server and project", got)
-	}
+	t.Cleanup(func() { ValidateOutput = nil })
 
-	empty := Context{}.Describe()
-	if !strings.Contains(empty, DefaultServer) {
-		t.Errorf("an unconfigured context does not name the default server: %q", empty)
+	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
+	bad := map[string]string{
+		"output":          "nonsense",
+		"current_context": "has space",
+		"context.server":  "plane.example",
 	}
-	if !strings.Contains(empty, "no credentials") {
-		t.Errorf("an unconfigured context does not say it has none: %q", empty)
+	for key, value := range bad {
+		if err := f.Set(key, value); err == nil {
+			t.Errorf("set %s=%q was accepted", key, value)
+		} else if errs.As(err).Code != errs.CodeUsage {
+			t.Errorf("set %s=%q: code %s, want USAGE", key, value, errs.As(err).Code)
+		}
 	}
-	if !strings.Contains(empty, "project=-") {
-		t.Errorf("an absent project is not drawn as a dash: %q", empty)
+	for _, server := range []string{"ftp://plane.example", "https://", "localhost:8000"} {
+		if err := f.Set("context.server", server); err == nil {
+			t.Errorf("server %q was accepted", server)
+		}
+	}
+	if f.Output != "" || f.CurrentContext != "default" || f.Context("").Server != "" {
+		t.Errorf("a refused value was applied anyway: %+v", f)
+	}
+	if err := f.Set("context.server", "http://localhost:8000/"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Context("").Server; got != "http://localhost:8000" {
+		t.Errorf("server stored as %q, want the trailing slash trimmed", got)
+	}
+	if err := f.Unset("current_context"); err != nil || f.CurrentContext != "default" {
+		t.Errorf("unsetting current_context: %v, now %q", err, f.CurrentContext)
+	}
+	if err := f.Unset("fake"); err != nil {
+		t.Errorf("fake could not be unset: %v", err)
+	}
+}
+
+// A config file created by hand with loose permissions is tightened the first
+// time the CLI writes a token into it.
+func TestSaveTightensAnExistingLooseFile(t *testing.T) {
+	path := tempConfig(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("current_context: default\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.SetContext("default", Context{Token: "hgrs1_secret"})
+	if err := f.Save(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("config is %o after a token was written, want 600", perm)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("save left %d files behind, want only the config", len(entries))
+	}
+}
+
+// A symlinked config (a dotfiles checkout) is written through, not replaced.
+func TestSaveWritesThroughASymlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.yaml")
+	link := filepath.Join(dir, "link.yaml")
+	if err := os.WriteFile(real, []byte("current_context: default\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	f, _ := Load(link)
+	f.SetContext("default", Context{Server: "http://localhost:8000"})
+	if err := f.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the symlink was replaced by a regular file")
+	}
+	back, _ := Load(real)
+	if back.Context("").Server != "http://localhost:8000" {
+		t.Error("the write did not reach the file the link points at")
 	}
 }

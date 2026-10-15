@@ -32,7 +32,7 @@ type Client struct {
 func NewClient(server, token, project, version string, timeout time.Duration) (*Client, error) {
 	if server == "" {
 		return nil, errs.New(errs.CodeUsage, "no control plane URL configured").
-			WithFix("Set one", "hgr config set context.server https://plane.hangar.dev").
+			WithFix("Set one", "hgr config set context.server http://localhost:8000").
 			WithFix("Or run offline", "hgr --fake cluster ls")
 	}
 	if _, err := url.Parse(server); err != nil {

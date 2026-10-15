@@ -14,8 +14,14 @@ import (
 // code. The fake is selected unless the caller sets HANGAR_FAKE=0.
 func run(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("HANGAR_CONFIG", filepath.Join(dir, "config.yaml"))
+	return runWith(t, filepath.Join(t.TempDir(), "config.yaml"), args...)
+}
+
+// runWith is run against a config file the caller keeps, for sequences of
+// commands that read what an earlier one wrote.
+func runWith(t *testing.T, configPath string, args ...string) (string, string, int) {
+	t.Helper()
+	t.Setenv("HANGAR_CONFIG", configPath)
 	if os.Getenv("HANGAR_FAKE") == "" {
 		t.Setenv("HANGAR_FAKE", "1")
 	}

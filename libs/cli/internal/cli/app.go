@@ -53,16 +53,53 @@ type App struct {
 	Timeout time.Duration
 
 	Project string
+	// projectSet is whether a project was named anywhere (flag, environment or
+	// context) rather than falling back to "default", so a command that writes
+	// can refuse to guess.
+	projectSet bool
 
 	// authOptional is set for commands that must run before a token exists —
 	// `login` above all — so setup does not refuse them for want of one.
 	authOptional bool
+	// local is set for commands that never talk to the control plane: config,
+	// context, explain, version, help and completion. They work on a fresh
+	// install with no server and no token.
+	local bool
 
 	flags globalFlags
 }
 
-// annotationAuthOptional marks a command that setup must not gate on a token.
-const annotationAuthOptional = "auth_optional"
+const (
+	// annotationAuthOptional marks a command that setup must not gate on a token.
+	annotationAuthOptional = "auth_optional"
+	// annotationLocal marks a command, and everything under it, that needs no
+	// backend at all.
+	annotationLocal = "local"
+)
+
+// localCmd marks a command as never reaching the control plane.
+func localCmd(cmd *cobra.Command) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[annotationLocal] = "true"
+	return cmd
+}
+
+// isLocal reports whether a command, or any command above it, is local. Help
+// and completion are cobra's own and are recognised by name.
+func isLocal(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[annotationLocal] == "true" {
+			return true
+		}
+		switch c.Name() {
+		case "help", "completion", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return true
+		}
+	}
+	return false
+}
 
 type globalFlags struct {
 	output     string
@@ -181,6 +218,11 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 		&cobra.Group{ID: "meta", Title: "CLI:"},
 	)
 
+	config.ValidateOutput = func(v string) error {
+		_, _, err := output.ParseFormat(v)
+		return err
+	}
+
 	register(app, root)
 	root.SetHelpCommandGroupID("meta")
 	root.SetCompletionCommandGroupID("meta")
@@ -190,6 +232,7 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 func (a *App) setup(cmd *cobra.Command) error {
 	g := a.flags
 	a.authOptional = cmd.Annotations[annotationAuthOptional] == "true"
+	a.local = isLocal(cmd)
 
 	cfg, err := config.Load(firstNonEmpty(g.configPath, os.Getenv("HANGAR_CONFIG")))
 	if err != nil {
@@ -211,7 +254,11 @@ func (a *App) setup(cmd *cobra.Command) error {
 	if v := firstNonEmpty(g.token, os.Getenv("HANGAR_TOKEN")); v != "" {
 		a.Context.Token = v
 	}
-	a.Project = firstNonEmpty(g.project, os.Getenv("HANGAR_PROJECT"), a.Context.Project, "default")
+	a.Project = firstNonEmpty(g.project, os.Getenv("HANGAR_PROJECT"), a.Context.Project)
+	a.projectSet = a.Project != ""
+	if !a.projectSet {
+		a.Project = "default"
+	}
 
 	a.Agent = g.agent || config.EnvBool("HANGAR_AGENT")
 	a.Quiet = g.quiet || config.EnvBool("HANGAR_QUIET")
@@ -248,6 +295,10 @@ func (a *App) setup(cmd *cobra.Command) error {
 	a.Ask = ui.NewPrompter(os.Stdin, os.Stderr, a.Style, !a.NoInput)
 	a.Ctx = cmd.Context()
 
+	if a.local {
+		a.Out.AddMeta("project", a.Project)
+		return nil
+	}
 	if err := a.connect(); err != nil {
 		return err
 	}
@@ -259,9 +310,23 @@ func (a *App) setup(cmd *cobra.Command) error {
 }
 
 // resolveFormat applies the precedence rule and resolves `auto`.
+//
+// A bad format stored in the config file does not lock the user out of the
+// command that fixes it: a local command falls back to `auto`, and every other
+// command says which key to repair.
 func (a *App) resolveFormat() (output.Format, string, error) {
-	raw := firstNonEmpty(a.flags.output, os.Getenv("HANGAR_OUTPUT"), a.Cfg.Output, string(output.FormatAuto))
+	explicit := firstNonEmpty(a.flags.output, os.Getenv("HANGAR_OUTPUT"))
+	raw := firstNonEmpty(explicit, a.Cfg.Output, string(output.FormatAuto))
 	f, arg, err := output.ParseFormat(raw)
+	if err != nil && explicit == "" {
+		if a.local {
+			f, arg, err = output.FormatAuto, "", nil
+		} else {
+			return "", "", errs.As(err).
+				WithCausef("output %q is set in %s", a.Cfg.Output, a.Cfg.Path()).
+				WithFix("Reset it", "hgr config set output auto")
+		}
+	}
 	if err != nil {
 		return "", "", err
 	}
@@ -291,11 +356,14 @@ func (a *App) connect() error {
 		a.Backend = b
 		return nil
 	}
-	server := firstNonEmpty(a.Context.Server, config.DefaultServer)
+	server, err := a.server()
+	if err != nil {
+		return err
+	}
 	if a.Context.Token == "" && !a.authOptional {
 		return errs.New(errs.CodeAuthRequired, "no token for context %q", a.Cfg.CurrentContext).
 			WithCausef("looked in --token, HANGAR_TOKEN, and %s", a.Cfg.Path()).
-			WithFix("Store a token", "hgr config set context.token <token>").
+			WithFix("Log in", "hgr login").
 			WithFix("Or work offline", rerun("--fake"))
 	}
 	c, err := api.NewClient(server, a.Context.Token, a.Project, Version, a.Timeout)
@@ -304,6 +372,22 @@ func (a *App) connect() error {
 	}
 	a.Backend = c
 	return nil
+}
+
+// server is the control plane URL for this invocation. There is no default:
+// Hangar is self-hosted, and a compiled-in URL would be somebody else's.
+func (a *App) server() (string, error) {
+	if a.Context.Server == "" {
+		return "", errs.New(errs.CodeUsage, "no control plane URL configured for context %q", a.Cfg.CurrentContext).
+			WithCausef("looked in --server, HANGAR_SERVER, and %s", a.Cfg.Path()).
+			WithFlag("--server").
+			WithFix("Set one", "hgr config set context.server http://localhost:8000").
+			WithFix("Or work offline", rerun("--fake"))
+	}
+	if err := config.ValidateServer(a.Context.Server); err != nil {
+		return "", err
+	}
+	return a.Context.Server, nil
 }
 
 // --- helpers used by every command ----------------------------------------
@@ -322,7 +406,7 @@ func (a *App) Table(cols ...ui.Column) *ui.Table {
 // KV builds a detail block.
 func (a *App) KV() *ui.KV { return ui.NewKV(a.Style) }
 
-// Context2 returns a context carrying the configured timeout.
+// RequestContext returns a context carrying the configured per-request timeout.
 func (a *App) RequestContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(a.Ctx, a.Timeout)
 }

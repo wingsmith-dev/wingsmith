@@ -3,9 +3,10 @@
 package config
 
 import (
-	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,8 +15,9 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// DefaultServer is the production control plane.
-const DefaultServer = "https://plane.hangar.dev"
+// There is no default server. Hangar is self-hosted, so any URL compiled in
+// would belong to somebody else, and the first thing `hgr login` sends to it
+// is the admin password.
 
 // Context is one named server + credential + tenancy set. Named after the
 // kubeconfig notion because operators already carry that vocabulary.
@@ -96,16 +98,47 @@ func Load(path string) (*File, error) {
 	return f, nil
 }
 
-// Save writes the config back to disk with restrictive permissions.
+// Save writes the config back to disk, readable by the owner only.
+//
+// The file holds tokens, so it is written to a 0600 temporary file beside the
+// target and renamed over it. A file that already existed with looser
+// permissions comes out 0600, and a crash mid-write leaves the old file whole
+// rather than a truncated one. A symlinked config is written through to the
+// file it points at, so a dotfiles checkout keeps its link.
 func (f *File) Save() error {
-	if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
+	target := f.path
+	if resolved, err := filepath.EvalSymlinks(target); err == nil {
+		target = resolved
+	}
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot create config directory")
 	}
 	data, err := yaml.Marshal(f)
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot serialise config")
 	}
-	if err := os.WriteFile(f.path, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, ".config-*.yaml")
+	if err != nil {
+		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	}
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	}
+	if err := tmp.Close(); err != nil {
+		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	}
+	if err := os.Rename(tmp.Name(), target); err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
 	}
 	return nil
@@ -177,23 +210,65 @@ func (f *File) Get(key string) (string, error) {
 	return "", unknownKey(key)
 }
 
-// Set writes a dotted key.
+// ValidateOutput checks an output format before it is stored. The config
+// package cannot import the renderer, so the command layer supplies it; nil
+// accepts anything.
+var ValidateOutput func(string) error
+
+var contextName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ValidateServer checks a control plane URL: absolute, http or https, with a
+// host. A value that fails here would otherwise be stored and then fail every
+// command that reads it.
+func ValidateServer(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errs.New(errs.CodeUsage, "%q is not a control plane URL", raw).
+			WithCause("use an absolute http:// or https:// URL, e.g. http://localhost:8000")
+	}
+	return nil
+}
+
+// Set writes a dotted key. Values are checked here, so a bad one is refused
+// when it is typed rather than stored and then failing every later command.
+// An empty value clears the key and is always accepted.
 func (f *File) Set(key, value string) error {
 	c := f.Context("")
 	name := f.CurrentContext
 	switch key {
 	case "current_context":
+		if value == "" {
+			value = "default"
+		}
+		if !contextName.MatchString(value) {
+			return errs.New(errs.CodeUsage, "%q is not a context name", value).
+				WithCause("letters, digits, '.', '_' and '-', starting with a letter or digit")
+		}
 		f.CurrentContext = value
 	case "output":
+		if value != "" && ValidateOutput != nil {
+			if err := ValidateOutput(value); err != nil {
+				return err
+			}
+		}
 		f.Output = value
 	case "fake":
+		if value == "" {
+			f.Fake = false
+			return nil
+		}
 		b, err := strconv.ParseBool(value)
 		if err != nil {
 			return errs.New(errs.CodeUsage, "fake must be true or false")
 		}
 		f.Fake = b
 	case "context.server":
-		c.Server = value
+		if value != "" {
+			if err := ValidateServer(value); err != nil {
+				return err
+			}
+		}
+		c.Server = strings.TrimRight(value, "/")
 		f.SetContext(name, c)
 	case "context.token":
 		c.Token = value
@@ -242,24 +317,4 @@ func Redact(s string) string {
 func EnvBool(key string) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
-}
-
-// Describe renders a one-line summary of a context for listings.
-func (c Context) Describe() string {
-	server := c.Server
-	if server == "" {
-		server = DefaultServer
-	}
-	auth := "no credentials"
-	if c.Token != "" {
-		auth = Redact(c.Token)
-	}
-	return fmt.Sprintf("%s  %s  project=%s", server, auth, orDash(c.Project))
-}
-
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }
