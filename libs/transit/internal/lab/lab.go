@@ -315,6 +315,35 @@ func streamLimit(n int) string {
 	return strconv.Itoa(n)
 }
 
+// FindRepo walks up from dir to the checkout the gateway and agent are built
+// from: the first directory holding both libs/gateway/go.mod and
+// libs/agent/go.mod.
+func FindRepo(dir string) (string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	for start := dir; ; {
+		if isRepo(dir) {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no checkout with libs/gateway and libs/agent above %s; pass -repo", start)
+		}
+		dir = parent
+	}
+}
+
+func isRepo(dir string) bool {
+	for _, module := range []string{"libs/gateway/go.mod", "libs/agent/go.mod"} {
+		if _, err := os.Stat(filepath.Join(dir, module)); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // build compiles one of the repository's binaries.
 func build(ctx context.Context, repo, module, pkg, out string) (string, error) {
 	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, pkg)

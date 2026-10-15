@@ -344,7 +344,7 @@ transit ramp="8,32,128" *args:
 
 # The CI shape of the above: one short ramp, JSON out, fails if the path cannot carry it
 transit-smoke:
-    @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false
+    @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false -json
 
 # Ramp against a deployed gateway. Small by default on purpose.
 transit-live url model *args:

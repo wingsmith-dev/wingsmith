@@ -75,7 +75,7 @@ Each subcommand takes -h.
 
 func synthetic(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("synthetic", flag.ExitOnError)
-	repo := fs.String("repo", "..", "the checkout to build the gateway and agent from")
+	repo := fs.String("repo", "", "the checkout to build the gateway and agent from; empty finds it above the working directory")
 	agents := fs.Int("agents", 1, "how many agent processes serve the cluster")
 	conns := fs.Int("conns", 2, "tunnels each agent holds to each gateway replica")
 	streams := fs.Int("streams", 0, "per-tunnel stream limit the agent advertises, 0 for the tunnel default of 256")
@@ -104,9 +104,19 @@ func synthetic(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	root := *repo
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if root, err = lab.FindRepo(cwd); err != nil {
+			return err
+		}
+	}
 
 	report, err := lab.RunSynthetic(ctx, lab.Options{
-		Repo:            *repo,
+		Repo:            root,
 		Agents:          *agents,
 		ConnsPerGateway: *conns,
 		MaxStreams:      *streams,
@@ -244,10 +254,15 @@ func listen(ctx context.Context, addr string, handler http.Handler) error {
 	return nil
 }
 
+// emit writes the report and then reports whether the run passed, so a CI job
+// gets the whole report and a non-zero exit when no stage held the objective.
 func emit(report *lab.Report, asJSON bool) error {
 	if asJSON {
-		return report.WriteJSON(os.Stdout)
+		if err := report.WriteJSON(os.Stdout); err != nil {
+			return err
+		}
+	} else {
+		report.WriteText(os.Stdout)
 	}
-	report.WriteText(os.Stdout)
-	return nil
+	return report.Err()
 }

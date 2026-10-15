@@ -3,6 +3,7 @@ package lab
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -151,6 +152,21 @@ func bottleneck(failed, carried *Stage) string {
 	}
 	sort.Strings(reasons)
 	return strings.Join(reasons, "; ")
+}
+
+// ErrObjectiveMissed is what Err returns when no stage held the objective.
+var ErrObjectiveMissed = errors.New("no stage held the objective")
+
+// Err reports whether the run passed: nil when at least one stage held the
+// objective, ErrObjectiveMissed otherwise, including a run that measured
+// nothing. Call it after Verdict.
+func (r *Report) Err() error {
+	for _, stage := range r.Stages {
+		if stage.MetObjective {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w (%s)", ErrObjectiveMissed, r.SLO)
 }
 
 // WriteText renders the report for a terminal.
