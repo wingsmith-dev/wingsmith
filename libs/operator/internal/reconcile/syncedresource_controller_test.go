@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 )
 
 const watchedDeploymentID = "dep_01j9x2wwwwwwwwwwwwwwwwwwww"
@@ -72,5 +75,20 @@ func TestPodStatusKeyIgnoresAChangingBackoffMessage(t *testing.T) {
 
 	if after := podStatusKey(pod); after != before {
 		t.Fatal("a changing backoff message would enqueue the same failure repeatedly")
+	}
+}
+
+// TestTheGraphWatchIsOnlyRegisteredWhereDynamoIsServed: watching a kind the API server does not
+// know fails the controller at startup, which crash-looped the operator on a cluster without
+// Dynamo.
+func TestTheGraphWatchIsOnlyRegisteredWhereDynamoIsServed(t *testing.T) {
+	without := apimeta.NewDefaultRESTMapper(nil)
+	if served, err := servesGraph(without); err != nil || served {
+		t.Fatalf("a cluster without the CRD: served=%v err=%v, want false and no error", served, err)
+	}
+	with := apimeta.NewDefaultRESTMapper(nil)
+	with.Add(render.GVK, apimeta.RESTScopeNamespace)
+	if served, err := servesGraph(with); err != nil || !served {
+		t.Fatalf("a cluster with the CRD: served=%v err=%v, want true and no error", served, err)
 	}
 }

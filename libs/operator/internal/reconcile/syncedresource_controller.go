@@ -218,23 +218,50 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 // the garbage collector it mirrors — resolves an owner within the dependent's namespace. Owning
 // them across that boundary linked nothing in this direction and actively destroyed the objects
 // in the other.
+//
+// The graph deployment watch is registered only when the cluster serves the Dynamo CRD. Watching
+// a kind the API server does not know fails the controller at startup, and the operator used to
+// crash-loop on a cluster without Dynamo instead of running everything else and saying what is
+// missing. Installing Dynamo later takes an operator restart to start the watch; until then the
+// requeue floor is what notices a graph change.
 func (r *SyncedResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	graph := &unstructured.Unstructured{}
-	graph.SetGroupVersionKind(render.GVK)
-
 	back := handler.EnqueueRequestsFromMapFunc(r.declaredFor)
 
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.SyncedResource{}).
 		Watches(&batchv1.Job{}, back).
-		Watches(graph, back).
 		Watches(
 			&corev1.Pod{},
 			handler.EnqueueRequestsFromMapFunc(r.declaredForPod),
 			builder.WithPredicates(deploymentPodEvents()),
-		).
-		Named("syncedresource").
-		Complete(r)
+		)
+
+	served, err := servesGraph(mgr.GetRESTMapper())
+	if err != nil {
+		return fmt.Errorf("look up %s: %w", render.GVK.Kind, err)
+	}
+	if served {
+		graph := &unstructured.Unstructured{}
+		graph.SetGroupVersionKind(render.GVK)
+		b = b.Watches(graph, back)
+	} else {
+		r.Log.Warn("the cluster does not serve the Dynamo CRD; deployments cannot be rendered until "+
+			"the Dynamo operator is installed and this operator restarted",
+			"kind", render.GVK.Kind, "group", render.GVK.Group)
+	}
+	return b.Named("syncedresource").Complete(r)
+}
+
+// servesGraph reports whether the API server knows the graph deployment kind.
+func servesGraph(mapper apimeta.RESTMapper) (bool, error) {
+	_, err := mapper.RESTMapping(render.GVK.GroupKind(), render.GVK.Version)
+	switch {
+	case apimeta.IsNoMatchError(err):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return true, nil
 }
 
 // declaredFor maps a rendered object back to the declared one it came from.

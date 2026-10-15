@@ -203,6 +203,10 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 					"weights, so this is a deliberate redeploy and not something to do while it "+
 					"is serving.", obj.GetName(), obj.GetNamespace(), obj.GetName()))
 		}
+		if apimeta.IsNoMatchError(err) {
+			return ctrl.Result{}, fmt.Errorf("apply %s: the cluster does not serve %s; install the Dynamo operator: %w",
+				obj.GetName(), render.GVK.Kind, err)
+		}
 		if clusterRejected(err) {
 			return r.fail(ctx, res, "ClusterRejected", fmt.Sprintf(
 				"the cluster refused %s and will refuse it again unchanged: %s",
