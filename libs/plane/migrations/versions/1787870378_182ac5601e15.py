@@ -18,11 +18,6 @@ does not appear in the htpasswd the reactor renders, and its metrics agent gets 
 values. That is a deliberate cost — the alternative is a second, separate
 credential for telemetry, which is the per-cluster manual step this whole change
 exists to remove.
-
-The `bind_serving_quota` unique-constraint churn autogenerate proposes alongside
-this is pre-existing drift between the model and the deployed schema and is
-deliberately not carried here; it belongs to whoever owns that table.
-
 """
 
 from typing import Union
