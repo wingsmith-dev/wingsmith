@@ -1,104 +1,91 @@
 # console
 
-The Hangar console. React 19 + TypeScript + TanStack Router + shadcn/ui.
+The Hangar console. React 19, TypeScript, TanStack Router and Query, shadcn/ui.
 
-It talks to `libs/plane` over HTTP and nothing else — never to a cluster directly, never to
-the hub. Every cluster fact you see here reached the plane through the operator's sync
-stream and was denormalised into Postgres first.
+It talks to `libs/plane` over HTTP and nothing else: never to a cluster, never to the hub.
+Every cluster fact it shows reached the plane through the operator's sync stream first.
 
 ## Commands
 
 ```bash
 pnpm install
-pnpm dev          # dev server (route tree auto-generated)
-pnpm build        # production build + type-check
-pnpm typecheck    # type-check only
-pnpm lint         # ESLint
-pnpm format       # Prettier
-pnpm test         # Vitest, once
-pnpm test:watch   # Vitest, watching
-pnpm test:coverage
+pnpm dev            # dev server on :5273 (route tree regenerated on change)
+pnpm build          # production build, then type-check
+pnpm typecheck
+pnpm lint           # ESLint
+pnpm format         # Prettier (format:check to verify)
+pnpm test           # Vitest, once
+pnpm test:watch
+pnpm test:coverage  # Vitest with V8 coverage
 ```
 
-Tests are `*.test.ts` / `*.test.tsx` beside the code they cover. `vitest.config.ts` is
-deliberately separate from `vite.config.ts`: the dev server's config carries the router
-plugin, which regenerates `routeTree.gen.ts` on every run, and a test run that rewrote a
-checked-in file would make `just fmt --check` depend on whether the suite had been run.
+From the repo root, `just setup` installs everything and `just dev` runs the plane in compose
+with this dev server beside it.
 
-Render components through `src/test/render.tsx` rather than testing-library directly — it
-supplies the providers the app mounts at its root, and a component that reaches for one
-through context (a tooltip, a query) throws without them.
+Tests are `*.test.ts` / `*.test.tsx` beside the code they cover. Render components through
+`src/test/render.tsx`, which supplies the providers the app mounts at its root.
+`vitest.config.ts` is separate from `vite.config.ts` because the router plugin in the latter
+rewrites `routeTree.gen.ts`, and a test run must not change a checked-in file.
 
-## Stack
+## Configuration
 
-| Layer | Technology |
-|---|---|
-| Framework | React 19 + TypeScript (strict) |
-| Build | Vite 7 + `@tanstack/router-plugin/vite` |
-| Routing | TanStack Router (file-based) |
-| Data fetching | TanStack Query |
-| Global state | Zustand (persisted) |
-| UI | shadcn/ui + Radix UI + Tabler Icons |
-| Styling | Tailwind CSS v4 (OKLch theme vars) |
-| Package manager | pnpm |
+Copy `.env.example` to `.env.local` for development. Every variable is optional.
 
-## Layout
+| Variable | Default | Meaning |
+|---|---|---|
+| `VITE_API_MODE` | `http` | `fixtures` runs against the in-browser offline plane instead (see below). |
+| `VITE_API_BASE_URL` | empty | Origin the browser calls for `/v1`. Empty means the console's own origin. |
+| `VITE_API_PROXY` | `http://localhost:8000` | Dev server only: where it forwards `/v1` and `/health`. Ignored when `VITE_API_BASE_URL` is set. |
+| `VITE_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
 
-```
-src/
-├── lib/
-│   ├── api/
-│   │   ├── transport.ts     # Transport interface + error types
-│   │   ├── http.ts          # real plane client
-│   │   ├── fixtures.ts      # in-memory fixture transport + registry
-│   │   └── index.ts         # THE SEAM — picks one, exposes `api`
-│   ├── query-client.ts
-│   ├── format.ts
-│   ├── with-page.tsx
-│   └── utils.ts
-├── modules/                 # business logic only — types, api, queries, fixtures
-│   ├── auth/                # stubbed identity + token seam
-│   ├── clusters/            # cluster registry, sync, components
-│   ├── supply/              # nodes, devices, topology domains, pools
-│   └── fixtures.ts          # barrel of fixture registrations
-├── components/
-│   ├── layout/              # sidebar, page header, status dots, error screen
-│   ├── supply/              # shared supply tables and status indicators
-│   └── ui/                  # shadcn/ui — never edit manually
-├── routes/                  # file-based routes (see below)
-└── routeTree.gen.ts         # AUTO-GENERATED — never edit
-```
+In development the dev server proxies `/v1` to the plane, so the browser makes no
+cross-origin requests and the plane's CORS allowlist does not need the dev origin.
 
-Business logic lives in `src/modules/`, never in `routes/`. Routes are thin entry points.
+### Container image
 
-## Routing
+The `Dockerfile` builds a static bundle served by nginx on port 8080. Nothing about the
+plane is baked in: `docker/40-hangar-config.sh` writes `config.js` at container start from
 
-**Only `route.tsx` is a route.** `page.tsx` and any `PascalCase.tsx` file sitting next to
-it are co-located components, ignored by the router via `routeFileIgnorePattern` in
-`vite.config.ts`. The layout files `__root.tsx` and `_app.tsx` are also routes.
+| Variable | Default | Meaning |
+|---|---|---|
+| `HANGAR_API_BASE_URL` | empty | Plane origin (plus optional path). Empty means same origin, behind one ingress. |
+| `HANGAR_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
 
-```
-routes/_app/clusters/
-├── route.tsx              ← /clusters
-├── page.tsx               ← the list page
-└── $clusterId/
-    ├── route.tsx          ← /clusters/:clusterId
-    ├── page.tsx
-    ├── SyncCard.tsx       ← co-located, not a route
-    ├── HealthCard.tsx
-    ├── NodesTable.tsx
-    ├── DevicesTable.tsx
-    └── ComponentsTable.tsx
-```
+so one image serves any plane. Runtime values win over the `VITE_*` build-time ones. The
+image also sets a Content-Security-Policy (whose `connect-src` allows the configured plane
+origin), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a
+`Referrer-Policy`.
 
-`src/routeTree.gen.ts` is generated by the Vite plugin on dev and build. Never hand-edit it.
+The plane image can serve this bundle itself on its own origin; then no configuration is
+needed.
 
-Wrap every page in `withPage(Page, "<routeId>")` so a route renders `<Outlet />` when a
-child route is active rather than always mounting the page.
+## Sign-in
 
-## Fixture mode
+`/login` has one form for two audiences. The account `admin` with the plane's admin password
+opens the console. Any other account name is a tenant slug with that tenant's token, and opens
+the tenant serving view at `/serving` instead.
 
-The console runs end-to-end with no backend. Everything goes through one interface:
+Human access is a single operator: the plane issues one admin session for one admin password
+and has no per-person users or roles. The session's access and refresh tokens are kept in
+session storage, so they survive a reload but not the tab. A 401 triggers one refresh through
+`POST /v1/auth/refresh`; if that fails, the console signs out and returns to `/login`.
+
+## Read-only mode
+
+A switch on the Settings page (and `VITE_READ_ONLY` / `HANGAR_READ_ONLY` for the default) makes the
+console refuse every write before it leaves the browser. It is a guard against accidents, not
+an access control: the plane enforces nothing different for it.
+
+## Fixtures mode
+
+`VITE_API_MODE=fixtures` swaps the HTTP transport for an in-memory plane in
+`src/modules/offline`, so the console runs with no backend. Sign-in accepts any admin
+password without calling anything; tenant sign-in needs a real plane. A **Fixtures** badge
+shows in the sidebar while it is on.
+
+The offline plane is loaded through a dynamic import inside the fixtures branch of
+`src/lib/api/index.ts`, so a normal build does not ship it. The seam is the `Transport`
+interface:
 
 ```ts
 interface Transport {
@@ -107,89 +94,61 @@ interface Transport {
 }
 ```
 
-`src/lib/api/index.ts` chooses the implementation — this is the entire seam:
+Fixtures register against path templates (`src/lib/api/fixtures.ts`) and answer with the
+plane's list envelope and error shapes. An unregistered path throws `NotFoundError`, so a
+screen built against an endpoint the offline plane does not know fails loudly.
 
-```ts
-export const transport: Transport =
-  import.meta.env.VITE_API_MODE === "http" ? httpTransport : fixtureTransport
+## Layout
+
+```
+src/
+├── lib/
+│   ├── api/             # transport seam: http.ts, fixtures.ts, index.ts (`api`)
+│   ├── config.ts        # runtime config (config.js) over build-time VITE_* values
+│   └── ...              # formatting, pagination, keyboard helpers
+├── modules/<domain>/    # types, API calls, queries, derivations; no JSX
+│   └── offline/         # the fixtures-mode plane
+├── components/
+│   ├── layout/          # shell, tables, page header, status, shared tiles and panels
+│   ├── <domain>/        # components shared by more than one route
+│   └── ui/              # shadcn/ui, generated; do not edit by hand
+├── routes/              # file-based routes (see below)
+└── routeTree.gen.ts     # generated by the router plugin; do not edit
 ```
 
-Default is fixtures. Set `VITE_API_MODE=http` (see `.env.example`) to point the whole
-console at a real plane; no module, hook, or component changes.
+Data access and business rules live in `src/modules/`. A route folder holds its page and the
+components only that page uses.
 
-Fixtures are registered per module against path templates and resolved by the fixture
-transport with a simulated ~220 ms latency, so loading and error states are real:
+## Routing
 
-```ts
-registerFixtures([
-  { method: "GET", path: "/clusters/:clusterId/nodes", handler: ({ params }) => ({ ... }) },
-])
-```
+Only `route.tsx` is a route. `page.tsx` and `PascalCase.tsx` files beside it are co-located
+components, ignored by the router through `routeFileIgnorePattern` in `vite.config.ts`.
+`__root.tsx` and `_app.tsx` are layout routes; `_app` guards everything under it on a signed-in
+admin session. Route components are code-split and load on first visit.
 
-Each module keeps its fixtures in `modules/<domain>/fixtures.ts` and adds one import line
-to `modules/fixtures.ts`. An unregistered path throws `NotFoundError`, so a screen built
-against an endpoint nobody has faked fails loudly instead of rendering empty.
+Wrap every page in `withPage(Page, "<routeId>")` so a route renders `<Outlet />` when a child
+route is active.
 
-A **Fixtures** badge shows in the sidebar whenever `transport.kind === "fixtures"`.
+## What is there
 
-## Auth
+Under `/_app`, for the admin session:
 
-Stubbed. `/login` issues a static token (`VITE_API_TOKEN`, or a dev default) into
-`modules/auth/store.ts`; `_app.tsx` guards every authenticated route on `isAuthenticated`.
+- **Overview**: fleet health, what needs attention, cluster reachability.
+- **Serving**: endpoints, workloads (create, edit, scale, pause, drain), deployments,
+  artifacts (with hardware fitment), discovered workloads awaiting adoption.
+- **Fleet**: clusters (including connecting a new one), nodes, devices, device classes,
+  pools, and the allocation board.
+- **Access**: tenants and their keys, projects, quotas, priority classes, policies.
+- **Activity**: alerts, workbench (benchmarks and evaluations), operations (node cordon and
+  drain; workload scale, pause and drain), events.
+- **Settings**: plane configuration as the plane reports it, and console preferences.
 
-The token lives behind `modules/auth/token.ts` (`getAuthToken` / `setAuthToken`) so the
-HTTP transport never imports the store. Real auth replaces the body of those two functions
-plus the store's `signIn`, and nothing else moves.
-
-## Implemented
-
-- **Clusters list** (`/clusters`) — phase, reachability, sync state, node and device
-  counts, allocation.
-- **Cluster detail** (`/clusters/:id`) — observed state: health and capacity meters, sync
-  connection status, and tabs for nodes, devices, topology domains, and installed
-  components.
-- **Nodes list** (`/nodes`) — cluster and condition filters; condition and cordon are
-  rendered as separate columns.
-- **Node detail** (`/nodes/:id`) — membership and host facts, the node's topology domains,
-  and its devices.
-- **Devices list** (`/devices`) — the schedulable unit as a first-class table: uuid, health,
-  ECC, throttle, memory, MIG profile, topology domain, and current allocation (replica,
-  deployment, project). Filterable by cluster, health, allocation, and topology domain, and
-  groupable by topology domain, with a summary of how many domains hold a free gang of 8.
-- **Device detail** (`/devices/:id`) — health, placement, and allocation.
-- **Pools list** (`/pools`) — one card per pool, declared spec and observed membership in
-  two side-by-side panels, flagged when membership falls outside declared bounds.
-- **Pool detail** (`/pools/:id`) — the same split, plus the observed member nodes.
-
-Every remaining noun from the object model (Artifacts, Recipes, Deployments, Endpoints,
-Projects, Quotas, Operations) has a registered route rendering a stub. They are deliberately
-unbuilt until the plane's API contract lands.
-
-## Conventions the fixtures encode
-
-- List envelope is `{ items, count, next_cursor }` on every collection endpoint.
-- Entity id prefixes: `clu_ nod_ dev_ tpd_ pol_ dep_ rep_ prj_`.
-- Cluster phase is `pending | active | draining | disabled`. Reachability is a separate
-  observed boolean, and the sync record is separate again.
-- Node condition is `ready | not_ready | unknown`. Cordon is its own observed boolean,
-  because draining is an Operation, not a status.
-- Timestamps are ISO 8601 UTC.
-
-Supply fixtures are generated from one dataset in `modules/supply/data.ts`, so cluster
-capacity counters, pool membership, node device counts, and topology domains are always
-consistent with the individual device rows. `modules/clusters/fixtures.ts` and
-`modules/supply/fixtures.ts` both read from it.
-
-## Fixture shapes are guesses
-
-Everything in `modules/clusters/types.ts` and `modules/supply/types.ts` was invented to
-unblock this track before the contract existed. It is a proposal to the contract, not a
-record of it. Reconcile it against `proto/` and the plane's schemas before building anything
-else on top.
+`/serving` is the tenant's own view: the models it is served and their metrics.
 
 ## Theming
 
-Press **`d`** to toggle dark/light. Colors are OKLch CSS variables in `src/index.css`.
+Press **`d`** to toggle dark and light. Colours are OKLch CSS variables in `src/index.css`;
+see `DESIGN.md` for the tokens and the contrast rules the tests enforce.
 
 ## Adding shadcn components
 
@@ -197,4 +156,4 @@ Press **`d`** to toggle dark/light. Colors are OKLch CSS variables in `src/index
 pnpm dlx shadcn@latest add <component-name>
 ```
 
-Lands in `src/components/ui/` — never edit those directly.
+They land in `src/components/ui/`.
