@@ -60,6 +60,17 @@
 //     otherwise be recorded as a cluster outage. Classify separates tunnel
 //     churn from a cluster that genuinely failed.
 //
+// # Revoking a cluster's access
+//
+// The token behind every open tunnel is re-verified with the plane every
+// ReverifyInterval, and a verified answer is cached for CacheTTL, so a token
+// the plane stops accepting loses its tunnels within about the sum of the two —
+// two minutes with the defaults. For a token known to be leaked, revoke or
+// rotate it in the plane first, so a redial is refused, and then call
+// Listener.Revoke on each gateway replica to close the cluster's tunnels at
+// once. A plane that cannot be reached never closes a tunnel; it only stops
+// new dials whose token is not cached, after CacheGrace.
+//
 // Reachability is measured here and nowhere else. Observed state has exactly
 // one writer — ingestion, fed by the operator's sync stream — and the gateway
 // must not become a second one.
