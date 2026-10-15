@@ -10,9 +10,10 @@ import (
 )
 
 // testdata/plane-schemas.json is every component schema in the plane's
-// OpenAPI document, reduced to field name and type. scripts/plane-schemas.py
-// regenerates it from libs/plane without a database; run it after changing a
-// plane schema and commit the result.
+// OpenAPI document, reduced to field name and type. It is a snapshot, and
+// this test checks the client against it, not against the plane: run
+// scripts/plane-schemas.py from libs/plane after changing a plane schema and
+// commit the result, or run it with --check to find a stale snapshot.
 //
 // wireTypes pairs each client type with the plane schema it mirrors. A read
 // type must have exactly the schema's fields, so a field the plane added fails

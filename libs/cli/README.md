@@ -21,8 +21,8 @@ scripts read `-o json`, and agents read a stable envelope.
 Enrolling clusters, publishing artifacts, and editing endpoints, projects, quotas and policies
 are done in the console for now. Not covered at all yet: `alerts`, `notification-channels`.
 
-The wire types are checked field by field against the plane's OpenAPI schemas (see
-[Development](#development)).
+The wire types are checked field by field against a committed snapshot of the plane's OpenAPI
+schemas, which has to be regenerated when a plane schema changes (see [Development](#development)).
 
 ---
 
@@ -297,7 +297,9 @@ noun means adding one file under `internal/cli/` and one method per verb on `api
 
 Everything is `/v1` on the plane's HTTP API, as specified in
 [`libs/packages/contract/API.md`](../../libs/packages/contract/API.md) and implemented by `libs/plane`. Where the client
-and the plane's schemas disagree, the plane is right and the schema test fails.
+and the plane disagree, the plane is right. The schema test catches a disagreement with the
+snapshot in `internal/api/testdata/plane-schemas.json`, so a plane change reaches it only once the
+snapshot is regenerated.
 
 - **Envelope** — `{items, count, next_cursor}` on every list; a detail response is the object
   itself, unwrapped.
@@ -336,13 +338,17 @@ Two things keep the client in step with the plane:
 - `internal/api/testdata/plane-schemas.json` is every component schema in the plane's OpenAPI
   document, reduced to field names and types. `TestWireTypesMatchThePlaneSchemas` checks each
   wire type against its schema: a read type must have exactly the schema's fields, and a request
-  type may not send a field the plane does not accept. Regenerate it after changing a plane
-  schema (no database needed) and commit the result:
+  type may not send a field the plane does not accept. The file is a snapshot: nothing
+  regenerates it on its own, so regenerate it after changing a plane schema (no database
+  needed) and commit the result:
 
   ```sh
-  cd libs/plane && APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
+  cd libs/plane && HANGAR_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
       > ../cli/internal/api/testdata/plane-schemas.json
   ```
+
+  `--check ../cli/internal/api/testdata/plane-schemas.json` instead exits non-zero and names the
+  schemas that differ, which is how a CI job can catch a stale snapshot.
 
 - The other files in `internal/api/testdata/` are example list responses, first captured from a
   running plane and since kept in step with the schemas. The decode tests read them with
