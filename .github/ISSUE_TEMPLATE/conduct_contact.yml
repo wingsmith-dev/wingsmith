@@ -1,0 +1,18 @@
+name: Code of Conduct contact request
+description: Ask a maintainer to contact you privately about a Code of Conduct concern. Put no details here.
+title: "Code of Conduct: private contact requested"
+labels: [conduct]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Do not describe the incident or name anyone here.
+        Submitting it is enough: a maintainer will contact you through GitHub to arrange a
+        private channel, and then close this issue. See CODE_OF_CONDUCT.md.
+  - type: input
+    id: contact
+    attributes:
+      label: How to reach you (optional)
+      description: Leave blank to be contacted by a mention on this issue. Do not post an email address or phone number here.
+    validations:
+      required: false

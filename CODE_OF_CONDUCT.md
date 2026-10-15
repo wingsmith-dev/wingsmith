@@ -61,8 +61,8 @@ representative at an online or offline event.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement, the maintainers
 of the [hangar-dev](https://github.com/hangar-dev) organization on GitHub. To
-report privately, open an issue titled "Code of Conduct: private contact
-requested" with no details, and a maintainer will reach out to you through
+report privately, open an issue with the "Code of Conduct contact request"
+form, which asks for no details, and a maintainer will reach out to you through
 GitHub to arrange a private channel. All complaints will be reviewed and
 investigated promptly and fairly.
 
