@@ -386,21 +386,21 @@ def test_a_malformed_trusted_proxy_stops_the_boot():
 
 @pytest.mark.database
 def test_unauthenticated_request_succeeds_when_admin_auth_is_disabled(plane_db):
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/clusters")
     assert response.status_code == 200
 
 
 def test_health_never_requires_auth(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/health")
     assert response.status_code == 200
 
 
 def test_no_token_is_401_when_admin_auth_is_enabled(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/clusters")
     assert response.status_code == 401
     body = response.json()
@@ -410,14 +410,14 @@ def test_no_token_is_401_when_admin_auth_is_enabled(monkeypatch):
 
 def test_malformed_authorization_header_is_401_when_admin_auth_is_enabled(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/clusters", headers={"Authorization": "not-a-bearer-header"})
     assert response.status_code == 401
 
 
 def test_wrong_token_is_401_when_admin_auth_is_enabled(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/clusters", headers={"Authorization": "Bearer nope"})
     assert response.status_code == 401
 
@@ -425,7 +425,7 @@ def test_wrong_token_is_401_when_admin_auth_is_enabled(monkeypatch):
 def test_the_gateway_token_is_403_on_an_admin_route(monkeypatch):
     monkeypatch.setattr(settings, "GATEWAY_SERVICE_TOKEN", "gw-token")
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/clusters", headers={"Authorization": "Bearer gw-token"})
     assert response.status_code == 403
     assert response.json()["code"] == "forbidden"
@@ -435,7 +435,7 @@ def test_an_enrolment_token_is_401_on_the_http_api(monkeypatch):
     """A cluster's credential opens its hub session; on the API it is no credential at all."""
     enable_admin_auth(monkeypatch)
     token, _ = AuthManager.mint_enrolment_token()
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/clusters/alpha/enrolment-token", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
 
@@ -443,7 +443,7 @@ def test_an_enrolment_token_is_401_on_the_http_api(monkeypatch):
 @pytest.mark.database
 def test_admin_login_succeeds_with_the_right_password(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/auth/login", json={"password": PASSWORD})
     assert response.status_code == 201 or response.status_code == 200
     body = response.json()
@@ -453,7 +453,7 @@ def test_admin_login_succeeds_with_the_right_password(plane_db, monkeypatch):
 
 def test_admin_login_fails_with_the_wrong_password(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/auth/login", json={"password": "not it"})
     assert response.status_code == 401
     assert response.json()["code"] == "not_authorized"
@@ -461,7 +461,7 @@ def test_admin_login_fails_with_the_wrong_password(monkeypatch):
 
 def test_repeated_wrong_passwords_are_throttled(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for _ in range(LOGIN_GUESSES.limit):
             assert client.post("/v1/auth/login", json={"password": "not it"}).status_code == 401
         response = client.post("/v1/auth/login", json={"password": "not it"})
@@ -476,7 +476,7 @@ def test_throttled_login_refuses_the_right_password_too(monkeypatch):
     anonymous caller can buy costs that caller a minute of lockout.
     """
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for _ in range(LOGIN_GUESSES.limit):
             client.post("/v1/auth/login", json={"password": "not it"})
         response = client.post("/v1/auth/login", json={"password": PASSWORD})
@@ -486,7 +486,7 @@ def test_throttled_login_refuses_the_right_password_too(monkeypatch):
 @pytest.mark.database
 def test_a_correct_login_does_not_spend_the_budget(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for _ in range(LOGIN_GUESSES.limit * 2):
             assert client.post("/v1/auth/login", json={"password": PASSWORD}).status_code in (200, 201)
     assert not LOGIN_GUESSES.spent("testclient|admin")
@@ -500,7 +500,7 @@ def _from(monkeypatch, header: str = "X-Test-Client") -> None:
 def test_one_caller_spending_the_admin_budget_does_not_lock_out_another(monkeypatch):
     enable_admin_auth(monkeypatch)
     _from(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         attacker = {"X-Test-Client": "203.0.113.7"}
         for _ in range(LOGIN_GUESSES.limit):
             client.post("/v1/auth/login", json={"password": "not it"}, headers=attacker)
@@ -514,7 +514,7 @@ def test_the_admin_ceiling_bounds_bcrypt_across_many_callers(monkeypatch):
     enable_admin_auth(monkeypatch)
     _from(monkeypatch)
     monkeypatch.setattr(LOGIN_CEILING, "limit", 3)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for n in range(3):
             client.post("/v1/auth/login", json={"password": "x"}, headers={"X-Test-Client": f"192.0.2.{n}"})
         response = client.post("/v1/auth/login", json={"password": "x"}, headers={"X-Test-Client": "192.0.2.99"})
@@ -526,7 +526,7 @@ def test_tenant_failures_never_spend_the_admin_budget(monkeypatch):
     enable_admin_auth(monkeypatch)
     monkeypatch.setattr(TENANT_GUESSES, "limit", 1)
     TENANT_GUESSES.fail("testclient|globex")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         tenant = client.post("/v1/auth/login", json={"slug": "globex", "password": "hgrt1.nope"})
         admin = client.post("/v1/auth/login", json={"password": "not it"})
     assert tenant.status_code == 429
@@ -538,7 +538,7 @@ def test_the_schema_is_served_outside_local_with_the_package_version(monkeypatch
 
     monkeypatch.setattr(settings, "APP_ENV", "production")
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/schema/openapi.json")
     assert response.status_code == 200
     document = response.json()
@@ -549,7 +549,7 @@ def test_the_schema_is_served_outside_local_with_the_package_version(monkeypatch
 @pytest.mark.database
 def test_session_token_from_login_is_accepted_on_a_protected_route(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         login = client.post("/v1/auth/login", json={"password": PASSWORD})
         token = login.json()["access_token"]
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {token}"})
@@ -558,7 +558,7 @@ def test_session_token_from_login_is_accepted_on_a_protected_route(plane_db, mon
 
 def test_expired_session_token_is_401_on_a_protected_route(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         token = AuthManager.issue_session_token("admin", session_id=SESSION, ttl_seconds=-1)
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
@@ -573,7 +573,7 @@ def test_a_session_that_has_ended_is_401_on_the_next_request(monkeypatch):
 
     monkeypatch.setattr("app.core.context.session_is_live", ended)
     token = AuthManager.issue_session_token("admin", session_id=SESSION)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
 
@@ -588,7 +588,7 @@ def test_a_live_session_reaches_the_route(monkeypatch):
 
     monkeypatch.setattr("app.core.context.session_is_live", live)
     token = AuthManager.issue_session_token("admin", session_id=SESSION)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert seen == [SESSION]
@@ -610,7 +610,7 @@ def bearer(token: str) -> dict[str, str]:
 @pytest.mark.database
 def test_refresh_rotates_the_pair_and_keeps_the_session(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         first = login(client)
         rotated = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
         assert rotated.status_code in (200, 201)
@@ -625,7 +625,7 @@ def test_reusing_a_rotated_refresh_token_ends_the_whole_session(plane_db, monkey
     """Two parties hold the session when a rotated token comes back, so neither keeps it."""
     enable_admin_auth(monkeypatch)
     monkeypatch.setattr(auth_service, "REFRESH_RACE_GRACE_SECONDS", 0.0)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         first = login(client)
         second = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}).json()
         replay = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
@@ -637,7 +637,7 @@ def test_reusing_a_rotated_refresh_token_ends_the_whole_session(plane_db, monkey
 @pytest.mark.database
 def test_logout_ends_the_session_and_its_access_tokens(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         pair = login(client)
         assert client.get("/v1/system/config", headers=bearer(pair["access_token"])).status_code == 200
         assert client.post("/v1/auth/logout", json={"refresh_token": pair["refresh_token"]}).status_code == 204
@@ -649,7 +649,7 @@ def test_logout_ends_the_session_and_its_access_tokens(plane_db, monkeypatch):
 @pytest.mark.database
 def test_a_password_change_refuses_the_old_sessions_refresh(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         pair = login(client)
         monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("rotated"))
         assert client.post("/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]}).status_code == 401
@@ -660,7 +660,7 @@ def test_a_password_change_refuses_the_old_sessions_refresh(plane_db, monkeypatc
 def test_rotation_never_extends_the_session(plane_db, monkeypatch):
     """`REFRESH_TTL_SECONDS` is an absolute lifetime: every rotated row keeps the first row's expiry."""
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         token = login(client)["refresh_token"]
         for _ in range(3):
             token = client.post("/v1/auth/refresh", json={"refresh_token": token}).json()["refresh_token"]
@@ -751,7 +751,7 @@ async def test_a_refresh_token_in_the_old_format_is_refused(sessions, monkeypatc
 
 def test_cors_allowed_origins_are_configurable(monkeypatch):
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.options(
             "/v1/clusters",
             headers={
@@ -766,7 +766,7 @@ def test_a_cors_preflight_needs_no_credential_with_admin_auth_enabled(monkeypatc
     """A browser sends no Authorization on a preflight; refusing it would break the console."""
     enable_admin_auth(monkeypatch)
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.options(
             "/v1/clusters",
             headers={
@@ -781,7 +781,7 @@ def test_a_cors_preflight_needs_no_credential_with_admin_auth_enabled(monkeypatc
 
 def test_cors_rejects_an_unconfigured_origin(monkeypatch):
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.options(
             "/v1/clusters",
             headers={
@@ -797,14 +797,14 @@ def test_cors_rejects_an_unconfigured_origin(monkeypatch):
 
 def test_a_write_from_a_foreign_origin_is_refused(monkeypatch):
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/projects", json={"name": "x"}, headers={"Origin": "https://evil.example.com"})
     assert response.status_code == 403
     assert response.json()["detail"] == {"origin": "https://evil.example.com"}
 
 
 def test_a_null_origin_is_refused():
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/auth/login", json={"password": "x"}, headers={"Origin": "null"})
     assert response.status_code == 403
 
@@ -812,7 +812,7 @@ def test_a_null_origin_is_refused():
 def test_a_write_from_an_allowed_or_the_serving_origin_passes_the_check(monkeypatch):
     enable_admin_auth(monkeypatch)
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for origin in ("https://console.example.com", f"http://{client.base_url.netloc.decode()}"):
             response = client.post("/v1/auth/login", json={"password": "not it"}, headers={"Origin": origin})
             assert response.status_code == 401, origin
@@ -820,15 +820,44 @@ def test_a_write_from_an_allowed_or_the_serving_origin_passes_the_check(monkeypa
 
 def test_a_write_with_a_non_json_body_is_415():
     """A cross-site form can post `text/plain` without a preflight; nothing here reads it."""
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/auth/login", content=b'{"password": "x"}', headers={"Content-Type": "text/plain"})
     assert response.status_code == 415
     assert response.json()["code"] == "unsupported_media_type"
 
 
+def test_a_rebound_host_is_refused_while_admin_auth_is_off():
+    """DNS rebinding: the attacker's page names itself in `Origin` and `Host` alike."""
+    with TestClient(app=create_app(), base_url="http://evil.test:8000") as client:
+        write = client.post("/v1/projects", json={"name": "x"}, headers={"Origin": "http://evil.test:8000"})
+        read = client.get("/v1/clusters")
+    assert write.status_code == 403
+    assert write.json()["detail"] == {"host": "evil.test:8000"}
+    assert read.status_code == 403
+
+
+def test_the_hosts_the_plane_is_known_by_pass_while_admin_auth_is_off(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "hangar.example.com")
+    hosts = ["localhost:8000", "127.0.0.1", "[::1]:8000", "console.example.com", "HANGAR.example.com:443"]
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
+        for host in hosts:
+            response = client.get("/health", headers={"Host": host})
+            assert response.status_code == 200, host
+        assert client.get("/health", headers={"Host": "localhost.evil.test"}).status_code == 403
+
+
+def test_an_unknown_host_is_not_refused_while_admin_auth_is_on(monkeypatch):
+    """A rebound page has no credential to borrow then, and a deployment need not list its names."""
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app(), base_url="http://hangar.internal:8000") as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/v1/clusters").status_code == 401
+
+
 def test_a_bodiless_write_needs_no_content_type(monkeypatch):
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.post("/v1/clusters/alpha/enrolment-token")
     assert response.status_code == 401
 

@@ -21,7 +21,10 @@ Before any of that, a state-changing request from a browser must come from an
 origin the plane serves or lists in `ALLOWED_ORIGINS`, and any body must be JSON
 (`refuse_cross_site`). That is the CSRF defence, and it matters most under
 `ADMIN_AUTH=disabled` in `local`, where the browser's ambient access to
-`localhost` is the only credential there is.
+`localhost` is the only credential there is. In that mode every request must
+also name a host the plane is known by (`refuse_unknown_host`), because a page
+that rebinds its own name to `127.0.0.1` is, to the browser, same-origin with
+the plane: it chooses `Origin` and `Host` alike.
 """
 
 from urllib.parse import urlsplit
@@ -94,6 +97,8 @@ cluster identity; a human credential that can do that can sweep for tokens."""
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 
 class UnsupportedMediaType(PlaneError):
     """A state-changing request whose body is not JSON. Every body this API reads
@@ -133,6 +138,46 @@ def authorize(principal: Principal, method: str, route: str) -> None:
     raise Forbidden("this credential does not reach the HTTP API")
 
 
+def _hostname(netloc: str) -> str:
+    """The host name in a `Host` header or an origin's netloc, port and brackets removed."""
+    try:
+        return (urlsplit(f"//{netloc}").hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def known_hosts() -> frozenset[str]:
+    """The names the plane answers to while admin auth is off: loopback, the
+    hosts in `ALLOWED_ORIGINS`, and `PUBLIC_HOST`."""
+    names = set(LOOPBACK_HOSTS)
+    for origin in settings.ALLOWED_ORIGINS.split(","):
+        names.add(_hostname(urlsplit(origin.strip()).netloc))
+    names.add(_hostname(settings.PUBLIC_HOST.strip()))
+    names.discard("")
+    return frozenset(names)
+
+
+def refuse_unknown_host(connection: ASGIConnection) -> None:
+    """Refuses, while admin auth is off, a request addressed to a name the plane is
+    not known by. That is DNS rebinding: a page on `evil.example` re-resolves its
+    own name to `127.0.0.1`, and the browser then sends it the plane's responses
+    and lets it write, because to the browser it is one origin. Its `Host` still
+    says `evil.example`, and nothing else in the request can tell.
+
+    With admin auth on there is no ambient credential for such a page to borrow,
+    so the check is skipped and a deployment need not list every name it serves on.
+    """
+    if AuthManager.admin_auth_enabled():
+        return
+    host = connection.headers.get("Host", "")
+    if _hostname(host) not in known_hosts():
+        raise Forbidden(
+            "unknown host; with admin auth off the plane answers only to loopback, "
+            "PUBLIC_HOST and the hosts in ALLOWED_ORIGINS",
+            {"host": host},
+        )
+
+
 def _origin_allowed(origin: str, host: str) -> bool:
     if origin in {o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()}:
         return True
@@ -163,8 +208,8 @@ def refuse_cross_site(connection: ASGIConnection) -> None:
 
 
 async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
-    """App-wide guard: refuses cross-site writes, then resolves and authorizes the
-    caller of every non-public route.
+    """App-wide guard: refuses rebound hosts and cross-site writes, then resolves
+    and authorizes the caller of every non-public route.
 
     A session token is also checked against its session, one indexed read, so a
     logout, a revoked tenant token or a disabled tenant takes effect on the next
@@ -174,6 +219,7 @@ async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
     The principal is left on `connection.state` for `request_context` to hand to
     the handler, so it is resolved once per request.
     """
+    refuse_unknown_host(connection)
     refuse_cross_site(connection)
     route = route_of(connection)
     if is_public(route):

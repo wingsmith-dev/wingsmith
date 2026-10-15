@@ -138,7 +138,7 @@ def test_plane_errors_render_as_the_contract_envelope():
 
 
 def test_unknown_query_parameter_is_rejected_with_the_contract_envelope():
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/nodes", params={"status": "ready"})
 
     assert response.status_code == 400
@@ -149,14 +149,14 @@ def test_unknown_query_parameter_is_rejected_with_the_contract_envelope():
 
 
 def test_known_query_parameter_passes_the_gate():
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/nodes", params={"cordoned": "true"})
 
     assert response.json().get("code") != "unknown_parameter"
 
 
 def test_repeated_label_is_accepted():
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/nodes?label=tier%3Dgold&label=zone%3Da")
 
     assert response.json().get("code") != "unknown_parameter"
@@ -164,7 +164,7 @@ def test_repeated_label_is_accepted():
 
 def test_a_filter_valid_on_one_collection_is_rejected_on_another():
     """`severity` is an events filter; nodes does not declare it."""
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         assert client.get("/v1/events", params={"severity": "warning"}).json().get("code") != "unknown_parameter"
         rejected = client.get("/v1/nodes", params={"severity": "warning"})
 
@@ -218,7 +218,7 @@ def test_the_single_page_allowlist_names_only_routes_that_exist():
 
 def test_aliased_parameter_is_accepted_under_its_wire_name():
     """`/v1/devices` declares `device_class` as `Parameter(query="class")`."""
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         accepted = client.get("/v1/devices", params={"class": "h100"})
         rejected = client.get("/v1/devices", params={"device_class": "h100"})
 
@@ -228,7 +228,7 @@ def test_aliased_parameter_is_accepted_under_its_wire_name():
 
 
 def test_health_is_unaffected():
-    with TestClient(app=create_app()) as client:
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/health")
 
     assert response.status_code == 200
