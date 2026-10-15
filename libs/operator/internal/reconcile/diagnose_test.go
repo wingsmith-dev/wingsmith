@@ -272,3 +272,76 @@ func TestARunningPodPastTheWindowIsStillLoading(t *testing.T) {
 		t.Errorf("phase = %q, want %q", out.phase(), phasePlaced)
 	}
 }
+
+// One replica loading must not hide another that never left Pending. The stall used to be
+// cleared by any Running pod, so a second replica stuck with no reason was never reported.
+func TestAStuckPodBesideALoadingOneIsStillReported(t *testing.T) {
+	const graph = "chat-iad"
+	r := diagnoser(t, graphObject(graph, stallAfter+time.Hour))
+	old := metav1.NewTime(time.Now().Add(-stallAfter - time.Hour))
+	loading := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-a", Namespace: testRender.Namespace, CreationTimestamp: old},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	stuck := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-b", Namespace: testRender.Namespace, CreationTimestamp: old},
+		Status:     corev1.PodStatus{Phase: corev1.PodPending},
+	}
+
+	out := rollout{desired: 2}
+	out.trouble = r.diagnose(context.Background(), graph, []corev1.Pod{loading, stuck}, out)
+
+	if out.trouble == nil || out.trouble.reason != "NoReplicasStarted" {
+		t.Fatalf("trouble = %+v, want NoReplicasStarted", out.trouble)
+	}
+	if !strings.Contains(out.trouble.message, "chat-iad-b has been Pending") {
+		t.Errorf("the message should name the stuck pod: %s", out.trouble.message)
+	}
+}
+
+// A pod recreated recently has only been stuck since then, whatever the graph's age.
+func TestARecentlyRecreatedPendingPodIsNotYetStalled(t *testing.T) {
+	const graph = "chat-iad"
+	r := diagnoser(t, graphObject(graph, stallAfter+time.Hour))
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "chat-iad-b", Namespace: testRender.Namespace,
+			CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Minute)),
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	out := rollout{desired: 1}
+	if found := r.diagnose(context.Background(), graph, []corev1.Pod{pod}, out); found != nil {
+		t.Fatalf("a pod one minute old was called stalled: %+v", found)
+	}
+}
+
+// An OOM kill leaves no output to quote. The exit is the only trace, and it has to reach the
+// message or the crash loop reads the same as any other.
+func TestACrashLoopSaysHowTheContainerLastExited(t *testing.T) {
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-abc", Namespace: testRender.Namespace},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "main",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CrashLoopBackOff",
+					Message: "back-off 40s restarting failed container=main",
+				}},
+				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					Reason:   "OOMKilled",
+					ExitCode: 137,
+				}},
+			}},
+		},
+	}
+	found := troubleFromPods([]corev1.Pod{pod})
+	if found == nil || found.reason != "CrashLooping" {
+		t.Fatalf("trouble = %+v, want CrashLooping", found)
+	}
+	for _, want := range []string{"OOMKilled", "code 137", "memory limit"} {
+		if !strings.Contains(found.message, want) {
+			t.Errorf("message = %q, want it to mention %q", found.message, want)
+		}
+	}
+}
