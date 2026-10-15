@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
@@ -12,12 +14,12 @@ import (
 
 // tunnelAuthPath resolves an enrolment token to the cluster that holds it.
 //
-// The plane serves it for the gateway's operator principal only, which is the
-// same credential the routing table is read with: body {"token": "<enrolment
-// token>"}, answering 200 {"cluster_id", "cluster_name"} for a token matching a
-// cluster's token_hash, 401 for one that does not or for a cluster that is
-// disabled, and 429 while its failed-guess budget is spent. The token travels in
-// the body because Authorization already carries the caller's own credential.
+// The plane serves it to the gateway's service principal, the same credential
+// the routing table is read with: body {"token": "<enrolment token>"},
+// answering 200 {"cluster_id", "cluster_name"} for a token matching a cluster's
+// token_hash, 401 for one that does not or for a cluster that is disabled, and
+// 429 while its failed-guess budget is spent. The token travels in the body
+// because Authorization already carries the gateway's own credential.
 const tunnelAuthPath = "/v1/clusters/tunnel-auth"
 
 type tunnelAuthRequest struct {
@@ -36,12 +38,21 @@ type tunnelAuthResponse struct {
 // existing tunnels keep serving and only new dials fail, and even those survive
 // while the listener's cache still holds the answer.
 //
-// Only a 401 or a 403 is a rejection. A 404 deliberately is not: a plane that
-// predates the route answers 404 for the path, and reading that as "this
-// cluster's token is wrong" would send everyone looking at Secrets during what is
-// really a version skew. Nor is the 429 the plane answers while its failed-guess
-// budget is spent — that is a wait, not a refusal. Both are reported as
-// unavailable, which is recoverable, rather than as a refusal, which is not.
+// Only a 401 about the enrolment token is a rejection. The plane answers 401
+// for a bad gateway credential as well, so a 401 is followed by a check of the
+// gateway's own credential, and only when that check passes is the 401 the
+// agent's. A 403 is never the agent's: the plane uses it for a principal that
+// may not call the route at all. Either credential fault is reported as
+// ErrCredential, which the listener treats as the plane being unavailable, so
+// it keeps the tokens it has already verified instead of forgetting them over
+// a gateway misconfiguration.
+//
+// A 404 is not a rejection either: a plane that predates the route answers 404
+// for the path, and reading that as "this cluster's token is wrong" would send
+// everyone looking at Secrets during what is really a version skew. Nor is the
+// 429 the plane answers while its failed-guess budget is spent, which is a wait
+// and not a refusal. Both are reported as unavailable.
+//
 // Both names are carried back, not just the uid. The plane answers with both
 // because they are addressable interchangeably, and the agent's claim is checked
 // against either: a cluster's own configuration holds the name, so returning the
@@ -66,8 +77,18 @@ func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Id
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+	case resp.StatusCode == http.StatusForbidden:
+		return tunnel.Identity{}, credentialFault(fmt.Errorf("plane tunnel-auth: %w (status 403)", ErrCredential))
+	case resp.StatusCode == http.StatusUnauthorized:
+		if err := c.CheckCredential(ctx); err != nil {
+			if errors.Is(err, ErrCredential) {
+				return tunnel.Identity{}, credentialFault(err)
+			}
+			return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: refused, and the gateway credential could not be checked: %w", err)
+		}
 		return tunnel.Identity{}, fmt.Errorf("%w: the plane refused it", tunnel.ErrRejected)
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: throttled, retry shortly")
 	default:
 		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: unexpected status %d", resp.StatusCode)
 	}
@@ -80,4 +101,11 @@ func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Id
 		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: no cluster in the answer")
 	}
 	return tunnel.Identity{ClusterID: decoded.ClusterID, ClusterName: decoded.ClusterName}, nil
+}
+
+// credentialFault logs a refused service credential where an operator will see
+// it: every dial in the meantime fails for a reason no agent can fix.
+func credentialFault(err error) error {
+	slog.Error("gateway: the plane refused HANGAR_GATEWAY_SERVICE_TOKEN; new tunnels cannot be verified until the gateway's service credential is fixed", "err", err)
+	return err
 }

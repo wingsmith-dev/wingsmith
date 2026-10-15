@@ -10,9 +10,11 @@ package plane
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -195,14 +197,31 @@ type TenantTable struct {
 // other means every model just went away.
 var ErrNotModified = fmt.Errorf("routing table not modified")
 
-// Client reads the routing table from one plane.
+// ErrCredential reports that the plane refused the gateway's own service
+// credential (HANGAR_GATEWAY_SERVICE_TOKEN) with a 401 or a 403.
+//
+// It is a configuration fault on this side and never a verdict about anything
+// the gateway was asking about: a tunnel-auth answer carrying it says nothing
+// about the agent's enrolment token.
+var ErrCredential = errors.New("the plane refused the gateway service credential")
+
+// Client reads the routing table from one plane, as the gateway's service
+// principal. The plane accepts that principal on three routes only:
+// GET /v1/endpoints/resolved, GET /v1/gateway/tenants and
+// POST /v1/clusters/tunnel-auth.
 type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+
+	// tenantsRevision is the last tenant-table revision the plane sent, so a
+	// credential check can be a conditional read that costs a 304.
+	mu              sync.Mutex
+	tenantsRevision string
 }
 
-// New builds a client against the plane's base URL.
+// New builds a client against the plane's base URL, authenticating with the
+// gateway's service token.
 func New(baseURL, token string, timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
@@ -233,6 +252,9 @@ func (c *Client) Resolved(ctx context.Context, revision string) (Table, error) {
 
 	if resp.StatusCode == http.StatusNotModified {
 		return Table{}, ErrNotModified
+	}
+	if credentialRefused(resp.StatusCode) {
+		return Table{}, fmt.Errorf("plane resolved: %w (status %d)", ErrCredential, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return Table{}, fmt.Errorf("plane resolved: unexpected status %d", resp.StatusCode)
@@ -267,6 +289,9 @@ func (c *Client) TenantsResolved(ctx context.Context, revision string) (TenantTa
 	if resp.StatusCode == http.StatusNotModified {
 		return TenantTable{}, ErrNotModified
 	}
+	if credentialRefused(resp.StatusCode) {
+		return TenantTable{}, fmt.Errorf("plane gateway tenants: %w (status %d)", ErrCredential, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return TenantTable{}, fmt.Errorf("plane gateway tenants: unexpected status %d", resp.StatusCode)
 	}
@@ -275,5 +300,27 @@ func (c *Client) TenantsResolved(ctx context.Context, revision string) (TenantTa
 	if err := json.NewDecoder(resp.Body).Decode(&table); err != nil {
 		return TenantTable{}, fmt.Errorf("plane gateway tenants: decode: %w", err)
 	}
+	c.mu.Lock()
+	c.tenantsRevision = table.Revision
+	c.mu.Unlock()
 	return table, nil
+}
+
+// CheckCredential asks the plane whether it still accepts this client's service
+// credential, as a conditional read of the tenant feed so the usual answer is a
+// bodiless 304. Nil means accepted; ErrCredential means refused; any other error
+// means the plane could not answer.
+func (c *Client) CheckCredential(ctx context.Context) error {
+	c.mu.Lock()
+	revision := c.tenantsRevision
+	c.mu.Unlock()
+	_, err := c.TenantsResolved(ctx, revision)
+	if err == nil || errors.Is(err, ErrNotModified) {
+		return nil
+	}
+	return err
+}
+
+func credentialRefused(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
 }

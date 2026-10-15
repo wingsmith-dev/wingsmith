@@ -118,7 +118,10 @@ func main() {
 	if names := os.Getenv("HANGAR_GATEWAY_REDACT_NAMES"); names != "" {
 		serving.RedactNames(strings.Split(names, ","))
 	}
-	planeToken := os.Getenv("HANGAR_OPERATOR_TOKEN")
+	// The gateway's own service principal. The plane accepts it on the three
+	// routes this process reads and nowhere else, so it carries no admin or
+	// operator rights on the plane API.
+	planeToken := os.Getenv("HANGAR_GATEWAY_SERVICE_TOKEN")
 	// HANGAR_GATEWAY_PUBLIC_LISTEN is deliberately read only from the
 	// environment, never a flag — the reason is the same one metricsAddr and
 	// tunnelAddr are read from both: a manifest naming a flag this binary
@@ -129,7 +132,10 @@ func main() {
 	publicAddr := os.Getenv("HANGAR_GATEWAY_PUBLIC_LISTEN")
 
 	if *planeURL == "" || planeToken == "" {
-		slog.Error("gateway: -plane-url and HANGAR_OPERATOR_TOKEN are both required")
+		if planeToken == "" && os.Getenv("HANGAR_OPERATOR_TOKEN") != "" {
+			slog.Error("gateway: HANGAR_OPERATOR_TOKEN is no longer read; set HANGAR_GATEWAY_SERVICE_TOKEN to the gateway's service token")
+		}
+		slog.Error("gateway: -plane-url and HANGAR_GATEWAY_SERVICE_TOKEN are both required")
 		os.Exit(1)
 	}
 

@@ -66,7 +66,7 @@ caller's config and pasted into another's.
 |---|---|
 | `-listen` | listen address, default `:8080` |
 | `-plane-url` / `HANGAR_PLANE_URL` | the plane's base URL |
-| `HANGAR_OPERATOR_TOKEN` | how it reads the plane |
+| `HANGAR_GATEWAY_SERVICE_TOKEN` | the gateway's service credential for the plane, required. The plane accepts it on `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` and `POST /v1/clusters/tunnel-auth` only. A 401 or 403 on it is logged as a gateway configuration error and never read as a verdict on an agent's enrolment token |
 | `-resync` | how often to re-read the routing table and the tenant table, default 30s |
 | `HANGAR_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off — env only, never a flag, for the reason below |
 | `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
