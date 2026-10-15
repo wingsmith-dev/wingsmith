@@ -89,13 +89,15 @@ func TestBottleneckSaysWhenNoLimitWasReached(t *testing.T) {
 
 func TestReportRendersAsTextAndJSON(t *testing.T) {
 	report := &Report{Mode: "synthetic", Stages: []Stage{stage(4, 10, 10, time.Millisecond)}}
-	report.Stages[0].Tunnels = 2
+	held := 2
+	report.Stages[0].Tunnels = &held
+	report.Stages[0].ConfiguredTunnels = 2
 	report.Stages[0].UpstreamPeak = 4
 	report.Verdict(DefaultSLO())
 
 	var text bytes.Buffer
 	report.WriteText(&text)
-	if !strings.Contains(text.String(), "capacity:   4 concurrent") {
+	if !strings.Contains(text.String(), "capacity:   4 concurrent") || !strings.Contains(text.String(), "held 2 tunnels of 2 configured") {
 		t.Fatalf("text report:\n%s", text.String())
 	}
 
@@ -159,5 +161,15 @@ func TestAStageWhereEveryRequestWasCutOffDidNotHoldTheObjective(t *testing.T) {
 	}
 	if !strings.Contains(report.Bottleneck, "3 requests were still running") {
 		t.Fatalf("bottleneck = %q", report.Bottleneck)
+	}
+}
+
+func TestBottleneckIgnoresALegThatWasNotMeasured(t *testing.T) {
+	failed := stage(64, 100, 90, 3*time.Second)
+	failed.Sample.ReturnP99 = time.Millisecond
+	report := &Report{Stages: []Stage{failed}}
+	report.Verdict(DefaultSLO())
+	if strings.Contains(report.Bottleneck, "leg") {
+		t.Fatalf("bottleneck %q compares against a leg that was never stamped", report.Bottleneck)
 	}
 }

@@ -30,6 +30,10 @@ import (
 // where both ends share a clock, which is one host, which is exactly the
 // synthetic mode they exist for. Against a real frontend they are absent and
 // the report says so rather than guessing.
+//
+// The gateway forwards only an allowlist of response headers, so the header
+// does not survive the path; the same stamp also rides in the body, as
+// transit_received_ns on every chunk and on a non-streaming answer.
 const HeaderReceived = "X-Transit-Received-Ns"
 
 // Profile is the shape of one generated answer.
@@ -167,8 +171,8 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 			s.aborted.Add(1)
 			return
 		}
-		_, _ = fmt.Fprintf(w, `{"id":"transit","object":"chat.completion","model":%q,"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":16,"completion_tokens":%d,"total_tokens":%d}}`,
-			body.Model, content(profile.Tokens*profile.TokenBytes), profile.Tokens, profile.Tokens+16)
+		_, _ = fmt.Fprintf(w, `{"id":"transit","object":"chat.completion","model":%q,"transit_received_ns":%d,"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":16,"completion_tokens":%d,"total_tokens":%d}}`,
+			body.Model, received.UnixNano(), content(profile.Tokens*profile.TokenBytes), profile.Tokens, profile.Tokens+16)
 		s.served.Add(1)
 		return
 	}
@@ -185,7 +189,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 			s.aborted.Add(1)
 			return
 		}
-		if _, err := fmt.Fprintf(w, "data: {\"id\":\"transit\",\"object\":\"chat.completion.chunk\",\"model\":%q,\"transit_write_ns\":%d,\"choices\":[{\"index\":0,\"delta\":{\"content\":%q}}]}\n\n", body.Model, time.Now().UnixNano(), token); err != nil {
+		if _, err := fmt.Fprintf(w, "data: {\"id\":\"transit\",\"object\":\"chat.completion.chunk\",\"model\":%q,\"transit_received_ns\":%d,\"transit_write_ns\":%d,\"choices\":[{\"index\":0,\"delta\":{\"content\":%q}}]}\n\n", body.Model, received.UnixNano(), time.Now().UnixNano(), token); err != nil {
 			s.aborted.Add(1)
 			return
 		}

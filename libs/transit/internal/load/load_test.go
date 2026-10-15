@@ -2,7 +2,10 @@ package load
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	neturl "net/url"
 	"strings"
 	"testing"
 	"time"
@@ -203,3 +206,28 @@ func TestFaultBuckets(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// The gateway forwards only an allowlist of response headers, so the inbound
+// leg has to be readable from the body alone.
+func TestTheInboundLegSurvivesAProxyThatDropsTheHeader(t *testing.T) {
+	front := httptest.NewServer(upstream.New(upstream.Profile{TTFT: 5 * time.Millisecond, ITL: time.Millisecond, Tokens: 3}).Handler())
+	defer front.Close()
+	target, _ := neturl.Parse(front.URL)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del(upstream.HeaderReceived)
+		return nil
+	}
+	srv := httptest.NewServer(proxy)
+	defer srv.Close()
+
+	for _, stream := range []bool{true, false} {
+		out := one(context.Background(), NewClient(1), Request{URL: srv.URL + "/v1/chat/completions", Model: "m", Stream: stream})
+		if out.Fault != "" {
+			t.Fatalf("stream=%v: %+v", stream, out)
+		}
+		if out.Inbound <= 0 || out.Inbound > out.TTFT {
+			t.Fatalf("stream=%v: inbound %s ttft %s, want 0 < inbound <= ttft", stream, out.Inbound, out.TTFT)
+		}
+	}
+}

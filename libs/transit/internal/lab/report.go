@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -60,10 +61,16 @@ type Stage struct {
 	// the path passed everything through, lower means something between the
 	// caller and the frontend was holding them.
 	UpstreamPeak int64 `json:"upstream_peak_in_flight"`
-	// Tunnels is how many tunnels the gateway held, and Reconnects how many
-	// token verifications the fake plane answered — a verification count that
-	// climbs during a stage is a reconnect storm.
-	Tunnels      int  `json:"tunnels,omitempty"`
+	// Tunnels is how many tunnels the gateway reported holding at the end of
+	// the stage, read from its own hangar_gateway_tunnels gauge; nil when it
+	// could not be read, which is every live run. ConfiguredTunnels is how many
+	// the agents were asked to open; a gap between the two is tunnels that
+	// never came up or were lost.
+	Tunnels           *int `json:"tunnels,omitempty"`
+	ConfiguredTunnels int  `json:"configured_tunnels,omitempty"`
+	// Verified is how many token verifications the fake plane had answered by
+	// the end of the stage. A count that climbs during a stage is a reconnect
+	// storm.
 	Verified     int  `json:"plane_verifications,omitempty"`
 	MetObjective bool `json:"met_objective"`
 }
@@ -135,11 +142,15 @@ func bottleneck(failed, carried *Stage) string {
 			"the frontend never saw more than %d of %d offered, so requests were held before it (stream limits or flow control)",
 			stage.UpstreamPeak, stage.Sample.Concurrency))
 	}
-	if stage.Sample.InboundP99 > 0 && stage.Sample.InboundP99 > stage.Sample.ReturnP99*2 {
-		reasons = append(reasons, "the inbound leg grew faster than the return leg, so the cost is on the way in")
-	}
-	if stage.Sample.ReturnP99 > 0 && stage.Sample.ReturnP99 > stage.Sample.InboundP99*2 {
-		reasons = append(reasons, "the return leg grew faster than the inbound leg, so the cost is on the way back")
+	// Only when both legs were measured: a leg that was not stamped reads as
+	// zero, and anything is more than twice zero.
+	if in, back := stage.Sample.InboundP99, stage.Sample.ReturnP99; in > 0 && back > 0 {
+		if in > back*2 {
+			reasons = append(reasons, "the inbound leg grew faster than the return leg, so the cost is on the way in")
+		}
+		if back > in*2 {
+			reasons = append(reasons, "the return leg grew faster than the inbound leg, so the cost is on the way back")
+		}
 	}
 	for fault, count := range stage.Sample.Faults {
 		reasons = append(reasons, fmt.Sprintf("%d requests ended as %s", count, fault))
@@ -203,8 +214,12 @@ func (r *Report) WriteText(w io.Writer) {
 			fmt.Fprintf(w, "      cost:   %s\n", usageLine(stage.Usage))
 		}
 		if stage.UpstreamPeak > 0 {
-			fmt.Fprintf(w, "      path:   frontend saw %d in flight at peak, gateway held %d tunnels\n",
-				stage.UpstreamPeak, stage.Tunnels)
+			held := "an unknown number of"
+			if stage.Tunnels != nil {
+				held = strconv.Itoa(*stage.Tunnels)
+			}
+			fmt.Fprintf(w, "      path:   frontend saw %d in flight at peak, gateway held %s tunnels of %d configured\n",
+				stage.UpstreamPeak, held, stage.ConfiguredTunnels)
 		}
 	}
 
@@ -267,16 +282,28 @@ func round(d time.Duration) string {
 
 // sampler polls the cost of a set of processes.
 //
-// It shells out to ps rather than reading /proc, because the harness has to run
-// on the laptop it is being written on as well as in CI, and ps is the one
-// interface both have. The cost is a poll rather than an accumulator, which is
-// why the peak is reported beside the mean: a one-second poll can miss a spike,
-// and a mean alone would hide one it caught.
+// CPU is taken from each process's accumulated CPU time, differenced between
+// two polls and divided by the wall time between them, so a figure is the
+// share of a core the process used in that interval. ps's own %cpu is not
+// that: on Linux it is CPU time over the process's whole lifetime, and on
+// macOS a decaying average, and either would smear one stage's cost into the
+// next. A one-second poll can still miss a spike inside an interval, which is
+// why the peak is reported beside the mean.
 type sampler struct {
 	pids func() map[string]int
+	read func(pid int) (cpu time.Duration, rssMB float64, err error)
+	now  func() time.Time
 
 	mu      sync.Mutex
+	last    map[string]reading
 	samples map[string][]sample
+}
+
+// reading is one process's accumulated CPU time at one instant.
+type reading struct {
+	pid int
+	cpu time.Duration
+	at  time.Time
 }
 
 type sample struct {
@@ -285,10 +312,17 @@ type sample struct {
 }
 
 func newSampler(pids func() map[string]int) *sampler {
-	return &sampler{pids: pids, samples: map[string][]sample{}}
+	return &sampler{
+		pids:    pids,
+		read:    processUsage,
+		now:     time.Now,
+		last:    map[string]reading{},
+		samples: map[string][]sample{},
+	}
 }
 
 func (s *sampler) run(ctx context.Context, every time.Duration) {
+	s.poll()
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for {
@@ -301,30 +335,30 @@ func (s *sampler) run(ctx context.Context, every time.Duration) {
 	}
 }
 
+// poll reads every process once. The first reading of a process, including a
+// restarted agent under a new pid, is only a baseline: a share needs two.
 func (s *sampler) poll() {
 	for name, pid := range s.pids() {
-		out, err := exec.Command("ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
+		cpu, rss, err := s.read(pid)
 		if err != nil {
 			continue
 		}
-		fields := strings.Fields(string(out))
-		if len(fields) < 2 {
-			continue
-		}
-		cpu, err1 := strconv.ParseFloat(fields[0], 64)
-		rss, err2 := strconv.ParseFloat(fields[1], 64)
-		if err1 != nil || err2 != nil {
-			continue
-		}
+		at := s.now()
 		s.mu.Lock()
-		s.samples[name] = append(s.samples[name], sample{cpu: cpu, rss: rss / 1024})
+		prev, ok := s.last[name]
+		s.last[name] = reading{pid: pid, cpu: cpu, at: at}
+		if ok && prev.pid == pid && at.After(prev.at) && cpu >= prev.cpu {
+			share := float64(cpu-prev.cpu) / float64(at.Sub(prev.at)) * 100
+			s.samples[name] = append(s.samples[name], sample{cpu: share, rss: rss})
+		}
 		s.mu.Unlock()
 	}
 }
 
-// drain returns what was sampled and starts again, so each stage reports its own
-// cost rather than the run's.
+// drain closes the current interval, returns what was sampled and starts
+// again, so each stage reports its own cost rather than the run's.
 func (s *sampler) drain() []Usage {
+	s.poll()
 	s.mu.Lock()
 	collected := s.samples
 	s.samples = map[string][]sample{}
@@ -354,4 +388,112 @@ func (s *sampler) drain() []Usage {
 	}
 	sort.Slice(usage, func(i, j int) bool { return usage[i].Name < usage[j].Name })
 	return usage
+}
+
+// processUsage reads a process's accumulated user+system CPU time and its
+// resident set. /proc where there is one, ps otherwise: Linux's ps reports
+// CPU time in whole seconds, too coarse for a one-second poll.
+func processUsage(pid int) (time.Duration, float64, error) {
+	if cpu, rss, err := procUsage(pid); err == nil {
+		return cpu, rss, nil
+	}
+	out, err := exec.Command("ps", "-o", "time=,rss=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return 0, 0, err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 2 {
+		return 0, 0, fmt.Errorf("ps: unexpected output %q", out)
+	}
+	cpu, err := parseCPUTime(fields[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	rss, err := strconv.ParseFloat(fields[1], 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cpu, rss / 1024, nil
+}
+
+// clockTicks is USER_HZ, the unit of utime and stime in /proc/<pid>/stat. It
+// is 100 on every Linux architecture Go supports.
+const clockTicks = 100
+
+func procUsage(pid int) (time.Duration, float64, error) {
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return 0, 0, err
+	}
+	cpu, err := parseProcStat(string(stat))
+	if err != nil {
+		return 0, 0, err
+	}
+	statm, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/statm")
+	if err != nil {
+		return 0, 0, err
+	}
+	fields := strings.Fields(string(statm))
+	if len(fields) < 2 {
+		return 0, 0, fmt.Errorf("statm: unexpected %q", statm)
+	}
+	pages, err := strconv.ParseFloat(fields[1], 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cpu, pages * float64(os.Getpagesize()) / (1 << 20), nil
+}
+
+// parseProcStat reads utime+stime from a /proc/<pid>/stat line. The command
+// name in parentheses may hold spaces and parentheses itself, so the fields
+// are counted from the last ")".
+func parseProcStat(stat string) (time.Duration, error) {
+	end := strings.LastIndexByte(stat, ')')
+	if end < 0 {
+		return 0, fmt.Errorf("stat: no command field in %q", stat)
+	}
+	// After ")" the fields start at the third, state; utime and stime are the
+	// 14th and 15th.
+	fields := strings.Fields(stat[end+1:])
+	if len(fields) < 13 {
+		return 0, fmt.Errorf("stat: too few fields in %q", stat)
+	}
+	utime, err1 := strconv.ParseInt(fields[11], 10, 64)
+	stime, err2 := strconv.ParseInt(fields[12], 10, 64)
+	if err1 != nil || err2 != nil {
+		return 0, fmt.Errorf("stat: utime %q stime %q", fields[11], fields[12])
+	}
+	return time.Duration(utime+stime) * time.Second / clockTicks, nil
+}
+
+// parseCPUTime reads ps's cumulative time column: [dd-][hh:]mm:ss[.cc]. macOS
+// prints minutes past sixty rather than hours, which this reads the same way.
+func parseCPUTime(text string) (time.Duration, error) {
+	var days int64
+	if day, rest, ok := strings.Cut(text, "-"); ok {
+		d, err := strconv.ParseInt(day, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("cpu time %q: %w", text, err)
+		}
+		days, text = d, rest
+	}
+	parts := strings.Split(text, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, fmt.Errorf("cpu time %q: want mm:ss or hh:mm:ss", text)
+	}
+	seconds, err := strconv.ParseFloat(parts[len(parts)-1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("cpu time %q: %w", text, err)
+	}
+	total := seconds + float64(days)*86400
+	scale := 60.0
+	for i := len(parts) - 2; i >= 0; i-- {
+		n, err := strconv.ParseInt(parts[i], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("cpu time %q: %w", text, err)
+		}
+		total += float64(n) * scale
+		scale *= 60
+	}
+	return time.Duration(total * float64(time.Second)), nil
 }

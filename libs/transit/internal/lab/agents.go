@@ -103,8 +103,9 @@ func (a *agentSet) churn(ctx context.Context, every time.Duration) {
 	}
 }
 
-// live is how many agent processes are up.
-func (a *agentSet) live() int {
+// configured is how many tunnels the running agents were asked to hold. It is
+// what was asked for, not what is up; the gateway's gauge says that.
+func (a *agentSet) configured() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.running) * a.spec.conns

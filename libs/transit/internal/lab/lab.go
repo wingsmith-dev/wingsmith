@@ -16,6 +16,7 @@
 package lab
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -145,6 +146,11 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
+	metricsPort, err := free()
+	if err != nil {
+		return nil, err
+	}
+	metricsURL := "http://127.0.0.1:" + strconv.Itoa(metricsPort) + "/metrics"
 
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -153,7 +159,7 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 		"-listen", "127.0.0.1:"+strconv.Itoa(servingPort),
 		"-plane-url", "http://"+planeAddr,
 		"-tunnel-listen", "127.0.0.1:"+strconv.Itoa(tunnelPort),
-		"-metrics-listen", "off",
+		"-metrics-listen", "127.0.0.1:"+strconv.Itoa(metricsPort),
 		"-gateway-id", "gateway-0",
 		"-gateways", "1",
 		"-resync", "60s",
@@ -237,11 +243,12 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 		frontendStats := frontend.Stats()
 		_, verified, _ := plane.Counts()
 		report.Stages = append(report.Stages, Stage{
-			Sample:       load.Summarise(stage, outcomes),
-			Usage:        monitor.drain(),
-			UpstreamPeak: frontendStats.PeakInFlight,
-			Tunnels:      agents.live(),
-			Verified:     verified,
+			Sample:            load.Summarise(stage, outcomes),
+			Usage:             monitor.drain(),
+			UpstreamPeak:      frontendStats.PeakInFlight,
+			Tunnels:           liveTunnels(runCtx, metricsURL),
+			ConfiguredTunnels: agents.configured(),
+			Verified:          verified,
 		})
 	}
 
@@ -342,6 +349,59 @@ func isRepo(dir string) bool {
 		}
 	}
 	return true
+}
+
+// liveTunnels reads how many tunnels the gateway holds from its own
+// hangar_gateway_tunnels gauge, summed over clusters, or nil when it cannot.
+func liveTunnels(ctx context.Context, metricsURL string) *int {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metricsURL, nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	total, _ := sumGauge(resp.Body, "hangar_gateway_tunnels")
+	held := int(total)
+	return &held
+}
+
+// sumGauge adds up every sample of one metric in a Prometheus text exposition.
+// It reports false when the metric has no samples, which for a labelled gauge
+// is also what a gateway holding no tunnels exposes.
+func sumGauge(body io.Reader, name string) (float64, bool) {
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	var total float64
+	found := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		rest, ok := strings.CutPrefix(line, name)
+		if !ok || rest == "" || (rest[0] != '{' && rest[0] != ' ') {
+			continue
+		}
+		if i := strings.LastIndexByte(rest, '}'); i >= 0 {
+			rest = rest[i+1:]
+		}
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			continue
+		}
+		value, err := strconv.ParseFloat(fields[0], 64)
+		if err != nil {
+			continue
+		}
+		total += value
+		found = true
+	}
+	return total, found
 }
 
 // build compiles one of the repository's binaries.

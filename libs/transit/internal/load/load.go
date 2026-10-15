@@ -238,12 +238,22 @@ func one(ctx context.Context, client *http.Client, req Request) Outcome {
 	if req.Stream {
 		readStream(resp.Body, start, &out)
 	} else {
-		n, err := io.Copy(io.Discard, resp.Body)
+		var answer bytes.Buffer
+		n, err := io.Copy(&answer, io.LimitReader(resp.Body, 1<<20))
+		if err == nil {
+			var extra int64
+			extra, err = io.Copy(io.Discard, resp.Body)
+			n += extra
+		}
 		out.Bytes = n
 		out.TTFT = time.Since(start)
 		out.Tokens = 1
 		if err != nil {
 			out.Fault = fault(err)
+		}
+		var stamped chunk
+		if out.Inbound == 0 && json.Unmarshal(answer.Bytes(), &stamped) == nil && stamped.ReceivedNs > 0 {
+			out.Inbound = time.Unix(0, stamped.ReceivedNs).Sub(start)
 		}
 	}
 	out.Total = time.Since(start)
@@ -256,8 +266,9 @@ func one(ctx context.Context, client *http.Client, req Request) Outcome {
 // chunk is the part of an SSE frame this generator reads: the far end's own
 // write timestamp, when it sets one, and whatever content the choices carry.
 type chunk struct {
-	WriteNs int64 `json:"transit_write_ns"`
-	Choices []struct {
+	ReceivedNs int64 `json:"transit_received_ns"`
+	WriteNs    int64 `json:"transit_write_ns"`
+	Choices    []struct {
 		Text  string `json:"text"`
 		Delta struct {
 			Content          string          `json:"content"`
@@ -316,6 +327,9 @@ func readStream(body io.Reader, start time.Time, out *Outcome) {
 			out.TTFT = now.Sub(start)
 			if frame.WriteNs > 0 {
 				out.Return = now.Sub(time.Unix(0, frame.WriteNs))
+			}
+			if out.Inbound == 0 && frame.ReceivedNs > 0 {
+				out.Inbound = time.Unix(0, frame.ReceivedNs).Sub(start)
 			}
 		} else {
 			out.Gaps = append(out.Gaps, now.Sub(previous))
