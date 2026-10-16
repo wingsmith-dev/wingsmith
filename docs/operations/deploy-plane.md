@@ -70,7 +70,7 @@ plane:
 | `HANGAR_ADMIN_PASSWORD_HASH` | api | bcrypt hash of the admin password, see below |
 | `HANGAR_SESSION_SIGNING_SECRET` | api | random secret that signs admin sessions |
 | `HANGAR_GATEWAY_SERVICE_TOKEN` | api, gateway | random secret the gateway authenticates to the plane with |
-| `HANGAR_PUBLIC_HOST` / `HANGAR_HUB_PUBLIC_URL` | api | the host clusters reach the hub on; written into each cluster's setup values |
+| `HANGAR_HUB_PUBLIC_URL` | api | the `wss://` URL clusters reach the hub on; written into each cluster's setup values. Required outside `local`; `HANGAR_PUBLIC_HOST` does not stand in for it |
 | `HANGAR_TUNNEL_GATEWAY` | api | `host:port` of the gateway's tunnel listener, written into setup values |
 | `HANGAR_OPERATOR_IMAGE` / `HANGAR_AGENT_IMAGE` | api | the images clusters install, pinned to a tag |
 | `HANGAR_SETUP_CHART_REF` / `HANGAR_SETUP_CHART_VERSION` | api | where clusters pull `cluster-setup` from |
