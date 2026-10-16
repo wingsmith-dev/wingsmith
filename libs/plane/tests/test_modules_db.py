@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.auth import ENROLMENT_PREFIX
 from app.auth import AuthManager
 from app.core.ids import NODE
+from app.core.ids import DEVICE
 from app.core.ids import TENANT
 from app.core.ids import REPLICA
 from app.core.ids import new_uid
@@ -154,6 +155,46 @@ def a_serving(artifact_ref: str, **extra) -> WorkloadServingRequest:
     return WorkloadServingRequest(**(fields | extra))
 
 
+async def seed_free_devices(db: AsyncSession, cluster_uid: str, count: int = 8, device_class: str = "h100") -> None:
+    """A live agent session and a ready node with free, healthy accelerators, so placement has
+    somewhere to put a unit.
+
+    A pinned cluster is checked for reachability and capacity like any other, so a workload
+    pinned to a cluster with neither expands to nothing.
+    """
+    await db.execute(
+        text(
+            "INSERT INTO supply_cluster_sync_state (cluster_id, reachable)"
+            " VALUES ((SELECT id FROM supply_cluster WHERE uid = :cluster), true)"
+            " ON CONFLICT (cluster_id) DO UPDATE SET reachable = true"
+        ),
+        {"cluster": cluster_uid},
+    )
+    node = await seed_node(db, cluster_uid, name=f"{device_class}-node")
+    await db.execute(
+        text("UPDATE supply_node SET ready = true, condition = 'ready', cordoned = false WHERE uid = :node"),
+        {"node": node},
+    )
+    for index in range(count):
+        await db.execute(
+            text(
+                "INSERT INTO supply_device"
+                " (uid, cluster_id, node_id, device_uuid, device_index, device_class, memory_mib, health, allocatable)"
+                " VALUES (:uid, (SELECT id FROM supply_cluster WHERE uid = :cluster),"
+                " (SELECT id FROM supply_node WHERE uid = :node), :duid, :index, :cls, 81920, 'healthy', true)"
+            ),
+            {
+                "uid": new_uid(DEVICE),
+                "cluster": cluster_uid,
+                "node": node,
+                "duid": f"GPU-{cluster_uid}-{index}",
+                "index": index,
+                "cls": device_class,
+            },
+        )
+    await db.commit()
+
+
 async def an_environment(db: AsyncSession):
     """One cluster, one project, one artifact and the default priority class.
 
@@ -173,11 +214,12 @@ async def an_environment(db: AsyncSession):
 async def a_workload(db: AsyncSession, name: str = "llama-prod", serving=None, **extra):
     """A workload pinned to one cluster, which is the shape every deployment test wants.
 
-    Pinning is placement's declared escape hatch, and it is what these fixtures
-    need: there is no supply seeded here, so an unpinned workload would expand to
-    nothing and there would be no per-cluster copy to assert on.
+    Pinning names the cluster, and placement still checks it like any other, so the
+    cluster is given a live session and free devices first. `an_environment` alone
+    seeds no supply, which is what the tests of a workload that fits nowhere rely on.
     """
     cluster, project, artifact = await an_environment(db)
+    await seed_free_devices(db, cluster.id)
     workload = await WorkloadService(db).create(
         WorkloadCreateRequest(
             cluster=cluster.id,
@@ -606,9 +648,11 @@ async def test_a_workload_carries_an_overlay_the_plane_never_reads_inside(db: As
 
     patched = await service.update(
         created.id,
-        WorkloadUpdateRequest(serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"replicas": 2}))),
+        WorkloadUpdateRequest(
+            serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"annotations": {"team": "search"}}))
+        ),
     )
-    assert patched.serving.overlay.dynamo == {"replicas": 2}
+    assert patched.serving.overlay.dynamo == {"annotations": {"team": "search"}}
     assert patched.serving.overlay.pod_spec == {}
 
     plain = await service.create(
@@ -1029,13 +1073,15 @@ async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSe
     cluster, _, _, deployment = await a_deployment(db)
     await WorkloadService(db).update(
         deployment.workload_id,
-        WorkloadUpdateRequest(serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"router": {"mode": "kv"}}))),
+        WorkloadUpdateRequest(
+            serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"annotations": {"team": "search"}}))
+        ),
     )
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
     payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
 
-    assert [p.serving.overlay.dynamo for p in payloads] == [{"router": {"mode": "kv"}}]
+    assert [p.serving.overlay.dynamo for p in payloads] == [{"annotations": {"team": "search"}}]
     assert payloads[0].serving.overlay.pod_spec == {}
 
 
@@ -1368,6 +1414,7 @@ async def _two_serving_deployments(db: AsyncSession):
     cluster_a, project, artifact, workload_a = await a_workload(db, name="chat-alpha")
     deployment_a = await DeploymentService(db).get(workload_a.deployments[0].id)
     cluster_b = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1", phase="active"))
+    await seed_free_devices(db, cluster_b.id)
     workload_b = await WorkloadService(db, notifier=MemoryNotifier()).create(
         WorkloadCreateRequest(
             cluster=cluster_b.id, serving=a_serving(artifact.id), name="chat-beta", project=project.id
@@ -1913,10 +1960,11 @@ async def test_a_workloads_topology_requirement_round_trips(db: AsyncSession) ->
     override of it on the workload — so a null meant "the recipe decides" rather
     than "no". There is one level left and the column is the answer.
     """
-    _, _, artifact, created = await a_workload(
-        db,
-        name="gang-8",
-        serving=None,
+    # Unplaced, so the shape change is not refused for placing fewer units than run now: the
+    # seeded supply has no NVSwitch domain to satisfy it.
+    _, project, artifact = await an_environment(db)
+    created = await WorkloadService(db).create(
+        WorkloadCreateRequest(serving=a_serving(artifact.id), name="gang-8", project=project.id)
     )
     assert created.serving.shape.requires_single_topology_domain is False
 
