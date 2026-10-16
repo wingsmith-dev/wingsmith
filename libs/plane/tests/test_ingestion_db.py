@@ -286,7 +286,8 @@ async def test_a_malformed_id_poisons_the_open_epoch(sessions, cluster) -> None:
     request = new_id()
     await sink.begin_resync(CLUSTER, "supply", request)
     await sink.apply_observed(observed("node.observed", CLUSTER, request, node_id="not-an-id"))
-    assert sink._epochs[request].poisoned is True
+    _, epoch = sink._epochs[CLUSTER][request]
+    assert epoch.poisoned is True
 
 
 # --------------------------------------------------------------------------- events
