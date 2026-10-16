@@ -55,7 +55,9 @@ type tunnelAuthResponse struct {
 // for the path, and reading that as "this cluster's token is wrong" would send
 // everyone looking at Secrets during what is really a version skew. Nor is the
 // 429 the plane answers while its failed-guess budget is spent, which is a wait
-// and not a refusal. Both are reported as unavailable.
+// and not a refusal, unless its body carries the unknown_token verdict: then the
+// token itself is wrong and the answer is ErrRejected. Otherwise both are
+// reported as unavailable.
 //
 // Both names are carried back, not just the uid. The plane answers with both
 // because they are addressable interchangeably, and the agent's claim is checked
