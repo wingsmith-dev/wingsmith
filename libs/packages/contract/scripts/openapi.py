@@ -31,7 +31,7 @@ METHODS = ("get", "post", "put", "patch", "delete")
 def build_schema() -> dict:
     # The plane serves its schema under `local` only; building the app is all
     # this needs, and nothing here opens a database connection.
-    os.environ["APP_ENV"] = "local"
+    os.environ["HANGAR_APP_ENV"] = "local"
     sys.path.insert(0, str(PLANE))
     from app.api.app import create_app
 
