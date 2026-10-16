@@ -28,15 +28,16 @@ from app.modules.quotas.schemas import QuotaCreateRequest
 from app.modules.quotas.services import QuotaService
 
 from tests.conftest import ROOT
-from tests.conftest import ADMIN_URL
+from tests.conftest import drop
+from tests.conftest import recreate
+from tests.conftest import admin_url
+from tests.conftest import scratch_name
 from tests.test_migration_recipe_backfill import AFTER
 from tests.test_migration_recipe_backfill import BEFORE
 from tests.test_migration_recipe_backfill import _seed
 
 
 pytestmark = pytest.mark.database
-
-SCRATCH = "hangar_migrations_test"
 
 
 def _alembic(url: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -55,19 +56,13 @@ def _dsn(url: str) -> str:
 
 
 @pytest.fixture
-def scratch() -> str:
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} ({exc})")
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{SCRATCH}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{SCRATCH}"')
-    yield admin.set(database=SCRATCH).render_as_string(hide_password=False)
-    with psycopg.connect(dsn, connect_timeout=3, autocommit=True) as connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{SCRATCH}" WITH (FORCE)')
+def scratch():
+    """A database of its own, because these tests drive alembic up and down."""
+    admin = admin_url()
+    name = scratch_name(admin, "migrations")
+    url = recreate(admin, name)
+    yield url
+    drop(admin, name)
 
 
 def _include(obj, name, type_, reflected, compare_to) -> bool:
