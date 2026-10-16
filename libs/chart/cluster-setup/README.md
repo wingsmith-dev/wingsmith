@@ -33,7 +33,7 @@ helm dependency build libs/chart/cluster-setup
 
 helm upgrade --install hangar-cluster libs/chart/cluster-setup \
   --namespace hangar-system --create-namespace \
-  -f values.yaml \
+  -f values.<cluster>.local.yaml \
   --set operator.image.repository="$HANGAR_REGISTRY/operator" \
   --set agent.image.repository="$HANGAR_REGISTRY/agent"
 ```
@@ -42,7 +42,7 @@ helm upgrade --install hangar-cluster libs/chart/cluster-setup \
 registry needs a credential to pull, see [Images and pull
 secrets](#images-and-pull-secrets).
 
-`values.yaml` is one file the plane's register-cluster screen renders and you
+`values.<cluster>.local.yaml` is one file the plane's register-cluster screen renders and you
 edit. The top block is filled in: cluster id, hub URL, and (when you generate
 the enrolment token there) `enrolmentToken.value`, so the chart creates the
 operator Secret itself. Below a divider is a commented skeleton of this
