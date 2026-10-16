@@ -8,6 +8,12 @@ This product includes software developed by the vLLM project
 Files under libs/benchmarking/images/vllm-bench/upstream/ are copied verbatim
 from vLLM v0.28.0 and keep their original copyright and license headers.
 
+This product includes a test fixture from the AIPerf project
+(https://github.com/ai-dynamo/aiperf), licensed under the Apache License 2.0.
+libs/plane/tests/data/aiperf-0.12.0-profile-export.json is a verbatim copy of
+tests/unit/plot/fixtures/qwen_concurrency1/profile_export_aiperf.json from
+AIPerf v0.12.0.
+
 Third-party dependencies with notice or source obligations
 ----------------------------------------------------------
 Most dependencies are under permissive licenses (MIT, BSD, Apache-2.0, ISC).
