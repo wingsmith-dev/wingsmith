@@ -6,7 +6,7 @@ the interface only.
 
 ## Users
 
-Platform, SRE, and ML infrastructure engineers who operate GPU clusters their own organisation owns — a neocloud, an enterprise AI platform team, or a research organisation running several clusters across regions. They serve either internal teams or paying external customers, and they carry the pager for both.
+The single operator of a Hangar plane: a platform, SRE, or ML infrastructure engineer, or a small team sharing that one admin identity, running GPU clusters their own organisation owns. They serve models to their own organisation's teams and carry the pager for the fleet.
 
 They work at a desktop during capacity planning, model rollouts, and incident response. Their inference fleet spans several clusters and several kinds of GPU. They need to understand global intent and per-cluster reality without mentally joining several systems, and without dropping into `kubectl` on four clusters to answer one question.
 
