@@ -50,9 +50,9 @@ async def _event(sessions, uid: str, occurred_at: dt.datetime) -> int:
         result = await db.execute(
             text(
                 "INSERT INTO ops_event (uid, type, subject_type, message, occurred_at)"
-                " VALUES (:uid, 'node.joined', 'node', :uid, :at) RETURNING seq"
+                " VALUES (:uid, 'node.joined', 'node', :message, :at) RETURNING seq"
             ),
-            {"uid": uid, "at": occurred_at},
+            {"uid": uid, "message": uid, "at": occurred_at},
         )
         return result.scalar_one()
 
