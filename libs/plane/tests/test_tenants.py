@@ -210,7 +210,7 @@ class Unreachable:
 def update_service(tenant) -> TenantService:
     svc = TenantService(db=Unreachable())
 
-    async def get(ref):
+    async def get(ref, lock=False):
         return FakeTenantRow(tenant)
 
     svc.repo.get = get
