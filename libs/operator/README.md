@@ -121,8 +121,8 @@ replica waiting for the lease reports not ready because it holds no hub session.
 | `HANGAR_OBSERVE_STALE_AFTER` | `5m` | readiness fails when the last observation is older |
 | `HANGAR_RESYNC_INTERVAL` | `15m` | how often the whole observed inventory is restated, which is what retires objects the cluster no longer has |
 | `HANGAR_DCGM_ENDPOINT` / `HANGAR_DCGM_SELECTOR` / `HANGAR_DCGM_TIMEOUT` | in-cluster exporter / none / `5s` | where device identity is scraped |
-| `HANGAR_POOL_LABEL_KEY` / `HANGAR_GPU_POOL_VALUE` | `hangar.io/pool` / `gpu` | node label workers are placed by |
-| `HANGAR_CACHE_POOL_VALUE` / `HANGAR_CACHE_TAINT_KEY` | `cache` / `hangar.io/cache` | node pool and taint for weight downloads |
+| `HANGAR_POOL_LABEL_KEY` / `HANGAR_GPU_POOL_VALUE` | `hangar.dev/pool` / `gpu` | node label workers are placed by |
+| `HANGAR_CACHE_POOL_VALUE` / `HANGAR_CACHE_TAINT_KEY` | `cache` / `hangar.dev/cache` | node pool and taint for weight downloads |
 | `HANGAR_PREFETCH_CPU` / `HANGAR_PREFETCH_MEMORY` / `HANGAR_PREFETCH_MEMORY_LIMIT` | none | prefetch job resources |
 | `HANGAR_MODEL_CACHE_PVC` / `HANGAR_LOCAL_MODEL_CACHE_DIR` | `model-cache` / none | where weights are cached |
 | `HANGAR_ENGINE_PULL_SECRETS` | none | image pull secrets for engine workers |
