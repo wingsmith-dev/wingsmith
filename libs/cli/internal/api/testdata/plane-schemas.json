@@ -294,8 +294,8 @@
  "AuthConfigSchema": {
   "admin_auth": "string",
   "admin_password_hash_set": "boolean",
+  "gateway_service_token_set": "boolean",
   "huggingface_token_set": "boolean",
-  "operator_token_set": "boolean",
   "session_signing_secret_set": "boolean",
   "session_ttl_seconds": "integer"
  },
@@ -539,6 +539,7 @@
   "helm_command": "string",
   "registry_login": "string?",
   "registry_login_gh": "string?",
+  "values_filename": "string",
   "values_yaml": "string"
  },
  "ClusterSyncSchema": {
@@ -573,6 +574,7 @@
   "domain_identifier": "string?",
   "feasible": "boolean",
   "fit_slack": "integer",
+  "fit_units": "integer",
   "free_devices": "integer",
   "largest_domain_free_devices": "integer",
   "preemption": "$PreemptionPlan?",
@@ -1742,6 +1744,7 @@
   "serving_topology": "string"
  },
  "TunnelAuthRequest": {
+  "source": "string?",
   "token": "string"
  },
  "TunnelIdentitySchema": {
