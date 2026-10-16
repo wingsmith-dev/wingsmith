@@ -590,8 +590,10 @@ def test_operator_metrics_off_and_pod_monitor(chart):
 def test_shipped_files_name_no_removed_paths_or_deployment_history():
     import re
 
-    banned = re.compile(r"hangar-runtime|infra/|HANGAR_OPERATOR_TOKEN|placeholder\.hangar|"
-                        r"sync\.hangar\.dev|Kimi|GLM|p6-b300|Claude Code|helm registry login",
+    # Internal names are not listed here, since listing them would publish them: the prose
+    # guard (scripts/check-prose.sh) checks every tracked file against the private list.
+    banned = re.compile(r"infra/|HANGAR_OPERATOR_TOKEN|placeholder\.hangar|"
+                        r"sync\.hangar\.dev|helm registry login",
                         re.IGNORECASE)
     for path in CHART.rglob("*"):
         if path.is_file() and "tests" not in path.parts and path.suffix in (
