@@ -235,10 +235,10 @@ def test_evalscope_endpoint_model_is_separate():
         harnesses.EVALSCOPE,
         harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT),
         None,
-        model="kimi-k3-site-c",
+        model="reasoning-run-a",
         endpoint_model="moonshotai/Kimi-K3",
     )
-    assert flattened["model"] == "kimi-k3-site-c"
+    assert flattened["model"] == "reasoning-run-a"
     assert flattened["endpoint_model"] == "moonshotai/Kimi-K3"
 
 

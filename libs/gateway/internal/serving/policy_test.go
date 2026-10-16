@@ -628,14 +628,14 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 // as `tool_use` / `tool_result` content blocks, so no message ever holds a
 // `tools` key and the rule never engages. That is a real property of the
 // protocol rather than a lucky accident, but it is worth a test, because the
-// cost of being wrong is refusing every Claude Code request against this
+// cost of being wrong is refusing every agentic coding client's request against this
 // endpoint — and a stripper that assumed one protocol's frame shape took this
 // service down once already.
 func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{{Predicate: "messages.tools", Deny: true}}}
 
 	for _, body := range []string{
-		// Claude Code's own shape: tools declared once, at the top level.
+		// An agentic coding client's shape: tools declared once, at the top level.
 		`{"model":"org/reasoning-model","max_tokens":1024,"system":"You are a helpful assistant.",
 		  "tools":[{"name":"Bash","description":"run a command",
 		            "input_schema":{"type":"object","properties":{"command":{"type":"string"}}}}],

@@ -815,7 +815,7 @@ def test_a_declared_frontend_image_is_carried_verbatim():
     frontends through — that is the operator's fact — so the only frontend image
     this side can state is one a person pinned.
     """
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"
     assert rendered(a_workload(frontend_image=pinned)).frontend_image == pinned
 
 
@@ -827,7 +827,7 @@ def test_a_workload_naming_no_frontend_image_does_not_borrow_the_engines():
     image. A read path that filled the gap with the engine image would report the
     one answer that is wrong precisely when it matters.
     """
-    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0"
     block = rendered(a_workload(engine_runtime_image=engine))
     assert block.engine_runtime_image == engine
     assert block.frontend_image is None
@@ -1066,7 +1066,7 @@ def test_a_recipe_default_moves_the_digest():
     The digest is what the operator compares to decide whether the graph it is
     already running was built from these inputs, and it skips the apply when the
     answer is yes. So a recipe default that reaches the wire without reaching the
-    digest is a change the cluster is told about and can never act on: on site-b the
+    digest is a change the cluster is told about and can never act on: on one cluster the
     desired state carried `max-num-seqs 32` for GLM-5.3-Flash while the worker went
     on crash-looping under the old command line, and the operator logged `already
     built from these inputs; not applying` every fifteen seconds over the top of it.
@@ -1499,12 +1499,12 @@ def test_an_aggregated_workload_reads_back_as_aggregated_with_no_roles():
 # --------------------------------------------------------------------------- router
 
 
-USE1_ROUTER = RouterSchema(mode="kv", queue_threshold=1.0, queue_policy="wspt", kv_overlap_score_credit=8.0)
-"""The four settings the Kimi K3 benchmark on site-d passes with, hand-patched there before this block existed."""
+TUNED_ROUTER = RouterSchema(mode="kv", queue_threshold=1.0, queue_policy="wspt", kv_overlap_score_credit=8.0)
+"""The four settings a tuned Kimi K3 benchmark passes with."""
 
 
 def test_the_router_the_use1_benchmark_runs_on_is_accepted():
-    check_router(USE1_ROUTER)
+    check_router(TUNED_ROUTER)
     check_router(RouterSchema())
 
 
@@ -1606,7 +1606,7 @@ def test_the_wire_carries_a_router_only_when_one_is_declared():
     assert _serving(a_workload(), artifact).router is None
     assert _serving(a_workload(router={}), artifact).router is None
 
-    workload = a_workload(router=declared_router(msgspec.to_builtins(USE1_ROUTER)))
+    workload = a_workload(router=declared_router(msgspec.to_builtins(TUNED_ROUTER)))
     spec = _serving(workload, artifact)
     assert spec.router == RouterSpec(mode="kv", queue_threshold=1.0, queue_policy="wspt", kv_overlap_score_credit=8.0)
     assert json.loads(msgspec.json.encode(spec))["router"] == {

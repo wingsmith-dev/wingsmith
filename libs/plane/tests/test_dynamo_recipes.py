@@ -108,7 +108,7 @@ def an_artifact(slug: str = GLM) -> Artifact:
 
 
 def test_glm_53_flash_at_a_million_tokens_gets_a_max_num_seqs_the_engine_will_accept():
-    """The whole reason this exists: site-b crash-looped at CUDA graph capture.
+    """The whole reason this exists: a cluster crash-looped at CUDA graph capture.
 
     The engine refuses when `max_num_seqs` exceeds the Mamba cache blocks that fit,
     which at 1 M context is 512. Its default is 1024, the plane sent nothing, and
