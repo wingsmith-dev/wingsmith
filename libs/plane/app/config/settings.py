@@ -364,15 +364,6 @@ class Settings:
     host is derived from `SETUP_CHART_REF`). The published chart is public, so
     this is for a deployment that mirrors it into a private registry."""
 
-    BENCHMARK_CONFORMANCE_IMAGE: str = "ghcr.io/hangar-dev/conformance:0.1.0"
-    """Image the conformance harness (`hgrconform`) runs from. Pinned to a tag;
-    override it to run a mirrored or locally built copy."""
-
-    BENCHMARK_EVALSCOPE_IMAGE: str = "ghcr.io/hangar-dev/evalscope:1.11.1"
-    """Image the EvalScope harness runs from. Pinned to a tag, and the tag is
-    EvalScope's own release, because the harness's command line is written
-    against that release's CLI."""
-
     TRUSTED_PROXIES: str = ""
     """Comma-separated addresses or CIDRs of the proxies in front of the API whose
     `X-Forwarded-For` the plane believes, e.g. the ingress controller's pod range.
