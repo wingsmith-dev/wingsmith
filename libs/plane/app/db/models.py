@@ -1144,7 +1144,7 @@ class Tenant(BaseMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     ingress: Mapped[str] = mapped_column(String(16), nullable=False, server_default="internal")
-    auth: Mapped[str] = mapped_column(String(16), nullable=False, server_default="none")
+    auth: Mapped[str] = mapped_column(String(16), nullable=False, server_default="api_key")
     host: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
     projects: Mapped[list[Project]] = relationship("Project", back_populates="tenant", lazy="noload")
