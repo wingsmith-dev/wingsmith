@@ -9,10 +9,12 @@ import (
 	"testing"
 )
 
-// The corpus in testdata is captured verbatim from a running plane. These
-// tests are the reconciliation: a wire type that cannot round-trip a real
-// response is a wire type that disagrees with the contract, and a field the
-// client invents is worse than one it is missing, because it looks right.
+// The list responses in testdata were first captured from a running plane and
+// have since been kept in step with the schemas by hand. These tests check that
+// each wire type round-trips them exactly: a field the client invents is worse
+// than one it is missing, because it looks right. The check against the plane's
+// contract itself is schema_test.go, which compares every wire type with the
+// OpenAPI snapshot in testdata/plane-schemas.json.
 
 func TestPagesDecodeExactly(t *testing.T) {
 	checkPage[Cluster](t, "clusters.json")
