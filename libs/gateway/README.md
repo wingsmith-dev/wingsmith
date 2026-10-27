@@ -186,6 +186,12 @@ new count. Readiness (`/readyz`) only fails while a replica can reach none of th
 routing table, so a replica missing one cluster's tunnel stays in the Service and answers `503` for
 that cluster's models; `hangar_gateway_tunnel_coverage` shows which replica lacks which cluster.
 
+Keeping the two numbers in step by hand is a known limitation. Removing it takes two changes that
+are not built: the tunnel listener reading the replica count from something that changes at
+runtime instead of a fixed `ListenerConfig.Gateways`, and agents dialling each replica through a
+headless Service instead of redialling one load-balanced address until every replica has answered.
+The gateway cannot derive the count alone without a Kubernetes client.
+
 ## Shutdown
 
 On `SIGTERM` the replica reports not-ready, keeps accepting for `HANGAR_GATEWAY_DRAIN_DELAY` while
@@ -203,8 +209,8 @@ together outlast the grace period.
 
 That budget bounds how long a generation can survive a rollout. To carry longer generations through
 one, raise `terminationGracePeriodSeconds` and `HANGAR_GATEWAY_SHUTDOWN_GRACE` together; the extra
-time goes to the request listeners. The agent's own drain on the cluster side is separate and needs
-the same treatment.
+time goes to the request listeners. The agent's drain on the cluster side is cut the same way from
+its own `HANGAR_SHUTDOWN_GRACE`; see its README.
 
 ## What it never keeps
 
