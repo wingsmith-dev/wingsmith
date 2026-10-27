@@ -4,7 +4,7 @@ import { CLUSTER_STAGE_META, clusterStage } from "@/modules/clusters/stage"
 import type { ClusterStage } from "@/modules/clusters/stage"
 import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment, Endpoint } from "@/modules/demand/types"
-import type { Device } from "@/modules/supply/types"
+import type { FleetDevices } from "./types"
 
 /**
  * How long a deployment may sit outside `running` before it is worth chasing.
@@ -124,17 +124,6 @@ export function stuckDeployments(
   return out.sort((a, b) => (a.since ?? "").localeCompare(b.since ?? ""))
 }
 
-/** How many replicas the fleet has asked for and cannot place. */
-export function unschedulableReplicas(
-  deployments: Deployment[],
-  now?: number
-): number {
-  return stuckDeployments(deployments, now).reduce(
-    (sum, entry) => sum + entry.shortfall,
-    0
-  )
-}
-
 export interface CapacityRow {
   deviceClass: string
   total: number
@@ -143,46 +132,37 @@ export interface CapacityRow {
   percent: number
 }
 
+function percentOf(part: number, whole: number): number {
+  return whole === 0 ? 0 : Math.round((part / whole) * 100)
+}
+
 /**
  * Allocation pressure per accelerator, which is the number that predicts a
- * failed placement. Allocated here is a device whose `allocatable` flag is off,
- * which misses a claimable device a live allocation holds; the plane's cluster
- * rollup and `GET /fleet/summary` count those as allocated too.
+ * failed placement, tightest first. The plane counts a device allocated when a
+ * live allocation holds it or it is not claimable, which is what placement
+ * sees; a device's `allocatable` flag alone misses the held ones.
  */
-export function capacityByClass(devices: Device[]): CapacityRow[] {
-  const classes = new Map<string, { total: number; allocated: number }>()
-
-  for (const device of devices) {
-    const entry = classes.get(device.device_class) ?? { total: 0, allocated: 0 }
-    entry.total += 1
-    if (!device.allocatable) entry.allocated += 1
-    classes.set(device.device_class, entry)
-  }
-
-  return [...classes]
-    .map(([deviceClass, entry]) => ({
-      deviceClass,
-      ...entry,
-      percent:
-        entry.total === 0
-          ? 0
-          : Math.round((entry.allocated / entry.total) * 100),
+export function capacityFromSummary(devices: FleetDevices): CapacityRow[] {
+  return devices.by_class
+    .map((row) => ({
+      deviceClass: row.device_class,
+      total: row.total,
+      allocated: row.allocated,
+      percent: percentOf(row.allocated, row.total),
     }))
     .sort((a, b) => b.percent - a.percent || b.total - a.total)
 }
 
 /** Fleet-wide device allocation, the headline the per-class rows break down. */
-export function allocationTotals(devices: Device[]): {
+export function allocationFromSummary(devices: FleetDevices): {
   total: number
   allocated: number
   percent: number
 } {
-  const allocated = devices.filter((device) => !device.allocatable).length
   return {
-    total: devices.length,
-    allocated,
-    percent:
-      devices.length === 0 ? 0 : Math.round((allocated / devices.length) * 100),
+    total: devices.total,
+    allocated: devices.allocated,
+    percent: percentOf(devices.allocated, devices.total),
   }
 }
 
@@ -251,17 +231,4 @@ export function freshnessNote(
   return `Counts may exclude ${stale
     .map((c) => c.display_name ?? c.name)
     .join(", ")}: last reconcile is older than the page.`
-}
-
-/** Replicas ready fleet-wide, and how many clusters are carrying them. */
-export function replicaFootprint(deployments: Deployment[]): {
-  ready: number
-  clusters: number
-} {
-  return {
-    ready: deployments.reduce((sum, d) => sum + d.replicas.ready, 0),
-    clusters: new Set(
-      deployments.filter((d) => d.replicas.ready > 0).map((d) => d.cluster_id)
-    ).size,
-  }
 }

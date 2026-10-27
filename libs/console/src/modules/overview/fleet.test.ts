@@ -4,16 +4,15 @@ import type { DiscoveredWorkload } from "@/modules/discovered/types"
 import type { Device } from "@/modules/supply/types"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { deriveFleetAttention } from "./attention"
+import type { FleetDevices } from "./types"
 import {
-  allocationTotals,
-  capacityByClass,
+  allocationFromSummary,
+  capacityFromSummary,
   freshnessNote,
   reachabilityRows,
-  replicaFootprint,
   staleClusters,
   stuckDeployments,
   summarizeEndpointHealth,
-  unschedulableReplicas,
 } from "./fleet"
 
 const NOW = new Date("2026-08-27T12:00:00Z")
@@ -188,7 +187,7 @@ describe("stuckDeployments", () => {
       admitted_at: null,
       placed_at: null,
     })
-    expect(unschedulableReplicas([wedged])).toBe(3)
+    expect(stuckDeployments([wedged])[0].shortfall).toBe(3)
   })
 
   it("treats a deployment with no timestamps as stuck rather than as settling", () => {
@@ -199,44 +198,6 @@ describe("stuckDeployments", () => {
       placed_at: null,
     })
     expect(stuckDeployments([undated])).toHaveLength(1)
-  })
-})
-
-describe("capacity", () => {
-  it("reads allocated as the devices that are no longer allocatable", () => {
-    const rows = capacityByClass([
-      device({ id: "dev_1", allocatable: false }),
-      device({ id: "dev_2", allocatable: false }),
-      device({ id: "dev_3", allocatable: true }),
-      device({ id: "dev_4", device_class: "l40s-48gb", allocatable: true }),
-    ])
-
-    expect(rows[0]).toEqual({
-      deviceClass: "h100-80gb-sxm",
-      total: 3,
-      allocated: 2,
-      percent: 67,
-    })
-    expect(allocationTotals([device({ allocatable: false })])).toEqual({
-      total: 1,
-      allocated: 1,
-      percent: 100,
-    })
-  })
-
-  it("orders the tightest accelerator first", () => {
-    const rows = capacityByClass([
-      device({ id: "dev_1", device_class: "l40s-48gb", allocatable: true }),
-      device({
-        id: "dev_2",
-        device_class: "h100-80gb-sxm",
-        allocatable: false,
-      }),
-    ])
-    expect(rows.map((row) => row.deviceClass)).toEqual([
-      "h100-80gb-sxm",
-      "l40s-48gb",
-    ])
   })
 })
 
@@ -295,21 +256,6 @@ describe("freshnessNote", () => {
   })
 })
 
-describe("replicaFootprint", () => {
-  it("counts only the clusters actually carrying a ready replica", () => {
-    expect(
-      replicaFootprint([
-        deployment({ id: "dep_1", cluster_id: "clu_1" }),
-        deployment({
-          id: "dep_2",
-          cluster_id: "clu_2",
-          replicas: replicas({ ready: 0 }),
-        }),
-      ])
-    ).toEqual({ ready: 2, clusters: 1 })
-  })
-})
-
 describe("deriveFleetAttention", () => {
   it("puts the loudest row first and keeps the discovered half apart", () => {
     const items = deriveFleetAttention({
@@ -361,5 +307,40 @@ describe("deriveFleetAttention", () => {
     expect(placement).toHaveLength(1)
     expect(placement[0].title).toBe("4 replicas unschedulable")
     expect(placement[0].detail).toContain("no h100 capacity")
+  })
+})
+
+describe("capacity from the fleet summary", () => {
+  const devices: FleetDevices = {
+    total: 20,
+    free: 9,
+    allocated: 11,
+    by_health: { healthy: 20 },
+    by_class: [
+      { device_class: "b200", total: 4, free: 3, allocated: 1 },
+      { device_class: "h100", total: 8, free: 2, allocated: 6 },
+      { device_class: "h200", total: 8, free: 4, allocated: 4 },
+      { device_class: "none-yet", total: 0, free: 0, allocated: 0 },
+    ],
+  }
+
+  it("orders the tightest accelerator first, then the larger class", () => {
+    expect(capacityFromSummary(devices)).toEqual([
+      { deviceClass: "h100", total: 8, allocated: 6, percent: 75 },
+      { deviceClass: "h200", total: 8, allocated: 4, percent: 50 },
+      { deviceClass: "b200", total: 4, allocated: 1, percent: 25 },
+      { deviceClass: "none-yet", total: 0, allocated: 0, percent: 0 },
+    ])
+  })
+
+  it("takes the fleet total as the plane counted it", () => {
+    expect(allocationFromSummary(devices)).toEqual({
+      total: 20,
+      allocated: 11,
+      percent: 55,
+    })
+    expect(
+      allocationFromSummary({ ...devices, total: 0, allocated: 0 })
+    ).toEqual({ total: 0, allocated: 0, percent: 0 })
   })
 })

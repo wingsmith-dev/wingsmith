@@ -1,14 +1,13 @@
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import { fetchClusters } from "@/modules/clusters/api"
-import {
-  fetchDeployments,
-  fetchEndpoints,
-  fetchWorkloads,
-} from "@/modules/demand/api"
+import { fetchDeployments, fetchEndpoints } from "@/modules/demand/api"
 import { fetchDiscoveredWorkloads } from "@/modules/discovered/api"
 import { fetchEvents, fetchOperations } from "@/modules/machinery/api"
 import { OPEN_PHASES } from "@/modules/machinery/types"
 import { fetchDevices, fetchNodes, fetchPools } from "@/modules/supply/api"
+import type { FleetSummary } from "./types"
 
 /** How many rows the activity panels show. Recent, not a log. */
 export const ACTIVITY_LIMIT = 8
@@ -20,6 +19,20 @@ export const ACTIVITY_LIMIT = 8
  * that keeps a three-cluster fleet to a single round trip.
  */
 const DRAIN_LIMIT = 200
+
+/**
+ * The fleet's totals, counted by the plane in one read: allocation per device
+ * class, node and device health, deployment phases, replica footprint,
+ * unschedulable replicas and endpoint health. Unlike the drained lists below,
+ * no figure here is capped by a page size, so a tile drawn from it is never a
+ * lower bound.
+ */
+export function useFleetSummary() {
+  return useQuery({
+    queryKey: ["overview", "fleet", "summary"],
+    queryFn: () => api.get<FleetSummary>("/fleet/summary"),
+  })
+}
 
 export function useOverviewClusters() {
   return useAllPages(["overview", "clusters"], (cursor) =>
@@ -48,12 +61,6 @@ export function useOverviewDeployments() {
 export function useOverviewEndpoints() {
   return useAllPages(["overview", "endpoints"], (cursor) =>
     fetchEndpoints({}, cursor, DRAIN_LIMIT)
-  )
-}
-
-export function useOverviewWorkloads() {
-  return useAllPages(["overview", "workloads"], (cursor) =>
-    fetchWorkloads({}, cursor, DRAIN_LIMIT)
   )
 }
 

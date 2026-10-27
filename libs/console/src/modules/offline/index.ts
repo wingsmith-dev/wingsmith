@@ -47,6 +47,12 @@ import {
   emptyUpstream,
 } from "@/modules/demand/display"
 import type { PlaneConfig } from "@/modules/system/types"
+import {
+  STUCK_MS,
+  stuckDeployments,
+  summarizeEndpointHealth,
+} from "@/modules/overview/fleet"
+import type { FleetSummary } from "@/modules/overview/types"
 import type {
   BenchmarkCreateRequest,
   BenchmarkHarness,
@@ -138,6 +144,88 @@ registerFixtures([
       return clusterRollup(id).headroom
     },
   },
+])
+
+function tally<T>(rows: T[], key: (row: T) => string): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const row of rows) out[key(row)] = (out[key(row)] ?? 0) + 1
+  return out
+}
+
+/**
+ * `GET /fleet/summary`, counted out of the fixture corpus with the plane's
+ * rules: free is an allocatable device, the same split {@link clusterRollup}
+ * makes, and a deployment's shortfall is unschedulable once it has sat outside
+ * `running` for ten minutes.
+ */
+function fleetSummary(): FleetSummary {
+  const classes = new Map<string, { total: number; free: number }>()
+  for (const device of devices) {
+    const seen = classes.get(device.device_class) ?? { total: 0, free: 0 }
+    classes.set(device.device_class, {
+      total: seen.total + 1,
+      free: seen.free + (device.allocatable ? 1 : 0),
+    })
+  }
+  const free = devices.filter((d) => d.allocatable).length
+  const health = summarizeEndpointHealth(endpoints, deployments)
+  const serving = deployments.filter((d) => d.replicas.ready > 0)
+
+  return {
+    clusters: {
+      total: clusters.length,
+      reachable: clusters.filter((c) => c.reachable).length,
+      by_phase: tally(clusters, (c) => c.phase),
+    },
+    nodes: {
+      total: nodes.length,
+      ready: nodes.filter((n) => n.ready).length,
+      cordoned: nodes.filter((n) => n.cordoned).length,
+      by_condition: tally(nodes, (n) => n.condition),
+    },
+    devices: {
+      total: devices.length,
+      free,
+      allocated: devices.length - free,
+      by_health: tally(devices, (d) => d.health),
+      by_class: [...classes]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([device_class, entry]) => ({
+          device_class,
+          total: entry.total,
+          free: entry.free,
+          allocated: entry.total - entry.free,
+        })),
+    },
+    deployments: {
+      total: deployments.length,
+      by_phase: tally(deployments, (d) => d.admission_phase),
+      replicas_ready: serving.reduce((sum, d) => sum + d.replicas.ready, 0),
+      clusters_serving: new Set(serving.map((d) => d.cluster_id)).size,
+      unschedulable_replicas: stuckDeployments(deployments).reduce(
+        (sum, entry) => sum + entry.shortfall,
+        0
+      ),
+      stuck_after_seconds: STUCK_MS / 1000,
+    },
+    endpoints: {
+      total: endpoints.length,
+      disabled: endpoints.filter((e) => !e.enabled).length,
+      serving: health.serving,
+      degraded: health.degraded,
+      down: health.down,
+      idle: health.idle,
+    },
+    workloads: {
+      total: workloads.length,
+      paused: workloads.filter((w) => w.paused).length,
+    },
+    generated_at: new Date().toISOString(),
+  }
+}
+
+registerFixtures([
+  { method: "GET", path: "/fleet/summary", handler: () => fleetSummary() },
 ])
 
 collection({

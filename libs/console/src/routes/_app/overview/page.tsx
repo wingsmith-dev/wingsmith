@@ -3,21 +3,18 @@ import { StatTile } from "@/components/layout/stat-tile"
 import { anyTruncated } from "@/lib/paginate"
 import { deriveFleetAttention } from "@/modules/overview/attention"
 import {
-  allocationTotals,
-  capacityByClass,
+  allocationFromSummary,
+  capacityFromSummary,
   freshnessNote,
   reachabilityRows,
-  replicaFootprint,
-  summarizeEndpointHealth,
-  unschedulableReplicas,
 } from "@/modules/overview/fleet"
 import {
+  useFleetSummary,
   useOverviewClusters,
   useOverviewDeployments,
   useOverviewDevices,
   useOverviewEndpoints,
   useOverviewNodes,
-  useOverviewWorkloads,
   useRecentOperations,
   useUndecidedDiscovered,
 } from "@/modules/overview/queries"
@@ -34,28 +31,25 @@ const FULL_PERCENT = 90
 
 /**
  * The fleet page, ordered as the questions are asked: what is broken, what is
- * tight, what changed. Every number is drawn from a drained list rather than a
- * first page, so the cards are collection totals and not page sizes — the
- * operations feed is the one recent slice, and it says so.
+ * tight, what changed. The tiles and capacity panel come from the plane's fleet
+ * summary, which counts every row; the attention list needs the rows themselves
+ * and drains the collections. The operations feed is the one recent slice.
  */
 export function OverviewPage() {
+  const summary = useFleetSummary()
   const clusters = useOverviewClusters()
   const nodes = useOverviewNodes()
   const devices = useOverviewDevices()
   const deployments = useOverviewDeployments()
   const endpoints = useOverviewEndpoints()
-  const workloads = useOverviewWorkloads()
   const discovered = useUndecidedDiscovered()
   const operations = useRecentOperations()
 
-  const serving =
-    endpoints.data && deployments.data
-      ? summarizeEndpointHealth(endpoints.data, deployments.data)
-      : undefined
-  const footprint = deployments.data && replicaFootprint(deployments.data)
-  const allocation = devices.data && allocationTotals(devices.data)
-  const pending = deployments.data && unschedulableReplicas(deployments.data)
-  const capacity = devices.data && capacityByClass(devices.data)
+  const fleet = summary.data
+  const serving = fleet?.endpoints
+  const allocation = fleet && allocationFromSummary(fleet.devices)
+  const pending = fleet?.deployments.unschedulable_replicas
+  const capacity = fleet && capacityFromSummary(fleet.devices)
   const reachability = clusters.data && reachabilityRows(clusters.data)
   const readOnly = useReadOnly()
   const freshness = freshnessNote(clusters.data, Boolean(clusters.error))
@@ -65,7 +59,6 @@ export function OverviewPage() {
     devices,
     deployments,
     endpoints,
-    workloads,
     discovered
   )
 
@@ -131,23 +124,27 @@ export function OverviewPage() {
                   : "default"
             }
             to="/endpoints"
-            isLoading={endpoints.isLoading || deployments.isLoading}
-            error={endpoints.error ?? deployments.error}
+            isLoading={summary.isLoading}
+            error={summary.error}
           />
           <StatTile
             size="lg"
             label="Workloads"
-            value={workloads.data?.length ?? 0}
+            value={fleet?.workloads.total ?? 0}
             footnote={
-              footprint
-                ? `${footprint.ready} replicas across ${footprint.clusters} ${
-                    footprint.clusters === 1 ? "cluster" : "clusters"
+              fleet
+                ? `${fleet.deployments.replicas_ready} replicas across ${
+                    fleet.deployments.clusters_serving
+                  } ${
+                    fleet.deployments.clusters_serving === 1
+                      ? "cluster"
+                      : "clusters"
                   }`
                 : null
             }
             to="/workloads"
-            isLoading={workloads.isLoading}
-            error={workloads.error}
+            isLoading={summary.isLoading}
+            error={summary.error}
           />
           <StatTile
             size="lg"
@@ -166,8 +163,8 @@ export function OverviewPage() {
                   : "default"
             }
             to="/devices"
-            isLoading={devices.isLoading}
-            error={devices.error}
+            isLoading={summary.isLoading}
+            error={summary.error}
           />
           <StatTile
             size="lg"
@@ -176,8 +173,8 @@ export function OverviewPage() {
             footnote="replicas pending > 10m"
             tone={pending ? "warn" : "default"}
             to="/deployments"
-            isLoading={deployments.isLoading}
-            error={deployments.error}
+            isLoading={summary.isLoading}
+            error={summary.error}
           />
         </div>
 
@@ -193,8 +190,8 @@ export function OverviewPage() {
           <div className="flex min-w-0 flex-col gap-4">
             <CapacityPressure
               rows={capacity}
-              isLoading={devices.isLoading}
-              error={devices.error}
+              isLoading={summary.isLoading}
+              error={summary.error}
             />
           </div>
 
@@ -217,8 +214,8 @@ export function OverviewPage() {
             role="status"
             className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-warning"
           >
-            Some counts on this page are partial: a collection was larger than
-            the console reads in one pass, so the figures are lower bounds.
+            The attention list may be incomplete: a collection was larger than
+            the console reads in one pass.
           </p>
         )}
 

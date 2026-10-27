@@ -20,7 +20,7 @@ describe("overview", () => {
       expect(
         await screen.findByRole("heading", { name: "Overview" })
       ).toBeInTheDocument()
-      // Each card resolves once its drained query lands.
+      // Each card resolves once the fleet summary lands.
       const main = await screen.findByRole("main")
       const workloads = await within(main).findByText("Workloads", {
         selector: "div",
@@ -39,7 +39,7 @@ describe("overview", () => {
           timeout: 5000,
         })
       ).toBeInTheDocument()
-      expect(screen.queryByText(/counts on this page are partial/)).toBeNull()
+      expect(screen.queryByText(/attention list may be incomplete/)).toBeNull()
     }
   )
 })
