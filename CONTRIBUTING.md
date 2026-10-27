@@ -44,27 +44,6 @@ serving traffic. `just check-docs` fails on a dead relative link, anchor or back
 Markdown, and `just conformance-gateway` runs the conformance probes through a locally built
 gateway; CI runs both.
 
-## Sign your commits (DCO)
-
-Hangar uses the [Developer Certificate of Origin](https://developercertificate.org/) instead of a
-CLA. By adding a `Signed-off-by` line to a commit you certify that you wrote the change, or
-otherwise have the right to submit it under the project's license (Apache-2.0).
-
-```sh
-git commit -s -m "fix(gateway): ..."
-```
-
-`-s` adds the line using your configured `user.name` and `user.email`. The `dco` job in CI refuses
-a pull request with a commit that has no sign-off matching its author. To fix a branch that is missing them:
-
-```sh
-git rebase --signoff main
-git push --force-with-lease
-```
-
-Commits made before the project adopted the DCO do not carry sign-offs; the check applies to new
-pull requests only.
-
 ## Commits
 
 - **Small and logical.** One behaviour change per commit, with its tests in the same commit or the
@@ -129,8 +108,8 @@ Decisions that shape the system are recorded in [`docs/decisions/`](docs/decisio
 - Describe what changed in behaviour and how you checked it. The template asks for this.
 - Add or update tests for every behaviour change, and update the README or docs a change makes
   wrong.
-- CI must be green: format, lint and tests for every module, the database suite, the leak checks
-  and the DCO check.
+- CI must be green: format, lint and tests for every module, the database suite and the leak
+  checks.
 - A maintainer reviews every pull request (see [`.github/CODEOWNERS`](.github/CODEOWNERS)). Expect
   questions about why, not just what; the answers often belong in the commit message.
 - Maintainers merge. History on `main` is kept as committed, so a clean series of commits matters

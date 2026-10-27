@@ -21,4 +21,4 @@ The first public version of the repository. Nothing has been tagged or published
   `hgrconform` (`libs/conformance`).
 - Architecture overview, decision records, roadmap, glossary and the plane deployment guide under
   `docs/`.
-- Contributing guide with DCO sign-off, security policy, code of conduct and trademark policy.
+- Contributing guide, security policy, code of conduct and trademark policy.
