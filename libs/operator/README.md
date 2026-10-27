@@ -102,6 +102,7 @@ replica waiting for the lease reports not ready because it holds no hub session.
 |---|---|---|
 | `HANGAR_CLUSTER_ID` | required | the plane-assigned cluster id |
 | `HANGAR_HUB_URL` | required | `wss://` hub address; `ws://` only with `HANGAR_HUB_ALLOW_INSECURE=true` |
+| `HANGAR_HUB_ALLOW_INSECURE` | `false` | accept a `ws://` hub URL, which sends the token in the clear; local development only |
 | `HANGAR_ENROLMENT_TOKEN` | required | the cluster's enrolment token |
 | `HANGAR_HUB_CA_FILE` | none | PEM bundle for verifying the hub |
 | `HANGAR_HUB_INSECURE_SKIP_VERIFY` | `false` | local development only; logs a warning at startup |
@@ -122,20 +123,31 @@ replica waiting for the lease reports not ready because it holds no hub session.
 | `HANGAR_RESYNC_INTERVAL` | `15m` | how often the whole observed inventory is restated, which is what retires objects the cluster no longer has |
 | `HANGAR_DCGM_ENDPOINT` / `HANGAR_DCGM_SELECTOR` / `HANGAR_DCGM_TIMEOUT` | in-cluster exporter / none / `5s` | where device identity is scraped |
 | `HANGAR_POOL_LABEL_KEY` / `HANGAR_GPU_POOL_VALUE` | `hangar.dev/pool` / `gpu` | node label workers are placed by |
-| `HANGAR_CACHE_POOL_VALUE` / `HANGAR_CACHE_TAINT_KEY` | `cache` / `hangar.dev/cache` | node pool and taint for weight downloads |
+| `HANGAR_GPU_TOLERATION_KEY` / `HANGAR_GPU_TOLERATION_VALUE` | `nvidia.com/gpu` / none | the taint GPU workers tolerate; no value tolerates any value of the key |
+| `HANGAR_CACHE_POOL_VALUE` / `HANGAR_CACHE_TAINT_KEY` / `HANGAR_CACHE_TAINT_VALUE` | `cache` / `hangar.dev/cache` / none | node pool and taint for weight downloads |
 | `HANGAR_PREFETCH_CPU` / `HANGAR_PREFETCH_MEMORY` / `HANGAR_PREFETCH_MEMORY_LIMIT` | none | prefetch job resources |
 | `HANGAR_MODEL_CACHE_PVC` / `HANGAR_LOCAL_MODEL_CACHE_DIR` | `model-cache` / none | where weights are cached |
 | `HANGAR_ENGINE_PULL_SECRETS` | none | image pull secrets for engine workers |
+| `HANGAR_ALLOWED_IMAGE_PREFIXES` | none | registries or repositories every engine, frontend and prefetch image must come from; empty allows any |
 | `HANGAR_FRONTEND_ENABLED` | `false` | render one frontend per model |
 | `HANGAR_FRONTEND_IMAGE` / `HANGAR_FRONTEND_REPLICAS` / `HANGAR_FRONTEND_PULL_SECRETS` | none / `2` / none | the frontend's image, count and pull secrets |
 | `HANGAR_FRONTEND_CPU` / `HANGAR_FRONTEND_MEMORY` / `HANGAR_FRONTEND_MEMORY_LIMIT` | none | frontend resources |
 | `HANGAR_FRONTEND_ANTHROPIC_API` / `HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE` | `true` / `true` | serve `/v1/messages`, and drop a fixed client preamble so the prefix cache can hit |
-| `HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE` | `true` | put rendered frontends in the shared Dynamo namespace |
+| `HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE` | `true` | put each graph's frontend and workers in the shared Dynamo namespace; `false` gives each graph its own. Read only with `HANGAR_FRONTEND_ENABLED` |
 | `HANGAR_MULTINODE` | `false` | assert a leader-worker backend (Grove or LeaderWorkerSet) when discovery cannot see it |
-| `HANGAR_EFA_DEVICES` / `HANGAR_FABRIC_RESOURCE` / `HANGAR_NIXL_BACKENDS` | `0` / none / none | fabric devices and KV-transfer backends for disaggregated serving |
+| `HANGAR_FABRIC` | none | RDMA fabric workers move KV over: empty, `efa` or `rdma` |
+| `HANGAR_FABRIC_DEVICES` / `HANGAR_FABRIC_RESOURCE` | `0` / `vpc.amazonaws.com/efa` under `efa` | interfaces per worker pod and their extended resource; `rdma` requires the resource |
+| `HANGAR_FABRIC_PRIVILEGED` | `true` under `efa`, else `false` | run fabric workers privileged with host IPC |
+| `HANGAR_EFA_DEVICES` | none | legacy alias for `HANGAR_FABRIC=efa` with that many devices; refused alongside the new keys |
+| `HANGAR_NIXL_BACKENDS` | none | NIXL plugins the KV connector registers; `LIBFABRIC` on EFA |
 | `HANGAR_INFERENCE_ENDPOINT` | discovered | the frontend a benchmark aims at |
 | `HANGAR_BENCHMARK_TIMEOUT` / `HANGAR_BENCHMARK_CPU` / `HANGAR_BENCHMARK_MEMORY` | `30m` / `500m` / `1Gi` | benchmark runs |
+| `HANGAR_BENCHMARK_IMAGES` | the pinned aiperf and evalscope images | harness images a benchmark may run, matched exactly |
+| `HANGAR_BENCHMARK_TOKEN_SECRET` | none | Secret in the workload namespace handed to benchmark jobs as environment, for a gated tokenizer |
 | `HANGAR_BENCHMARK_ARTIFACT_BASE` | none | where raw benchmark records would be uploaded; nothing uploads yet |
+
+The renderer targets NVIDIA GPUs only: workers request `nvidia.com/gpu` (`render.GPUResource`) and
+device identity comes from DCGM. Other accelerators are not supported.
 
 Liveness is unconditional and readiness carries the hub session and the observation loop: a
 partitioned operator is alive, because the cluster is meant to keep working when the plane is
