@@ -9,8 +9,7 @@ class DeploymentReplicaRollupSchema(Struct):
     """Observed replicas, counted rather than listed.
 
     A rollup because a deployment with two hundred replicas still answers this in
-    one row; a client that wants the replicas asks `GET /v1/replicas?deployment=`,
-    which is also the only module allowed to write them.
+    one row.
     """
 
     total: int

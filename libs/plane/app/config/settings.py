@@ -216,7 +216,7 @@ class Settings:
 
     `latest` is not a tag these registries publish, so accepting it verbatim
     produces an `ImagePullBackOff` rather than a validation error. Keep this in
-    step with `dynamo.frontend.image.tag` in the cluster-setup chart: the
+    step with `frontend.shared.image.tag` in the cluster-setup chart: the
     prefetch job's layout has to be the one the engine later reads.
     """
 

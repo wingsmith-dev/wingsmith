@@ -70,7 +70,11 @@ class ServingRoutes(Controller):
         span: int = 3600,
         series: bool = False,
     ) -> Response[MetricsSchema]:
-        """One model as the front door saw it, measured over the tenant's own traffic.
+        """One model as the front door's metrics report it, filtered to this tenant.
+
+        The series come from `remote_write`, whose `cluster` label is not
+        authenticated (ADR 0012), so these figures are what clusters reported and
+        not something the plane measured itself.
 
         The reference is resolved against this tenant before the metrics service
         sees it, so what reaches the query is a uid this tenant was proved to own
