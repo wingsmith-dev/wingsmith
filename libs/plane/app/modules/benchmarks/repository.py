@@ -193,6 +193,15 @@ class BenchmarkRepository:
         and the coverage flag. Every join is outer: a run whose deployment has
         since been deleted still grades, on the checks that do not need it.
         """
+        return self._facts_select().where(BenchmarkRun.uid == ref)
+
+    def request_facts_query(self, ref: str) -> Select:
+        """`facts_query` for every run of one request, in `request_runs_query` order."""
+        return (
+            self._facts_select().where(BenchmarkRequest.uid == ref).order_by(BenchmarkRun.step_index, BenchmarkRun.seq)
+        )
+
+    def _facts_select(self) -> Select:
         return (
             select(
                 BenchmarkRun,
@@ -208,13 +217,15 @@ class BenchmarkRepository:
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
             .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
-            .where(BenchmarkRun.uid == ref)
         )
 
     async def facts(self, ref: str) -> Row | None:
         if not is_uid(ref) or not ref.startswith(BENCHMARK_RUN):
             return None
         return (await self.db.execute(self.facts_query(ref))).first()
+
+    async def request_facts(self, ref: str) -> list[Row]:
+        return list((await self.db.execute(self.request_facts_query(ref))).all())
 
     async def baselines(self, artifact_id: UUID | None) -> list[ArtifactBaseline]:
         """The quality floors declared for one artifact, or nothing when none are.
@@ -223,8 +234,18 @@ class BenchmarkRepository:
         """
         if artifact_id is None:
             return []
-        query = select(ArtifactBaseline).where(ArtifactBaseline.artifact_id == artifact_id)
-        return list((await self.db.execute(query)).scalars().all())
+        return (await self.baselines_by_artifact({artifact_id})).get(artifact_id, [])
+
+    async def baselines_by_artifact(self, artifact_ids: set[UUID | None]) -> dict[UUID, list[ArtifactBaseline]]:
+        """`baselines` for several artifacts in one query, keyed by artifact."""
+        wanted = {artifact_id for artifact_id in artifact_ids if artifact_id is not None}
+        if not wanted:
+            return {}
+        query = select(ArtifactBaseline).where(ArtifactBaseline.artifact_id.in_(wanted))
+        found: dict[UUID, list[ArtifactBaseline]] = {}
+        for baseline in (await self.db.execute(query)).scalars():
+            found.setdefault(baseline.artifact_id, []).append(baseline)
+        return found
 
     def request_query(self, ref: str) -> Select:
         return (

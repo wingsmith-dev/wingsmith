@@ -329,10 +329,11 @@ class BenchmarkService:
         if request is None:
             raise NotFound(f"no benchmark request {ref!r}")
         entry = verdicts.resolve_criteria(criteria or request[0].criteria_version)
-        runs = await self.repo.request_runs(ref)
+        rows = await self.repo.request_facts(ref)
+        baselines = await self.repo.baselines_by_artifact({row.artifact_id for row in rows})
         graded: list[verdicts.Verdict] = []
-        for run in runs:
-            facts, _ = await self._facts(run.uid)
+        for row in rows:
+            facts, _ = _run_facts(row, baselines.get(row.artifact_id, []))
             if facts.discard:
                 continue
             graded.append(verdicts.verdict(facts, entry))
@@ -410,35 +411,7 @@ class BenchmarkService:
         row = await self.repo.facts(ref)
         if row is None:
             raise NotFound(f"no benchmark run {ref!r}")
-        run = row[0]
-        baselines = await self.repo.baselines(row.artifact_id)
-        parameters = run.parameters or {}
-        recorded = row.criteria_version or verdicts.DEFAULT_CRITERIA_VERSION
-        facts = verdicts.RunFacts(
-            run_id=run.uid,
-            harness=run.harness,
-            harness_version=run.harness_version,
-            level=row.level or harnesses.DEPLOYMENT,
-            phase=run.phase,
-            discard=bool(run.discard),
-            summary=run.summary,
-            input_tokens=_int_or_none(parameters.get("input_tokens_mean")),
-            parameter_count=_int_or_none(row.parameter_count),
-            tier=row.tier,
-            strict=bool(parameters.get("strict", True)),
-            datasets=harnesses.resolve_datasets(str(parameters.get("datasets") or "")),
-            baselines=tuple(
-                verdicts.Baseline(
-                    dataset=baseline.dataset,
-                    metric=baseline.metric,
-                    value=float(baseline.value),
-                    tolerance_pct=float(baseline.tolerance_pct),
-                )
-                for baseline in baselines
-            ),
-            homogeneous=True if row.homogeneous is None else bool(row.homogeneous),
-        )
-        return facts, recorded
+        return _run_facts(row, await self.repo.baselines(row.artifact_id))
 
     # ----------------------------------------------------------------- writes
 
@@ -757,6 +730,38 @@ def _steps(harness: harnesses.Harness, data: BenchmarkRequestCreateRequest) -> l
         if step not in ordered:
             ordered.append(step)
     return ordered
+
+
+def _run_facts(row: Row, baselines: list) -> tuple[verdicts.RunFacts, str]:
+    """A run's verdict inputs from a `facts_query` row and its artifact's baselines, with the criteria it recorded."""
+    run = row[0]
+    parameters = run.parameters or {}
+    recorded = row.criteria_version or verdicts.DEFAULT_CRITERIA_VERSION
+    facts = verdicts.RunFacts(
+        run_id=run.uid,
+        harness=run.harness,
+        harness_version=run.harness_version,
+        level=row.level or harnesses.DEPLOYMENT,
+        phase=run.phase,
+        discard=bool(run.discard),
+        summary=run.summary,
+        input_tokens=_int_or_none(parameters.get("input_tokens_mean")),
+        parameter_count=_int_or_none(row.parameter_count),
+        tier=row.tier,
+        strict=bool(parameters.get("strict", True)),
+        datasets=harnesses.resolve_datasets(str(parameters.get("datasets") or "")),
+        baselines=tuple(
+            verdicts.Baseline(
+                dataset=baseline.dataset,
+                metric=baseline.metric,
+                value=float(baseline.value),
+                tolerance_pct=float(baseline.tolerance_pct),
+            )
+            for baseline in baselines
+        ),
+        homogeneous=True if row.homogeneous is None else bool(row.homogeneous),
+    )
+    return facts, recorded
 
 
 def _tier(tier: str | None) -> str | None:

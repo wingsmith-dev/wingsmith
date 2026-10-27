@@ -1308,3 +1308,14 @@ async def test_a_workload_benchmark_tells_each_cluster_about_its_own_run(session
     operations = await fetch(sessions, "select uid from ops_operation where type = 'deployment.benchmark'")
     assert sorted(change.cluster_id for change in notifier.changes) == sorted(row.uid for row in clusters)
     assert sorted(change.uid for change in notifier.changes) == sorted(row.uid for row in operations)
+
+    # Finished with an empty summary, so each run has checks, and they fail.
+    async with sessions.begin() as db:
+        await db.execute(
+            text("update ops_benchmark_run set phase = 'succeeded', harness_version = '0.12.0', summary = '{}'")
+        )
+    async with sessions() as db:
+        service = BenchmarkService(db, actor="test", notifier=notifier)
+        rolled = await service.request_verdict(created.id)
+        each = [await service.verdict(run) for run in created.runs]
+    assert rolled.checks and rolled.checks == [check for verdict in each for check in verdict.checks]
