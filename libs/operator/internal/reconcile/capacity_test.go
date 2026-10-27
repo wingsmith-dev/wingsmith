@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
@@ -321,6 +322,8 @@ func TestATaintTheWorkerDoesNotTolerateRemovesTheNode(t *testing.T) {
 		fits  bool
 	}{
 		{"the GPU taint the worker tolerates", corev1.Taint{Key: "nvidia.com/gpu", Value: "true", Effect: corev1.TaintEffectNoSchedule}, true},
+		{"the GPU taint with another value", corev1.Taint{Key: "nvidia.com/gpu", Value: "present", Effect: corev1.TaintEffectNoSchedule}, true},
+		{"the GPU taint with no value", corev1.Taint{Key: "nvidia.com/gpu", Effect: corev1.TaintEffectNoSchedule}, true},
 		{"a taint nothing tolerates", corev1.Taint{Key: "dedicated", Value: "training", Effect: corev1.TaintEffectNoSchedule}, false},
 		{"a preference only", corev1.Taint{Key: "dedicated", Value: "training", Effect: corev1.TaintEffectPreferNoSchedule}, true},
 	} {
@@ -334,6 +337,39 @@ func TestATaintTheWorkerDoesNotTolerateRemovesTheNode(t *testing.T) {
 			condition := readyCondition(t, out)
 			if got := condition.Status == metav1.ConditionTrue; got != tc.fits {
 				t.Fatalf("fits = %v, want %v (%s: %s)", got, tc.fits, condition.Reason, condition.Message)
+			}
+		})
+	}
+}
+
+// The precondition counts the nodes the rendered worker tolerates, so a configured toleration key
+// or value changes which tainted nodes hold room, the same way it changes the pod spec.
+func TestTheCapacityCheckUsesTheConfiguredGPUToleration(t *testing.T) {
+	tainted := func(key, value string) *corev1.Node {
+		node := gpuNode("gpu-0", 8, true)
+		node.Spec.Taints = []corev1.Taint{{Key: key, Value: value, Effect: corev1.TaintEffectNoSchedule}}
+		return node
+	}
+	for _, tc := range []struct {
+		name string
+		opts render.Options
+		node *corev1.Node
+		fits bool
+	}{
+		{"a configured key on a node tainted with it", render.Options{GPUTolerationKey: "example.com/accelerator"}, tainted("example.com/accelerator", "yes"), true},
+		{"a configured key on a node tainted with the default key", render.Options{GPUTolerationKey: "example.com/accelerator"}, tainted("nvidia.com/gpu", "true"), false},
+		{"a configured value that matches", render.Options{GPUTolerationValue: "present"}, tainted("nvidia.com/gpu", "present"), true},
+		{"a configured value that does not match", render.Options{GPUTolerationValue: "present"}, tainted("nvidia.com/gpu", "true"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := fake.NewClientBuilder().WithObjects(tc.node).Build()
+			dep := testDeploymentDesired()
+			got, err := schedulable(context.Background(), c, dep, render.NodeSelector(dep, testRender), render.WorkerTolerations(tc.opts))
+			if err != nil {
+				t.Fatalf("schedulable: %v", err)
+			}
+			if got.OK != tc.fits {
+				t.Fatalf("fits = %v, want %v (%s)", got.OK, tc.fits, got.Reason)
 			}
 		})
 	}

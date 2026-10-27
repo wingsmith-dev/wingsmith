@@ -847,7 +847,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		NodeSelector:     podNodeSelector(in, opts),
 		// Paired with the privileged context; see fabricSecurityContext.
 		HostIPC:     fabricPrivileged(opts),
-		Tolerations: []corev1.Toleration{taintToleration(gpuTolerationKey(opts), opts.GPUTolerationValue)},
+		Tolerations: WorkerTolerations(opts),
 		Volumes: append(localModelVolume(opts), []corev1.Volume{
 			{
 				Name: "model-cache",
@@ -1213,6 +1213,12 @@ func globalNamespace(opts Options) bool {
 		return *opts.FrontendGlobalNamespace
 	}
 	return true
+}
+
+// WorkerTolerations is what every engine worker tolerates. Exported for the same reason as
+// NodeSelector: the capacity precondition must count the nodes these pods can land on.
+func WorkerTolerations(opts Options) []corev1.Toleration {
+	return []corev1.Toleration{taintToleration(gpuTolerationKey(opts), opts.GPUTolerationValue)}
 }
 
 // gpuTolerationKey is the taint key GPU workers tolerate.

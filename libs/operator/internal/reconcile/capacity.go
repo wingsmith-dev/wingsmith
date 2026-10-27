@@ -2,7 +2,6 @@ package reconcile
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -130,6 +129,7 @@ func schedulable(
 	c client.Reader,
 	dep wire.DeploymentDesired,
 	selector map[string]string,
+	tolerations []corev1.Toleration,
 ) (fit, error) {
 	want := shapeOf(dep)
 
@@ -141,8 +141,6 @@ func schedulable(
 	if err != nil {
 		return fit{}, err
 	}
-	tolerations := workerTolerations(dep)
-
 	candidates := make([]candidate, 0, len(nodes.Items))
 	var largest, advertised int64
 	for i := range nodes.Items {
@@ -229,33 +227,6 @@ func podDevices(pod *corev1.Pod) int64 {
 		initMax = max(initMax, asked(c))
 	}
 	return max(sum, initMax)
-}
-
-// defaultWorkerTolerations is what the renderer puts on every engine worker. It has to match
-// render's podSpec: a node whose taint the worker does not tolerate is capacity it cannot use.
-var defaultWorkerTolerations = []corev1.Toleration{{
-	Key:      "nvidia.com/gpu",
-	Operator: corev1.TolerationOpEqual,
-	Value:    "true",
-	Effect:   corev1.TaintEffectNoSchedule,
-}}
-
-// workerTolerations is the worker's tolerations after the serving block's pod overlay, which
-// replaces the list when it names one (a strategic merge has no merge key for tolerations).
-func workerTolerations(dep wire.DeploymentDesired) []corev1.Toleration {
-	raw, ok := dep.Serving.Overlay.PodSpec["tolerations"]
-	if !ok {
-		return defaultWorkerTolerations
-	}
-	body, err := json.Marshal(raw)
-	if err != nil {
-		return defaultWorkerTolerations
-	}
-	var out []corev1.Toleration
-	if err := json.Unmarshal(body, &out); err != nil {
-		return defaultWorkerTolerations
-	}
-	return out
 }
 
 // tolerated reports whether every taint that keeps a pod off a node is tolerated.
