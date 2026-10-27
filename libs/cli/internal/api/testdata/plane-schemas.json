@@ -286,6 +286,9 @@
   "structured_output_modes": "[]string",
   "tool_calling": "boolean?"
  },
+ "ArtifactUsageBatchSchema": {
+  "items": "[]$ArtifactUsageSchema"
+ },
  "ArtifactUsageSchema": {
   "artifact_id": "string",
   "downstream_count": "integer",

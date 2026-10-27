@@ -112,7 +112,9 @@ export function useArtifactUsages(ids: string[]) {
       for (let i = 0; i < unique.length; i += USAGE_BATCH)
         batches.push(unique.slice(i, i + USAGE_BATCH))
       const pages = await Promise.all(
-        batches.map((id) => api.list<ArtifactUsage>("/artifacts/usage", { id }))
+        batches.map((id) =>
+          api.get<{ items: ArtifactUsage[] }>("/artifacts/usage", { id })
+        )
       )
       return pages.flatMap((page) => page.items)
     },

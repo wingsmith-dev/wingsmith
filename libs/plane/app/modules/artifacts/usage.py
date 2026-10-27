@@ -24,11 +24,18 @@ from app.core.ids import is_uid
 from app.db.models import Artifact
 from app.db.models import Workload
 from app.core.context import RequestContext
-from app.core.schemas import ListResponse
+from app.core.schemas import Struct
 from app.core.exceptions import Invalid
 from app.core.pagination import MAX_LIMIT
 
 from .schemas import ArtifactUsageSchema
+
+
+class ArtifactUsageBatchSchema(Struct):
+    """One entry per known id, in the order asked. Not a page of a collection, so
+    there is no cursor or count beside `items`."""
+
+    items: list[ArtifactUsageSchema]
 
 
 class ArtifactUsageReader:
@@ -105,12 +112,12 @@ class ArtifactUsageRoutes(Controller):
         self,
         context: RequestContext,
         ids: Annotated[list[str], Parameter(query="id")],
-    ) -> Response[ListResponse[ArtifactUsageSchema]]:
+    ) -> Response[ArtifactUsageBatchSchema]:
         """Workload and downstream counts for each artifact named by `?id=`, up to 200.
 
         An unknown id is left out of `items` and does not fail the read, so a list
-        page that raced a delete still renders. Every result is on one page, so
-        `next_cursor` is always null.
+        page that raced a delete still renders.
         """
-        items = await ArtifactUsageReader(context.db).usage(requested_uids(ids))
-        return Response(ListResponse(items=items, count=len(items)))
+        return Response(
+            ArtifactUsageBatchSchema(items=await ArtifactUsageReader(context.db).usage(requested_uids(ids)))
+        )

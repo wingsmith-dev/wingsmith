@@ -1741,6 +1741,21 @@
         "title": "ArtifactUpstreamSchema",
         "type": "object"
       },
+      "ArtifactUsageBatchSchema": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactUsageSchema"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ArtifactUsageBatchSchema",
+        "type": "object"
+      },
       "ArtifactUsageSchema": {
         "properties": {
           "artifact_id": {
@@ -5661,35 +5676,6 @@
           "items"
         ],
         "title": "ListResponse[ArtifactSchema]",
-        "type": "object"
-      },
-      "ListResponse_app.modules.artifacts.schemas.ArtifactUsageSchema_": {
-        "properties": {
-          "count": {
-            "type": "integer"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ArtifactUsageSchema"
-            },
-            "type": "array"
-          },
-          "next_cursor": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "count",
-          "items"
-        ],
-        "title": "ListResponse[ArtifactUsageSchema]",
         "type": "object"
       },
       "ListResponse_app.modules.benchmarks.schemas.BenchmarkBandSchema_": {
@@ -14776,7 +14762,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_app.modules.artifacts.schemas.ArtifactUsageSchema_"
+                  "$ref": "#/components/schemas/ArtifactUsageBatchSchema"
                 }
               }
             },

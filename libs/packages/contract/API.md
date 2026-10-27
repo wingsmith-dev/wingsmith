@@ -1020,10 +1020,11 @@ A list view with a usage column would otherwise ask once per row. Repeat `id` fo
 to 200; the counts mean what they mean on the single read (`workload_count` counts a workload once
 whether it serves the weights or names them as an adapter, `downstream_count` counts artifacts naming
 this one as base). Only ids are accepted, because a name can match more than one artifact; a name
-or more than 200 ids is `422 invalid`. An id the plane does not know is left out of `items` rather
-than failing the read, so a page that raced a delete still renders. It is a list envelope with
-every result on one page, so `next_cursor` is always null. The literal segment wins over `{ref}`,
-as `/resolve` does, so an artifact named `usage` is read by its id.
+or more than 200 ids is `422 invalid`. An id the plane does not know is left out of `items` and
+does not fail the read, so a page that raced a delete still renders. The answer is
+`{"items": [...]}` in the order asked; it is not a page of a collection, so it carries no `count` or
+`next_cursor`. The literal segment wins over `{ref}`, as `/resolve` does, so an artifact named
+`usage` is read by its id.
 
 **`/v1/artifacts/{ref}/baselines` is the declared quality floor, one row per dataset and metric.**
 Full CRUD — `GET` (filters `dataset`, `metric`), `POST`, `PATCH` on
