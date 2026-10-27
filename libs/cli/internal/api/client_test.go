@@ -261,14 +261,14 @@ func TestTheStatusCodeBecomesTheErrorCode(t *testing.T) {
 }
 
 // TestThePlanesOwnCodeWinsOverTheStatus. The plane's `invalid` is a category error rather than a
-// validation failure and answers 409, so it maps to INVALID_STATE and not USAGE.
+// validation failure and answers 422, so it maps to INVALID_STATE and not USAGE.
 func TestThePlanesOwnCodeWinsOverTheStatus(t *testing.T) {
 	cases := []struct {
 		status int
 		wire   string
 		want   errs.Code
 	}{
-		{http.StatusConflict, "invalid", errs.CodeInvalidState},
+		{http.StatusUnprocessableEntity, "invalid", errs.CodeInvalidState},
 		{http.StatusBadRequest, "invalid_request", errs.CodeUsage},
 		{http.StatusInternalServerError, "not_found", errs.CodeNotFound},
 		{http.StatusOK + 400, "not_authorized", errs.CodeAuthRequired},
