@@ -152,7 +152,7 @@ def http_metrics(app: ASGIApp) -> ASGIApp:
 class PrometheusRoutes(Controller):
     tags = ["Main"]
 
-    @get("/metrics", media_type=CONTENT_TYPE_LATEST, sync_to_thread=False)
+    @get("/metrics", media_type=CONTENT_TYPE_LATEST, include_in_schema=False, sync_to_thread=False)
     def prometheus_metrics(self) -> Response[bytes]:
         """The API process's own metrics in the Prometheus text format; see `libs/plane/METRICS.md`."""
         return Response(generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)

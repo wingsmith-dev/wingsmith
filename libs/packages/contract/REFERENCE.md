@@ -11,12 +11,6 @@ response follows are in [`API.md`](API.md).
 |---|---|---|
 | GET | `/health` | Health |
 
-## `/metrics`
-
-| Method | Path | What |
-|---|---|---|
-| GET | `/metrics` | PrometheusMetrics |
-
 ## `/v1/alert-rules`
 
 | Method | Path | What |
