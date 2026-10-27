@@ -9,6 +9,9 @@
 *.pem
 *.key
 kubeconfig*
+.npmrc
+.netrc
+*.tfvars
 # A cluster's downloaded install values carry its enrolment token.
 hangar-*-values.yaml
 
