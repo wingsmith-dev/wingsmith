@@ -48,6 +48,10 @@ from hgrbench.plan import Cell
 
 TOKEN_ENV = "HGR_BENCH_TOKEN"
 REDACTED = "$" + TOKEN_ENV
+# A token shorter than this is left in place: replacing a value like "x" everywhere it appears
+# mangles paths and words in every printed command and log line, and a value that short is not a
+# credential worth hiding.
+MIN_REDACTED_LENGTH = 8
 
 
 @dataclass(frozen=True)
@@ -251,19 +255,24 @@ def docker_argv(
     return argv
 
 
+def scrub(text: str, token: str) -> str:
+    """`text` with every occurrence of the token replaced by its variable name.
+
+    Replacing it with the variable name keeps what is printed in the shape of what
+    ran, and shows a reader where the credential went.
+    """
+    if len(token) < MIN_REDACTED_LENGTH:
+        return text
+    return text.replace(token, REDACTED)
+
+
 def redacted(argv: list[str], token: str) -> str:
     """The command as a human should read it, with the token taken out.
 
-    The token is replaced rather than removed so that the printed command is still
-    the shape of the one that ran, and so that a reader can see *where* the
-    credential went.
+    The argv carries the token only by its variable name today, so this is a guard
+    against a harness that starts passing it inline.
     """
-    shown = []
-    for part in argv:
-        if token and token in part:
-            part = part.replace(token, REDACTED)
-        shown.append(part)
-    return " ".join(shlex.quote(part) for part in shown)
+    return " ".join(shlex.quote(scrub(part, token)) for part in argv)
 
 
 def quote(value: object) -> str:

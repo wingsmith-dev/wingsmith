@@ -39,13 +39,13 @@ from hgrbench.plan import sweep_specs
 from hgrbench.store import Store
 from hgrbench.store import Measurement
 from hgrbench.harnesses import registry
-from hgrbench.harnesses.base import REDACTED
 from hgrbench.harnesses.base import Context
 from hgrbench.harnesses.base import Harness
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
 from hgrbench.harnesses.base import HarnessError
 from hgrbench.harnesses.base import pull
+from hgrbench.harnesses.base import scrub
 from hgrbench.harnesses.base import host_arch
 from hgrbench.harnesses.base import image_exists
 from hgrbench.harnesses.base import resolve_digest
@@ -272,7 +272,7 @@ class Runner:
             sink.flush()
 
     def redact(self, text: str) -> str:
-        return text.replace(self.token, REDACTED) if self.token else text
+        return scrub(text, self.token)
 
     def kill(self, invocation: Invocation, process: subprocess.Popen[str]) -> None:
         """Stop an overdue run: the container first, then the CLI that was waiting on it."""

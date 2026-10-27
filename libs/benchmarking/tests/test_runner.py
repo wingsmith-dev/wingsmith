@@ -19,9 +19,10 @@ from hgrbench.runner import Runner
 from hgrbench.runner import Options
 from hgrbench.harnesses.base import Emission
 from hgrbench.harnesses.base import Invocation
+from hgrbench.harnesses.base import redacted
 
 
-TOKEN = "tok-123"
+TOKEN = "hgr-bench-runner-token"
 
 
 def _runner(tmp_path: Path, **options: object) -> Runner:
@@ -193,3 +194,15 @@ def test_a_dry_run_runs_nothing_sends_nothing_and_keeps_nothing(
     assert "would run" in out
     assert TOKEN not in out
     assert not results.exists()
+
+
+def test_a_token_too_short_to_be_a_credential_is_not_scrubbed(tmp_path: Path) -> None:
+    runner = _runner(tmp_path)
+    runner.token = "x"
+    log = tmp_path / "harness.log"
+
+    returncode, _ = runner.execute(_python("print('/results/x/max')"), log, timeout=30)
+
+    assert returncode == 0
+    assert "/results/x/max" in log.read_text()
+    assert redacted(["--dir", "/results/x"], "x") == "--dir /results/x"
