@@ -422,7 +422,7 @@
       "served_model_name": "meta-llama/llama-3.3-70b-instruct",
       "overrides": {},
       "labels": {
-        "hangar.io/alert": "off"
+        "hangar.dev/alert": "off"
       },
       "strategy": "pack",
       "cluster_floors": {},
