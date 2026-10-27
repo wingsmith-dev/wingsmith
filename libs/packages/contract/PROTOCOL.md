@@ -4,7 +4,7 @@ One WebSocket, dialled outbound by the operator, carrying desired state down and
 up. This document is the contract. Nothing in `libs/*` may change it unilaterally.
 
 Rationale for the transport choice is [ADR 0001](../../../docs/decisions/0001-websocket-json-over-grpc.md).
-Because we gave up codegen, four things below are our code rather than a library's: **framing,
+Because we gave up codegen, four things below are our code instead of a library's: **framing,
 correlation, resume, and backpressure**. They are specified here precisely because nothing
 enforces them mechanically.
 
@@ -52,7 +52,7 @@ port-forward does not protect a socket that cluster agents dial in to over the n
 **`hello.operator_version` is checked against the plane's release line.** A release-shaped version
 (`0.4.2`, `v0.4.2`) outside the major the plane speaks is refused with `retryable: false` and a
 protocol-error close, because a different major is free to change what a frame means. A version that
-is not release-shaped — `dev`, a commit — is a build from source and is admitted, with a log line on
+is not release-shaped (`dev`, a commit) is a build from source and is admitted, with a log line on
 the hub. An operator that omits the field is read as the latter.
 
 ## 2. Envelope
@@ -80,18 +80,18 @@ Every frame is a single JSON object. There are no bare payloads.
 | `seq` | monotonic per direction per session, starting at 1, or absent on unsequenced frames. See §4. |
 | `ack` | highest **contiguous** `seq` the sender has durably processed from the peer. Piggybacked on any frame. See §4. |
 | `reply_to` | the `id` of the frame being answered, or null. See §3. |
-| `ts` | RFC 3339 with milliseconds, UTC, sender's clock. Diagnostic only — never used for ordering. |
+| `ts` | RFC 3339 with milliseconds, UTC, sender's clock. Diagnostic only, never used for ordering. |
 | `payload` | type-specific object. Never a scalar, never an array, so fields can be added without a version bump. |
 
-Unknown fields are ignored on receipt. Unknown `type` values are **never fatal** — this is what lets
+Unknown fields are ignored on receipt. Unknown `type` values are **never fatal**: this is what lets
 an operator run one version behind the plane. The frame is dropped, and the receiver answers with an
 `error` naming the type and `retryable: false`. Dropping in silence would be cheaper but it makes
 version skew invisible in exactly the case that matters: a newer sender whose frames are being
 discarded has no way to find out, and the first symptom is state that never converges. The `error`
 is an ordinary sequenced frame; answering an unknown type therefore consumes a sequence number.
 
-**A dropped frame is still counted.** A receiver that cannot decode a payload — unknown type,
-malformed body — must still advance its arrival expectation for that `seq` and acknowledge it.
+**A dropped frame is still counted.** A receiver that cannot decode a payload, unknown type,
+malformed body, must still advance its arrival expectation for that `seq` and acknowledge it.
 Otherwise §2 and §4 contradict each other: the next frame arrives as a gap and closes the
 connection, which is the failure §2 exists to prevent. Only the envelope is fatal when
 undecodable; the payload is not.
@@ -103,12 +103,12 @@ is reserved for the handshake, where a rejected credential leaves nothing to con
 
 Three interaction shapes, all on the one connection:
 
-- **Event** — fire and forget. `reply_to` is null and no response is expected. Most observed
+- **Event**: fire and forget. `reply_to` is null and no response is expected. Most observed
   state is this.
-- **Request/response** — the responder sets `reply_to` to the request's `id`. Requests carry a
-  deadline in their payload; a responder that cannot meet it must answer with `error` rather than
+- **Request/response**: the responder sets `reply_to` to the request's `id`. Requests carry a
+  deadline in their payload; a responder that cannot meet it must answer with `error`, not
   go quiet.
-- **Stream** — a sequence of frames sharing one `reply_to`, terminated by a frame of type
+- **Stream**: a sequence of frames sharing one `reply_to`, terminated by a frame of type
   `stream.end`. Used for full resync and log-shaped data.
 
 There is exactly one generic failure frame:
@@ -126,7 +126,7 @@ Each direction numbers its own stream from 1 and continues across reconnects wit
 session. Both sides hold a replay buffer of sent frames.
 
 **Not every frame is sequenced.** `hello`, `welcome`, `ping`, `pong`, and `ack` carry no `seq` and
-never enter a replay buffer. Everything else is sequenced, **including `stream.end`** — a prune
+never enter a replay buffer. Everything else is sequenced, **including `stream.end`**: a prune
 decision depends on that frame, so it must not be able to arrive out of order or go missing
 quietly.
 
@@ -135,14 +135,14 @@ to send. Under one-way load the heartbeat would otherwise be the only carrier, a
 buffer for up to a full ping interval is a needless amount of memory to pin. A heartbeat that consumed sequence numbers would widen the replay
 window in proportion to idle time, which is the opposite of what a heartbeat is for.
 
-**Acknowledgement is continuous, not per-session.** Every frame may carry `ack` — the highest
+**Acknowledgement is continuous, not per-session.** Every frame may carry `ack`: the highest
 *contiguous* seq the sender has durably processed. Receiving it releases everything at or below it
 from the peer's replay buffer. Contiguous is the operative word: a hole is never acknowledged past,
 so a frame whose handler failed is simply not acked and will be replayed. **Withholding the ack is
-how a receiver signals "I could not apply this"** — there is no negative acknowledgement.
+how a receiver signals "I could not apply this"**: there is no negative acknowledgement.
 
-Reading does not stop at a hole. Frames after a failed one are still delivered and applied — they
-are idempotent and delivery is at-least-once — but the contiguous cursor stays behind the hole, so
+Reading does not stop at a hole. Frames after a failed one are still delivered and applied, they
+are idempotent and delivery is at-least-once, but the contiguous cursor stays behind the hole, so
 nothing past it is acknowledged. This makes the receiver's arrival expectation and its applied
 cursor two different numbers, and conflating them is a live bug: a refused frame would turn the
 peer's next ordinary frame into a gap, so withholding an ack would tear the connection down instead
@@ -165,7 +165,7 @@ one. Unreleased frames in the
 sender's replay buffer are re-sent immediately after `welcome`.
 
 `ack_seq` in `welcome` refers to the session named in that same `welcome`. When the hub grants a
-fresh session — `full_resync: true`, or a `session_id` different from the one asked for — both
+fresh session (`full_resync: true`, or a `session_id` different from the one asked for) both
 directions restart numbering at 1 and both replay buffers are discarded. Frames held under the old
 numbering are not re-sent; the resync supersedes them, and re-sending them would mean two
 descriptions of the same state arriving under two numbering schemes.
@@ -173,51 +173,51 @@ descriptions of the same state arriving under two numbering schemes.
 `full_resync` means: the hub streams its complete desired state for that cluster, the operator
 streams its complete observed state back, and both sides then discard anything absent from that
 snapshot. Each side opens its own stream explicitly with `resync.begin` and closes it with
-`stream.end` — the `full_resync` flag announces that this is about to happen, it does not stand in
+`stream.end`: the `full_resync` flag announces that this is about to happen, it does not stand in
 for the framing. Without the explicit open, a receiver could not tell a resync snapshot from
 ordinary traffic, and the prune at the end is only safe against a stream it knows the boundaries
 of. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
-control plane takes itself down — so the buffer is sized to cover a rolling restart, not a network
+control plane takes itself down, so the buffer is sized to cover a rolling restart, not a network
 hiccup. `lossy: true` in `hello` means "I cannot serve as a resume base", and the sender must be given a
-fresh session rather than be allowed to pretend it can resume. Replay-buffer overflow is one cause;
+fresh session, not be allowed to pretend it can resume. Replay-buffer overflow is one cause;
 a durable cursor written mid-resync, describing a local view that was never a coherent point in the
-stream, is another. The flag names the consequence rather than any particular cause, because every
+stream, is another. The flag names the consequence instead of any particular cause, because every
 cause has the same remedy. `session_id` in `hello` names which
-session is being resumed — `resume_from` alone cannot, since a sequence number means nothing
+session is being resumed: `resume_from` alone cannot, since a sequence number means nothing
 without the session it counts within.
 
 Sequenced frames are processed strictly in order. A duplicate (`seq` below the expected) is
-dropped. A gap (`seq` above the expected) closes the connection rather than being accepted as a
+dropped. A gap (`seq` above the expected) closes the connection instead of being accepted as a
 hole.
 
 **The resume cursor must be durable.** It lives beside the CRDs, not in memory. An operator that
 restarts during a partition and comes back with an in-memory cursor rewinds its own stream, which
 forfeits the property the whole architecture exists to provide.
 
-**Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session* —
-cursors and replay buffer — lives in one replica's memory, never in Postgres
+**Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session*,
+cursors and replay buffer, lives in one replica's memory, never in Postgres
 ([ADR 0005](../../../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md)). Reconnecting to
 the same pod resumes exactly as described above. Reconnecting to a different pod, which a
-Kubernetes Service makes ordinary rather than exceptional, finds a pod with no record of the
-session and therefore `full_resync: true` under the third condition above — this is expensive but
+Kubernetes Service makes ordinary, not exceptional, finds a pod with no record of the
+session and therefore `full_resync: true` under the third condition above; this is expensive but
 never wrong, and it is the price of not paying a permanent write cost to avoid it. What *is*
 durable across every pod is ownership: one hub session is the writer for a given `cluster_id`,
 established by an atomic claim in Postgres at `hello`, so two sessions can never both believe they
 hold the same cluster. A hub instance that loses its claim to a newer `hello` elsewhere discovers
-this on its own — nothing pushes it a notice, since the session that displaced it may have no
-channel back to the one it displaced — and closes the connection, which the operator experiences as
+this on its own, nothing pushes it a notice, since the session that displaced it may have no
+channel back to the one it displaced, and closes the connection, which the operator experiences as
 an ordinary drop-and-reconnect.
 
-Because that discovery is by polling, displacement is bounded rather than instantaneous: for up to
+Because that discovery is by polling, displacement is bounded, not instantaneous: for up to
 one poll interval the displaced session may still write. It is by construction the older and
 therefore staler of the two, so what that window can produce is a stale row and a flap of
-`reachable` — never a divergence that survives, since the displacing connection resyncs and the
+`reachable`, never a divergence that survives, since the displacing connection resyncs and the
 operator restreams its inventory over anything stale. Ingestion writes are not themselves fenced
 against the claim.
 
 ## 5. Liveness
 
-Application-level, not WebSocket ping frames — those are handled by intermediaries and prove
+Application-level, not WebSocket ping frames: those are handled by intermediaries and prove
 nothing about the peer's event loop.
 
 The operator sends `ping` every **10s**. A peer that has seen no frame of any kind for **30s**
@@ -232,7 +232,7 @@ deliberate:
 
 - **Operator → hub.** Observed state is a snapshot of the present, so when the queue is full the
   oldest frame of the same `type` and subject is **replaced**, not appended. Falling behind
-  degrades resolution, never correctness. Events (`*.event`) are exempt — they are dropped from
+  degrades resolution, never correctness. Events (`*.event`) are exempt: they are dropped from
   the tail and the drop is counted and reported, because a silently lost event is worse than a
   known-lost one.
 - **Hub → operator.** Desired state must not be dropped. When the queue is full the hub closes
@@ -249,7 +249,7 @@ connection over. The backpressure policy and the gap rule are only compatible un
 
 ## 6b. Poison frames
 
-Withholding the ack asks for a replay, so it is only the right answer when a replay could succeed —
+Withholding the ack asks for a replay, so it is only the right answer when a replay could succeed:
 a database that was down, a lock that was held, a dependency not yet written. A frame that can
 **never** be applied is different: a malformed id, a payload that violates a stated invariant. There
 is no negative acknowledgement to express that with, so withholding the ack on one would replay it
@@ -289,7 +289,7 @@ the version they write and the oldest they still read (`ENVELOPE_VERSION` and
 `MinEnvelopeVersion` in `libs/operator/internal/wire/envelope.go`), and accept any frame whose `v`
 falls in `[min, current]`. Today both are `1`. A version change is rolled out by widening the hub's
 range first, then moving the operators, then the hub's writer, then raising the floor once no
-operator on the old version is left — never by a flag day. A frame outside the range closes the
+operator on the old version is left, never by a flag day. A frame outside the range closes the
 connection: the hub answers it with an `error` carrying `retryable: false`, because reconnecting
 cannot change the peer's version, and the operator drops the session with an error naming the range
 it reads.

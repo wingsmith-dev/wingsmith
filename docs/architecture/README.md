@@ -38,7 +38,7 @@ platform, which the `cluster-setup` chart installs.
 party, no air-gapped installs. This simplifies exactly one object (Pool, §5.1) and it is easy to
 read too much into it (§2.2).
 
-What it deliberately is not:
+What it is not:
 
 - **Not a device scheduler.** The scheduler inside each cluster picks cards. Hangar picks clusters.
 - **Not a Kubernetes dashboard.** Showing an operator CRD trees and asking them to reconstruct
@@ -65,7 +65,7 @@ is told to run, and how a request finds it.
 | **AIBrix** | Control-plane components for vLLM in one cluster: LLM-aware gateway, autoscaler, LoRA management, distributed KV cache | Same layer as Dynamo's own control plane, inside one cluster |
 | **SkyServe** (SkyPilot) | Serves a model across clouds and regions by provisioning its own VMs or pods and load-balancing across them | Provisions compute itself; Hangar manages clusters you already run and leaves provisioning to you |
 | **LiteLLM, Envoy AI Gateway** | API gateways in front of model providers: one API, keys, rate limits, cost tracking | Route to endpoints that already exist. Hangar's gateway is narrower (no billing, no provider catalog) and is fed by the plane's knowledge of what runs where |
-| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar deliberately leaves to the cluster. Hangar does not preempt or run training |
+| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar leaves to the cluster. Hangar does not preempt or run training |
 
 NVIDIA has signalled multi-cluster coordination for Dynamo. If that ships, the overlap with Hangar
 is cross-cluster placement and routing. What Hangar adds on top of a single cluster's Dynamo today:
@@ -73,7 +73,7 @@ is cross-cluster placement and routing. What Hangar adds on top of a single clus
 - **Clusters that only dial out.** No kubeconfig in a central database and no inbound port on any
   cluster, for the control stream and for inference traffic (§2, §7.2).
 - **Adoption before management.** Models already running in a cluster are observed and can be put
-  under management deliberately, without a restart (§6.4).
+  under management, without a restart (§6.4).
 - **Tenants and endpoints across clusters.** One public model name, per-tenant hosts and API keys,
   per-tenant KV-cache isolation, and weighted or ordered routing to deployments on several clusters.
 - **Fleet inventory per device.** Device identity and health from DCGM, a device-class table shared
@@ -130,7 +130,7 @@ removes reason 2 and only reason 2. Credential blast radius, partition behaviour
 and staged rollout are properties of the architecture, not of who owns the hardware. Ownership makes
 push possible; it does not make it better.
 
-What ownership does buy is a simpler enrolment story (an internal bootstrap rather than a
+What ownership does buy is a simpler enrolment story (an internal bootstrap instead of a
 customer-facing join flow) and the ability to declare provisioning intent for node pools (§5.1).
 Even so, owning a cluster does not mean owning the network it sits in, which is a second reason the
 agent and the operator both dial out.
@@ -148,7 +148,7 @@ is a detail of how it syncs. The real choice was narrower:
 - **Git as the sync medium.** Auditable and good for configuration, wrong for anything that needs
   fast feedback or dynamic placement. Ruled out.
 
-The stream is a WebSocket carrying JSON envelopes rather than gRPC
+The stream is a WebSocket carrying JSON envelopes, not gRPC
 ([ADR 0001](../decisions/0001-websocket-json-over-grpc.md)). The cost of that choice is that the Go
 and Python types are written by hand; the fixture corpus in `libs/packages/contract/fixtures` is what
 keeps them from drifting. A message type with no fixture is not part of the contract.
@@ -309,7 +309,7 @@ If "model" means "a Hugging Face identifier", then a fine-tune output, private w
 derivative produced in-house, and a LoRA adapter are none of them models. All four are
 **artifacts**. Content-addressing them gives the cache layer something coherent to name (you cache
 artifacts; "caching a model" is not a well-formed statement) and makes a LoRA adapter an artifact
-attached to a running deployment rather than a special case in the serving path.
+attached to a running deployment instead of a special case in the serving path.
 
 The level above is a fully specified, reproducible way to serve some weights: engine and version,
 quantization, parallelism, context length, cache configuration, engine arguments, and the device
@@ -319,7 +319,7 @@ Workloads over one Artifact**, told apart by their `serving_digest`, a hash of e
 that decide what process runs.
 
 That configuration used to be an object of its own, the Recipe. It was deleted: the sharing it
-offered was being reconstructed by comparing fields rather than used, and it cost an ordering rule on
+offered was being reconstructed by comparing fields, not used, and it cost an ordering rule on
 the wire and a resume race. The configuration now lives on the Workload and reaches the cluster
 inlined on `deployment.desired.serving`
 ([ADR 0014](../decisions/0014-recipe-is-deleted-serving-config-lives-on-the-workload.md)). If a named,
@@ -376,7 +376,7 @@ working as intended. Today the operator renders `service` only (§11.2).
 **Scale is declared as a total and derived per cluster.** Workload carries total min/max/desired,
 optional per-cluster floors, and an optional cap on how many clusters it spreads over; placement
 derives each Deployment's share as a fixed replica count. The maximum is reserved for an autoscaler
-that does not exist yet ([roadmap](../roadmap.md)). The default fill strategy is **pack** rather than
+that does not exist yet ([roadmap](../roadmap.md)). The default fill strategy is **pack**, not
 spread, so spreading is opt-in.
 
 **Placement constraints are Policy, not new fields.** Policy already carries allowed regions,
@@ -405,7 +405,7 @@ deployment is a separate, explicit field, `authority: observed | managed`, on th
 ([ADR 0009](../decisions/0009-authority-is-a-mark-not-a-consequence-of-adoption.md)). An `observed`
 deployment is recorded and checked for drift, and nothing is ever written to the cluster for it.
 Arguments read off a running process are kept as `imported_args`, separate from the declared
-`engine_args`, so becoming `managed` is a reviewable act rather than a guess about which captured
+`engine_args`, so becoming `managed` is a reviewable act instead of a guess about which captured
 values somebody meant.
 
 ---
@@ -427,7 +427,7 @@ keeps a copy in memory and refreshes it on a timer, so nothing is joined per req
 - **The plane is down**: the table already loaded keeps serving. What it is built from changes on the
   order of days, and a control-plane outage must not stop traffic to models that are running fine.
 - **It boots with no table**: it refuses to start. Coming up empty would answer everything with
-  `model_not_found`, which reads as an outage of the models rather than the misconfiguration it is.
+  `model_not_found`, which reads as an outage of the models instead of the misconfiguration it is.
   The table is held in memory only, so this includes a gateway restarted while the plane is down:
   a restart, eviction or scale-up during a plane outage leaves that replica out until the plane
   returns. Persisting the last table is on the [roadmap](../roadmap.md).
@@ -451,7 +451,7 @@ and must be kept off any ingress and behind a NetworkPolicy
 ([deploying the plane](../operations/deploy-plane.md)).
 
 Because it sees every request, including those that never reach a cluster, the gateway is the one
-honest source of a failure rate. It counts each request under a closed set of outcomes, keeping
+accurate source of a failure rate. It counts each request under a closed set of outcomes, keeping
 "caller over its own limit" and "this hop shedding load" apart even though both are `429`.
 
 ### 7.2 Tunnel and agent
@@ -472,12 +472,12 @@ the operator's sync connection, control-plane uptime would be the inference SLA 
 ### 7.3 One frontend per model
 
 Inside the cluster, the operator renders a frontend for each model as part of that model's
-deployment, rather than one shared frontend for the cluster. The gateway forwards the deployment id
+deployment, instead of one shared frontend for the cluster. The gateway forwards the deployment id
 it resolved as `X-Hangar-Deployment-Id`, and the agent maps it to the frontend Service labelled with
 that id ([ADR 0013](../decisions/0013-one-frontend-per-model-routed-by-a-forwarded-deployment-id.md)).
 It does not poll each frontend's `/v1/models`: two deployments of the same model on one cluster, a
 canary for instance, advertise the same name, and routing on it would silently collapse a weighted
-rollout. The frontend's router mode is declared on the workload rather than rendered as a constant
+rollout. The frontend's router mode is declared on the workload, not rendered as a constant
 ([ADR 0015](../decisions/0015-the-frontend-router-is-declared-on-the-workload.md)).
 
 ---
@@ -529,7 +529,7 @@ request time, and the browser never queries it directly
 ([ADR 0003](../decisions/0003-telemetry-is-read-beside-the-api-not-through-the-hub.md)).
 
 - Metric names are Hangar's own and vendor-neutral. The query dialect sits behind a `Backend`
-  interface, so a second store is a new implementation rather than a refactor, and every query carries
+  interface, so a second store is a new implementation instead of a refactor, and every query carries
   a cluster matcher ([ADR 0008](../decisions/0008-metrics-are-answered-by-a-backend-not-by-promql.md)).
 - Each cluster's metrics label is declared on its registry row
   ([ADR 0011](../decisions/0011-a-cluster-carries-its-own-metrics-label.md)), and the plane is the
@@ -563,7 +563,7 @@ writer of observed state: high-frequency, idempotent, last writer wins per clust
 decision, which makes it testable without a cluster. A module whose object is observed has no write
 methods at all.
 
-**The hub scales by shedding session state rather than sharing it**
+**The hub scales by shedding session state instead of sharing it**
 ([ADR 0005](../decisions/0005-the-hub-scales-by-shedding-session-state.md)). Cursors and the replay
 buffer stay in one pod's memory. Reconnecting to the same pod resumes exactly; reconnecting to a
 different one costs a full resync, which is expensive but always correct and never a silent gap. The
@@ -586,7 +586,7 @@ architecture. The resume cursor is persisted the same way, in a `StreamCheckpoin
 
 Backpressure is fixed by the protocol, not configurable: when the outbound queue is full, a newer frame
 replaces the oldest one with the same type and subject, because observed state is a snapshot of the
-present and falling behind should cost resolution rather than correctness. Events are the exception
+present and falling behind should cost resolution, not correctness. Events are the exception
 and are dropped from the tail, with the loss counted. Liveness never depends on the hub session; a
 partitioned operator is healthy, because the cluster is meant to keep working.
 
@@ -657,7 +657,7 @@ capacity serving leaves idle and yields when serving scales up. That depends on 
 rendering and on preemption, all of which are on the [roadmap](../roadmap.md) and none of which is
 built.
 
-### 11.3 Deferred on purpose
+### 11.3 Deferred
 
 Real work that does not constrain the object model:
 
@@ -677,13 +677,13 @@ Six objects make a working single-tenant, multi-cluster inference control plane:
 Workload and Deployment count as one entry in spirit (you create the first and placement creates the
 second), but they are two rows and two modules, and the seam between them is §6.3.
 
-The rest arrive on a trigger rather than a schedule:
+The rest arrive on a trigger instead of a schedule:
 
 | Add | When |
 |---|---|
 | Project + Quota | the second tenant |
 | Operation | the first drain performed in anger, realistically week one |
-| Pool | the first time capacity is provisioned rather than hand-built |
+| Pool | the first time capacity is provisioned, not hand-built |
 | TopologyDomain | before the first multi-node model, and it is in the Device model from the start regardless (§5.2) |
 | Component | the second thing installed in a cluster |
 
@@ -718,7 +718,7 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
   minutes for a large model. The rollout keeps the old generation up while the new one starts, so
   the peak device need is the old footprint plus the new one; on a cluster sized for one of them the
   new generation waits for devices the old one has not released. The API returns this cost with the
-  edit (`unavailability`) rather than refusing it.
+  edit (`unavailability`) instead of refusing it.
 - **The gateway cannot start while the plane is down** (§7.1), and it is one failure domain for
   inference everywhere.
 - **The metrics `cluster` label is not authenticated.** Any cluster with write credentials can write
@@ -737,7 +737,7 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
 
 | ADR | Decides |
 |---|---|
-| [0001](../decisions/0001-websocket-json-over-grpc.md) | The plane-operator stream is WebSocket + JSON, kept honest by fixtures |
+| [0001](../decisions/0001-websocket-json-over-grpc.md) | The plane-operator stream is WebSocket + JSON, kept in step by fixtures |
 | [0002](../decisions/0002-clusters-mint-observed-ids.md) | Clusters mint the ids of the objects they observe |
 | [0003](../decisions/0003-telemetry-is-read-beside-the-api-not-through-the-hub.md) | Telemetry is read beside the API, never through the hub |
 | [0004](../decisions/0004-http-api-cli-admin-reconciliation.md) | One HTTP API for the console and the CLI |

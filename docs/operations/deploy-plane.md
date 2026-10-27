@@ -23,7 +23,7 @@ The reactor runs inside the hub by default. To run it separately, set
 Postgres means running more than one is wasteful but safe.
 
 The hub can run more than one replica without sticky sessions. A reconnect that lands on a
-different pod costs that cluster a full resync rather than a resume
+different pod costs that cluster a full resync instead of a resume
 ([ADR 0005](../decisions/0005-the-hub-scales-by-shedding-session-state.md)).
 
 Each cluster also needs the `operator` and `agent` images, which the
@@ -79,7 +79,7 @@ plane:
 | `HANGAR_ALLOWED_ORIGINS` | api | only if the console is served from a different origin |
 
 The plane refuses to start outside `local` when a required secret is missing, so a misconfigured
-deployment fails at boot rather than running open.
+deployment fails at boot instead of running open.
 
 To generate the admin password hash with the image you built:
 

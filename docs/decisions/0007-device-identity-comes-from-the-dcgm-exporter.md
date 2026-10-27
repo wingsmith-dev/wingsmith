@@ -1,11 +1,11 @@
-# ADR 0007 — Device identity comes from the DCGM exporter, and DCGM is an assumed dependency
+# ADR 0007: Device identity comes from the DCGM exporter, and DCGM is an assumed dependency
 
 **Status:** accepted · 2026-08-19
 
 ## Context
 
-Kubernetes does not know what a GPU's UUID is. A Node object carries GPU Feature Discovery labels —
-`nvidia.com/gpu.count`, `.product`, `.memory` — which say how many cards there are and what they
+Kubernetes does not know what a GPU's UUID is. A Node object carries GPU Feature Discovery labels,
+`nvidia.com/gpu.count`, `.product`, `.memory`, which say how many cards there are and what they
 are, and nothing at all that says which cards. A label value cannot hold eight UUIDs and no vendor
 publishes them anyway.
 
@@ -24,7 +24,7 @@ Filling the annotation in would have worked. It was rejected on a principle that
 **hangar discovers, and is not configured for.** Requiring a cluster to carry a `hangar.dev/*`
 annotation for hangar's benefit means every cluster it is pointed at needs a change to its own
 manifests before it can be seen, and the thing most likely to be missing is the thing nobody
-remembered was required — which is exactly the failure we are here to fix, made permanent. Reading
+remembered was required, which is exactly the failure we are here to fix, made permanent. Reading
 vendor-standard labels that are already there is discovery. Asking to be written to is not.
 
 ## Decision
@@ -39,10 +39,10 @@ to install, and its series already carry every identity fact we lack: `UUID`, `g
 
 Identity precedence, per device slot:
 
-1. **DCGM scrape** — the true hardware UUID, and the model in the `dcgm` dialect.
-2. **`hangar.dev/device-uuids` annotation** — retained, unadvertised, for a cluster running no
+1. **DCGM scrape**: the true hardware UUID, and the model in the `dcgm` dialect.
+2. **`hangar.dev/device-uuids` annotation**: retained, unadvertised, for a cluster running no
    exporter. An escape hatch, not a mechanism.
-3. **`<node>-gpu<index>`** — the synthetic fallback, unchanged.
+3. **`<node>-gpu<index>`**: the synthetic fallback, unchanged.
 
 An unreachable exporter never fails discovery. It logs, and the node's devices fall down the chain.
 Inventory the plane cannot see is strictly worse than inventory whose metrics do not join.
@@ -68,8 +68,8 @@ looks like telemetry ingestion and is not.
 
 - **What is read is state, not measurement.** A UUID, an index, a model name and a host. These are
   membership facts: bounded by the hardware, changing only when a card is physically moved, and
-  exactly the kind of thing the supply stream exists to carry. The sample value on each series —
-  utilization, temperature, power, throughput — is read by nothing here and is not in any struct
+  exactly the kind of thing the supply stream exists to carry. The sample value on each series,
+  utilization, temperature, power, throughput, is read by nothing here and is not in any struct
   this code defines.
 - **The read is cluster-local.** One HTTP GET from the operator to a Service in its own cluster,
   once per observation tick regardless of node count, cached across every node in the snapshot. No
@@ -86,7 +86,7 @@ and after this change the two finally agree on the name of the thing.
 
 A GPU cluster with no DCGM exporter is a degraded cluster: it still enrols, still reports inventory,
 still takes placement, and its device metrics do not join. That is a documented state, not a
-surprise — the operator says so in its logs on every tick.
+surprise: the operator says so in its logs on every tick.
 
 `HANGAR_DCGM_ENDPOINT` is the one new knob, defaulting to
 `dcgm-exporter.platform.svc.cluster.local:9400`. Setting it empty disables the scrape.

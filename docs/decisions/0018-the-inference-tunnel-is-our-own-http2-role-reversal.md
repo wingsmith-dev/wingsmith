@@ -1,4 +1,4 @@
-# 0018 — The inference tunnel is our own HTTP/2 role reversal, not an off-the-shelf tunnel
+# 0018: The inference tunnel is our own HTTP/2 role reversal, not an off-the-shelf tunnel
 
 **Status:** accepted · 2026-10-15 (records a choice made when `libs/packages/tunnel` was written)
 

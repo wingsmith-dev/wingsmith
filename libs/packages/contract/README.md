@@ -1,6 +1,6 @@
 # contract
 
-The plane's two wire contracts — the HTTP API and the plane ↔ operator protocol — and the single
+The plane's two wire contracts, the HTTP API and the plane ↔ operator protocol, and the single
 source of truth for both.
 
 | File | What |
@@ -22,7 +22,7 @@ change that leaves either file stale fails CI.
 
 ## The protocol contract
 
-These messages are **our domain objects** — Cluster, Device, Artifact, Workload, Deployment and the
+These messages are **our domain objects**: Cluster, Device, Artifact, Workload, Deployment and the
 rest. Kubernetes types must never appear here. If a message starts to look like a manifest,
 something has leaked in the wrong direction and the operator is the thing that should have
 absorbed it.
@@ -40,7 +40,7 @@ fixture are the same change, not two.
 ## The ownership rule
 
 A change here changes what every component on the other side of the wire assumes, so it is made as
-a contract change of its own — the plane, the operator and the fixtures move together in it — and
+a contract change of its own (the plane, the operator and the fixtures move together in it) and
 never as a side effect of work on one component.
 
 ## The device-class rule
@@ -50,8 +50,8 @@ never as a side effect of work on one component.
 naming is ours: [`devices.json`](devices.json) is the only place a vendor string becomes a hangar
 device class, and both the operator and the plane read it.
 
-Matching is by normalized form — lowercase, vendor prefix dropped, every run of non-alphanumeric
-characters collapsed to one hyphen — so an alias absorbs spelling drift between dialects, and the
+Matching is by normalized form, lowercase, vendor prefix dropped, every run of non-alphanumeric
+characters collapsed to one hyphen, so an alias absorbs spelling drift between dialects, and the
 same normalization is implemented and tested on both sides. Aliases are listed per dialect anyway,
 because a string that is legitimate on the node label is not evidence about what the exporter emits.
 
@@ -60,8 +60,8 @@ and deterministic, and both sides log the miss once so the table can be grown.
 
 ## Roadmap: shared and generated types for the HTTP API
 
-The Go clients of the HTTP API — `hgr` (`libs/cli/internal/api`), the gateway
-(`libs/gateway/internal/plane`) and the operator (`libs/operator/internal/sync`) — each declare
+The Go clients of the HTTP API, `hgr` (`libs/cli/internal/api`), the gateway
+(`libs/gateway/internal/plane`) and the operator (`libs/operator/internal/sync`), each declare
 the wire types they read by hand, and `libs/transit`'s fake plane mirrors the gateway's. Nothing but
 review keeps those in step today, except for the fake plane, whose test reads the gateway's client
 source and fails when a JSON field or route exists on one side and not the other.

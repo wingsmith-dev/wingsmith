@@ -94,7 +94,7 @@ WORKLOADS = [
     # desired, min, max
     #
     # `cluster` left out is the normal case: the plane picks. `qwen-dev` names one, so the
-    # declared-cluster path is exercised too rather than only the derived one.
+    # declared-cluster path is exercised too, not only the derived one.
     ("llama-70b-prod", None, "llama-3.1-70b-instruct", "h100-80gb-sxm", 8, 131072, "acme-serving", "standard", 2, 1, 2),
     ("mixtral-prod", None, "mixtral-8x7b-instruct", "h200-141gb-sxm", 4, 32768, "acme-serving", "standard", 1, 1, 3),
     (

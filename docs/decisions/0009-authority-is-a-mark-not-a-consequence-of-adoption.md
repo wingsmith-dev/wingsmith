@@ -1,4 +1,4 @@
-# ADR 0009 — Authority is an explicit mark, not a consequence of how an object arrived
+# ADR 0009: Authority is an explicit mark, not a consequence of how an object arrived
 
 **Status:** accepted · 2026-08-21 · the object named throughout amended by ADR 0014
 
@@ -11,14 +11,14 @@ one and keeps everything else 0006 decided.
 0006 was right about the cost it was avoiding and wrong about where to attach the rule. It made
 adoption permanent: `reconcileAdopted` refuses to apply, always, because the object was adopted. The
 refusal is correct for a workload we are only watching and wrong for one somebody has since decided
-the plane should run, and there was no way to say which was which — the provenance of the object had
+the plane should run, and there was no way to say which was which: the provenance of the object had
 become a standing prohibition on ever managing it.
 
 Three things went wrong downstream of that, and they are the same mistake seen from different sides.
 
 **Fidelity got tied to authority.** The operator is a process inside the cluster with API access. It
 can read every argument, every env name and every resource request off a running pod whether or not
-the plane manages it, and it already does — `workload.discovered` carries `spec` in full. But the
+the plane manages it, and it already does: `workload.discovered` carries `spec` in full. But the
 only thing the adoption path *kept* was `spec_fingerprint`, a digest. A digest answers "did this
 change?" and cannot answer "what is it?", which is the right primitive for a drift gate and the
 wrong one for an inventory. We had the data and threw it away at the door.
@@ -28,12 +28,12 @@ wrong one for an inventory. We had the data and threw it away at the door.
 maps a container's argv onto recipe fields and drops what it has no column for. Worse than dropping,
 it mis-mapped: `--max-num-seqs` was read as `max_batch_tokens`, which is `--max-num-batched-tokens`
 and a different knob entirely. Every recipe drafted from a running vLLM workload carried that error.
-It was invisible precisely because adopted recipes are never rendered — a recipe that cannot take
+It was invisible precisely because adopted recipes are never rendered: a recipe that cannot take
 effect cannot be caught being wrong by anything except a person reading it.
 
 **"Adopted" was doing two jobs.** It recorded where an object came from, and it decided what the
-operator was allowed to do. Those change independently. A workload is adopted forever — that is a
-historical fact — but whether we manage it is a decision someone makes on a Tuesday and may reverse.
+operator was allowed to do. Those change independently. A workload is adopted forever, that is a
+historical fact, but whether we manage it is a decision someone makes on a Tuesday and may reverse.
 
 ## Decision
 
@@ -41,14 +41,14 @@ historical fact — but whether we manage it is a decision someone makes on a Tu
 
     authority: observed | managed
 
-- `observed` — the plane records this workload and verifies it against what it was pinned to. It
+- `observed`: the plane records this workload and verifies it against what it was pinned to. It
   writes nothing to the cluster, ever. This is what every promoted deployment is on day one and what
   0006 called adopted.
-- `managed` — the plane renders and converges it, exactly as it does for a deployment it created.
+- `managed`: the plane renders and converges it, exactly as it does for a deployment it created.
 
 The operator gates on `authority`, not on the presence of `adopt`. `adopt` stays and keeps its
-meaning — the live object's identity and the digest it was pinned to — but it is now provenance and
-a drift check rather than a prohibition.
+meaning, the live object's identity and the digest it was pinned to, but it is now provenance and
+a drift check instead of a prohibition.
 
 **Observation is lossless and does not consult authority.** The full observed `spec` is recorded for
 every sighting regardless of what we intend to do with it, alongside `spec_fingerprint`. Two fields,
@@ -81,29 +81,29 @@ never needs to touch the cluster.
 
 **Promotion can be non-restarting, and that is now a property worth defending.** If the declared set
 renders to what is already running, converging is a no-op and taking management costs nothing. That
-only holds because imported and declared are separate — it is checkable, because both halves are
-written down. Where it does not hold, the diff is the honest price of the change somebody asked for,
+only holds because imported and declared are separate: it is checkable, because both halves are
+written down. Where it does not hold, the diff is the accurate price of the change somebody asked for,
 which is the distinction 0006 set out to protect and this ADR keeps.
 
 > **Amended 2026-09-02.** Recipe is deleted (ADR 0014) and its columns sit on the Workload, so
 > `imported_args` and `engine_args` are now two fields of the workload's serving configuration
-> rather than two fields of a recipe. Nothing this ADR decided moves with them: the split is still
+> instead of two fields of a recipe. Nothing this ADR decided moves with them: the split is still
 > provenance, `imported_args` is still never rendered and never enforced, and `derive()` still
-> drafts one from a sighting. The removal only strengthens the line — `serving_digest` is computed
-> over the declared half and deliberately excludes `imported_args`, so what was merely observed
+> drafts one from a sighting. The removal only strengthens the line: `serving_digest` is computed
+> over the declared half and excludes `imported_args`, so what was merely observed
 > cannot change the identity of what runs.
 
-**A mis-mapped import is now a bug with consequences rather than a dormant one.** Recipes that can
+**A mis-mapped import is now a bug with consequences instead of a dormant one.** Recipes that can
 render are recipes that can be wrong out loud. `--max-num-seqs` is fixed to flow to `imported_args`
 where it belongs, and `max_batch_tokens` means `--max-num-batched-tokens` and nothing else. Recipes
-already drafted before the fix carry the old error and are not migrated silently — a data fix is a
+already drafted before the fix carry the old error and are not migrated silently: a data fix is a
 decision about a serving parameter, not a schema change.
 
-**There is deliberately no partial authority.** A deployment where some fields are enforced and
+**There is no partial authority.** A deployment where some fields are enforced and
 others drift is unanalyzable at exactly the moment somebody needs to reason about it, so the object
 answers "who owns this?" with one word. Per-field ownership is the right representation underneath if
-we ever need it — Kubernetes server-side apply's `managedFields` is the prior art and exists because
-this is genuinely hard — but the object-level answer stays binary.
+we ever need it, Kubernetes server-side apply's `managedFields` is the prior art and exists because
+this is genuinely hard, but the object-level answer stays binary.
 
 **`observed` remains the default everywhere.** Promotion creates `observed`. An unset authority on an
 old row reads as `observed`. Nothing acquires management by omission, which is the one property 0006

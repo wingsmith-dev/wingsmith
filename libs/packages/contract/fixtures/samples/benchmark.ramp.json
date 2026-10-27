@@ -1,5 +1,5 @@
 {
-  "description": "One ramp request expanded into seven runs over rising concurrency, in order, as the operator reported them. The step at concurrency 32 carries a null time_to_first_token.p90 and no output_token_throughput_per_user at all, so a reader of these frames has to name both misses rather than read a zero.",
+  "description": "One ramp request expanded into seven runs over rising concurrency, in order, as the operator reported them. The step at concurrency 32 carries a null time_to_first_token.p90 and no output_token_throughput_per_user at all, so a reader of these frames has to name both misses, not read a zero.",
   "request_id": "bmr_01j9y4rrrrrrrrrrrrrrrrrrrr",
   "mode": "ramp",
   "harness": "aiperf",

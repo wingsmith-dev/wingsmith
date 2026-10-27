@@ -1,12 +1,12 @@
-# ADR 0001 — WebSocket + JSON for the plane ↔ operator link
+# ADR 0001: WebSocket + JSON for the plane ↔ operator link
 
 **Status:** accepted · 2026-08-19
 
 ## Context
 
-The operator holds one long-lived connection to the hub. Desired state flows down —
+The operator holds one long-lived connection to the hub. Desired state flows down:
 deployments, component versions, cache warm-sets, operations. Observed state flows up
-continuously — devices, health, replica status, events, operation results. Both directions,
+continuously: devices, health, replica status, events, operation results. Both directions,
 one connection, always dialled outbound by the operator.
 
 "Bidirectional" does not discriminate between the candidates: WebSocket is bidirectional too.
@@ -14,8 +14,8 @@ The real choice was **protobuf with generated types** against **JSON with hand-w
 
 ## Decision
 
-WebSocket with JSON payloads. Message types are hand-written on both sides — msgspec Structs in
-Python, structs in Go — and kept honest by a shared golden-fixture corpus rather than by codegen.
+WebSocket with JSON payloads. Message types are hand-written on both sides, msgspec Structs in
+Python, structs in Go, and kept in step by a shared golden-fixture corpus, not by codegen.
 
 ## Why
 
@@ -30,7 +30,7 @@ msgspec.
 
 The message count is moderate and the codebase is already fluent in msgspec and JSON. Being able
 to tail a connection and read what is on it is worth more right now than efficiency we do not
-need. So we take the trade knowingly and write the four things ourselves — see
+need. So we take the trade knowingly and write the four things ourselves; see
 [`libs/packages/contract/PROTOCOL.md`](../../libs/packages/contract/PROTOCOL.md).
 
 ## What this obliges us to build
@@ -42,8 +42,8 @@ becomes a full resync, and full resyncs at scale are how a control plane takes i
 ## Drift
 
 Codegen was the only thing gRPC gave us that we cannot simply choose not to need. The replacement
-is `libs/packages/contract/fixtures/` — one canonical JSON document per message type, with a test
-on both sides that round-trips every fixture. Drift then fails in CI rather than silently in
+is `libs/packages/contract/fixtures/`: one canonical JSON document per message type, with a test
+on both sides that round-trips every fixture. Drift then fails in CI, not silently in
 production. A message type with no fixture is not part of the contract.
 
 ## Escape hatch

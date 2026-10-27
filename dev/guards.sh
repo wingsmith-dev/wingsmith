@@ -44,7 +44,7 @@ case "${1:-}" in
 
   e2e-context)
     # e2e patches a node's labels and allocatable and creates and deletes namespaces, so it runs
-    # against a kind cluster unless somebody names another context on purpose.
+    # against a kind cluster unless somebody names another context.
     if [ -n "${HANGAR_E2E_CONTEXT:-}" ]; then
       context="$HANGAR_E2E_CONTEXT"
       kubectl config get-contexts "$context" >/dev/null 2>&1 || die "no kube context named '$context'"

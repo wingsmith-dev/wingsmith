@@ -1,4 +1,4 @@
-# 0013 — One frontend per model, routed by a forwarded deployment id
+# 0013: One frontend per model, routed by a forwarded deployment id
 
 **Status:** accepted · 2026-09-02, the object named in points 2 and 4 amended by ADR 0014
 
@@ -16,15 +16,15 @@ servable by one runtime build.
 That constraint breaks the first time a model needs a frontend fix the shared build does not have.
 Kimi K3 is the case: loaded on a cluster and healthy on every worker, it made the cluster frontend
 fail registration in a loop on an unsupported tiktoken type, and `GET /v1/models` returned an empty
-list. Not just K3's entry: the list. The obvious answer — move the whole cluster's frontend onto a
-K3-specific build — is the same constraint pointed the other way: the next model on that cluster must
+list. Not just K3's entry: the list. The obvious answer, move the whole cluster's frontend onto a
+K3-specific build, is the same constraint pointed the other way: the next model on that cluster must
 now be servable by a build made for K3.
 
 The earlier recommendation rejected a frontend per deployment on the grounds that nothing could
 choose between them: a request names its model in the body, where no ingress and no Service can
 route on it. That premise about ingresses is true and the conclusion drawn from it is not. The
 gateway already parses the body, resolves the model to an endpoint, picks one upstream from the
-routing table, and rewrites the model string. It does not merely know which cluster — it has already
+routing table, and rewrites the model string. It does not merely know which cluster: it has already
 chosen a **deployment**.
 
 ## Decision
@@ -35,7 +35,7 @@ chosen a **deployment**.
 2. **The frontend's image is the recipe's `frontend_image`, then the cluster's configured default,
    then the recipe's engine image.** A separate field from `engine_image` because the two genuinely
    differ: the K3 fix is compiled into the frontend binary, and its worker correctly stays on
-   NVIDIA's base image. The plane never substitutes one for the other — an image it invented is
+   NVIDIA's base image. The plane never substitutes one for the other: an image it invented is
    indistinguishable on arrival from one somebody pinned.
 3. **The gateway forwards the deployment id it already resolved, as `X-Hangar-Deployment-Id`.** The
    constant lives in [`libs/packages/tunnel`](../../libs/packages/tunnel/headers.go), because neither
@@ -43,10 +43,10 @@ chosen a **deployment**.
    `ReverseProxy` clones inbound headers verbatim, so anything less lets a caller pick which model's
    frontend answers them.
 4. **The agent maps that id to a Service by the `hangar.dev/deployment-id` label.** Dynamo copies a
-   component's pod-template labels onto the Service it derives — verified on a live cluster, where the
+   component's pod-template labels onto the Service it derives: verified on a live cluster, where the
    worker Service carries the deployment, recipe and project the operator set on the worker's pods. A
    frontend Service with no such label is the cluster's shared frontend and is the fallback.
-5. **Not `/v1/models` polling.** Two deployments of one model on one cluster — a canary, a ramp —
+5. **Not `/v1/models` polling.** Two deployments of one model on one cluster (a canary, a ramp)
    advertise the same string, so a probe cannot tell them apart and would silently collapse a
    weighted rollout the gateway had already split, while the metrics kept attributing traffic to the
    deployment the gateway picked. It is also the exact signal that broke above: a frontend whose model
@@ -54,8 +54,8 @@ chosen a **deployment**.
 
 ## Consequences
 
-- **Cluster selection stays global and device selection local.** The global decision — which
-  cluster, which deployment — stays the plane's, and it is not re-decided in the cluster. The
+- **Cluster selection stays global and device selection local.** The global decision, which
+  cluster, which deployment, stays the plane's, and it is not re-decided in the cluster. The
   frontend set is a cluster-local fact resolved cluster-locally. The plane's routing table gains
   nothing and learns nothing about frontends.
 - **The frontend is declared state, not an operation.** It is rendered from a recipe like everything
@@ -68,7 +68,7 @@ chosen a **deployment**.
   only way in, so a complete set of ready workers behind a frontend that never started is not
   `running`. It costs nothing to say so: the gateway orders candidates by readiness and never removes
   the last one.
-- **A recipe whose `overlay.dynamo` rewrites `spec.components` is refused rather than rendered.**
+- **A recipe whose `overlay.dynamo` rewrites `spec.components` is refused, not rendered.**
   Lists replace, so such an overlay silently deletes the frontend and leaves a deployment reachable by
   nothing, with every worker healthy. There is no signal for that failure short of a refusal.
 - **Pod count grows with models, not with image diversity.** Two frontend pods per deployment where a
@@ -83,7 +83,7 @@ chosen a **deployment**.
   reason.
 
 > **Amended 2026-09-02.** Recipe is deleted the same day (ADR 0014), so read point 2 as **the
-> workload's `frontend_image`, then the cluster's configured default, then its engine image** — the
+> workload's `frontend_image`, then the cluster's configured default, then its engine image**: the
 > field and its three-step precedence are unchanged, only the object holding them is. The consequence
 > about `overlay.dynamo` is likewise a property of the serving overlay wherever it lives, and the
 > labels the worker Service was verified to carry were the labels of the day.

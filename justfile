@@ -16,7 +16,7 @@ _conform  := "libs/conformance"
 _libs     := "libs"
 
 _go_mods  := _operator + " " + _cli + " " + _gateway + " " + _agent + " " + _tunnel + " " + _transit
-# libs/benchmarking is absent on purpose: it has no dependencies, so it runs through
+# libs/benchmarking is absent: it has no dependencies, so it runs through
 # `uv run --no-project` with nothing to install.
 _py_mods  := _plane + " " + _conform
 _bench_py := "PYTHONPATH=" + _bench + " uv run --no-project --python 3.12"
@@ -80,7 +80,7 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -d {{_console}}/node_modules ]; then
-      echo "error: console dependencies are not installed — run 'just setup' first" >&2
+      echo "error: console dependencies are not installed; run 'just setup' first" >&2
       exit 1
     fi
     docker compose up -d --build --wait
@@ -113,7 +113,7 @@ vllm-recipes *args:
     #!/usr/bin/env bash
     set -euo pipefail
     # PyYAML is the corpus's format and nobody else's: the plane parses the JSON this writes,
-    # so the dependency belongs to this command rather than to the package.
+    # so the dependency belongs to this command, not to the package.
     (cd {{_plane}} && uv run --with pyyaml python ../../dev/refresh_vllm_recipes.py {{args}})
 
 # Re-snapshot NVIDIA's Dynamo deployment recipes  [pass a tag or sha to pin one]
@@ -130,7 +130,7 @@ cluster-up:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v kind >/dev/null 2>&1; then
-      echo "error: kind is not installed — see https://kind.sigs.k8s.io" >&2
+      echo "error: kind is not installed; see https://kind.sigs.k8s.io" >&2
       exit 1
     fi
     if kind get clusters 2>/dev/null | grep -qx "{{_kind_name}}"; then
@@ -145,7 +145,7 @@ cluster-down:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v kind >/dev/null 2>&1; then
-      echo "error: kind is not installed — nothing to delete" >&2
+      echo "error: kind is not installed; nothing to delete" >&2
       exit 1
     fi
     if kind get clusters 2>/dev/null | grep -qx "{{_kind_name}}"; then
@@ -164,7 +164,7 @@ fmt *args:
     for a in {{args}}; do
       case "$a" in
         --check) check=1 ;;
-        *) echo "error: unknown argument '$a' — use: --check" >&2; exit 1 ;;
+        *) echo "error: unknown argument '$a'; use: --check" >&2; exit 1 ;;
       esac
     done
 
@@ -224,9 +224,9 @@ test-db *args:
     (cd {{_plane}} && uv run pytest -m database {{args}})
 
 # The plane figure folds the database-backed suite into the default one, so it reflects what CI
-# actually runs across both jobs rather than only the markerless tests. The db suite is skipped
-# when no Postgres is reachable (no HANGAR_TEST_DATABASE_URL and no docker) — the number is then
-# an undercount, and that is called out rather than hidden.
+# actually runs across both jobs, not only the markerless tests. The db suite is skipped
+# when no Postgres is reachable (no HANGAR_TEST_DATABASE_URL and no docker): the number is then
+# an undercount, and that is called out, not hidden.
 
 # Measure test coverage for every lib, printing a per-lib total  [--html for browsable reports]
 cov *args:
@@ -236,7 +236,7 @@ cov *args:
     for a in {{args}}; do
       case "$a" in
         --html) html=1 ;;
-        *) echo "error: unknown argument '$a' — use: --html" >&2; exit 1 ;;
+        *) echo "error: unknown argument '$a'; use: --html" >&2; exit 1 ;;
       esac
     done
 
@@ -248,7 +248,7 @@ cov *args:
       export HANGAR_TEST_DATABASE_URL=postgresql+psycopg://hangar:hangar@localhost:5442/hangar
       marker=""
     else
-      echo "warn: no Postgres — plane coverage omits the database-backed suite (undercount)" >&2
+      echo "warn: no Postgres; plane coverage omits the database-backed suite (undercount)" >&2
     fi
     report=(--cov-report=term-missing --cov-report=xml)
     [ -n "$html" ] && report+=(--cov-report=html:coverage_html)
@@ -277,7 +277,7 @@ interop *args:
       exit 0
     fi
     if ! command -v uv >/dev/null 2>&1; then
-      echo "error: uv is not installed — the harness spawns the Python hub with it" >&2
+      echo "error: uv is not installed; the harness spawns the Python hub with it" >&2
       exit 1
     fi
     (cd {{_plane}} && uv sync --quiet)
@@ -350,7 +350,7 @@ transit ramp="8,32,128" *args:
 transit-smoke:
     @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false -json
 
-# Ramp against a deployed gateway. Small by default on purpose.
+# Ramp against a deployed gateway. Small by default.
 transit-live url model *args:
     @cd {{_transit}} && go run ./cmd/hgrtransit live -url {{url}} -model {{model}} {{args}}
 
@@ -419,7 +419,7 @@ bench-report run="":
 # Neither knows anything about the plane.
 #
 # A profile is committed TOML naming the endpoint and the handful of things no probe is allowed
-# to know — how this vendor spells thinking mode, where it puts the cached token count. Adding a
+# to know: how this vendor spells thinking mode, where it puts the cached token count. Adding a
 # model is a profile, not code.
 #
 #   just conformance example                              # observe one endpoint
@@ -441,11 +441,11 @@ conformance-probes:
 conformance-diff run="":
     @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m hgrconform diff {{run}}
 
-# The self-check: run every probe against two honest-but-noisy stubs and fail on any difference.
+# The self-check: run every probe against two correct-but-noisy stubs and fail on any difference.
 # This is what catches a probe comparing something that varies between runs, which is the one
 # defect that makes the whole tool report noise. Run it after writing a probe.
 
-# Run every probe against two noisy-but-honest stubs and fail on any difference
+# Run every probe against two noisy-but-correct stubs and fail on any difference
 conformance-test *args:
     @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m pytest tests/ -q {{args}}
 
@@ -458,7 +458,7 @@ conformance-gateway:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
-# Helm's crds/ dir is a plain copy, never templated — kept in step by hand when the CRDs change.
+# Helm's crds/ dir is a plain copy, never templated: kept in step by hand when the CRDs change.
 # Copy the hangar CRDs into the chart from their source of truth in libs/operator/deploy/crd
 chart-sync-crds:
     #!/usr/bin/env bash
@@ -521,7 +521,7 @@ chart-lint:
             sys.exit(f"operator pull secret was not copied into dynamo for {path}")
     PY
     # Monitoring is off by default, so the default render above proves nothing about it. Its own
-    # blanks are required only when it is on, hence a second pass rather than more entries in req.
+    # blanks are required only when it is on, hence a second pass, not more entries in req.
     # The credential is not among them: the agent authenticates with the enrolment token in req.
     mon=(--set monitoring.enabled=true --set cluster.region=lint-region-1
          --set monitoring.remoteWrite.url=https://metrics.example.com/api/v1/write)
@@ -539,8 +539,8 @@ chart-lint:
     # The exporter must select GPU nodes. Its toleration only permits the GPU pool; with no
     # selector the DaemonSet also lands on CPU nodes, where the exporter has no GPU to read and the
     # operator discovers a target set that does not match the hardware. That reads as missing
-    # devices and phantom fell_off_bus events, so it is asserted rather than left to whoever edits
-    # values next. Asserted against values.yaml rather than rendered output: the render above drops
+    # devices and phantom fell_off_bus events, so it is asserted, not left to whoever edits
+    # values next. Asserted against values.yaml, not rendered output: the render above drops
     # `dependencies:`, so nothing dcgm-exporter owns ever appears in it.
     "${py[@]}" - {{_chart}}/values.yaml <<'PY'
     import sys, pathlib, yaml
@@ -586,7 +586,7 @@ chart-lint:
       echo "chart renders with both basicAuth.useEnrolmentToken and basicAuth.existing" >&2
       exit 1
     fi
-    # Two scrapers for one exporter is a doubled series, so the pair is refused rather than merged.
+    # Two scrapers for one exporter is a doubled series, so the pair is refused, not merged.
     if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" \
          --set dcgm-exporter.serviceMonitor.enabled=true >/dev/null 2>&1; then
       echo "chart renders with both monitoring.enabled and dcgm-exporter.serviceMonitor.enabled" >&2
@@ -603,7 +603,7 @@ chart-lint:
 # What is pushed is the committed chart, not the directory: it is packaged from `git archive`, so a
 # values file kept beside it and ignored by git cannot ride along. Before that the whole tree goes
 # through scripts/check-leaks.sh (which reads a denylist; see its header), the chart directory must
-# match HEAD, and a version already in the registry is refused rather than overwritten.
+# match HEAD, and a version already in the registry is refused, not overwritten.
 # Package the committed chart and push it to the OCI registry
 chart-push:
     #!/usr/bin/env bash
@@ -656,7 +656,7 @@ build target tag="":
       operator)  context={{_operator}}; dockerfile=Dockerfile ;;
       agent)     context={{_libs}};     dockerfile=agent/Dockerfile ;;
       evalscope) context={{_bench}}/images/evalscope; dockerfile=Dockerfile ;;
-      *) echo "error: unknown target {{target}} — expected plane, operator, gateway, agent or evalscope" >&2; exit 1 ;;
+      *) echo "error: unknown target {{target}}; expected plane, operator, gateway, agent or evalscope" >&2; exit 1 ;;
     esac
     tag="{{tag}}"
     [ -n "$tag" ] || tag="$(just _release-tag)"

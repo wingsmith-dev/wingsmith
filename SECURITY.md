@@ -81,7 +81,7 @@ The gateway does not keep request or response bodies in its logs. See
 
 ## Known limitations
 
-These are known and documented rather than fixed. Take them into account when you deploy.
+These are known and documented, not fixed. Take them into account when you deploy.
 
 - **The metrics `cluster` label is not authenticated.** Clusters push metrics with `remote_write`,
   and a cluster holding valid write credentials can write series under any `cluster` label,

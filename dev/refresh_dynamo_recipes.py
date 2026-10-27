@@ -6,7 +6,7 @@ Run with `just dynamo-recipes`, which supplies PyYAML, on the same argument as
 reaches GitHub on a request path.
 
 **Why a second corpus.** `vllm-project/recipes` publishes the flags of
-`vllm serve`. Our clusters do not run `vllm serve` — Dynamo runs
+`vllm serve`. Our clusters do not run `vllm serve`: Dynamo runs
 `python3 -m dynamo.vllm` for the worker and `python3 -m dynamo.frontend` for the
 OpenAI surface, and those are two other programs with two other CLIs. A flag
 lifted from the vLLM corpus is a guess about what our worker accepts;
@@ -91,7 +91,7 @@ def _resolve_ref(ref: str) -> str:
 def _fetch(sha: str) -> dict[str, str]:
     """Every `recipes/**/deploy.yaml` at one commit, as text keyed by repo path.
 
-    Text rather than parsed YAML, because the interesting part of these files is a
+    Text, not parsed YAML, because the interesting part of these files is a
     shell script inside a block scalar and the parse happens per document below.
     """
     url = f"https://codeload.github.com/{REPO}/tar.gz/{sha}"
@@ -150,7 +150,7 @@ def _tokens(container: dict[str, Any]) -> list[str] | None:
 def _expand(value: str, env: dict[str, str]) -> str:
     """`${VAR}` resolved against the pod's environment, or left exactly as written.
 
-    Left as written when nothing defines it: an unresolved placeholder is honest
+    Left as written when nothing defines it: an unresolved placeholder is accurate
     about being unresolved, where dropping it would make a recipe look as though
     it never set the flag.
     """
@@ -167,7 +167,7 @@ def _args(tokens: list[str], env: dict[str, str]) -> dict[str, str]:
 
     `--flag=value` and `--flag value` are one form here. Several recipes write the
     first, and reading only the second files the whole argument under a key nobody
-    looks up — a silent miss rather than a parse error.
+    looks up: a silent miss instead of a parse error.
     """
     out: dict[str, str] = {}
     index = 0
@@ -229,7 +229,7 @@ def _env(*blocks: Any) -> dict[str, str]:
     """The literal environment a container sees, graph-level `spec.env` included.
 
     Later blocks win, so a container's own entry overrides the graph's. Anything
-    behind a `valueFrom` is skipped rather than guessed at: it resolves out of a
+    behind a `valueFrom` is skipped, not guessed at: it resolves out of a
     ConfigMap or a Secret this snapshot does not read, and inventing a value for it
     would put a made-up model id on a recipe.
     """
@@ -276,7 +276,7 @@ def _slug(args: dict[str, str], env: dict[str, str]) -> str:
 
     `--served-model-name` first, because that is the id a client sends and the id
     the plane keys an artifact by. `--model` is the fallback, and both are dropped
-    when they name a filesystem path — several recipes mount a pre-populated cache
+    when they name a filesystem path: several recipes mount a pre-populated cache
     and pass a snapshot directory, which names no repo.
     """
     candidates = (

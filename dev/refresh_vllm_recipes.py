@@ -100,7 +100,7 @@ def _feature(spec: dict[str, Any]) -> dict[str, Any]:
 
     `spec_decoding` and friends carry `modes`, each with its own args and its own
     default. Flattening them to the default's args would silently drop the
-    alternatives, which are the interesting half — an Eagle3 draft head is a
+    alternatives, which are the interesting half: an Eagle3 draft head is a
     different deployment from MTP, not a different spelling of one.
     """
     kept = _pick(spec, ("description", "args", "default_mode"))

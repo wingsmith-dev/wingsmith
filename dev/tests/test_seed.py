@@ -2,7 +2,7 @@
 
 Runs in the plane's virtualenv so every body is decoded by the plane's own request struct, which
 forbids unknown fields. A body for a route that no longer exists, or a field that was renamed,
-fails here rather than as a 404 or 400 halfway through somebody's first `just seed --demo`.
+fails here, not as a 404 or 400 halfway through somebody's first `just seed --demo`.
 """
 
 from __future__ import annotations
