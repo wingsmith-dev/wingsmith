@@ -1282,3 +1282,29 @@ async def test_adapter_references_resolve_in_order_in_one_lookup(sessions) -> No
         assert [a.name for a in found] == ["llama-70b", "lora-a"]
         with pytest.raises(Invalid, match="lora-b"):
             await repo.artifacts_by_ref(["lora-a", "lora-b"])
+
+
+async def test_a_workload_benchmark_tells_each_cluster_about_its_own_run(sessions) -> None:
+    """One run per placement, and each cluster hears about the operation it has to carry out."""
+    from app.db.notify import MemoryNotifier
+    from app.modules.benchmarks.schemas import BenchmarkRequestCreateRequest
+    from app.modules.benchmarks.services import BenchmarkService
+
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=4)
+    await seed_supply(sessions, "second", devices=4)
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(2)))
+    assert len(workload.deployments) == 2
+
+    notifier = MemoryNotifier()
+    async with sessions() as db:
+        created = await BenchmarkService(db, actor="test", notifier=notifier).create_request(
+            BenchmarkRequestCreateRequest(level="workload", target=workload.id, harness="aiperf")
+        )
+    assert len(created.runs) == 2
+
+    clusters = await fetch(sessions, "select uid from supply_cluster")
+    operations = await fetch(sessions, "select uid from ops_operation where type = 'deployment.benchmark'")
+    assert sorted(change.cluster_id for change in notifier.changes) == sorted(row.uid for row in clusters)
+    assert sorted(change.uid for change in notifier.changes) == sorted(row.uid for row in operations)

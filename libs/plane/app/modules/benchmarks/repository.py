@@ -292,9 +292,12 @@ class BenchmarkRepository:
         result = await self.db.execute(select(Operation.id).where(Operation.uid == uid))
         return result.scalar_one_or_none()
 
-    async def cluster_uid(self, cluster_id: UUID) -> str | None:
-        result = await self.db.execute(select(Cluster.uid).where(Cluster.id == cluster_id))
-        return result.scalar_one_or_none()
+    async def cluster_uids(self, cluster_ids: set[UUID]) -> dict[UUID, str]:
+        """Each cluster's public id by row id, in one query. A deleted cluster is missing."""
+        if not cluster_ids:
+            return {}
+        result = await self.db.execute(select(Cluster.id, Cluster.uid).where(Cluster.id.in_(cluster_ids)))
+        return {row.id: row.uid for row in result}
 
     async def add(self, run: BenchmarkRun) -> BenchmarkRun:
         self.db.add(run)

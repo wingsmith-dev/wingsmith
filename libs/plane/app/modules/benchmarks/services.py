@@ -542,10 +542,9 @@ class BenchmarkService:
             raise Conflict("benchmark request could not be recorded") from exc
 
         announced: set[tuple[str, str]] = set()
+        clusters = await self.repo.cluster_uids({op.cluster_id for op, _ in operations if op.cluster_id is not None})
         for operation, _ in operations:
-            if operation.cluster_id is None:
-                continue
-            cluster_uid = await self.repo.cluster_uid(operation.cluster_id)
+            cluster_uid = clusters.get(operation.cluster_id)
             if cluster_uid is None or (cluster_uid, operation.uid) in announced:
                 continue
             announced.add((cluster_uid, operation.uid))
