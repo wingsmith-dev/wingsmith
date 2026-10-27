@@ -34,6 +34,10 @@ def test_metrics_needs_no_credential_and_is_the_prometheus_text_format(client):
     assert "# TYPE hangar_plane_http_request_duration_seconds histogram" in response.text
 
 
+def test_a_scrape_with_query_params_is_not_refused(client):
+    assert client.get("/metrics?module=plane").status_code == 200
+
+
 def test_a_request_is_counted_under_its_status(client):
     before = requests_total("GET", "/health", "200")
     assert client.get("/health").status_code == 200

@@ -35,6 +35,7 @@ from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import Collector
 
 from app.db import engine as db_engine
+from app.core.params import ACCEPTS_ANY_QUERY
 
 
 UNMATCHED = "unmatched"
@@ -152,7 +153,14 @@ def http_metrics(app: ASGIApp) -> ASGIApp:
 class PrometheusRoutes(Controller):
     tags = ["Main"]
 
-    @get("/metrics", media_type=CONTENT_TYPE_LATEST, include_in_schema=False, sync_to_thread=False)
+    # A scrape job can add `params:` to the URL; they are not filters, so they must not 400.
+    @get(
+        "/metrics",
+        media_type=CONTENT_TYPE_LATEST,
+        include_in_schema=False,
+        sync_to_thread=False,
+        opt={ACCEPTS_ANY_QUERY: True},
+    )
     def prometheus_metrics(self) -> Response[bytes]:
         """The API process's own metrics in the Prometheus text format; see `libs/plane/METRICS.md`."""
         return Response(generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
