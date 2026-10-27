@@ -12,126 +12,63 @@ import (
 
 // denials are the wire features a policy may refuse by name.
 //
-// These and `diagnoses` below are the gateway's built-in predicates. None of
-// them applies to any endpoint by default: a plane policy selects one by name
-// for an endpoint whose terms call for it. Each reproduces a behaviour measured
-// against a hosted provider's own API, so that an endpoint sold as consistent
-// with that provider refuses what the provider refuses; the names are JSON
-// paths and not provider names, and nothing here is specific to one vendor's
-// deployment.
+// These and `diagnoses` are the gateway's built-in predicates. None applies by
+// default: a plane policy selects one by name for an endpoint whose terms call
+// for it. Each reproduces a refusal measured against a hosted provider's API;
+// names are JSON paths, not provider names, and which endpoint carries which
+// name is the plane's business.
 //
-// A rule names one of these in its `predicate`, which is a namespace of its own
-// and never a JSON path: a key is read out of the body, a predicate is looked
-// up here. A name here describes a refusal in the terms a policy author can
-// check against the provider. Most are pure OpenAI wire concepts; one names a vendor
-// extension, because the thing being constrained *is* a vendor extension and
-// pretending otherwise would leave the rule unwritable. Which endpoint carries
-// which name stays the plane's business and never this package's.
-//
-// A predicate reads the whole body, so a rule may be a conjunction of more than
-// one field. It refuses only what it can positively identify: a shape it does
-// not recognise is left to the upstream, which will answer for it. Refusing on
-// a guess trades a conformance gap for a broken request.
+// A predicate reads the whole body and refuses only what it can positively
+// identify. A shape it does not recognise is left to the upstream.
 var denials = map[string]func(map[string]json.RawMessage) bool{
-	// The reference provider answers this one 400 `invalid_request_error`,
-	// with the message "tool_choice 'specified' is incompatible with thinking
-	// enabled". The full matrix, measured against its hosted API, has exactly
-	// one refused cell:
+	// The reference provider answers 400 "tool_choice 'specified' is
+	// incompatible with thinking enabled" in exactly one cell:
 	//
 	//	tool_choice                     thinking on   thinking off
 	//	auto / none / required          200           200
 	//	{"type":"function",...}         400           200
 	//	{"type":"allowed_tools",...}    200           200
-	//
-	// So the rule is neither "an object tool_choice" nor "a named function".
-	// Denying either of those wider things would refuse a request the model
-	// serves: allowed_tools in both modes, and a named function whenever the
-	// caller has turned thinking off.
 	"tool_choice.named_while_thinking": func(fields map[string]json.RawMessage) bool {
 		return isNamedFunctionChoice(fields["tool_choice"]) && thinkingEnabled(fields)
 	},
 }
 
-// diagnoses are the denials that answer in their own words.
-//
-// A rule names one from here exactly as it names one from `denials` — same
-// `predicate` field, and the two are looked up in the same pass. What differs is who the refusal is
-// about. A denial is about the endpoint — "this model does not accept feature
-// X" — and one sentence covers it however the request was written. A diagnosis
-// is about the request: which declaration, and what is wrong with it. Answering
-// that with the generic sentence would tell a customer whose tool has a typo in
-// it that a feature they are entitled to does not exist, and leave them nothing
-// to correct, so a rule here returns its own code and message.
-//
-// Everything `denials` promises still holds here. A name this build does not
-// carry is ignored rather than enforced, and a shape a rule cannot positively
-// read is left to the upstream.
+// diagnoses are predicates that answer in their own words: a refusal about the
+// request (which declaration, what is wrong) instead of about the endpoint, so
+// the caller has something to correct. They are looked up in the same pass as
+// `denials` and keep the same promises: an unknown name is ignored, and a shape
+// a rule cannot read is left to the upstream.
 var diagnoses = map[string]func(map[string]json.RawMessage) (code string, message string, refused bool){
-	// Named for the JSON path it constrains — `tools` on an element of
-	// `messages` — which is how the tool_choice rule above is named too. The
-	// request-level `tools` array is a different path and a different feature,
-	// and this rule reads it only far enough to compare names, never to judge
-	// its shape: that array is served today, and a rule that quietly acquired
-	// an opinion about it would break traffic nobody asked about.
+	// The `tools` on an element of `messages`. The request-level `tools` array
+	// is read only to compare names, never judged.
 	"messages.tools": malformedMessageTools,
-	// Named for the paths it reads — the media content parts on an element of
-	// `messages`. It answers in its own words for the same reason the rule above
-	// does: "this model does not accept video" is the wrong sentence to hand
-	// somebody whose video is fine and whose base64 lost its last block.
+	// The media content parts on an element of `messages`.
 	"messages.media": undecodableMessageMedia,
-	// Named for the key it constrains and the thing that decides which value is
-	// pinned, the way `tool_choice.named_while_thinking` is. It answers in its
-	// own words because the accepted value is not a constant: a generic "the
-	// value for 'temperature' is not accepted" would leave a caller who sent
-	// 0.6 with thinking on unable to tell that 0.6 is the *only* value accepted
-	// one line away, with thinking off.
+	// Answers in its own words because the accepted value depends on the mode.
 	"temperature.not_pinned_for_mode": temperatureOffProviderPin,
 }
 
-// temperaturePins are the only temperature the provider accepts, per thinking mode.
-//
-// Measured against the reference provider's hosted API. The matrix is two
-// cells wide and every other value in it is a 400:
+// temperaturePins are the only temperature the provider accepts, per thinking
+// mode, measured against its hosted API; every other value is a 400:
 //
 //	temperature   thinking on   thinking off
 //	1.0           200           400
 //	0.6           400           200
 //	0.0           400           400
 //
-// Which is a stricter rule than an `enum` on the key can express, and stricter
-// than the provider's published conformance table believes, which lists 0.6
-// and 0.0 as accepted with thinking on; the provider those tests describe
-// refuses both. That contradiction is the whole reason this is a term an
-// endpoint opts into rather than behaviour compiled in: one document asks for
-// the table, the other asks for the provider, and which one an endpoint is sold
-// against is a commercial decision.
-//
-// Thinking-off is the half nobody had looked at. The report that prompted this
-// said "thinking-off is fine on both", which is true of 0.6 and of nothing
-// else — 0.0 and 1.0 are refused there too, and are the cells a caller
-// switching thinking off at runtime walks into first.
+// The provider's published conformance table lists 0.6 and 0.0 as accepted with
+// thinking on, and the provider refuses both. That is why this is a term an
+// endpoint opts into: which of the two an endpoint is sold against is a
+// commercial decision.
 var temperaturePins = map[bool]float64{true: 1, false: 0.6}
 
-// temperatureOffProviderPin refuses a temperature the provider would refuse, in
-// the mode this request is actually in.
+// temperatureOffProviderPin refuses a temperature the provider would refuse in
+// the mode this request is in.
 //
-// An absent `temperature` is never a violation, here as everywhere else in this
-// file: the provider pins the value a caller sends and does not demand the
-// field. A present-but-unreadable one is left to the upstream for the same
-// reason `thinkingEnabled` leaves a malformed `thinking` alone — it is already
-// broken, and replacing the engine's reason with ours makes it harder to fix.
-//
-// `null` counts as unreadable and not as zero. Decoding it into a float64
-// leaves the zero value behind and reports no error, which would refuse
-// `temperature: null` as though the caller had asked for 0 — a request the
-// provider serves, since a null field is an absent one on this wire.
-//
-// A malformed `thinking` makes this rule abstain outright rather than fall back
-// to a mode. `thinkingEnabled` answers false for one, which is right for a
-// refusal that only fires while thinking is on and wrong here: the mode is what
-// *chooses* the pinned value, so reading it as "off" would refuse
-// `temperature: 1` — correct in the mode the request is probably in — on the
-// strength of a field nobody could parse.
+// An absent `temperature` is never a violation. A present but unreadable one,
+// `null` included (it decodes to zero without error), is left to the upstream.
+// A malformed `thinking` makes the rule abstain: the mode chooses the pinned
+// value, and guessing it would refuse a value that may be right.
 func temperatureOffProviderPin(fields map[string]json.RawMessage) (string, string, bool) {
 	raw, sent := fields["temperature"]
 	if !sent {
@@ -162,39 +99,22 @@ func temperatureOffProviderPin(fields map[string]json.RawMessage) (string, strin
 		), true
 }
 
-// isNamedFunctionChoice reports the `{"type":"function","function":{...}}` form.
-//
-// The `type` is what separates it from `allowed_tools`, which is also an object
-// and is accepted in both thinking modes. The bare strings — auto, none,
-// required — are a different thing again, and are never this.
+// isNamedFunctionChoice reports the `{"type":"function","function":{...}}` form,
+// as distinct from `allowed_tools` (also an object) and the bare strings.
 func isNamedFunctionChoice(raw json.RawMessage) bool {
 	value, _ := objectField(raw, "type")
 	return value == "function"
 }
 
 // thinkingEnabled reports whether this request positively reaches the model
-// thinking.
+// thinking. Absent means enabled: the model thinks unless told not to.
 //
-// Absent means enabled: the model thinks unless it is told not to, so a caller
-// who sends no `thinking` at all is in the refused cell.
+// Only `thinking.type` is read. The provider ignores
+// `chat_template_kwargs.thinking` and thinks anyway, so a policy that wants the
+// engine to agree removes that field with a `drop` term.
 //
-// `thinking.type` is the only spelling read. `chat_template_kwargs.thinking` is
-// what the vLLM chat template reads and it used to be read here too, on the
-// grounds that a caller who had correctly switched thinking off should not be
-// refused for it. That was true of the engine and never of the provider:
-// the provider has no `chat_template_kwargs`, ignores it, and thinks anyway — so a
-// request carrying it is in the *refused* cell there, and honouring it here
-// answered 200 where the endpoint's own provider answers 400.
-//
-// The spelling is handled where an ignored field belongs, as a `drop` term on
-// the endpoint's policy, which takes it out of the body before the engine can
-// act on it. That makes the two halves agree: the field reaches neither the
-// engine's behaviour nor this rule's reading of the request.
-//
-// A field that is present but unreadable answers false, so the request is not
-// refused here. It is already broken and the upstream will say so in its own
-// words; rejecting it locally would replace the provider's reason with a worse
-// one, and this rule has no standing to speak about a malformed `thinking`.
+// A present but unreadable field answers false, so the request is not refused
+// here and the upstream reports the malformed field in its own words.
 func thinkingEnabled(fields map[string]json.RawMessage) bool {
 	if raw, sent := fields["thinking"]; sent {
 		value, readable := objectField(raw, "type")
@@ -206,12 +126,8 @@ func thinkingEnabled(fields map[string]json.RawMessage) bool {
 }
 
 // objectField reads one field out of a JSON object, reporting separately
-// whether the object could be read at all.
-//
-// The two answers are different questions and every caller here needs both: a
-// field this rule cannot parse is not the same as an object that simply does
-// not carry it, and collapsing them would make a malformed body indistinguish-
-// able from a default one.
+// whether the object could be read at all, so a malformed body stays
+// distinguishable from one that simply lacks the field.
 func objectField(raw json.RawMessage, name string) (value any, readable bool) {
 	if len(raw) == 0 {
 		return nil, false
@@ -223,20 +139,14 @@ func objectField(raw json.RawMessage, name string) (value any, readable bool) {
 	return object[name], true
 }
 
-// maxToolNameLength is the longest function name the provider takes. It is
-// deliberately not OpenAI's 64: an endpoint using this rule sells consistency
-// with that provider, and narrowing the bound to the one most clients assume
-// would refuse names the provider serves.
+// maxToolNameLength is the longest function name the provider takes. Not
+// OpenAI's 64: narrowing it would refuse names the provider serves.
 const maxToolNameLength = 256
 
 // malformedMessageTools reports a tool declared on a message in a shape the
-// provider answers 400 to, and says which declaration and why.
-//
-// The provider lets a caller attach tools to a `system` message instead of, or
-// as well as, the request-level array. The engine behind this endpoint does not
-// read that field at all — it drops it on the way through — so every malformed
-// declaration currently gets a 200 with the tool silently missing, and nothing
-// below this line will ever catch one. That is the gap this rule closes.
+// provider answers 400 to, and says which declaration and why. The engine drops
+// message-level tools silently, so without this a malformed one gets a 200 with
+// the tool missing.
 //
 // Measured against the reference provider's hosted API. Refused:
 //
@@ -249,19 +159,11 @@ const maxToolNameLength = 256
 //	a name repeated within a message, across two messages, or against the
 //	  request-level tools array
 //
-// Served, and so never refused here: a declaration on any system position
-// including the last message, three tools on one message, two messages carrying
-// one each, and a message-level name beside a different request-level one.
-//
-// Two rules are wider than the cell that produced them, because that cell is a
-// sample of a class and not the class itself. "@" stands for every character
-// outside `[A-Za-z0-9_-]`; the hyphen is in that set on the OpenAI charset this
-// endpoint mirrors rather than on a measurement, and leaving it out would
-// refuse most of the hyphenated tool names in circulation. `null` stands for
-// every item that is not an object. Nothing else is widened — in particular
-// `parameters` is not required, because the vendor's own missing-field matrix
-// covers type, function and name and stops there, and demanding it would refuse
-// a tool that takes no arguments.
+// Served: a declaration on any system position, several tools on one message,
+// several messages carrying tools, and a message-level name beside a different
+// request-level one. "@" stands for any character outside `[A-Za-z0-9_-]` (the
+// OpenAI charset), and null for any item that is not an object. `parameters` is
+// not required, so a tool with no arguments passes.
 func malformedMessageTools(fields map[string]json.RawMessage) (string, string, bool) {
 	messages, readable := jsonArray(fields["messages"])
 	if !readable {
@@ -277,10 +179,8 @@ func malformedMessageTools(fields map[string]json.RawMessage) (string, string, b
 		}
 		tools, carried := message["tools"]
 		if !carried || isJSONNull(tools) {
-			// An explicit null is read as no declaration rather than as a
-			// broken one. Plenty of clients serialise an absent optional that
-			// way, and refusing them would break requests that carry no tools
-			// at all and never meant to.
+			// An explicit null is no declaration: many clients serialise an
+			// absent optional that way.
 			continue
 		}
 		role, stated := jsonString(message["role"])
@@ -293,10 +193,8 @@ func malformedMessageTools(fields map[string]json.RawMessage) (string, string, b
 			return refusal("Only a system message may declare tools, and messages[%d] has role %q.", index, role)
 		}
 		if content, isText := jsonString(message["content"]); isText && content != "" {
-			// Only a string content is judged. A content sent as an array of
-			// parts is a shape this rule was never measured against, and
-			// guessing at "empty" for it would refuse a request the model may
-			// well serve.
+			// Only string content is judged; an array of parts was never
+			// measured.
 			return refusal("A system message that declares tools must leave its content empty, and messages[%d] does not.", index)
 		}
 		items, isArray := jsonArray(tools)
@@ -318,22 +216,14 @@ func malformedMessageTools(fields map[string]json.RawMessage) (string, string, b
 	return "", "", false
 }
 
-// refusal builds the answer a diagnosis hands back.
-//
-// The code is the one this package already uses for a value it will not take,
-// rather than a synonym invented for this rule: from the caller's side both are
-// "what you sent for this parameter is not acceptable", and two codes for one
-// thing only makes the surface a client has to branch on wider.
+// refusal builds a diagnosis's answer, with the code this package already uses
+// for a value it will not take.
 func refusal(format string, args ...any) (string, string, bool) {
 	return "invalid_parameter", fmt.Sprintf(format, args...), true
 }
 
 // toolDeclaration reads one declaration, returning either its name or the
-// sentence that says what is wrong with it.
-//
-// The two are exclusive on purpose: a name is what the uniqueness check needs,
-// and a tool that has no readable name has already failed for its own reason,
-// so there is never a name to carry forward from a broken one.
+// sentence that says what is wrong with it, never both.
 func toolDeclaration(raw json.RawMessage) (name string, fault string) {
 	tool, readable := jsonObject(raw)
 	if !readable {
@@ -376,12 +266,8 @@ func toolDeclaration(raw json.RawMessage) (name string, fault string) {
 	return name, ""
 }
 
-// isToolName reports a name the provider will take, length aside.
-//
-// A digit is allowed everywhere except first. That asymmetry is the vendor's,
-// not a typo here: `1bad_name` is refused where `bad_name1` is not, and a rule
-// that banned digits outright would refuse the version-suffixed names that tool
-// authors write all the time.
+// isToolName reports a name the provider will take, length aside. A digit is
+// allowed anywhere but first, as the provider does.
 func isToolName(name string) bool {
 	for position, character := range name {
 		switch {
@@ -399,14 +285,9 @@ func isToolName(name string) bool {
 	return true
 }
 
-// requestToolNames collects the names the request-level `tools` array already
-// spends, so that a message-level declaration can be checked against them.
-//
-// Nothing here refuses anything. A request-level array that is malformed, or
-// that repeats a name inside itself, is the upstream's business and is served
-// today; reading it for names only means this rule can enforce the collision
-// the vendor measured without quietly acquiring an opinion about a feature it
-// was never asked to police.
+// requestToolNames collects the names the request-level `tools` array declares,
+// so a message-level declaration can be checked against them. It refuses
+// nothing: that array is the upstream's to judge.
 func requestToolNames(raw json.RawMessage) map[string]bool {
 	names := make(map[string]bool)
 	items, isArray := jsonArray(raw)
@@ -421,11 +302,8 @@ func requestToolNames(raw json.RawMessage) map[string]bool {
 	return names
 }
 
-// jsonArray, jsonObject, jsonString and isJSONNull each answer "is this the
-// shape I need" separately from "what is in it", for the same reason
-// objectField does: a field this rule cannot read must stay distinguishable
-// from one that is simply absent, or a malformed request and a default one
-// become the same request.
+// jsonArray, jsonObject, jsonString and isJSONNull each report whether the
+// value had the needed shape separately from its contents, as objectField does.
 func jsonArray(raw json.RawMessage) ([]json.RawMessage, bool) {
 	if len(raw) == 0 {
 		return nil, false
@@ -437,10 +315,8 @@ func jsonArray(raw json.RawMessage) ([]json.RawMessage, bool) {
 	return values, true
 }
 
-// A JSON null decodes into a map without error, leaving it nil. Letting that
-// through as a readable object would turn `tools: [null]` into a tool that is
-// merely missing its fields, and the caller would be told to add a `type` to a
-// declaration they never wrote.
+// jsonObject treats null as unreadable: it decodes into a nil map without
+// error, and `tools: [null]` must not read as a tool missing its fields.
 func jsonObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {
 	if len(raw) == 0 {
 		return nil, false
@@ -469,21 +345,12 @@ func isJSONNull(raw json.RawMessage) bool {
 }
 
 // checkPolicy reports the first violation of an endpoint's request terms on
-// this route, or ok when there is none.
+// this route, or ok when there is none. A nil policy costs one nil check.
 //
-// A nil policy returns immediately without touching the body, which is the
-// whole point of putting this per endpoint: every endpoint that has not sold a
-// consistency term pays one nil check and nothing else.
-//
-// Every rule whose scope matches applies and the request must satisfy all of
-// them. There is no precedence between rules and no most-specific-wins: a term
-// is something that was sold, and a second term does not cancel the first. Two
-// rules that cannot both hold are an authoring mistake, refused where the policy
-// is written rather than resolved here on a request that is already in flight.
-//
-// An absent parameter is never a violation. A provider that pins `temperature`
-// to 1 rejects the request that *sends* something else; it does not demand the
-// field. Requiring it would refuse the minimal request every client starts with.
+// Every rule in scope applies; there is no precedence, and contradictory rules
+// are refused where the policy is written. An absent parameter is never a
+// violation: a provider pins the value a caller sends, it does not demand the
+// field.
 func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, message string, ok bool) {
 	if policy == nil || len(policy.Rules) == 0 {
 		return "", "", true
@@ -491,13 +358,9 @@ func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, 
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		// Not this check's business. A JSON body that fails here has already
-		// failed where the caller read its `model`, and been reported there.
-		//
-		// A multipart body reaches this line intact and passes unchecked. Its
-		// parameters are form fields, not JSON values, and a policy is written
-		// against the JSON wire. Selling a consistency term on a multipart
-		// endpoint needs this to learn parts first.
+		// Not this check's business: a JSON body that fails here was
+		// reported where its `model` was read. A multipart body passes
+		// unchecked, since policies are written against the JSON wire.
 		return "", "", true
 	}
 
@@ -505,9 +368,8 @@ func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, 
 		switch {
 		case rule.Predicate != "":
 			if !rule.Deny {
-				// A predicate says nothing about a value, so a rule naming one
-				// without denying it constrains nothing. Refused at author time
-				// in the plane; inert here.
+				// A predicate rule that does not deny constrains nothing; the
+				// plane refuses it at author time.
 				continue
 			}
 			if refuse, known := denials[rule.Predicate]; known {
@@ -523,9 +385,8 @@ func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, 
 				}
 				continue
 			}
-			// Reported at refresh time, not here. A rule this build cannot read
-			// is a conformance gap somebody must see, never a reason to drop a
-			// request that may be perfectly fine.
+			// Unknown to this build: reported at refresh time, never a
+			// reason to drop the request.
 
 		case rule.Key != "":
 			value, present := lookup(fields, rule.Key)
@@ -548,22 +409,12 @@ func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, 
 }
 
 // rewriteBody returns the request with every writing term this route's rules
-// declare applied to it, and the body untouched when there is nothing to write.
+// declare applied, and the body untouched when there is nothing to write. It
+// never refuses; checkPolicy does that.
 //
-// It is separate from checkPolicy because the two do different things to a
-// request and only one of them can fail it. A check reads and refuses; this
-// writes and never refuses. Keeping them apart is what lets the check stay a
-// pure function of the body the caller sent.
-//
-// Which rules apply is decided once, against the body as it arrived, and never
-// re-decided as the rewrite proceeds. That is what makes the pass a single
-// simultaneous edit rather than a sequence: a rule whose `when_present` names a
-// key another rule drops would otherwise fire or not depending on which of them
-// ran first, and the order of the list is not part of this language.
-//
-// The body is re-encoded only when something was actually written, so the
-// ordinary request — which is nearly all of them — is forwarded as the exact
-// bytes that arrived.
+// Which rules apply is decided once against the body as it arrived, so the pass
+// is one simultaneous edit and the order of the rule list does not matter. The
+// body is re-encoded only when something was written.
 func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error) {
 	body, err := withoutMediaDecodeKwargs(route, body)
 	if err != nil {
@@ -581,12 +432,8 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 	}
 
 	rules := inScope(policy.Rules, route, fields)
-	// A copy reads the request as well as writing it, so every source is read out
-	// of the body as it arrived, before any term has written into it. Same reason
-	// the scopes are decided once: a rule carrying a key that another rule drops,
-	// or that a third writes, would otherwise pick up a different value depending
-	// on which of them ran first, and the order of the list is not part of this
-	// language.
+	// Sources are read from the body as it arrived, before any term writes,
+	// for the same reason the scopes are decided once.
 	sources := carried(rules, fields)
 
 	written := false
@@ -602,9 +449,7 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 		case rule.ValueFrom != "":
 			value, sent := sources[rule.ValueFrom]
 			if !sent {
-				// Nothing to carry. A rule whose source the request does not
-				// have writes nothing, rather than writing a null the caller
-				// never asked for.
+				// No source in the request: write nothing, not a null.
 				continue
 			}
 			changed, err = write(fields, rule.Key, value)
@@ -636,24 +481,11 @@ const mediaDecodeKwargs = "media_io_kwargs"
 // chat completion body, and returns the exact bytes that arrived when there
 // were none.
 //
-// It is not a policy term and it is not a refusal. Every bound on video decode
-// lives in the serving recipe and in the worker — frame rate, per-frame size,
-// decoded bytes, fetch bytes (docs/decisions/0017) — and this field is the one
-// API surface that sets the same knobs from outside. Leaving it to a rule an
-// endpoint opts into would make those bounds true only where somebody
-// remembered to write the rule; leaving it to the caller would make them true
-// until the first request that says otherwise.
-//
-// Dropped silently rather than refused. The field is a tuning hint on a request
-// that is otherwise fine, and a 400 would break a client whose own defaults
-// happen to spell out what we already do. What they asked for is not what they
-// get, and the answer is still the answer to their question.
-//
-// `extra_body` is stripped as well. An OpenAI client merges that object into the
-// top level before it sends, so the nesting only reaches this hop when a caller
-// hand-wrote it — which the engine ignores today, and would stop ignoring the
-// day anything on the path learns to unwrap it. The object itself stays, empty
-// or not, for the reason `drop` leaves a parent behind.
+// Not a policy term: every bound on video decode lives in the serving recipe
+// and the worker (docs/decisions/0017), and this field is the one API surface
+// that sets those knobs from outside. Dropped silently, since a 400 would break
+// clients whose defaults spell out what we already do. A hand-written
+// `extra_body` copy is stripped too; the object itself stays, as with `drop`.
 func withoutMediaDecodeKwargs(route string, body []byte) ([]byte, error) {
 	if route != chatCompletionsRoute {
 		return body, nil
@@ -682,18 +514,11 @@ func withoutMediaDecodeKwargs(route string, body []byte) ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-// fill writes value at path when the path's parent container is already in the
-// request and carries nothing there, and reports whether it wrote anything.
-//
-// The parent must be present and it is never created. `thinking.type` fills a
-// `thinking` object the caller sent without a `type`; it does nothing to a
-// request that never mentioned thinking, because inventing the parent would
-// turn a request that asked for no thinking at all into one that asked for the
-// default — a change to what every caller of that endpoint gets, made on their
-// behalf by a rule that was only supposed to spell out what they already meant.
-//
-// A key that is present is left alone even when it is null. The caller wrote
-// something there, and a default is for what they left out.
+// fill writes value at path when the path's parent is already in the request
+// and carries nothing there, and reports whether it wrote anything. The parent
+// is never created: filling `thinking.type` must not turn a request that never
+// mentioned thinking into one that asked for the default. A key present as null
+// is left alone.
 func fill(fields map[string]json.RawMessage, path string, value any) (bool, error) {
 	names := strings.Split(path, ".")
 	containers, reachable := containersTo(fields, names)
@@ -713,13 +538,9 @@ func fill(fields map[string]json.RawMessage, path string, value any) (bool, erro
 	return true, reseal(containers, names)
 }
 
-// carried reads every ValueFrom source out of the request, once, before the
-// rewrite starts. The map is keyed by the source path, so two rules copying the
-// same field read the same bytes.
-//
-// A source that is not in the request is simply absent here, which is how a copy
-// stays conditional without a `when_present` beside it saying the same thing
-// twice.
+// carried reads every ValueFrom source out of the request once, before the
+// rewrite starts, keyed by source path. An absent source is absent here, which
+// keeps a copy conditional without a `when_present`.
 func carried(rules []plane.Rule, fields map[string]json.RawMessage) map[string]json.RawMessage {
 	var sources map[string]json.RawMessage
 	for _, rule := range rules {
@@ -739,16 +560,9 @@ func carried(rules []plane.Rule, fields map[string]json.RawMessage) map[string]j
 }
 
 // write puts value at path, overwriting whatever is there, and reports whether
-// the request actually changed.
-//
-// The parent must already be in the request and is never created — the same
-// restraint fill keeps, for the same reason. What it does not keep is fill's
-// deference to a value the caller wrote: this is the term for a field the
-// provider ignores, and leaving the caller's value in place is exactly the wrong
-// answer.
-//
-// A write of the value that is already there reports false, so a request nothing
-// moved in is still forwarded as the exact bytes that arrived.
+// the request changed. Like fill it never creates the parent; unlike fill it
+// replaces the caller's value, since this is the term for a field the provider
+// ignores. Writing the value already there reports false.
 func write(fields map[string]json.RawMessage, path string, value json.RawMessage) (bool, error) {
 	names := strings.Split(path, ".")
 	containers, reachable := containersTo(fields, names)
@@ -764,11 +578,8 @@ func write(fields map[string]json.RawMessage, path string, value json.RawMessage
 	return true, reseal(containers, names)
 }
 
-// drop removes the key at path, and reports whether there was one to remove.
-//
-// The parent it came out of stays, even when it is left empty: `{"thinking":{}}`
-// and no `thinking` at all are two different requests, and a rewrite that turned
-// one into the other would be answering a question nobody asked it.
+// drop removes the key at path, and reports whether there was one. The parent
+// stays even when left empty: `{"thinking":{}}` and no `thinking` differ.
 func drop(fields map[string]json.RawMessage, path string) (bool, error) {
 	names := strings.Split(path, ".")
 	containers, reachable := containersTo(fields, names)
@@ -784,14 +595,9 @@ func drop(fields map[string]json.RawMessage, path string) (bool, error) {
 	return true, reseal(containers, names)
 }
 
-// containersTo decodes the objects a path runs through, one level each,
-// innermost last. It reports false when the path's parent is not in the request
-// or is not an object — the two cases where there is nothing to write into and
-// nothing to take out of.
-//
-// Only the containers on the path are decoded. Everything beside them —
-// `messages`, `tools`, the whole conversation — stays raw bytes and is copied
-// through, which is the same trade withModel makes and for the same reason.
+// containersTo decodes the objects a path runs through, innermost last, and
+// reports false when the parent is missing or not an object. Everything off
+// the path stays raw bytes, as in withModel.
 func containersTo(fields map[string]json.RawMessage, names []string) ([]map[string]json.RawMessage, bool) {
 	containers := make([]map[string]json.RawMessage, 1, len(names))
 	containers[0] = fields
@@ -822,17 +628,9 @@ func reseal(containers []map[string]json.RawMessage, names []string) error {
 	return nil
 }
 
-// inScope returns the rules that apply to this request, ordered so that the
-// violation reported for a body that breaks two of them is always the same one.
-//
-// Every scope term is optional and an omitted one asks nothing: no route matches
-// every path, a nil stream matches both modes, and no `when_present` matches
-// every body. So an unscoped policy behaves exactly as one written before scopes
-// existed.
-//
-// The order is derived from each rule rather than taken from the array, because
-// the array's order is not part of the language: a policy that means one thing
-// and a re-serialisation of it that means another is a policy nobody can store.
+// inScope returns the rules that apply to this request, in an order derived
+// from each rule (ruleOrder) so a body breaking two rules always reports the
+// same one. An omitted scope term matches everything.
 func inScope(rules []plane.Rule, route string, fields map[string]json.RawMessage) []plane.Rule {
 	type scoped struct {
 		rule  plane.Rule
@@ -866,15 +664,9 @@ func inScope(rules []plane.Rule, route string, fields map[string]json.RawMessage
 	return inScope
 }
 
-// ruleOrder is a rule's place in the evaluation order, derived from the rule
-// itself.
-//
-// Keys sort before predicates, then by subject, then by the rule's own
-// encoding — which makes the order total without ever consulting the array's
-// index, so two policies that differ only in how their rules were written down
-// report the same violation. Keys first keeps the answer a request already got
-// before scopes existed, when the parameter map was walked ahead of the denial
-// list.
+// ruleOrder is a rule's place in the evaluation order: keys before predicates,
+// then by subject, then by the rule's encoding. It never uses the array index,
+// so two encodings of one policy report the same violation.
 func ruleOrder(rule plane.Rule) string {
 	kind, subject := "0", rule.Key
 	if rule.Key == "" {
@@ -887,14 +679,9 @@ func ruleOrder(rule plane.Rule) string {
 	return kind + "\x00" + subject + "\x00" + string(encoded)
 }
 
-// streamOf reads the request's streaming mode, reporting separately whether it
-// could be read at all.
-//
-// Absent is a positive answer and it is false: `stream` defaults to off on every
-// wire this gateway fronts, so a caller who sends nothing is asking for one
-// response. A `stream` that is present but is not a boolean is not readable, and
-// a rule scoped to a streaming mode does not apply to a request whose mode this
-// hop cannot name — the upstream will answer for the field.
+// streamOf reads the request's streaming mode and whether it could be read.
+// Absent is readable and false; a non-boolean is unreadable, and a rule scoped
+// to a mode does not apply to it.
 func streamOf(fields map[string]json.RawMessage) (streaming bool, readable bool) {
 	raw, sent := fields["stream"]
 	if !sent {
@@ -907,15 +694,9 @@ func streamOf(fields map[string]json.RawMessage) (streaming bool, readable bool)
 	return value, true
 }
 
-// lookup reads the value at a dotted JSON path out of an already-parsed body.
-//
-// Absent and unreadable answer alike, because both mean the same thing to every
-// caller here: there is no value to judge. A path whose parent is a string, an
-// array or null does not resolve, and a rule about it constrains nothing rather
-// than refusing a body it could not read.
-//
-// Only objects are walked. An index into an array is not a path this language
-// has, and inventing one would put an expression where the design has data.
+// lookup reads the value at a dotted JSON path out of a parsed body. Absent and
+// unreadable answer alike: there is no value to judge. Only objects are walked;
+// there is no array indexing.
 func lookup(fields map[string]json.RawMessage, path string) (any, bool) {
 	raw, sent := lookupRaw(fields, path)
 	if !sent {
@@ -928,15 +709,8 @@ func lookup(fields map[string]json.RawMessage, path string) (any, bool) {
 	return value, true
 }
 
-// lookupRaw is lookup without the decode: the bytes at a path, exactly as they
-// arrived.
-//
-// Split out because a copy has no business decoding what it carries. `lookup`
-// answers "what is this value" for a rule that has to compare it against an
-// enum or a bound; `write` only has to put the same JSON somewhere else, and
-// decoding it to `any` and re-encoding it would turn a number the caller wrote
-// as `1` into `1` via float64 — a round trip with nothing to gain and a
-// precision loss to lose.
+// lookupRaw is lookup without the decode: the bytes at a path as they arrived,
+// so a copy does not round-trip numbers through float64.
 func lookupRaw(fields map[string]json.RawMessage, path string) (json.RawMessage, bool) {
 	names := strings.Split(path, ".")
 
@@ -978,10 +752,8 @@ func allowed(rule plane.Rule, value any) bool {
 	return true
 }
 
-// inEnum compares against the permitted set. JSON scalars decode to float64,
-// bool, string or nil, all of which compare with ==. Anything else — an object
-// or an array — is never equal to a scalar the policy named, and comparing it
-// with == would panic on an unhashable type.
+// inEnum compares against the permitted set. Only JSON scalars can match; an
+// object or array is never equal, and == on one would panic.
 func inEnum(permitted []any, value any) bool {
 	switch value.(type) {
 	case float64, bool, string, nil:
@@ -996,35 +768,21 @@ func inEnum(permitted []any, value any) bool {
 	return false
 }
 
-// mediaParts are the content-part shapes that carry media by value, and where
-// the bytes sit inside each one.
+// mediaParts are the content-part shapes that carry media by value, and the
+// field that holds the bytes: `url` holds a data URL, `data` bare base64.
 //
-// `image_url` is deliberately absent. The frontend decodes an image itself and
-// already answers 400 for one it cannot read, so a rule here would be a second
-// opinion about a question that is already answered correctly — and the format
-// list below would be the thing deciding it, which is worse than the decoder.
-// Video and audio are here because their bytes are not decoded until the worker,
-// where a failure is a Python exception with no status on it and the frontend
-// has nothing to triage: `Failed to generate completions`, 500, on a request
-// that was the caller's mistake.
-//
-// `url` carries a data URL; `data` carries bare base64 with the container named
-// in a sibling `format`. Two spellings because the wire has two: `video_url`
-// follows the `image_url` shape the compatible servers settled on, and
-// `input_audio` follows OpenAI's own audio part.
+// `image_url` is absent: the frontend decodes images itself and answers 400 for
+// a bad one. Video and audio are only decoded in the worker, where a bad
+// payload becomes a 500 with nothing for the frontend to triage.
 var mediaParts = map[string]string{
 	"video_url":   "url",
 	"audio_url":   "url",
 	"input_audio": "data",
 }
 
-// mediaSignatures are the leading bytes of a container this rule can recognise,
-// as (offset, magic) pairs.
-//
-// One table for audio and video rather than one each, and no branch on which
-// part carried the bytes. A container is not a modality: audio arrives inside
-// MP4 and Ogg as often as video does, and a rule that demanded a video magic
-// under `video_url` would refuse an audio-only MP4 that the engine plays.
+// mediaSignatures are the leading bytes of a container this rule recognises, as
+// (offset, magic) pairs. One table for audio and video, since a container is
+// not a modality: audio arrives in MP4 and Ogg as often as video does.
 var mediaSignatures = []struct {
 	offset int
 	magic  string
@@ -1046,46 +804,25 @@ var mediaSignatures = []struct {
 }
 
 // transportStreamSync and transportStreamPacket are the MPEG-TS sync byte and
-// the stride it repeats on.
-//
-// TS is not in mediaSignatures because its signature is one byte, and one byte
-// admits one payload in every 256 whatever the payload is — an allowlist with a
-// hole that size in it is not one. Two syncs a packet apart is the cheapest test
-// that actually distinguishes a transport stream from a coincidence.
+// its stride. TS is tested as two syncs a packet apart, since a one-byte
+// signature would match one payload in 256.
 const (
 	transportStreamSync   = 0x47
 	transportStreamPacket = 188
 )
 
-// shortestMedia is the fewest bytes this rule will look at before calling a
-// payload truncated.
-//
-// It is the longest offset+magic above rather than a round number, so the
-// question "could these bytes match anything we know" has one answer: below this
-// length no signature can be checked, and refusing is not a guess about the
-// format but a statement about the length.
+// shortestMedia is the fewest bytes this rule looks at before calling a payload
+// truncated: the longest offset+magic in mediaSignatures.
 const shortestMedia = 8
 
 // undecodableMessageMedia refuses a media content part whose bytes cannot be a
-// container, before the request reaches an engine that would answer 500 for it.
+// container, before the request reaches an engine that would answer 500.
 //
-// This is the narrowest form of the rule that is still worth having. Three
-// things are refused — base64 that does not decode, an empty payload, and a
-// payload too short or too unlike any container this build knows — and nothing
-// else. In particular a well-formed container the decoder still rejects is not
-// refused here: the engine is the thing that knows whether a stream inside a
-// valid MP4 is playable, and this rule has no standing to pre-empt it.
-//
-// A remote URL is never touched. Fetching an address a caller supplied is an
-// egress decision, and this rule reads the request it was given.
-//
-// The signature list is an allowlist, which is the one place this rule can be
-// wrong in the direction that costs a customer a request: a container nobody
-// here has heard of is refused with a 400 where the engine might have served it.
-// That is the trade the list is, and it is why the list is generous, why the
-// error names the length or the encoding whenever that is the actual fault, and
-// why `image_url` — the one modality that already gets a correct answer — is
-// not in `mediaParts`.
+// It refuses base64 that does not decode, an empty payload, and a payload too
+// short or unlike any known container, and nothing else: whether a valid
+// container is playable is the engine's call. Remote URLs are never fetched.
+// The signature list is an allowlist, so an unknown container is refused; the
+// list is generous for that reason.
 func undecodableMessageMedia(fields map[string]json.RawMessage) (string, string, bool) {
 	messages, readable := jsonArray(fields["messages"])
 	if !readable {
@@ -1138,15 +875,9 @@ func undecodableMessageMedia(fields map[string]json.RawMessage) (string, string,
 }
 
 // mediaBase64 returns the base64 payload a content part carries by value, and
-// whether it carried one at all.
-//
-// The field name decides how to read it, which is why it is carried in
-// `mediaParts` rather than assumed. A `data` field is already the encoding —
-// `input_audio` names its container in a sibling `format` and needs no URL. A
-// `url` field is base64 only when the data URL says `;base64`: the
-// percent-encoded form is legal and this rule cannot judge it, so it reports no
-// payload rather than decoding the wrong thing. An `http(s)` URL is a reference
-// and reports the same.
+// whether it carried one. A `data` field is the encoding itself; a `url` is
+// base64 only as a `;base64` data URL. A percent-encoded data URL or an http(s)
+// reference reports no payload.
 func mediaBase64(field, payload string) (string, bool) {
 	if field == "data" {
 		return payload, true
@@ -1167,21 +898,13 @@ func mediaBase64(field, payload string) (string, bool) {
 }
 
 // mediaFault names what is wrong with a payload, or returns empty when nothing
-// this rule can see is.
-//
-// The three faults are worded so a caller can act on each: which of the encoding
-// and the bytes is wrong, and if the bytes, whether there were too few of them
-// to be anything or enough to be something this build does not know.
+// this rule can see is, worded so the caller knows which part to fix.
 func mediaFault(encoded string) string {
 	trimmed := strings.TrimSpace(encoded)
 	decoded, err := base64.StdEncoding.DecodeString(trimmed)
 	if err != nil {
-		// Both alphabets, because a caller who built the payload URL-safe is
-		// making a portability mistake and not sending a corrupt file. Both are
-		// the padded encodings: the engine decodes with Python's `b64decode`,
-		// which requires the padding, so accepting an unpadded payload here
-		// would forward a request this rule had declared sound and the worker
-		// then answers 500 for — which is the whole defect, one layer along.
+		// Both alphabets, padded only: the worker decodes with Python's
+		// b64decode, which requires padding.
 		decoded, err = base64.URLEncoding.DecodeString(trimmed)
 	}
 	if err != nil {
@@ -1217,12 +940,8 @@ func hasMediaSignature(decoded []byte) bool {
 	return false
 }
 
-// objectRaw reads one field out of a JSON object without decoding its value.
-//
-// objectField's counterpart for a field whose value is read as JSON rather than
-// compared as a Go value. It answers with an empty RawMessage for an object it
-// cannot read, so a caller that then asks for a string gets "not stated" — which
-// is what an unreadable container means to every caller here.
+// objectRaw reads one field out of a JSON object without decoding it, or nil
+// when the object cannot be read.
 func objectRaw(raw json.RawMessage, name string) json.RawMessage {
 	object, readable := jsonObject(raw)
 	if !readable {
@@ -1231,13 +950,8 @@ func objectRaw(raw json.RawMessage, name string) json.RawMessage {
 	return object[name]
 }
 
-// isTransportStream reports two MPEG-TS sync bytes one packet apart.
-//
-// A payload shorter than a packet and a half cannot be tested this way and is
-// not a transport stream as far as this rule is concerned. That is the same
-// answer the length test gives and for the same reason: below the length at
-// which a format is identifiable, refusing is a statement about the bytes there
-// are and not a guess about the ones there are not.
+// isTransportStream reports two MPEG-TS sync bytes one packet apart. Anything
+// shorter than a packet and one byte is not one.
 func isTransportStream(decoded []byte) bool {
 	if len(decoded) <= transportStreamPacket {
 		return false
