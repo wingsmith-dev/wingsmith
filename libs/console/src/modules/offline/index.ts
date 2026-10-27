@@ -418,7 +418,54 @@ function hfSlug(source: string): string {
  * the fixture router takes the first matching route, and `/artifacts/:ref` would
  * otherwise swallow the sub-resource.
  */
+/**
+ * `GET /artifacts/:ref/usage` and its batched form, with the plane's
+ * definitions: a workload counts once whether it serves the weights or names
+ * them as an adapter, and downstream is the artifacts naming one as base.
+ */
+function artifactUsage(artifact: Artifact) {
+  return {
+    artifact_id: artifact.id,
+    workload_count: workloads.filter(
+      (w) =>
+        w.serving.artifact_id === artifact.id ||
+        w.adapter_artifact_ids.includes(artifact.id)
+    ).length,
+    downstream_count: artifacts.filter(
+      (a) => a.base_artifact_id === artifact.id
+    ).length,
+  }
+}
+
 registerFixtures([
+  {
+    method: "GET",
+    path: "/artifacts/usage",
+    handler: ({ query }: FixtureContext) => {
+      const ids = [...new Set(query.all("id").map((id) => id.trim()))].filter(
+        Boolean
+      )
+      if (ids.length === 0)
+        throw new InvalidError("name at least one artifact with ?id=")
+      return {
+        items: ids.flatMap((id) => {
+          const found = artifacts.find((a) => a.id === id)
+          return found ? [artifactUsage(found)] : []
+        }),
+      }
+    },
+  },
+  {
+    method: "GET",
+    path: "/artifacts/:ref/usage",
+    handler: ({ params }: FixtureContext) => {
+      const found = artifacts.find(
+        (a) => a.id === params.ref || a.name === params.ref
+      )
+      if (!found) throw new NotFoundError(`no artifact '${params.ref}'`)
+      return artifactUsage(found)
+    },
+  },
   {
     method: "GET",
     path: "/artifacts/:ref/fitment",
