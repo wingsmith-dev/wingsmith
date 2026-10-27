@@ -4,8 +4,9 @@
 #   chart-kubeconform.sh [chart-dir]     default libs/chart/cluster-setup
 #
 # Two renders: the defaults with only the required blanks filled, and one with every optional
-# feature on (serving, monitoring, the HF token Secret). The subcharts are left out, as in
-# `just chart-lint`: their tarballs are not vendored, and they are validated upstream.
+# feature on (serving, serving egress policy, fabric, monitoring, the HF token Secret). The
+# subcharts are left out, as in `just chart-lint`: their tarballs are not vendored, and they are
+# validated upstream.
 # Needs helm, kubeconform and uv on PATH.
 set -euo pipefail
 
@@ -38,6 +39,11 @@ required=(
 everything=(
   --set serving.enabled=true --set serving.host=hangar.example.com
   --set serving.clusterIssuer=letsencrypt --set serving.backend.service=frontend
+  --set 'serving.middlewares[0].name=auth' --set 'serving.middlewares[0].namespace=traefik'
+  --set 'networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.team=edge'
+  --set networkPolicy.servingEgress.enabled=true
+  --set 'networkPolicy.servingEgress.apiServer={10.0.0.1/32}'
+  --set fabric.type=efa --set fabric.devices=4
   --set monitoring.enabled=true --set cluster.region=ci-region-1
   --set monitoring.remoteWrite.url=https://metrics.example.com/api/v1/write
   --set hfToken.create=true --set hfToken.value=hf_ci
