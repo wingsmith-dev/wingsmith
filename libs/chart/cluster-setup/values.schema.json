@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cluster-setup values",
+  "description": "Types for the values whose wrong type would render without complaint and do the wrong thing, such as readOnly: \"false\" as a string. Open by design: keys are not restricted, so the subcharts' values and the removed keys the templates refuse with a migration message still reach the templates.",
+  "type": "object",
+  "definitions": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "digest": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "operation": { "enum": ["cordon", "drain", "benchmark"] },
+    "nameOrNumber": {
+      "description": "A string, or a number or boolean YAML read from an unquoted name; the templates quote it either way.",
+      "type": ["string", "number", "boolean"]
+    }
+  },
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/definitions/nameOrNumber" },
+        "hubUrl": { "type": "string" },
+        "region": { "$ref": "#/definitions/nameOrNumber" },
+        "readOnly": { "type": "boolean" },
+        "allowedOperations": {
+          "description": "A comma-separated string, or a list of operation kinds.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "$ref": "#/definitions/operation" } }
+          ]
+        },
+        "logLevel": { "enum": ["debug", "info", "warn", "error"] },
+        "logFormat": { "enum": ["json", "text"] }
+      }
+    },
+    "hub": {
+      "type": "object",
+      "properties": {
+        "allowInsecure": { "type": "boolean" },
+        "caBundle": { "type": "string" }
+      }
+    },
+    "enrolmentToken": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string", "minLength": 1 },
+        "secretKey": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" },
+        "existing": { "type": "boolean" }
+      }
+    },
+    "imagePullSecret": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "registry": { "type": "string" },
+        "username": { "type": "string" },
+        "token": { "type": "string" }
+      }
+    },
+    "pools": {
+      "type": "object",
+      "properties": {
+        "labelKey": { "type": "string" },
+        "gpuValue": { "$ref": "#/definitions/nameOrNumber" },
+        "cacheValue": { "$ref": "#/definitions/nameOrNumber" },
+        "cacheTaintKey": { "type": "string" }
+      }
+    },
+    "workloadNamespace": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "create": { "type": "boolean" }
+      }
+    },
+    "modelCache": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "pvcName": { "type": "string", "minLength": 1 },
+        "storageClass": { "type": "string" },
+        "accessMode": { "enum": ["ReadWriteMany", "ReadWriteOnce", "ReadWriteOncePod", "ReadOnlyMany"] },
+        "localDir": { "type": "string" }
+      }
+    },
+    "multinode": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "fabric": {
+      "type": "object",
+      "properties": {
+        "devices": { "type": "integer", "minimum": 0 },
+        "resource": { "type": "string" },
+        "nixlBackends": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "leaderElection": { "type": "boolean" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "podMonitor": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "labels": { "type": "object" }
+              }
+            }
+          }
+        },
+        "engine": {
+          "type": "object",
+          "properties": {
+            "imagePullSecrets": { "$ref": "#/definitions/stringList" }
+          }
+        },
+        "images": {
+          "type": "object",
+          "properties": {
+            "allowedPrefixes": { "$ref": "#/definitions/stringList" }
+          }
+        },
+        "benchmark": {
+          "type": "object",
+          "properties": {
+            "images": { "$ref": "#/definitions/stringList" }
+          }
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "gateway": {
+          "type": "object",
+          "properties": {
+            "address": { "type": "string" },
+            "serverName": { "type": "string" },
+            "caBundle": { "type": "string" }
+          }
+        },
+        "frontendEndpoint": { "type": "string" },
+        "responseHeaderTimeout": { "type": "string" }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["per-model", "shared", "none"] },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "imagePullSecrets": { "$ref": "#/definitions/stringList" },
+        "anthropicApi": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "stripPreamble": { "type": "boolean" }
+          }
+        },
+        "perModel": {
+          "type": "object",
+          "properties": {
+            "image": { "type": "string" },
+            "globalDynamoNamespace": { "type": "boolean" }
+          }
+        },
+        "shared": {
+          "type": "object",
+          "properties": {
+            "image": { "$ref": "#/definitions/image" },
+            "env": { "type": "object" }
+          }
+        }
+      }
+    },
+    "serving": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "host": { "type": "string" },
+        "clusterIssuer": { "type": "string" },
+        "entryPoints": { "$ref": "#/definitions/stringList" },
+        "middlewares": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "namespace": { "type": "string" }
+            }
+          }
+        },
+        "allowUnauthenticated": { "type": "boolean" },
+        "backend": {
+          "type": "object",
+          "properties": {
+            "service": { "type": "string" },
+            "namespace": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "frontendFrom": { "type": "array", "items": { "type": "object" } },
+        "natsFrom": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "remoteWrite": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "keep": { "type": "string" },
+            "basicAuth": {
+              "type": "object",
+              "properties": {
+                "useEnrolmentToken": { "type": "boolean" },
+                "existing": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "image": { "$ref": "#/definitions/image" }
+          }
+        }
+      }
+    },
+    "hfToken": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "secretName": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      }
+    }
+  }
+}

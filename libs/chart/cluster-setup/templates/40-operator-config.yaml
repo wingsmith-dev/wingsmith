@@ -50,6 +50,12 @@ data:
   {{- with .Values.operator.engine.imagePullSecrets }}
   HANGAR_ENGINE_PULL_SECRETS: {{ join "," . | quote }}
   {{- end }}
+  {{- with .Values.operator.images.allowedPrefixes }}
+  HANGAR_ALLOWED_IMAGE_PREFIXES: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.operator.benchmark.images }}
+  HANGAR_BENCHMARK_IMAGES: {{ join "," . | quote }}
+  {{- end }}
 
   # One frontend per model, rendered by the operator into each model's own graph.
   # True only under `frontend.mode: per-model`, which is the default; `shared`

@@ -621,3 +621,36 @@ def test_image_digest_pins_the_build(chart):
     assert container(get(docs, "Deployment", "hangar-agent"), "agent")["image"] == \
         "registry.example.com/agent:custom"
     assert "sha256:" in refusal(chart, **{"operator.image.digest": "abc"})
+
+
+def test_image_allowlists_reach_the_operator(chart):
+    data = get(render(chart), "ConfigMap", "hangar-operator")["data"]
+    assert "HANGAR_ALLOWED_IMAGE_PREFIXES" not in data
+    assert "HANGAR_BENCHMARK_IMAGES" not in data
+    docs = render(chart, **{
+        "operator.images.allowedPrefixes": "{nvcr.io/nvidia/ai-dynamo,registry.example.com/}",
+        "operator.benchmark.images": "{registry.example.com/aiperf:1.0}",
+    })
+    data = get(docs, "ConfigMap", "hangar-operator")["data"]
+    assert data["HANGAR_ALLOWED_IMAGE_PREFIXES"] == "nvcr.io/nvidia/ai-dynamo,registry.example.com/"
+    assert data["HANGAR_BENCHMARK_IMAGES"] == "registry.example.com/aiperf:1.0"
+
+
+@pytest.mark.parametrize("key,value,where", [
+    ("cluster.readOnly", '"false"', "/cluster/readOnly"),
+    ("frontend.mode", "sharded", "/frontend/mode"),
+    ("operator.image.pullPolicy", "Sometimes", "/operator/image/pullPolicy"),
+    ("cluster.logFormat", "xml", "/cluster/logFormat"),
+])
+def test_schema_refuses_a_wrong_type_before_rendering(chart, key, value, where):
+    # A string "false" is truthy to the templates, so readOnly: "false" would
+    # grant read-only RBAC to an operator that reconciles.
+    cmd = ["helm", "template", "rel", str(chart), "-n", "hangar-system", *_args({}, True)]
+    cmd += ["--set-json", f"{key}={value}" if value.startswith('"') else f'{key}="{value}"']
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert where in result.stderr
+
+
+def test_schema_accepts_an_unquoted_numeric_cluster_name(chart):
+    render(chart, **{"cluster.id": 123, "cluster.region": 7})

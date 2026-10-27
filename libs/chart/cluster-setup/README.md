@@ -227,10 +227,21 @@ them the cache never syncs and the operator exits. If `workloadNamespace.name`
 is the release namespace, the chart renders one Role with both sets of rules and
 leaves creating that namespace to `helm --create-namespace`.
 
-What this does not bound: on a managed cluster the plane decides what runs in
+What RBAC does not bound: on a managed cluster the plane decides what runs in
 the workload namespace, including the engine and benchmark images, so whoever
-holds admin access to the plane can run code there. Treat plane admin as
-equivalent to write access to that namespace.
+holds admin access to the plane can run code there. Two values narrow that to
+images you chose, and the operator refuses anything else before it creates an
+object:
+
+- `operator.images.allowedPrefixes` lists the registries or repositories every
+  engine, frontend and prefetch image must come from. Empty, the default,
+  allows any image.
+- `operator.benchmark.images` lists the exact harness images a benchmark may
+  run. Empty keeps the operator's default, the aiperf and evalscope images the
+  plane pins.
+
+Without an allowlist, treat plane admin as equivalent to write access to the
+workload namespace.
 
 ## Operator metrics
 
@@ -286,6 +297,11 @@ for, and it is what an engine runtime image must be built against: a model's
 `engine_runtime_image` (and a per-model frontend image) has to come from the
 same Dynamo release as the platform, or the workers and the frontend disagree on
 the wire. Changing it is a chart release, not a values edit.
+
+`values.schema.json` checks the types of the values that would otherwise render
+and misbehave, such as `cluster.readOnly: "false"` as a string, and the enums
+(`frontend.mode`, `pullPolicy`, log settings). It does not restrict keys, so a
+removed key still reaches the template that explains what replaced it.
 
 Release notes, including anything breaking or deprecated and any CRD you must
 apply by hand, are in [CHANGELOG.md](CHANGELOG.md).

@@ -36,3 +36,13 @@ upgrade sources; install fresh.
   network policy on, the ingress controller in `networkPolicy.frontendFrom`.
 - `frontend.enabled` and `operator.frontend.enabled` are removed in favour of
   `frontend.mode`; the chart refuses either with migration instructions.
+
+### Added
+
+- `operator.images.allowedPrefixes` and `operator.benchmark.images` limit the
+  images the plane can have this cluster run: the operator refuses an engine,
+  frontend or prefetch image outside the prefixes, and a benchmark harness not
+  on the list. Both are empty by default, which keeps today's behaviour.
+- `values.schema.json` refuses a value of the wrong type before anything
+  renders, such as `cluster.readOnly: "false"` as a string, which the templates
+  would read as true.

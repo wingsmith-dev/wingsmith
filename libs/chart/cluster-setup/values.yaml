@@ -234,6 +234,21 @@ operator:
     # to a private registry. The chart copies `imagePullSecret` into the
     # workload namespace under the name given here.
     imagePullSecrets: []
+  # Which images the plane may have this cluster run. Without these, whoever
+  # holds admin on the plane picks every image in the workload namespace.
+  images:
+    # Registries or repositories every engine, frontend and prefetch image must
+    # come from, matched at a path, tag or digest boundary, e.g.
+    # `nvcr.io/nvidia/ai-dynamo` or `registry.example.com/`. The operator
+    # refuses to render anything else. Empty allows any image. Include the
+    # per-model frontend's registry too, or no model renders.
+    allowedPrefixes: []
+  benchmark:
+    # The harness images a benchmark may run, matched exactly. Empty keeps the
+    # operator's default, the aiperf and evalscope images the plane pins. To
+    # refuse benchmarks altogether, leave `benchmark` out of
+    # `cluster.allowedOperations` on a read-only cluster.
+    images: []
   resources:
     requests:
       cpu: 50m
