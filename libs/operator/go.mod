@@ -1,11 +1,11 @@
 module github.com/hangar-dev/hangar/libs/operator
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/go-logr/logr v1.4.2
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 	k8s.io/api v0.34.0
 	k8s.io/apiextensions-apiserver v0.34.0
 	k8s.io/apimachinery v0.34.0
@@ -45,11 +45,11 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect

@@ -35,10 +35,10 @@ defaults:
     shell: bash
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
   UV_VERSION: "0.9.18"
   # The newest govulncheck that builds with GO_VERSION; later releases need a newer Go.
-  GOVULNCHECK_VERSION: "v1.7.0"
+  GOVULNCHECK_VERSION: "v1.9.0"
   PIP_AUDIT_VERSION: "2.10.1"
 
 jobs:

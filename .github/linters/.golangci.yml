@@ -65,6 +65,12 @@ linters:
       - path: libs/agent/internal/dynamo/handler_test\.go
         linters: [unused]
         text: theResolverAnswersPerDeployment
+      # x/net v0.60 deprecates its http2 package for net/http's own. The tunnel serves and dials
+      # HTTP/2 over connections it adopts, which needs a port to http.Transport.NewClientConn and
+      # http.Server; until that port lands it stays on x/net/http2.
+      - path: libs/packages/tunnel/
+        linters: [staticcheck]
+        text: "SA1019: .*golang\\.org/x/net/http2"
 
 run:
   timeout: 5m

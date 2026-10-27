@@ -20,7 +20,7 @@ defaults:
     shell: bash
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
   UV_VERSION: "0.9.18"
   JUST_VERSION: "1.58.0"
   RUFF_VERSION: "0.16.3"
@@ -293,8 +293,7 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
-      # The release binary, checked against its published digest. Building it needs a newer Go
-      # than the one the modules here are tested with.
+      # The release binary, checked against its published digest.
       - name: install kubeconform
         env:
           KUBECONFORM_VERSION: v0.8.0

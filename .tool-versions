@@ -1,5 +1,5 @@
 # The versions the images build with (Dockerfiles) and the go.mod files declare; asdf and mise read this.
-golang 1.25.0
+golang 1.26.10
 nodejs 22.19.0
 pnpm 10.15.1
 python 3.12.8

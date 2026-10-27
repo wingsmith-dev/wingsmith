@@ -9,8 +9,8 @@
 // Kubernetes: a change to any of those must not be able to reach the wire format.
 module github.com/hangar-dev/hangar/libs/packages/tunnel
 
-go 1.25.0
+go 1.26.0
 
-require golang.org/x/net v0.43.0
+require golang.org/x/net v0.60.0
 
-require golang.org/x/text v0.28.0 // indirect
+require golang.org/x/text v0.42.0 // indirect
