@@ -1399,6 +1399,11 @@ async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession)
     assert disabled_address.endpoints[0].upstreams == []
 
     await clusters.set_serving(cluster.id, ClusterServingRequest(url="http://frontend.svc:8000"))
+    await ProjectService(db).update(project.id, ProjectUpdateRequest(enabled=False))
+    assert (await endpoints.resolved()).endpoints == [], "a disabled project's endpoints stop resolving"
+
+    await ProjectService(db).update(project.id, ProjectUpdateRequest(enabled=True))
+    assert [e.id for e in (await endpoints.resolved()).endpoints] == [created.id]
     await endpoints.update(created.id, EndpointUpdateRequest(enabled=False))
     assert (await endpoints.resolved()).endpoints == []
 

@@ -139,7 +139,9 @@ class EndpointRepository:
         what lets the gateway answer only for the tenant a request belongs to
         (docs/decisions/0016); `Project`'s own stamp goes into the revision so a
         project's tenant reassignment is not silently missed by a poller
-        holding a `304`.
+        holding a `304`. A disabled project's endpoints are left out, the same as
+        a disabled endpoint: the gateway's table carries no project flag, so this
+        is the only place a project can be switched off.
         """
         query = (
             select(
@@ -164,7 +166,7 @@ class EndpointRepository:
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
             .options(selectinload(Endpoint.aliases))
-            .where(Endpoint.enabled.is_(True))
+            .where(Endpoint.enabled.is_(True), Project.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
         )
         if ref is not None:
