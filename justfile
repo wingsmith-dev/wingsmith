@@ -241,6 +241,7 @@ cov *args:
     done
 
     marker="not database"
+    floor=()
     if [ -n "${HANGAR_TEST_DATABASE_URL:-}" ]; then
       marker=""
     elif command -v docker >/dev/null 2>&1; then
@@ -249,10 +250,12 @@ cov *args:
       marker=""
     else
       echo "warn: no Postgres; plane coverage omits the database-backed suite (undercount)" >&2
+      # A partial run cannot meet the floor, so report the number instead of failing on it.
+      floor=(--cov-fail-under=0)
     fi
     report=(--cov-report=term-missing --cov-report=xml)
     [ -n "$html" ] && report+=(--cov-report=html:coverage_html)
-    (cd {{_plane}} && uv run pytest -m "$marker" --cov "${report[@]}")
+    (cd {{_plane}} && uv run pytest -m "$marker" --cov "${report[@]}" ${floor[@]+"${floor[@]}"})
 
     for d in {{_go_mods}}; do
       (cd "$d" && go test -covermode=atomic -coverprofile=coverage.out ./...
