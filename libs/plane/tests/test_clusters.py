@@ -1,3 +1,4 @@
+import uuid
 import inspect
 import datetime as dt
 
@@ -89,6 +90,10 @@ class FakeClusterRepo:
 class FakeSession:
     def __init__(self) -> None:
         self.commits = 0
+        self.statements = []
+
+    async def execute(self, statement):
+        self.statements.append(statement)
 
     async def commit(self):
         self.commits += 1
@@ -99,6 +104,8 @@ class FakeSession:
 
 class FakeCluster:
     def __init__(self, name="alpha", region="eu-west-1", token_hash=None) -> None:
+        self.id = uuid.uuid4()
+        self.uid = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
         self.name = name
         self.region = region
         self.token_hash = token_hash
