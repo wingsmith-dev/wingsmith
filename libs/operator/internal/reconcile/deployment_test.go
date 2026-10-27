@@ -42,11 +42,11 @@ const (
 
 var testRender = render.Options{
 	Namespace:      "dynamo",
-	PoolLabelKey:   "hangar.io/pool",
+	PoolLabelKey:   "hangar.dev/pool",
 	GPUPoolValue:   "gpu",
 	ModelCachePVC:  "model-cache",
 	CachePoolValue: "cache",
-	CacheTaintKey:  "hangar.io/cache",
+	CacheTaintKey:  "hangar.dev/cache",
 }
 
 func declared(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResource {
@@ -112,7 +112,7 @@ func gpuNode(name string, devices int64, ready bool) *corev1.Node {
 		condition = corev1.ConditionTrue
 	}
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"hangar.io/pool": "gpu"}},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"hangar.dev/pool": "gpu"}},
 		Status: corev1.NodeStatus{
 			Allocatable: corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(devices, resource.DecimalSI)},
 			Conditions:  []corev1.NodeCondition{{Type: corev1.NodeReady, Status: condition}},
@@ -568,7 +568,7 @@ func TestDeploymentFailsWithoutRetryOnAnUndecodablePayload(t *testing.T) {
 	if out.Status.Phase != "Failed" {
 		t.Errorf("phase = %q, want Failed", out.Status.Phase)
 	}
-	if result.RequeueAfter != 0 || result.Requeue {
+	if result != (ctrl.Result{}) {
 		t.Error("a payload that does not decode is not fixed by retrying it")
 	}
 }
@@ -815,7 +815,7 @@ func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
 func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 	cfg := &config.Config{
 		WorkloadNamespace:              "dynamo",
-		PoolLabelKey:                   "hangar.io/pool",
+		PoolLabelKey:                   "hangar.dev/pool",
 		EnginePullSecrets:              []string{"ghcr-engine"},
 		FrontendEnabled:                true,
 		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2",
