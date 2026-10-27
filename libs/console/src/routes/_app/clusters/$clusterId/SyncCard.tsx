@@ -16,7 +16,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 /**
- * The observed half of a cluster. `state` is derived by the plane — a cluster
+ * The observed half of a cluster. `state` is derived by the plane: a cluster
  * that has never connected is not the same as one that connected and dropped,
  * and neither is a value anybody declared.
  */

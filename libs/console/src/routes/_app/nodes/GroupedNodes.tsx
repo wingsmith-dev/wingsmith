@@ -53,7 +53,7 @@ function cellClass(column: Column<SupplyNode>, extra = ""): string {
 }
 
 /**
- * The nodes table, sectioned by cluster. A separate rendering rather than a
+ * The nodes table, sectioned by cluster. A separate rendering instead of a
  * `DataTable` option because grouping is this page's concern and `DataTable` is
  * shared; the states, look and cursor footer are kept identical to it.
  */

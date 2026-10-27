@@ -6,7 +6,7 @@ import type { Device, TopologyDomain } from "@/modules/supply/types"
 /**
  * Where a holder came from, and how much to believe about it.
  *
- * `live` is an allocation the cluster reports — observed, and true of exactly
+ * `live` is an allocation the cluster reports: observed, and true of exactly
  * these devices. `moved` and `proposed` exist only in the sandbox and are never
  * sent anywhere. `reserved` is the odd one and the only one that is neither: the
  * plane has declared that this cluster owes these devices to a deployment, which
@@ -41,7 +41,7 @@ export type Assignments = Map<string, Holder>
 /**
  * Device state as one cell of the board.
  *
- * `slices` is the intra-device layer and is the MIG children of this device —
+ * `slices` is the intra-device layer and is the MIG children of this device:
  * separate `Device` rows in the plane's model, tied here to the parent they name
  * in `mig_parent_device_uuid`. A partitioned device holds nothing itself; its
  * slices do.
@@ -63,7 +63,7 @@ export interface BoardDevice {
  * holding it, something is owed it.
  *
  * `reserved` means two subtly different things by layer, and the difference is
- * deliberate. On a fabric it is the cells the board painted there — indicative,
+ * deliberate. On a fabric it is the cells the board painted there: indicative,
  * because the cluster has not chosen. On a cluster it is replaced by the exact
  * total the plane says is owed, which is the number to trust and the one that
  * can exceed what the cluster has free. A cluster owing more than it holds
@@ -85,10 +85,10 @@ export interface BoardCounts {
 }
 
 /**
- * One topology domain and the devices in it — the fabric layer.
+ * One topology domain and the devices in it: the fabric layer.
  *
  * `domain` is null for devices whose cluster reports no topology at all. They
- * are still schedulable, so they get a fabric of their own rather than being
+ * are still schedulable, so they get a fabric of their own instead of being
  * dropped from the board; nothing that needs one fabric can land there.
  */
 export interface BoardFabric {
@@ -97,7 +97,7 @@ export interface BoardFabric {
   identifier: string
   /**
    * What to put in front of a person. The identifier when it says something, and
-   * the nodes the fabric covers when it does not — a cluster that reports the
+   * the nodes the fabric covers when it does not: a cluster that reports the
    * domain's uid as its identifier has told us nothing, and thirty rows of
    * `tpd_01j…` is a board nobody can read.
    */
@@ -123,7 +123,7 @@ export interface BoardCluster {
   counts: BoardCounts
   /**
    * The biggest set of devices sharing one fabric that nothing holds and nothing
-   * is owed — the largest gang this cluster could still take.
+   * is owed: the largest gang this cluster could still take.
    *
    * Net of reservations, because the board has painted them onto cells and a
    * number that contradicted the picture beside it would be worse than either
@@ -134,8 +134,8 @@ export interface BoardCluster {
    * What is on its way here, per deployment.
    *
    * The exact list, and the authority for every reserved number on the screen.
-   * The cells painted from it are chosen here and are indicative — the cluster
-   * has not said which accelerators it will bind — so where the two disagree,
+   * The cells painted from it are chosen here and are indicative, the cluster
+   * has not said which accelerators it will bind, so where the two disagree,
    * this is the one that is true and the painting is the one that is a guess.
    */
   reservations: Reservation[]
@@ -158,15 +158,15 @@ export interface Board {
 }
 
 /**
- * A whole workload to place — the brick. Either a real one, read off its serving
+ * A whole workload to place: the brick. Either a real one, read off its serving
  * block and its scale, or one somebody typed into the shape builder.
  *
  * It names no cluster and no fabric: what a brick is and where it could go are
  * different questions, and the board answers the second one.
  *
  * `device_count` is one replica's shape and `replicas` is how many of them are
- * wanted. Those are deliberately separate numbers rather than a total, because
- * every rule that decides where a workload lands applies per replica — a gang
+ * wanted. Those are separate numbers instead of a total, because
+ * every rule that decides where a workload lands applies per replica: a gang
  * either fits inside one fabric or it does not, and forty-eight devices spread
  * across six fabrics is a satisfied workload while one forty-eight-device
  * requirement is an unschedulable one.
@@ -180,7 +180,7 @@ export interface Brick {
   /**
    * The project to ask on behalf of, when there is a workload to ask about.
    *
-   * With `workload` set it makes the brick a question the plane can answer —
+   * With `workload` set it makes the brick a question the plane can answer:
    * quota and policy are per project. Absent, the brick is a hypothesis and only
    * the board's own arithmetic applies to it.
    */
@@ -202,7 +202,7 @@ export interface Brick {
   max_clusters: number | null
   /**
    * The workload names one cluster and only that cluster. A floor is a minimum
-   * and the rest may land anywhere; a pin is not — it is the deliberate
+   * and the rest may land anywhere; a pin is not: it is the deliberate
    * scheduler escape, and a pinned replica that cannot fit where it was pinned
    * does not fit at all.
    */
@@ -212,7 +212,7 @@ export interface Brick {
 /**
  * Where one replica of a brick would land.
  *
- * A failed replica is a row like any other and carries the reason it failed —
+ * A failed replica is a row like any other and carries the reason it failed:
  * "four of six placed" is the answer placement actually gives, and reporting it
  * as a bare failure would throw away the four that fit.
  */
@@ -230,7 +230,7 @@ export interface ReplicaPlan {
 /** A whole workload's worth of replicas, planned against one board. */
 export interface PlacementPlan {
   brick: Brick
-  /** Replicas this pass tried to place — desired, less those already held. */
+  /** Replicas this pass tried to place: desired, less those already held. */
   wanted: number
   replicas: ReplicaPlan[]
   placed: number
@@ -241,7 +241,7 @@ export interface PlacementPlan {
 }
 
 /**
- * One proposed change. Nothing here is a write — the sandbox is a client-side
+ * One proposed change. Nothing here is a write: the sandbox is a client-side
  * overlay, and the plane has no endpoint that takes any of it.
  */
 export type Move =
@@ -254,7 +254,7 @@ export type Move =
       replica?: number
       /**
        * The planning pass that produced it. Placing a workload's replicas is one
-       * decision, so undo takes the whole batch back out rather than unpicking it
+       * decision, so undo takes the whole batch back out instead of unpicking it
        * one replica at a time.
        */
       batch?: string
@@ -293,7 +293,7 @@ export interface BoardMetrics {
   free: number
   /** The biggest free set inside a single fabric, fleet-wide. */
   largest_block: number
-  /** Fabrics where nothing is held — what a whole-fabric job can still have. */
+  /** Fabrics where nothing is held: what a whole-fabric job can still have. */
   whole_fabrics_free: number
   /** Fabrics that are partly held and partly free. Fragmentation, counted. */
   fabrics_split: number
@@ -305,8 +305,8 @@ export interface BoardMetrics {
  * `allocation` is the layer between a device and a fabric, and it is the one a
  * person clicking a colored cell almost always means: the question is "what is
  * running here", and the answer is a set of devices committed together, not the
- * one square under the pointer. A device is still reachable — a second click on
- * the same cell narrows to it — but it is the deliberate step, not the default.
+ * one square under the pointer. A device is still reachable, a second click on
+ * the same cell narrows to it, but it is the deliberate step, not the default.
  */
 export type Selection =
   | { kind: "allocation"; allocation: string }

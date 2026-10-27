@@ -80,7 +80,7 @@ const accessItems: NavItem[] = [
 
 /**
  * What the plane was asked to do and what came back. Workbench sits with
- * Operations and Events rather than beside the serving objects: a run is
+ * Operations and Events, not beside the serving objects: a run is
  * imperative and has a lifecycle of its own, which is the thing these have in
  * common and the thing an object list does not. Alerts lead, because a firing
  * one is the reason to open this group at all.
@@ -211,7 +211,7 @@ export function ConsoleSidebar({
 /**
  * Read-only is a mode, not an event: a banner over every page shouts a fact that
  * never changes. It sits by Settings because that is where it is turned off, and
- * it names its own limit — the hub keeps reconciling regardless of this console.
+ * it names its own limit: the hub keeps reconciling regardless of this console.
  */
 function ReadOnlyNotice() {
   return (

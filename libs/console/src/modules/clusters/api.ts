@@ -24,7 +24,7 @@ export function fetchClusters(
   return api.list<Cluster>("/clusters", { ...filters, cursor, limit })
 }
 
-/** Observed footprint per cluster in aggregate — for the list and card views. */
+/** Observed footprint per cluster in aggregate, for the list and card views. */
 export function fetchClusterRollups(
   cursor?: string,
   limit?: number
@@ -41,7 +41,7 @@ export function createCluster(body: ClusterCreateRequest): Promise<Cluster> {
   return api.post<Cluster>("/clusters", body)
 }
 
-/** Resolves by id or by name — `libs/packages/contract/API.md` §3 accepts either. */
+/** Resolves by id or by name: `libs/packages/contract/API.md` §3 accepts either. */
 export function fetchCluster(ref: string): Promise<Cluster> {
   return api.get<Cluster>(`/clusters/${encodeURIComponent(ref)}`)
 }
@@ -57,7 +57,7 @@ export function updateCluster(
   })
 }
 
-/** A full replacement — the plane has no partial update for serving config. */
+/** A full replacement: the plane has no partial update for serving config. */
 export function setClusterServing(
   ref: string,
   body: ClusterServingRequest
@@ -87,7 +87,7 @@ export function fetchClusterSetup(ref: string): Promise<ClusterSetup> {
 
 /**
  * Mints (or rotates) the cluster's enrollment token. The plaintext is in the
- * response once and never again — the returned `values_yaml` already folds it in
+ * response once and never again: the returned `values_yaml` already folds it in
  * as `enrolmentToken.value` so the chart creates the operator Secret.
  */
 export function issueClusterEnrollmentToken(

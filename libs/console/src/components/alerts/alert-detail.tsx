@@ -26,7 +26,7 @@ import { toast } from "sonner"
  * One alert, read-only, with the number that produced it beside it.
  *
  * Nothing here edits the alert. Acknowledge and resolve are the plane's two
- * lifecycle verbs — `POST` to a sub-path, not a `PATCH` of `state` — and they
+ * lifecycle verbs (`POST` to a sub-path, not a `PATCH` of `state`) and they
  * write the one thing a machine cannot know. The derived fields have no edit
  * affordance and never will.
  */
@@ -112,7 +112,7 @@ export function AlertDetail({
                 </span>
               ) : (
                 <span className="text-muted-foreground">
-                  not yet — still pending
+                  not yet: still pending
                 </span>
               )}
             </Field>

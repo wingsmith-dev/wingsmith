@@ -3,7 +3,7 @@
  *
  * This file is a design tool and nothing else. Conformance has no image built,
  * `agentic` is not a registered harness, and evalscope has never been pointed at
- * anything — so the ledger, the transcript and the score table cannot be judged
+ * anything, so the ledger, the transcript and the score table cannot be judged
  * against real output. They are laid out against this instead.
  *
  * Two rules keep that from turning into a lie:
@@ -12,7 +12,7 @@
  *   is not marked is a bug, not a placeholder.
  * - The shapes here are a proposal, not a contract. The plane stores whatever
  *   the harness emits, so when the real thing lands these types are replaced by
- *   what it actually produced rather than the harness being bent to fit them.
+ *   what it actually produced instead of the harness being bent to fit them.
  *
  * Deterministic from the id, so a page does not reshuffle itself on every
  * render and two people looking at the same URL see the same table.
@@ -42,8 +42,8 @@ function pick<T>(next: () => number, options: readonly T[]): T {
 /**
  * Three-valued, and the third value is the point.
  *
- * A probe that could not be observed — the endpoint refused the parameter, the
- * suite skipped it — is not a pass. Folding it into either bucket makes the
+ * A probe that could not be observed, the endpoint refused the parameter, the
+ * suite skipped it, is not a pass. Folding it into either bucket makes the
  * tally a number nobody can defend in front of the person whose acceptance
  * document it is.
  */
@@ -228,7 +228,7 @@ export function mockTranscript(id: string): AgentTurn[] {
     [
       "assistant",
       "edit",
-      "fixtures/parser.go — the loop breaks before the final token",
+      "fixtures/parser.go: the loop breaks before the final token",
     ],
     ["tool", "edit", "1 replacement applied"],
     ["assistant", "bash", "go test ./fixtures/ -run TestParser"],

@@ -13,7 +13,7 @@ const SIZE_CLASS = {
 
 /**
  * The headline strip a detail page opens with. Five columns at full width; a page
- * with fewer facts leaves the row short rather than padding it.
+ * with fewer facts leaves the row short instead of padding it.
  */
 export function StatRow({
   className,
@@ -33,7 +33,7 @@ export function StatRow({
 
 /**
  * One labeled number. The only tile in the console: a page that needs a
- * headline figure uses this rather than a local Card.
+ * headline figure uses this instead of a local Card.
  *
  * `detail` sits small beside the value (a denominator), `footnote` on its own
  * line under it, and `children` under that (a badge, a bar, status notes).
@@ -58,7 +58,7 @@ export function StatTile({
   label: string
   value?: React.ReactNode
   detail?: React.ReactNode
-  /** Pass `null` rather than leaving it out to keep the line's height while loading. */
+  /** Pass `null` instead of leaving it out to keep the line's height while loading. */
   footnote?: React.ReactNode
   tone?: StatTone
   size?: keyof typeof SIZE_CLASS

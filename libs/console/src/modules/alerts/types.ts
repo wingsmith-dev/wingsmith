@@ -6,7 +6,7 @@
 
 /**
  * What the alert or the threshold is about. `id` may name something that no
- * longer exists — an alert about a node that went away has to outlive the node.
+ * longer exists: an alert about a node that went away has to outlive the node.
  */
 export interface AlertSubject {
   type: string
@@ -16,7 +16,7 @@ export interface AlertSubject {
 /**
  * Where the alert is in its life, which is a different axis from severity.
  * `pending` is true but not yet for long enough to be worth telling anyone, and
- * is deliberately visible here and deliberately notified nowhere.
+ * is visible here and notified nowhere.
  */
 export type AlertState = "pending" | "firing" | "acknowledged" | "resolved"
 
@@ -113,7 +113,7 @@ export interface AlertThresholdCreateRequest {
 
 /**
  * A partial update. `rule`, `subject_type` and `subject_id` are the row's
- * identity and are not patchable — moving a commitment onto another rule or
+ * identity and are not patchable: moving a commitment onto another rule or
  * another subject is the creation of a different commitment.
  */
 export interface AlertThresholdUpdateRequest {

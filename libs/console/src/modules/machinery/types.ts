@@ -1,6 +1,6 @@
 /**
- * `OperationTargetSchema`. The kind is carried explicitly rather than read off
- * the id prefix — a client that parses ids to know what it is looking at is a
+ * `OperationTargetSchema`. The kind is carried explicitly, not read off
+ * the id prefix: a client that parses ids to know what it is looking at is a
  * client that will eventually parse one wrong.
  */
 export interface OperationTarget {
@@ -42,8 +42,8 @@ const ID_PATTERN = /^[a-z]{3}_[0-9a-z]{26}$/
 /**
  * Turns what a human typed into a target the plane can read a kind off.
  *
- * A target reference has to say what kind of thing it names — that is what
- * makes `node.drain` against a device an error at creation rather than inside
+ * A target reference has to say what kind of thing it names: that is what
+ * makes `node.drain` against a device an error at creation, not inside
  * the cluster an hour later. An id says it in the prefix; a name says nothing,
  * so the type's own target kind is written in front of it.
  */
@@ -75,7 +75,7 @@ export function isOpen(phase: string): boolean {
 }
 
 /**
- * `OperationSchema` — an imperative action with a lifecycle, not a verb that
+ * `OperationSchema`: an imperative action with a lifecycle, not a verb that
  * returned 200. The declared half is written once at creation; phase, result,
  * error, attempts and the timestamps are ingestion's thereafter.
  */
@@ -100,7 +100,7 @@ export interface Operation {
 }
 
 /**
- * `OperationSummarySchema` — a read-time rollup of the operations collection.
+ * `OperationSummarySchema`: a read-time rollup of the operations collection.
  * `by_phase` carries a count for every phase the fleet currently holds; the two
  * `_24h` fields are the terminal phases counted over the last day, windowed by
  * the database's own clock.
@@ -112,7 +112,7 @@ export interface OperationSummary {
   succeeded_24h: number
 }
 
-/** `POST /v1/operations` — a type and a target, never a verb on the target. */
+/** `POST /v1/operations`: a type and a target, never a verb on the target. */
 export interface OperationCreateRequest {
   type: string
   target: string
@@ -122,7 +122,7 @@ export interface OperationCreateRequest {
   cluster?: string | null
 }
 
-/** `ComponentStatusSchema` — the observed half; its single writer is ingestion. */
+/** `ComponentStatusSchema`: the observed half; its single writer is ingestion. */
 export interface ComponentStatus {
   observed_version: string | null
   rollout_phase: string
@@ -132,7 +132,7 @@ export interface ComponentStatus {
 }
 
 /**
- * `ComponentSchema` — declared version and observed version as a pair, never
+ * `ComponentSchema`: declared version and observed version as a pair, never
  * one nullable column. `behind` is derived by the plane, and a component nobody
  * has reported on counts as behind: silence is not a finished rollout.
  */
@@ -153,7 +153,7 @@ export interface Component {
 
 /**
  * `EventSubjectSchema`. `id` is the subject's row identifier and is **not** a
- * prefixed public id — `Event.subject_id` is an untyped UUID.
+ * prefixed public id: `Event.subject_id` is an untyped UUID.
  */
 export interface EventSubject {
   type: string
@@ -161,7 +161,7 @@ export interface EventSubject {
 }
 
 /**
- * `EventSchema` — one observed, append-only state record. No declared half and
+ * `EventSchema`: one observed, append-only state record. No declared half and
  * no revision: nothing declares an event and nothing may edit one. `id` is an
  * `evt_` public identifier, not the row's primary key.
  */
@@ -188,7 +188,7 @@ export interface AllocationDevice {
 }
 
 /**
- * `AllocationSchema` — a set of devices committed together to one workload.
+ * `AllocationSchema`: a set of devices committed together to one workload.
  * Every field is written by ingestion; `gang_complete` is the one derived one,
  * because holding fewer live devices than `device_count` is a partially
  * satisfied gang and that differs from being released.

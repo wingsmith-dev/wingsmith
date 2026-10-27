@@ -23,7 +23,7 @@ export interface AlertThresholdFilters {
   subject_type?: string
   subject?: string
   enabled?: boolean
-  /** Only the rows with no subject — the fleet defaults. */
+  /** Only the rows with no subject: the fleet defaults. */
   fleet_default?: boolean
 }
 

@@ -16,9 +16,9 @@ import { Link } from "@tanstack/react-router"
 /**
  * One request's runs, read back through the input-length band each landed in.
  *
- * There is deliberately no total row. The standard sets a separate
+ * There is no total row. The standard sets a separate
  * time-to-first-token target for each band, so a single aggregate over a whole
- * sweep evidences none of them — a request that averaged four seconds may have
+ * sweep evidences none of them: a request that averaged four seconds may have
  * been comfortably inside the target at 2K tokens and far outside it at 100K,
  * and the average says neither. This table exists to stop that number being
  * quoted, so it does not print one.
@@ -28,14 +28,14 @@ import { Link } from "@tanstack/react-router"
  * band has to hold at every load point inside it, while `avg` is weighted by
  * request count, which is the one of the three that genuinely combines.
  *
- * A band nothing landed in is absent rather than empty. Absent means the sweep
+ * A band nothing landed in is absent, not empty. Absent means the sweep
  * did not cover it, which is not the same as meeting its target.
  */
 export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
   if (bands.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-6 text-center text-xs text-muted-foreground">
-        No band has reported yet. Warm-up runs are excluded outright — they were
+        No band has reported yet. Warm-up runs are excluded outright: they were
         never a measurement.
       </div>
     )

@@ -154,7 +154,7 @@ describe("resolveThreshold", () => {
     expect(resolution.shadowed.map((t) => t.id)).toEqual(["alt_narrow"])
   })
 
-  it("breaks a tie on the dimension key rather than on row order", () => {
+  it("breaks a tie on the dimension key, not on row order", () => {
     const beta = threshold({
       id: "alt_beta",
       subject: { type: "deployment", id: "dep_1" },
@@ -226,7 +226,7 @@ describe("precedenceNote", () => {
       enabled: false,
     })
     expect(precedenceNote(off, [fleet, off])).toBe(
-      "disabled — the fleet default applies"
+      "disabled: the fleet default applies"
     )
   })
 
@@ -290,16 +290,16 @@ describe("inherited rule defaults", () => {
     })
   })
 
-  // A zero `for_seconds` is a real commitment — fire on the first tick — and
+  // A zero `for_seconds` is a real commitment, fire on the first tick, and
   // must not be mistaken for an absent one.
-  it("keeps a declared zero rather than treating it as unset", () => {
+  it("keeps a declared zero instead of treating it as unset", () => {
     expect(effectiveForSeconds(threshold({ for_seconds: 0 }), rule())).toEqual({
       value: 0,
       fromRule: false,
     })
   })
 
-  it("returns nothing rather than inventing a default when the rule is unknown", () => {
+  it("returns nothing instead of inventing a default when the rule is unknown", () => {
     expect(effectiveLookback(threshold(), undefined)).toEqual({
       value: null,
       fromRule: true,

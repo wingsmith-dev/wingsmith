@@ -22,7 +22,7 @@ export interface SourceFailure {
 }
 
 /**
- * The foot of the tab, and deliberately not a summary of everything: a row
+ * The foot of the tab, and not a summary of everything: a row
  * appears only where a human has something to do, and links to the thing it is
  * about. An empty list is the good outcome and is written as one.
  */
@@ -117,8 +117,8 @@ export function Actionables({
               key={failure.label}
               className="font-mono text-2xs text-destructive"
             >
-              {failure.label}: {formatError(failure.error, "failed to load")} —
-              anything wrong there is not listed above.
+              {failure.label}: {formatError(failure.error, "failed to load")}.
+              Anything wrong there is not listed above.
             </p>
           ))}
         </div>

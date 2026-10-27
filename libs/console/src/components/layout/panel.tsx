@@ -9,7 +9,7 @@ interface PanelProps {
   badge?: React.ReactNode
   /** The line under the title: what the panel counts, and over what window. */
   description?: React.ReactNode
-  /** The header's right-hand slot — a link out, a tab row, a legend. */
+  /** The header's right-hand slot: a link out, a tab row, a legend. */
   action?: React.ReactNode
   /** `attention` tints the border, so the inbox reads as the loud panel it is. */
   tone?: "default" | "attention"

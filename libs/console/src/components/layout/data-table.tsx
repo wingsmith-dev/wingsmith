@@ -16,7 +16,7 @@ export interface Column<T> {
   key: string
   header: React.ReactNode
   align?: "right"
-  /** Hidden below `lg`, for columns that are context rather than the answer. */
+  /** Hidden below `lg`, for columns that are context instead of the answer. */
   secondary?: boolean
   cell: (row: T) => React.ReactNode
 }
@@ -47,7 +47,7 @@ interface DataTableProps<T> {
 /**
  * One table for every collection, with the cursor wired in. A list is never
  * complete until `next_cursor` is null, so the footer says what has been loaded
- * rather than letting the first page pass for the whole collection.
+ * instead of letting the first page pass for the whole collection.
  */
 export function DataTable<T>({
   columns,

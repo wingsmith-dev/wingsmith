@@ -66,7 +66,7 @@ function Td({
 /**
  * Declared node pools, side by side with their observed membership. GPUs
  * "allocated" is derived as the healthy devices a pool no longer offers as
- * allocatable — the same reads the pool page counts from.
+ * allocatable: the same reads the pool page counts from.
  */
 function NodePoolsTable({
   clusterId,
@@ -241,7 +241,7 @@ interface HeadroomTotal {
 /**
  * Free capacity and how it is shaped, all derived at read time by the plane.
  * "GPUs free" is every allocatable device; "largest block" is the biggest set
- * sharing one topology domain — what a job wanting one fabric can actually get,
+ * sharing one topology domain: what a job wanting one fabric can actually get,
  * distinct from the raw free count; "whole nodes free" counts nodes on which
  * every device is allocatable.
  */
@@ -298,7 +298,7 @@ function HeadroomPanel({
 
 /**
  * Is this cluster healthy, then what it is carrying, then anything to do about
- * it — in that order. The actionable list at the foot is derived from the same
+ * it: in that order. The actionable list at the foot is derived from the same
  * drained reads the tiles above it are, so a row and a tile can never disagree.
  */
 export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {

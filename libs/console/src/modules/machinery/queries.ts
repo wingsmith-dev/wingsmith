@@ -41,7 +41,7 @@ export function useOperationsSummary(cluster?: string) {
 
 /**
  * One operation, polled while it is unfinished and left alone once it reaches
- * a terminal phase — the observed half stops moving there.
+ * a terminal phase: the observed half stops moving there.
  */
 export function useOperation(ref: string) {
   return useQuery({
@@ -56,7 +56,7 @@ export function useOperation(ref: string) {
 }
 
 /**
- * The operations still open against one target. Its own query rather than a
+ * The operations still open against one target. Its own query instead of a
  * slice of whatever the history table happened to load: a resource page has to
  * answer "is something already running here?" before it offers to start
  * another, and it keeps polling until nothing is.
@@ -92,9 +92,9 @@ export function useCreateOperation() {
 }
 
 /**
- * Invalidates on settle rather than on success. Cancellation is applied before
- * the response is built, so a failed reply does not mean a failed cancellation
- * — re-reading is the only way to learn which it was, and guessing from the
+ * Invalidates on settle, not on success. Cancellation is applied before
+ * the response is built, so a failed reply does not mean a failed cancellation:
+ * re-reading is the only way to learn which it was, and guessing from the
  * mutation's outcome would show a phase the plane disagrees with.
  */
 export function useCancelOperation() {
@@ -141,7 +141,7 @@ export function useDeploymentEvents(
 
 /**
  * Everything that has happened to one workload, its deployments, its replicas
- * and the weights they load — newest first.
+ * and the weights they load: newest first.
  *
  * No writer files an event whose subject is a workload; the plane expands a
  * `wkl_` subject over the whole tree, so asking for the workload returns the
@@ -167,11 +167,11 @@ export function useWorkloadEvents(
 }
 
 /**
- * Everything that has happened to one endpoint's targets — newest first.
+ * Everything that has happened to one endpoint's targets: newest first.
  *
  * An endpoint has no story of its own: nothing files an event whose subject is
  * an endpoint, so the rows here are its targets' deployments and the replicas
- * those run. That is the answer to the question the page asks — "why is this
+ * those run. That is the answer to the question the page asks: "why is this
  * name failing" is always a fact about something behind it.
  *
  * Not polled. An endpoint does not converge on anything, so there is no state

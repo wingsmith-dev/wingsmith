@@ -18,7 +18,7 @@ const ENFORCEMENT: Record<
   },
   asserted: {
     label: "asserted",
-    hint: "A claim. Nothing renders it and nothing checks it — a conformance run is what can prove it wrong.",
+    hint: "A claim. Nothing renders it and nothing checks it: a conformance run is what can prove it wrong.",
     className: "border-amber-500/40 bg-amber-500/10 text-warning",
   },
   disclosure: {
@@ -36,8 +36,8 @@ const ENFORCEMENT: Record<
 /**
  * What is actually done with a declared field, spelled on the field itself.
  *
- * The whole reason `serving` and `capabilities` are two blocks — and the reason
- * half of an endpoint's surface is not a term — is that one of them is obeyed
+ * The whole reason `serving` and `capabilities` are two blocks, and the reason
+ * half of an endpoint's surface is not a term, is that one of them is obeyed
  * and the other is only said. Rendering them identically is what turns a
  * disclosure into a promise somebody makes on our behalf.
  */
@@ -72,7 +72,7 @@ export function EnforcementBadge({
  *
  * `plain` is for the dialog that IS this one section: the frame and the heading
  * would repeat the dialog's own, and a box drawn inside a box says nothing
- * except that two components were composed. The badge stays either way — it is
+ * except that two components were composed. The badge stays either way: it is
  * the part that carries meaning.
  */
 export function DeclaredSection({

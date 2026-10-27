@@ -213,7 +213,7 @@ export interface ResolvedServingQuotaParams {
  * What each gateway replica enforces for a fleet of a stated size. The plane
  * cannot discover the replica count without putting a Kubernetes client on the
  * inference path, so the caller states it and the share arithmetic happens
- * there rather than here.
+ * there, not here.
  */
 export function fetchResolvedServingQuotas(
   params: ResolvedServingQuotaParams = {}

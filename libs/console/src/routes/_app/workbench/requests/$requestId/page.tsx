@@ -40,7 +40,7 @@ import { Link, useParams } from "@tanstack/react-router"
 /**
  * One ask and everything it produced.
  *
- * The page is split the way the object model is. The top card is the request —
+ * The page is split the way the object model is. The top card is the request:
  * declared, and frozen once made, because a request that changed its harness or
  * its criteria after its runs finished would rewrite what those runs claim. The
  * verdict, the bands and the runs below it are observed, and nothing there
@@ -127,10 +127,10 @@ export function BenchmarkRequestPage() {
 
             {!request.homogeneous && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-warning">
-                The coverage behind this target was not homogeneous — two of the
+                The coverage behind this target was not homogeneous: two of the
                 things measured ran different artifacts or serving
                 configurations. An accuracy score over that belongs to neither
-                of them, and is graded inconclusive rather than averaged.
+                of them, and is graded inconclusive, not averaged.
               </div>
             )}
 
@@ -194,10 +194,9 @@ export function BenchmarkRequestPage() {
                   </p>
                   {request.coverage.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Nothing was recorded behind this target — an
-                      endpoint-level request is routed by weight, and
-                      attributing it to one upstream would be a confident wrong
-                      answer.
+                      Nothing was recorded behind this target: an endpoint-level
+                      request is routed by weight, and attributing it to one
+                      upstream would be a confident wrong answer.
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -288,8 +287,8 @@ export function BenchmarkRequestPage() {
 /**
  * The half of a suite that depends on what it was asking.
  *
- * Above this everything is the same for every kind — the ask, the coverage, the
- * verdict, the runs — because those are facts about a request and not about the
+ * Above this everything is the same for every kind, the ask, the coverage, the
+ * verdict, the runs, because those are facts about a request and not about the
  * question it carried. Below it nothing is shared: a load curve, a claim
  * ledger, a transcript and a score table have no columns in common, and a
  * generic "results" panel that tried to hold all four would show none of them

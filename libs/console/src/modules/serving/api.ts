@@ -6,7 +6,7 @@ import type { ServedModelDetail, ServingOverview } from "./types"
 /**
  * Which tenant is in the path, never in a parameter.
  *
- * A tenant session reads `/serving` and the plane scopes it by the principal —
+ * A tenant session reads `/serving` and the plane scopes it by the principal:
  * there is nothing to pass and nothing that could name somebody else. An admin
  * reads the same three views of a customer under `/tenants/{ref}/serving`,
  * which is a surface a tenant credential cannot reach at all.

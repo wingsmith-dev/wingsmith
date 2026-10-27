@@ -6,7 +6,7 @@ import type { Assignments, Board } from "./types"
 
 /**
  * A three-cluster fleet across three regions, every cluster holding whole
- * eight-device fabrics of the same class. Uniform on purpose: the rules under
+ * eight-device fabrics of the same class. Uniform: the rules under
  * test are about how replicas are spread across clusters, so anything that made
  * one cluster the obvious answer would hide which rule did the choosing.
  */
@@ -102,7 +102,7 @@ describe("planFromShares", () => {
     expect(new Set(all).size).toBe(24)
   })
 
-  it("reports a share the board cannot seat rather than moving it elsewhere", () => {
+  it("reports a share the board cannot seat instead of moving it elsewhere", () => {
     const { board, clusters, assignments } = fleet({
       fabrics: { "iad-1": 3, "ams-1": 1 },
     })
@@ -526,7 +526,7 @@ describe("planning against reserved capacity", () => {
 })
 
 /**
- * Which cells a promise lands on. The plane names none, so the board picks — and
+ * Which cells a promise lands on. The plane names none, so the board picks, and
  * the picking has to be plausible enough to read and stable enough not to
  * shuffle under somebody on every poll.
  */
@@ -587,7 +587,7 @@ describe("reservedOverlay", () => {
     ).toBe(true)
   })
 
-  it("spreads a gang no single fabric can hold, rather than painting nothing", () => {
+  it("spreads a gang no single fabric can hold, instead of painting nothing", () => {
     const { board } = fleet({ reserved: { "iad-1": 12 } })
 
     expect(paintedIn(board, "iad-1").sort()).toEqual([0, 4, 8])

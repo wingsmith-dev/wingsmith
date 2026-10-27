@@ -72,7 +72,7 @@ export interface BoardInput {
   assignments: Assignments
   /**
    * What the plane says is already spoken for. Optional, and absent means none
-   * are known rather than none exist: the board is built from observed state and
+   * are known, not none exist: the board is built from observed state and
    * must still render when the reservations call has not answered or has failed,
    * because a fleet drawn without its promises is worse than one drawn with none.
    */
@@ -89,7 +89,7 @@ export interface BoardInput {
  * nothing: a cluster that reports no devices is a fact worth seeing, and an
  * enrolled cluster silently missing from a capacity view is the kind of absence
  * nobody notices. Devices whose cluster was not loaded go the other way and are
- * dropped rather than invented.
+ * dropped, not invented.
  */
 export function buildBoard(input: BoardInput): Board {
   const board = assemble(input)
@@ -105,9 +105,9 @@ export function buildBoard(input: BoardInput): Board {
  * One pass over the inputs. Everything `buildBoard` does twice, it does here.
  *
  * Split out because a reservation has to be laid onto cells that are free, and
- * "free" is a fact about the finished board — which fabric a device sits in, in
+ * "free" is a fact about the finished board, which fabric a device sits in, in
  * what order, with what already on it. Building once, choosing the cells, and
- * building again is the honest way to say that; the alternative is a second
+ * building again is the accurate way to say that; the alternative is a second
  * implementation of fabric grouping that would drift from this one.
  */
 function assemble(input: BoardInput): Board {
@@ -215,16 +215,16 @@ function assemble(input: BoardInput): Board {
 }
 
 /**
- * The board read back as the map it was painted from. Fit checks work off this
- * rather than off a map threaded alongside the board, so what they answer about
- * is always the board on screen — live or planned — and never a stale copy.
+ * The board read back as the map it was painted from. Fit checks work off this,
+ * not off a map threaded alongside the board, so what they answer about
+ * is always the board on screen, live or planned, and never a stale copy.
  */
 /**
  * Sinks a cluster reporting nothing to the bottom of whatever it is sorted in.
  *
  * A cluster with no devices is a place capacity could arrive and is worth
  * keeping on the board, but it is never the thing somebody came to read. Left in
- * alphabetical order it pushes the fleet down the page — three empty clusters
+ * alphabetical order it pushes the fleet down the page: three empty clusters
  * between two full ones is three rows of nothing where the eye expects hardware.
  */
 function empty(total: number): number {
@@ -302,11 +302,11 @@ function fabric(
 /**
  * The hardware a fabric is, in the few characters a person scans a board for.
  *
- * The plane names a class with a slug — `h200-141gb-sxm` — and the memory and
+ * The plane names a class with a slug (`h200-141gb-sxm`) and the memory and
  * the form factor of it are already spoken for elsewhere on the row. What is
  * left is the model, so the first segment is taken and shouted.
  *
- * A fabric of several classes names all of them rather than picking a winner,
+ * A fabric of several classes names all of them instead of picking a winner,
  * and past three it stops trying: this label is a glance, not an inventory.
  */
 export function fabricHardware(classes: string[]): string {
@@ -327,13 +327,13 @@ function model(deviceClass: string): string {
  * gaps: cells are emitted in blocks of one holder at a time, each block placed
  * where its lowest-numbered card sits, with the unheld cells of that node
  * collected into a block of their own. Nothing is invented and nothing moves
- * between nodes — a card keeps its node, its index, and the tooltip that names
+ * between nodes: a card keeps its node, its index, and the tooltip that names
  * both.
  *
  * It is a deliberate departure from drawing the row as the chassis is numbered,
  * and the reason is what the board is for. A cluster's device plugin is free to
  * hand a four-card gang gpu0, gpu1, gpu6 and gpu7, and drawn literally that is
- * two pairs with a hole between them — a picture that says "no room for four
+ * two pairs with a hole between them: a picture that says "no room for four
  * here" about a fabric with room for four. The question this board answers is
  * how much contiguous capacity a fabric has, so its cells are grouped by what
  * holds them. `Inspector` and the tooltip remain the place the physical index is
@@ -357,7 +357,7 @@ function blocks(cells: BoardDevice[]): BoardDevice[] {
 /**
  * Whether the cluster's identifier for a domain is worth reading. An identifier
  * that is the domain's own uid is the cluster declining to name it, which is
- * allowed — `identifier` is only unique per cluster and kind, so a cluster with
+ * allowed: `identifier` is only unique per cluster and kind, so a cluster with
  * nothing better to say says the uid.
  */
 function informative(topology: Device["topology"]): boolean {
@@ -373,12 +373,12 @@ function cover(names: string[]): string {
 
 /**
  * Free means nothing holds it, nothing is owed it, and the cluster says it can
- * be scheduled onto. A partitioned device is never free itself — its slices are
+ * be scheduled onto. A partitioned device is never free itself: its slices are
  * counted instead, so an eight-way-split GPU does not read as one spare device.
  *
  * A reserved cell is excluded, and that is what stops the sandbox from planning
  * onto capacity the fleet has already promised somebody. It is still counted as
- * `free` in the tally, because it genuinely is unheld — the two answers differ
+ * `free` in the tally, because it genuinely is unheld; the two answers differ
  * because the questions do: "what is nobody using" and "what could I take".
  */
 export function isFree(cell: BoardDevice): boolean {
@@ -395,7 +395,7 @@ export function isBound(holder: Holder | null): boolean {
 /**
  * Which cells to paint for each reservation, and it is a guess by construction.
  *
- * The plane knows a cluster owes six h100s and does not know which six — device
+ * The plane knows a cluster owes six h100s and does not know which six: device
  * selection is the cluster's, not ours (rule 3). Leaving the board blank was the
  * first answer and it was the wrong one: a cluster reading "0 available" with
  * eight visibly idle squares and nothing to point at is exactly the confusion
@@ -405,8 +405,8 @@ export function isBound(holder: Holder | null): boolean {
  * Deterministic, so the picture does not shuffle under somebody every ten
  * seconds: reservations are taken in a stable order, and each takes free cells
  * of its own class in board order. A reservation that must land in one fabric
- * gets the tightest fabric that can still hold it whole — the same best-fit rule
- * the sandbox uses, and the likeliest thing the cluster will actually do —
+ * gets the tightest fabric that can still hold it whole, the same best-fit rule
+ * the sandbox uses, and the likeliest thing the cluster will actually do,
  * falling back to spreading when no single fabric can. A cluster owing more than
  * it has free simply runs out: what there is gets painted and the rest does not,
  * because `counts.reserved` already carries the true number and the two are
@@ -485,10 +485,10 @@ function openIn(
 /**
  * The fabric kind is a preference and never a filter, which matters at the very
  * end. A gang that names `nvswitch` should land on an nvswitch fabric wherever
- * one can take it — but a cluster owing eight of them with nothing suitable free
+ * one can take it, but a cluster owing eight of them with nothing suitable free
  * must still show the promise somewhere, or the reserved numeral goes back to
  * having nothing on the board to point at, which is the whole bug. Better a
- * roughly-placed square with an honest label than an invisible one.
+ * roughly-placed square with an accurate label than an invisible one.
  */
 function cellsFor(
   board: Board,
@@ -543,7 +543,7 @@ function byCluster(reservations: Reservation[]): Map<string, Reservation[]> {
  * what the cluster had free; this replaces that with what the plane actually
  * says is owed. Applied at the cluster and nowhere below, because the cluster is
  * the layer the plane made the statement about. A region and the fleet get their
- * numbers by summing these, which keeps the clamp where it belongs — an
+ * numbers by summing these, which keeps the clamp where it belongs: an
  * over-subscribed cluster contributes zero available capacity and never a
  * negative that quietly cancels out somebody else's spare.
  */

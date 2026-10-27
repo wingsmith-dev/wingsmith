@@ -122,7 +122,7 @@ describe("OnExceedBadge", () => {
 })
 
 describe("StandardBadge", () => {
-  it("names the fields that fall short rather than only failing", () => {
+  it("names the fields that fall short, not only failing", () => {
     render(
       <StandardBadge
         standard={{

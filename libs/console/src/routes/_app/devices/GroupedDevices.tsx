@@ -28,7 +28,7 @@ export type GroupMode = "class" | "cluster" | "topology"
 
 /**
  * Devices bucketed for reading, three ways. Grouping happens over what has been
- * loaded, so a group that looks incomplete may just be a page boundary — the
+ * loaded, so a group that looks incomplete may just be a page boundary: the
  * page's "load more" says as much.
  */
 export function GroupedDevices({
@@ -42,7 +42,7 @@ export function GroupedDevices({
   return <ByBucket devices={devices} by={by} />
 }
 
-/** By model — the class rollup, each row a class over the clusters that hold it. */
+/** By model: the class rollup, each row a class over the clusters that hold it. */
 function ByModel({ devices }: { devices: Device[] }) {
   const byClass = new Map<string, Device[]>()
   for (const device of devices) {
@@ -172,7 +172,7 @@ function ModelGroup({ name, devices }: { name: string; devices: Device[] }) {
 }
 
 function ClusterRow({ row }: { row: ClusterRollup }) {
-  // "Allocation" is allocated/total from device state — real GPU
+  // "Allocation" is allocated/total from device state: real GPU
   // utilization is telemetry and does not flow through the plane.
   const pct = row.total ? Math.round((row.allocated / row.total) * 100) : 0
   const hot = pct >= 90
@@ -273,7 +273,7 @@ function specLine(device: Device | undefined): string {
     .join(" · ")
 }
 
-/** By cluster or by topology domain — devices under the fabric they share. */
+/** By cluster or by topology domain: devices under the fabric they share. */
 function ByBucket({
   devices,
   by,

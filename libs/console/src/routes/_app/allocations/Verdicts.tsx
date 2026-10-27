@@ -28,9 +28,9 @@ export function Verdicts({
   isLoading: boolean
   /**
    * What the board's own arithmetic found, when it differs from the decision
-   * above. Stated rather than reconciled: the plane is the authority on whether
+   * above. Stated, not reconciled: the plane is the authority on whether
    * something is admitted, the board is looking at devices, and a difference is
-   * worth seeing — it means one of them is reading a staler fleet, or that the
+   * worth seeing: it means one of them is reading a staler fleet, or that the
    * question each answered was not quite the same question.
    */
   disagreement?: string
@@ -109,7 +109,7 @@ export function Verdicts({
 
 /**
  * `reserved` and `available` appear only when something is owed, and when they
- * do they sit between `free` and everything else — because they are the step
+ * do they sit between `free` and everything else, because they are the step
  * that turns the observed number into the one the decision was made on. A
  * refusal reading "8 free" beside "8 needed" is a decision that looks wrong
  * until the six devices already promised to somebody else are on the same line.

@@ -3,19 +3,19 @@ import type { Cluster } from "./types"
 
 /**
  * The lifecycle stage a cluster is *in*, derived from declared phase and
- * observed link — the single fact the detail page switches its whole layout on.
+ * observed link: the single fact the detail page switches its whole layout on.
  * Distinct from `phase` (declared intent) and `sync.state` (observed link):
  * a stage folds both into "what is this cluster's operator, right now, and so
  * what is worth showing a human".
  *
  * - `onboarding`: declared, but the operator has never dialed in. There is no
  *   observed state yet, so the only thing worth showing is how to enroll it.
- * - `live` — enrolled, reachable, reporting. The full operational dashboard.
- * - `degraded` — enrolled once, but the link is now stale, dropped, or the
+ * - `live`: enrolled, reachable, reporting. The full operational dashboard.
+ * - `degraded`: enrolled once, but the link is now stale, dropped, or the
  *   cluster is unreachable. Last-known observed state still stands; it is just
- *   not fresh, so we show it under a warning rather than hide it.
- * - `draining` — being decommissioned. Progress first, dashboard read-only.
- * - `archived` — detached/disabled. Read-only identity and history, no actions.
+ *   not fresh, so we show it under a warning, not hide it.
+ * - `draining`: being decommissioned. Progress first, dashboard read-only.
+ * - `archived`: detached/disabled. Read-only identity and history, no actions.
  */
 export type ClusterStage =
   "onboarding" | "live" | "degraded" | "draining" | "archived"

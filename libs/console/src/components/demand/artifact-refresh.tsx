@@ -11,8 +11,8 @@ import type { Artifact } from "@/modules/demand/types"
 /**
  * Re-reads the artifact's source and records what the plane can now derive from it.
  *
- * Not `layout/refresh-button`, and deliberately not called Refresh. That one is a read
- * — it drops cache entries and re-runs the queries a page is already showing, and it
+ * Not `layout/refresh-button`, and not called Refresh. That one is a read:
+ * it drops cache entries and re-runs the queries a page is already showing, and it
  * belongs in `readActions` because it writes nothing. This one is an operation: it
  * reaches HuggingFace and writes the artifact's derived half, so it lives with Edit and
  * Delete and disappears with them in read-only mode. Both on one header with the same
@@ -20,7 +20,7 @@ import type { Artifact } from "@/modules/demand/types"
  *
  * Disabled when the artifact records no source, because the plane refuses that with a
  * `422` and there is nothing the person could do differently. The reason is on the
- * button rather than in the failure.
+ * button, not in the failure.
  */
 export function RefreshSourceButton({
   artifact,
@@ -55,7 +55,7 @@ export function RefreshSourceButton({
             /**
              * A refresh that changed nothing is a success and says so, because the
              * alternative is a person pressing it three more times. The warnings are
-             * about the source and not about the diff, so they surface either way —
+             * about the source and not about the diff, so they surface either way:
              * a repository that has since become gated is worth hearing on the
              * re-read that found nothing.
              */

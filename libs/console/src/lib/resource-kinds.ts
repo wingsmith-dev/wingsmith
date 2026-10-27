@@ -49,7 +49,7 @@ export type ResourceKind =
 
 /**
  * One icon per kind of thing, resolved in one place. A node is the same glyph in
- * the sidebar, the page header, a card and a table cell — an operator learns the
+ * the sidebar, the page header, a card and a table cell: an operator learns the
  * vocabulary once.
  */
 export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {

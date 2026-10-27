@@ -33,12 +33,12 @@ import { toast } from "sonner"
 
 /**
  * The commitment picker. Every limit is nullable and a blank one is
- * uncommitted rather than zero, so nothing here defaults a number into a field
+ * uncommitted, not zero, so nothing here defaults a number into a field
  * an operator did not sell.
  *
  * The endpoint is offered only on create: it is the row's whole scope, and
  * moving it would withdraw a commitment from one contract and grant it to
- * another rather than edit this one.
+ * another, not edit this one.
  */
 export function ServingQuotaForm({
   open,
@@ -110,7 +110,7 @@ export function ServingQuotaForm({
   const done = (verb: string) => {
     onOpenChange(false)
     toast.success(`Serving quota ${verb}`, {
-      description: enforced ? undefined : "Shadow mode — nothing is refused.",
+      description: enforced ? undefined : "Shadow mode: nothing is refused.",
     })
   }
 
@@ -168,14 +168,14 @@ export function ServingQuotaForm({
           value={rpm}
           onChange={setRpm}
           min={1}
-          hint="Blank is uncommitted — requests are not limited."
+          hint="Blank is uncommitted: requests are not limited."
         />
         <NumberField
           label="Committed tokens/min"
           value={tpm}
           onChange={setTpm}
           min={1}
-          hint="Blank is uncommitted — tokens are not limited."
+          hint="Blank is uncommitted: tokens are not limited."
         />
         <NumberField
           label="Burst requests/min"
@@ -209,7 +209,7 @@ export function ServingQuotaForm({
       {unreadable && (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           A limit is larger than a number this console can hold exactly. Declare
-          it with `hgr` rather than writing back a rounded figure.
+          it with `hgr` instead of writing back a rounded figure.
         </p>
       )}
 
@@ -257,7 +257,7 @@ export function ServingQuotaForm({
                   : "text-muted-foreground"
               )}
             >
-              <span className="font-mono">{LIMIT_SCOPE_LABEL[value]}</span> —{" "}
+              <span className="font-mono">{LIMIT_SCOPE_LABEL[value]}</span>:{" "}
               {LIMIT_SCOPE_MEANING[value]}
             </p>
           ))}
@@ -272,7 +272,7 @@ export function ServingQuotaForm({
           hint={
             successRate === null
               ? "A fraction in (0, 1]. Blank is uncommitted."
-              : `A fraction in (0, 1] — ${formatObjective(successRate)}.`
+              : `A fraction in (0, 1]: ${formatObjective(successRate)}.`
           }
         />
         <NumberField

@@ -23,7 +23,7 @@ export function useSignOut(): () => void {
  * A persisted token outlives the console but not its own expiry, and nothing on
  * this side knows when that is. Without this, an expired token rehydrates as a
  * signed-in session whose every request 401s, with no way back to the login
- * form — the state the operator has to be able to leave.
+ * form: the state the operator has to be able to leave.
  */
 export function installUnauthorizedHandler(redirect: () => void): () => void {
   setUnauthorizedHandler(() => {

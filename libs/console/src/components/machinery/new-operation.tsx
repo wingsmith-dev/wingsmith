@@ -33,7 +33,7 @@ import { toast } from "sonner"
 const TYPES = Object.keys(OPERATION_TYPES) as OperationType[]
 
 /**
- * `POST /v1/operations` with a type and a target — never a verb on the target's
+ * `POST /v1/operations` with a type and a target, never a verb on the target's
  * own path. What comes back is a thing with a lifecycle to watch, so from the
  * global operations page the caller is sent to it. Fired from the resource the
  * operation acts on, `stayOnPage` keeps them where they are and hands them the
@@ -100,7 +100,7 @@ export function NewOperationDialog({
           <DialogTitle>New operation</DialogTitle>
           <DialogDescription>
             An operation is a type and a target. It gets an id and a phase, and
-            is polled — it is not a button that returns 200.
+            is polled: it is not a button that returns 200.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +144,7 @@ export function NewOperationDialog({
                   : "font-mono text-2xs text-muted-foreground"
               }
             >
-              {type} acts on {kind} targets — an id starting {prefix}, or a name
+              {type} acts on {kind} targets: an id starting {prefix}, or a name
             </p>
           </div>
 

@@ -66,7 +66,7 @@ export function OperationDetailPage() {
                     onError: (err) =>
                       toast.error(formatError(err, "Could not cancel"), {
                         description:
-                          "The plane may still have applied it — this page re-reads the phase.",
+                          "The plane may still have applied it: this page re-reads the phase.",
                       }),
                   })
                 }

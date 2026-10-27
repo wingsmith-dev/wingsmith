@@ -54,7 +54,7 @@ describe("ActivityStream", () => {
     ).toBeInTheDocument()
   })
 
-  it("says nothing has happened rather than inventing lines", () => {
+  it("says nothing has happened instead of inventing lines", () => {
     render(
       <ActivityStream loading={false} deployments={DEPLOYMENTS} events={[]} />
     )

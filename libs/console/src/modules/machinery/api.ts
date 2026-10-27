@@ -60,7 +60,7 @@ export function fetchOperation(ref: string): Promise<Operation> {
   return api.get<Operation>(`/operations/${encodeURIComponent(ref)}`)
 }
 
-/** `GET /v1/operations/summary` — phase rollup and the 24h terminal counters. */
+/** `GET /v1/operations/summary`: phase rollup and the 24h terminal counters. */
 export function fetchOperationsSummary(
   cluster?: string
 ): Promise<OperationSummary> {
@@ -68,7 +68,7 @@ export function fetchOperationsSummary(
 }
 
 /**
- * `POST /v1/operations` with a type and a target — never a verb on the
+ * `POST /v1/operations` with a type and a target, never a verb on the
  * target's own path. The reply is an Operation with an id and a phase, and the
  * caller polls it.
  */
@@ -80,7 +80,7 @@ export function createOperation(
 }
 
 /**
- * Cancellation, and deliberately not deletion: deleting the row would throw
+ * Cancellation, and not deletion: deleting the row would throw
  * away who asked for this and why, which is the reason the object exists.
  */
 export function cancelOperation(ref: string): Promise<Operation> {

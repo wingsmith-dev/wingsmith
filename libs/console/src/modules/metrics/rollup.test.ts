@@ -127,7 +127,7 @@ describe("utilizationWeek", () => {
     expect(utilizationWeek(data)[0].grid[0][hour]).toBe(70)
   })
 
-  it("leaves an hour nothing reported empty rather than idle", () => {
+  it("leaves an hour nothing reported empty, not idle", () => {
     const data = answer({
       series: [
         curve("gpu.utilization", [[MONDAY_09, 60]], { cluster: "us-1" }),
@@ -182,7 +182,7 @@ describe("meanUtilization and idleGpuHours", () => {
 })
 
 describe("latencyStages", () => {
-  it("keeps request order rather than the order the samples arrived", () => {
+  it("keeps request order instead of the order the samples arrived", () => {
     const stages = latencyStages([
       sample("inference.latency"),
       sample("inference.queue_time"),
@@ -215,7 +215,7 @@ describe("availabilityDays", () => {
     expect(days.every((day) => day.value === null)).toBe(true)
   })
 
-  it("means the hours inside a day rather than taking the last one", () => {
+  it("means the hours inside a day instead of taking the last one", () => {
     const today = midnight(0)
     const days = availabilityDays(
       answer({

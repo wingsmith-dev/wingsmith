@@ -21,9 +21,9 @@ import { ClusterCard } from "./ClusterCard"
 import { ClusterForm } from "./ClusterForm"
 
 /**
- * Cards rather than rows: there are only ever a handful of clusters, and each
+ * Cards, not rows: there are only ever a handful of clusters, and each
  * one carries a declared half and an observed half that a table row flattens.
- * Phase and reachability stay two things — a cluster that is `active` and
+ * Phase and reachability stay two things: a cluster that is `active` and
  * unreachable is a network problem, a `disabled` one is somebody's decision.
  */
 export function ClustersPage() {

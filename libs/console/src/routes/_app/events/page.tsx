@@ -89,8 +89,8 @@ const columns: Column<PlaneEvent>[] = [
 ]
 
 /**
- * Append-only, observed, and newest first — the plane orders by sequence, so
- * following the cursor walks backwards through history rather than reshuffling
+ * Append-only, observed, and newest first: the plane orders by sequence, so
+ * following the cursor walks backwards through history instead of reshuffling
  * the page under the reader.
  */
 export function EventsPage() {

@@ -12,7 +12,7 @@ import type { Workload } from "@/modules/demand/types"
  * The four facts the page is opened for, on one line above everything else.
  *
  * One strip, one row, no cards inside a card, so "is this healthy, and how big
- * is it" is answered at a glance rather than assembled by reading.
+ * is it" is answered at a glance, not assembled by reading.
  */
 export function Vitals({
   workload,

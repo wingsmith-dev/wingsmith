@@ -6,7 +6,7 @@ import { OPERATION_TYPES, type OperationType } from "./types"
  * not learn what a node is.
  */
 export interface OperationContext {
-  /** Types already open against this target — a second drain is not a drain. */
+  /** Types already open against this target: a second drain is not a drain. */
   open?: readonly string[]
   cordoned?: boolean
   allocated?: boolean
@@ -44,9 +44,9 @@ export interface OperationDefinition {
 }
 
 /**
- * Every operation type, derived from `OPERATION_TYPES` rather than listed a
+ * Every operation type, derived from `OPERATION_TYPES`, not listed a
  * second time. A new entry there surfaces here on its own with a label read off
- * the verb and no predicate — the honest default for an operation whose state
+ * the verb and no predicate: the accurate default for an operation whose state
  * rule nobody has written yet.
  */
 export const OPERATION_REGISTRY = Object.fromEntries(

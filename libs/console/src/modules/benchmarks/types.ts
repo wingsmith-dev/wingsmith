@@ -1,7 +1,7 @@
 /**
  * What a run is a measurement *of*, and the three are different claims.
  *
- * A deployment run measures one cluster's configuration — the device class, the
+ * A deployment run measures one cluster's configuration: the device class, the
  * tensor-parallel degree, the engine flags. A workload run measures the serving
  * configuration, which is the same experiment however many clusters it was placed
  * on. An
@@ -20,9 +20,9 @@ export type BenchmarkTier = "L1" | "L2"
 export type VerdictOutcome = "pass" | "fail" | "inconclusive" | "not_applicable"
 
 /**
- * What was running when a run was taken. Snapshotted by the plane at creation
- * rather than joined, because a serving block is mutable and a deployment is
- * disposable — a run resolved by join would start describing something else.
+ * What was running when a run was taken. Snapshotted by the plane at creation,
+ * not joined, because a serving block is mutable and a deployment is
+ * disposable: a run resolved by join would start describing something else.
  *
  * `serving_digest` is the whole of that attribution now, and it is strictly
  * stronger than the recipe id and version it replaces: a digest cannot drift.
@@ -42,16 +42,16 @@ export interface BenchmarkProvenance {
 }
 
 /**
- * `ServingBenchmarkSummarySchema` — offline measurement rolled up per
+ * `ServingBenchmarkSummarySchema`: offline measurement rolled up per
  * `serving_digest`, computed at read time.
  *
- * Addressed by the digest rather than by the workload that carries it, because
+ * Addressed by the digest, not by the workload that carries it, because
  * the digest is what a measurement is about: every run sharing it measured the
  * same running process. It keeps answering after the workload has been renamed,
  * rescaled or deleted, which the recipe rollup this replaces could not.
  *
- * An unknown digest is a zero count and not a 404 — "how much measurement stands
- * behind this configuration" has "none" as an answer — so it is safe to ask about
+ * An unknown digest is a zero count and not a 404, "how much measurement stands
+ * behind this configuration" has "none" as an answer, so it is safe to ask about
  * anything. `peak_output_tokens_per_second` is null when no graded run carried a
  * reading, which is a named absence and not a zero. Held-in-plane offline
  * measurement, never live serving telemetry.
@@ -65,7 +65,7 @@ export interface ServingBenchmarkSummary {
 
 /**
  * One knob a harness accepts. Served by the plane so this console renders its
- * form from the same table the plane validates against, rather than carrying a
+ * form from the same table the plane validates against, instead of carrying a
  * second copy of what AIPerf takes.
  *
  * `levels` narrows a knob to a subset of its harness's own; empty means every
@@ -95,14 +95,14 @@ export interface BenchmarkHarness {
  * Observed, and so read-only everywhere: there is no update and no delete on
  * the wire, and this console offers no affordance that suggests otherwise.
  *
- * `summary` is `unknown` on purpose. It is the harness's own export, stored and
+ * `summary` is `unknown`. It is the harness's own export, stored and
  * served verbatim, and typing it here would be this console asserting it knows
  * a shape the plane refuses to normalize by design. Anything that reads it
  * has to cope with not recognizing it.
  *
  * `deployment_id` and `cluster_id` are nullable because an endpoint-level run
  * has neither. `request_id` names the ask it was expanded from, and
- * `step_index` orders the runs of one sweep — one per input-length band.
+ * `step_index` orders the runs of one sweep: one per input-length band.
  */
 export interface BenchmarkRun {
   id: string
@@ -146,7 +146,7 @@ export interface BenchmarkCoverage {
 }
 
 /**
- * The ask. Declared, creatable, and never edited afterwards — a request that
+ * The ask. Declared, creatable, and never edited afterwards: a request that
  * changed its harness or its criteria after its runs finished would rewrite
  * what those runs claim to be.
  *
@@ -227,7 +227,7 @@ export interface BenchmarkCreateRequest {
 }
 
 /**
- * `POST /v1/benchmarks/requests` — what to measure and at which level.
+ * `POST /v1/benchmarks/requests`: what to measure and at which level.
  *
  * `steps` are the load points a stepped mode walks: concurrencies for a `ramp`,
  * prompt lengths for a `sweep`. A sweep is what makes a per-band
@@ -274,7 +274,7 @@ export interface BenchmarkReading {
  * Open to ids this console does not know: the map is served, and a version of
  * the plane that resolves one more number should not have to wait for a console
  * release. An id absent from the map is the same fact as one whose value is
- * null — nothing was read — and `reading()` is how both are asked.
+ * null, nothing was read, and `reading()` is how both are asked.
  */
 export interface BenchmarkCurveReadings {
   [id: string]: BenchmarkReading | undefined
@@ -284,11 +284,11 @@ export interface BenchmarkCurveReadings {
  * One step of a stepped request, as the load curve needs it.
  *
  * `step_value` is the load that was applied and not the order it was applied
- * in — a request asking for `[16, 4, 64]` keeps that order, so `step_index` is
+ * in: a request asking for `[16, 4, 64]` keeps that order, so `step_index` is
  * position and `step_value` is the x axis.
  *
  * A step whose run is still open carries its phase and all-null readings, which
- * is what lets a running ramp draw itself in progressively rather than appear
+ * is what lets a running ramp draw itself in progressively, not appear
  * whole at the end.
  */
 export interface BenchmarkCurvePoint {
@@ -306,8 +306,8 @@ export interface BenchmarkCurvePoint {
  * Where the curve turned, derived at read against the pinned criteria version
  * and stored nowhere.
  *
- * Always an object, never null. `found` is false for two different reasons —
- * every step stayed under the threshold, or too few steps succeeded to say —
+ * Always an object, never null. `found` is false for two different reasons,
+ * every step stayed under the threshold, or too few steps succeeded to say,
  * and `reason` is the only thing that tells them apart, so nothing in this
  * console renders the absence of a knee without it.
  */
@@ -384,7 +384,7 @@ export function curveProgress(curve: BenchmarkCurve | undefined): {
  *
  * A curve with no steps at all counts as moving. The plane expands a request
  * into its runs after accepting it, so a ramp read in the moment between the
- * two comes back empty — and a reader that stopped there would leave the panel
+ * two comes back empty, and a reader that stopped there would leave the panel
  * saying "not expanded yet" until somebody reloaded the page. Emptiness is the
  * one state that cannot say it is finished.
  */

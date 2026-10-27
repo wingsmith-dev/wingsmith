@@ -38,7 +38,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 /**
- * What to run, and how much of it — never where.
+ * What to run, and how much of it, never where.
  *
  * There is no cluster to choose here, because choosing one is placement's job:
  * the form declares a total and the clusters the workload may use, and the
@@ -49,7 +49,7 @@ import { toast } from "sonner"
  * The artifact, the project and the kind are create-only. A workload is weights ×
  * kind the way a deployment is workload × cluster; changing either is a new
  * workload, and the endpoint in front of it is the stable name that makes that
- * cheap. The rest of the serving block is not create-only — editing it recomputes
+ * cheap. The rest of the serving block is not create-only: editing it recomputes
  * `serving_digest` and rolls the replicas, which is the point of it living here.
  *
  * Scale is create-only too. Changing it afterwards is `workload.scale`, an
@@ -119,7 +119,7 @@ export function WorkloadForm({
    * Declared at creation and changed afterwards by `workload.reshape`, never by
    * this form in edit mode. A flip changes which processes exist and how many
    * devices a unit costs, so it is imperative and long-running and can sit
-   * pending on quota — the three things that make an operation rather than a
+   * pending on quota: the three things that make an operation instead of a
    * field write.
    */
   const [topology, setTopology] = useState<ServingTopology>("aggregated")
@@ -275,7 +275,7 @@ export function WorkloadForm({
          * The topology block is omitted entirely when aggregated, and not sent
          * as `"aggregated"` with an empty role list. Absent and empty must not
          * both be sayable about a thing with one meaning, and the plane's
-         * digest depends on the key not being there — adding it
+         * digest depends on the key not being there: adding it
          * unconditionally would change every existing digest in the fleet.
          */
         serving: {
@@ -345,7 +345,7 @@ export function WorkloadForm({
             label="Artifact"
             value={artifact}
             onChange={setArtifact}
-            hint="Fixed at creation — other bytes are another workload."
+            hint="Fixed at creation: other bytes are another workload."
             options={(artifacts ?? []).map((a) => ({
               value: a.id,
               label: a.name,
@@ -471,21 +471,21 @@ export function WorkloadForm({
           value={engineRuntimeVersion}
           onChange={setEngineRuntimeVersion}
           placeholder="latest"
-          hint="A tag of the Dynamo runtime the engine runs in — 1.4.1 — and never the engine's own version. vLLM's numbers are 0.x and pinning one here resolves to an image nobody publishes."
+          hint="A tag of the Dynamo runtime the engine runs in (1.4.1) and never the engine's own version. vLLM's numbers are 0.x and pinning one here resolves to an image nobody publishes."
         />
         <TextField
           label="Engine runtime image"
           value={engineRuntimeImage}
           onChange={setEngineRuntimeImage}
           placeholder="Resolved from the engine and the runtime version"
-          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and the runtime version above, and the same image fetches the weights — a workload with no image is one whose weights never download."
+          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and the runtime version above, and the same image fetches the weights: a workload with no image is one whose weights never download."
         />
         <TextField
           label="Frontend image"
           value={frontendImage}
           onChange={setFrontendImage}
           placeholder="Whatever the cluster runs its frontends on"
-          hint="A second image, not a spelling of the one above: the worker loads the weights and the frontend tokenizes the request, and they are separately versioned builds. Empty means this workload has no opinion and the cluster decides — not that it reuses the engine runtime image."
+          hint="A second image, not a spelling of the one above: the worker loads the weights and the frontend tokenizes the request, and they are separately versioned builds. Empty means this workload has no opinion and the cluster decides, not that it reuses the engine runtime image."
         />
         <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField

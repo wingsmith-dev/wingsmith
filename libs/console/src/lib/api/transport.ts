@@ -110,7 +110,7 @@ export class InvalidError extends PlaneError {
 
 /**
  * Raised before a request leaves the browser when the console is in read-only
- * mode. It is enforced here rather than only on the buttons, because a hidden
+ * mode. It is enforced here, not only on the buttons, because a hidden
  * button is a suggestion and a guarded transport is a guarantee.
  */
 export class ReadOnlyError extends PlaneError {
@@ -142,7 +142,7 @@ export function buildQueryString(query: RequestOptions["query"]): string {
 /**
  * The plane's list envelope. Every collection endpoint returns this shape;
  * `next_cursor` is null when the page is the last one, and `count` is the size
- * of this page rather than the size of the collection.
+ * of this page instead of the size of the collection.
  */
 export interface ListResponse<T> {
   items: T[]

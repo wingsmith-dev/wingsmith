@@ -15,7 +15,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 /**
- * Create and edit in one dialog. `name` is only offered on create — the plane
+ * Create and edit in one dialog. `name` is only offered on create: the plane
  * has no `name` on its patch body, and a field that silently does nothing is
  * worse than one that is absent.
  */

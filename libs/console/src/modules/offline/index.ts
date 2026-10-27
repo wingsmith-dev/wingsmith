@@ -72,10 +72,10 @@ const eq = (want: string | undefined, ...actual: (string | null)[]) =>
   want === undefined || actual.includes(want)
 
 /**
- * The batch rollup, counted out of the fixture supply rather than stored beside
+ * The batch rollup, counted out of the fixture supply, not stored beside
  * it, so a card cannot disagree with the tables it links to. Registered ahead of
  * the cluster collection because `/clusters/:ref` would otherwise swallow
- * `/clusters/rollups` — the same route-order trap the plane has.
+ * `/clusters/rollups`: the same route-order trap the plane has.
  */
 function clusterRollup(clusterId: string) {
   const own = devices.filter((d) => d.cluster === clusterId)
@@ -279,7 +279,7 @@ collection({
 
 /**
  * The catalog is keyed by name and is not paginated, so it is registered by
- * hand rather than through `collection` — which assumes an id and a cursor,
+ * hand, not through `collection`, which assumes an id and a cursor,
  * and a device class has neither.
  */
 registerFixtures([
@@ -343,7 +343,7 @@ collection({
  * matching route, and `/artifacts/:ref` would otherwise swallow `/resolve` the
  * same way the plane's route order would.
  *
- * The digest here is fabricated, not derived — there is no Hub offline. What it
+ * The digest here is fabricated, not derived: there is no Hub offline. What it
  * does reproduce faithfully is the three answers a console has to render apart:
  * resolved, gated, and no such repo.
  */
@@ -491,7 +491,7 @@ registerFixtures([
  * Only the derived half, because that is all `POST /artifacts/:ref/refresh` writes.
  * `BAAI/bge-m3`'s entry is the interesting one: the offline `bge-m3-embed` carries no
  * shape, so refreshing it moves that artifact from a weights floor to a priced context
- * window — the whole reason the route exists, reproduced rather than described.
+ * window: the whole reason the route exists, reproduced, not described.
  */
 const HF_REFRESH: Record<string, Record<string, unknown>> = {
   "BAAI/bge-m3": {
@@ -520,9 +520,9 @@ const HF_REFRESH: Record<string, Record<string, unknown>> = {
  * Registered ahead of the artifact collection for the same reason `/resolve` is.
  *
  * Mutates the fixture row, so a refresh is visible in the panel that prompted it
- * rather than being a message about a write that did not happen. The three refusals
+ * instead of being a message about a write that did not happen. The three refusals
  * are all reachable: an artifact with no source, a source the offline Hub does not
- * carry, and — for `llama-3.3-70b-instruct`, whose locations are `s3` — the "nowhere
+ * carry, and (for `llama-3.3-70b-instruct`, whose locations are `s3`) the "nowhere
  * to go back and ask" case a console has to render as a disabled button.
  */
 registerFixtures([
@@ -568,7 +568,7 @@ registerFixtures([
               {
                 level: "warn",
                 message:
-                  "the weights are not content-addressable, so the digest names the commit rather than hashing the bytes",
+                  "the weights are not content-addressable, so the digest names the commit instead of hashing the bytes",
               },
             ],
       }
@@ -597,7 +597,7 @@ registerFixtures([
       const slug = hfSlug(source)
       if (!slug)
         throw new InvalidError(
-          `'${source}' is not a HuggingFace repo — expected owner/name`
+          `'${source}' is not a HuggingFace repo: expected owner/name`
         )
       if (HF_GATED.includes(slug))
         throw new InvalidError(
@@ -644,7 +644,7 @@ registerFixtures([
         },
         /**
          * A corpus entry for the demo, so the create flow can show what it looks
-         * like when a value is somebody else's tested answer rather than ours.
+         * like when a value is somebody else's tested answer, not ours.
          * Absent for repos nobody upstream has published a configuration for,
          * which is the ordinary case.
          */
@@ -694,7 +694,7 @@ registerFixtures([
           {
             level: "info",
             message:
-              "the device shape is sized from config.json — a suggestion, not a measurement",
+              "the device shape is sized from config.json: a suggestion, not a measurement",
           },
         ],
       }
@@ -750,7 +750,7 @@ collection({
  * One workload's serving history.
  *
  * Synthesized from the corpus instead of stated beside it, and one entry per
- * workload: none of these has been edited, so `created` is the honest whole of their history.
+ * workload: none of these has been edited, so `created` is the accurate whole of their history.
  * Inventing a plausible-looking string of past configurations would make the offline plane read
  * as though it had a past the corpus cannot show the consequences of.
  *
@@ -765,7 +765,7 @@ function workloadByRef(ref: string): Workload {
 }
 
 /**
- * A stored workload read back as the patch that would restate it — the same conversion the plane
+ * A stored workload read back as the patch that would restate it: the same conversion the plane
  * makes, and the reason a revision can be resent verbatim. `artifact_id` and
  * `resolved_engine_args` and `topology.group_devices` are what a read
  * has and a patch does not: the weights are not patchable, and the other two are derived on every
@@ -1115,7 +1115,7 @@ registerFixtures([
      * Registered before `/benchmarks/:ref` so the fixture router does not read
      * `serving` as a run id, the same ordering `/artifacts/resolve` needs.
      *
-     * An unknown digest answers zero rather than 404: the question is how much
+     * An unknown digest answers zero instead of 404: the question is how much
      * measurement stands behind a configuration, and "none" is an answer.
      */
     method: "GET",
@@ -1316,7 +1316,7 @@ function sighting(ref: string): DiscoveredWorkload {
 /**
  * Track and ignore write the decision beside the sighting and nothing else.
  * Promote is the only one that produces declared state, and it refuses on a
- * stale fingerprint the way the plane does — that check is the whole safety of
+ * stale fingerprint the way the plane does: that check is the whole safety of
  * adopting a spec we do not own.
  */
 function decide(
@@ -1532,7 +1532,7 @@ registerFixtures([
         /**
          * Read off the sighting, not off the request. `artifact` is the only part
          * of the configuration a caller states, because it is the only part the
-         * cluster cannot tell us — everything else is what is already running, and
+         * cluster cannot tell us: everything else is what is already running, and
          * declaring something else would restart the model the adoption exists to
          * leave alone.
          */
@@ -1639,8 +1639,8 @@ registerFixtures([
 
 /**
  * The plane's effective configuration. Static: it describes a process, and the
- * offline plane has none — the values are a plausible deployment. `fra-1` is
- * deliberately left out of `metrics.sources`, so the unmapped-cluster marker on
+ * offline plane has none: the values are a plausible deployment. `fra-1` is
+ * left out of `metrics.sources`, so the unmapped-cluster marker on
  * the Settings › Configuration panel has something to show.
  */
 registerFixtures([
@@ -1731,20 +1731,20 @@ registerFixtures([
 ])
 
 /**
- * `GET /placement/reservations`, derived rather than stored beside the corpus.
+ * `GET /placement/reservations`, derived, not stored beside the corpus.
  *
  * The plane's own definition is `max(0, declared - observed)` per deployment:
  * the devices the deployment asked its cluster for, less the allocation devices
  * ingestion has confirmed the cluster actually bound. That subtraction cannot be
  * performed here, because the demo allocations are illustrative and were never
- * meant to account for every replica the demo deployments declare — running it
+ * meant to account for every replica the demo deployments declare: running it
  * anyway makes almost every deployment look like it is owed its whole size, and
  * a fleet where every cluster reports zero available is a fleet nobody can learn
  * the screen from.
  *
  * So the corpus's own replica rollup stands in for what has been bound: replicas
  * declared, less replicas the cluster reports ready, times the workload's device
- * shape. It is the same quantity — capacity promised and not yet converged —
+ * shape. It is the same quantity, capacity promised and not yet converged,
  * counted from the one book the offline fleet keeps consistently.
  */
 function reservations(query: FixtureQuery) {

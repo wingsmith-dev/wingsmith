@@ -50,7 +50,7 @@ export function AnalyticsView({
       {/* The gateway's own series, read at the front door. Absent
         measurements render as an em dash, never as a zero. The toggle
         governs the stat strip and both charts under it, because the
-        tiles are the same query's instant values — a tile read over
+        tiles are the same query's instant values: a tile read over
         one lookback beside a curve drawn over another is two
         measurements wearing one heading. Availability is not in that
         strip and names its own span, for that same reason. */}
@@ -104,7 +104,7 @@ export function AnalyticsView({
             </Card>
           )}
 
-          {/* Traffic — the gateway's request rate for this name. */}
+          {/* Traffic: the gateway's request rate for this name. */}
           <Card>
             <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
               <div>
@@ -139,7 +139,7 @@ export function AnalyticsView({
             </CardContent>
           </Card>
 
-          {/* Latency — the gateway's percentiles, which include the hop
+          {/* Latency: the gateway's percentiles, which include the hop
             and every request that failed before an engine saw it. Not
             the same measurement as a deployment's
             `inference.latency`, and the two disagreeing is not a

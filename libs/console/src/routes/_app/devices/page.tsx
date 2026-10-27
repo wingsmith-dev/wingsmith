@@ -59,7 +59,7 @@ export function DevicesPage() {
   /**
    * From the catalog scoped to what this fleet holds, not from the loaded page.
    * Deriving it from `list.items` made the filter depend on which classes
-   * happened to be in the first page — narrowing to a class could remove it
+   * happened to be in the first page: narrowing to a class could remove it
    * from its own dropdown.
    */
   const {
@@ -88,7 +88,7 @@ export function DevicesPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Devices"
-        description="observed · the schedulable unit — health, ECC, fabric, allocatability"
+        description="observed · the schedulable unit: health, ECC, fabric, allocatability"
       />
 
       <div className="space-y-4 p-4">
@@ -216,7 +216,7 @@ export function DevicesPage() {
               >
                 {list.isFetchingNextPage
                   ? "Loading…"
-                  : `Load more — ${list.loaded} devices grouped so far`}
+                  : `Load more: ${list.loaded} devices grouped so far`}
               </button>
             )}
           </>

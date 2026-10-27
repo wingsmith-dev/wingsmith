@@ -23,7 +23,7 @@ const SYNC_TONES: Record<string, StatusTone> = {
 
 /**
  * `sync.state` is derived by the plane, so an unknown value is rendered
- * neutrally rather than crashing a lookup that assumed a closed set.
+ * neutrally instead of crashing a lookup that assumed a closed set.
  */
 export function syncTone(state: SyncState): StatusTone {
   return SYNC_TONES[state] ?? "warn"

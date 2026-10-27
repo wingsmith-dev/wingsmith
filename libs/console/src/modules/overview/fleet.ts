@@ -19,7 +19,7 @@ export const STUCK_MS = 10 * 60 * 1000
  *
  * `down` is "no target has a ready replica", which is the only serving fact the
  * control plane can state: request rates and error rates never cross it.
- * `idle` is an endpoint with nothing to point at — declared ahead of its
+ * `idle` is an endpoint with nothing to point at: declared ahead of its
  * deployments, not broken.
  */
 export type EndpointHealth = "serving" | "degraded" | "down" | "idle"
@@ -98,7 +98,7 @@ function phaseStamp(deployment: Deployment): string | null {
 
 /**
  * Deployments outside `running` for longer than {@link STUCK_MS}. Placement
- * takes time, so a rollout two seconds old is working rather than unschedulable.
+ * takes time, so a rollout two seconds old is working, not unschedulable.
  */
 export function stuckDeployments(
   deployments: Deployment[],
@@ -168,7 +168,7 @@ export function allocationFromSummary(devices: FleetDevices): {
 
 /**
  * One row of the reachability panel: what the cluster's link is doing, said as
- * the derived stage rather than as phase or sync state alone.
+ * the derived stage, not as phase or sync state alone.
  */
 export interface ReachabilityRow {
   cluster: Cluster
@@ -213,7 +213,7 @@ export function staleClusters(clusters: Cluster[]): Cluster[] {
  * The caveat under the overview's counts: whether they cover every cluster.
  *
  * Says nothing while the cluster list is loading, and never claims every cluster
- * is reporting when the list failed or is empty — in both cases nothing is known
+ * is reporting when the list failed or is empty: in both cases nothing is known
  * to be reporting.
  */
 export function freshnessNote(

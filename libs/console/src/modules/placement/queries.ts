@@ -23,7 +23,7 @@ const STALE_MS = 15_000
  * Either subject will do, and exactly one must be given: a `workload` that exists,
  * or a bare `shape` for a configuration that does not yet. The second is what a
  * create form has, and it is why this hook is worth having beside
- * `useWorkloadExpansion` — the answer arrives before the write rather than after.
+ * `useWorkloadExpansion`: the answer arrives before the write, not after.
  *
  * A shape-form decision comes back under the workload id `wkl_preview`, which is a
  * deliberate non-uid: nothing was created, and a plausible-looking uid in a decision

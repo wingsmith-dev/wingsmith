@@ -4,7 +4,7 @@ import { useOperations } from "@/modules/machinery/queries"
 import type { SupplyNode } from "@/modules/supply/types"
 
 /**
- * History, and only history — starting an operation lives in the header, where
+ * History, and only history: starting an operation lives in the header, where
  * the jobs to be done belong. Draining is not a flag on the node either way: it
  * is an Operation whose target is the node, and the cordon is the state it
  * leaves behind.

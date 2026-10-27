@@ -26,12 +26,12 @@ import { toast } from "sonner"
  *
  * There is no rollback verb on the plane and this table does not invent one. A revision is stored
  * as the patch body that restates it, so "go back to this" is the ordinary `PATCH` every other
- * edit on this page makes — validated on the way in by the same checks, and appending a new
- * revision rather than rewinding to an old one. What that buys is that a configuration the
+ * edit on this page makes: validated on the way in by the same checks, and appending a new
+ * revision instead of rewinding to an old one. What that buys is that a configuration the
  * catalog has since dropped fails here, visibly, instead of being restored by a path that never
  * learned the rules.
  *
- * Declared and live are kept apart on purpose. `serving_digest` on the workload is what the plane
+ * Declared and live are kept apart. `serving_digest` on the workload is what the plane
  * asked for; the replica counts beside it are what is actually up, per configuration, summed over
  * the clusters. During a roll they disagree, and that interval is the one this table exists to
  * make readable.
@@ -206,7 +206,7 @@ const SHOWN_CHANGES = 3
  * What moved, at most a few lines of it.
  *
  * The oldest entry has nothing behind it to diff against, and a `created`, `promoted` or
- * `imported` row says so in words rather than listing every field it declared as a change.
+ * `imported` row says so in words instead of listing every field it declared as a change.
  */
 function ChangeList({
   changes,
@@ -251,8 +251,8 @@ function ChangeList({
  * are blank. `revision` on the workload is sent as `If-Match`, the same as every other edit: a
  * configuration change decided against a stale read is exactly what that header is for.
  *
- * The artifact is shown rather than sent. Weights are not patchable, so a revision from before a
- * weights swap restores the configuration and not the model — worth seeing before submitting,
+ * The artifact is shown, not sent. Weights are not patchable, so a revision from before a
+ * weights swap restores the configuration and not the model: worth seeing before submitting,
  * and the reason `artifact` sits outside the body at all.
  */
 function ReapplyDialog({
@@ -315,7 +315,7 @@ function ReapplyDialog({
       {differentWeights && (
         <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
           This revision served a different artifact ({revision.artifact}). The
-          weights are not part of a patch and will not change — only the
+          weights are not part of a patch and will not change, only the
           configuration around them.
         </p>
       )}

@@ -6,7 +6,7 @@ import type { Device } from "@/modules/supply/types"
 /**
  * Node condition, or `stale` when the node's cluster agent is unreachable. A
  * cluster we cannot reach stopped reporting, so `ready` is only the last thing
- * it said — presenting it as a live fact would claim knowledge the plane does
+ * it said: presenting it as a live fact would claim knowledge the plane does
  * not have. Stale wins over the stored condition and reads muted, not green.
  */
 export function NodeConditionLabel({
@@ -127,7 +127,7 @@ export function EccCell({ device }: { device: Device }) {
 
 /**
  * Allocatability is the device's own observed flag. What actually holds it is a
- * different question, answered by `/allocations?device=` and not by this row —
+ * different question, answered by `/allocations?device=` and not by this row:
  * the device schema carries no allocation object.
  */
 export function AllocatableCell({ allocatable }: { allocatable: boolean }) {

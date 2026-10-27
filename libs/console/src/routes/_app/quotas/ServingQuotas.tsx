@@ -149,7 +149,7 @@ function columns(
 
 /**
  * Traffic, not devices. The gateway checks these on every request, in front of
- * the clusters, and measures the outcome where the plane never sees it — so
+ * the clusters, and measures the outcome where the plane never sees it, so
  * this table is declaration only and carries no usage column at all.
  */
 export function ServingQuotas({

@@ -12,7 +12,7 @@ import type { Deployment } from "@/modules/demand/types"
  * Where a deployment is between declared and serving, and what is holding it there.
  *
  * The strip exists because "placed" was the last thing the console could say about a
- * deployment for as long as it took to come up — which is minutes when weights are
+ * deployment for as long as it took to come up, which is minutes when weights are
  * cold and forever when something is wrong. The cluster knew the answer the whole
  * time and reported it to a log in another cluster; this is that answer, on screen.
  *
@@ -113,7 +113,7 @@ export function DeploymentLifecycle({
         >
           {reasonText(status.reason)}
           {status.message && (
-            <span className="text-muted-foreground"> — {status.message}</span>
+            <span className="text-muted-foreground">: {status.message}</span>
           )}
         </p>
       )}

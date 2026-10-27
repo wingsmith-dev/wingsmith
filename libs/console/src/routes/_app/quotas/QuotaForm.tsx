@@ -22,8 +22,8 @@ const EVERY_CLUSTER = "__all__"
 
 /**
  * Project, cluster and device class are what the quota is *about* and are only
- * offered on create — changing one would silently move the guarantee to a
- * different pool of capacity rather than adjust this one.
+ * offered on create: changing one would silently move the guarantee to a
+ * different pool of capacity, not adjust this one.
  */
 export function QuotaForm({
   open,

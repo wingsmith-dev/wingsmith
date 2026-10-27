@@ -56,7 +56,7 @@ export function PoolDetailPage() {
             columns={nodeColumns({ showPool: false })}
             list={nodes}
             rowKey={(node) => node.id}
-            empty="This pool has no nodes yet — declared, not yet provisioned."
+            empty="This pool has no nodes yet: declared, not yet provisioned."
           />
         </div>
       </div>

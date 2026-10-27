@@ -173,7 +173,7 @@ export interface RowAction {
 
 /**
  * The trailing `⋮` on a row or card. Stops the click reaching the row link, and
- * disappears entirely in read-only mode — every action it carries is a write.
+ * disappears entirely in read-only mode: every action it carries is a write.
  */
 export function RowActions({ actions }: { actions: RowAction[] }) {
   const readOnly = useReadOnly()

@@ -15,7 +15,7 @@ const refresh = (ref: string) =>
   )
 
 /**
- * The fixture mutates the artifact, so these run in order on purpose: the shape
+ * The fixture mutates the artifact, so these run in order: the shape
  * arrives on the first re-read and the second has nothing left to do. That is the
  * sequence a person performs, and testing them independently would miss the case
  * where the second press reports the same diff again.

@@ -30,7 +30,7 @@ import { TenantServed } from "./Served"
 
 /**
  * The three charts a tenant's traffic is read from, and three because that is
- * what fills the lead row — `MetricsPanel` gives one lead metric the whole width,
+ * what fills the lead row: `MetricsPanel` gives one lead metric the whole width,
  * which turns a sparkline into a stripe across an empty card.
  *
  * How much capacity they are holding, how long they wait for a first token, and how
@@ -151,11 +151,11 @@ function Identity({ tenant }: { tenant: Tenant }) {
 /**
  * One tenant, from the two directions it is looked at: what we declared about
  * them, and what they are actually being served. The second half is the tenant's
- * own page — a support conversation starts with what the customer can see, and
+ * own page: a support conversation starts with what the customer can see, and
  * an operator who has to guess at that is answering a different question.
  *
- * The route parameter is a slug or an id — either resolves — and the serving
- * read is given the tenant's uid off the loaded record rather than the parameter,
+ * The route parameter is a slug or an id, either resolves, and the serving
+ * read is given the tenant's uid off the loaded record instead of the parameter,
  * so the cache is keyed by identity and two links to the same tenant do not read
  * it twice.
  */

@@ -46,7 +46,7 @@ describe("artifactSource", () => {
 })
 
 describe("refreshSummary", () => {
-  it("says so when the source had nothing new, rather than going quiet", () => {
+  it("says so when the source had nothing new, instead of going quiet", () => {
     expect(refreshSummary([])).toContain("nothing changed")
   })
 

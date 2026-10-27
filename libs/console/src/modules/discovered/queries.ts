@@ -39,7 +39,7 @@ export function useIgnoreWorkload() {
 
 /**
  * Removing a sighting from the list. Nothing reaches a cluster and nothing
- * observed is deleted — the workload goes on running, and `useRestoreWorkload`
+ * observed is deleted: the workload goes on running, and `useRestoreWorkload`
  * brings the entry back.
  */
 export function useDismissWorkload() {

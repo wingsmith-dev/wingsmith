@@ -99,7 +99,7 @@ export function ProjectForm({
       {!editing && tenants?.length === 0 && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="font-mono text-2xs text-warning">
-            there are no tenants yet — a project hangs off one, so make a tenant
+            there are no tenants yet: a project hangs off one, so make a tenant
             first
           </p>
         </div>

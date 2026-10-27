@@ -59,7 +59,7 @@ export function ServingFields({
   value: ServingBehavior
   onChange: (value: ServingBehavior) => void
   engineArgs: Record<string, unknown>
-  /** True in the dialog that edits nothing else — see `DeclaredSection`. */
+  /** True in the dialog that edits nothing else; see `DeclaredSection`. */
   plain?: boolean
 }) {
   const set = (patch: Partial<ServingBehavior>) =>
@@ -191,7 +191,7 @@ export function ServingPrecedence({
       <p>
         {overrides.length === 1 ? "One engine arg is" : "Engine args are"}{" "}
         overridden. Where a typed serving field and an engine arg set the same
-        flag, the typed field wins — it is the one the plane can validate and
+        flag, the typed field wins: it is the one the plane can validate and
         verify.
       </p>
       <ul className="space-y-0.5 font-mono">
@@ -208,7 +208,7 @@ export function ServingPrecedence({
 
 /**
  * The asserted half. Nothing here becomes a flag or reaches a cluster, because a
- * cluster has no use for a claim about itself — the plane holds no table of what
+ * cluster has no use for a claim about itself: the plane holds no table of what
  * an engine can do, so a block that is internally consistent and entirely false
  * is accepted, stored, and falsified by the first conformance run.
  */
@@ -219,7 +219,7 @@ export function CapabilityFields({
 }: {
   value: ServingCapabilities
   onChange: (value: ServingCapabilities) => void
-  /** True in the dialog that edits nothing else — see `DeclaredSection`. */
+  /** True in the dialog that edits nothing else; see `DeclaredSection`. */
   plain?: boolean
 }) {
   const set = (patch: Partial<ServingCapabilities>) =>
@@ -230,7 +230,7 @@ export function CapabilityFields({
       plain={plain}
       title="Capabilities"
       kind="asserted"
-      hint="What this workload claims it can do. Nothing here renders and nothing here is checked — a conformance run is what proves it wrong."
+      hint="What this workload claims it can do. Nothing here renders and nothing here is checked: a conformance run is what proves it wrong."
     >
       <FormGrid>
         <ChoiceSetField
@@ -262,7 +262,7 @@ export function CapabilityFields({
             value={value.prompt_cache_mode}
             onChange={(prompt_cache_mode) => set({ prompt_cache_mode })}
             options={[...PROMPT_CACHE_MODES]}
-            hint="The contract, not the mechanism — that is the prefix cache switch."
+            hint="The contract, not the mechanism: that is the prefix cache switch."
           />
           <NumberField
             label="Prompt cache TTL (seconds)"

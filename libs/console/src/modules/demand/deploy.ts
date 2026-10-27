@@ -4,12 +4,12 @@
  * The serving block asks twenty-five questions. Six of them the fitment already answered
  * from the weights, and most of the rest are either derivable or a default that only
  * an expert should ever move. What is left once those are taken out is a name, and a
- * name is not a question worth asking either — so this module answers all of them and
+ * name is not a question worth asking either, so this module answers all of them and
  * the deploy flow asks none.
  *
  * Nothing here is authority. The plane sizes the fit and places the workload; this
  * only assembles the request those two answers imply. Where a field cannot be derived
- * honestly it is left off the request entirely rather than guessed, so the plane's own
+ * accurately it is left off the request entirely, not guessed, so the plane's own
  * default applies instead of one invented here.
  */
 
@@ -34,7 +34,7 @@ export const DEFAULT_ENGINE = "vllm"
  * The Dynamo runtime tag a derived block asks for, which is not a version of the engine.
  *
  * The plane resolves `<repository>:<engine_runtime_version>` against
- * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases — `1.4.1` —
+ * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases (`1.4.1`)
  * while vLLM's own versions are `0.x`. The two count in different sequences.
  *
  * Never seeded from the recipe's `engine_version_min`, which is vLLM's number. Doing so
@@ -43,8 +43,8 @@ export const DEFAULT_ENGINE = "vllm"
  * would fall through to `latest` and serve. The vLLM
  * floor is shown beside the field as the claim it is, and no field carries it.
  *
- * `latest` is the honest stand-in for the tag: it says "whatever the plane is
- * configured to ship" — `ENGINE_RUNTIME_TAG_DEFAULT` — rather than pinning a version
+ * `latest` is the accurate stand-in for the tag: it says "whatever the plane is
+ * configured to ship" (`ENGINE_RUNTIME_TAG_DEFAULT`) instead of pinning a version
  * this code invented, and it is editable here and on the workload afterwards.
  */
 export const DEFAULT_ENGINE_RUNTIME_VERSION = "latest"
@@ -68,8 +68,8 @@ export function shortTokens(value: number): string {
 /**
  * The name a workload gets when nobody typed one.
  *
- * The artifact rather than the fit, because a workload is the thing you asked to
- * run and you asked for the weights — the fit is how, not what. Collisions are the
+ * The artifact instead of the fit, because a workload is the thing you asked to
+ * run and you asked for the weights: the fit is how, not what. Collisions are the
  * plane's to reject; this only avoids the ones it can see, by suffixing past names
  * already in the list.
  */
@@ -103,9 +103,9 @@ export function requiresSingleDomain(footprint: ServingFootprint): boolean {
  * What the plane proposed for these weights, and who proposed it.
  *
  * Two sources and they are never merged into one number. `defaults` is the plane's
- * own arithmetic over `config.json` — what the weights need. `upstream` is a third
- * party's measurement of a different question — what a configuration did when they
- * served it — and every field of it is a claim with a permalink behind it. The
+ * own arithmetic over `config.json`: what the weights need. `upstream` is a third
+ * party's measurement of a different question, what a configuration did when they
+ * served it, and every field of it is a claim with a permalink behind it. The
  * console seeds from both and says which one a value came from, because "vLLM
  * verified this on H200" is the most useful thing on the form and "we divided a
  * memory figure by a card" is a different kind of statement.
@@ -141,8 +141,8 @@ function denied(claim: boolean | null | undefined): boolean {
  * invented here would be indistinguishable from a tested one on the form.
  *
  * A parser is dropped when the artifact's claims deny the capability it parses.
- * The two sources answer different questions — the publisher says what the model
- * is, the corpus says what one engine ran — and where they disagree the claim
+ * The two sources answer different questions, the publisher says what the model
+ * is, the corpus says what one engine ran, and where they disagree the claim
  * wins, because the plane refuses a parser without the capability under it and a
  * request nobody can submit is worse than a flag nobody set.
  */
@@ -172,8 +172,8 @@ export function proposedBehavior(
  * not claim tool calling. So the claim travels with the parser.
  *
  * The two sources are not interchangeable. The artifact's `upstream` is what the
- * publisher said about the weights, and it is the better answer wherever it speaks —
- * modalities and structured output have no other honest source here. The vLLM recipe
+ * publisher said about the weights, and it is the better answer wherever it speaks:
+ * modalities and structured output have no other accurate source here. The vLLM recipe
  * only narrows or corroborates: a named parser is evidence of the one capability it
  * parses, which is enough to claim it where the publisher was silent and not enough
  * to claim it where the publisher said no.
@@ -210,7 +210,7 @@ export function proposedCapabilities(
       ? claims.structured_output_modes
       : block.structured_output_modes,
     // Text is always an input modality and the plane says so. A claim that lost it
-    // — an empty list, or a publisher who named only the second one — would be
+    // (an empty list, or a publisher who named only the second one) would be
     // refused, and the artifact page is where that gets corrected, not here.
     input_modalities: modalities.includes("text")
       ? modalities
@@ -222,15 +222,15 @@ export function proposedCapabilities(
 /**
  * The fields of a proposed serving block a person may disagree with, before it is sent.
  *
- * Every one of these has a proposed answer and every proposed answer can be wrong —
+ * Every one of these has a proposed answer and every proposed answer can be wrong:
  * the corpus measured a different build, the publisher never spoke, the engine is not
  * the one the recipe used. `undefined` means untouched and the proposal stands; a
  * string means somebody typed it, including the empty string, which is how a field is
- * cleared back to "say nothing" rather than back to the proposal.
+ * cleared back to "say nothing", not back to the proposal.
  *
  * Only what is proposed is here. The six numbers of the footprint belong to the
- * topology step, and the fields nothing proposes — `max_batch_tokens`,
- * `kv_cache_fraction`, `resources` — are left at the plane's default and edited on the
+ * topology step, and the fields nothing proposes, `max_batch_tokens`,
+ * `kv_cache_fraction`, `resources`, are left at the plane's default and edited on the
  * workload, because a form that asks about them before anything is running is asking
  * a question with no evidence behind it.
  */
@@ -241,7 +241,7 @@ export interface ServingOverrides {
   frontend_image?: string
   dtype?: string
   kv_cache_dtype?: string
-  /** MiB. A floor nobody states is no floor — see `perDeviceFloor`. */
+  /** MiB. A floor nobody states is no floor; see `perDeviceFloor`. */
   device_memory_mib_min?: number
   /** Tokens. The fit's window is a starting point, not a ceiling somebody has to accept. */
   context_length?: number
@@ -264,7 +264,7 @@ function chosen(
  * It was derived twice and it was wrong both times, in the same way. The plane's suggestion
  * sizes the declared window across the count *it* proposed; the request carries the count and
  * the window the *fit* chose. Those are different numbers about different configurations, and
- * carrying one into the other produces a floor that describes nothing — GLM-5.3-Flash asked
+ * carrying one into the other produces a floor that describes nothing: GLM-5.3-Flash asked
  * for 768 GiB to serve 383 GiB of weights, and gemma-4-26b sent to a single RTX PRO 6000 asked
  * for 122 GiB per card from a card that has 96, which the plane refuses outright with "a floor
  * of 124928 MiB excludes every rtx-pro-6000-96gb-server-edition".
@@ -273,12 +273,12 @@ function chosen(
  * real defect is that a floor is not arithmetic at all: `device_memory_mib_min` filters devices
  * *within* a class the request has already named, and a class is itself a memory figure, so
  * for everything the fit picks the floor is redundant by construction. What it is genuinely
- * for is the case the console cannot see — a cluster reporting a card of that class with less
+ * for is the case the console cannot see: a cluster reporting a card of that class with less
  * memory than the catalog says, a partition, a card that came up degraded. That is a
  * thing an operator knows and states, not a thing a form can infer.
  *
  * So nothing is proposed, and the field is editable. Whether the weights fit at all is still
- * checked, twice, by the two things that can honestly answer it: the fitment offers no row
+ * checked, twice, by the two things that can accurately answer it: the fitment offers no row
  * that does not fit, and the plane's own `check_capacity` refuses a shape whose cards cannot
  * hold the weights.
  */
@@ -290,16 +290,16 @@ function perDeviceFloor(override: number | undefined): number {
 /**
  * The serving block that a fitment row plus an artifact imply, and what was overridden.
  *
- * The fit answers the six things it is — which card, how many, how they are split,
- * at what window and precision — and everything else comes from the proposal, from an
+ * The fit answers the six things it is, which card, how many, how they are split,
+ * at what window and precision, and everything else comes from the proposal, from an
  * override, or is left at the plane's default. Left alone matters: `max_batch_tokens`,
  * `kv_cache_fraction`, `resources` and `topology_domain_kind` are never guessed,
- * because neither the console nor the corpus has an honest value and the plane's
+ * because neither the console nor the corpus has an accurate value and the plane's
  * own default beats a number invented here.
  *
  * The proposal is a starting point and never a floor. This is called on every render
  * of the params step with whatever has been typed so far, so the request the form
- * shows and the request it sends are the same object, computed the same way — a form
+ * shows and the request it sends are the same object, computed the same way: a form
  * that displayed one block and submitted another is the defect this shape prevents.
  *
  * `prefix_cache_enabled` is the one opinion: on. It is free on a repeated prompt and
@@ -370,7 +370,7 @@ export function derivedServingRequest(
 /**
  * Where each seeded field came from, for the form to attribute beside it.
  *
- * Attribution is the whole point of seeding: a value nobody can trace is a value
+ * Attribution is the point of seeding: a value nobody can trace is a value
  * nobody will move, and a form full of those is how an operator ends up running a
  * configuration they never chose and cannot defend.
  *
@@ -380,7 +380,7 @@ export function derivedServingRequest(
  * party, and a wrong one survives into whatever argument the configuration is later
  * defended with.
  *
- * `engine_runtime_version` is deliberately absent whatever upstream says. The recipe's
+ * `engine_runtime_version` is absent whatever upstream says. The recipe's
  * `engine_version_min` is vLLM's number and this field is a Dynamo tag, so attributing
  * it to the corpus would be citing a source for a value the corpus never gave.
  */
@@ -431,8 +431,8 @@ export function servingProvenance(
 /**
  * Workloads already running exactly this configuration.
  *
- * Informational and never a fork. The plane's answer is `serving_digest` — one
- * hash over everything that reaches an engine — but a digest is the plane's to
+ * Informational and never a fork. The plane's answer is `serving_digest`, one
+ * hash over everything that reaches an engine, but a digest is the plane's to
  * compute and there is nothing to compute it over until the workload exists, so
  * this compares the fields the flow actually sets and says what it found. It
  * decides nothing: creating a second workload on one configuration is a normal
@@ -460,7 +460,7 @@ export function workloadsMatching(
   )
 }
 
-/** `2 x H100 · tp2 · 32k · fp8` — a footprint on one line, for a collapsed step. */
+/** `2 x H100 · tp2 · 32k · fp8`: a footprint on one line, for a collapsed step. */
 export function footprintSummary(
   footprint: ServingFootprint,
   label?: string

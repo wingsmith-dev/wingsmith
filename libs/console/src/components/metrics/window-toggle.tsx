@@ -5,7 +5,7 @@ import { TIME_WINDOWS, type TimeWindow } from "@/modules/metrics/windows"
  * Which span the charts beside it are drawn over.
  *
  * It changes the question, not the answer: every window is a fresh query to the
- * store rather than a slice of one already held, because a rate over an hour and
+ * store instead of a slice of one already held, because a rate over an hour and
  * a rate over a week are two different measurements and neither is the other
  * resampled.
  */

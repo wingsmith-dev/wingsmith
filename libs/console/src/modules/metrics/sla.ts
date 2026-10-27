@@ -37,7 +37,7 @@ export function slaMonths(now: Date, count = 3): SlaMonth[] {
  * A percentage to the precision an SLA is argued at.
  *
  * Three places, because at three nines the console's usual whole-percent
- * rounding turns 99.94% and 99.86% — one met, one missed — into the same 100%.
+ * rounding turns 99.94% and 99.86% (one met, one missed) into the same 100%.
  */
 export function slaPercent(value: number | null, digits = 3): string {
   if (value === null || Number.isNaN(value)) return "—"

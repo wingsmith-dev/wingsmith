@@ -86,11 +86,11 @@ describe("AlertDetail", () => {
 
   // Observed state gets no edit affordance. The only input on the sheet is the
   // acknowledgment note, which is the one thing about an alert a machine
-  // cannot know — every derived field is text.
+  // cannot know: every derived field is text.
   it("offers no way to edit anything the reactor derived", () => {
     open()
     // The sheet renders through a portal, so the assertion is against the
-    // document rather than the render container.
+    // document instead of the render container.
     const inputs = document.body.querySelectorAll("input")
     expect(inputs.length).toBe(1)
     expect(screen.getByLabelText("Acknowledgment note")).toBe(inputs[0])
@@ -111,8 +111,8 @@ describe("AlertDetail", () => {
     expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull()
   })
 
-  it("says a pending alert has not fired rather than showing a blank", () => {
+  it("says a pending alert has not fired instead of showing a blank", () => {
     open({ state: "pending", fired_at: null })
-    expect(screen.getByText("not yet — still pending")).toBeInTheDocument()
+    expect(screen.getByText("not yet: still pending")).toBeInTheDocument()
   })
 })

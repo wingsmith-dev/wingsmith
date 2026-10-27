@@ -27,7 +27,7 @@ function cluster(over: Partial<Cluster> = {}): Cluster {
 
 /**
  * A cluster that never connected reports `reachable: false`, so every case here
- * pairs the two — the pairing is the whole point, and testing `never_connected`
+ * pairs the two: the pairing is the point, and testing `never_connected`
  * against a reachable fixture is what let the card call it a fault.
  */
 describe("clusterHealth", () => {

@@ -13,7 +13,7 @@ export interface DeviceSummary {
   allocatable: number
   byHealth: { health: string; count: number }[]
   byClass: { deviceClass: string; count: number; healthy: number }[]
-  /** Every device that is not plainly healthy, listed rather than counted. */
+  /** Every device that is not plainly healthy, listed, not counted. */
   impaired: Device[]
 }
 
@@ -26,7 +26,7 @@ function rank(health: string): number {
 
 /**
  * `impaired` carries the devices themselves, not a count. A single degraded,
- * throttled accelerator disappears into "47 of 48 healthy", and the whole point
+ * throttled accelerator disappears into "47 of 48 healthy", and the point
  * of the fleet-health panel is that it does not.
  */
 export function summarizeDevices(devices: Device[]): DeviceSummary {
@@ -98,7 +98,7 @@ const SETTLED_PHASES = ["running"]
 
 /**
  * One fault, one row. An unreachable cluster also has a broken sync link and a
- * stale last sync, and saying so three times does not make it three problems —
+ * stale last sync, and saying so three times does not make it three problems:
  * the downstream rows only appear where the cluster is otherwise reachable.
  */
 function syncActionables(cluster: Cluster): Actionable[] {
@@ -108,8 +108,8 @@ function syncActionables(cluster: Cluster): Actionable[] {
     params: { clusterId: cluster.id },
   }
 
-  // Asked before reachability, which is false for a cluster that never connected
-  // — the plane has no sync row to say otherwise. Reading that as unreachable
+  // Asked before reachability, which is false for a cluster that never connected:
+  // the plane has no sync row to say otherwise. Reading that as unreachable
   // files a permanent red fault against every cluster declared ahead of its
   // install, and reports a link as broken that was never established.
   if (cluster.sync.state === "never_connected") {
@@ -368,7 +368,7 @@ function operationActionables(operations: Operation[]): Actionable[] {
 /**
  * Everything on this cluster a human should do something about, and nothing
  * else. Each source is optional so one failed sub-query costs its own rows
- * rather than the whole list, and the order is by how loud the thing is.
+ * instead of the whole list, and the order is by how loud the thing is.
  */
 export function deriveClusterActionables({
   cluster,

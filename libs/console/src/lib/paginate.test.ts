@@ -90,7 +90,7 @@ describe("fetchAllPages", () => {
     expect(got.truncated).toBe(false)
   })
 
-  it("lets a failure surface rather than returning a short list", async () => {
+  it("lets a failure surface instead of returning a short list", async () => {
     // Half a collection silently returned would make a filter control omit real options.
     const fetch = vi
       .fn<(cursor?: string) => Promise<ListResponse<Row>>>()
@@ -115,7 +115,7 @@ describe("useCursorList", () => {
     expect(result.current.loaded).toBe(1)
   })
 
-  it("appends the next page rather than replacing the first", async () => {
+  it("appends the next page instead of replacing the first", async () => {
     const { fetch } = pager([page(["a"], "1"), page(["b"], null)])
     const { result } = renderHook(() => useCursorList(["rows"], fetch), {
       wrapper: wrapper(),

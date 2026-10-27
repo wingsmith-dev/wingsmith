@@ -93,7 +93,7 @@ function table(over: Partial<ResolvedServingQuotaTable> = {}) {
 }
 
 describe("ServingQuotaSheet", () => {
-  it("shows the plane's share of a divided limit rather than dividing here", () => {
+  it("shows the plane's share of a divided limit instead of dividing here", () => {
     resolved.mockReturnValue({ data: table(), error: null })
     render(<ServingQuotaSheet quota={quota()} onOpenChange={() => {}} />)
 

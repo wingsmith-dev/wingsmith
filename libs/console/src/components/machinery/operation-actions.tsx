@@ -15,7 +15,7 @@ import {
  * The operations a resource affords, as primary buttons. The set is read off
  * the registry by target prefix, so a new operation type appears here without
  * anyone editing this file, and one that does not currently apply is rendered
- * disabled with its reason rather than dropped.
+ * disabled with its reason, not dropped.
  */
 export function OperationActions({
   target,

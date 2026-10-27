@@ -1,4 +1,4 @@
-/** The Hangar wordmark glyph — three slabs, drawn in the current text color. */
+/** The Hangar wordmark glyph: three slabs, drawn in the current text color. */
 export function HangarMark({ className }: { className?: string }) {
   return (
     <svg

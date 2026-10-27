@@ -31,7 +31,7 @@ interface WireError {
 
 /**
  * Reads the plane's `{code, message, detail}` body. A body that is not that
- * shape — a proxy's HTML, say — degrades to the status line rather than
+ * shape (a proxy's HTML, say) degrades to the status line instead of
  * inventing a code the caller might branch on.
  */
 function wireError(status: number, payload: unknown): WireError {

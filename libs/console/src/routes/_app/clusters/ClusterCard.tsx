@@ -36,12 +36,12 @@ const HEALTH_RING: Record<ClusterHealth, string> = {
 /**
  * Collapses the declared phase and observed reachability/sync into a single
  * at-a-glance health, only for the card's dot and border. Phase and
- * reachability are still kept apart everywhere they carry a decision — a
+ * reachability are still kept apart everywhere they carry a decision: a
  * disabled cluster is somebody's choice, an unreachable one is a network fault.
  *
  * `onboarding` is asked first, and from {@link clusterStage} so the card and the
  * detail page cannot disagree. A cluster that has never connected also reports
- * `reachable: false` — the plane has no sync row to say otherwise — so testing
+ * `reachable: false`, the plane has no sync row to say otherwise, so testing
  * reachability first calls a cluster nobody has installed yet a fault, and
  * offers to explain a last-known state that does not exist.
  */
@@ -104,10 +104,10 @@ export function ClusterCard({
   const noteTone =
     health === "down" ? "down" : health === "onboarding" ? "info" : "warn"
   const note = onboarding
-    ? "Not enrolled — install the cluster-setup chart to connect it."
+    ? "Not enrolled: install the cluster-setup chart to connect it."
     : (cluster.sync.last_error ??
       (health === "provisioning"
-        ? "Provisioning — nodes still joining. Not schedulable yet."
+        ? "Provisioning: nodes still joining. Not schedulable yet."
         : health === "down"
           ? "Agent unreachable. Last known state shown; replicas may still be serving."
           : null))
@@ -188,7 +188,7 @@ export function ClusterCard({
               <IconInfoCircle className="size-4 shrink-0 text-muted-foreground" />
               <span>
                 {onboarding
-                  ? "No devices reported yet — nothing has synced from this cluster."
+                  ? "No devices reported yet: nothing has synced from this cluster."
                   : "No GPUs here. The cluster runs, and no GPU node has joined it."}
               </span>
             </div>

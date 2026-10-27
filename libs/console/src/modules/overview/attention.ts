@@ -98,7 +98,7 @@ function deploymentItems(deployments: Deployment[]): AttentionItem[] {
           ? ("danger" as const)
           : ("warn" as const),
       kind: "deployment" as const,
-      title: `${deployment.name} degraded — ${
+      title: `${deployment.name} degraded: ${
         deployment.desired_replicas - deployment.replicas.ready
       } of ${deployment.desired_replicas} replicas down`,
       detail: `workload ${deployment.workload_name} · ${
@@ -118,7 +118,7 @@ function deploymentItems(deployments: Deployment[]): AttentionItem[] {
 
 /**
  * Everything the fleet cannot place, as one row. Unschedulable replicas are a
- * single condition with one cause — there is no capacity — and one row per
+ * single condition with one cause, there is no capacity, and one row per
  * deployment would bury the health rows under it.
  */
 function placementItem(deployments: Deployment[]): AttentionItem[] {
@@ -236,7 +236,7 @@ function nodeItems(nodes: SupplyNode[]): AttentionItem[] {
 
 /**
  * Workloads a cluster was already running when it was connected and nobody has ruled
- * on. Neutral rather than warn: it is a decision waiting, not a fault.
+ * on. Neutral, not warn: it is a decision waiting, not a fault.
  */
 function discoveredItems(discovered: DiscoveredWorkload[]): AttentionItem[] {
   return discovered.map((sighting) => ({
@@ -257,11 +257,11 @@ function discoveredItems(discovered: DiscoveredWorkload[]): AttentionItem[] {
 /**
  * Everything on the fleet a human should decide about, and nothing else.
  *
- * The fleet counterpart of `deriveClusterActionables`, and deliberately not the
- * same list: this one is ordered by how loud a row is rather than grouped by
+ * The fleet counterpart of `deriveClusterActionables`, and not the
+ * same list: this one is ordered by how loud a row is, not grouped by
  * cluster, and it carries the discovered half that a cluster page shows in its
  * own panel. Each source is optional so one failed query costs its own rows
- * rather than the whole inbox.
+ * instead of the whole inbox.
  */
 export function deriveFleetAttention({
   clusters,

@@ -87,7 +87,7 @@ import { WorkbenchView } from "./Workbench"
  * One workload: what was asked for, and every cluster it landed on.
  *
  * The page a person lands on when they want to know how something is running.
- * There is deliberately no cluster field in its declared spec — a workload has
+ * There is no cluster field in its declared spec: a workload has
  * as many clusters as placement found, so the answer is the table under it, and
  * the deployment page is the drill-in for one of them.
  *
@@ -97,12 +97,12 @@ import { WorkbenchView } from "./Workbench"
  * the second one is what was asked. Scaling is reached from the Deployments
  * panel header and the actions menu.
  *
- * The page is split into six views — overview, performance, workbench,
+ * The page is split into six views: overview, performance, workbench,
  * placement, lifecycle, logs. Events, operations, the endpoints routing to the
  * workload, its live placement, its performance across every cluster it landed
  * in and its benchmark run history are read from the plane. Anything the plane
  * does not report is left off the page, or drawn as an explicit "not measured
- * yet" frame — never as an invented figure.
+ * yet" frame, never as an invented figure.
  */
 export function WorkloadDetailPage() {
   const { workloadId } = useParams({ from: "/_app/workloads/$workloadId" })
@@ -116,14 +116,14 @@ export function WorkloadDetailPage() {
   )
   const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
   /**
-   * The most recent ramp read as a curve. Recovered from the runs rather than
-   * listed — the plane has no request collection — and read once here so the
+   * The most recent ramp read as a curve. Recovered from the runs, not
+   * listed, the plane has no request collection, and read once here so the
    * Workbench tiles and the curve panel share one query.
    */
   const curve = useWorkbenchCurve(benchmarks)
   /**
-   * What this configuration has been measured at, asked by digest rather than by
-   * workload. Safe to ask unconditionally — an unmeasured digest is a zero count,
+   * What this configuration has been measured at, asked by digest, not by
+   * workload. Safe to ask unconditionally: an unmeasured digest is a zero count,
    * not a 404.
    */
   const measured = useServingBenchmarkSummary(workload?.serving_digest)
@@ -498,7 +498,7 @@ export function WorkloadDetailPage() {
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Serving & artifact"
-                    description="How these weights are served. There is no object behind it — two workloads configured the same way carry the same digest."
+                    description="How these weights are served. There is no object behind it: two workloads configured the same way carry the same digest."
                     action={
                       <EditButton
                         label="Edit engine and hardware"
@@ -549,7 +549,7 @@ export function WorkloadDetailPage() {
                       {/* Beside parallelism because it is the same kind of
                           fact: it decides the footprint. Not beside "Single
                           domain" two fields down, which reads `topology` in the
-                          other sense — a physical fabric a replica has to fit
+                          other sense: a physical fabric a replica has to fit
                           inside, not a split between two processes. */}
                       <Field label="Serving topology">
                         {isDisaggregated(workload) ? (
@@ -661,7 +661,7 @@ export function WorkloadDetailPage() {
               <div className="flex min-w-0 flex-col gap-4">
                 <Panel
                   title="Operations"
-                  description="Scale, pause and drain — plane-local, each with its own phase"
+                  description="Scale, pause and drain: plane-local, each with its own phase"
                 >
                   <DataTable
                     columns={operationColumns()}

@@ -84,7 +84,7 @@ describe("what the topology is", () => {
     expect(groupDevices(workload())).toBeNull()
   })
 
-  it("names the ends of the ratio rather than trusting the reader", () => {
+  it("names the ends of the ratio instead of trusting the reader", () => {
     expect(declaredRatio(disagg())).toBe("1 prefill : 2 decode")
   })
 
@@ -241,7 +241,7 @@ describe("what a role may not be told", () => {
 describe("what a per-role configuration change costs", () => {
   it("multiplies the weights by the group count for every role", () => {
     // The same product the plane sends on the wire. Both are declared, so this
-    // is exact rather than observed.
+    // is exact, not observed.
     expect(roleWorkers(disagg())).toEqual([
       { role: "prefill", weight: 1, workers: 2 },
       { role: "decode", weight: 2, workers: 4 },
@@ -273,7 +273,7 @@ describe("what a per-role configuration change costs", () => {
 
   it("stops serving when a role has exactly one worker", () => {
     // Rolling is in place, one worker at a time, so a role of one goes to zero
-    // while its only worker reloads — and a decode worker with no prefill peer
+    // while its only worker reloads, and a decode worker with no prefill peer
     // has nothing to decode from. This is the outage case.
     const single = workload({
       scale: {
@@ -307,7 +307,7 @@ describe("a ratio that does not divide the hardware", () => {
   })
 
   it("names the idle devices when it does not", () => {
-    // Four nodes cannot express 1:2 at TP8 — three workers is 24 devices, and
+    // Four nodes cannot express 1:2 at TP8; three workers is 24 devices, and
     // 32 leaves a whole node doing nothing. Nothing fails, which is the problem.
     expect(strandedByRatio(32, 24)).toBe(
       "a unit of 24 devices does not divide 32: 1 unit fits and 8 devices would sit idle"
@@ -320,7 +320,7 @@ describe("a ratio that does not divide the hardware", () => {
     )
   })
 
-  it("is silent without a budget rather than guessing at one", () => {
+  it("is silent without a budget instead of guessing at one", () => {
     expect(strandedByRatio(0, 24)).toBeNull()
     expect(strandedByRatio(32, 0)).toBeNull()
   })

@@ -45,10 +45,10 @@ export const api = {
   ) => call<T>("POST", path, { ...options, body }),
   /**
    * A `POST` that reads. `/placement/preview` and `/placement/expand` take a
-   * body and write nothing, so they must survive read-only mode — which keys off
+   * body and write nothing, so they must survive read-only mode, which keys off
    * the method, because for every other route the method is the truth.
    *
-   * Deliberately its own name rather than a flag on `post`: the guard exists to
+   * Its own name instead of a flag on `post`: the guard exists to
    * make writing impossible from this browser, and the only safe way to punch
    * through it is one where every caller has to say out loud that it is reading.
    */

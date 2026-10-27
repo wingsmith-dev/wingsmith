@@ -11,21 +11,21 @@ import type { PlaneEvent } from "@/modules/machinery/types"
  *
  * This replaced a mocked log pane, and the replacement is not a like-for-like:
  * replica stdout is data-plane and never arrives here. What does arrive is the
- * more useful half for the question this tab is opened to answer — a workload
+ * more useful half for the question this tab is opened to answer: a workload
  * is not running and nobody can say why. Those lines exist, they are written by
  * three different writers, and until the plane learned to expand a workload
  * subject over its children they were unreachable from this page.
  *
  * The object filter is the point of the toolbar. One workload is many
  * deployments and each deployment many replicas, and "which of my clusters is
- * stuck" is answered by narrowing to one of them rather than by reading an
+ * stuck" is answered by narrowing to one of them, not by reading an
  * interleaved stream. `cache.*` lines are about the weights, which are shared by
- * every deployment on a cluster and so belong to no single one — they are their
- * own bucket rather than being duplicated into each.
+ * every deployment on a cluster and so belong to no single one: they are their
+ * own bucket instead of being duplicated into each.
  *
  * `workload.*` lines are the other bucket that belongs to no deployment, and for
  * the opposite reason: they are what the plane did before it had chosen a
- * cluster — the request landing, placement running, and where it went or why it
+ * cluster: the request landing, placement running, and where it went or why it
  * went nowhere. A workload that placed nowhere has only these, so they must be
  * reachable from a filter the deployment list cannot offer.
  */

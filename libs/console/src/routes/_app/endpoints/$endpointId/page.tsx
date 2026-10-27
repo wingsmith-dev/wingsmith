@@ -98,7 +98,7 @@ export function EndpointDetailPage() {
    * An endpoint reaches no cluster, so no cluster can be asked about one and the
    * answer carries no cluster at all. Two queries because they answer two
    * different questions: `live` is whichever span the toggle names, and
-   * `fortnight` is the availability strip — a 14-day figure is a 14-day window,
+   * `fortnight` is the availability strip: a 14-day figure is a 14-day window,
    * not fourteen of today's.
    */
   const live = useMetrics("endpoint", endpointId, windowQuery(chartWindow))
@@ -119,7 +119,7 @@ export function EndpointDetailPage() {
   )
   /**
    * Availability twice, because the toggle governs one of them and not the
-   * other. Same metric, two spans, and the page shows both rather than picking:
+   * other. Same metric, two spans, and the page shows both instead of picking:
    * a fortnight-wide figure hides an hour-old outage, and an hour-wide figure
    * hides a month of them.
    */
@@ -134,8 +134,8 @@ export function EndpointDetailPage() {
    * Resolves each endpoint target through the object graph the endpoint itself
    * does not carry: a target names only a deployment, and cluster, replicas,
    * serving and artifact all hang off that deployment's workload. Every
-   * lookup is defensive — a sparse payload or an un-drained option list leaves the
-   * entry undefined and the cells fall back to a dash rather than throwing.
+   * lookup is defensive: a sparse payload or an un-drained option list leaves the
+   * entry undefined and the cells fall back to a dash instead of throwing.
    */
   const resolved = useMemo(() => {
     const byDeployment = new Map<string, Deployment>(
@@ -170,7 +170,7 @@ export function EndpointDetailPage() {
     return primary ? resolved.get(primary.deployment_id) : undefined
   }, [endpoint?.targets, resolved])
 
-  /** The distinct regions this endpoint's targets land in — its region affinity. */
+  /** The distinct regions this endpoint's targets land in: its region affinity. */
   const regions = useMemo(() => {
     const seen = new Set<string>()
     for (const target of endpoint?.targets ?? []) {
@@ -320,7 +320,7 @@ export function EndpointDetailPage() {
             <>
               <span className="font-mono text-foreground">{endpoint.name}</span>{" "}
               stops answering. Clients calling this name start failing
-              immediately, and nothing behind it is torn down — resuming puts it
+              immediately, and nothing behind it is torn down: resuming puts it
               back.
             </>
           }
@@ -449,7 +449,7 @@ export function EndpointDetailPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Routing — real targets, weighted, with the deployment's
+                  {/* Routing: real targets, weighted, with the deployment's
                       observed state inlined. One card covers what traffic is
                       sent where and how it is doing. */}
                   <Card className="gap-0 overflow-hidden p-0">
@@ -587,7 +587,7 @@ export function EndpointDetailPage() {
                               colSpan={5}
                               className="py-10 text-center text-sm text-muted-foreground"
                             >
-                              No targets — this endpoint routes nowhere.
+                              No targets: this endpoint routes nowhere.
                             </TableCell>
                           </TableRow>
                         )}
@@ -597,7 +597,7 @@ export function EndpointDetailPage() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* Serving & artifact — the workload's serving config this
+                  {/* Serving & artifact: the workload's serving config this
                       name ultimately runs. */}
                   <Card>
                     <CardHeader className="pb-2">
@@ -685,7 +685,7 @@ export function EndpointDetailPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Activity — the event log, filtered by this endpoint. The
+                  {/* Activity: the event log, filtered by this endpoint. The
                       rows are its targets' deployments and their replicas: an
                       endpoint is a name and a weighting, and everything that
                       can go wrong with it goes wrong behind it. */}

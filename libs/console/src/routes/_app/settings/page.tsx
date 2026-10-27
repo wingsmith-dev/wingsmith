@@ -18,7 +18,7 @@ import { ConfigurationSection } from "./Configuration"
 import { AccessSection, PreferencesSection } from "./ConsoleSettings"
 
 /**
- * Three kinds of thing live here. **Definitions** are reference data — hardware
+ * Three kinds of thing live here. **Definitions** are reference data: hardware
  * types, scheduling classes and guardrails the rest of the console
  * points at; they are the plane's, read constantly and written rarely. **Plane**
  * is the running process described back to you: nothing under it is editable

@@ -67,8 +67,8 @@ export function useArtifact(ref: string) {
 }
 
 /**
- * One artifact's dependants — workloads and downstream artifacts — counted at
- * read time by the plane rather than stored on the object.
+ * One artifact's dependants, workloads and downstream artifacts, counted at
+ * read time by the plane, not stored on the object.
  */
 export function useArtifactUsage(ref: string) {
   return useQuery({
@@ -129,7 +129,7 @@ export function useArtifactUsages(ids: string[]) {
   )
 }
 
-/** Artifacts derived from this one — the quantizations and fine-tunes that name it as base. */
+/** Artifacts derived from this one: the quantizations and fine-tunes that name it as base. */
 export function useDerivedArtifacts(baseArtifact: string) {
   return useCursorList(
     ["artifacts", "derived", baseArtifact],
@@ -157,7 +157,7 @@ export function useArtifactQuantizations(ids: string[]) {
   }, [ids, workloads.data])
 }
 
-/** Every artifact, drained — workloads and adapter lists reference them by id. */
+/** Every artifact, drained: workloads and adapter lists reference them by id. */
 export function useArtifactOptions() {
   return useAllPages(["artifacts", "options"], (cursor) =>
     fetchArtifacts({}, cursor, 200)
@@ -165,7 +165,7 @@ export function useArtifactOptions() {
 }
 
 /**
- * A mutation rather than a query even though it only reads: resolving walks a
+ * A mutation instead of a query even though it only reads: resolving walks a
  * whole repo tree, so it happens when someone asks for it and its `isPending`
  * and `error` belong to that one press, not to a cache key.
  */
@@ -174,7 +174,7 @@ export function useArtifactOptions() {
  *
  * A read of `/artifacts/resolve` against the source the artifact was registered
  * from, so that a form has an answer for every field before anybody types. It is
- * a query rather than the mutation beside it because nothing here is a press: the
+ * a query instead of the mutation beside it because nothing here is a press: the
  * same weights resolve to the same proposal every time, and it is fetched the
  * moment an artifact is chosen so the defaults are already there.
  *
@@ -208,7 +208,7 @@ export function useCreateArtifact() {
 
 /**
  * Carries the artifact's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane rather than silently overwriting it.
+ * stale read is rejected by the plane, not silently overwriting it.
  */
 export function useUpdateArtifact() {
   const client = useQueryClient()
@@ -256,7 +256,7 @@ export function useDeleteArtifact() {
 }
 
 /**
- * One artifact's declared quality floors. Drained rather than paged: a set of
+ * One artifact's declared quality floors. Drained, not paged: a set of
  * baselines is a handful of rows and the table shows all of them at once.
  */
 export function useArtifactBaselines(ref: string) {
@@ -270,7 +270,7 @@ export function useArtifactBaselines(ref: string) {
 /**
  * The phases a workload or deployment has stopped moving in.
  *
- * `degraded` is deliberately absent: it is what a rolling update and a crash-looping replica
+ * `degraded` is absent: it is what a rolling update and a crash-looping replica
  * both look like, and both are mid-flight.
  */
 const SETTLED_PHASES = new Set(["running", "failed"])
@@ -285,7 +285,7 @@ export function useWorkloads(filters: WorkloadFilters = {}) {
  * One workload, polled while any of its clusters is still coming up.
  *
  * The rollup on a workload moves for as long as any of its deployments does, so
- * the interval follows the derived phase rather than one cluster's report.
+ * the interval follows the derived phase instead of one cluster's report.
  */
 export function useWorkload(ref: string, project?: string) {
   return useQuery({
@@ -305,7 +305,7 @@ export function useWorkload(ref: string, project?: string) {
  *
  * Placement is observed and moves as allocations are granted and replicas tie
  * to them, so it follows the workload's derived phase the same way the detail
- * query does rather than reading once and sitting on a cache.
+ * query does instead of reading once and sitting on a cache.
  */
 export function useWorkloadPlacement(ref: string, project?: string) {
   return useQuery({
@@ -316,7 +316,7 @@ export function useWorkloadPlacement(ref: string, project?: string) {
   })
 }
 
-/** Every workload, drained — deployments and endpoint targets resolve serving through them. */
+/** Every workload, drained: deployments and endpoint targets resolve serving through them. */
 export function useWorkloadOptions() {
   return useAllPages(["workloads", "options"], (cursor) =>
     fetchWorkloads({}, cursor, 200)
@@ -353,7 +353,7 @@ export function useUpdateWorkload() {
  * One workload's serving history, newest first.
  *
  * Not polled. Declared state that only this console's own writes move, and every one of those
- * already invalidates `["workloads"]` — a timer here would re-fetch an append-only list that
+ * already invalidates `["workloads"]`: a timer here would re-fetch an append-only list that
  * cannot have changed.
  */
 export function useWorkloadRevisions(ref: string, project?: string) {
@@ -412,7 +412,7 @@ export function useDeployments(filters: DeploymentFilters = {}) {
  * One deployment, polled while it is still coming up and left alone once it is not.
  *
  * Without the interval the page reads once and then sits on a cache for as long as it is open,
- * which is exactly the window somebody watching a deploy is looking at it — so a deployment that
+ * which is exactly the window somebody watching a deploy is looking at it, so a deployment that
  * reached `Serving` a minute ago still showed the `Applied` it was fetched at, and the only way
  * to see the truth was a browser reload. The manual refresh in the header covers the rest of the
  * page; this covers the part that moves on its own.
@@ -432,7 +432,7 @@ export function useDeployment(ref: string, cluster?: string) {
   })
 }
 
-/** Every deployment, drained — endpoint targets reference them by id. */
+/** Every deployment, drained: endpoint targets reference them by id. */
 export function useDeploymentOptions() {
   return useAllPages(["deployments", "options"], (cursor) =>
     fetchDeployments({}, cursor, 200)

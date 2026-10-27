@@ -27,7 +27,7 @@ import { useState } from "react"
 
 /**
  * The imperative surface. Drain, cordon, reset, warm, roll and upgrade all live
- * here rather than as flags hiding on the objects they act upon — an operation
+ * here, not as flags hiding on the objects they act upon: an operation
  * has an actor, a reason, attempts and a lifecycle, and a status field has none
  * of those. Beside them, the event feed: everything that happened, whether we
  * asked for it or not.
@@ -70,7 +70,7 @@ export function OperationsPage() {
       />
 
       <div className="space-y-4 p-4">
-        {/* Summary tiles — the plane's read-time rollup, windowed by its clock. */}
+        {/* Summary tiles: the plane's read-time rollup, windowed by its clock. */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             size="lg"
@@ -102,7 +102,7 @@ export function OperationsPage() {
             <TabsTrigger value="events">Events</TabsTrigger>
           </TabsList>
 
-          {/* OPERATIONS — things Hangar was asked to do, each with a lifecycle. */}
+          {/* OPERATIONS: things Hangar was asked to do, each with a lifecycle. */}
           <TabsContent value="operations" className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <FilterSelect
@@ -139,13 +139,13 @@ export function OperationsPage() {
             />
 
             <p className="px-1 text-2xs text-muted-foreground">
-              Most operations start from the resource they act on — cordon from
-              a node, roll from a deployment. This page is where you come back
-              to see whether they finished.
+              Most operations start from the resource they act on: cordon from a
+              node, roll from a deployment. This page is where you come back to
+              see whether they finished.
             </p>
           </TabsContent>
 
-          {/* EVENTS — everything that happened, whether the plane asked for it or not. */}
+          {/* EVENTS: everything that happened, whether the plane asked for it or not. */}
           <TabsContent value="events" className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <FilterSelect

@@ -9,8 +9,8 @@ import type {
 /**
  * Both routes are `POST` and neither writes anything.
  *
- * That is not a mistake in the contract: the question carries a body — a workload,
- * a project, a priority class, a scale — and none of that fits a GET's cache
+ * That is not a mistake in the contract: the question carries a body, a workload,
+ * a project, a priority class, a scale, and none of that fits a GET's cache
  * semantics when the answer changes every time a cluster reports.
  */
 export function previewPlacement(
@@ -31,10 +31,10 @@ export interface ReservationFilters {
 /**
  * Every promise the fleet is carrying, in one unpaginated array.
  *
- * No cursor, and that is the route's shape rather than an oversight here: a
+ * No cursor, and that is the route's shape instead of an oversight here: a
  * reservation lives only as long as a cluster takes to report what it bound, so
  * the collection is bounded by what is converging right now. Draining it is the
- * same reasoning the board applies to everything it counts — a reserved total
+ * same reasoning the board applies to everything it counts: a reserved total
  * answered over the first page is not a smaller answer, it is a wrong one.
  */
 export function fetchReservations(

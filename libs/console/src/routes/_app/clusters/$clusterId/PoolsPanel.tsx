@@ -11,7 +11,7 @@ import { toast } from "sonner"
 
 /**
  * The one declared thing on a cluster page, and so the only tab with writes on
- * it. Nodes and devices are observed and cannot be added or removed here — a
+ * it. Nodes and devices are observed and cannot be added or removed here: a
  * pool's node bounds are how "I want more nodes" is actually expressed.
  */
 export function ClusterPoolsPanel({

@@ -4,8 +4,8 @@
  * The plane merges what merges and refuses the rest, so everything here obeys
  * the same rule: rates and counts add across clusters because a rate over two
  * clusters is a rate over their union, and nothing else does. A utilization is
- * kept per cluster and drawn twice rather than averaged into a figure true of
- * no card. An hour no store reported is absent, never zero — an empty bucket
+ * kept per cluster and drawn twice, not averaged into a figure true of
+ * no card. An hour no store reported is absent, never zero: an empty bucket
  * and an idle one are different facts and only one of them is a measurement.
  */
 
@@ -20,7 +20,7 @@ import type {
  * One metric's curves added across clusters, aligned by timestamp.
  *
  * Only for the metrics the catalog calls `aggregate`. A bucket no cluster
- * reported is dropped rather than counted as zero.
+ * reported is dropped, not counted as zero.
  */
 export function sumCurvePoints(
   series: MetricSeries[],
@@ -98,7 +98,7 @@ export function meanUtilization(data: Metrics | undefined): number | null {
  * Cards held × hours, less the share of that time they were busy.
  *
  * A derivation and not a measurement, and it holds only while the workload kept
- * the same cards for the whole span — so it answers nothing when placement
+ * the same cards for the whole span, so it answers nothing when placement
  * reports no cards or the store reported no hours.
  */
 export function idleGpuHours(
@@ -122,9 +122,9 @@ export interface AvailabilityDay {
  * An endpoint's availability as one figure per calendar day, oldest first.
  *
  * The row always has `days` cells, because the shape of the strip is the point:
- * a fortnight drawn as four cells reads as a quiet fortnight rather than as ten
+ * a fortnight drawn as four cells reads as a quiet fortnight, not as ten
  * days nobody measured. A day the store answered nothing is `null` and must be
- * drawn as absence — a front door nobody called was not 0% available.
+ * drawn as absence: a front door nobody called was not 0% available.
  *
  * Local midnight, not UTC, because the reader compares these cells against a
  * day they remember.
@@ -168,7 +168,7 @@ export interface LatencyStage {
  * The stages of a request in the order it passes through them.
  *
  * Every one is a p95 except where the catalog registers its own percentile,
- * and the label carries which — a column of percentiles that were never asked
+ * and the label carries which: a column of percentiles that were never asked
  * for would be four numbers the store does not hold.
  */
 export const LATENCY_STAGES: readonly LatencyStage[] = [

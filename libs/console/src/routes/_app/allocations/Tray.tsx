@@ -52,15 +52,15 @@ import { Verdicts } from "./Verdicts"
 /**
  * The bricks: what could run, in the two forms the plane can describe it.
  *
- * A **workload** is a commitment — it has a scale, spread rules and replicas
+ * A **workload** is a commitment: it has a scale, spread rules and replicas
  * already holding devices, and it carries its own serving block, so the shape is
  * read straight off it. An **artifact** sits one step further back and answers a
- * different question — fitment says which cards could hold these weights at all —
- * so its rows arrive here as candidate shapes rather than as placements.
+ * different question, fitment says which cards could hold these weights at all,
+ * so its rows arrive here as candidate shapes, not as placements.
  *
  * Where the answer comes from matters and is labeled. A brick the plane can be
- * asked about — a declared workload, or any shape once somebody says which project
- * to charge — gets an authoritative verdict: only the plane sees quota, priority,
+ * asked about, a declared workload, or any shape once somebody says which project
+ * to charge, gets an authoritative verdict: only the plane sees quota, priority,
  * policy, residency and what would have to be preempted. Everything else is the
  * board's own arithmetic over devices and fabrics, marked `est.` because it can be
  * right about hardware and wrong about admission. Where the two disagree the plane
@@ -78,7 +78,7 @@ export function Tray({ board }: { board: Board | undefined }) {
    *
    * A workload names its own project; a shape nobody has declared does not, and
    * the plane will not answer without one because quota and policy are per
-   * project. So it is asked once here rather than per row.
+   * project. So it is asked once here, not per row.
    */
   const { data: projects } = useProjectOptions()
   const [project, setProject] = useState<string | null>(null)
@@ -203,7 +203,7 @@ function Group({
  *
  * Collapsed, it shows the board's own count: replicas held over replicas wanted,
  * and how many more the devices could take. Expanding asks the plane, and its
- * answer replaces the estimate — lazily, because each call costs the plane a pass
+ * answer replaces the estimate: lazily, because each call costs the plane a pass
  * over quota, policy and every cluster's capacity, and a tray of thirty bricks
  * should not ask thirty times to fill a column nobody has looked at.
  */
@@ -228,7 +228,7 @@ function BrickRow({
   /**
    * A declared workload is asked about by name; anything else is asked about by
    * shape, which `POST /placement/preview` now takes. Either way it needs a
-   * project, because capacity is read per project — a shape with nobody to charge
+   * project, because capacity is read per project: a shape with nobody to charge
    * it to is the one case that still falls back to the board's own arithmetic.
    */
   const askable = !!brick.workload || !!brick.project
@@ -310,7 +310,7 @@ function BrickRow({
     const source = authoritative ? "the plane's split" : "board estimate"
     const summary = `${ok.length} of ${plan.wanted} replicas · ${source}`
     if (lines.length > 0) {
-      toast.warning(`${brick.label} — ${summary}`, {
+      toast.warning(`${brick.label}: ${summary}`, {
         description: lines.slice(0, 3).join("\n"),
       })
     } else {
@@ -369,7 +369,7 @@ function BrickRow({
               title={
                 authoritative
                   ? "from the plane's decision"
-                  : "the board's own arithmetic — ignores quota, policy and preemption"
+                  : "the board's own arithmetic: ignores quota, policy and preemption"
               }
             >
               {plan.wanted === 0
@@ -427,7 +427,7 @@ function BrickRow({
           isLoading={asked.isLoading}
           disagreement={
             estimate && asked.data && !directed && estimate.plan.placed > 0
-              ? `The board finds room for ${estimate.plan.placed} of ${estimate.plan.wanted} on devices alone. The decision above is the authority — it also weighs quota, policy and preemption, and asks for a replica's devices contiguously.`
+              ? `The board finds room for ${estimate.plan.placed} of ${estimate.plan.wanted} on devices alone. The decision above is the authority: it also weighs quota, policy and preemption, and asks for a replica's devices contiguously.`
               : undefined
           }
         />
@@ -441,9 +441,9 @@ function BrickRow({
  *
  * This is the sizing question, not the placement one: which cards could hold
  * these weights at the window they publish, and how many of them. The plane says
- * so itself — a fit is not a promise a replica can be placed, because contiguity
- * inside a topology domain decides that — so these rows are shapes to try on the
- * board — and, once a project is named, ones the plane will rule on directly.
+ * so itself, a fit is not a promise a replica can be placed, because contiguity
+ * inside a topology domain decides that, so these rows are shapes to try on the
+ * board, and, once a project is named, ones the plane will rule on directly.
  */
 function ArtifactShapes({
   project,
@@ -532,7 +532,7 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
     device_class: fit.device_class,
     device_count: fit.device_count,
     /**
-     * The fit says how the replica is laid out, so this is read rather than
+     * The fit says how the replica is laid out, so this is read, not
      * guessed: tensor-parallel ranks share a node's interconnect, and pipeline
      * stages cross the backend fabric between nodes. A replica spanning nodes is
      * a normal answer for a large model, not a degraded one, so `node_count`

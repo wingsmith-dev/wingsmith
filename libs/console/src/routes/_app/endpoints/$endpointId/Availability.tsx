@@ -32,7 +32,7 @@ export function EmptyNote({ children }: React.PropsWithChildren) {
  * nobody is collecting and a metric that is flat at zero look identical.
  *
  * The unit comes off the first metric's series, and every metric passed
- * together must share it — they are drawn against one axis, and a chart mixing
+ * together must share it: they are drawn against one axis, and a chart mixing
  * seconds with a rate would label that axis with a lie.
  */
 export function Chart({
@@ -73,8 +73,8 @@ export function Chart({
 /**
  * Where the console draws the line on an availability figure.
  *
- * The measurement carries no threshold of its own — whether 99.4% is an outage
- * is a claim somebody made, and the plane deliberately declines to make it. The
+ * The measurement carries no threshold of its own, whether 99.4% is an outage
+ * is a claim somebody made, and the plane declines to make it. The
  * two numbers here are this console's reading color and nothing else; they are
  * not an SLO and no acceptance term is checked against them.
  */
@@ -87,9 +87,9 @@ export function availabilityTone(percent: number | null): StatTone {
 /**
  * The availability strip, one cell per day.
  *
- * A day the store answered nothing is drawn hollow rather than red. An endpoint
+ * A day the store answered nothing is drawn hollow, not red. An endpoint
  * nobody called, and an endpoint the gateway's metrics port was never scraped
- * for, were not unavailable — and a strip that says they were is the one thing
+ * for, were not unavailable, and a strip that says they were is the one thing
  * this cell must never do.
  *
  * The cells divide the width they are given, because `availabilityDays` always
@@ -123,17 +123,17 @@ export function AvailabilityBar({ days }: { days: AvailabilityDay[] }) {
  * Availability twice: over the span the toggle names, and over the fortnight.
  *
  * The headline obeys the toggle, because a fortnight-wide figure is the wrong
- * answer to "how is this name doing" — a name that has been failing for an hour
+ * answer to "how is this name doing": a name that has been failing for an hour
  * still reads green across fourteen days, and that is precisely the moment
  * somebody is looking at this page.
  *
  * The strip below it stays fixed at fourteen days and says so. It is the other
- * question — not what this name is doing, but how it has behaved — which is why
- * it sits above the log rather than in the stat strip.
+ * question (not what this name is doing, but how it has behaved) which is why
+ * it sits above the log, not in the stat strip.
  *
  * Both are `100 - failure_ratio`, counted over requests and not over time: this
  * is the share of calls the front door answered, and an endpoint nobody called
- * has no figure at all rather than a perfect one. That is why an absent reading
+ * has no figure at all instead of a perfect one. That is why an absent reading
  * is an em dash here and must never be drawn as 100%.
  */
 export function AvailabilityCard({

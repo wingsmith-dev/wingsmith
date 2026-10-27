@@ -36,9 +36,9 @@ const BOARD_KEYS = [
 /**
  * Clicking the background puts the inspector down.
  *
- * Opt-out rather than opt-in: anything that means something to click carries
- * `data-keeps-selection` and everything else — card padding, the gaps between
- * fabric rows, the space beside a short row — is background. The alternative is
+ * Opt-out, not opt-in: anything that means something to click carries
+ * `data-keeps-selection` and everything else, card padding, the gaps between
+ * fabric rows, the space beside a short row, is background. The alternative is
  * a handler on every leaf that stops propagation, which is the same rule spread
  * over thirty places and forgotten in one.
  */
@@ -52,9 +52,9 @@ function clearOnBackground(select: (selection: null) => void) {
 
 /**
  * The board: every device the fleet holds, nested the way capacity actually
- * nests — region, cluster, fabric, device, slice — painted by what holds it.
+ * nests (region, cluster, fabric, device, slice) painted by what holds it.
  *
- * Two things happen here and they are deliberately the same screen. Reading the
+ * Two things happen here and they are the same screen. Reading the
  * board answers "where is everything right now"; the sandbox answers "what if it
  * were somewhere else", by laying a plan over the observed allocations and
  * repainting from the result. Nothing in the sandbox is ever sent: allocations
@@ -76,7 +76,7 @@ export function AllocationsPage() {
 
   /**
    * Both boards at once. Every number in the plan panel is a difference, and a
-   * difference needs the thing it is a difference from — so the live board is
+   * difference needs the thing it is a difference from, so the live board is
    * still built while the sandbox is being played with.
    */
   const { board, planned, isLoading, error } = useFleetBoard({

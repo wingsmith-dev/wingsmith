@@ -20,7 +20,7 @@ interface SegTabsProps<T extends string> {
 /**
  * A segmented control, local to the overview.
  *
- * Deliberately not `components/ui/tabs`: nothing here switches a panel of
+ * Not `components/ui/tabs`: nothing here switches a panel of
  * content, these are filters over one list and a time window over one chart, and
  * a tablist with no tabpanel is the wrong thing to hand a screen reader.
  */

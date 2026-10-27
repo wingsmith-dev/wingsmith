@@ -22,7 +22,7 @@ import { Link } from "@tanstack/react-router"
  * A guess by construction, and it has to be: the plane stores whatever shape the
  * tool emitted and promises nothing about it. A run whose summary does not carry
  * these under these names shows a dash and is still perfectly readable on its
- * detail page — which is the right trade for not pretending to a schema.
+ * detail page, which is the right trade for not pretending to a schema.
  */
 function headline(run: BenchmarkRun, key: string): string {
   const summary = run.summary
@@ -40,8 +40,8 @@ function headline(run: BenchmarkRun, key: string): string {
  * not editable, and an affordance that suggested it was would be offering to
  * rewrite the record the table exists to be.
  *
- * `level` is passed in rather than read off the run, because a run does not
- * carry one — the request does. A caller that knows which ask these rows came
+ * `level` is passed in, not read off the run, because a run does not
+ * carry one: the request does. A caller that knows which ask these rows came
  * from says so and gets the claim drawn on every row; a caller listing the
  * whole fleet does not, and shows the ids the run actually has instead.
  */

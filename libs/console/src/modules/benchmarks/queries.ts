@@ -56,7 +56,7 @@ export function useBenchmark(ref: string) {
 /**
  * The runs against one deployment, newest first.
  *
- * Polled while any of them is open rather than on a fixed interval: the tab is
+ * Polled while any of them is open, not on a fixed interval: the tab is
  * usually looked at right after starting a run, and it should fill in without
  * the page being reloaded.
  */
@@ -78,7 +78,7 @@ export function useDeploymentBenchmarks(deployment: string | undefined) {
  * Keyed on the digest and not on the workload, which is what makes it stable: two
  * workloads configured identically share one rollup, and it survives the workload
  * being renamed or deleted. An unknown digest is a zero count, so this is asked
- * unconditionally rather than gated on whether any run exists.
+ * unconditionally, not gated on whether any run exists.
  */
 export function useServingBenchmarkSummary(digest: string | undefined) {
   return useQuery({
@@ -92,7 +92,7 @@ export function useServingBenchmarkSummary(digest: string | undefined) {
  * Every benchmark run taken against a workload, newest first.
  *
  * The plane filters runs by deployment, not by workload, and a workload run is
- * one run per placed deployment — so the workload's history is the union of its
+ * one run per placed deployment, so the workload's history is the union of its
  * deployments' runs, gathered here in one query and re-sorted by recency. A
  * workload with no deployments has no runs and is not fetched.
  */
@@ -139,7 +139,7 @@ export function useBenchmarkRequest(ref: string) {
 /**
  * The runs one request expanded into, ordered by the plane.
  *
- * `?request=` rather than a sub-collection, for the same reason the
+ * `?request=` instead of a sub-collection, for the same reason the
  * per-deployment tab is a filter: the run is the object, and the request is one
  * of several things it is filtered by.
  */
@@ -175,10 +175,10 @@ export function useRequestBands(request: string | undefined, open?: boolean) {
  * One request read as a load curve, polled while any of its steps is open.
  *
  * The same discipline as every other unfinished read here, keyed off the curve
- * itself rather than off a flag the caller has to keep true: a point carries
+ * itself, not off a flag the caller has to keep true: a point carries
  * its own phase, so the curve says when it has stopped moving and the polling
  * ends on the read that finished it. The version is part of the key for the
- * verdict's reason — the same ramp under two standards is two answers.
+ * verdict's reason: the same ramp under two standards is two answers.
  */
 export function useBenchmarkCurve(
   request: string | undefined | null,
@@ -264,7 +264,7 @@ export function useCreateBenchmarkRequest() {
 /**
  * The curve of a workload's most recent ramp, if it has ever run one.
  *
- * The request is recovered from the runs rather than listed: the plane has no
+ * The request is recovered from the runs, not listed: the plane has no
  * way to enumerate requests, and a request whose runs cover more than one step
  * is a stepped one by definition. One read, shared by the tiles and the panel
  * through the query cache.

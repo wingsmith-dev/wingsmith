@@ -28,13 +28,13 @@ const route = getRouteApi("/_app/workbench")
 /**
  * Every run in the fleet, whatever question it was asking.
  *
- * One list rather than one per kind, because the runs are one object — a
- * harness, a target, parameters, a result — and four pages differing only in a
+ * One list instead of one per kind, because the runs are one object, a
+ * harness, a target, parameters, a result, and four pages differing only in a
  * filter would be four places to look for "did it finish". The kind is the tab
  * strip and the first column instead.
  *
- * Runs rather than requests, because there is no collection of requests on the
- * wire — a request is reached through the runs it produced. `?request=` narrows
+ * Runs, not requests, because there is no collection of requests on the
+ * wire: a request is reached through the runs it produced. `?request=` narrows
  * this same table to one ask's children.
  */
 export function WorkbenchPage() {
@@ -48,7 +48,7 @@ export function WorkbenchPage() {
   /**
    * A kind is a group of harnesses and the plane filters by one harness name,
    * so a kind narrows server-side only while it has a single registered
-   * harness behind it — which is true of all three today.
+   * harness behind it, which is true of all three today.
    *
    * TODO: the plane should accept `kind` (or a repeated `harness`) on
    * `GET /v1/benchmarks`. Until it does, a kind that grows a second harness
@@ -72,7 +72,7 @@ export function WorkbenchPage() {
   })
 
   /**
-   * The invented rows sit in front of the real ones rather than being merged
+   * The invented rows sit in front of the real ones instead of being merged
    * into the page: the list is cursor-paginated, and splicing fake rows into a
    * page of real ones would put them in an order the cursor does not know
    * about. They also never appear while a request is being narrowed, because a
@@ -141,7 +141,7 @@ export function WorkbenchPage() {
         >
           {/*
             The kind is a tab and not a filter select because it is the axis
-            somebody arrives on — "is the conformance run green" — and because
+            somebody arrives on, "is the conformance run green", and because
             each one is a different question with a different answer column, not
             a narrowing of one list. The selects beside the table narrow within
             whichever question is open.

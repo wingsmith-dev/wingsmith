@@ -57,7 +57,7 @@ export function Committed({
         </TooltipTrigger>
         <TooltipContent className="max-w-64 text-2xs">
           The plane sent a value past what a JavaScript number holds exactly.
-          Read it with `hgr` rather than trusting a rounded figure here.
+          Read it with `hgr` instead of trusting a rounded figure here.
         </TooltipContent>
       </Tooltip>
     )
@@ -78,7 +78,7 @@ export function Committed({
 
 /**
  * Whether the gateway refuses on this commitment or only counts it. Shadow mode
- * is the loudest thing on the screen on purpose — an operator who believes a
+ * is the loudest thing on the screen: an operator who believes a
  * limit is live when it is not has sold a guarantee nothing upholds.
  */
 export function EnforcementBadge({ enforced }: { enforced: boolean }) {
@@ -112,7 +112,7 @@ export function ShadowNotice({
   if (shadowed === 0) return null
   return (
     <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-      {shadowed} of {total} loaded commitments are in shadow mode — counted and
+      {shadowed} of {total} loaded commitments are in shadow mode: counted and
       reported, never refused.
     </div>
   )
@@ -160,7 +160,7 @@ export function OnExceedBadge({
 /**
  * Whether what was promised clears the acceptance standard's floors. It compares
  * declared against declared and is not a measurement of what the endpoint
- * delivered — that lives on the metrics surface and is never spelled like this.
+ * delivered: that lives on the metrics surface and is never spelled like this.
  */
 export function StandardBadge({
   standard,
@@ -180,7 +180,7 @@ export function StandardBadge({
         </Badge>
       </TooltipTrigger>
       <TooltipContent className="max-w-72 text-2xs">
-        The acceptance standard's floors, compared against what was declared —
+        The acceptance standard's floors, compared against what was declared,
         not against anything measured. An uncommitted field is a shortfall.
       </TooltipContent>
     </Tooltip>

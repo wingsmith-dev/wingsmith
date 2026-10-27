@@ -19,7 +19,7 @@ const NOW = new Date("2026-08-27T12:00:00Z")
 const MINUTES = 60 * 1000
 
 // Factories carry only what a test asserts on; casting is deliberate, the way
-// summary.test.ts does it — restating forty wire fields would hide the one field
+// summary.test.ts does it: restating forty wire fields would hide the one field
 // that matters to the assertion.
 function replicas(
   over: Partial<Deployment["replicas"]> = {}
@@ -190,7 +190,7 @@ describe("stuckDeployments", () => {
     expect(stuckDeployments([wedged])[0].shortfall).toBe(3)
   })
 
-  it("treats a deployment with no timestamps as stuck rather than as settling", () => {
+  it("treats a deployment with no timestamps as stuck, not as settling", () => {
     const undated = deployment({
       admission_phase: "pending",
       queued_at: null,

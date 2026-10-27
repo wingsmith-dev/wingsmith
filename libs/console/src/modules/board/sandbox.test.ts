@@ -96,7 +96,7 @@ describe("fitOnFabric", () => {
     expect(fit.devices).toEqual(["n1-0", "n1-1", "n1-2", "n1-3"])
   })
 
-  it("names the shortfall rather than just refusing", () => {
+  it("names the shortfall, not just refusing", () => {
     const { board, assignments } = scene({ held: 6 })
     const fit = fitOnFabric(
       fabric(board, "iad-1-n01/nvswitch-0"),

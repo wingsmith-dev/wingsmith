@@ -16,7 +16,7 @@ interface Row {
 interface CollectionOptions<T extends Row> {
   path: string
   rows: () => T[]
-  /** Names a row answers to besides its id — `libs/packages/contract/API.md` §3. */
+  /** Names a row answers to besides its id: `libs/packages/contract/API.md` §3. */
   names?: (row: T) => (string | null | undefined)[]
   filter?: (row: T, query: FixtureQuery) => boolean
   /** What `?search=` matches against. */

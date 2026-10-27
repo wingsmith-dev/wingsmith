@@ -3,16 +3,16 @@ import type { StatusTone } from "@/components/layout/status-dot"
 /**
  * What a run is *asking*, one level above which harness answers it.
  *
- * A harness is an implementation — aiperf, evalscope, a probe suite. A kind is
+ * A harness is an implementation: aiperf, evalscope, a probe suite. A kind is
  * the question, and it is what somebody scanning this list is filtering by:
  * they came to find out whether the model is fast, whether it behaves like the
  * provider it claims to match, whether it still gets the answers right, or
  * whether a real client can drive it. Two harnesses answering the same question
  * belong under one filter; one harness never spans two.
  *
- * The mapping lives here rather than on the plane only because the plane's
- * harness table has no `kind` field yet. It should get one — the console is
- * currently deciding what a harness means, which is the plane's call — and this
+ * The mapping lives here, not on the plane only because the plane's
+ * harness table has no `kind` field yet. It should get one, the console is
+ * currently deciding what a harness means, which is the plane's call, and this
  * table becomes a fallback for a harness registered before that field existed.
  */
 export type RunKind =
@@ -66,7 +66,7 @@ export const RUN_KINDS: Record<RunKind, RunKindMeta> = {
   },
 }
 
-/** Display order — fastest question to slowest, which is also how often each is asked. */
+/** Display order: fastest question to slowest, which is also how often each is asked. */
 export const RUN_KIND_ORDER: RunKind[] = [
   "performance",
   "conformance",

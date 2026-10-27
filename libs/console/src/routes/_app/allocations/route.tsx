@@ -12,7 +12,7 @@ export interface AllocationsSearch {
   class?: string
   /** Focused on arrival, so a device page can point at its own cell. */
   device?: string
-  /** Group clusters under their region. Absent is off — the board starts at the cluster. */
+  /** Group clusters under their region. Absent is off: the board starts at the cluster. */
   regions?: true
 }
 

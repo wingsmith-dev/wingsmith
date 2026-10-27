@@ -124,8 +124,8 @@ function columns(clusterName: (id: string) => string): Column<Deployment>[] {
  *
  * This page is a drill-down, not a place you create anything: you do not make a
  * deployment, placement makes one when it expands a workload onto a cluster. It
- * is here for the per-cluster question — what is this cluster carrying, and
- * what is stuck admitting on it — which the workload page cannot answer without
+ * is here for the per-cluster question, what is this cluster carrying, and
+ * what is stuck admitting on it, which the workload page cannot answer without
  * making the reader open every workload in turn.
  *
  * `desired_replicas` is this cluster's SHARE of its workload's total. It must

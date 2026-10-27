@@ -40,7 +40,7 @@ import { revision, uid, uuid } from "./ids"
 /**
  * The offline corpus. Every row is typed as the schema the plane actually
  * returns, so a field the server does not send cannot be invented here and a
- * field it does send cannot be forgotten — a fixture that disagrees with the
+ * field it does send cannot be forgotten: a fixture that disagrees with the
  * server is worse than no fixture, because it makes a broken client's tests
  * pass.
  */
@@ -285,7 +285,7 @@ const SPECS: ClusterSpec[] = [
  * Values are the contract's, not invented ones: the fixture exists so the
  * console can be worked on without a plane, and a fixture that disagrees with
  * the contract makes a broken console look right. `rtx-6000-ada-48gb-pcie`
- * carries no devices on purpose — hardware we could take delivery of but do not
+ * carries no devices: hardware we could take delivery of but do not
  * own is half of what the catalog is for.
  */
 const CATALOG: Omit<DeviceClass, "inventory">[] = [
@@ -774,11 +774,11 @@ export const projects: Project[] = [
  * fitment matrix does the plane's arithmetic and a made-up shape would put the wrong
  * card at the top of a table somebody is learning to read.
  *
- * `bge-m3-embed` deliberately has none, but does record the source it came from.
+ * `bge-m3-embed` has none, but does record the source it came from.
  * That is the shape of the artifact `POST /artifacts/:ref/refresh` exists for: one
  * registered before the plane extracted shapes, sizable only to a weights floor, and
  * one re-read away from a priced context window. The console has to render the floor
- * as a note rather than an empty table, and then render what the refresh changed.
+ * as a note instead of an empty table, and then render what the refresh changed.
  */
 const LLAMA_70B_SHAPE = {
   num_hidden_layers: 80,
@@ -856,7 +856,7 @@ export const artifacts: Artifact[] = [
  * The serving blocks the three workloads below carry.
  *
  * Named separately only so the workload literals stay readable: there is no object
- * here and no id — a serving configuration belongs to the workload that declares
+ * here and no id: a serving configuration belongs to the workload that declares
  * it, and two identical ones are identical because their digests are.
  */
 const serving = {
@@ -1213,7 +1213,7 @@ export const deployments: Deployment[] = [
      *
      * Declared 1 prefill : 2 decode over two groups, so six processes are
      * wanted. Four decode are up and one prefill is, which makes the achieved
-     * quotient 1:4 against a declared 1:2 — legitimately disagreeing, because
+     * quotient 1:4 against a declared 1:2; legitimately disagreeing, because
      * the roles come up at different speeds and the quotient is derived rather
      * than stored. The scalars stay the group rollup and are right, less
      * precisely.
@@ -1281,7 +1281,7 @@ const SCALE_UNIT: Record<string, string> = {
  */
 /**
  * Which configurations are up in one cluster, derived from the rollout the corpus already
- * states rather than declared a second time.
+ * states, not declared a second time.
  *
  * A deployment whose ready replicas are not all at the current generation is mid-roll, and that
  * is exactly the state the column exists to render: the ones that have caught up are on the
@@ -1327,7 +1327,7 @@ function share(deployment: Deployment, declared: string): WorkloadDeployment {
 }
 
 /**
- * `placed` and `ready` are sums over the shares — the one place summing is
+ * `placed` and `ready` are sums over the shares: the one place summing is
  * legal, because it is the workload asking what its own expansion adds up to.
  */
 function scale(
@@ -1618,9 +1618,9 @@ interface Commitment {
   workload: string
   project: number
   count: number
-  /** How far into each node's free devices to start. Leaves gaps on purpose. */
+  /** How far into each node's free devices to start. Leaves gaps. */
   offset?: number
-  /** Hold MIG slices rather than whole cards. */
+  /** Hold MIG slices, not whole cards. */
   slices?: boolean
   overQuota?: boolean
   age: number
@@ -1682,7 +1682,7 @@ const COMMITMENTS: Commitment[] = [
 ]
 
 /**
- * Allocations built out of the devices they hold, rather than written beside
+ * Allocations built out of the devices they hold, not written beside
  * them.
  *
  * The device state is the one that has to agree: an allocation naming a device
@@ -1944,7 +1944,7 @@ export const operations: Operation[] = [
 /**
  * One deployment's timeline, so the Activity tab has something to show offline.
  *
- * Written as the awkward case rather than the happy one: weights that took a
+ * Written as the awkward case instead of the happy one: weights that took a
  * while, a rollout that filled in one replica at a time. A fixture where
  * everything worked immediately would not exercise the thing the tab exists to
  * make visible.
@@ -2317,7 +2317,7 @@ export const discoveredWorkloads: DiscoveredWorkload[] = [
 
 /**
  * Two runs against the same deployment at different concurrencies, plus one
- * that failed. Deliberately shaped like AIPerf's export rather than like
+ * that failed. Shaped like AIPerf's export, not like
  * anything this console defines: the summary is stored verbatim, and a fixture
  * that used a tidy invented schema would make the generic renderer look better
  * than it is against a real harness.

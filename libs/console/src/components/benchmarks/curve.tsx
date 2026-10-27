@@ -45,10 +45,10 @@ import { useMemo, useState } from "react"
  *
  * Throughput and latency are one trade, so both are drawn against the same
  * steps and share a hover: moving over either chart moves the readout on both,
- * which is what keeps the price of the next unit of load visible rather than
+ * which is what keeps the price of the next unit of load visible, not
  * inferred. They are separate cards because stacking two axes inside one frame
  * made each of them small and neither of them legible, and the trade is read
- * between the cards rather than inside a single crowded one.
+ * between the cards, not inside a single crowded one.
  *
  * Nothing here is computed from the runs. The curve and the knee are the
  * plane's read, derived against the pinned criteria version and stored nowhere;
@@ -56,7 +56,7 @@ import { useMemo, useState } from "react"
  * second, quieter answer to where a configuration saturates.
  *
  * Three absences are drawn three ways and never as a zero. A reading the plane
- * could not resolve is a hole in the line — plotting it at zero would be a lie
+ * could not resolve is a hole in the line: plotting it at zero would be a lie
  * about the hardware. A step whose run is still open is a pending tick, which
  * is what makes a running ramp fill itself in. A warm-up is a hollow mark
  * joined to nothing, because a discarded run is kept, shown, and counted by
@@ -160,7 +160,7 @@ function NeverRamped({
         <IconChartLine className="size-4 shrink-0 opacity-60" />
         {placed
           ? "No ramp has been run against this workload. A ramp walks one concurrency at a time and is what a knee is read from."
-          : "Nothing to measure yet — placement has not put this workload on a cluster."}
+          : "Nothing to measure yet: placement has not put this workload on a cluster."}
       </div>
       <WriteAction>
         <Button size="sm" disabled={!placed} onClick={onStartRamp}>
@@ -224,7 +224,7 @@ const DOT: Record<CurveTone, string> = {
 /**
  * A measured ramp, as three cards: one chart each, then the evidence.
  *
- * The hover index lives here rather than in either chart, so pointing at a step
+ * The hover index lives here, not in either chart, so pointing at a step
  * on one moves the readout on the other. Two charts that each tracked their own
  * pointer would let a reader compare latency at one load against throughput at
  * a different one without noticing.

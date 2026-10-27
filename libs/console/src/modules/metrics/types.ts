@@ -92,7 +92,7 @@ export interface SlaObjective {
  *
  * `availability` and `failure_ratio` are percentages on 0-100. `met` and
  * `error_budget_consumed` are `null` whenever the reading or the commitment
- * they need is missing — never a `false` that means "not measured".
+ * they need is missing, never a `false` that means "not measured".
  */
 export interface SlaReport {
   endpoint: string

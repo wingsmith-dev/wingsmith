@@ -4,7 +4,7 @@ import { topologyKindLabel } from "@/modules/supply/display"
 import { useTopologyDomains } from "@/modules/supply/queries"
 
 /**
- * Topology for one node, read from `/topology-domains?node=` — the standalone
+ * Topology for one node, read from `/topology-domains?node=`: the standalone
  * collection is the authority, and a node payload carries no domains of its
  * own to inline.
  */

@@ -117,8 +117,8 @@ export function PlanPanel({
         )}
 
         <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
-          A plan stays here. Allocations are observed state with one writer —
-          the cluster — so there is nothing to submit and nothing to apply.
+          A plan stays here. Allocations are observed state with one writer, the
+          cluster, so there is nothing to submit and nothing to apply.
         </p>
       </CardContent>
     </Card>

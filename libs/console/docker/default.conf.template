@@ -9,7 +9,7 @@ server {
     gzip_types text/css application/javascript application/json image/svg+xml;
     gzip_min_length 1024;
 
-    # add_header in a location replaces the server-level set rather than adding to it, so every
+    # add_header in a location replaces the server-level set instead of adding to it, so every
     # location includes the same snippet.
     include /etc/nginx/hangar/security-headers.conf;
 

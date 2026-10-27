@@ -30,7 +30,7 @@ import { Link, useParams } from "@tanstack/react-router"
  * One run, and the ask it came from.
  *
  * Everything on this page is observed and none of it is editable. The level is
- * read off the request rather than guessed from which ids the run happens to
+ * read off the request, not guessed from which ids the run happens to
  * carry: a deployment-level and a workload-level run both name a deployment,
  * and the difference between them is the whole claim.
  */
@@ -39,9 +39,9 @@ export function BenchmarkDetailPage() {
   const mock = isMockId(runId)
 
   /*
-    A mock id resolves locally and asks the plane nothing. The alternative — a
-    fetch that 404s and an error screen behind the row somebody just clicked —
-    makes the switch look broken rather than deliberate.
+    A mock id resolves locally and asks the plane nothing. The alternative, a
+    fetch that 404s and an error screen behind the row somebody just clicked,
+    makes the switch look broken, not deliberate.
   */
   const query = useBenchmark(mock ? "" : runId)
   const run = mock ? mockRun(runId) : query.data
@@ -178,7 +178,7 @@ export function BenchmarkDetailPage() {
                     </Field>
                     <Field label="Requested by">{run.requested_by}</Field>
                     <Field label="Counted">
-                      {run.discard ? "no — discarded warm-up" : "yes"}
+                      {run.discard ? "no: discarded warm-up" : "yes"}
                     </Field>
                     <Field label="Image" className="sm:col-span-2">
                       <Dash>{run.image}</Dash>
@@ -288,7 +288,7 @@ export function BenchmarkDetailPage() {
                 </pre>
                 <p className="mt-1 text-2xs text-muted-foreground">
                   Tail-capped by the operator at ~64 KiB. The full run, when it
-                  happens, lives under artifacts_uri — not here.
+                  happens, lives under artifacts_uri, not here.
                 </p>
               </div>
             )}
@@ -302,8 +302,8 @@ export function BenchmarkDetailPage() {
 /**
  * The result, rendered as the kind that produced it.
  *
- * Everything above is a fact about a run — its harness, its parameters, what
- * was behind it when it went — and reads identically whatever was asked. This
+ * Everything above is a fact about a run, its harness, its parameters, what
+ * was behind it when it went, and reads identically whatever was asked. This
  * is the half that does not: a percentile block, a claim ledger, a transcript
  * and a score table share no axis, and rendering all four through one generic
  * key-value dump is how a result page becomes something nobody opens.

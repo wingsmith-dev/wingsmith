@@ -12,7 +12,7 @@ export interface Operator {
 /**
  * Human access is a single operator: the plane issues one admin session for one
  * admin password (`POST /v1/auth/login`), so there is no per-person identity to
- * show. This names the role in the chrome rather than inventing a user.
+ * show. This names the role in the chrome instead of inventing a user.
  */
 const ADMIN_OPERATOR: Operator = {
   id: "op_admin",
@@ -34,7 +34,7 @@ interface LoginResponse {
  *
  * It is read off the login response and never off what was typed. A slug is a
  * claim until the credential behind it is verified, and the plane refuses a
- * tenant session on every other route regardless — this only decides what to
+ * tenant session on every other route regardless: this only decides what to
  * render, so that a tenant is not shown a navigation full of 401s.
  */
 export type SessionKind = "admin" | "tenant"
@@ -60,7 +60,7 @@ export const useAuthStore = create<AuthState>()(
       kind: "admin",
       tenant: null,
       /**
-       * Deliberately not routed through `httpTransport`: that attaches the bearer
+       * Not routed through `httpTransport`: that attaches the bearer
        * token this call exists to obtain, and its fixtures mode would answer a
        * login the plane never saw.
        */

@@ -14,8 +14,8 @@ export const LIMIT_SCOPE_LABEL: Record<LimitScope, string> = {
 
 /**
  * There is no shared counter across gateway replicas, so one of two error
- * directions has to be chosen, and the choice is spelled out where it is made
- * rather than left to a document nobody opens while editing a commitment.
+ * directions has to be chosen, and the choice is spelled out where it is made,
+ * not left to a document nobody opens while editing a commitment.
  */
 export const LIMIT_SCOPE_MEANING: Record<LimitScope, string> = {
   per_replica:
@@ -26,7 +26,7 @@ export const LIMIT_SCOPE_MEANING: Record<LimitScope, string> = {
 
 /**
  * A queue timeout only means something while traffic queues. The plane refuses
- * a timeout set beside `reject` rather than storing a number nothing reads, so
+ * a timeout set beside `reject` instead of storing a number nothing reads, so
  * the form drops it on the way out instead of surfacing that as an error.
  */
 export function queueTimeoutFor(
@@ -44,7 +44,7 @@ export const ON_EXCEED_MEANING: Record<OnExceed, string> = {
 
 /**
  * Grouped digits in en-US, and never compacted. The console is English-only, so
- * the locale is pinned rather than taken from the runtime — and "10M" would hide
+ * the locale is pinned, not taken from the runtime, and "10M" would hide
  * whether 10,500,000 was what somebody sold.
  */
 const GROUPED = new Intl.NumberFormat("en-US")
@@ -56,8 +56,8 @@ export function formatLimit(value: number): string {
 /**
  * Whether a limit arrived larger than a JS number can hold exactly. The wire
  * carries these as BIGINT, and `JSON.parse` has already rounded anything past
- * `Number.MAX_SAFE_INTEGER` by the time it reaches here — so the value is
- * flagged rather than presented as though it were the number that was sold.
+ * `Number.MAX_SAFE_INTEGER` by the time it reaches here, so the value is
+ * flagged, not presented as though it were the number that was sold.
  */
 export function beyondSafeInteger(value: number | null): boolean {
   return value !== null && !Number.isSafeInteger(value)
@@ -90,8 +90,8 @@ export const COMMITTED_LIMITS = [
 
 /**
  * Whether the row names no limit at all. Every axis uncommitted has the same
- * effect as having no row — the gateway limits nothing — and an operator
- * reading a table of commitments should be told that rather than left to
+ * effect as having no row, the gateway limits nothing, and an operator
+ * reading a table of commitments should be told that, not left to
  * notice five blanks in a row.
  */
 export function commitsNothing(quota: ServingQuota): boolean {

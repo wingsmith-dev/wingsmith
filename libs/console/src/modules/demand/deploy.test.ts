@@ -249,7 +249,7 @@ describe("derivedServingRequest", () => {
      * carried across asked for 4 × 192 GiB to serve a 383 GiB model; re-dividing the
      * replica total fixed that one and broke the next, because gemma-4-26b was suggested
      * across 2 devices at the declared 131k window and sent to the 1 device the fit
-     * chose — 122 GiB per card, from a card that has 96, refused outright.
+     * chose: 122 GiB per card, from a card that has 96, refused outright.
      *
      * Both are the same mistake: the suggestion prices a configuration nobody submitted.
      * A floor is a statement about hardware, so nobody but the operator makes it.
@@ -274,7 +274,7 @@ describe("derivedServingRequest", () => {
     expect(request.shape.device_memory_mib_min).toBe(81_920)
   })
 
-  it("treats a cleared floor as no floor rather than as a zero somebody meant", () => {
+  it("treats a cleared floor as no floor, not as a zero somebody meant", () => {
     const request = derivedServingRequest(
       artifact,
       footprint,

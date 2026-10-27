@@ -18,8 +18,8 @@ import { useMemo, useState } from "react"
  * The acceptance ledger: one row per behavioral claim, and whether it matches.
  *
  * This is a different table from every other one in the console and the
- * difference is deliberate. Density is the feature — fifty rows have to be
- * legible without scrolling past the failure — so a row is one line, the
+ * difference is deliberate. Density is the feature, fifty rows have to be
+ * legible without scrolling past the failure, so a row is one line, the
  * verdict is a color in a fixed column, and nothing is padded for air.
  *
  * The three outcomes are drawn as three things, never as pass and not-pass.
@@ -52,7 +52,7 @@ const OUTCOME_STYLE: Record<
 type Filter = ProbeOutcome | "all"
 
 /**
- * The suite view — a whole conformance run, read as a ledger.
+ * The suite view: a whole conformance run, read as a ledger.
  *
  * `reference` is the endpoint the diff is against. Without one there is no
  * verdict at all, only a record of what was observed, and the interface says so
@@ -104,7 +104,7 @@ export function ConformanceSuite({
         <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-warning">
           No reference endpoint was set, so nothing here is a verdict. These
           rows record what this endpoint answered and nothing about whether that
-          is what it should have answered — the standard asks for consistency
+          is what it should have answered: the standard asks for consistency
           with the original provider, and consistency needs two endpoints.
         </p>
       )}
@@ -114,7 +114,7 @@ export function ConformanceSuite({
   )
 }
 
-/** The run view — the same ledger, for one run rather than a whole suite. */
+/** The run view: the same ledger, for one run instead of a whole suite. */
 export function ConformanceRun({ id }: { id: string }) {
   const rows = useMemo(() => mockProbes(id), [id])
   const counts = tally(rows)

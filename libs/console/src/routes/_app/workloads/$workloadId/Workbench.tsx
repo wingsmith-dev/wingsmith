@@ -60,9 +60,9 @@ export function WorkbenchView({
         />
         {/*
         Rolled up by the plane per `serving_digest`, so it counts every
-        graded run of this configuration — including runs taken against a
+        graded run of this configuration, including runs taken against a
         different workload that happens to be configured identically, which
-        is the point of measuring a configuration rather than a name.
+        is the point of measuring a configuration instead of a name.
       */}
         <StatTile
           label="Peak throughput tested"
@@ -123,7 +123,7 @@ export function WorkbenchView({
 
           <Unbacked
             title="Engine-argument sweep"
-            note="Walking the serving engine's own flags is a different request object to a ramp: a ramp walks one harness parameter, and max_num_seqs, the KV block size and speculative decoding live on the workload's engine args. Nothing on the plane expands that yet, so no numbers are shown rather than invented ones."
+            note="Walking the serving engine's own flags is a different request object to a ramp: a ramp walks one harness parameter, and max_num_seqs, the KV block size and speculative decoding live on the workload's engine args. Nothing on the plane expands that yet, so no numbers are shown, not invented ones."
           />
 
           <Unbacked

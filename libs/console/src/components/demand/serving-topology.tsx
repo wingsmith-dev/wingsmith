@@ -52,7 +52,7 @@ import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
  * Whether the workload is served by one process per replica or two.
  *
  * On the detail panel it sits beside parallelism because it is the same kind of
- * fact — it decides the footprint. An aggregated workload gets no badge at all
+ * fact: it decides the footprint. An aggregated workload gets no badge at all
  * instead of a gray one saying so: the overwhelming majority are aggregated,
  * and a badge on every one of them stops being a signal.
  */
@@ -95,7 +95,7 @@ function AchievedLine({
  * The rollout state worth watching is precisely which role is short, and a
  * single number cannot carry it. One role at zero gets the loud treatment and
  * the others do not, because a deployment with every decode worker up and no
- * prefill worker is not serving degraded — it is serving nothing.
+ * prefill worker is not serving degraded: it is serving nothing.
  */
 export function RoleReadinessLine({
   roles,
@@ -129,17 +129,17 @@ export function RoleReadinessLine({
 /**
  * The ratio, as the cheap thing it is: two steppers and one Apply.
  *
- * Free in the literal sense — the weights are outside `serving_digest`, so a
+ * Free in the literal sense: the weights are outside `serving_digest`, so a
  * change here is a scale. Rendering prefill's count into prefill's component
  * leaves decode's component byte-identical, byte-identical components keep
  * their names, and pods that keep their names do not restart. It was verified
- * on hardware rather than reasoned about: prefill 1 to 3 renamed nothing and
+ * on hardware, not reasoned about: prefill 1 to 3 renamed nothing and
  * left the decode Deployment on its original UID, and the warm path holds too,
  * so an added prefill worker cannot cold-start the cache the others are using.
  *
  * So there is no confirmation on this path and there must not be one. This is
- * the action we expect somebody to take often — it is the whole point of the
- * feature — and a confirmation here would flatten the distinction the panel
+ * the action we expect somebody to take often, it is the point of the
+ * feature, and a confirmation here would flatten the distinction the panel
  * below is built to draw.
  */
 function RatioControl({
@@ -248,11 +248,11 @@ function RatioControl({
 
       {stranded && (
         /* Said here because nothing else will say it. The plane spells this
-           arithmetic and cannot run it — the declaration path has no device
-           budget — so a ratio that strands a node produces no error anywhere,
+           arithmetic and cannot run it: the declaration path has no device
+           budget, so a ratio that strands a node produces no error anywhere,
            which is precisely why it is worth a line at the moment of choosing. */
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-warning">
-          {stranded}. Nothing refuses this — the devices are simply held and
+          {stranded}. Nothing refuses this: the devices are simply held and
           idle.
         </p>
       )}
@@ -318,7 +318,7 @@ function Stepper({
  * teaches people to skip the line it sits on.
  *
  * The first sentence is whether the model serves, because that is the whole
- * decision. Rolling happens in place — one worker at a time within a role — so
+ * decision. Rolling happens in place, one worker at a time within a role, so
  * a role with two or more workers keeps one up and the model runs slower, while
  * a role with exactly one goes to zero, and a decode worker with no prefill peer
  * has nothing to decode from. Those are not two shades of the same warning; they
@@ -340,14 +340,14 @@ function RollCost({ cost }: { cost: RolloutCost }) {
         <p className="font-medium">
           The model stops serving for the whole reload. There is one{" "}
           {cost.roleAtRisk} worker, and while it reloads there is no{" "}
-          {cost.roleAtRisk} process at all — every request fails, rather than
+          {cost.roleAtRisk} process at all: every request fails, instead of
           running slower.
         </p>
       )}
       <p>
         Both roles are renamed and all {cost.workers} workers reload the
-        model&rsquo;s weights — {counts}. A role&rsquo;s workers reload one
-        after another, so the roll lasts {cost.longest.workers} weight{" "}
+        model&rsquo;s weights: {counts}. A role&rsquo;s workers reload one after
+        another, so the roll lasts {cost.longest.workers} weight{" "}
         {cost.longest.workers === 1 ? "load" : "loads"} end to end, set by{" "}
         {cost.longest.role}. Dynamo hashes one worker spec across the whole
         graph, so editing either role replaces the other role&rsquo;s pods too.
@@ -357,13 +357,13 @@ function RollCost({ cost }: { cost: RolloutCost }) {
 }
 
 /**
- * What each role IS — locked, because the lock is the design.
+ * What each role IS: locked, because the lock is the design.
  *
  * These fields and the ratio above sit in one panel and cost radically
  * different things: the ratio adds workers and reloads nothing, and these
  * rename every pod in the graph and reload every one of them. Two controls that
  * look alike and are not is the failure this panel exists to prevent, and it
- * prevents it spatially — a stray keystroke cannot reach a locked field, so the
+ * prevents it spatially: a stray keystroke cannot reach a locked field, so the
  * two paths are not the same gesture in the same place.
  *
  * Unlocking is deliberate and recoverable, which is the right size of gesture
@@ -403,7 +403,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
               serving_topology: "disaggregated",
               /* The weights ride along unchanged. The block replaces whole,
                  the way every sub-block of `serving` does, so omitting them
-                 would read as a request to reset the ratio rather than to
+                 would read as a request to reset the ratio, not to
                  leave it alone. */
               roles: declared.map((role) => ({
                 role: role.role,
@@ -494,7 +494,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
 
       {refused.length > 0 && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 px-2.5 py-1.5 text-2xs text-destructive">
-          {refused.join(", ")} — rendered from a declared column or from the
+          {refused.join(", ")}: rendered from a declared column or from the
           topology, so a value here contradicts a decision already acted on. The
           plane refuses it.
         </p>
@@ -558,12 +558,12 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
 }
 
 /**
- * What each role is, and what it costs — the declared half, not the observed one.
+ * What each role is, and what it costs: the declared half, not the observed one.
  *
  * Two zones, and the split between them is the argument: the ratio is free and
  * lives behind one click, the configuration is destructive and lives behind a
- * lock. Putting them in one panel is deliberate — they are both "what the roles
- * are", and somebody looking for one will find the other — but they must not
+ * lock. Putting them in one panel is deliberate, they are both "what the roles
+ * are", and somebody looking for one will find the other, but they must not
  * look like one control.
  */
 export function RolesPanel({
@@ -573,7 +573,7 @@ export function RolesPanel({
   workload: Workload
   /**
    * Devices this workload can expect to have, for the stranding arithmetic.
-   * Absent means no budget is known and nothing is said, rather than a guess.
+   * Absent means no budget is known and nothing is said, instead of a guess.
    */
   budgetDevices?: number
 }) {
@@ -594,7 +594,7 @@ export function RolesPanel({
               {/* Achieved per cluster, because the quotient is a fact about one
                   deployment's pods and averaging two clusters would produce a
                   ratio no cluster is running. Clusters that report no roles
-                  contribute no line rather than a blank one. */}
+                  contribute no line instead of a blank one. */}
               {workload.deployments.map((deployment) =>
                 deployment.status?.roles?.length ? (
                   <AchievedLine

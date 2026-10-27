@@ -36,7 +36,7 @@ function shapeLabel(shape: Record<string, unknown>): string {
 /**
  * Two panels, never one. min/max is intent; node and device counts are what the
  * cluster came back with. `within_declared_bounds` is the plane's own verdict
- * rather than a comparison re-derived here, so the console and `hgr` cannot
+ * instead of a comparison re-derived here, so the console and `hgr` cannot
  * disagree about whether a pool is outside what was asked for.
  */
 export function PoolCard({

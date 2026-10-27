@@ -304,8 +304,8 @@ export function DeploymentDetailPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Serving</CardTitle>
                       <p className="font-mono text-2xs text-muted-foreground">
-                        The workload's, not the deployment's — every cluster
-                        runs the same configuration.
+                        The workload's, not the deployment's: every cluster runs
+                        the same configuration.
                       </p>
                     </CardHeader>
                     <CardContent>
@@ -349,7 +349,7 @@ export function DeploymentDetailPage() {
                 <div className="flex items-start justify-between gap-4">
                   <p className="max-w-2xl text-xs text-muted-foreground">
                     Load is generated inside the cluster and aimed at its own
-                    frontend — no inference traffic crosses the control plane.
+                    frontend: no inference traffic crosses the control plane.
                     Results are kept in the harness's own shape, so two runs
                     compare when their harness and version match.
                   </p>

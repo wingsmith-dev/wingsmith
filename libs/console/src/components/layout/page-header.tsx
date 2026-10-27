@@ -9,13 +9,13 @@ interface PageHeaderProps {
    * A way back out, drawn to the left of the title *and* its description.
    *
    * Inside `title` it would sit on the title's own line, leaving the id
-   * underneath it rather than beside it — the arrow leaves the whole heading,
+   * underneath it, not beside it: the arrow leaves the whole heading,
    * so it belongs next to the whole heading.
    */
   back?: React.ReactNode
   /** Suppressed in read-only mode: every header action starts a write. */
   actions?: React.ReactNode
-  /** Actions that read rather than write, and so survive read-only mode. */
+  /** Actions that read, not write, and so survive read-only mode. */
   readActions?: React.ReactNode
   className?: string
 }

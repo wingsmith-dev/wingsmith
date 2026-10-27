@@ -5,19 +5,19 @@ export const HATCH =
 
 /**
  * What the cells mean. Color is reserved for workloads, so every state a
- * device can be in has to be told by texture instead — dashed for free, hatched
+ * device can be in has to be told by texture instead: dashed for free, hatched
  * for unusable, banded for partitioned.
  *
  * `reserved` is the one entry whose cells are a guess. It is capacity a cluster
  * owes a deployment that has not bound anything yet, and the cluster has not
- * said which accelerators it will use — so the board picks plausible ones and
+ * said which accelerators it will use, so the board picks plausible ones and
  * paints them in the workload's own color, washed out and dashed to say they
- * are being claimed rather than held. The cells are indicative and the count in
+ * are being claimed, not held. The cells are indicative and the count in
  * the tally is exact; the hover text on every one of them says which is which.
  *
- * Its swatch is drawn twice on purpose — a cell and a bar. The cell is what to
+ * Its swatch is drawn twice: a cell and a bar. The cell is what to
  * look for on the board; the bar is the same fact on a cluster's utilization
- * strip, where a promise is a proportion of capacity rather than a square.
+ * strip, where a promise is a proportion of capacity instead of a square.
  */
 export function Legend() {
   return (
@@ -60,7 +60,7 @@ export function Legend() {
 }
 
 /**
- * One key. `bar`, when given, is a second swatch drawn beside the cell — for the
+ * One key. `bar`, when given, is a second swatch drawn beside the cell, for the
  * one state that appears both as a device and as a share of a utilization strip.
  */
 function Item({

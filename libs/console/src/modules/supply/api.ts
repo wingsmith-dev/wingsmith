@@ -13,7 +13,7 @@ import type {
 /**
  * Every filter name below is the plane's, not the console's. Litestar drops
  * query params it does not declare without complaining, so a filter spelled
- * `cluster_id` is not a filter that fails — it is a filter that silently
+ * `cluster_id` is not a filter that fails: it is a filter that silently
  * returns everything.
  */
 export interface NodeFilters {
@@ -89,8 +89,8 @@ export function fetchDevice(ref: string): Promise<Device> {
 }
 
 /**
- * The catalog is not paginated — it is bounded by the hardware that exists —
- * so this returns the array rather than a cursor page.
+ * The catalog is not paginated, it is bounded by the hardware that exists,
+ * so this returns the array instead of a cursor page.
  */
 export async function fetchDeviceClasses(
   filters: DeviceClassFilters = {}

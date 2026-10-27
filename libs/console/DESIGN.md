@@ -1,4 +1,4 @@
-# Console — design brief
+# Console: design brief
 
 What the console must feel like to use, and what it must never look like. The system it is a
 window onto is described in [`docs/architecture`](../../docs/architecture/README.md); this file constrains
@@ -16,7 +16,7 @@ Precise, operational, calm. Hangar should feel trustworthy under pressure and co
 
 ## Anti-references
 
-Avoid generic cloud-console dashboards made from interchangeable metric cards, decorative sci-fi infrastructure visuals, and telemetry walls that expose every available signal without helping an operator decide what matters. Avoid the Kubernetes-dashboard lineage — Lens, Rancher, raw CRD trees — where the user is handed cluster primitives and left to reconstruct intent. Avoid hiding domain relationships behind Kubernetes terminology or requiring users to rebuild cross-cluster intent from per-cluster objects.
+Avoid generic cloud-console dashboards made from interchangeable metric cards, decorative sci-fi infrastructure visuals, and telemetry walls that expose every available signal without helping an operator decide what matters. Avoid the Kubernetes-dashboard lineage (Lens, Rancher, raw CRD trees) where the user is handed cluster primitives and left to reconstruct intent. Avoid hiding domain relationships behind Kubernetes terminology or requiring users to rebuild cross-cluster intent from per-cluster objects.
 
 ## Design Principles
 

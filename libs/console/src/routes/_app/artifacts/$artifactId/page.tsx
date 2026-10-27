@@ -53,7 +53,7 @@ function Json({ value }: { value: unknown }) {
   )
 }
 
-/** The digest is the identity, so it is shown whole here — the list truncates it. */
+/** The digest is the identity, so it is shown whole here: the list truncates it. */
 export function ArtifactDetailPage() {
   const { artifactId } = useParams({ from: "/_app/artifacts/$artifactId" })
   const { data: artifact, isLoading, error } = useArtifact(artifactId)
@@ -228,7 +228,7 @@ function FilesPanel({ artifact }: { artifact: Artifact }) {
       <CardContent>
         {artifact.locations.length === 0 ? (
           <p className="font-mono text-2xs text-muted-foreground">
-            No location registered — nothing can pull these bytes yet.
+            No location registered: nothing can pull these bytes yet.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
@@ -397,7 +397,7 @@ function BaselinesPanel({
           <Skeleton className="h-16 w-full" />
         ) : rows.length === 0 ? (
           <p className="font-mono text-2xs text-muted-foreground">
-            No baseline recorded — an acceptance review has nothing to compare
+            No baseline recorded: an acceptance review has nothing to compare
             against.
           </p>
         ) : (
@@ -514,7 +514,7 @@ function LineagePanel({
   )
 }
 
-/** The identity block — what the publisher said and what we believe. */
+/** The identity block: what the publisher said and what we believe. */
 function DetailsPanel({ artifact }: { artifact: Artifact }) {
   const upstream: ArtifactUpstream = {
     input_modalities: [],

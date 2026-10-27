@@ -241,7 +241,7 @@ function thresholdColumns(
  * Alerting, both halves, kept apart.
  *
  * The thresholds are declared and fully writable; the alerts are derived and
- * carry no edit affordance at all — only the two lifecycle verbs the plane
+ * carry no edit affordance at all, only the two lifecycle verbs the plane
  * offers, and those live in the detail sheet beside the number that produced
  * the alert. Which number that is, and whether it is the fleet default or an
  * override, is the question this screen exists to answer: an operator who
@@ -414,7 +414,7 @@ export function AlertsPage() {
             />
 
             <p className="px-1 font-mono text-2xs text-muted-foreground">
-              * inherited from the rule rather than declared on the row.
+              * inherited from the rule, not declared on the row.
             </p>
           </TabsContent>
         </Tabs>

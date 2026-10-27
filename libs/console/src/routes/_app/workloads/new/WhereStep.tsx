@@ -26,8 +26,8 @@ import type { ClusterVerdict } from "@/modules/placement/types"
  *
  * The derived value is pre-selected and unticking it is allowed. That direction matters:
  * the shape implies the requirement, so the common case needs no thought, and the case
- * the derivation cannot see — a pipeline-parallel replica somebody still wants inside one
- * rack for latency — is a tick rather than an edit after the fact.
+ * the derivation cannot see, a pipeline-parallel replica somebody still wants inside one
+ * rack for latency, is a tick instead of an edit after the fact.
  *
  * An unchanged box sends the derived answer, because there is now one column and it is
  * not nullable: the workload's serving block carries the requirement outright, so what
@@ -59,7 +59,7 @@ function FabricChoice({
         <p className="font-mono text-2xs text-muted-foreground">
           {derived
             ? "The shape needs it: a tensor group reaching over the backend fabric is the one split that does not work."
-            : "Not needed by this shape — pipeline stages cross a network perfectly well. Tick it to ask for one anyway."}
+            : "Not needed by this shape: pipeline stages cross a network perfectly well. Tick it to ask for one anyway."}
           {value !== null && " Overriding what the shape derived."}
         </p>
       </div>
@@ -68,12 +68,12 @@ function FabricChoice({
 }
 
 /**
- * Which clusters this may use — a default, an affinity and an escape hatch.
+ * Which clusters this may use: a default, an affinity and an escape hatch.
  *
  * The three modes are the k8s ones and they mean the same things. `auto` lets placement
  * decide, which is rule 3 and the only mode that should ever be common. `constrain`
- * narrows the set placement chooses from and still runs it, quota and topology and all
- * — a `nodeSelector`. `pin` skips placement entirely and is never checked for capacity,
+ * narrows the set placement chooses from and still runs it, quota and topology and all:
+ * a `nodeSelector`. `pin` skips placement entirely and is never checked for capacity,
  * which is `nodeName`, and it is labeled with that cost instead of presented as a
  * peer of the other two.
  *
@@ -93,7 +93,7 @@ export interface WhereChoice {
   /**
    * Whether every device of a replica must sit in one fabric.
    *
-   * Null means "whatever the shape derived" — which is not the same as false, and is
+   * Null means "whatever the shape derived", which is not the same as false, and is
    * why this is not a plain boolean. The shape implies the requirement in the common
    * case, so a value here is somebody disagreeing with what was derived.
    */
@@ -119,13 +119,13 @@ const MODES: { value: WhereMode; label: string; caption: string }[] = [
     value: "region",
     label: "Any cluster in a region",
     caption:
-      "Residency without micromanagement — the region is the constraint, the cluster is still placement's call.",
+      "Residency without micromanagement: the region is the constraint, the cluster is still placement's call.",
   },
   {
     value: "clusters",
     label: "Only these clusters",
     caption:
-      "Placement still runs and still checks capacity — it just has fewer options.",
+      "Placement still runs and still checks capacity: it just has fewer options.",
   },
   {
     value: "pin",
@@ -165,7 +165,7 @@ export function WhereStep({
   const { data: clusters } = useClusterOptions()
   /**
    * No priority class. The flow does not ask for one, so preview must not assert one
-   * either — the project's default is what a real create will be admitted against, and
+   * either: the project's default is what a real create will be admitted against, and
    * a preview computed against a different class is a preview of a different question.
    */
   const preview = usePlacementPreview(
@@ -356,12 +356,12 @@ export function WhereStep({
 /**
  * The plane's own answer, for a configuration that does not exist yet.
  *
- * `verdicts` carry the losing clusters' reasoning too, and it is shown rather than
+ * `verdicts` carry the losing clusters' reasoning too, and it is shown, not
  * summarized: "6 free h100 in the largest nvlink domain, 8 asked for" is a next action
  * and "no capacity" is not.
  *
  * The decision comes back under the workload id `wkl_preview` and that id is
- * deliberately not rendered: nothing was created, and a link to it is a 404.
+ * not rendered: nothing was created, and a link to it is a 404.
  */
 function RealVerdict({
   loading,
@@ -464,14 +464,14 @@ function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
           </TooltipTrigger>
           <TooltipContent className="max-w-80">
             Free devices say nothing about whether {fit.device_count} of them
-            share a topology domain — placement answers that when you deploy,
-            and the workload page shows what it decided.
+            share a topology domain: placement answers that when you deploy, and
+            the workload page shows what it decided.
           </TooltipContent>
         </Tooltip>
       </div>
       <p className="font-mono text-2xs text-muted-foreground">
         {short
-          ? `Fewer free than the ${fit.device_count} a replica needs. Placement will queue it rather than reject it.`
+          ? `Fewer free than the ${fit.device_count} a replica needs. Placement will queue it, not reject it.`
           : "Placement picks the cluster when you deploy."}
       </p>
     </div>

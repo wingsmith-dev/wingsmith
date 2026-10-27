@@ -29,7 +29,7 @@ import { useId, useState } from "react"
 
 /**
  * The shell every create and edit form sits in. It owns the two things a form
- * over this API always has to do — surface the plane's own error text rather
+ * over this API always has to do: surface the plane's own error text rather
  * than a generic failure, and refuse a second submit while one is in flight.
  */
 export function FormDialog({
@@ -176,7 +176,7 @@ export function TextField({
  * Prose, where `TextField` is an identifier.
  *
  * Not mono by default and not one line: the fields that use this are somebody writing a sentence
- * — why a parameter moved, what a run showed — and a monospace single-line input tells them to
+ * (why a parameter moved, what a run showed) and a monospace single-line input tells them to
  * write a token instead.
  */
 export function TextareaField({
@@ -316,7 +316,7 @@ export function SwitchField({
 }
 
 /**
- * `k=v` pairs, one per line — the same notation the `label=` query parameter and
+ * `k=v` pairs, one per line: the same notation the `label=` query parameter and
  * `hgr` both use, so what an operator types here is what they can paste back
  * into a filter.
  */
@@ -373,11 +373,11 @@ export function LabelsField({
 /**
  * A set of strings, one per line.
  *
- * A textarea rather than a row of chips with an add button, for the same reason `LabelsField` is
+ * A textarea instead of a row of chips with an add button, for the same reason `LabelsField` is
  * one: the sets these hold are small, they are edited by pasting a name somebody was given, and a
  * chip editor turns that paste into one interaction per item.
  *
- * Blank lines are dropped rather than sent, because a trailing newline is how a textarea ends and
+ * Blank lines are dropped, not sent, because a trailing newline is how a textarea ends and
  * not something anybody declared.
  */
 export function ListField({
@@ -424,7 +424,7 @@ export function ListField({
 
 /**
  * A free-form JSON object field. Returns `undefined` while the text does not
- * parse, so a caller can disable submit rather than post something malformed.
+ * parse, so a caller can disable submit, not post something malformed.
  */
 export function JsonField({
   label,

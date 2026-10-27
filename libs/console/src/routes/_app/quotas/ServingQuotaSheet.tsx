@@ -29,7 +29,7 @@ import {
 
 /**
  * One commitment in full, and what it means for a gateway fleet of a size the
- * operator names. The share arithmetic is asked of the plane rather than done
+ * operator names. The share arithmetic is asked of the plane, not done
  * here: the console and the gateway must not be able to disagree about what a
  * replica enforces.
  */

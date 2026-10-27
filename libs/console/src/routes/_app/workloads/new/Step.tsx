@@ -7,17 +7,17 @@ import { IconCheck } from "@tabler/icons-react"
  * One numbered question in the deploy flow, open or answered.
  *
  * A card each, like everything else on every other page here. Bare sections divided by
- * rules read as one long form, and this is not one form — it is four questions whose
+ * rules read as one long form, and this is not one form: it is four questions whose
  * answers are independently re-openable, so each needs an edge to be re-openable within.
  *
- * Numbered rather than tabbed or wizarded, because all of it stays on one page: a
+ * Numbered, not tabbed or wizarded, because all of it stays on one page: a
  * wizard hides step two while you are deciding step one, and the whole argument for
  * this flow is that the answer to "which card" is worth seeing next to "how many". An
  * answered step collapses to its answer and keeps a way back, so the page reads as a
  * sentence you can re-open any clause of.
  *
  * A step that is not `ready` renders as a dimmed header with no content at all. That is
- * the honest rendering of a question that cannot be answered yet — a disabled field
+ * the accurate rendering of a question that cannot be answered yet: a disabled field
  * implies you could fill it in if you tried, and here you genuinely cannot until the
  * step above is settled.
  */

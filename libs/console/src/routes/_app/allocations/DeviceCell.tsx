@@ -21,7 +21,7 @@ export interface CellProps {
   /**
    * The fabric this cell sits in is what the inspector is pointed at. Marked on
    * the cells and not only on the row, because a fabric is only meaningful as
-   * the devices that share it — "these act as one" is the fact being selected.
+   * the devices that share it: "these act as one" is the fact being selected.
    */
   withinSelection: boolean
   onSelect: (cell: BoardDevice) => void
@@ -34,7 +34,7 @@ export interface CellProps {
 /**
  * One device, and the slices inside it.
  *
- * A partitioned device is drawn as its bands rather than as a device, because
+ * A partitioned device is drawn as its bands, not as a device, because
  * that is what it is once MIG is on: the parent holds nothing and is not
  * schedulable, and painting it as one free square would offer capacity that
  * cannot be taken. The bands say "split" at a glance; the inspector says into
@@ -125,7 +125,7 @@ export function DeviceCell(props: CellProps) {
   )
 }
 
-/** The fill for one leaf — a whole device, or one slice of one. */
+/** The fill for one leaf: a whole device, or one slice of one. */
 function face(cell: BoardDevice): string {
   if (cell.device.health !== "healthy") {
     return cn(
@@ -151,7 +151,7 @@ function face(cell: BoardDevice): string {
    * "*this* workload is arriving *here*" and the color is what says which
    * workload. What separates it from a bound cell is weight: a washed-out fill
    * over the free cell's own dashed ring, so it reads as an outline being
-   * filled in rather than as something already there. It cannot be mistaken for
+   * filled in, not as something already there. It cannot be mistaken for
    * free (free carries no color), for proposed (solid fill, dashed outline
    * inset from the edge), or for cordoned and faulted (both hatched).
    */
@@ -176,21 +176,21 @@ function describe(cell: BoardDevice): string {
   if (device.mig_profile) lines.push(`mig ${device.mig_profile}`)
   if (device.health !== "healthy") {
     lines.push(
-      `${device.health}${device.health_reason ? ` — ${device.health_reason}` : ""}`
+      `${device.health}${device.health_reason ? `: ${device.health_reason}` : ""}`
     )
   }
   if (cell.cordoned) lines.push("node cordoned")
   if (cell.slices.length > 0) lines.push(`${cell.slices.length} slices`)
   if (cell.holder?.origin === "reserved") {
     /**
-     * The caveat lives here and nowhere else, so it has to actually be said —
+     * The caveat lives here and nowhere else, so it has to actually be said:
      * on every reserved cell, in the accessible name as well as the tooltip. The
      * board chose this square; the cluster has not, and a person reading the
      * picture without this sentence would take it for a placement.
      */
     lines.push(
       `reserved for ${cell.holder.workload_name}`,
-      "declared, not yet bound — the cluster picks the actual devices"
+      "declared, not yet bound: the cluster picks the actual devices"
     )
   } else if (cell.holder) {
     lines.push(

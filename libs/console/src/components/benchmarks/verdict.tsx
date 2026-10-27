@@ -22,9 +22,9 @@ import type { BenchmarkVerdict } from "@/modules/benchmarks/types"
  * An outcome and the standard it was derived under, and never one without the
  * other.
  *
- * The verdict is not stored anywhere — it is computed at read against a pinned
- * criteria version — so a bare "fail" is a claim nobody can check or reproduce.
- * The version is a required prop rather than an optional one for exactly that
+ * The verdict is not stored anywhere, it is computed at read against a pinned
+ * criteria version, so a bare "fail" is a claim nobody can check or reproduce.
+ * The version is a required prop instead of an optional one for exactly that
  * reason: there is no call site that is allowed to leave it out.
  */
 export function VerdictBadge({
@@ -54,8 +54,8 @@ export function VerdictBadge({
  *
  * Both are shown because the question asked immediately after a pass is how
  * close it was. The acceptance floor is `0.85 x baseline` and it belongs to the
- * criteria version rather than to any row here, which is why this table quotes
- * the threshold the plane derived rather than recomputing one.
+ * criteria version, not to any row here, which is why this table quotes
+ * the threshold the plane derived instead of recomputing one.
  */
 export function VerdictPanel({
   verdict,

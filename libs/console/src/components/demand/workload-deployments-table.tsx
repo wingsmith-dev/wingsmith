@@ -15,9 +15,9 @@ import type { WorkloadDeployment } from "@/modules/demand/types"
 import { Link } from "@tanstack/react-router"
 
 /**
- * The small run of vertical bars beside a ready count — one bar per share,
+ * The small run of vertical bars beside a ready count: one bar per share,
  * green where a replica is ready and red where the share is not yet filled.
- * Capped so a large share stays a glance rather than a ruler.
+ * Capped so a large share stays a glance instead of a ruler.
  */
 function ReplicaBar({ ready, total }: { ready: number; total: number }) {
   const bars = Math.min(Math.max(total, 0), 12)
@@ -41,9 +41,9 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
  * Where a workload actually ended up, one row per cluster.
  *
  * This table is what replaced "Cluster" as a field on a workload. A workload
- * names no cluster — it names a total and the clusters it may use — so the
- * cluster question has as many answers as placement found, and the honest place
- * for them is a list under the spec rather than a single field pretending there
+ * names no cluster, it names a total and the clusters it may use, so the
+ * cluster question has as many answers as placement found, and the accurate place
+ * for them is a list under the spec instead of a single field pretending there
  * is one. Region rides along because "asia and europe" is how the ask was
  * phrased and a bare `clu_...` does not answer it.
  *
@@ -136,8 +136,8 @@ function columns(
        * does not.
        *
        * A group count against a scalar ready count is two numbers that are not
-       * comparable — `2/1` on a 1:2 group is decode pods over groups — so the
-       * moment roles arrive they replace the pair rather than sitting beside it.
+       * comparable (`2/1` on a 1:2 group is decode pods over groups) so the
+       * moment roles arrive they replace the pair instead of sitting beside it.
        * The group total stays underneath, which is what the unit in the header
        * names.
        */
@@ -204,12 +204,12 @@ function columns(
              * Which serving configurations this cluster actually has up, and how many replicas
              * are on each.
              *
-             * Beside the generation rather than folded into it, because they answer different
+             * Beside the generation, not folded into it, because they answer different
              * questions: a generation moves when a share is rescaled or a workload is paused, and
              * neither changes the process. The digest only moves when the configuration does.
              *
              * Two rows here is a rollout in progress. One row that is not the declared digest is
-             * a cluster still running what it was asked for last time — an agent that has not
+             * a cluster still running what it was asked for last time: an agent that has not
              * reconnected, or an apply that has not landed. Nothing at all means no ready replica
              * has reported a digest, which is not the same as nothing running.
              */

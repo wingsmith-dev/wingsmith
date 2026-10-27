@@ -139,7 +139,7 @@ describe("buildBoard", () => {
     expect(row.free).toEqual(["g2", "g3", "g4", "g5"])
   })
 
-  it("keeps a fabric over two nodes node by node rather than interleaved", () => {
+  it("keeps a fabric over two nodes node by node, not interleaved", () => {
     const cluster = make.cluster("iad-1", "us-east-1")
     const nodeA = make.node("iad-1-n01", cluster.id)
     const nodeB = make.node("iad-1-n02", cluster.id)
@@ -189,7 +189,7 @@ describe("buildBoard", () => {
   it("sinks a cluster reporting nothing to the bottom of its region", () => {
     const parts = fleet()
     /**
-     * Named so it sorts first alphabetically, which is the whole point: a
+     * Named so it sorts first alphabetically, which is the point: a
      * cluster with no hardware in it must not sit above one that has some.
      */
     const idle = make.cluster("aaa-1", "us-east-1")
@@ -371,7 +371,7 @@ describe("buildBoard", () => {
     expect(board.counts.held).toBe(2)
   })
 
-  it("runs out rather than wrapping when a cluster owes more than it holds", () => {
+  it("runs out instead of wrapping when a cluster owes more than it holds", () => {
     const parts = fleet()
     const board = buildBoard({
       ...parts,

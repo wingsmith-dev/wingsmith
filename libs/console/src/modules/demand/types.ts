@@ -51,7 +51,7 @@ export interface ArtifactBaseline {
   revision: string
 }
 
-/** `ArtifactSchema` — immutable, content-addressed bytes. Identity is the digest. */
+/** `ArtifactSchema`: immutable, content-addressed bytes. Identity is the digest. */
 export interface Artifact {
   id: string
   digest: string
@@ -111,7 +111,7 @@ export interface ArtifactFit {
   fits: boolean
   /** Weights fit and heads divide. False is a refusal; `fits` false with this true is advice. */
   possible: boolean
-  /** The window had to be cut below the one asked for. Deliberately not a failure. */
+  /** The window had to be cut below the one asked for. Not a failure. */
   reduced: boolean
   device_count: number
   /** Nodes the replica spans: the unit that gets ordered. */
@@ -179,7 +179,7 @@ export interface FitmentParams {
   limit?: number
 }
 
-/** `ArtifactLocationRequest` — the write shape of a location. */
+/** `ArtifactLocationRequest`: the write shape of a location. */
 export interface ArtifactLocationRequest {
   scheme: string
   uri: string
@@ -246,7 +246,7 @@ export interface UpstreamDeployment {
  */
 export interface UpstreamServing {
   source: string
-  /** The recipe on the corpus's own branch — what upstream says about this now. */
+  /** The recipe on the corpus's own branch: what upstream says about this now. */
   source_uri: string
   /** The same file at the commit these values were captured from. */
   snapshot_uri: string
@@ -536,7 +536,7 @@ export interface WorkloadRevisionUpdate {
   note: string | null
 }
 
-/** `Workload.kind` — one scheduling supertype across serving and batch. */
+/** `Workload.kind`: one scheduling supertype across serving and batch. */
 export type WorkloadKind = "service" | "task" | "gang" | (string & {})
 
 /** Derived: `running` when all run, `failed` if any failed, else the least advanced. */
@@ -546,7 +546,7 @@ export type WorkloadPhase =
 /** `pack` fills one cluster before the next; `spread` levels them. */
 export type WorkloadStrategy = "pack" | "spread" | (string & {})
 
-/** `DeploymentReplicaRollupSchema` — observed replicas, counted not listed. */
+/** `DeploymentReplicaRollupSchema`: observed replicas, counted not listed. */
 export interface DeploymentReplicaRollup {
   total: number
   ready: number
@@ -822,7 +822,7 @@ export interface Endpoint {
   revision: string
 }
 
-/** `EndpointTargetRequest` — names the deployment, never the cluster. */
+/** `EndpointTargetRequest`: names the deployment, never the cluster. */
 export interface EndpointTargetRequest {
   deployment: string
   weight?: number

@@ -26,11 +26,11 @@ const PERCENTILES = [
 /**
  * Renders a harness's result without claiming to know its schema.
  *
- * Anything shaped like a statistic block — `{unit, avg, p50, …}` — becomes a row
+ * Anything shaped like a statistic block (`{unit, avg, p50, …}`) becomes a row
  * in the percentile table, because that is the shape every load generator
  * converges on and it is the one worth reading at a glance. Scalars become a
  * short list beside it. Anything else is shown as the JSON it is, which is the
- * honest rendering of a field whose shape nothing promised and the reason this
+ * accurate rendering of a field whose shape nothing promised and the reason this
  * view never needs changing when a harness adds a metric.
  */
 export function BenchmarkSummaryView({

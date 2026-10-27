@@ -74,7 +74,7 @@ function DeploymentSelect({
  *
  * A JSON textarea asked an operator to know the wire shape of a target and made a
  * missing brace the reason a rollout would not submit. The set is still edited and
- * posted as one thing — the rows are how it is typed, not four independent edits.
+ * posted as one thing: the rows are how it is typed, not four independent edits.
  */
 export function TargetsField({
   value,
@@ -192,7 +192,7 @@ export function TargetsField({
               </div>
               <Input
                 value={row.served_model_name ?? ""}
-                placeholder="served model name — blank to use the deployment's"
+                placeholder="served model name: blank to use the deployment's"
                 aria-label="Served model name"
                 onChange={(e) =>
                   patch(index, {
@@ -214,8 +214,8 @@ export function TargetsField({
 }
 
 /**
- * The failover order — a list where the position is the meaning, so it is edited
- * by moving a row rather than by retyping a sequence of ids.
+ * The failover order: a list where the position is the meaning, so it is edited
+ * by moving a row, not by retyping a sequence of ids.
  */
 export function FailoverField({
   value,

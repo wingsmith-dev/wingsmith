@@ -4,11 +4,11 @@ import { formatMetric } from "@/modules/metrics/format"
 import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
 
 /**
- * A trend, drawn with SVG rather than a charting library.
+ * A trend, drawn with SVG instead of a charting library.
  *
  * The console has no chart dependency and this does not justify adding one: a
- * sparkline is a path and a fill, and the panels it serves want shape — is this
- * flat, climbing, or spiky — rather than a readable axis. A real chart with
+ * sparkline is a path and a fill, and the panels it serves want shape, is this
+ * flat, climbing, or spiky, instead of a readable axis. A real chart with
  * legends and tooltips is a different component and can bring its own library
  * when something needs it.
  */
@@ -102,14 +102,14 @@ export interface Curve {
  *
  * It states the axis. A sparkline is normalized to its own extremes, so a
  * metric wobbling between 4.01 and 4.02 draws the same picture as one swinging
- * from zero to a thousand — the right trade for a tile the size of a word, and
+ * from zero to a thousand: the right trade for a tile the size of a word, and
  * the wrong one for the page's main chart, where the shape means nothing until
  * somebody can read what it is a shape of. The floor is labeled, not
  * forced to zero, because pinning a latency band to zero flattens every change
  * worth seeing; stating it is what stops the autoscale being a trick.
  *
  * And it puts curves on a *shared* scale. Three percentiles each normalized to
- * their own extremes are three unrelated pictures — p50 and p99 drawn to
+ * their own extremes are three unrelated pictures: p50 and p99 drawn to
  * different rulers cross and diverge for reasons that are pure arithmetic. One
  * scale is the only way a legend saying p50, p95, p99 means anything.
  *

@@ -110,7 +110,7 @@ describe("the offline board's reservations", () => {
     expect(map.counts.reserved).toBe(total)
     expect(map.counts.available).toBeLessThanOrEqual(map.counts.free)
     /**
-     * At most, because the demo fleet owes more than it has free — which is the
+     * At most, because the demo fleet owes more than it has free, which is the
      * case worth pinning: the cluster reports the true number and the board
      * paints what it can, and the two are allowed to differ.
      */

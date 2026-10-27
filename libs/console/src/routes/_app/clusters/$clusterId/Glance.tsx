@@ -18,8 +18,8 @@ import { toast } from "sonner"
 import { ServingForm } from "./ServingForm"
 
 /**
- * The cluster's data-plane address, a section of the identity card rather than a
- * card of its own. Declared, and read by nothing in the control plane — the
+ * The cluster's data-plane address, a section of the identity card instead of a
+ * card of its own. Declared, and read by nothing in the control plane: the
  * gateway is the only thing that ever dials it, which is why a cluster with no
  * address here is still a perfectly schedulable cluster.
  */
@@ -100,7 +100,7 @@ function ServingSection({ cluster }: { cluster: Cluster }) {
 /**
  * Identity, declared and observed in one card. Stage is the derived headline the
  * rest of the page is arranged around; phase and reachability sit apart from it
- * on purpose, because a cluster can be declared active and be unreachable at
+ *, because a cluster can be declared active and be unreachable at
  * once.
  */
 export function ClusterIdentity({ cluster }: { cluster: Cluster }) {

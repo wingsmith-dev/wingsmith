@@ -179,7 +179,7 @@ function SlaBody({ report }: { report: SlaReport }) {
  *
  * Read from `/metrics/endpoints/{ref}/sla`, which judges the month on the
  * plane: this card draws the verdict and never recomputes it. The running month
- * says "on track" or "over budget so far" rather than "met" or "missed",
+ * says "on track" or "over budget so far" instead of "met" or "missed",
  * because it is not over.
  */
 export function SlaCard({ endpointId }: { endpointId: string }) {

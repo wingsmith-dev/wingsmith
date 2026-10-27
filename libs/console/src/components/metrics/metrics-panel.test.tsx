@@ -134,7 +134,7 @@ describe("MetricsPanel", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 
-  it("groups the serving metrics rather than laying nineteen tiles in a row", () => {
+  it("groups the serving metrics instead of laying nineteen tiles in a row", () => {
     answer(metrics())
     render(<MetricsPanel scope="deployment" refId="dep_1" family="inference" />)
     expect(screen.getByText("Latency")).toBeInTheDocument()

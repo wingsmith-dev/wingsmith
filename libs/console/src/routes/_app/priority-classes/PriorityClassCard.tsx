@@ -8,7 +8,7 @@ import { formatRelative } from "@/lib/format"
 import type { PriorityClass } from "@/modules/binding/types"
 
 /**
- * `preempts` and `preemptible` sit side by side rather than folding into one
+ * `preempts` and `preemptible` sit side by side instead of folding into one
  * axis: a class can take capacity from others and still be safe from eviction
  * itself, and that pairing is the whole content of the object.
  */

@@ -39,7 +39,7 @@ export function fetchMetrics(
 /**
  * Everything the gateway answered, with one breakdown row per endpoint.
  *
- * One query for a whole page of endpoints, rather than one per row: the total is
+ * One query for a whole page of endpoints, instead of one per row: the total is
  * the front door's own and does not move when somebody pages, and a table of
  * fifty names must not be fifty round trips to a Prometheus.
  */

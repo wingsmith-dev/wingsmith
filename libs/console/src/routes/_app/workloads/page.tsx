@@ -46,7 +46,7 @@ function columns(
             {/* On the name and not in a column of its own: almost every
                 workload is aggregated, so a column would be empty down its
                 whole length, and the badge has to be beside the thing it is
-                true of rather than somewhere a reader has to go looking. */}
+                true of, not somewhere a reader has to go looking. */}
             <TopologyBadge workload={workload} />
           </Link>
         </ResourceCell>
@@ -140,12 +140,12 @@ function columns(
 /**
  * What was asked to run, globally. A workload names no cluster: it declares
  * weights, how to serve them, a kind and a total, and the clusters column shows
- * where placement put it — which is a list, and sometimes an empty one.
+ * where placement put it, which is a list, and sometimes an empty one.
  *
  * The three kinds of thing stay apart here as they do everywhere else.
  * `scale.desired` is declared, `scale.ready` is what the clusters report,
  * `phase` is derived from the deployments, and scaling is an operation on the
- * detail page rather than a number to type in a table.
+ * detail page instead of a number to type in a table.
  */
 export function WorkloadsPage() {
   const search = useSearch({ from: "/_app/workloads" })

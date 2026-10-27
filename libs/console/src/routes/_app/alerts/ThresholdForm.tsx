@@ -30,7 +30,7 @@ const FROM_RULE = "__rule__"
  * The declared half of alerting: a number, a window and a scope.
  *
  * The rule is picked from `/v1/alert-rules` and never typed, which is what
- * keeps a metric addressed by its registry name — an operator who could write
+ * keeps a metric addressed by its registry name: an operator who could write
  * the query could write one that means something else, and the predicate is
  * compiled in either way. Rule and subject are the row's identity under the
  * plane's uniqueness constraint, so they are offered on create only: moving a
@@ -128,7 +128,7 @@ export function ThresholdForm({
 
   const valueHint = definition
     ? `Fires ${comparisonWord(definition.comparison)} this, measured in ${definition.unit || "the rule's unit"}. The rule suggests ${formatThresholdValue(definition.suggested_value, definition.unit)}.`
-    : "Pick a rule first — it decides the unit."
+    : "Pick a rule first: it decides the unit."
 
   return (
     <FormDialog
@@ -160,7 +160,7 @@ export function ThresholdForm({
             }
             options={(rules ?? []).map((entry) => ({
               value: entry.name,
-              label: `${entry.name} — ${entry.metric}`,
+              label: `${entry.name}: ${entry.metric}`,
             }))}
           />
           <SelectField
@@ -256,7 +256,7 @@ export function ThresholdForm({
 
       <SwitchField
         label="Enabled"
-        hint="Off keeps the commitment on record and takes it out of evaluation — the fleet default then applies."
+        hint="Off keeps the commitment on record and takes it out of evaluation: the fleet default then applies."
         checked={enabled}
         onChange={setEnabled}
       />

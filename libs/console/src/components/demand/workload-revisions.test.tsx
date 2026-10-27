@@ -153,7 +153,7 @@ describe("WorkloadRevisions", () => {
     )
   })
 
-  it("clears a note rather than storing an empty string", () => {
+  it("clears a note instead of storing an empty string", () => {
     revisions.mockReturnValue(list([revision({ note: "was something" })]))
     render(<WorkloadRevisions workload={workload()} />)
 

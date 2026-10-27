@@ -94,7 +94,7 @@ export function PolicyCard({
           <Field label="Attached to" className="sm:col-span-2">
             {policy.attachments.length === 0 ? (
               <span className="text-muted-foreground">
-                nothing — constrains nothing
+                nothing: constrains nothing
               </span>
             ) : (
               <div className="flex flex-wrap gap-1">

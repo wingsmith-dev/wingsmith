@@ -21,7 +21,7 @@ describe("offline fitment", () => {
     )
   })
 
-  it("keeps no-fits at the bottom rather than dropping them", () => {
+  it("keeps no-fits at the bottom instead of dropping them", () => {
     const result = fitment(llama, deviceClasses(), {
       scope: "catalog",
       limit: 0,
@@ -124,7 +124,7 @@ describe("offline fitment", () => {
     )
   })
 
-  it("offers a truncated window rather than calling it a failure", () => {
+  it("offers a truncated window instead of calling it a failure", () => {
     const result = fitment(llama, deviceClasses(), {
       scope: "catalog",
       concurrency: 256,
@@ -135,7 +135,7 @@ describe("offline fitment", () => {
 
     expect(reduced.length).toBeGreaterThan(0)
     expect(reduced[0].context_length).toBeLessThan(result.context_length)
-    expect(reduced[0].reason).toContain("rather than")
+    expect(reduced[0].reason).toContain("instead of")
   })
 
   it("defaults to the artifact's own declared window", () => {
@@ -175,7 +175,7 @@ describe("offline fitment", () => {
     expect(result.note).toBeNull()
   })
 
-  it("carries each class's own memory rather than the catalog's", () => {
+  it("carries each class's own memory instead of the catalog's", () => {
     const classes = deviceClasses()
     const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
 
@@ -215,7 +215,7 @@ describe("offline fitment", () => {
     )
   })
 
-  it("answers a frontier model in nodes rather than refusing it", () => {
+  it("answers a frontier model in nodes instead of refusing it", () => {
     const frontier = {
       ...llama,
       parameter_count: 2_800_000_000_000,
@@ -234,7 +234,7 @@ describe("offline fitment", () => {
     expect(b300?.pipeline_parallel).toBe(2)
   })
 
-  it("treats an NVL72 rack as one node rather than nine chassis", () => {
+  it("treats an NVL72 rack as one node instead of nine chassis", () => {
     const frontier = {
       ...llama,
       parameter_count: 2_800_000_000_000,

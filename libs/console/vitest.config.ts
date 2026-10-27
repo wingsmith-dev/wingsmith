@@ -2,8 +2,8 @@ import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
 
-// Deliberately separate from vite.config.ts. The dev server's config carries the router plugin,
-// which regenerates routeTree.gen.ts on every run — a test run that rewrote a checked-in file
+// Separate from vite.config.ts. The dev server's config carries the router plugin,
+// which regenerates routeTree.gen.ts on every run: a test run that rewrote a checked-in file
 // would make `just fmt --check` depend on whether the suite had been run.
 export default defineConfig({
   plugins: [react()],

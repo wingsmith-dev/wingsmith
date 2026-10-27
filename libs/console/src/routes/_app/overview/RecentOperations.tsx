@@ -15,7 +15,7 @@ const DOT_TONE = {
 } as const
 
 /**
- * What was asked of the fleet, newest first — the second question after what is
+ * What was asked of the fleet, newest first: the second question after what is
  * broken. Every phase, not just the open ones: an operation that failed four
  * minutes ago is the most likely explanation for a panel above.
  */
@@ -79,7 +79,7 @@ export function RecentOperations({
               {(operation.error ?? operation.reason) && (
                 <span className="text-muted-foreground">
                   {" "}
-                  — {operation.error ?? operation.reason}
+                  · {operation.error ?? operation.reason}
                 </span>
               )}
             </span>

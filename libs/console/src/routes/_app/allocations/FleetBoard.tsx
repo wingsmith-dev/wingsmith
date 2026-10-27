@@ -36,7 +36,7 @@ const GROUP = 4
 /**
  * The board starts at the cluster, because that is the layer an operator works
  * at: a cluster is a thing you place into, and a region is a property it has.
- * Grouping by region is the zoom-out, offered rather than assumed — it earns its
+ * Grouping by region is the zoom-out, offered, not assumed: it earns its
  * space only once there are enough clusters for "which region" to be the
  * question.
  */
@@ -88,8 +88,8 @@ export function FleetBoard({
   }, [board, dragging, armed, mode])
 
   /**
-   * Where the brick in hand would fit, per fabric. Computed for the whole board
-   * rather than for the fabric under the pointer: the answer a person wants
+   * Where the brick in hand would fit, per fabric. Computed for the whole board,
+   * not for the fabric under the pointer: the answer a person wants
    * while holding a brick is "where can this go", and highlighting only what
    * they already found makes them hunt for it.
    */
@@ -128,8 +128,8 @@ export function FleetBoard({
     }
     /**
      * Where the brick came from decides what dropping it means, and the hand is
-     * the only thing that knows. A brick picked off the board — dragged, or
-     * clicked up — moves; one taken off the tray is a new placement. Reading
+     * the only thing that knows. A brick picked off the board, dragged, or
+     * clicked up, moves; one taken off the tray is a new placement. Reading
      * this off the drag alone is what made click-to-move leave a copy behind.
      */
     const from =
@@ -168,15 +168,15 @@ export function FleetBoard({
    *
    * With nothing held, a colored cell answers the question people actually
    * arrive with: not "what is this square" but "what is running in here". So the
-   * first click takes the whole allocation — every device committed with it
-   * lights up, wherever it sits — and only a second click on the same cell
+   * first click takes the whole allocation, every device committed with it
+   * lights up, wherever it sits, and only a second click on the same cell
    * narrows to the one device. A free cell has no allocation to mean, so it is
    * the device immediately.
    *
    * In the sandbox that first click also picks the allocation up, which is what
-   * makes moving something a click and a click rather than a drag. Clicking back
-   * inside what you are holding is therefore not a drop onto itself — it is the
-   * change of mind — so it puts the brick down and narrows, exactly as the
+   * makes moving something a click and a click instead of a drag. Clicking back
+   * inside what you are holding is therefore not a drop onto itself, it is the
+   * change of mind, so it puts the brick down and narrows, exactly as the
    * second click does on the live board.
    */
   const onDevice = (fabric: BoardFabric, cell: BoardDevice) => {
@@ -237,7 +237,7 @@ export function FleetBoard({
   /**
    * A cluster reporting no devices starts closed and wears no phase.
    *
-   * It is still on the board — it is a place capacity could arrive — but there
+   * It is still on the board, it is a place capacity could arrive, but there
    * is nothing inside it to read, and an open card with a healthy dot on it says
    * the opposite of what is true. The default only holds until somebody opens
    * it: the toggle writes the key like any other, so an explicit choice wins.
@@ -697,7 +697,7 @@ function Tally({
  *
  * A cell is one accelerator and naming one would be a claim; a bar is a
  * proportion of a cluster and claims nothing about which end of it is spoken
- * for. It is striped rather than solid because it is a promise and not an
+ * for. It is striped, not solid because it is a promise and not an
  * observation, and it is clamped to what is actually free so a cluster that owes
  * more than it holds cannot draw a bar past its own width.
  */

@@ -191,7 +191,7 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
     /**
      * `possible` is where the line is: weights that do not sit on the cards, heads that
      * do not divide across the tensor group. The plane's `check_capacity` rejects those
-     * on submit, so offering one here is a dead end rather than a choice.
+     * on submit, so offering one here is a dead end instead of a choice.
      */
     fitment.mockReturnValue({
       data: response({

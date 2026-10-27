@@ -38,7 +38,7 @@ function Read({ draft }: { draft: ServingDraft }) {
       {!draft.confident && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="font-mono text-2xs text-warning">
-            this could not be read with confidence — check every field before
+            this could not be read with confidence: check every field before
             saving
           </p>
         </div>
@@ -120,7 +120,7 @@ function Read({ draft }: { draft: ServingDraft }) {
                 key={note}
                 className="font-mono text-2xs break-all text-muted-foreground"
               >
-                — {note}
+                · {note}
               </li>
             ))}
           </ul>
@@ -167,12 +167,12 @@ function Steps({ current }: { current: Step }) {
  * What the plane reads a running workload as, and the path from that reading to
  * something it manages.
  *
- * The reading is shown rather than applied at every step: a draft is assembled
+ * The reading is shown, not applied at every step: a draft is assembled
  * from a container's arguments and an image tag, which is someone else's intent
  * as we understood it and not a statement of ours. So each step shows what it is
  * about to write before it writes it.
  *
- * Two objects rather than three, since the serving configuration stopped being
+ * Two objects instead of three, since the serving configuration stopped being
  * one: the weights are registered, and then the adoption carries the serving
  * block inline the way a create does.
  *
@@ -224,7 +224,7 @@ export function ServingDraftDialog({
             </DialogTitle>
             <DialogDescription>
               How the plane reads what this cluster is running. Nothing has been
-              written — this is a proposal to confirm, not a change.
+              written: this is a proposal to confirm, not a change.
             </DialogDescription>
           </DialogHeader>
 
@@ -254,7 +254,7 @@ export function ServingDraftDialog({
               <p className="font-mono text-2xs text-muted-foreground">
                 Nothing here is submitted. The plane derives the block it adopts
                 from this same reading, so what is declared is what is already
-                running — changing any of it is a PATCH afterwards, where a
+                running: changing any of it is a PATCH afterwards, where a
                 restart is what you asked for.
               </p>
             </>
@@ -263,7 +263,7 @@ export function ServingDraftDialog({
             <div className="rounded-md border bg-muted/30 p-3">
               <p className="font-mono text-2xs text-muted-foreground">
                 the weights exist and the serving block is read. Adopting takes
-                the workload over in place — it keeps the replicas it already
+                the workload over in place: it keeps the replicas it already
                 has, and the cluster refuses to reconcile it if what is running
                 stops matching what was adopted.
               </p>

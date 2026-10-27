@@ -10,7 +10,7 @@ export interface AlertsSearch {
   rule?: string
   cluster?: string
   subject?: string
-  /** `fleet` or `subject` — which half of the precedence to show. */
+  /** `fleet` or `subject`, which half of the precedence to show. */
   scope?: string
   /** `on` or `off`; absent is both. */
   enabled?: string

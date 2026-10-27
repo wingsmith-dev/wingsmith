@@ -22,10 +22,10 @@ export interface SourceCluster {
  * entry that matched no cluster.
  *
  * Both halves are the point, and neither is visible from a source list alone. A
- * cluster with no entry is the failure that hides — its panels come back empty
- * and nothing errors — and an entry matching no cluster is usually the typo that
+ * cluster with no entry is the failure that hides, its panels come back empty
+ * and nothing errors, and an entry matching no cluster is usually the typo that
  * caused it. Clusters come first and in their own order so the table reads as
- * the fleet with gaps in it rather than as configuration with extras.
+ * the fleet with gaps in it, not as configuration with extras.
  *
  * A cluster is answered two ways and only the first is in `sources`, which is
  * read from the environment: an explicit entry wins, and otherwise the shared
@@ -64,7 +64,7 @@ export function sourceRows(
   return rows
 }
 
-/** How many clusters have no source at all — the number the panel warns on. */
+/** How many clusters have no source at all: the number the panel warns on. */
 export function unmappedCount(rows: SourceRow[]): number {
   return rows.filter((row) => row.known && !row.source).length
 }

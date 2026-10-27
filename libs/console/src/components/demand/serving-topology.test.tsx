@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
- * The mutation, mocked at the hook rather than over HTTP.
+ * The mutation, mocked at the hook, not over HTTP.
  *
- * What these tests are about is the BODY the panel builds — a ratio change that
+ * What these tests are about is the BODY the panel builds: a ratio change that
  * drops a role's arguments is a silent reload, and the only place that is
  * visible is the object handed to the mutation.
  */
@@ -204,7 +204,7 @@ describe("the roles panel", () => {
 
   it("reveals the fields only after the unlock, and puts the cost on the button", () => {
     // Unlocking is the intent. It is deliberate and recoverable, which is the
-    // right size of gesture for an outage that is painful and survivable —
+    // right size of gesture for an outage that is painful and survivable:
     // type-the-name is for losing data, and this loses none.
     return (async () => {
       render(<RolesPanel workload={disaggregated()} />)
@@ -234,7 +234,7 @@ describe("the roles panel", () => {
   it("carries each role's whole configuration through a ratio change", async () => {
     // The roles block replaces whole and the plane reads every field off the
     // request, so weights alone would store a null batch size and an empty
-    // argument map — a new digest, and a full reload of the two roles this
+    // argument map: a new digest, and a full reload of the two roles this
     // control promises not to touch.
     mutate.mockClear()
     render(<RolesPanel workload={disaggregated()} />)

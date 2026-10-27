@@ -5,8 +5,8 @@ import { formatMs } from "@/modules/benchmarks/display"
 import { Link } from "@tanstack/react-router"
 
 /**
- * What one evalscope run actually measured. Reads `summary.reports` — the raw
- * per-dataset JSON EvalScope writes — and renders the one number per report the
+ * What one evalscope run actually measured. Reads `summary.reports`, the raw
+ * per-dataset JSON EvalScope writes, and renders the one number per report the
  * dataset is judged on: score, sample count, and the wall-clock it cost.
  *
  * No Claimed column and no Drift column. Those are verdict-shaped statements
@@ -111,7 +111,7 @@ export function EvaluationRun({ id }: { id: string }) {
             </div>
             {named.length === 0 ? (
               <div className="px-3 py-6 text-center text-2xs text-muted-foreground">
-                No report — the harness did not run or wrote nothing under
+                No report: the harness did not run or wrote nothing under
                 /benchmark-artifacts/reports.
               </div>
             ) : (
@@ -149,7 +149,7 @@ export function EvaluationRun({ id }: { id: string }) {
   )
 }
 
-/** The request view — one row per run it expanded into. */
+/** The request view: one row per run it expanded into. */
 export function EvaluationSuite({ id }: { id: string }) {
   const { items, isLoading } = useRequestRuns(id)
   const list = items ?? []

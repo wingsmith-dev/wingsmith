@@ -33,10 +33,10 @@ export const HEATMAP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
  * How the workload is performing, everywhere placement put it.
  *
  * A workload is the one object that spans clusters, and the plane answers it as
- * its own scope rather than as an average this console computes: throughputs
+ * its own scope, not as an average this console computes: throughputs
  * and counts add, the hottest card wins, and a quantile or a mean that cannot
- * cross clusters honestly comes back unmeasured with every cluster's own figure
- * in the breakdown. So nothing here re-derives a merged number — a tile that
+ * cross clusters accurately comes back unmeasured with every cluster's own figure
+ * in the breakdown. So nothing here re-derives a merged number: a tile that
  * reads "—" is the plane refusing, and that refusal is information.
  *
  * Two requests, not six panels' worth: one for the live window every tile and
@@ -352,8 +352,8 @@ export function GpuHeatmap({ curve }: { curve: UtilizationWeek }) {
                   key={hour}
                   title={
                     pct === null
-                      ? `${label} ${String(hour).padStart(2, "0")}:00 — not reported`
-                      : `${label} ${String(hour).padStart(2, "0")}:00 — ${Math.round(pct)}% GPU util`
+                      ? `${label} ${String(hour).padStart(2, "0")}:00, not reported`
+                      : `${label} ${String(hour).padStart(2, "0")}:00, ${Math.round(pct)}% GPU util`
                   }
                   className={cn(
                     "aspect-square rounded-[2px]",

@@ -85,7 +85,7 @@ describe("SlaCard", () => {
     expect(screen.queryByText("Met")).not.toBeInTheDocument()
   })
 
-  it("says the report failed rather than drawing an empty card", () => {
+  it("says the report failed instead of drawing an empty card", () => {
     answer({ error: new Error("network down") })
     render(<SlaCard endpointId="end_1" />)
     expect(

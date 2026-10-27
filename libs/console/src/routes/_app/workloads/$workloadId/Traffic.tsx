@@ -10,12 +10,12 @@ import { sumCurvePoints } from "@/modules/metrics/rollup"
 import { EmptyNote } from "./Common"
 
 /**
- * The Overview traffic chart — how much work is actually arriving.
+ * The Overview traffic chart: how much work is actually arriving.
  *
  * `inference.requests_finished` is a rate the engines count and it sums across
  * clusters, so the curve is every cluster's share added at each step. It counts
  * no request that never reached a cluster, which is why this is a traffic chart
- * and not an availability one — the number that would answer the second lives
+ * and not an availability one: the number that would answer the second lives
  * on the gateway's own series and this console does not read it yet.
  *
  * The range buttons are three different questions, not three shapes of one
@@ -144,7 +144,7 @@ export const DOT = {
 
 /**
  * A small grid-backed line chart taking up to two series on a shared scale, so
- * that two measurements read against one axis. Deliberately not the
+ * that two measurements read against one axis. Not the
  * `Sparkline`, which auto-scales each series on its own and would misalign a
  * pair. Pure SVG, no charting dependency.
  */

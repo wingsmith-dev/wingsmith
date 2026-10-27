@@ -14,8 +14,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 /**
- * Cards rather than a table. This collection is bounded by design — a handful
- * of classes across the whole plane — and each one is two switches and a
+ * Cards instead of a table. This collection is bounded by design, a handful
+ * of classes across the whole plane, and each one is two switches and a
  * number, which a row flattens into columns that read like an accident.
  */
 export function PriorityClassesPage() {

@@ -1,9 +1,9 @@
 /**
- * `ProjectTenantSchema` — embedded rather than linked: a project always carries
+ * `ProjectTenantSchema`: embedded, not linked: a project always carries
  * the tenant it belongs to, even though `/v1/tenants` now exists to make one.
  */
 /**
- * `TenantSchema` — the billing and isolation root a project hangs off.
+ * `TenantSchema`: the billing and isolation root a project hangs off.
  *
  * `project_count` is on the read shape because the only destructive question
  * anyone asks of a tenant is what deleting it would take with it.
@@ -48,7 +48,7 @@ export interface TenantUpdateRequest {
 }
 
 /**
- * `TenantAPIKeySchema` — a gateway inference credential, distinct from the
+ * `TenantAPIKeySchema`: a gateway inference credential, distinct from the
  * console sign-in token: this one is what a caller on the tenant's public
  * listener presents, not what signs in here.
  */
@@ -56,7 +56,7 @@ export interface TenantAPIKey {
   id: string
   tenant: string
   name: string
-  /** Present only on the mint response — shown once, never returned by a list. */
+  /** Present only on the mint response: shown once, never returned by a list. */
   key: string | null
   last_used_at: string | null
   revoked_at: string | null
@@ -74,7 +74,7 @@ export interface ProjectTenant {
   enabled: boolean
 }
 
-/** `ProjectSchema` — the tenancy unit quota attaches to. */
+/** `ProjectSchema`: the tenancy unit quota attaches to. */
 export interface Project {
   id: string
   tenant: ProjectTenant
@@ -105,14 +105,14 @@ export interface ProjectUpdateRequest {
   enabled?: boolean
 }
 
-/** `QuotaUsageSchema` — the observed half, counted over live allocations. */
+/** `QuotaUsageSchema`: the observed half, counted over live allocations. */
 export interface QuotaUsage {
   allocated_devices: number
   live_allocations: number
   over_quota_devices: number
 }
 
-/** `QuotaSchema` — a guaranteed floor and a fair share, usage beside it. */
+/** `QuotaSchema`: a guaranteed floor and a fair share, usage beside it. */
 export interface Quota {
   id: string
   project: string
@@ -156,7 +156,7 @@ export type LimitScope = "per_replica" | "divided"
 export type OnExceed = "reject" | "queue"
 
 /**
- * `ServingQuotaStandardSchema` — whether a declared commitment clears the
+ * `ServingQuotaStandardSchema`, whether a declared commitment clears the
  * acceptance standard's floors. Declared against declared: it compares the
  * numbers somebody promised with the numbers the standard asks to be promised,
  * and says nothing about what the endpoint delivered. An uncommitted field is a
@@ -168,14 +168,14 @@ export interface ServingQuotaStandard {
 }
 
 /**
- * `ServingQuotaSchema` — the traffic one endpoint is committed to carry.
+ * `ServingQuotaSchema`: the traffic one endpoint is committed to carry.
  *
  * Not a `Quota`. That one is devices, checked once by placement when a workload
  * is admitted; this one is requests and tokens, checked by the gateway on every
  * request, in front of the clusters. Different enforcer, different moment, and
  * no field in common.
  *
- * Every field is declared, and there is deliberately no observed sibling of
+ * Every field is declared, and there is no observed sibling of
  * `Quota.usage`: a serving quota is counted per request in the gateway, and that
  * measurement never crosses into the control plane.
  *
@@ -248,7 +248,7 @@ export interface ServingQuotaUpdateRequest {
 }
 
 /**
- * `ResolvedLimitsSchema` — one endpoint's ceiling, flattened for the gateway.
+ * `ResolvedLimitsSchema`: one endpoint's ceiling, flattened for the gateway.
  * `limit_scope` travels with the numbers because it is how they are read:
  * `per_replica` means they are this replica's, `divided` means they are the
  * fleet's and this replica enforces its share.
@@ -267,7 +267,7 @@ export interface ResolvedLimits {
 }
 
 /**
- * `ResolvedServingQuotaSchema` — what a commitment means for a fleet of a
+ * `ResolvedServingQuotaSchema`: what a commitment means for a fleet of a
  * stated size. `declared` is what was sold across the whole gateway fleet;
  * `effective` is what the replica at `replica_index` enforces once `limit_scope`
  * is applied. The plane does this arithmetic, so the console never computes a
@@ -300,7 +300,7 @@ export interface ResolvedServingQuotaTable {
 }
 
 /**
- * `PriorityClassSchema` — what preempts what. `preemptible` and `preempts` are
+ * `PriorityClassSchema`: what preempts what. `preemptible` and `preempts` are
  * separate switches: a class can take capacity from others and still be safe
  * from eviction itself.
  */
@@ -347,7 +347,7 @@ export interface PolicyAttachment {
 }
 
 /**
- * `PolicySchema` — a placement constraint and everything it binds to.
+ * `PolicySchema`: a placement constraint and everything it binds to.
  * Allow-lists and deny-lists are separate: an empty allow-list means "no
  * opinion", not "nothing allowed".
  */
@@ -368,7 +368,7 @@ export interface Policy {
   attachments: PolicyAttachment[]
 }
 
-/** `PolicyAttachmentRequest` — `subject` is a ref, resolved against its type. */
+/** `PolicyAttachmentRequest`: `subject` is a ref, resolved against its type. */
 export interface PolicyAttachmentRequest {
   subject_type: string
   subject: string

@@ -51,7 +51,7 @@ export function formatSeconds(seconds: number): string {
  */
 export interface Inherited<T> {
   value: T
-  /** True when the value came from the rule rather than from the row. */
+  /** True when the value came from the rule, not from the row. */
   fromRule: boolean
 }
 
@@ -91,7 +91,7 @@ export function dimensionKey(dimensions: Record<string, string>): string {
 /**
  * Most specific first: a row about this subject, then the fewest narrowing
  * dimensions, then the key itself so the order is total. Mirrors
- * `_specificity` in `app/reactor/rules.py` — a console that ranked these
+ * `_specificity` in `app/reactor/rules.py`: a console that ranked these
  * differently would show one commitment and the reactor would use another.
  */
 function specificity(threshold: AlertThreshold): [number, number, string] {
@@ -114,13 +114,13 @@ function compareSpecificity(a: AlertThreshold, b: AlertThreshold): number {
  * Which threshold actually applies to one subject, and what it beat.
  *
  * `ignored` is the reason this exists on a screen. A disabled override is not a
- * candidate — the reactor only loads enabled rows — so the fleet default is
+ * candidate, the reactor only loads enabled rows, so the fleet default is
  * what fires, and an operator who cannot see that will raise the number on the
  * row that is switched off.
  */
 export interface ThresholdResolution {
   applied: AlertThreshold | null
-  /** True when what applies is the fleet default rather than a row about this subject. */
+  /** True when what applies is the fleet default instead of a row about this subject. */
   inherited: boolean
   /** Enabled rows that lost, most specific first. */
   shadowed: AlertThreshold[]
@@ -150,7 +150,7 @@ export function resolveThreshold(
   }
 }
 
-/** The fleet default for a rule, enabled or not — there is at most one. */
+/** The fleet default for a rule, enabled or not: there is at most one. */
 export function fleetDefaultFor(
   thresholds: AlertThreshold[],
   rule: string
@@ -186,7 +186,7 @@ export function precedenceNote(
     if (overridden === 0) return "applies to every subject"
     return `applies except to ${overridden} overridden ${overridden === 1 ? "subject" : "subjects"}`
   }
-  if (!threshold.enabled) return "disabled — the fleet default applies"
+  if (!threshold.enabled) return "disabled: the fleet default applies"
   const fleet = fleetDefaultFor(thresholds, threshold.rule)
   if (!fleet) return "the only commitment for this rule"
   if (!fleet.enabled) return "overrides a disabled fleet default"

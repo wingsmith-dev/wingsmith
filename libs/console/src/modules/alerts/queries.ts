@@ -57,8 +57,8 @@ export function useAlertThresholds(filters: AlertThresholdFilters = {}) {
 }
 
 /**
- * Every threshold, drained. Resolution is a question about the whole set — the
- * fleet default a row overrides may be on a page nobody has scrolled to — so it
+ * Every threshold, drained. Resolution is a question about the whole set, the
+ * fleet default a row overrides may be on a page nobody has scrolled to, so it
  * is answered against all of them and never against what a filter left behind.
  */
 export function useAlertThresholdOptions() {

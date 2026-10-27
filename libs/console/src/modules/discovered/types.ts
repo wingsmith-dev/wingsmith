@@ -1,6 +1,6 @@
 /**
  * A workload the cluster was already running when it was connected. The sighting
- * is observed — ingestion is its only writer — and the decision recorded beside it
+ * is observed, ingestion is its only writer, and the decision recorded beside it
  * is the operator's. The two are joined on read, which is why `status` is on this object
  * but nothing writes it directly.
  */
@@ -44,7 +44,7 @@ export const DISCOVERY_STATUSES: DiscoveryStatus[] = [
 
 /**
  * Tracking, ignoring and removing record a decision. None reaches a cluster.
- * A removed sighting is filtered out of the default listing rather than deleted:
+ * A removed sighting is filtered out of the default listing, not deleted:
  * the row is observed and ingestion goes on refreshing it, which is what makes
  * removal undoable.
  */
@@ -55,12 +55,12 @@ export interface DecisionRequest {
 
 /**
  * `fingerprint` is the whole safety of a promotion: it is `If-Match` for a spec
- * the plane does not own. Scale is deliberately absent — the bounds come from
+ * the plane does not own. Scale is absent: the bounds come from
  * what is already running, so cataloging a workload never rescales it.
  *
  * `artifact` is the only part of the serving configuration a caller states,
  * because it is the only part the cluster cannot tell us. Everything else is read
- * off the sighting — the same reading `GET /serving-draft` returns — so that what
+ * off the sighting, the same reading `GET /serving-draft` returns, so that what
  * is declared is what is running. Submitting a serving block here would declare a
  * configuration for a process that is already up, and the first reconcile would
  * either refuse it or restart the model, which is the one outcome adoption exists
@@ -78,11 +78,11 @@ export interface PromoteRequest {
 /**
  * The weights a sighting is serving, as far as they can be identified.
  *
- * `digest` is the reference — `hf:org/model`, with the revision when the args
- * carry one — and `verified` is false to say so: a cluster reports what it was
+ * `digest` is the reference, `hf:org/model`, with the revision when the args
+ * carry one, and `verified` is false to say so: a cluster reports what it was
  * told to load, never what it loaded. `existing_id` is the catalog's id for
  * these weights when it already holds them, which is what makes the first step
- * of adoption a confirmation rather than a duplicate.
+ * of adoption a confirmation instead of a duplicate.
  */
 export interface ArtifactDraft {
   reference: string | null
@@ -104,7 +104,7 @@ export interface ArtifactDraft {
  * A serving block proposed from what a cluster reported about a running workload.
  *
  * `confident` is false when the engine could not be identified, which makes every
- * field below it a guess rather than a reading; `notes` names what could not be
+ * field below it a guess instead of a reading; `notes` names what could not be
  * determined, so the person confirming knows where to look.
  */
 export interface ServingDraft {

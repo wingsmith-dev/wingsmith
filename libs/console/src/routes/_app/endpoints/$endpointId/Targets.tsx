@@ -15,10 +15,10 @@ import type {
  * endpoint nobody has called reports no series at all, so a measurement cannot
  * tell quiet from down, and a header dot that guesses is worse than one that
  * declines to answer. Until the deployment list has loaded there is no answer
- * and this says so rather than showing green.
+ * and this says so instead of showing green.
  *
- * `enabled` is a separate reading and stays separate — declared and observed are
- * two different kinds of thing, and a name somebody deliberately turned off is
+ * `enabled` is a separate reading and stays separate: declared and observed are
+ * two different kinds of thing, and a name somebody turned off is
  * not a fault.
  */
 export function servingHealth(

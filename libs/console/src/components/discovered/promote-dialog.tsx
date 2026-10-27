@@ -33,13 +33,13 @@ const NONE = "__none__"
 
 /**
  * Promotion is the one decision here that produces declared state, so it asks for
- * the two things the plane cannot infer — which weights these are, and who owns
- * it — and nothing else. How the workload is served is read off what is running
+ * the two things the plane cannot infer, which weights these are, and who owns
+ * it, and nothing else. How the workload is served is read off what is running
  * instead of picked from a list: there is no catalog of serving configurations
  * to pick from, and the cluster's own spec is a better answer than a person
  * matching one by eye.
  *
- * Replica bounds are taken from the live workload rather than offered as a field:
+ * Replica bounds are taken from the live workload, not offered as a field:
  * a promotion that also set scale would rescale a serving model as a side effect
  * of being cataloged.
  *
@@ -140,8 +140,8 @@ export function PromoteDialog({
           <div className="space-y-1.5 rounded-md border bg-muted/30 p-3">
             <p className="font-mono text-2xs text-muted-foreground">
               {artifact
-                ? "the serving block is read off what this cluster is running — only the weights are declared"
-                : "no weights identified yet — register them from the reading first"}
+                ? "the serving block is read off what this cluster is running, only the weights are declared"
+                : "no weights identified yet: register them from the reading first"}
             </p>
             <p className="font-mono text-2xs break-all text-muted-foreground">
               running {workload.images.join(", ") || "an unrecorded image"}
@@ -206,13 +206,13 @@ export function PromoteDialog({
 
           <div className="rounded-md border bg-muted/30 p-3">
             <p className="font-mono text-2xs text-muted-foreground">
-              scale is taken from the workload — {workload.replicas_desired}{" "}
+              scale is taken from the workload: {workload.replicas_desired}{" "}
               replica{workload.replicas_desired === 1 ? "" : "s"},{" "}
               {workload.devices_per_replica} device
               {workload.devices_per_replica === 1 ? "" : "s"} each
             </p>
             <p className="mt-1 font-mono text-2xs break-all text-muted-foreground">
-              fingerprint {fingerprint ?? "unknown — cannot promote"}
+              fingerprint {fingerprint ?? "unknown: cannot promote"}
             </p>
           </div>
         </div>

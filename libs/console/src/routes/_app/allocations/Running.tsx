@@ -29,13 +29,13 @@ const AWAY =
  *
  * The board is a picture and the inspector is a margin note; neither has room
  * for the thing an operator actually wants once they have found the color they
- * were looking for — which workload this is, whose it is, when it took these
+ * were looking for, which workload this is, whose it is, when it took these
  * devices, which devices those are, and the way back to the object that asked
  * for them. That is a page's worth of answer for a click on a 24-pixel square,
- * so it opens over the board rather than pushing it around.
+ * so it opens over the board instead of pushing it around.
  *
- * The allocation is re-read from the plane rather than taken off the board.
- * The board carries what it needs to paint — a holder, flattened — and the
+ * The allocation is re-read from the plane, not taken off the board.
+ * The board carries what it needs to paint (a holder, flattened) and the
  * fields here are the ones it drops: the replica, the acquisition time, the
  * members that have since been released. A dialog nobody has open costs
  * nothing, and one that is open is worth the request.
@@ -86,7 +86,7 @@ function Body({
   /**
    * Only a holder the plane would recognize is asked about. `proposed` is a
    * sandbox invention and `reserved` wears an id this board made up so the cells
-   * could be grouped — asking about either would be a 404 with a spinner in
+   * could be grouped: asking about either would be a 404 with a spinner in
    * front of it. Everything those two have to say is already in the holder.
    */
   const real = holder.origin === "live" || holder.origin === "moved"
@@ -102,7 +102,7 @@ function Body({
 
   /**
    * The deployment is workload × cluster, and neither the allocation nor the
-   * board carries it — so it is found rather than followed. A workload the plane
+   * board carries it, so it is found, not followed. A workload the plane
    * has not answered for yet simply has no link, which is better than a link
    * into a page that does not exist.
    */

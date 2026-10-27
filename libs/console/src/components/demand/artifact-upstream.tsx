@@ -53,7 +53,7 @@ function ClaimField({
  * The reference a workload is judged against, never our configuration: a serving
  * block declaring a 256K context is only a finding when there is a published number
  * beside it. Everything here is a claim, so the provenance triple is part of the
- * block rather than an afterthought.
+ * block instead of an afterthought.
  */
 export function UpstreamFields({
   value,

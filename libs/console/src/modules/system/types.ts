@@ -1,5 +1,5 @@
 /**
- * `GET /v1/system/config` — the plane's effective, non-secret configuration.
+ * `GET /v1/system/config`: the plane's effective, non-secret configuration.
  *
  * The plane names every exposed field by hand, so this is an allowlist rather
  * than a dump of its environment. Nothing here is a credential: a token or a
@@ -9,7 +9,7 @@
 
 /** One `METRICS_SOURCES` entry, as `Source.public()` plus its `cluster` matcher. */
 export interface MetricsSourceConfig {
-  /** The entry's key — matches a cluster's `name` or `uid`. */
+  /** The entry's key: matches a cluster's `name` or `uid`. */
   cluster: string
   url: string
   kind: string

@@ -21,9 +21,9 @@ function AppErrorComponent({ error }: { error: unknown }) {
 }
 
 /**
- * The operator console. A tenant session reaches nothing under here — the plane
- * refuses it on every route this shell reads — so it is sent to its own view
- * instead, which is what makes the boundary a boundary rather than a screen full
+ * The operator console. A tenant session reaches nothing under here, the plane
+ * refuses it on every route this shell reads, so it is sent to its own view
+ * instead, which is what makes the boundary a boundary instead of a screen full
  * of failed panels.
  */
 export const Route = createFileRoute("/_app")({

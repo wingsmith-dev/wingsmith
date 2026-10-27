@@ -61,7 +61,7 @@ export function useTenants(filters: TenantFilters = {}) {
   )
 }
 
-/** Every tenant, drained — the project form picks one from this. */
+/** Every tenant, drained: the project form picks one from this. */
 export function useTenantOptions() {
   return useAllPages(["tenants", "options"], (cursor) =>
     fetchTenants({}, cursor, 200)
@@ -86,7 +86,7 @@ export function useCreateTenant() {
 
 /**
  * Carries the tenant's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane rather than silently overwriting it.
+ * stale read is rejected by the plane, not silently overwriting it.
  */
 export function useUpdateTenant() {
   const client = useQueryClient()
@@ -145,7 +145,7 @@ export function useProjects(filters: ProjectFilters = {}) {
   )
 }
 
-/** Every project, drained — deployments and quotas reference them by id. */
+/** Every project, drained: deployments and quotas reference them by id. */
 export function useProjectOptions() {
   return useAllPages(["projects", "options"], (cursor) =>
     fetchProjects({}, cursor, 200)
@@ -162,7 +162,7 @@ export function useCreateProject() {
 
 /**
  * Carries the project's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane rather than silently overwriting it.
+ * stale read is rejected by the plane, not silently overwriting it.
  */
 export function useUpdateProject() {
   const client = useQueryClient()
@@ -231,7 +231,7 @@ export function useServingQuotas(filters: ServingQuotaFilters = {}) {
   )
 }
 
-/** Every endpoint, drained — a serving quota is declared against exactly one. */
+/** Every endpoint, drained: a serving quota is declared against exactly one. */
 export function useServingEndpointOptions() {
   return useAllPages(["endpoints", "options"], (cursor) =>
     fetchEndpoints({}, cursor, 200)
@@ -268,7 +268,7 @@ export function useDeleteServingQuota() {
 
 /**
  * The declared commitment resolved against a fleet the caller names. The share
- * arithmetic belongs to the plane — the console asks rather than dividing, so
+ * arithmetic belongs to the plane: the console asks instead of dividing, so
  * the console and the gateway cannot disagree about what a replica enforces.
  */
 export function useResolvedServingQuotas(
@@ -288,7 +288,7 @@ export function usePriorityClasses(filters: PriorityClassFilters = {}) {
   )
 }
 
-/** Every class, drained — a project's default is chosen from these by name. */
+/** Every class, drained: a project's default is chosen from these by name. */
 export function usePriorityClassOptions() {
   return useAllPages(["priority-classes", "options"], (cursor) =>
     fetchPriorityClasses({}, cursor, 200)

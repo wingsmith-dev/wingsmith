@@ -2,7 +2,7 @@
  * The offline stand-in for `GET /artifacts/:ref/fitment`.
  *
  * The arithmetic here is a transcription of `app/core/vram.py`, not an
- * approximation of it — same bytes-per-param table, same KV formula, same 15%
+ * approximation of it: same bytes-per-param table, same KV formula, same 15%
  * overhead, same 0.9 utilization, same halving loop, same ranking. A fixture that
  * produced plausible-but-different numbers would make a broken console look right,
  * which is the one thing this module exists not to do.
@@ -90,7 +90,7 @@ interface Layout {
 /**
  * Tensor parallelism stays inside a node; pipeline crosses them over the fabric.
  *
- * Capped at the node rather than divided into it, so a 72-device NVL72 holds a tensor-16
+ * Capped at the node, not divided into it, so a 72-device NVL72 holds a tensor-16
  * replica as one node instead of pretending to be nine chassis.
  */
 function layoutFor(deviceCount: number, devicesPerNode: number): Layout {
@@ -165,7 +165,7 @@ function activationBytes(shape: ModelShape, batchTokens: number): number {
 }
 
 /**
- * What the model holds: weights, KV cache, activation peak. Not grossed up — the
+ * What the model holds: weights, KV cache, activation peak. Not grossed up: the
  * utilization envelope is applied once, on the capacity side.
  */
 /**
@@ -174,7 +174,7 @@ function activationBytes(shape: ModelShape, batchTokens: number): number {
  *
  * Mirrors `app.core.vram.kv_cache_bytes`. A local layer holds its window and stops
  * growing there, so a model running five local layers to every global one costs a
- * fraction of what its layer count implies — the difference between sizing gemma-4-26b
+ * fraction of what its layer count implies: the difference between sizing gemma-4-26b
  * at 122 GiB and at 67, which is the difference between two cards and one.
  */
 function kvCacheBytes(shape: ModelShape, contextLength: number): number {
@@ -222,7 +222,7 @@ function weightsGb(sizing: Sizing): number {
   return (sizing.total_params * bytesPerParam(sizing.quantization)) / GIB
 }
 
-/** Read back from the artifact rather than derived, the same way the plane reads it. */
+/** Read back from the artifact, not derived, the same way the plane reads it. */
 function sizingOf(artifact: Artifact, quantization?: string): Sizing | null {
   if (!artifact.parameter_count) return null
   const quant =
@@ -378,17 +378,17 @@ function fitAt(
     required_gb: need,
     context_length: window,
     reason: reduced
-      ? `needs ${words} at ${window.toLocaleString()} tokens rather than the ${contextLength.toLocaleString()} asked for, ${parallelWords(layout)}`
+      ? `needs ${words} at ${window.toLocaleString()} tokens instead of the ${contextLength.toLocaleString()} asked for, ${parallelWords(layout)}`
       : `needs ${words} at the full ${window.toLocaleString()} tokens, ${parallelWords(layout)}`,
   }
 }
 
 /**
- * Every count on one class that serves, ascending — the choice `fit` narrows to one.
+ * Every count on one class that serves, ascending: the choice `fit` narrows to one.
  *
  * Mirrors `ladder` in `app/core/vram.py`: counts below the recommendation are the trade
  * of context for cards, counts above it stop at one node, and no-fits are dropped
- * because this is a menu rather than a verdict.
+ * because this is a menu instead of a verdict.
  */
 function ladder(
   sizing: Sizing,
@@ -469,7 +469,7 @@ function fit(
 
 /**
  * The fleet half saying no: a fit on a class we own too few of to run one replica.
- * Mirrors `_short` in the plane, and is set on the chosen attempt rather than on
+ * Mirrors `_short` in the plane, and is set on the chosen attempt, not on
  * every attempt, because the count it is measured against is the chosen one.
  */
 function short(fit: ArtifactFit): ArtifactFit {
@@ -558,7 +558,7 @@ export function fitment(
         : "the device table could not be read, so there are no classes to fit against"
       : sizing.shape === null
         ? "this artifact publishes no attention shape, so these rows size the weights only " +
-          "and no context window is costed — every requirement shown is a floor. Re-resolving " +
+          "and no context window is costed: every requirement shown is a floor. Re-resolving " +
           "its source records the shape and prices the window."
         : null,
     items: limit <= 0 ? items : items.slice(0, limit),

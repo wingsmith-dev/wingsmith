@@ -14,8 +14,8 @@ export const ACTIVITY_LIMIT = 8
 
 /**
  * The drain limit for the fleet aggregates. The overview counts whole
- * collections — "48 of 48 devices healthy" is a lie if it was drawn from a
- * first page — so every tile here reads a drained query, capped at a page size
+ * collections, "48 of 48 devices healthy" is a lie if it was drawn from a
+ * first page, so every tile here reads a drained query, capped at a page size
  * that keeps a three-cluster fleet to a single round trip.
  */
 const DRAIN_LIMIT = 200
@@ -75,7 +75,7 @@ export function useUndecidedDiscovered() {
 }
 
 /**
- * The newest operations whatever their phase — "what changed", which is a
+ * The newest operations whatever their phase: "what changed", which is a
  * different question from {@link useOpenOperations}'s "what is still in flight".
  */
 export function useRecentOperations() {
@@ -85,7 +85,7 @@ export function useRecentOperations() {
 }
 
 /**
- * Operations still in flight. Queried per open phase rather than filtered
+ * Operations still in flight. Queried per open phase, not filtered
  * client-side off a page of all operations: a fleet with a long operation
  * history would push the running ones off the first page entirely.
  */
@@ -106,7 +106,7 @@ export function useOpenOperations() {
 /**
  * The same drained reads as the fleet tiles, scoped to one cluster. A cluster
  * overview counts its own collections, so every hook here follows the cursor
- * rather than rendering a first page as a total — the one exception is the
+ * instead of rendering a first page as a total: the one exception is the
  * event feed, which is a recent slice and is labeled as one.
  */
 export function useClusterPools(clusterId: string) {

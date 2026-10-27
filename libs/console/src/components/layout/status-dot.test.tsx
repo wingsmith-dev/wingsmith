@@ -31,7 +31,7 @@ describe("StatusDot", () => {
 })
 
 describe("StatusLabel", () => {
-  it("puts the dot beside its text rather than replacing it", () => {
+  it("puts the dot beside its text instead of replacing it", () => {
     // A color alone is not readable to everyone; the word is the accessible half.
     const { container } = render(
       <StatusLabel tone="danger">unreachable</StatusLabel>

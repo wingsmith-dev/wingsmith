@@ -60,13 +60,13 @@ const CONCURRENCIES = [1, 8, 32, 128, 256]
  * Quantizations worth asking about, not the whole of `BYTES_PER_PARAM`.
  *
  * The empty value means "however the weights ship", which is the plane's default and
- * the only honest starting point — the artifact already knows its own precision, and
+ * the only accurate starting point: the artifact already knows its own precision, and
  * offering fp16 as the default would silently oversize a repo that ships mxfp4.
  *
- * fp16 is absent on purpose. It is a dtype, so it is the one entry here that could not
+ * fp16 is absent. It is a dtype, so it is the one entry here that could not
  * also be declared as a quantization, and this list feeds both questions: how big is it
  * at this precision, and what should the serving block say. Nothing is lost by dropping
- * it — unquantized weights are already sized at fp16 under the empty value, which is the
+ * it: unquantized weights are already sized at fp16 under the empty value, which is the
  * same arithmetic under the name a serving block can actually carry.
  */
 const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
@@ -75,8 +75,8 @@ const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
  * Halvings down from the artifact's declared window, which is the plane's default.
  *
  * `current` is folded in because this list is not the only way the window gets
- * set. The Params step edits the same value, and a window typed there — or one the
- * plane reduced a fit to — is rarely a halving of the declared maximum. A Select whose
+ * set. The Params step edits the same value, and a window typed there, or one the
+ * plane reduced a fit to, is rarely a halving of the declared maximum. A Select whose
  * value is absent from its own options renders empty, which reads as "no window
  * chosen" on a form that has one.
  */
@@ -128,12 +128,12 @@ function shortfall(fit: ArtifactFit): string {
 
 /**
  * How much of the usable VRAM the weights take and how much the whole configuration
- * needs, as one bar. Two numbers rather than one because the gap between them is the KV
+ * needs, as one bar. Two numbers instead of one because the gap between them is the KV
  * cache and the activation peak, which is the part that moves when somebody changes the
  * window or the stream count.
  *
  * "usable" is not the nameplate figure. It is net of the engine's utilization envelope
- * and a per-device CUDA reserve, so a 2x80GB row reads as 141 rather than 160 — the
+ * and a per-device CUDA reserve, so a 2x80GB row reads as 141 instead of 160: the
  * number a serving process can actually have. Showing the nameplate would over-promise
  * by about fifteen percent, which is a card count at the boundary.
  */
@@ -206,9 +206,9 @@ function FleetCell({ fit }: { fit: ArtifactFit }) {
         {fit.devices_allocatable} of {fit.devices_total} allocatable across{" "}
         {fit.cluster_count} cluster{fit.cluster_count === 1 ? "" : "s"}
         {fit.supply_short
-          ? ` — fewer of them in total than the ${fit.device_count} a replica needs`
+          ? `: fewer of them in total than the ${fit.device_count} a replica needs`
           : short &&
-            ` — fewer free than the ${fit.device_count} a replica needs`}
+            `: fewer free than the ${fit.device_count} a replica needs`}
       </TooltipContent>
     </Tooltip>
   )
@@ -235,9 +235,9 @@ function Terms({
  * The device classes an artifact could be served on, and the entry point to
  * deploying it.
  *
- * Deliberately not a form. The plane derives every number here from the weights, and
- * the terms along the top are the only things a person has to state — so the panel
- * reads as a proposal to poke at rather than a set of questions to answer. Picking a
+ * Not a form. The plane derives every number here from the weights, and
+ * the terms along the top are the only things a person has to state, so the panel
+ * reads as a proposal to poke at instead of a set of questions to answer. Picking a
  * row is picking a footprint, which is which card and how many, and nothing else.
  */
 /**
@@ -245,7 +245,7 @@ function Terms({
  *
  * `explore` is the artifact page: what could these weights run on, including hardware the
  * fleet does not have, and each row offers to go and deploy it. Nothing is selected, because
- * nothing is being assembled — a row is a link out.
+ * nothing is being assembled: a row is a link out.
  *
  * `select` is step two of the deploy flow, where the table is a control. A row is not an
  * action there, it is the answer to "which device class and how many", so it selects and
@@ -274,14 +274,14 @@ export function ArtifactFitmentPanel({
   /**
    * Drop the card chrome and the title, for a caller that is already a card and has
    * already asked the question. Nested cards read as a box inside a box, and inside the
-   * deploy flow the step heading has said "how to serve it" — repeating "Fitment"
+   * deploy flow the step heading has said "how to serve it": repeating "Fitment"
    * underneath it would name the mechanism instead of the question.
    */
   bare?: boolean
   mode?: FitmentMode
   /**
    * The chosen footprint, in `select` mode. The whole footprint and not just the class,
-   * because a class is not the answer on its own — the count is part of it, and a
+   * because a class is not the answer on its own: the count is part of it, and a
    * row that highlighted on class alone could not say which of its layouts is picked.
    */
   selected?: ServingFootprint | null
@@ -292,7 +292,7 @@ export function ArtifactFitmentPanel({
    *
    * Passing both of these makes the Context select a view of the caller's state rather
    * than a question of its own, and that is the whole of the fix: the deploy flow asks
-   * for a window in two places — here and in the Params step — and they were two
+   * for a window in two places, here and in the Params step, and they were two
    * `useState`s that met nowhere. One of them could be changed while the other went on
    * describing a different model, and neither said which was going to be submitted.
    *
@@ -326,7 +326,7 @@ export function ArtifactFitmentPanel({
    * because
    * it becomes `--quantization` and fp16 is a dtype no engine accepts there. So the
    * footprint takes the explicit choice, then what the repo actually ships, then
-   * nothing — and nothing is the right answer for unquantized weights.
+   * nothing, and nothing is the right answer for unquantized weights.
    */
   const declaredQuantization =
     quantization || ((artifact.metadata.quantization as string | null) ?? "")
@@ -508,7 +508,7 @@ export function ArtifactFitmentPanel({
           onClick={() => setEverything(true)}
           className="mt-2 font-mono text-2xs text-muted-foreground hover:text-primary"
         >
-          showing the top {data.items.length} of {data.considered} ranked — show
+          showing the top {data.items.length} of {data.considered} ranked: show
           all
         </button>
       )}
@@ -518,7 +518,7 @@ export function ArtifactFitmentPanel({
           onClick={() => setEverything(false)}
           className="mt-2 font-mono text-2xs text-muted-foreground hover:text-primary"
         >
-          showing all {data.considered} — show the top 5
+          showing all {data.considered}: show the top 5
         </button>
       )}
     </>
@@ -545,12 +545,12 @@ export function ArtifactFitmentPanel({
  *
  * The row's own numbers are the fewest cards that carry the full window, which is one
  * answer to a question that has several. A node of H200 will hold a 70B on two cards
- * and hold it better on eight, and a 120B at 32k on four rather than at 131k on eight —
+ * and hold it better on eight, and a 120B at 32k on four, not at 131k on eight:
  * those are trades between context, throughput and what is left of the node for
  * somebody else, and none of them is the plane's to make. Offering only the cheapest
  * one is what made a whole node look like the only thing on the menu.
  *
- * Under the selected row rather than in a column, because it is a second question and
+ * Under the selected row, not in a column, because it is a second question and
  * it is only worth asking once the class is settled. A layout the fleet is too small
  * for is shown and not offered, for the same reason a short row is: waiting does not
  * turn four cards into eight.
@@ -645,7 +645,7 @@ function FitRow({
   actionLabel = "Deploy",
 }: {
   fit: ArtifactFit
-  /** What a block from this row declares — the repo's own, never the sizing fallback. */
+  /** What a block from this row declares: the repo's own, never the sizing fallback. */
   quantization: string
   onPick?: (footprint: ServingFootprint, fit: ArtifactFit) => void
   selecting?: boolean
@@ -669,7 +669,7 @@ function FitRow({
     )
   /**
    * The whole row is the target when selecting. A button in the last cell is right for
-   * an action — it is a thing you do — but wrong for a choice among five, where the
+   * an action, it is a thing you do, but wrong for a choice among five, where the
    * clickable area should be the thing you are comparing.
    */
   /**
@@ -685,8 +685,8 @@ function FitRow({
    * `possible` is where the line actually is, and the plane draws it in the same place:
    * the weights sitting on the cards and the heads dividing across the tensor group are
    * arithmetic, the plane's `check_capacity` refuses over exactly those, and offering a
-   * row it will refuse is a dead end rather than a choice. Everything past that line —
-   * the window, the batch, the KV figure — is an estimate against a flat envelope, and
+   * row it will refuse is a dead end instead of a choice. Everything past that line,
+   * the window, the batch, the KV figure, is an estimate against a flat envelope, and
    * the row says so instead of disabling itself: dimmed, with its reason under it, and
    * a warning carried onto the params step.
    */
@@ -787,7 +787,7 @@ function FitRow({
               </TooltipTrigger>
               <TooltipContent className="max-w-80">
                 {fit.node_count > 1
-                  ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric — tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
+                  ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric: tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
                   : `One node of ${fit.device_count}, tensor-parallel ${fit.tensor_parallel}. A node of this class holds ${fit.devices_per_node} devices.`}
                 {fit.supply_short && (
                   <span className="mt-1 block text-warning">
@@ -808,7 +808,7 @@ function FitRow({
         </td>
         <td className="p-2 text-right">
           {/* A row the fleet cannot supply is not offered. Placement would refuse it,
-            and the count is a hard bound rather than a busy one — waiting does not
+            and the count is a hard bound instead of a busy one: waiting does not
             turn five cards into sixty-four. A row the *sizing* dislikes is offered:
             that is an estimate, and `possible` is the half worth refusing over. */}
           {fit.possible && !fit.supply_short && onPick && !selecting && (

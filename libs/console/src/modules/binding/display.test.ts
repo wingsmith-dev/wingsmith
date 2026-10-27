@@ -39,7 +39,7 @@ function quota(over: Partial<ServingQuota> = {}): ServingQuota {
 }
 
 describe("formatLimit", () => {
-  it("groups a committed token rate rather than compacting it", () => {
+  it("groups a committed token rate instead of compacting it", () => {
     // "10M" cannot say whether 10,500,000 was what somebody sold.
     expect(formatLimit(10_000_000)).toBe("10,000,000")
     expect(formatLimit(10_500_000)).toBe("10,500,000")

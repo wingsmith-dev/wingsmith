@@ -7,9 +7,9 @@ const CUSTOM = "__custom__"
 /**
  * A pick from the values we have run, with a way to type one we have not.
  *
- * Parsers and grammar backends are free strings on the wire on purpose — an
- * engine build knows names that postdate this console — so a plain select would
- * make a serving block unwritable rather than making it correct. The list is the common
+ * Parsers and grammar backends are free strings on the wire, an
+ * engine build knows names that postdate this console, so a plain select would
+ * make a serving block unwritable instead of making it correct. The list is the common
  * case and the escape hatch is one click away.
  */
 export function SuggestField({
@@ -51,7 +51,7 @@ export function SuggestField({
         onChange={pick}
         hint={custom ? undefined : hint}
         options={[
-          { value: NONE, label: "none — emit no flag" },
+          { value: NONE, label: "none: emit no flag" },
           ...options.map((option) => ({ value: option, label: option })),
           { value: CUSTOM, label: "other…" },
         ]}

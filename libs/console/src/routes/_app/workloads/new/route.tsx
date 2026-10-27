@@ -3,12 +3,12 @@ import { NewWorkloadPage } from "./page"
 
 /**
  * The flow's state, in the URL, so that "Deploy" on an artifact's fitment row is a link
- * rather than a second copy of this page.
+ * instead of a second copy of this page.
  *
  * Every field is optional and the page opens at whichever step is still unanswered. The
- * footprint travels as its six numbers because there is nothing else to name it by —
- * a serving configuration has no id until the workload that carries it exists — and as
- * search params rather than router state so the link survives a reload and can be
+ * footprint travels as its six numbers because there is nothing else to name it by,
+ * a serving configuration has no id until the workload that carries it exists, and as
+ * search params, not router state so the link survives a reload and can be
  * pasted to someone.
  */
 export interface NewWorkloadSearch {

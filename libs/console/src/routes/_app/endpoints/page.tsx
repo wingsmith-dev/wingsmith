@@ -43,8 +43,8 @@ interface Health {
  * What an endpoint's row says about it, read off the gateway's own series.
  *
  * Only `enabled` is a plane fact; everything else is measurement, and where the
- * store answered nothing the row says so rather than guessing. An endpoint
- * nobody has called is not down and is not 100% up — it is unmeasured, and the
+ * store answered nothing the row says so instead of guessing. An endpoint
+ * nobody has called is not down and is not 100% up: it is unmeasured, and the
  * two must not be spelled the same way.
  *
  * The thresholds are this console's reading color and nothing else. No
@@ -70,7 +70,7 @@ function health(
   }
 }
 
-/** A weighted target's readiness bar — enabled targets up, the rest idle. */
+/** A weighted target's readiness bar: enabled targets up, the rest idle. */
 function TargetBar({ enabled, total }: { enabled: number; total: number }) {
   return (
     <div className="flex gap-0.5">
@@ -89,7 +89,7 @@ function TargetBar({ enabled, total }: { enabled: number; total: number }) {
 
 /**
  * What an endpoint's primary target resolves to across the object graph the
- * endpoint does not carry — deployment → workload → artifact — plus the regions its
+ * endpoint does not carry, deployment → workload → artifact, plus the regions its
  * targets land in, read off the workload's per-cluster deployments.
  */
 interface ResolvedEndpoint {
@@ -100,7 +100,7 @@ interface ResolvedEndpoint {
 
 /**
  * Builds a resolver over drained option lists. A sparse payload or an un-drained
- * list leaves a field undefined and the cell falls back to a dash rather than
+ * list leaves a field undefined and the cell falls back to a dash instead of
  * throwing.
  */
 function makeResolver(
@@ -312,8 +312,8 @@ function columns(
 }
 
 /**
- * An endpoint has no cluster at any depth. It spans clusters by construction —
- * that is what the weighted target set is for — so there is nothing here to
+ * An endpoint has no cluster at any depth. It spans clusters by construction,
+ * that is what the weighted target set is for, so there is nothing here to
  * scope by cluster and no column pretending otherwise.
  */
 export function EndpointsPage() {
@@ -329,7 +329,7 @@ export function EndpointsPage() {
   /**
    * The gateway's own answer for the whole front door, in two windows.
    *
-   * One query for the page rather than one per row: the totals are the gateway's
+   * One query for the page instead of one per row: the totals are the gateway's
    * and do not move when somebody pages, and a table of names must not be a
    * round trip to Prometheus per name. `fortnight` exists only for the
    * availability column, because a 14-day figure is a 14-day window and not
@@ -354,7 +354,7 @@ export function EndpointsPage() {
 
   /**
    * Each endpoint's own row out of the two breakdowns, keyed the way the
-   * gateway labels them — by endpoint id. A name the store has never seen is
+   * gateway labels them, by endpoint id. A name the store has never seen is
    * absent from the breakdown and reads as unmeasured, which is what it is.
    */
   const read = useMemo(() => {

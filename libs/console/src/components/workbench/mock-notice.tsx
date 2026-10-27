@@ -3,7 +3,7 @@ import { IconFlask2 } from "@tabler/icons-react"
 /**
  * Says, on the screen, that what is under it is invented.
  *
- * The rest of this console refuses to show a number the plane did not produce —
+ * The rest of this console refuses to show a number the plane did not produce:
  * the workload page has a whole component for saying "nothing computes this, so
  * no figure is drawn". These views are the deliberate exception: the conformance
  * ledger, the agent transcript and the evaluation scores are being designed

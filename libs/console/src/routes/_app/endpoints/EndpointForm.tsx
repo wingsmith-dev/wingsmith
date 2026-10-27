@@ -127,7 +127,7 @@ export function EndpointForm({
       onSubmit={submit}
     >
       {/* The name is shown when editing and cannot be changed there. The plane
-          refuses it — the name is the handle in URLs, in metrics labels and in
+          refuses it: the name is the handle in URLs, in metrics labels and in
           every link the console holds, and an endpoint exists so that what is
           behind it can be replaced without anybody noticing. `slug` is the
           public model id and is patchable, which is the point of the split.
@@ -182,7 +182,7 @@ export function EndpointForm({
       {/* Beside the slug and not under a disclosure, because an alias is the
           other half of the same decision: the slug is the id clients should
           send and these are the ids that still work. Retiring one is deleting
-          its line, and the plane reads an empty set as "retire them all" — the
+          its line, and the plane reads an empty set as "retire them all": the
           field is only sent because the form always sends the whole shape. */}
       <ListField
         label="Aliases"

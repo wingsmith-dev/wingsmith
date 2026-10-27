@@ -12,7 +12,7 @@ import { IconMinus, IconPlus } from "@tabler/icons-react"
 /**
  * Declaring the split, before anything is running.
  *
- * Nothing here is destructive — there is no workload yet — so none of the
+ * Nothing here is destructive, there is no workload yet, so none of the
  * locking the detail page needs applies. What does apply is the arithmetic: a
  * ratio decides how many devices one indivisible unit costs, and a unit that
  * does not divide the hardware strands whole nodes without anything failing.
@@ -23,7 +23,7 @@ import { IconMinus, IconPlus } from "@tabler/icons-react"
 /**
  * Aggregated or disaggregated, and the ratio when it is the second.
  *
- * Choosing disaggregated is one click and lands NVIDIA's own recipe — 1:2 with
+ * Choosing disaggregated is one click and lands NVIDIA's own recipe: 1:2 with
  * the per-role arguments already filled in. Making somebody assemble a ratio
  * and six arguments before they can try the feature would mean the common case
  * is a form-filling exercise, and the common case is the recipe.
@@ -38,7 +38,7 @@ export function TopologyChoice({
   /** Null is aggregated. There is no third state. */
   roles: WorkloadRole[] | null
   onChange: (roles: WorkloadRole[] | null) => void
-  /** Devices per WORKER — 8 at TP8 — never the group's total. */
+  /** Devices per WORKER (8 at TP8) never the group's total. */
   deviceCount: number
   deviceClass: string
   /** Free devices of this class, for the stranding arithmetic. */
@@ -119,8 +119,8 @@ export function TopologyChoice({
 
           {stranded && (
             /* Nothing on the server says this. The plane spells the sentence
-               and cannot run it — devices-per-node is a fact about a cluster,
-               and the declaration path has no cluster in hand — so a ratio that
+               and cannot run it: devices-per-node is a fact about a cluster,
+               and the declaration path has no cluster in hand, so a ratio that
                strands a node produces no error at declaration, no error at
                placement, and a bill. */
             <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-warning">
@@ -130,7 +130,7 @@ export function TopologyChoice({
           )}
 
           <p className="text-2xs text-muted-foreground">
-            The group is the unit of scale — the replica count on the next step
+            The group is the unit of scale: the replica count on the next step
             counts groups, and both roles grow together, so the ratio cannot
             drift. Changing it later is free.
           </p>
@@ -187,7 +187,7 @@ function TopologyOption({
  * numbers, and anybody who does should be able to say so.
  *
  * `max_batch_tokens` is a field and not a line in the argument map because the
- * plane refuses `--max-num-batched-tokens` from a role's arguments — it is a
+ * plane refuses `--max-num-batched-tokens` from a role's arguments: it is a
  * derived flag with a typed column. The two roles are sixteenfold apart on it
  * in the recipe, which is why it is the one number worth its own box.
  */
@@ -242,7 +242,7 @@ export function RoleParamFields({
             />
             {refused.length > 0 && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 px-2.5 py-1.5 text-2xs text-destructive">
-                {refused.join(", ")} — rendered from a declared column or from
+                {refused.join(", ")}: rendered from a declared column or from
                 the topology. The plane refuses a role that sets one.
               </p>
             )}
@@ -252,7 +252,7 @@ export function RoleParamFields({
       <p className="text-2xs text-muted-foreground">
         These decide what each process is, so they are in the serving digest.
         Changing them on a running workload reloads the weights in every worker
-        of both roles — the ratio above is the part that stays free.
+        of both roles: the ratio above is the part that stays free.
       </p>
     </div>
   )

@@ -23,10 +23,10 @@ const LOGIN_METHODS: { key: LoginMethod; label: string }[] = [
  * The bridge between a declared cluster and a running operator. `POST /clusters`
  * only writes the registry row; a cluster does nothing until the cluster-setup
  * chart is installed in it, the operator dials the hub, and it starts reporting.
- * This panel walks that gap — a checklist driven by observed state, and the
+ * This panel walks that gap: a checklist driven by observed state, and the
  * per-cluster `helm` install that makes it hangar-ready.
  *
- * It is deliberately shown only while onboarding is unfinished. Once the agent
+ * It is shown only while onboarding is unfinished. Once the agent
  * is connected and a serving address is set, the sync card and the identity
  * card's serving section carry the live state and this panel steps aside.
  */
@@ -54,7 +54,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
     {
       label: "Declared in the plane",
       done: true,
-      note: "The registry row exists. Frames from an unknown cluster are rejected, so this comes first — and it already has.",
+      note: "The registry row exists. Frames from an unknown cluster are rejected, so this comes first, and it already has.",
     },
     {
       label: "Operator connected",
@@ -114,7 +114,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
           <CardContent className="space-y-5">
             <p className="text-2xs leading-relaxed text-muted-foreground">
               The install names its target with <code>--kube-context</code>, so
-              it does not depend on where your <code>kubectl</code> is pointed —
+              it does not depend on where your <code>kubectl</code> is pointed;
               adjust it if your local context is named something else. Helm
               pulls the chart from its own registry, so this works even where
               the plane is unreachable.
@@ -131,7 +131,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   {freshToken ? (
                     <>
                       <p className="text-2xs leading-relaxed text-warning">
-                        Shown once — copy it now. It is folded into the
+                        Shown once: copy it now. It is folded into the
                         <code> {view.values_filename}</code> below, so the chart
                         creates the operator secret; you won't see it again.
                       </p>
@@ -141,7 +141,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     <div className="space-y-1.5">
                       <p className="text-2xs leading-relaxed text-muted-foreground">
                         A token was generated for this cluster and shown once.
-                        If you didn't capture it, rotate to mint a new one — the
+                        If you didn't capture it, rotate to mint a new one: the
                         previous token stops working immediately.
                       </p>
                       <Button
@@ -213,8 +213,8 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-2xs leading-relaxed text-muted-foreground">
                           {usingGh
-                            ? "The chart registry is private — this borrows the session your gh CLI already has, so there is no token to make."
-                            : "The chart registry is private — log in first, with a token that can pull it (read:packages)."}
+                            ? "The chart registry is private: this borrows the session your gh CLI already has, so there is no token to make."
+                            : "The chart registry is private: log in first, with a token that can pull it (read:packages)."}
                         </p>
                         {view.registry_login_gh && (
                           <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-foreground/10">

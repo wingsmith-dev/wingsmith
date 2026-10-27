@@ -38,7 +38,7 @@ export function NodeDetailPage() {
   const { data: node, isLoading, error } = useNode(nodeId)
   const { data: cluster } = useCluster(node?.cluster ?? "")
   // The node's cluster agent is unreachable: its observed condition is the last
-  // heartbeat, not a live fact, so readiness reads as stale rather than ready.
+  // heartbeat, not a live fact, so readiness reads as stale, not ready.
   const stale = cluster ? !cluster.reachable : false
   const devices = useDevices({ node: nodeId })
   const inFlight = useOpenOperations(node?.id)
@@ -267,7 +267,7 @@ export function NodeDetailPage() {
 }
 
 /**
- * Live allocations holding a device on this node — the closest the observed
+ * Live allocations holding a device on this node: the closest the observed
  * model gets to "replicas running here". Derived client-side from
  * `/allocations?live=true` because there is no node-scoped allocation filter.
  */
@@ -434,7 +434,7 @@ function ConditionsCard({
             <span className="inline-flex items-center gap-2 font-mono text-xs">
               <StatusDot tone={row.tone} />
               {row.label}
-              <span className="text-muted-foreground">— {row.detail}</span>
+              <span className="text-muted-foreground">: {row.detail}</span>
             </span>
           </div>
         ))}

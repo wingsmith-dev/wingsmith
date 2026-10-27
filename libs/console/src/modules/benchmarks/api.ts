@@ -17,7 +17,7 @@ export interface BenchmarkFilters {
   harness?: string
   phase?: string
   actor?: string
-  /** The request a run was expanded from — how a parent lists its children. */
+  /** The request a run was expanded from: how a parent lists its children. */
   request?: string
   since?: string
 }
@@ -37,7 +37,7 @@ export function fetchBenchmark(ref: string): Promise<BenchmarkRun> {
 /**
  * What one serving configuration has been measured at, rolled up now.
  *
- * An unknown digest answers with zero counts rather than a 404, so this is safe
+ * An unknown digest answers with zero counts instead of a 404, so this is safe
  * to call for any workload without checking first.
  */
 export function fetchServingBenchmarkSummary(
@@ -52,7 +52,7 @@ export function fetchServingBenchmarkSummary(
  * Whether one run met the standard, derived now and stored nowhere.
  *
  * `criteria` grades against a version other than the one its request recorded,
- * which answers "would this have passed under the new rules" — the question a
+ * which answers "would this have passed under the new rules": the question a
  * stored verdict cannot answer at all.
  */
 export function fetchBenchmarkVerdict(
@@ -107,7 +107,7 @@ export function fetchBenchmarkRequestBands(
  *
  * The plane's read and not this console's arithmetic: a console that walked the
  * runs and found its own inflection would be a second, quieter answer to where
- * a configuration stops paying for latency. Nothing here is stored — the curve
+ * a configuration stops paying for latency. Nothing here is stored: the curve
  * and the knee are both derived at read against the pinned criteria version, so
  * `criteria` re-derives an old ramp under a newer standard.
  *

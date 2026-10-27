@@ -28,7 +28,7 @@ import type { TenantAPIKey } from "@/modules/binding/types"
 import { toast } from "sonner"
 
 /**
- * Mints a key and, once minted, shows the plaintext exactly once — the same
+ * Mints a key and, once minted, shows the plaintext exactly once: the same
  * shape as a cluster's enrollment token. There is nowhere it could come from
  * afterwards; only the hash is stored.
  */
@@ -59,7 +59,7 @@ function MintKeyDialog({
           <DialogTitle>New inference key</DialogTitle>
           <DialogDescription>
             {mint.data
-              ? "Shown once. It cannot be read again — copy it now."
+              ? "Shown once. It cannot be read again: copy it now."
               : "A credential a caller presents to the gateway on this tenant's public listener."}
           </DialogDescription>
         </DialogHeader>
@@ -105,7 +105,7 @@ function MintKeyDialog({
 }
 
 /**
- * The tenant's gateway inference keys — the credential a public-listener caller
+ * The tenant's gateway inference keys: the credential a public-listener caller
  * presents, never the console sign-in token. One tenant, many keys, so
  * revoking one caller never touches another.
  */

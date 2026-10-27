@@ -15,7 +15,7 @@ describe("formatRelative", () => {
     vi.useRealTimers()
   })
 
-  it("says never rather than drawing an epoch for an absent timestamp", () => {
+  it("says never instead of drawing an epoch for an absent timestamp", () => {
     // A row that has never reported is not a row that reported in 1970.
     expect(formatRelative(null)).toBe("never")
     expect(formatRelative("")).toBe("never")
@@ -48,7 +48,7 @@ describe("formatRelative", () => {
 })
 
 describe("formatAbsolute", () => {
-  it("draws an em dash rather than an epoch for an absent timestamp", () => {
+  it("draws an em dash instead of an epoch for an absent timestamp", () => {
     expect(formatAbsolute(null)).toBe("—")
     expect(formatAbsolute("")).toBe("—")
   })
@@ -96,7 +96,7 @@ describe("shortenId", () => {
     expect(shortenId("dev_01j9x2aaaaaaaa", 10)).toBe("dev_01j9x2aaaa")
   })
 
-  it("leaves something already short alone rather than adding an ellipsis", () => {
+  it("leaves something already short alone instead of adding an ellipsis", () => {
     // Two rows only need to be tellable apart; a value that is already short is fine.
     expect(shortenId("iad-1")).toBe("iad-1")
     expect(shortenId("n01")).toBe("n01")
@@ -109,7 +109,7 @@ describe("shortenId", () => {
   })
 
   it("keeps distinct ids distinct at the width a table uses", () => {
-    // The whole point: if two rows collapsed to the same string the table would lie.
+    // The point: if two rows collapsed to the same string the table would lie.
     const ids = [
       "dev_01j9x2aaaaaaaa",
       "dev_01j9x3aaaaaaaa",

@@ -42,7 +42,7 @@ function TabNote({ children }: React.PropsWithChildren) {
 }
 
 /**
- * The stage badge on its own, for the stages that render no identity card — the
+ * The stage badge on its own, for the stages that render no identity card: the
  * card carries stage, phase, reachability, sync and labels everywhere else, and
  * repeating them under the header only reads as noise.
  */
@@ -95,7 +95,7 @@ function ViewTab({
 }
 
 /**
- * The full operational dashboard — shown once a cluster is enrolled. Reused for
+ * The full operational dashboard: shown once a cluster is enrolled. Reused for
  * `live`, `degraded` and `draining`; the stage banner inside it carries the
  * caveat (stale link, draining) so the panels themselves stay the same.
  *
@@ -160,7 +160,7 @@ function ClusterDashboard({
         <TabsContent value="nodes" className="space-y-3">
           <TabNote>
             Observed. Nodes are reported by the cluster and cannot be added or
-            removed here — raise a pool's node bounds instead, and act on a node
+            removed here: raise a pool's node bounds instead, and act on a node
             by draining or cordoning it.
           </TabNote>
           <ClusterNodesTable clusterId={cluster.id} />
@@ -180,7 +180,7 @@ function ClusterDashboard({
           <TabNote>
             Reported, not managed. Hangar records what version of each component
             a cluster is running and whether it is behind, but it does not
-            install or upgrade them — that is done out of band by whatever
+            install or upgrade them: that is done out of band by whatever
             provisions the cluster.
           </TabNote>
           <ComponentsTable clusterId={cluster.id} />

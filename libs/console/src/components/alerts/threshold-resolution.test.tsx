@@ -104,7 +104,7 @@ describe("ThresholdResolution", () => {
     expect(screen.getByText("disabled")).toBeInTheDocument()
   })
 
-  it("marks a window that came from the rule rather than from the row", () => {
+  it("marks a window that came from the rule, not from the row", () => {
     render(
       <ThresholdResolution
         rule={RULE}
@@ -119,7 +119,7 @@ describe("ThresholdResolution", () => {
     expect(screen.getAllByText("· from the rule").length).toBe(2)
   })
 
-  it("offers to override a fleet default rather than edit it in place", async () => {
+  it("offers to override a fleet default, not edit it in place", async () => {
     const onDeclare = vi.fn()
     render(
       <ThresholdResolution

@@ -25,7 +25,7 @@ export function useMetrics(
     /**
      * One retry, not the default three. A metrics store that is down stays down
      * for longer than a panel is worth blocking on, and the plane already turns
-     * that case into a body carrying `unavailable` rather than an error.
+     * that case into a body carrying `unavailable` instead of an error.
      */
     retry: 1,
     staleTime: REFRESH_MS / 2,

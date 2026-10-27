@@ -9,7 +9,7 @@ const NOW = new Date("2026-08-23T12:00:00Z")
 const MINUTES = 60 * 1000
 
 // Factories take only what a test asserts on; the rest is filled in as something plausible.
-// Casting is deliberate — restating forty wire fields per fixture would hide the one that matters.
+// Casting is deliberate: restating forty wire fields per fixture would hide the one that matters.
 function sync(over: Partial<Cluster["sync"]> = {}): Cluster["sync"] {
   return {
     state: "connected",
@@ -124,7 +124,7 @@ afterEach(() => {
 // --- rollups ---------------------------------------------------------------
 
 describe("summarizeDevices", () => {
-  it("lists impaired devices rather than counting them", () => {
+  it("lists impaired devices instead of counting them", () => {
     // One degraded card disappears into "47 of 48 healthy"; the panel exists so it does not.
     const got = summarizeDevices([
       ...Array.from({ length: 47 }, (_, i) => device({ id: `dev_${i}` })),
@@ -229,7 +229,7 @@ describe("deriveClusterActionables", () => {
 
   it("reports a cluster that never connected as not enrolled, not a failure", () => {
     // Nothing has broken; it has not been enrolled yet. `reachable` is false
-    // because the plane has no sync row for it — the shape the previous version
+    // because the plane has no sync row for it: the shape the previous version
     // of this test could not produce, having left the fixture default of true.
     const got = deriveClusterActionables({
       cluster: cluster({
@@ -281,7 +281,7 @@ describe("deriveClusterActionables", () => {
     expect(got).toEqual([])
   })
 
-  it("states a pool shortfall as the two numbers rather than a ratio", () => {
+  it("states a pool shortfall as the two numbers instead of a ratio", () => {
     const got = deriveClusterActionables({
       cluster: cluster(),
       pools: [
@@ -330,7 +330,7 @@ describe("deriveClusterActionables", () => {
     expect(got[0].detail).toBe("ECC")
   })
 
-  it("says a device is throttled in the same row rather than a second one", () => {
+  it("says a device is throttled in the same row instead of a second one", () => {
     const got = deriveClusterActionables({
       cluster: cluster(),
       devices: [
@@ -459,7 +459,7 @@ describe("deriveClusterActionables", () => {
     expect(got).toEqual([])
   })
 
-  it("says nothing about a deployment scaled to zero on purpose", () => {
+  it("says nothing about a deployment scaled to zero", () => {
     const got = deriveClusterActionables({
       cluster: cluster(),
       deployments: [

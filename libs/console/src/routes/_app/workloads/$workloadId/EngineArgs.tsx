@@ -13,7 +13,7 @@ import { EditButton } from "./EditButton"
  * away with the object: `engine_args` is what somebody declared and
  * `resolved_engine_args` is what the typed behavior block made of it, and the
  * only way to tell which value took effect is to see both. One block and a
- * toggle rather than two stacked blocks — they are the same argument list read
+ * toggle instead of two stacked blocks: they are the same argument list read
  * at two points, so they belong in the same place on the page, and the toggle
  * is what makes the difference between them legible.
  */
@@ -61,8 +61,8 @@ export function EngineArgsPanel({
         {empty ? (
           <p className="font-mono text-2xs text-muted-foreground">
             {shown === "resolved"
-              ? "None — the engine runs on its own defaults."
-              : "Nothing declared — every argument below was resolved."}
+              ? "None: the engine runs on its own defaults."
+              : "Nothing declared: every argument below was resolved."}
           </p>
         ) : (
           <pre className="rounded-lg border bg-background/60 p-4 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap">

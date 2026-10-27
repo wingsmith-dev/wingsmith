@@ -21,7 +21,7 @@ import type { BoardMode } from "./route"
 /**
  * What one cell of the board actually is.
  *
- * The board is deliberately terse — a device is 24 pixels — so everything that
+ * The board is terse, a device is 24 pixels, so everything that
  * cannot be a color lives here: the uuid, the fabric, the health reason, the
  * allocation holding it. In sandbox mode it is also where an allocation is
  * picked up or let go, since those need a name attached and a cell has no room
@@ -207,8 +207,8 @@ export function Inspector({
  * showing at all: the thing that spent the capacity is a deployment nobody
  * thought to look at.
  *
- * Every field below is one the plane actually stated — a cluster, a shape and a
- * count — which is what makes this the place to check when the cells on the
+ * Every field below is one the plane actually stated, a cluster, a shape and a
+ * count, which is what makes this the place to check when the cells on the
  * board and the reserved numeral do not agree. The cells are the board's guess
  * at where each of these will land; this list is what was really promised.
  */
@@ -536,8 +536,8 @@ function take(
 /**
  * A reserved cell, explained.
  *
- * Deliberately not `HolderBlock`. That block offers "pick up" and "release",
- * which are operations on an allocation, and a reservation has none — its
+ * Not `HolderBlock`. That block offers "pick up" and "release",
+ * which are operations on an allocation, and a reservation has none: its
  * allocation id is one this board invented so the cells could be grouped. It has
  * no phase to report and no gang to be complete, and the one thing it does have
  * to say is that this square is a guess.

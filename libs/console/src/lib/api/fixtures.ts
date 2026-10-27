@@ -128,7 +128,7 @@ const MAX_LIMIT = 200
 
 /**
  * Slices fixture rows into the plane's list envelope, honoring `limit` and
- * `cursor` the way `app/core/pagination.py` does — including the opaque,
+ * `cursor` the way `app/core/pagination.py` does, including the opaque,
  * base64 cursor, so a client that hand-decodes one is as wrong here as it is
  * against the real thing.
  */

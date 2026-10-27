@@ -92,7 +92,7 @@ const columns: Column<Component>[] = [
 
 /**
  * Declared version and observed version as a pair, never merged. A component
- * nobody has reported on is `behind` — silence is not evidence of a finished
+ * nobody has reported on is `behind`: silence is not evidence of a finished
  * rollout, and the plane derives that flag so both clients agree on it.
  */
 export function ComponentsTable({ clusterId }: { clusterId: string }) {

@@ -43,8 +43,8 @@ const UNSET = "__none__"
  * bytes at another.
  *
  * On create there are two ways in. Naming a HuggingFace repo is the one most
- * people want — the plane reads the repo and derives the digest from its per-file
- * oids, so the field is filled in and read-only rather than typed. Typing every
+ * people want: the plane reads the repo and derives the digest from its per-file
+ * oids, so the field is filled in and read-only, not typed. Typing every
  * field by hand stays, because not every set of weights lives on the Hub.
  */
 export function ArtifactForm({
@@ -122,10 +122,10 @@ export function ArtifactForm({
   }
 
   /**
-   * The source is kept and re-sent on submit rather than the digest it produced.
+   * The source is kept and re-sent on submit instead of the digest it produced.
    * The plane derives identity either way, and posting the source lets it derive
    * from the repo instead of trusting a value that sat in a form. What is kept is
-   * the slug as typed, not the returned `hf://owner/name@sha` — the plane reads a
+   * the slug as typed, not the returned `hf://owner/name@sha`; the plane reads a
    * source as `owner/name` and would take the pinned commit for part of the name.
    */
   const populate = () => {
@@ -289,7 +289,7 @@ export function ArtifactForm({
           value={sizeBytes}
           onChange={setSizeBytes}
           min={0}
-          hint={sizeBytes ? `${formatBytes(sizeBytes)} — bytes` : "In bytes."}
+          hint={sizeBytes ? `${formatBytes(sizeBytes)}: bytes` : "In bytes."}
         />
         <NumberField
           label="Parameters"
@@ -307,7 +307,7 @@ export function ArtifactForm({
           value={project}
           onChange={setProject}
           options={[
-            { value: UNSET, label: "none — shared" },
+            { value: UNSET, label: "none: shared" },
             ...(projects ?? []).map((p) => ({ value: p.id, label: p.slug })),
           ]}
         />
@@ -326,7 +326,7 @@ export function ArtifactForm({
         rows={6}
         hint={
           resolved
-            ? "Read off the repo — architecture, dtype, quantization, context. Yours to edit."
+            ? "Read off the repo: architecture, dtype, quantization, context. Yours to edit."
             : "Anything worth carrying with these weights."
         }
         onChange={(value, valid) => {
@@ -342,7 +342,7 @@ export function ArtifactForm({
  * What the plane noticed while reading the repo, split by whether it is a problem.
  *
  * A repo shipping a second copy of its weights under `original/` is a packaging
- * detail the plane handled — it says so because the size and digest would
+ * detail the plane handled: it says so because the size and digest would
  * otherwise be unexplainable, not because anything is wrong. Weights the Hub
  * cannot address are a different matter. Painting both amber is how the second
  * one gets skimmed past.
@@ -407,7 +407,7 @@ function ResolveError({ error }: { error: unknown }) {
  * workload someone declares next; an artifact has no opinion on how it is served.
  *
  * The two halves are ordered the way they are derived. Context, quantization and
- * dtype are the repo's own — the window it declares, not one trimmed to fit
+ * dtype are the repo's own: the window it declares, not one trimmed to fit
  * anything. Devices and memory are what serving that would take. It never runs
  * the other way: choosing a smaller window because of what a card holds is a
  * serving decision, made against real device classes, not an artifact's.
@@ -434,7 +434,7 @@ function ServingSuggestion({ serving }: { serving: ServingDefaults }) {
       <p className="text-2xs text-muted-foreground">
         The first three are read off the repo's config; the last two are the
         hardware that configuration would need. Nothing here is saved on the
-        artifact — it carries over into the workload you declare for these
+        artifact: it carries over into the workload you declare for these
         weights.
       </p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">

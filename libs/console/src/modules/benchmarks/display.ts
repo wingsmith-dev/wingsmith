@@ -36,7 +36,7 @@ export const BENCHMARK_PHASES = [
 /**
  * A statistic block as harnesses tend to emit one, if that is what this is.
  *
- * Deliberately a guess and named like one. The plane stores the harness's shape
+ * A guess and named like one. The plane stores the harness's shape
  * verbatim, so this console recognizes the common `{unit, avg, p50, …}` object
  * to render it as a row of percentiles and falls back to raw JSON when it does
  * not, which is the right behavior for a field nothing promised the shape of.
@@ -129,7 +129,7 @@ export const BENCHMARK_MODES: BenchmarkMode[] = [
 
 /**
  * Which harness parameter each stepped mode walks. A mode absent from here is
- * a single run and takes no steps — the plane refuses steps on one, and this
+ * a single run and takes no steps: the plane refuses steps on one, and this
  * console does not offer the field.
  */
 export const STEPPED_MODES: Partial<Record<BenchmarkMode, string>> = {
@@ -195,7 +195,7 @@ const VERDICT_TONES: Record<VerdictOutcome, StatusTone> = {
 
 /**
  * `inconclusive` is warned, not grayed. A missing measurement is not a
- * pass and is not nothing — it is the outcome somebody has to go and fix.
+ * pass and is not nothing: it is the outcome somebody has to go and fix.
  */
 export function verdictTone(outcome: VerdictOutcome): StatusTone {
   return VERDICT_TONES[outcome] ?? "neutral"
@@ -227,7 +227,7 @@ export function formatMs(value: number | null | undefined): string {
  *
  * The plane names the field a request walked and this only spells it, so a
  * field nobody here has heard of is shown as itself with its underscores taken
- * out rather than dropped or guessed at.
+ * out, not dropped or guessed at.
  */
 const STEP_FIELD_LABELS: Record<string, string> = {
   concurrency: "Concurrency",
@@ -342,10 +342,10 @@ export function curveSamples(
  * The stretches of a series a line may actually be drawn through.
  *
  * A null reading ends a segment. It is the one rule this whole chart exists
- * under: a named miss is a hole in the curve, and interpolating across it — or
- * worse, plotting it at zero — would draw a measurement nobody took.
+ * under: a named miss is a hole in the curve, and interpolating across it, or
+ * worse, plotting it at zero, would draw a measurement nobody took.
  *
- * A discarded step is excluded rather than treated as a hole: a warm-up is
+ * A discarded step is excluded, not treated as a hole: a warm-up is
  * counted by nothing, so the line joins the counted steps either side of it and
  * the warm-up is drawn as its own mark instead.
  */
@@ -437,7 +437,7 @@ export function curveState(curve: BenchmarkCurve | undefined): CurveState {
  * Where in the drawn order the knee sits, or -1.
  *
  * The plane names a `step_index` and not a position, and the two are different
- * whenever a request walked its steps out of order — a ramp asking for
+ * whenever a request walked its steps out of order: a ramp asking for
  * `[16, 4, 64]` puts index 0 in the middle of the axis. Drawn against the
  * position and the amber rule would land on the wrong step.
  */
@@ -453,7 +453,7 @@ export function kneeIndex(curve: BenchmarkCurve | undefined): number {
  *
  * A found knee whose step value never resolved is the fourth: the plane says
  * which step bent and cannot say at what load, which is a named miss and not a
- * step at zero — so it is spelled, never rendered as the word `null`.
+ * step at zero, so it is spelled, never rendered as the word `null`.
  */
 export function kneeLabel(curve: BenchmarkCurve): string {
   if (!curve.knee.found) return "not found"
@@ -465,7 +465,7 @@ export function kneeLabel(curve: BenchmarkCurve): string {
 /**
  * The knee as a stat tile reads it.
  *
- * `small` is the tile's own signal that the value is prose rather than a
+ * `small` is the tile's own signal that the value is prose instead of a
  * number, and an absent knee is prose every time: "no knee" and "not enough
  * steps to say" are different facts and the tile must not flatten them into a
  * dash.

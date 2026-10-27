@@ -1,4 +1,4 @@
-/** `NodeSchema.condition`. Cordon is not one of these — it is its own boolean. */
+/** `NodeSchema.condition`. Cordon is not one of these: it is its own boolean. */
 export type NodeCondition = "ready" | "not_ready" | "unknown" | (string & {})
 
 /** `DeviceSchema.health`. Left open: health vocabulary is the operator's. */
@@ -9,7 +9,7 @@ export type TopologyKind =
   "nvswitch" | "nvlink" | "pcie" | "numa" | (string & {})
 
 /**
- * `DeviceTopologySchema` — the device's domain inlined for display. A summary
+ * `DeviceTopologySchema`: the device's domain inlined for display. A summary
  * and never the authority: it carries no parent, no membership and no counts,
  * so anything that needs the domain itself reads `/topology-domains`.
  */
@@ -19,7 +19,7 @@ export interface DeviceTopologyRef {
   identifier: string
 }
 
-/** `TopologyDomainSchema` — observed, and the authority on topology. */
+/** `TopologyDomainSchema`: observed, and the authority on topology. */
 export interface TopologyDomain {
   id: string
   cluster: string
@@ -40,7 +40,7 @@ export interface TopologyDomain {
 }
 
 /**
- * `NodeDeviceRollupSchema`. State only — how many devices and how they split by
+ * `NodeDeviceRollupSchema`. State only: how many devices and how they split by
  * health. No utilization, no temperature, no power.
  *
  * `device_class` is the node's dominant GPU model, derived on read, and `null`
@@ -55,7 +55,7 @@ export interface NodeDeviceRollup {
 }
 
 /**
- * `NodeConditionSchema` — one observed node condition as the cluster reported
+ * `NodeConditionSchema`: one observed node condition as the cluster reported
  * it. Generic health signals (memory/disk pressure, network availability) kept
  * in full; the plane does not interpret `type`.
  */
@@ -67,7 +67,7 @@ export interface NodeConditionDetail {
   since: string
 }
 
-/** `NodesSummarySchema` — fleet-wide node rollup, computed server-side. */
+/** `NodesSummarySchema`: fleet-wide node rollup, computed server-side. */
 export interface NodesSummary {
   total: number
   ready: number
@@ -75,7 +75,7 @@ export interface NodesSummary {
   faulted_devices: number
 }
 
-/** `NodeSchema` — a machine observed inside a cluster. Nothing here is declared. */
+/** `NodeSchema`: a machine observed inside a cluster. Nothing here is declared. */
 export interface SupplyNode {
   id: string
   name: string
@@ -85,19 +85,19 @@ export interface SupplyNode {
   pool_name: string | null
   condition: NodeCondition
   /**
-   * Per-signal observed conditions as the cluster named them — memory or disk
+   * Per-signal observed conditions as the cluster named them: memory or disk
    * pressure, network availability. The plane does not interpret `type`.
    */
   conditions: NodeConditionDetail[]
   /**
-   * Observed schedulability. Its own boolean rather than a value of
+   * Observed schedulability. Its own boolean instead of a value of
    * `condition`: cordon is the state a drain Operation leaves behind, and
    * "cordoned" and "not ready" are different facts needing different responses.
    */
   cordoned: boolean
   ready: boolean
   /**
-   * What the machine is, as its provider names it — `p5.48xlarge`. The answer to
+   * What the machine is, as its provider names it: `p5.48xlarge`. The answer to
    * "what kind of node is this", which a node count never gives.
    */
   instance_type: string | null
@@ -121,7 +121,7 @@ export interface SupplyNode {
 }
 
 /**
- * `DeviceSchema` — one accelerator, the schedulable unit, always observed.
+ * `DeviceSchema`: one accelerator, the schedulable unit, always observed.
  *
  * There is no allocation object here and no telemetry: what holds a device is
  * answered by `/allocations?device=`, and utilization, temperature and power go
@@ -160,9 +160,9 @@ export interface Device {
 }
 
 /**
- * `DeviceClassInventorySchema` — what the fleet holds of one class, counted on read.
+ * `DeviceClassInventorySchema`: what the fleet holds of one class, counted on read.
  *
- * `allocatable` is free — claimable and unclaimed — and `allocated` is held by
+ * `allocatable` is free, claimable and unclaimed, and `allocated` is held by
  * a live allocation. Neither is the complement of the other: a device that is
  * unschedulable and unheld is in neither count, and a held device can be
  * unhealthy. Never derive one from the other.
@@ -177,14 +177,14 @@ export interface DeviceClassInventory {
 }
 
 /**
- * `DeviceClassSchema` — one GPU model, as the plane names it.
+ * `DeviceClassSchema`: one GPU model, as the plane names it.
  *
  * `name` is the identifier: the string that appears on a pool, a serving shape,
  * a quota and a device, and the only one that goes back over the wire. `label`
  * is the only one to put in front of a person.
  *
  * `in_catalog` false means the fleet is running hardware the contract table
- * does not name — it resolved to the slug of its vendor string and is being
+ * does not name: it resolved to the slug of its vendor string and is being
  * scheduled onto regardless. Those rows are the ones worth acting on.
  */
 export interface DeviceClass {
@@ -199,7 +199,7 @@ export interface DeviceClass {
   inventory: DeviceClassInventory
 }
 
-/** `PoolMembershipSchema` — the observed half of a pool, as a rollup. */
+/** `PoolMembershipSchema`: the observed half of a pool, as a rollup. */
 export interface PoolMembership {
   nodes_total: number
   nodes_ready: number
@@ -209,7 +209,7 @@ export interface PoolMembership {
   devices_allocatable: number
 }
 
-/** `PoolSchema` — declared spec and observed membership, side by side. */
+/** `PoolSchema`: declared spec and observed membership, side by side. */
 export interface Pool {
   id: string
   cluster_id: string

@@ -15,7 +15,7 @@ import { Link } from "@tanstack/react-router"
  * A deployment result and an endpoint result put side by side in one color
  * read as two rows of one table, which is the misreading that ends in somebody
  * averaging them. The tooltip carries what the level actually measures, so the
- * claim is one hover away from every number rather than in a document.
+ * claim is one hover away from every number, not in a document.
  */
 const LEVEL_STYLES: Record<BenchmarkLevel, string> = {
   deployment: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
@@ -52,7 +52,7 @@ export function LevelBadge({
 /**
  * The one target a request names, linked to whichever collection owns it.
  *
- * A level with no id renders as nothing rather than as a dead link: an
+ * A level with no id renders as nothing, not as a dead link: an
  * endpoint-level request whose endpoint has since been deleted still has a
  * record worth reading.
  */

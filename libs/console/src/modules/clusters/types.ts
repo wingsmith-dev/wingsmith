@@ -1,5 +1,5 @@
 /**
- * `ClusterSchema.phase` — declared. What we asked for, and never where
+ * `ClusterSchema.phase`: declared. What we asked for, and never where
  * reachability lives: folding "the network is down" into the same field as
  * "somebody disabled this cluster" makes two situations that need different
  * responses indistinguishable.
@@ -7,7 +7,7 @@
 export type ClusterPhase = "pending" | "active" | "draining" | "disabled"
 
 /**
- * `ClusterSyncSchema.state` — observed and derived, never stored. Left open
+ * `ClusterSyncSchema.state`: observed and derived, never stored. Left open
  * because the plane derives this value and may derive one the console has not
  * been taught about yet.
  */
@@ -33,15 +33,15 @@ export interface ClusterSync {
   observed_region: string | null
   /**
    * The operator runs without its reconcile loop: it reports everything and
-   * applies nothing the plane declares. Orthogonal to `state` — a read-only
+   * applies nothing the plane declares. Orthogonal to `state`: a read-only
    * cluster is `connected` and healthy by every other field here, which is why
    * it has to be shown on its own. Anything placed on it never starts.
    */
   read_only: boolean
   /**
-   * A leader-worker backend — Grove or LeaderWorkerSet — is installed, so this
+   * A leader-worker backend, Grove or LeaderWorkerSet, is installed, so this
    * cluster can run a replica whose devices do not fit on one machine. Observed
-   * from the API groups the cluster serves rather than configured, so installing
+   * from the API groups the cluster serves, not configured, so installing
    * a backend is enough to make it true and nothing has to be redeclared.
    */
   multinode: boolean
@@ -49,8 +49,8 @@ export interface ClusterSync {
 
 /**
  * Where the data plane reaches this cluster's serving runtime. Declared, and
- * deliberately not part of the cluster patch body: the plane keeps it as its own
- * sub-resource because nothing in the control plane ever dials it — only the
+ * not part of the cluster patch body: the plane keeps it as its own
+ * sub-resource because nothing in the control plane ever dials it, only the
  * gateway does.
  */
 export interface ClusterServing {
@@ -90,7 +90,7 @@ export interface Cluster {
    * The `cluster` label this cluster's series are stamped with in the shared
    * metrics store. Defaults to the cluster's own name at registration, since
    * that is what the setup chart stamps. Null means it is not observable and its
-   * panels say so, rather than querying under a label nobody has confirmed.
+   * panels say so, instead of querying under a label nobody has confirmed.
    */
   metrics_label: string | null
 }
@@ -98,7 +98,7 @@ export interface Cluster {
 /**
  * Everything the register-cluster screen shows to make a cluster hangar-ready:
  * a `helm` install of the `cluster-setup` chart. `values_yaml` is one editable
- * file — plane-filled identity up top, a commented skeleton of the cluster's own
+ * file: plane-filled identity up top, a commented skeleton of the cluster's own
  * infra facts below to fill in. The enrollment token is shown once when minted
  * (`enrolment_token`, folded into `values_yaml`); a plain GET carries none and
  * `enrolment_token_set` says whether one already exists.
@@ -113,7 +113,7 @@ export interface ClusterSetup {
   registry_login: string | null
   /** The same login via an existing `gh` session; null for a non-GitHub registry. */
   registry_login_gh: string | null
-  /** Present only in the mint/rotate response — shown once, never returned by a GET. */
+  /** Present only in the mint/rotate response: shown once, never returned by a GET. */
   enrolment_token: string | null
   /** Whether a token already exists, so the screen offers "rotate" instead of "generate". */
   enrolment_token_set: boolean
@@ -121,7 +121,7 @@ export interface ClusterSetup {
 
 /**
  * How much of a cluster is free to place onto, derived at read time from
- * observed devices — nothing here is stored. `largest_contiguous_block` is the
+ * observed devices: nothing here is stored. `largest_contiguous_block` is the
  * biggest set of allocatable devices sharing one topology domain (what a job
  * wanting one fabric can actually get), distinct from `free_devices` which
  * counts every allocatable device regardless of where it sits.

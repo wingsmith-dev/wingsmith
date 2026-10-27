@@ -28,15 +28,15 @@ import { toast } from "sonner"
 /**
  * `POST /v1/benchmarks` against one deployment.
  *
- * The form is built from `GET /v1/benchmarks/harnesses` rather than from a list
+ * The form is built from `GET /v1/benchmarks/harnesses`, not from a list
  * of AIPerf flags written out here. The plane validates against that same table,
  * so a field this console does not know about is one it renders anyway, and a
  * flag the plane dropped stops being offered without a console release.
  *
  * `image` is the one field not built from that table. It is left empty to mean
  * "whatever the harness is pinned to", with the pin shown as the placeholder, so
- * the run follows the plane's default unless somebody deliberately types over it
- * — a run started from here should not be pinned to whatever the pin happened to
+ * the run follows the plane's default unless somebody types over it:
+ * a run started from here should not be pinned to whatever the pin happened to
  * be on the day this dialog was opened.
  */
 export function NewBenchmarkDialog({
@@ -120,7 +120,7 @@ export function NewBenchmarkDialog({
           <DialogTitle>Run benchmark</DialogTitle>
           <DialogDescription>
             The load is generated inside the cluster and aimed at its own
-            frontend. Results are stored in the harness's own shape — two runs
+            frontend. Results are stored in the harness's own shape: two runs
             compare when the harness, its version and its image match.
           </DialogDescription>
         </DialogHeader>
@@ -200,8 +200,8 @@ export function NewBenchmarkDialog({
             />
             <p className="text-2xs text-muted-foreground">
               Leave empty to use the pinned image above. Override it only to
-              reach a release the plane has not pinned yet — a run on a
-              different image is its own comparison group.
+              reach a release the plane has not pinned yet: a run on a different
+              image is its own comparison group.
             </p>
           </div>
 

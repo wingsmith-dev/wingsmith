@@ -25,7 +25,7 @@ const LABEL: Record<ServedModelState, string> = {
 /**
  * What the state means in the reader's terms, not ours.
  *
- * `degraded` says nothing is answering right now, which is the only honest thing
+ * `degraded` says nothing is answering right now, which is the only accurate thing
  * to say from here: whether that is a restart, a placement, or an incident is a
  * question about clusters, and clusters are not this reader's to see.
  */
@@ -53,7 +53,7 @@ function Stat({ label, value }: StatProps) {
  * One served model: the name a client sends, whether it answers, and the traffic
  * it has been carrying.
  *
- * The numbers come from the gateway's own series and are absent — never zero —
+ * The numbers come from the gateway's own series and are absent, never zero,
  * when the store has nothing. A model nobody called this hour did not serve zero
  * requests at zero latency; it was not measured, and a dash says so.
  *

@@ -116,7 +116,7 @@ describe("reading", () => {
 })
 
 describe("curveSegments", () => {
-  it("breaks the line at a named miss rather than drawing through it", () => {
+  it("breaks the line at a named miss instead of drawing through it", () => {
     const samples = curveSamples(
       [
         point(0, { ttft_p50_ms: 100 }),
@@ -296,7 +296,7 @@ describe("kneeTile", () => {
     expect(kneeTile(drawn)).toEqual({ value: "32", small: false })
   })
 
-  it("says why there is no knee rather than showing a dash", () => {
+  it("says why there is no knee instead of showing a dash", () => {
     expect(kneeTile(curve([point(0, {})])).value).toBe("not found")
     expect(kneeTile(curve([point(0, {}, { phase: "running" })])).value).toBe(
       "still ramping"
@@ -349,7 +349,7 @@ describe("kneeLabel", () => {
     expect(kneeTile(drawn)).toEqual({ value: "load unresolved", small: true })
   })
 
-  it("says not found rather than a knee at nothing", () => {
+  it("says not found instead of a knee at nothing", () => {
     expect(kneeLabel(curve([point(0, {})]))).toBe("not found")
   })
 })

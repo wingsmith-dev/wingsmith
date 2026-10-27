@@ -10,14 +10,14 @@ import type { PlaneEvent } from "@/modules/machinery/types"
  * The strip above it says where a deployment is now; this says how it got
  * there, which is the question the strip cannot answer. A deployment that spent
  * forty-seven minutes waiting for weights and then landed looks identical, once
- * it has landed, to one that came up instantly — the difference only exists in
+ * it has landed, to one that came up instantly: the difference only exists in
  * the log.
  *
- * Two writers, one list, on purpose. `deployment.created` and
+ * Two writers, one list. `deployment.created` and
  * `deployment.scaled` are things a person did; `deployment.pending` and
  * `deployment.placed` are things a cluster concluded; `deployment.dispatched`
  * is the plane saying it delivered. Splitting them into separate panels would
- * make the reader do the interleaving, and the interleaving is the whole point:
+ * make the reader do the interleaving, and the interleaving is the point:
  * "we asked, we sent, the cluster waited, the cluster applied" is one story.
  */
 export function DeploymentTimeline({
@@ -88,7 +88,7 @@ export function DeploymentTimeline({
  *
  * Not the whole `details` object. It carries the deployment id and name on
  * every row, which the reader is already looking at, and rendering all of it
- * would bury the reason — which is the field that actually says why a
+ * would bury the reason, which is the field that actually says why a
  * deployment is where it is.
  */
 function Detail({ event }: { event: PlaneEvent }) {

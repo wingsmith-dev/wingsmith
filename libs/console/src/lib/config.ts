@@ -1,5 +1,5 @@
 /**
- * Deployment settings, read when the page loads rather than baked into the bundle.
+ * Deployment settings, read when the page loads, not baked into the bundle.
  *
  * `index.html` loads `/config.js` before the app. The bundle ships a default one that sets
  * nothing; the standalone nginx image rewrites it at container start from `HANGAR_API_BASE_URL`
@@ -8,7 +8,7 @@
  */
 export interface RuntimeConfig {
   /**
-   * Where the plane lives. Empty means the origin that served the console — the plane image's
+   * Where the plane lives. Empty means the origin that served the console: the plane image's
    * setting, and the standalone image's default when it sits behind the same ingress.
    */
   apiBaseUrl: string

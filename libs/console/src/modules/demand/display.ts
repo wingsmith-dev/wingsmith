@@ -49,7 +49,7 @@ export function scaleUnit(kind: string): string {
  * Whether a workload may hold a share on more than one cluster.
  *
  * A property of the kind, not a field. A gang's ranks are co-scheduled, so a
- * split gang is broken rather than degraded and placement rejects it outright —
+ * split gang is broken, not degraded and placement rejects it outright,
  * which is why the form hides fan-out for one instead of letting it be asked for.
  */
 export function splittable(kind: string): boolean {
@@ -78,9 +78,9 @@ export function formatParameters(count: number | null): string {
 /**
  * The source this artifact can be re-read from, or null.
  *
- * Mirrors the plane's own precedence — `metadata.huggingface_id` first, then an
- * `hf://` location with its revision dropped — so the refresh button is disabled
- * exactly when the plane would refuse. Deciding that here rather than by trying the
+ * Mirrors the plane's own precedence, `metadata.huggingface_id` first, then an
+ * `hf://` location with its revision dropped, so the refresh button is disabled
+ * exactly when the plane would refuse. Deciding that here, not by trying the
  * call means the person is not offered an action that can only fail.
  */
 export function artifactSource(artifact: Artifact): string | null {
@@ -97,13 +97,13 @@ export function artifactSource(artifact: Artifact): string | null {
 /**
  * What a refresh moved, in a line a person can read.
  *
- * The plane returns dotted field names (`metadata.shape`), which are the honest
+ * The plane returns dotted field names (`metadata.shape`), which are the accurate
  * answer and not a sentence. The `metadata.` prefix carries no information at this
- * point — everything derived from a config lives there — so it is dropped.
+ * point, everything derived from a config lives there, so it is dropped.
  */
 export function refreshSummary(changed: string[]): string {
   if (changed.length === 0)
-    return "the source says what was already recorded — nothing changed"
+    return "the source says what was already recorded: nothing changed"
   const names = changed.map((field) => field.replace(/^metadata\./, ""))
   return `updated ${names.join(", ")}`
 }
@@ -121,8 +121,8 @@ export function parallelismLabel(p: {
  * The steps a deployment passes through between being declared and serving, and
  * which one an observed `(phase, reason)` places it at.
  *
- * The reasons are the operator's closed set (`MESSAGES.md`). They are mapped here
- * rather than rendered raw because a person watching a deployment come up wants to
+ * The reasons are the operator's closed set (`MESSAGES.md`). They are mapped here,
+ * not rendered raw because a person watching a deployment come up wants to
  * know how far along it is, and `WeightsNotResident` answers that only if you
  * already know what the operator does in what order.
  */
@@ -159,7 +159,7 @@ const REASON_STEPS: Record<string, LifecycleStep> = {
  *
  * The fallback is the phase and not `declared`. A cluster runs its own build and may
  * report a sub-state that postdates this console, and answering "declared" for it
- * would walk a serving deployment back to the first step — worse than the raw name,
+ * would walk a serving deployment back to the first step: worse than the raw name,
  * which is at least true. The phase is the field the contract says to compute on.
  */
 const PHASE_STEPS: Record<string, LifecycleStep> = {
@@ -191,7 +191,7 @@ export function lifecycleStepFor(
 /**
  * How a `reason` reads to somebody who has not read the operator's source.
  *
- * Falls back to the reason itself, which is deliberately not "Unknown": the raw
+ * Falls back to the reason itself, which is not "Unknown": the raw
  * name is what they will search the operator logs for.
  */
 const REASON_TEXT: Record<string, string> = {
@@ -207,7 +207,7 @@ const REASON_TEXT: Record<string, string> = {
   Serving: "Every replica is ready",
   PayloadUndecodable: "The cluster could not read this deployment",
   RenderFailed: "The cluster could not turn this into anything runnable",
-  NoClusterWork: "Held as declared state — authority is observed",
+  NoClusterWork: "Held as declared state: authority is observed",
   PodUnschedulable: "The cluster cannot schedule a replica",
   CrashLooping: "A replica is repeatedly crashing",
   ContainerConfigInvalid: "A replica has invalid container configuration",
@@ -272,7 +272,7 @@ const DOWNLOAD_REASONS = new Set([
 ])
 const CAPACITY_REASONS = new Set(["NoSchedulableCapacity", "PodUnschedulable"])
 /**
- * Codes that describe a deployment on its way up rather than something wrong.
+ * Codes that describe a deployment on its way up instead of something wrong.
  * `ComponentNotReady` arrives as `last_error_code` for the whole time a worker is
  * loading its weights into device memory.
  */
@@ -310,7 +310,7 @@ function operational(
  * Where one deployment is in its lifecycle.
  *
  * Only an observed `failed` is a failure. The operator sends `last_error_code`
- * for waits that clear on their own too — an unschedulable pod, a crash loop —
+ * for waits that clear on their own too (an unschedulable pod, a crash loop)
  * and reading every error code as fatal showed deployments that were still
  * loading their weights as failed.
  *
@@ -409,7 +409,7 @@ export function workloadOperationalStatus(
 
 /**
  * The engine argument each typed `serving` field speaks for, keyed without the
- * leading dashes — the same table the plane renders from.
+ * leading dashes: the same table the plane renders from.
  *
  * Only the fields that genuinely map to one flag are here. An engine this
  * console has never heard of maps nothing, and neither `context_overflow` nor
@@ -444,8 +444,8 @@ const SERVING_FIELD_LABELS: Record<string, string> = {
 }
 
 /**
- * The per-modality caps, and the key each one holds inside `--limit-mm-per-prompt`
- * — the same table the plane renders from.
+ * The per-modality caps, and the key each one holds inside `--limit-mm-per-prompt`:
+ * the same table the plane renders from.
  *
  * Two typed fields and one flag: the engine takes the whole map at once, so a
  * workload that caps both renders `{"image": 4, "video": 1}` and never two flags.
@@ -490,7 +490,7 @@ export function servingArgs(
     limits.set(flags[field], map)
   }
   for (const [flag, map] of limits) {
-    // Spelled out rather than `JSON.stringify`d, because this has to be the same
+    // Spelled out instead of `JSON.stringify`d, because this has to be the same
     // bytes the plane renders: Python's `json.dumps` puts a space after the colon
     // and after the comma, and a preview that differs from what will be sent reads
     // as a pending change.
@@ -508,7 +508,7 @@ export function servingArgs(
  * a form can say which value will actually take effect.
  *
  * The typed field wins, because it is the one the plane can validate, display
- * and verify. `engine_args` remains the escape hatch for a flag nothing models —
+ * and verify. `engine_args` remains the escape hatch for a flag nothing models,
  * but a flag that *is* modeled has one declared home, and silently dropping the
  * other spelling is how somebody ends up debugging a value they can see.
  */
@@ -530,7 +530,7 @@ export function servingOverrides(
     const effective = derived[flag]
     if (ignored === undefined || effective === undefined) continue
     if (ignored === effective) continue
-    // Two caps name one flag, and the collision is with the flag rather than
+    // Two caps name one flag, and the collision is with the flag, not
     // with either field. Reporting it twice would read as two conflicts.
     if (reported.has(flag)) continue
     reported.add(flag)
@@ -600,7 +600,7 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
     },
     output_length_params: {
       enforcement: "conditional",
-      note: "Read with the serving quota's `max_output_tokens` on every request that carries a length field — but only refused while the gateway runs with `enforce`.",
+      note: "Read with the serving quota's `max_output_tokens` on every request that carries a length field, but only refused while the gateway runs with `enforce`.",
     },
     policy: {
       enforcement: "obeyed",
@@ -612,7 +612,7 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
  * What one rule says, in the order the terms are read.
  *
  * `deny` refuses, the bounds constrain, and `default`, `drop` and `value_from`
- * rewrite and never fail a request — so a rule that only rewrites reads as a
+ * rewrite and never fail a request, so a rule that only rewrites reads as a
  * rewrite here and never as a refusal.
  */
 export function policyRuleTerms(rule: PolicyRule): string[] {
@@ -643,7 +643,7 @@ export function acceptanceFloor(value: number): number {
   return value * ACCEPTANCE_FLOOR
 }
 
-/** Trims trailing zeros so 0.85 x 74.1 reads as 62.985 rather than 62.985000. */
+/** Trims trailing zeros so 0.85 x 74.1 reads as 62.985 instead of 62.985000. */
 export function formatScore(value: number): string {
   return String(Number(value.toFixed(4)))
 }

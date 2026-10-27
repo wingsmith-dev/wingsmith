@@ -58,7 +58,7 @@ export function valueOf(
 
 /**
  * Thresholds for the two GPU readings that mean "go look at the hardware".
- * Deliberately conservative: 84°C is where an SXM card starts trimming clocks
+ * Conservative: 84°C is where an SXM card starts trimming clocks
  * and 90°C is its slowdown point, so warn well below the first.
  */
 export function temperatureTone(

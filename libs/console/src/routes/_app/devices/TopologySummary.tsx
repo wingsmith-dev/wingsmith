@@ -6,7 +6,7 @@ const GANG_SIZE = 8
 
 /**
  * How much of the fleet can still take a tensor-parallel-8 job. Counted over
- * every domain in scope rather than the first page, because "are there eight
+ * every domain in scope instead of the first page, because "are there eight
  * devices in one fabric" is an aggregate and a partial answer is a wrong one.
  */
 export function TopologySummary({

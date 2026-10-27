@@ -22,14 +22,14 @@
   --secondary: oklch(0.962 0.002 286); /* #f0f0f2 */
   --secondary-foreground: oklch(0.113 0.004 286);
   --muted: oklch(0.962 0.002 286);
-  --accent: oklch(0.946 0.002 286); /* #e8e8ec — slightly darker for hover */
+  --accent: oklch(0.946 0.002 286); /* #e8e8ec; slightly darker for hover */
   --accent-foreground: oklch(0.113 0.004 286);
 
-  /* brand — hangar cyan */
+  /* brand: hangar cyan */
   --primary: oklch(0.47 0.11 208); /* hangar cyan, dark enough to read as text */
   --primary-foreground: oklch(1 0 0);
 
-  /* semantic — text tokens hold 4.5:1 on every surface and on their own /10 and
+  /* semantic: text tokens hold 4.5:1 on every surface and on their own /10 and
      /15 tints; text-contrast.test.ts measures it */
   --destructive: oklch(0.505 0.213 27.518); /* #b91c1c */
   --destructive-foreground: oklch(1 0 0);
@@ -48,10 +48,10 @@
   --chart-4: oklch(0.65 0.15 200);
   --chart-5: oklch(0.65 0.2 320);
 
-  /* radius — tighter than default */
+  /* radius: tighter than default */
   --radius: 0.5rem;
 
-  /* sidebar — always white */
+  /* sidebar, always white */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.113 0.004 286);
   --sidebar-primary: oklch(0.47 0.11 208);
@@ -61,7 +61,7 @@
   --sidebar-border: oklch(0.113 0.004 286 / 12%);
   --sidebar-ring: oklch(0.47 0.11 208);
 
-  /* scrollbars — present, not furniture */
+  /* scrollbars: present, not furniture */
   --scrollbar: oklch(0.113 0.004 286 / 18%);
   --scrollbar-hover: oklch(0.113 0.004 286 / 34%);
 }
@@ -212,9 +212,9 @@
   html {
     @apply font-sans;
     /* One browser-zoom notch, baked in. Tailwind sizes text, spacing, radii
-           and icons in rem, so moving the root moves all of them together —
+           and icons in rem, so moving the root moves all of them together,
            which is what zooming does and what nudging font sizes alone does
-           not. A percentage rather than a px value so a reader who has raised
+           not. A percentage instead of a px value so a reader who has raised
            their browser's default font size keeps that gain. */
     font-size: 110%;
   }
@@ -223,11 +223,11 @@
 /* Data-visualization palette.
  *
  * Chart series colors, kept out of the Tailwind token set because they answer a
- * different question: the tokens above are chrome — surfaces, borders, ink — and
+ * different question: the tokens above are chrome (surfaces, borders, ink) and
  * these are the data itself. A series color is chosen for separation between
  * series, not for contrast against a surface, and the two rules pull apart.
  *
- * Both modes are selected rather than derived. The dark steps are the same hues
+ * Both modes are selected, not derived. The dark steps are the same hues
  * re-stepped for the dark surface, because a filter or an opacity applied to the
  * light set lands outside the lightness band the dark surface needs.
  *
@@ -238,16 +238,16 @@
  * changing any value here.
  */
 :root {
-  /* Categorical — identity. Fixed order, never cycled. */
+  /* Categorical: identity. Fixed order, never cycled. */
   --viz-series-1: #2a78d6;
   --viz-series-2: #eb6834;
-  /* Ordinal — one hue, light to dark, for quantiles of one measure. */
+  /* Ordinal: one hue, light to dark, for quantiles of one measure. */
   --viz-step-1: #86b6ef;
   --viz-step-2: #2a78d6;
   --viz-step-3: #0d366b;
 }
 
-/* The ordinal ramp reverses in dark mode, deliberately.
+/* The ordinal ramp reverses in dark mode.
  *
  * Its job is that the reader sees severity in the color without consulting the
  * legend, and what carries that is prominence against the surface, not lightness

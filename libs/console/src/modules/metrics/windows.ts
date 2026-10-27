@@ -4,9 +4,9 @@ import type { MetricsQuery } from "./api"
  * The spans a chart can be read over, and what each one asks the store for.
  *
  * Three numbers move together and they are not independent. `span` is how far
- * back the curve reaches, `step` is how coarse each point is — an hour of 5m
+ * back the curve reaches, `step` is how coarse each point is, an hour of 5m
  * points and a week of 5m points are the same picture and very different
- * queries — and `window` is the rate and quantile lookback, which must not be
+ * queries, and `window` is the rate and quantile lookback, which must not be
  * finer than the step or the curve draws spikes between the points that carry
  * them.
  */
@@ -21,7 +21,7 @@ export interface TimeWindow {
 /**
  * `15m` is the finest this can be and it is set by the scrape interval, not by
  * taste: the gateway is scraped every 30s, so a `rate()` over anything under 2m
- * has too few samples to be sure of and empties out — asked for a 1m window, the
+ * has too few samples to be sure of and empties out: asked for a 1m window, the
  * request rate comes back 0.0 while traffic is running, which is worse than
  * coarse. 30s steps over a 2m window is the floor that holds.
  *

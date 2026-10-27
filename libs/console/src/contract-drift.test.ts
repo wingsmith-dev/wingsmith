@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest"
  * never accepts) fails here instead of rendering as a permanent blank.
  *
  * An interface is matched by the schema its doc comment names first
- * (`` `ClusterSchema` — ...``), or by its own name when the document defines it.
+ * (`` `ClusterSchema`: ...``), or by its own name when the document defines it.
  * Console types may omit fields; they may not invent them.
  *
  * A response field the console types as required and non-null must not be

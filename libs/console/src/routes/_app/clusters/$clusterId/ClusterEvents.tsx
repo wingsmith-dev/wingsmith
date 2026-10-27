@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router"
 import { Section, SectionEmpty } from "./Section"
 
 /**
- * The newest events for this cluster only — a recent slice by construction, and
+ * The newest events for this cluster only: a recent slice by construction, and
  * the one thing on this tab that is not a total.
  */
 export function ClusterEvents({

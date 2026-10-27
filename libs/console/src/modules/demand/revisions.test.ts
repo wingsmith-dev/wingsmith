@@ -12,8 +12,8 @@ import type { WorkloadRevision, WorkloadServingUpdate } from "./types"
 /**
  * A snapshot stated as the few fields a case is about.
  *
- * Cast rather than filled in: the blocks are whole-or-nothing on the wire, so a literal naming
- * one field of `shape` does not typecheck — and spelling out every sibling would bury the one
+ * Cast, not filled in: the blocks are whole-or-nothing on the wire, so a literal naming
+ * one field of `shape` does not typecheck, and spelling out every sibling would bury the one
  * field each case exists to move.
  */
 function body(fields: Record<string, unknown>): WorkloadServingUpdate {
@@ -44,7 +44,7 @@ describe("servingChanges", () => {
     ).toEqual([{ path: "context_length", before: "8192", after: "16384" }])
   })
 
-  it("recurses into the blocks rather than reporting the block as one change", () => {
+  it("recurses into the blocks instead of reporting the block as one change", () => {
     expect(
       servingChanges(
         body({ parallelism: { tensor: 2, pipeline: 1 } }),

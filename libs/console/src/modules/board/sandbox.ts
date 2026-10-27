@@ -19,7 +19,7 @@ import type {
  *
  * Order matters and is the plan's own: a move frees the devices it came from
  * before it takes the ones it is going to, so two moves that swap places do not
- * annihilate each other. Nothing here touches the plane — the result is a map
+ * annihilate each other. Nothing here touches the plane: the result is a map
  * the board is repainted from and thrown away.
  */
 export function applyMoves(base: Assignments, moves: Move[]): Assignments {
@@ -69,7 +69,7 @@ export function heldBy(board: Board, allocation: string): string[] {
 /**
  * Whether a brick fits in one fabric, and which devices it would take.
  *
- * Every refusal names what was wrong rather than returning a bare false: the
+ * Every refusal names what was wrong instead of returning a bare false: the
  * point of the board is to make "why can't this go here" answerable by pointing
  * at it, and "no" on its own teaches nobody the constraint they just hit.
  */
@@ -147,7 +147,7 @@ export function fitInCluster(
 /**
  * A brick dropped on one device: that device, then the next free ones beside it.
  *
- * Starting where the pointer landed rather than at the fabric's first free
+ * Starting where the pointer landed, not at the fabric's first free
  * device is the whole difference between placing something and watching the
  * board decide for you.
  */
@@ -191,8 +191,8 @@ export function fitFromDevice(
  * One drop target does for both requirements: a brick that must stay in one
  * fabric is answered by that fabric alone, and one that may spread starts there
  * and reaches into the rest of the cluster only when it has to. Dropping is
- * therefore always meaningful, and the refusal is always about the requirement
- * rather than about where the pointer happened to be.
+ * therefore always meaningful, and the refusal is always about the requirement,
+ * not about where the pointer happened to be.
  */
 export function fitOnTarget(
   cluster: BoardCluster,
@@ -209,8 +209,8 @@ export function fitOnTarget(
  * A live allocation as a brick, so relocating one is the same operation as
  * placing one.
  *
- * Its topology requirement is not on the allocation — the plane keeps that on
- * the workload — so it is read off where the allocation actually
+ * Its topology requirement is not on the allocation, the plane keeps that on
+ * the workload, so it is read off where the allocation actually
  * sits: everything in one fabric is treated as a gang that has to stay in one.
  * That is a guess, and it is the conservative one.
  */
@@ -281,9 +281,9 @@ function no(reason: string): Fit {
 /**
  * How many replicas of a workload the board already holds.
  *
- * Counted as distinct allocations rather than devices, because that is what a
+ * Counted as distinct allocations, not devices, because that is what a
  * replica is: one allocation, however many devices it took. It is what makes
- * "plan the rest of it" possible — the sandbox places the shortfall against
+ * "plan the rest of it" possible: the sandbox places the shortfall against
  * desired scale, not the whole workload over again.
  *
  * Reserved cells are skipped. A reservation is one row covering however many
@@ -318,8 +318,8 @@ interface Floor {
  *
  * Replicas are placed one at a time against a working copy of the assignments,
  * so replica four cannot be handed devices replica two already took. What it
- * does not know is everything placement weighs beyond capacity — quota,
- * priority, preemption, policy, residency — so a plan that fits here is a
+ * does not know is everything placement weighs beyond capacity, quota,
+ * priority, preemption, policy, residency, so a plan that fits here is a
  * statement about the fleet's shape and not a prediction of admission.
  */
 export function planPlacement(
@@ -377,15 +377,15 @@ export function planPlacement(
 /**
  * The plane's decision, turned into devices.
  *
- * Cluster selection is global and device selection is local — rule 3 — and this
+ * Cluster selection is global and device selection is local, rule 3, and this
  * is that seam. The plane has already said which clusters and how many replicas
  * each, weighing quota, priority, policy and preemption, none of which the board
  * can see; all that is left is choosing which devices inside those clusters the
- * bricks would sit on, which is the one part the plane deliberately does not
+ * bricks would sit on, which is the one part the plane does not
  * decide.
  *
- * A share the board cannot satisfy is reported rather than moved elsewhere.
- * Relocating it would be the console overruling the scheduler, and the honest
+ * A share the board cannot satisfy is reported, not moved elsewhere.
+ * Relocating it would be the console overruling the scheduler, and the accurate
  * reading of that disagreement is that the board is looking at a staler fleet
  * than the plane is.
  */
@@ -524,7 +524,7 @@ function placeReplica(
       /**
        * A pin is where the replica goes or nowhere else. A floor is only a
        * minimum, so an unsatisfiable one gives up its claim and lets the replica
-       * land elsewhere — recorded, because a shortfall against a declared floor
+       * land elsewhere: recorded, because a shortfall against a declared floor
        * is something somebody has to decide about.
        */
       if (brick.pinned) {
@@ -575,13 +575,13 @@ function placeReplica(
  * this plan, and `spread` prefers the one carrying fewest.
  *
  * The capacity that breaks the remaining ties is what `isFree` reports, and that
- * already excludes every cell the board painted for a reservation — so a cluster
+ * already excludes every cell the board painted for a reservation, so a cluster
  * whose idle accelerators are all spoken for is not the sandbox's first answer,
  * which is what the plane would also have concluded.
  *
  * Subtracting the reserved total here as well would charge the same promise
  * twice: a cluster with thirteen free and eight owed would rank as though it had
- * none left rather than five. The promise is counted exactly once, on the cells,
+ * none left instead of five. The promise is counted exactly once, on the cells,
  * and every reader of the board gets it by asking `isFree`.
  */
 function candidates(
@@ -620,7 +620,7 @@ function candidates(
 /**
  * The tightest fabric a gang still fits in.
  *
- * Best fit rather than first fit, deliberately: dropping an eight-device gang
+ * Best fit, not first fit: dropping an eight-device gang
  * into a sixteen-free fabric when an eight-free one would have taken it destroys
  * the only place the next sixteen-device job could have gone.
  */

@@ -11,7 +11,7 @@ import {
 import type { BenchmarkBand, BenchmarkRun } from "@/modules/benchmarks/types"
 
 /**
- * The suite view for a load measurement — the workload page's Workbench tab,
+ * The suite view for a load measurement: the workload page's Workbench tab,
  * against one request instead of one workload.
  *
  * It is the same three things in the same order because it answers the same
@@ -22,7 +22,7 @@ import type { BenchmarkBand, BenchmarkRun } from "@/modules/benchmarks/types"
  * suites comparable to each other.
  *
  * Nothing on this page computes a knee. The curve, the knee and the band
- * verdicts are all the plane's read against the request's pinned criteria — a
+ * verdicts are all the plane's read against the request's pinned criteria: a
  * console that walked the steps itself would be a second, quieter answer to
  * where a configuration bends.
  */
@@ -78,7 +78,7 @@ export function PerformanceSuite({
 
         `placed` is true and the ramp button is inert here: a suite is one ask
         that has already been made, and the way to take another is a new request
-        rather than a second ramp grafted onto this one's record.
+        instead of a second ramp grafted onto this one's record.
       */}
       {stepped ? (
         <LoadCurvePanel
@@ -115,7 +115,7 @@ export function PerformanceSuite({
  * The best output rate any graded step reached.
  *
  * Read off the harness's own summary, so a run whose tool emitted the figure
- * under another name contributes nothing rather than a wrong number.
+ * under another name contributes nothing instead of a wrong number.
  */
 function peakThroughput(runs: BenchmarkRun[] | undefined): number | null {
   let best: number | null = null

@@ -64,8 +64,8 @@ function footprintFromSearch(
 /**
  * The chosen shape, and the fitment row it came from.
  *
- * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy
- * rather than from a row clicked here. The six numbers are the whole of the footprint,
+ * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy,
+ * not from a row clicked here. The six numbers are the whole of the footprint,
  * but the fleet counts alongside them are not in the link, so the Where step says less.
  */
 interface How {
@@ -83,7 +83,7 @@ interface How {
  *
  * Placement is a card and not a question: it renders as placement's answer with an
  * override hung off it, because a cluster offered as an ordinary field is how rule 3
- * stops being true in practice. The replica count and the name sit there with it —
+ * stops being true in practice. The replica count and the name sit there with it:
  * they are the same sentence, and a card of their own said nothing the card below
  * did not already say better.
  *
@@ -120,7 +120,7 @@ export function NewWorkloadPage() {
   /**
    * What has been typed over the proposal, by field. Absent means untouched.
    *
-   * Held as overrides rather than as a copy of the block, because the proposal
+   * Held as overrides, not as a copy of the block, because the proposal
    * arrives after the artifact is picked and again if it is picked twice: seeding
    * state from it would either overwrite what somebody had already typed or freeze
    * the first answer. An override survives both, and a field nobody touched keeps
@@ -131,10 +131,10 @@ export function NewWorkloadPage() {
     setOverrides((current) => ({ ...current, ...patch }))
   /**
    * `context_length` is the one override the topology step also writes, and that is
-   * deliberate rather than a leak.
+   * deliberate instead of a leak.
    *
-   * The window is asked about twice — the fitment table sizes against it, the Params
-   * step declares it — and it was two pieces of state that met nowhere: picking 800k
+   * The window is asked about twice, the fitment table sizes against it, the Params
+   * step declares it, and it was two pieces of state that met nowhere: picking 800k
    * in the table left Params describing whatever the last clicked row happened to
    * say, and `derivedServingRequest` then submitted the stale one. It is one value,
    * so it is one field, and `overrides` is where a stated window already lived.
@@ -147,7 +147,7 @@ export function NewWorkloadPage() {
    * The prefill/decode split, or null for aggregated.
    *
    * Null and not `"aggregated"` with an empty list, so that the aggregated case
-   * is expressible by absence all the way from this field to the request body —
+   * is expressible by absence all the way from this field to the request body:
    * the plane's digest only hashes the block when it is disaggregated, and
    * sending it unconditionally would change every existing digest in the fleet.
    */
@@ -164,9 +164,9 @@ export function NewWorkloadPage() {
   /**
    * What the plane proposes for these weights, fetched the moment one is chosen.
    *
-   * The whole point of the flow is that nobody should have to know the right
+   * The point of the flow is that nobody should have to know the right
    * parameters. The fit answers the shape; this answers everything under it, and
-   * `upstream` says who tested what — a field nobody touches is still right, and
+   * `upstream` says who tested what: a field nobody touches is still right, and
    * it can say why.
    */
   const proposed = useArtifactServingDefaults(artifact)
@@ -217,8 +217,8 @@ export function NewWorkloadPage() {
   /**
    * Not asked when there is nothing to ask.
    *
-   * The plane requires a project — quota is keyed (project, cluster, device class), so
-   * there is no such thing as a workload without one — but a field with a single
+   * The plane requires a project, quota is keyed (project, cluster, device class), so
+   * there is no such thing as a workload without one, but a field with a single
    * possible value is not a question, it is a formality. One project answers itself and
    * the field does not render; several and it does, unselected, because silently
    * charging a guess to the wrong project's quota is worse than one more click.
@@ -249,7 +249,7 @@ export function NewWorkloadPage() {
   /**
    * Picking a class is not the whole of step two when that class serves at more than
    * one count. The step stays open on it so the counts are visible where the choice is
-   * made, and closes when the count is picked — collapsing on the class alone is what
+   * made, and closes when the count is picked: collapsing on the class alone is what
    * made the recommendation look like the only shape on offer.
    */
   const pickHow = (choice: How) => {
@@ -277,7 +277,7 @@ export function NewWorkloadPage() {
       const workload = await createWorkload.mutateAsync({
         serving: {
           ...request,
-          /* Omitted entirely when aggregated rather than sent as `"aggregated"`
+          /* Omitted entirely when aggregated, not sent as `"aggregated"`
              with an empty role list: absent and empty must not both be sayable
              about a thing with one meaning, and the digest depends on the key
              not being there. */
@@ -310,7 +310,7 @@ export function NewWorkloadPage() {
         // for the mode that means them, so switching modes cannot leave one behind.
         allowed_regions: where.mode === "region" ? where.regions : [],
         allowed_clusters: where.mode === "clusters" ? where.allowed : [],
-        // Absent on purpose: every workload carries one and the project's default
+        // Absent: every workload carries one and the project's default
         // answers it. Repeating it here is how defaults drift.
         min_scale: replicas ?? 1,
         max_scale: replicas ?? 1,
@@ -364,7 +364,7 @@ export function NewWorkloadPage() {
         <Step
           index={2}
           title="Topology"
-          hint="The shape of the devices — which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
+          hint="The shape of the devices, which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
           ready={!!artifact}
           open={open === 2}
           onReopen={() => setOpen(2)}
@@ -465,7 +465,7 @@ export function NewWorkloadPage() {
         <Step
           index={4}
           title="Placement"
-          hint="Not a question — placement's answer, with how much of it to run. Override the cluster only when you know something placement does not."
+          hint="Not a question: placement's answer, with how much of it to run. Override the cluster only when you know something placement does not."
           ready={!!how}
           open={open >= 3}
         >
@@ -478,7 +478,7 @@ export function NewWorkloadPage() {
                 min={1}
                 hint={
                   roles
-                    ? `A total across every cluster, counted in groups — ${(replicas ?? 0) * groupDevicesOf(roles, how?.footprint.device_count ?? 0)} devices in all. Placement fits a whole group or none of it.`
+                    ? `A total across every cluster, counted in groups: ${(replicas ?? 0) * groupDevicesOf(roles, how?.footprint.device_count ?? 0)} devices in all. Placement fits a whole group or none of it.`
                     : "A total across every cluster. Placement decides how these divide."
                 }
               />

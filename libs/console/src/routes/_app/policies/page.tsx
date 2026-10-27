@@ -11,7 +11,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 /**
- * Cards rather than a table. A policy is five lists and an attachment set, and
+ * Cards instead of a table. A policy is five lists and an attachment set, and
  * a row that flattens them either truncates the lists or makes every other
  * column unreadable.
  */

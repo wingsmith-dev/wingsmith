@@ -12,7 +12,7 @@ import type {
  *
  * It is one file because none of it is stored. The declared ratio is two
  * weights, the achieved ratio is a quotient of observed counts, and the group's
- * device cost is a sum — no field behind any of them. Spreading three
+ * device cost is a sum: no field behind any of them. Spreading three
  * derivations of one subject across three components is how two of them end up
  * disagreeing about what "ready" means, which is the exact failure this feature
  * exists to make visible.
@@ -52,7 +52,7 @@ export function declaredRoles(workload: Workload): WorkloadRole[] {
  * `1 prefill : 2 decode`, spelled out.
  *
  * Not `1:2`, which needs the reader to already know which end is which, and not
- * `1P:2D`, which is the recipe's shorthand rather than anything this console
+ * `1P:2D`, which is the recipe's shorthand instead of anything this console
  * has taught anybody. Null when there is no ratio to state.
  */
 export function declaredRatio(workload: Workload): string | null {
@@ -65,8 +65,8 @@ export function declaredRatio(workload: Workload): string | null {
  * The devices one group costs.
  *
  * Reported by the plane as `group_devices` when it sends it; otherwise summed
- * here from `Σ weight × device_count`. `device_count` is devices per WORKER — 8
- * at TP8 — and must stay that, because it is a digest field and the group's 24
+ * here from `Σ weight × device_count`. `device_count` is devices per WORKER, 8
+ * at TP8, and must stay that, because it is a digest field and the group's 24
  * is not. This function is the only place the two are allowed to meet.
  */
 export function groupDevices(workload: Workload): number | null {
@@ -99,7 +99,7 @@ export interface RoleReadiness {
  *
  * Null and not an empty array: an aggregated deployment and an operator too old
  * to send roles both report nothing here, and in both cases the right thing to
- * render is the scalar rollup that has always been there rather than a per-role
+ * render is the scalar rollup that has always been there instead of a per-role
  * view of no roles.
  */
 export function roleReadiness(
@@ -120,8 +120,8 @@ export function roleReadiness(
  * A deployment is ready only when EVERY role is.
  *
  * The scalar rollup cannot answer this. Under a rendered disaggregated graph the
- * old single count compares decode pods to a group count — two numbers that are
- * not comparable — and it can read `ready` on a deployment with no prefill
+ * old single count compares decode pods to a group count, two numbers that are
+ * not comparable, and it can read `ready` on a deployment with no prefill
  * worker at all. Where roles are reported they are the answer and the scalar is
  * not consulted.
  */
@@ -130,7 +130,7 @@ export function rolesReady(roles: RoleReadiness[]): boolean {
 }
 
 export interface AchievedRatio {
-  /** `1 prefill : 1.5 decode` — the quotient, at the same scale as declared. */
+  /** `1 prefill : 1.5 decode`; the quotient, at the same scale as declared. */
   label: string
   /** The observed counts it was derived from, prefill first. */
   counts: DeploymentRoleObserved[]
@@ -138,7 +138,7 @@ export interface AchievedRatio {
   matchesDeclared: boolean
   /**
    * True when the two disagree AND that disagreement is a deployment part way
-   * through a scale rather than a fault. Everything this console can see says
+   * through a scale instead of a fault. Everything this console can see says
    * settling: the counts are legitimately allowed to disagree while roles come
    * up at different speeds, and §6.3 is explicit that achieved is a quotient
    * and not a stored field, so it has no authority to be wrong against.
@@ -151,10 +151,10 @@ export interface AchievedRatio {
  *
  * Nothing on the wire carries this and nothing should. It is derived at read
  * time from counts ingestion already writes, which is what keeps ingestion the
- * single writer of observed state — a stored achieved ratio would be a second
+ * single writer of observed state: a stored achieved ratio would be a second
  * path to the same fact and the two would drift.
  *
- * `ready` and not `desired` is the numerator, deliberately. `desired` is the
+ * `ready` and not `desired` is the numerator. `desired` is the
  * plane's own number reflected back and its quotient is the declared ratio by
  * construction, which is a reading that can never disagree and therefore never
  * says anything.
@@ -262,7 +262,7 @@ export function roleOverrides(
  * The arguments a role may not carry, mirroring the plane's own two sets.
  *
  * `DERIVED_FLAGS` is rendered from a column somebody filled in, and
- * `TOPOLOGY_FLAGS` from the topology and the role — `disaggregation-mode` is
+ * `TOPOLOGY_FLAGS` from the topology and the role: `disaggregation-mode` is
  * the role itself, and `kv-transfer-config` is the same string on both roles
  * because the transfer mechanism belongs to the topology. A value for either
  * from a role's `engine_args` is not a default, it is a contradiction of a
@@ -274,7 +274,7 @@ export function roleOverrides(
  *
  * `max-num-batched-tokens` is on this list and is NOT an omission: it is a
  * derived flag with a typed field of its own, so it is set through
- * `max_batch_tokens` beside the argument box rather than inside it.
+ * `max_batch_tokens` beside the argument box, not inside it.
  */
 export const ROLE_REFUSED_ARGS = [
   "model",
@@ -316,8 +316,8 @@ export interface RoleWorkers {
  *
  * The plane performs this multiplication for the wire and this repeats it for
  * display, which is safe for the reason it is safe there: the group count and
- * the weights are both declared, so the product is exact rather than observed.
- * It is emphatically not a readiness figure — nothing here says a worker is up.
+ * the weights are both declared, so the product is exact, not observed.
+ * It is emphatically not a readiness figure: nothing here says a worker is up.
  */
 export function roleWorkers(workload: Workload): RoleWorkers[] {
   const groups = workload.scale.desired
@@ -338,7 +338,7 @@ export interface RolloutCost {
    * Rolling happens in place, one worker at a time within a role, so a role of
    * two keeps one worker up throughout and a role of one goes to zero while its
    * only worker reloads. And a decode worker with no prefill peer has nothing
-   * to decode from, so one role at zero is the whole model at zero — which
+   * to decode from, so one role at zero is the whole model at zero, which
    * makes this the difference between a slow window and an outage.
    */
   servesThrough: boolean
@@ -356,14 +356,14 @@ export interface RolloutCost {
 /**
  * What a per-role configuration change actually costs this workload.
  *
- * Computed rather than quoted. "Three workers reload" is right for 1P:2D at one
+ * Computed, not quoted. "Three workers reload" is right for 1P:2D at one
  * group and wrong for everything else, and a number that is sometimes wrong is
- * a number people learn to skip past — which is the opposite of what a warning
+ * a number people learn to skip past, which is the opposite of what a warning
  * on the destructive path is for.
  *
  * Every worker is counted, not just the edited role's. Dynamo hashes one worker
  * spec across the whole graph, so a change to either role renames both roles'
- * objects; that was observed directly — adding one environment variable to the
+ * objects; that was observed directly: adding one environment variable to the
  * prefill component produced a new decode Deployment under a new name and a
  * fresh UID.
  */
@@ -388,15 +388,15 @@ export function rolloutCost(workload: Workload): RolloutCost | null {
  * to say.
  *
  * The plane spells this arithmetic and cannot call it: the sentence needs a
- * device budget, and the declaration path has none — `devices.table()` carries
+ * device budget, and the declaration path has none: `devices.table()` carries
  * per-device memory and not node shape, so devices-per-node is a fact about a
  * cluster. The console has budgets the plane's declaration path does not, so it
- * says the thing here, in the plane's own words, rather than waiting for a
+ * says the thing here, in the plane's own words, instead of waiting for a
  * server-side refusal that is not coming.
  *
  * Not a refusal and it must not become one. Nothing fails when a ratio strands
- * a node — that is exactly the problem, and why it is worth saying where the
- * ratio is being chosen rather than leaving it to be discovered as a bill.
+ * a node: that is exactly the problem, and why it is worth saying where the
+ * ratio is being chosen instead of leaving it to be discovered as a bill.
  */
 export function strandedByRatio(
   budgetDevices: number,
@@ -423,11 +423,11 @@ export function strandedByRatio(
  * The per-role starting point, from NVIDIA's own recipe.
  *
  * Six arguments are the whole delta between the roles, and these are the ones
- * with numbers in the recipe rather than in a preference. They are a default
+ * with numbers in the recipe, not in a preference. They are a default
  * and not a constraint: choosing disaggregated should be one click, and the
  * person who wants to argue with `max-num-seqs` can, in the same form.
  *
- * `max-num-batched-tokens` is a typed field rather than an argument, sixteenfold
+ * `max-num-batched-tokens` is a typed field instead of an argument, sixteenfold
  * apart across the two roles, which is why it is here as a number and not a
  * string in the map.
  */

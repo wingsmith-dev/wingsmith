@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { WorkbenchPage } from "./page"
 
 export interface WorkbenchSearch {
-  /** The question a run was asking — the page's primary filter. */
+  /** The question a run was asking: the page's primary filter. */
   type?: RunKind
   deployment?: string
   cluster?: string
@@ -16,7 +16,7 @@ export interface WorkbenchSearch {
    * Shows the invented rows for the kinds whose harnesses do not exist yet.
    *
    * A design switch, not a feature. Three of the four kinds have nothing behind
-   * them — no conformance image is built, `agentic` is not registered — so
+   * them (no conformance image is built, `agentic` is not registered) so
    * without this their views cannot be opened at all and the layouts cannot be
    * judged. Off by default and never a default anywhere.
    */

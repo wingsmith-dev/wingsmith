@@ -80,7 +80,7 @@ function useTargetOptions(level: BenchmarkLevel) {
   }, [level, deployments.data, workloads.data])
 }
 
-/** `1000, 8000, 24000` — the load points a stepped mode walks, in order. */
+/** `1000, 8000, 24000`: the load points a stepped mode walks, in order. */
 function parseSteps(text: string): number[] {
   return text
     .split(/[,\s]+/)
@@ -91,7 +91,7 @@ function parseSteps(text: string): number[] {
 }
 
 /**
- * `POST /v1/benchmarks/requests` — the ask, which is declared state.
+ * `POST /v1/benchmarks/requests`: the ask, which is declared state.
  *
  * Kind first, then target, then the knobs. The old order opened on a harness
  * name, which asks the reader to already know that `evalscope` grades answers
@@ -154,9 +154,9 @@ export function NewRunDialog({
     : BENCHMARK_LEVELS
 
   /**
-   * Derived rather than corrected in an effect. A harness that does not grade
-   * at the level currently selected — a probe suite when `workload` was picked
-   * for a ramp — reads as its first declared level immediately, instead of
+   * Derived, not corrected in an effect. A harness that does not grade
+   * at the level currently selected, a probe suite when `workload` was picked
+   * for a ramp, reads as its first declared level immediately, instead of
    * rendering one frame of an impossible request and then rewriting itself.
    */
   const effectiveLevel = levels.includes(level) ? level : levels[0]
@@ -319,7 +319,7 @@ export function NewRunDialog({
                   value={steps}
                   onChange={setSteps}
                   placeholder="1000, 8000, 24000"
-                  hint={`Comma separated ${knob} values. A sweep is what makes a per-band claim evidenceable — one run measures one load point.`}
+                  hint={`Comma separated ${knob} values. A sweep is what makes a per-band claim evidenceable: one run measures one load point.`}
                 />
               )}
             </FormGrid>
@@ -372,7 +372,7 @@ export function NewRunDialog({
                 label="Service tier"
                 value={tier}
                 onChange={setTier}
-                hint="Unstated grades inconclusive rather than lenient — the tier is not derivable from anything here."
+                hint="Unstated grades inconclusive, not lenient: the tier is not derivable from anything here."
                 options={[
                   { value: NO_TIER, label: "unstated" },
                   ...BENCHMARK_TIERS.map((entry) => ({

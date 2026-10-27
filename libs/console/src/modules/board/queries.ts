@@ -32,11 +32,11 @@ export interface BoardScope {
 /**
  * The whole board, drained.
  *
- * Every collection here is read in full rather than a page at a time, because
+ * Every collection here is read in full instead of a page at a time, because
  * every number on the screen is an aggregate: "how many free devices in one
  * fabric" answered over the first page is not a smaller answer, it is a wrong
- * one. That is affordable because all of it is state — membership, health,
- * allocation — and none of it is telemetry.
+ * one. That is affordable because all of it is state, membership, health,
+ * allocation, and none of it is telemetry.
  */
 export function useFleetBoard(scope: BoardScope = {}) {
   const clusters = useAllPages(["clusters", "board"], (cursor) =>
@@ -121,7 +121,7 @@ export function useFleetBoard(scope: BoardScope = {}) {
 
   /**
    * Reservations are reported but never waited for. Everything else here is what
-   * the board *is* — no devices means no board — while a missing reserved total
+   * the board *is*, no devices means no board, while a missing reserved total
    * costs one row of numerals. Holding the whole page behind it would make the
    * declared half of the answer able to hide the observed half, which is
    * backwards: the observed half is the one an operator can act on.
@@ -140,7 +140,7 @@ export function useFleetBoard(scope: BoardScope = {}) {
 /**
  * The bricks: every workload as the shape it asks the fleet for.
  *
- * A workload brick is a real commitment — it has a scale, spread rules and
+ * A workload brick is a real commitment: it has a scale, spread rules and
  * replicas already holding devices, so planning it means planning the shortfall.
  * A serving configuration is not an object, so "where would llama-70b fit"
  * before anything is declared is asked of an artifact's fitment or of the shape

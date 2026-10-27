@@ -34,7 +34,7 @@ import { toast } from "sonner"
  * way: forty fields is nothing anybody reads before saving, and the fields that
  * roll every replica sit in it beside the fields that do not. Each dialog here
  * is one question, opened from the panel that displays the answer, and it PATCHes
- * only its own keys — the API takes a partial, so a name change sends a name.
+ * only its own keys: the API takes a partial, so a name change sends a name.
  *
  * `serving` is the exception the API states: its sub-blocks replace whole, so a
  * dialog that touches one sends that block complete, from the workload it was
@@ -117,7 +117,7 @@ function useArmed(workload: Workload) {
   }
 }
 
-/** Name, deadline, labels — nothing here touches a running replica. */
+/** Name, deadline, labels: nothing here touches a running replica. */
 export function EditDetailsDialog({
   workload,
   open,
@@ -164,15 +164,15 @@ export function EditDetailsDialog({
 /**
  * Everything placement reads before it chooses, and nothing it does not.
  *
- * Priority and preemptibility are here rather than under Details because this is
+ * Priority and preemptibility are here, not under Details because this is
  * the panel that displays them: they are read by the scheduler, not by a person
- * looking for the workload's name. None of it rebuilds a replica — the plane
+ * looking for the workload's name. None of it rebuilds a replica: the plane
  * re-runs placement and moves shares between clusters, so the digest is
  * untouched and no pod is replaced for a change made here.
  *
- * Two things are deliberately absent. Affinity, anti-affinity and placement
+ * Two things are absent. Affinity, anti-affinity and placement
  * grouping are not modeled by the plane at all, so neither the panel nor this
- * dialog shows them — and the pin is create-only, because a
+ * dialog shows them, and the pin is create-only, because a
  * pinned workload is never checked for capacity and moving that decision after
  * the fact is a different operation from editing a policy.
  */
@@ -271,7 +271,7 @@ export function EditPlacementDialog({
  *
  * Blank is not zero. A cluster with no floor is one placement may empty; a
  * cluster with a floor of 0 is the same statement said twice, so a cleared row
- * is removed from the map rather than written as a zero.
+ * is removed from the map, not written as a zero.
  */
 function ClusterFloorsField({
   value,
@@ -295,7 +295,7 @@ function ClusterFloorsField({
         <h3 className="text-xs font-medium">Cluster floors</h3>
         <p className="text-2xs text-muted-foreground">
           The minimum share placement must keep on a cluster. Blank means no
-          floor — placement may take the share to zero.
+          floor: placement may take the share to zero.
         </p>
       </div>
       <FormGrid>
@@ -460,7 +460,7 @@ export function EditEngineDialog({
             setEngineRuntimeVersion(v)
           }}
           placeholder="latest"
-          hint="A tag of the Dynamo runtime the engine runs in — 1.4.1 — and never the engine's own version."
+          hint="A tag of the Dynamo runtime the engine runs in (1.4.1) and never the engine's own version."
         />
         <TextField
           label="Engine runtime image"
@@ -719,7 +719,7 @@ export function EditEngineArgsDialog({
   )
 }
 
-/** The typed serving block — what the engine is told to do with a request. */
+/** The typed serving block: what the engine is told to do with a request. */
 export function EditServingDialog({
   workload,
   open,
@@ -764,7 +764,7 @@ export function EditServingDialog({
   )
 }
 
-/** What the model is claimed to support. Asserted, not enforced — and still part of the digest. */
+/** What the model is claimed to support. Asserted, not enforced, and still part of the digest. */
 export function EditCapabilitiesDialog({
   workload,
   open,

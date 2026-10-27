@@ -216,7 +216,7 @@ export function NodesPage() {
     const items = list.items ?? []
     // A node under an unreachable cluster is stale, not confirmably ready: the
     // agent stopped reporting, so `ready` is only the last thing it said. This
-    // stays over the loaded rows — the server summary counts readiness fleet-
+    // stays over the loaded rows: the server summary counts readiness fleet-
     // wide but cannot know which clusters the console currently sees as stale.
     const stale = items.filter((node) => unreachable.has(node.cluster)).length
 

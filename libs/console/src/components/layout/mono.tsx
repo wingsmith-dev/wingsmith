@@ -98,7 +98,7 @@ type BlockLanguage = "yaml" | "shell"
 
 /**
  * A tiny, dependency-free highlighter for the two languages the console shows
- * in blocks: `values.yaml` and `helm`/`kubectl` commands. Deliberately not a
+ * in blocks: `values.yaml` and `helm`/`kubectl` commands. Not a
  * general parser: it colors the few token classes that make these snippets
  * readable (comments, keys, values; commands, flags) and leaves the rest plain.
  */
@@ -228,7 +228,7 @@ export function CopyableBlock({
 
 /**
  * A shortened identifier with the whole thing on hover and a copy button that
- * appears with it. `children` replaces the rendered text — pass a `Link` when
+ * appears with it. `children` replaces the rendered text: pass a `Link` when
  * the id should navigate, and the copy button stays outside it so clicking one
  * never triggers the other.
  */

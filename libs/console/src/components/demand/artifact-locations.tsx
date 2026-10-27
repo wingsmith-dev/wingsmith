@@ -6,8 +6,8 @@ import type { ArtifactLocationRequest } from "@/modules/demand/types"
 import { IconPlus, IconX } from "@tabler/icons-react"
 
 /**
- * Where the bytes can be fetched from — the one field on an artifact that is a
- * list of places rather than a fact about the weights.
+ * Where the bytes can be fetched from: the one field on an artifact that is a
+ * list of places instead of a fact about the weights.
  *
  * A row per location, because a JSON textarea asks a person to know a wire shape
  * they have no reason to know, and the failure mode is a form that will not
@@ -15,7 +15,7 @@ import { IconPlus, IconX } from "@tabler/icons-react"
  * in; a set of weights already mirrored to object storage gets a second, and
  * `preferred` is which one a cluster should reach for first.
  *
- * The plane never fetches through any of these — a location is what the operator
+ * The plane never fetches through any of these: a location is what the operator
  * pulls with, so nothing here is validated against reachability from the plane.
  */
 export function LocationsField({

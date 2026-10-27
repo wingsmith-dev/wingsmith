@@ -27,7 +27,7 @@ export interface ArtifactFilters {
   format?: string
   project?: string
   search?: string
-  /** Artifacts derived from this one — quantizations and fine-tunes naming it as base. */
+  /** Artifacts derived from this one: quantizations and fine-tunes naming it as base. */
   base_artifact?: string
   label?: string[]
 }
@@ -36,10 +36,10 @@ export interface WorkloadFilters {
   project?: string
   kind?: string
   phase?: string
-  /** Workloads serving these weights — the reverse of the artifact's usage count. */
+  /** Workloads serving these weights: the reverse of the artifact's usage count. */
   artifact?: string
   /**
-   * Every workload configured exactly this way — an exact match on the whole
+   * Every workload configured exactly this way: an exact match on the whole
    * `svg_...` string, which is what reuse is now.
    */
   serving_digest?: string
@@ -88,7 +88,7 @@ export function fetchArtifactUsage(ref: string): Promise<ArtifactUsage> {
 /**
  * The device classes this artifact could be served on, ranked, derived at read time.
  *
- * Reserves nothing and decides nothing — a class this calls a fit still has to
+ * Reserves nothing and decides nothing: a class this calls a fit still has to
  * survive placement. `scope` picks which question is being asked; the rest are the
  * terms of the fit, and the plane defaults every one of them.
  */
@@ -144,7 +144,7 @@ export function deleteArtifact(ref: string): Promise<void> {
 }
 
 /**
- * Baselines are a sub-resource rather than a field on the artifact: the set is
+ * Baselines are a sub-resource instead of a field on the artifact: the set is
  * genuinely plural, one row per dataset and metric, and each row carries its own
  * tolerance and its own provenance. Editing one is not a rewrite of the rest.
  */

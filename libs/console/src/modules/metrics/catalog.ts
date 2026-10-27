@@ -2,9 +2,9 @@
  * The measurement vocabulary, as the console spells it.
  *
  * Mirrors `app/modules/metrics/registry.py`: the same names, the same units,
- * and the same families. It carries two things the wire does not — which group
+ * and the same families. It carries two things the wire does not, which group
  * a metric belongs in, so nineteen serving numbers read as four short lists
- * rather than one wall, and how a metric behaves as scope widens, so nothing in
+ * instead of one wall, and how a metric behaves as scope widens, so nothing in
  * this console adds up a number that must not be added up.
  *
  * A sample arrives with the plane's own title. The catalog's title wins where
@@ -324,7 +324,7 @@ const SERVING: MetricDefinition[] = [
     family: "serving",
     group: "reliability",
     scale: "invariant",
-    note: "The share of requests the front door answered. It has no floor of its own — whether a figure is an outage is a threshold somebody declared, not a property of the measurement.",
+    note: "The share of requests the front door answered. It has no floor of its own, whether a figure is an outage is a threshold somebody declared, not a property of the measurement.",
   },
   {
     name: "serving.failure_ratio",
@@ -415,7 +415,7 @@ const SERVING: MetricDefinition[] = [
     family: "serving",
     group: "throughput",
     scale: "invariant",
-    note: "Cached input over input, off the usage object the gateway returns — the figure a caller can reconcile against their own prompt_tokens_details.cached_tokens.",
+    note: "Cached input over input, off the usage object the gateway returns: the figure a caller can reconcile against their own prompt_tokens_details.cached_tokens.",
   },
   {
     name: "serving.requests_in_flight",

@@ -12,13 +12,13 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 const INGRESS_OPTIONS: { value: TenantIngress; label: string }[] = [
-  { value: "internal", label: "internal — reached only from inside the fleet" },
-  { value: "public", label: "public — reached at the tenant's own host" },
+  { value: "internal", label: "internal: reached only from inside the fleet" },
+  { value: "public", label: "public: reached at the tenant's own host" },
 ]
 
 const AUTH_OPTIONS: { value: TenantAuth; label: string }[] = [
-  { value: "none", label: "none — the caller is trusted by listener alone" },
-  { value: "api_key", label: "api_key — the gateway checks a key" },
+  { value: "none", label: "none: the caller is trusted by listener alone" },
+  { value: "api_key", label: "api_key: the gateway checks a key" },
 ]
 
 /**

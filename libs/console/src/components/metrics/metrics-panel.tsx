@@ -25,8 +25,8 @@ import { MetricTile } from "./metric-tile"
 
 function Empty({ reason }: { reason: string }) {
   /**
-   * Unmeasured is a state, not a failure, and it is one the operator can fix —
-   * so it says which knob, rather than showing an empty chart that reads as an
+   * Unmeasured is a state, not a failure, and it is one the operator can fix,
+   * so it says which knob, instead of showing an empty chart that reads as an
    * idle fleet.
    */
   return (
@@ -56,7 +56,7 @@ const MEMBER: Record<MetricScope, string> = {
  *
  * The bar is always a percent, because a bar drawn from anything else compares
  * members on a scale that does not exist. The figure beside it is the one thing
- * that says "go look at this member" — heat for cards, the tail for serving.
+ * that says "go look at this member": heat for cards, the tail for serving.
  */
 const ROW: Record<MetricFamily, { bar: string; side: string }> = {
   gpu: { bar: "gpu.utilization", side: "gpu.temperature" },
@@ -151,7 +151,7 @@ export function MetricsPanel({
    */
   lead?: string[]
   /**
-   * Draw the lead row and nothing else — no tiles, no breakdown, no picker.
+   * Draw the lead row and nothing else: no tiles, no breakdown, no picker.
    *
    * For a summary that sits above other content and answers whether to go and
    * look properly. The full panel belongs on the page that is about measurement;

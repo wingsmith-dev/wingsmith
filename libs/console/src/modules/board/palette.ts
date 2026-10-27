@@ -12,7 +12,7 @@ export interface BrickColor {
   fill: string
   /**
    * The same cell, for capacity promised to this workload but not yet bound to
-   * it. Deliberately its own tone rather than an opacity applied to `fill`: it
+   * it. Its own tone instead of an opacity applied to `fill`: it
    * has to stay clearly the workload's color against both themes while never
    * being mistakable for the solid fill beside it.
    */

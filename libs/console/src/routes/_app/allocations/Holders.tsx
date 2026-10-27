@@ -18,7 +18,7 @@ interface Held {
  * Everything the board is holding, as a list: the color key and the index at
  * once.
  *
- * Rolled up per workload rather than per allocation, because a workload with
+ * Rolled up per workload, not per allocation, because a workload with
  * eight replicas is one color on the board and reading it back as eight rows
  * would answer a question nobody asked. `fabrics` is what makes a split gang
  * visible: one workload, one cluster, more than one fabric.

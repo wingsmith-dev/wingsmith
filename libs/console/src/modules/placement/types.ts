@@ -1,6 +1,6 @@
 /**
- * `POST /v1/placement/preview` and `POST /v1/placement/expand` — the plane's own
- * answer to "where would this go", asked without creating anything — and
+ * `POST /v1/placement/preview` and `POST /v1/placement/expand`, the plane's own
+ * answer to "where would this go", asked without creating anything, and
  * `GET /v1/placement/reservations`, which answers "what is about to arrive here".
  *
  * These are the authority and the console's arithmetic is not. The board can see
@@ -38,7 +38,7 @@ export interface Rejection {
  *
  * `devices_in_scope` is what evicting it contributes here; `devices_released` is
  * everything it holds in the cluster. They differ when a workload straddles
- * topology domains, and the difference is the honest cost — an allocation dies
+ * topology domains, and the difference is the accurate cost: an allocation dies
  * whole, so devices outside the scope are freed too.
  */
 export interface PreemptionVictim {
@@ -71,7 +71,7 @@ export interface ClusterVerdict {
   /**
    * Devices this cluster already owes a deployment that has not bound them yet.
    *
-   * Reported beside `free_devices` rather than folded into it, because the two
+   * Reported beside `free_devices`, not folded into it, because the two
    * are different kinds of fact: free is observed, reserved is promised. An
    * operator told "0 free" while eight accelerators sit visibly idle has been
    * told something untrue, and the reason the fit was refused is the number that
@@ -86,7 +86,7 @@ export interface ClusterVerdict {
   domain_free_devices: number
   largest_domain_free_devices: number
   fit_slack: number
-  /** Null when no quota is declared for the project — not the same as zero. */
+  /** Null when no quota is declared for the project, not the same as zero. */
   quota_headroom: number | null
   preemption: PreemptionPlan | null
 }
@@ -115,7 +115,7 @@ export interface Share {
 /**
  * How a workload's scale was spread over clusters, and why.
  *
- * `shortfall` is a partial placement rather than a failure — the shares found are
+ * `shortfall` is a partial placement instead of a failure: the shares found are
  * real. `splittable` is false for a gang, whose ranks are co-scheduled: one that
  * fits nowhere whole comes back with no shares and the whole gang as shortfall,
  * and there is no degraded answer to fall back on.
@@ -150,9 +150,9 @@ export interface PlacementShapeRequest {
  * A placement question asked without creating anything.
  *
  * Exactly one of `workload` and `shape`, and the pair is the point: `workload` asks
- * about something that exists, `shape` asks about something that does not — which is
+ * about something that exists, `shape` asks about something that does not, which is
  * the question a create form has, where the person is choosing a fit and wants the
- * verdict before they commit rather than after. Naming both, or neither, is a `400`.
+ * verdict before they commit, not after. Naming both, or neither, is a `400`.
  *
  * `project` is required in both forms. Capacity is read per project, so there is no
  * project-independent answer to give.
@@ -166,7 +166,7 @@ export interface PlacementPreviewRequest {
 }
 
 /**
- * `ReservationSchema` — capacity a cluster owes a deployment that has not bound
+ * `ReservationSchema`: capacity a cluster owes a deployment that has not bound
  * a device yet.
  *
  * Derived by the plane on every read and stored nowhere: it is the difference
@@ -175,7 +175,7 @@ export interface PlacementPreviewRequest {
  * and decays to zero on its own as the allocations arrive.
  *
  * It is a count with a shape and no device address: which accelerators the
- * promise lands on is the cluster's answer and it has not given it yet — rule 3,
+ * promise lands on is the cluster's answer and it has not given it yet: rule 3,
  * device selection is local. The board still paints cells for it, because a
  * cluster reading "0 available" beside eight visibly idle squares and nothing to
  * point at is the confusion this endpoint exists to remove. Those cells are the

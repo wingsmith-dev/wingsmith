@@ -10,7 +10,7 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * `Sparkline` is the other end of the same idea and stays what it is: a shape,
  * no axis, no readout. Its own doc says a chart with axes and a hover layer is a
  * different component that can bring a library when something needs one. This is
- * that component, and it still brings no library — a line chart is a path, some
+ * that component, and it still brings no library: a line chart is a path, some
  * ticks, and a pointer handler, and the dependency would cost more bundle than
  * the whole console spends on charts today.
  *
@@ -18,21 +18,21 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * CSS custom properties so the light and dark steps swap with the theme rather
  * than one being a filter of the other, and both sets were validated for
  * color-vision separation against this console's own surfaces before they were
- * written down — see `SERIES` in `serving-charts.tsx`.
+ * written down; see `SERIES` in `serving-charts.tsx`.
  */
 /**
  * A smooth path through the points, using monotone cubic interpolation.
  *
- * Monotone rather than a natural or Catmull-Rom spline, and the difference is
+ * Monotone instead of a natural or Catmull-Rom spline, and the difference is
  * not cosmetic: those two overshoot badly. Catmull-Rom through 10, 10, 90, 10,
- * 10 dips to 4.1 either side of the peak — on these charts that is a rate below
+ * 10 dips to 4.1 either side of the peak: on these charts that is a rate below
  * zero, or a latency faster than the fastest request measured, drawn in the gap
  * where a reader is least able to check it.
  *
  * The Fritsch–Carlson condition clamps each tangent so the curve cannot reverse
- * direction inside a rising or falling run. It bounds rather than eliminates:
- * around a local peak the curve can still sit a hair above the point itself —
- * 0.007% on a 0, 5, 40, 42, 41 series — which is smoothing, not an invented
+ * direction inside a rising or falling run. It bounds, not eliminates:
+ * around a local peak the curve can still sit a hair above the point itself,
+ * 0.007% on a 0, 5, 40, 42, 41 series, which is smoothing, not an invented
  * excursion. A flat run stays flat, because a zero slope zeroes both tangents.
  */
 function splinePath(points: { x: number; y: number }[]): string {
@@ -99,7 +99,7 @@ const PADDING = { top: 10, right: 12, bottom: 20, left: 52 }
 /**
  * A tick label, compacted so it fits the gutter.
  *
- * `formatMetric` spells a rate in full — `1500.0/s` — which is right in a tile
+ * `formatMetric` spells a rate in full (`1500.0/s`) which is right in a tile
  * where there is one number and room for it, and wrong on an axis, where eight
  * characters overflow the gutter and get cut off by the viewport. A clipped tick
  * is worse than a coarse one: `1500.0/s` cropped to `500.0/s` is not an ugly
@@ -117,10 +117,10 @@ function tickLabel(value: number, unit: MetricUnit): string {
 /**
  * Y ticks on 1, 2 or 5 × a power of ten, so the axis reads in round numbers.
  *
- * The top tick is rounded *up* past the peak rather than stopping at the last
- * round number below it. Stopping below crops the tallest part of every curve —
- * the part somebody opened the chart to look at — and the crop is silent: the
- * line simply stops, which reads as missing data rather than as a clipped axis.
+ * The top tick is rounded *up* past the peak instead of stopping at the last
+ * round number below it. Stopping below crops the tallest part of every curve,
+ * the part somebody opened the chart to look at, and the crop is silent: the
+ * line simply stops, which reads as missing data, not as a clipped axis.
  */
 function niceTicks(max: number, count = 4): number[] {
   if (!(max > 0)) return [0, 1]
@@ -140,7 +140,7 @@ function niceTicks(max: number, count = 4): number[] {
  * The axis end labels.
  *
  * A span that crosses midnight carries the day, because two bare clock times a
- * day apart read as running backwards — `04:24 PM` on the left and `04:09 PM` on
+ * day apart read as running backwards: `04:24 PM` on the left and `04:09 PM` on
  * the right looks like a mistake until you work out that they are 24 hours
  * apart, and nobody should have to.
  */
@@ -186,7 +186,7 @@ export function TimeChart({
    * A fixed viewBox stretched to fit is the obvious way and it is wrong here:
    * scaling multiplies everything, so the same chart at half the width has 5px
    * axis text and 1px strokes, and at double the width has fat lines and
-   * oversized labels. Only the plot area should change with the container —
+   * oversized labels. Only the plot area should change with the container:
    * every mark and every label is a constant.
    */
   useLayoutEffect(() => {
@@ -245,7 +245,7 @@ export function TimeChart({
    * The x the crosshair snapped to, and every series' value there.
    *
    * One readout listing every series, so the pointer never has to land on a line
-   * to get a number — it only has to be near the right moment.
+   * to get a number: it only has to be near the right moment.
    */
   const readout =
     hover === null
@@ -408,7 +408,7 @@ export function TimeChart({
   )
 }
 
-/** Identity for two or more series, mirroring the line mark rather than a filled box. */
+/** Identity for two or more series, mirroring the line mark instead of a filled box. */
 export function ChartLegend({ series }: { series: ChartSeries[] }) {
   if (series.length < 2) return null
   return (

@@ -10,7 +10,7 @@ import type { MetricSeries, MetricSeriesPoint } from "@/modules/metrics/types"
 /**
  * The series colors, by the job the color does.
  *
- * `CATEGORICAL` is identity — two things that are not more or less of each
+ * `CATEGORICAL` is identity: two things that are not more or less of each
  * other, so two hues. `STEP` is one hue light to dark, because p50, p95 and p99
  * are the same measurement at increasing severity and a reader should see that
  * order in the color instead of having to recall which hue was which.
@@ -30,9 +30,9 @@ const STEP = [
  *
  * Rates are summed across whatever curves came back; a quantile is not. Adding
  * two p99s produces a number that was nobody's latency, and averaging them is no
- * better — so a quantile takes the first curve and a rate takes the total. At
+ * better, so a quantile takes the first curve and a rate takes the total. At
  * the endpoint scope the gateway answers with one curve either way, which makes
- * this a guard against a future breakdown rather than a live difference.
+ * this a guard against a future breakdown instead of a live difference.
  */
 function rate(series: MetricSeries[], metric: string): MetricSeriesPoint[] {
   return sumCurvePoints(series, metric)
@@ -74,7 +74,7 @@ function ChartPanel({
  *
  * One chart per unit, and not one chart: requests, tokens, seconds and a
  * percentage do not share an axis, and putting any two of them on one pair
- * would need a second y-scale — which makes the crossings of the two lines look
+ * would need a second y-scale, which makes the crossings of the two lines look
  * like events when they are an artifact of how the scales were chosen.
  *
  * Time to first token is split from end-to-end latency for the same reason they

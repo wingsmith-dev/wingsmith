@@ -19,7 +19,7 @@ describe("Labels", () => {
     expect(screen.getByText("pool=gpu")).toBeInTheDocument()
   })
 
-  it("says none rather than drawing an empty row", () => {
+  it("says none instead of drawing an empty row", () => {
     render(<Labels labels={{}} />)
     expect(screen.getByText("none")).toBeInTheDocument()
   })
@@ -73,7 +73,7 @@ describe("VersionPair", () => {
 
 describe("CopyableId", () => {
   // jsdom defines navigator.clipboard as a getter-only property, so it has to be
-  // redefined rather than assigned.
+  // redefined, not assigned.
   function withClipboard() {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, "clipboard", {

@@ -42,14 +42,14 @@ export function ArtifactStep({
       <div className="space-y-3">
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
           <p className="font-mono text-2xs text-destructive">
-            this workload names no weights, so there is nothing to adopt — pick
+            this workload names no weights, so there is nothing to adopt: pick
             an artifact by hand on the next step
           </p>
         </div>
         <ul className="space-y-1">
           {draft.notes.map((note) => (
             <li key={note} className="font-mono text-2xs text-muted-foreground">
-              — {note}
+              · {note}
             </li>
           ))}
         </ul>
@@ -100,7 +100,7 @@ export function ArtifactStep({
       ) : (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="font-mono text-2xs text-warning">
-            adopted by reference, not by content — the digest below is the name
+            adopted by reference, not by content: the digest below is the name
             the cluster was given, and the artifact is recorded unverified
           </p>
         </div>
@@ -142,7 +142,7 @@ export function ArtifactStep({
         <ul className="space-y-1">
           {draft.notes.map((note) => (
             <li key={note} className="font-mono text-2xs text-muted-foreground">
-              — {note}
+              · {note}
             </li>
           ))}
         </ul>

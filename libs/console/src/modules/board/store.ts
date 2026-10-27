@@ -25,7 +25,7 @@ export interface Hand {
 interface BoardState {
   /** The plan, in the order it was built. Replayed on every repaint. */
   moves: Move[]
-  /** The brick armed for a click-to-place — off the tray, or off the board. */
+  /** The brick armed for a click-to-place: off the tray, or off the board. */
   armed: Brick | null
   /** Set when `armed` was picked off the board. Null when it came from the tray. */
   holding: Hand | null
@@ -72,7 +72,7 @@ interface BoardState {
  *
  * Nothing in here is declared state and nothing in here is ever sent: a plan is
  * a client-side overlay on observed allocations, thrown away on reload. Keeping
- * it out of the URL is deliberate — a half-built plan in a shared link would
+ * it out of the URL is deliberate: a half-built plan in a shared link would
  * read as something the fleet was about to do.
  */
 export const useBoardStore = create<BoardState>()((set) => ({
@@ -143,7 +143,7 @@ export const useBoardStore = create<BoardState>()((set) => ({
     }),
 
   /**
-   * Relocating the same allocation twice replaces the earlier move rather than
+   * Relocating the same allocation twice replaces the earlier move instead of
    * stacking on it: the plan is a set of destinations, not a route, and two
    * moves of one allocation would free the devices it never held.
    */

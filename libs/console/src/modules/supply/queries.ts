@@ -27,7 +27,7 @@ export function useNodes(filters: NodeFilters = {}) {
   )
 }
 
-/** Fleet-wide node rollup for the list header — true totals, not a page. */
+/** Fleet-wide node rollup for the list header: true totals, not a page. */
 export function useNodesSummary() {
   return useQuery({
     queryKey: ["nodes", "summary"],
@@ -109,7 +109,7 @@ export function useCreatePool() {
   })
 }
 
-/** Conditional on `revision`; a stale edit is refused rather than merged. */
+/** Conditional on `revision`; a stale edit is refused, not merged. */
 export function useUpdatePool() {
   const client = useQueryClient()
   return useMutation({
@@ -146,7 +146,7 @@ export function useDeviceClassLabel(): (name: string) => string {
 /**
  * The options for a class picker, with `current` guaranteed present.
  *
- * A pool or a workload can carry a class the catalog does not list — hardware
+ * A pool or a workload can carry a class the catalog does not list: hardware
  * nobody has named yet still resolves and still gets scheduled onto. Dropping
  * it from the list would mean opening the edit form and silently changing the
  * value, so it is always offered, marked as the unlisted thing it is.

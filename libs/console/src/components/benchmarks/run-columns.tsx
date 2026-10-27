@@ -20,7 +20,7 @@ import { Link } from "@tanstack/react-router"
  * there.
  *
  * A guess by construction: the plane stores whatever shape the tool emitted and
- * promises nothing about it. The key comes from the kind rather than being
+ * promises nothing about it. The key comes from the kind instead of being
  * hardcoded to TTFT, because a conformance run has no time-to-first-token and a
  * column headed `TTFT p50` full of dashes reads as a broken measurement rather
  * than as a question that was never asked.
@@ -37,7 +37,7 @@ function headline(run: BenchmarkRun): string {
 /**
  * What the run was pointed at.
  *
- * A run carries an endpoint or a deployment and never a workload — a
+ * A run carries an endpoint or a deployment and never a workload: a
  * workload-level ask expands into one run per placement, so the workload is a
  * fact about the request and the runs each name the thing they actually hit.
  * The request link in the row is how the wider claim is reached.
@@ -75,8 +75,8 @@ function targetCell(run: BenchmarkRun) {
 /**
  * The fleet-wide run list: type, target, status.
  *
- * Deliberately narrower than `benchmarkColumns`. That one is embedded under an
- * object that already supplies the context — you are on a workload, so every
+ * Narrower than `benchmarkColumns`. That one is embedded under an
+ * object that already supplies the context: you are on a workload, so every
  * row's level and target are known and the interesting columns are the numbers.
  * Here nothing is known, so the three identifying facts come first and exactly
  * one number follows, chosen by the kind.

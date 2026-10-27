@@ -11,11 +11,11 @@ import type { Artifact } from "@/modules/demand/types"
 import { useState } from "react"
 
 /**
- * Which weights to run — the first question, and the only one with no default.
+ * Which weights to run: the first question, and the only one with no default.
  *
- * A list rather than a select. A select is the right control for a closed set of a
+ * A list instead of a select. A select is the right control for a closed set of a
  * dozen; an artifact catalog is neither closed nor small, and the things that tell
- * two artifacts apart — parameter count, format, whether the digest was verified — do
+ * two artifacts apart (parameter count, format, whether the digest was verified) do
  * not fit on one line of a dropdown. The search box filters server-side, because the
  * catalog outgrows one page long before it outgrows one screen.
  */
@@ -44,7 +44,7 @@ export function ArtifactPicker({
         <p className="py-6 text-center font-mono text-2xs text-muted-foreground">
           {search
             ? "Nothing matches."
-            : "No artifacts registered. Register one first — there is nothing to run yet."}
+            : "No artifacts registered. Register one first: there is nothing to run yet."}
         </p>
       )}
 

@@ -17,7 +17,7 @@ import {
  * The class picker every form that takes one should use.
  *
  * The hint carries the identifier because that is the string the operator will
- * see again in `hgr`, in a pool name and in a serving shape — the friendly name
+ * see again in `hgr`, in a pool name and in a serving shape: the friendly name
  * exists to choose by, not to work from.
  */
 export function DeviceClassField({
@@ -92,15 +92,15 @@ export function DeviceClassBadge({ name }: { name: string }) {
  * The allow-list form of the picker: every class in the catalog, each one on or
  * off, plus any class already named that the catalog does not carry.
  *
- * Empty means no opinion, which is what the plane reads an empty list as — so
- * that is said in the hint rather than left for someone to discover by
+ * Empty means no opinion, which is what the plane reads an empty list as, so
+ * that is said in the hint, not left for someone to discover by
  * selecting nothing and watching what happens.
  */
 export function DeviceClassMultiField({
   label = "Allowed device classes",
   values,
   onChange,
-  hint = "None selected means no opinion — every class is allowed.",
+  hint = "None selected means no opinion: every class is allowed.",
 }: {
   label?: string
   values: string[]

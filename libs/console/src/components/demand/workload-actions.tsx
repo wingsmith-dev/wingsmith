@@ -103,7 +103,7 @@ export function ScaleWorkloadDialog({
          * A group count is not a replica count and the form must not let the
          * two be read as one. Three groups at 1:2 is nine processes and
          * seventy-two devices, and the arithmetic belongs in front of the
-         * person doing it rather than in the rejection they get back.
+         * person doing it, not in the rejection they get back.
          *
          * This is also the cheap action of the two on this screen: scaling
          * multiplies the weights out, and nothing about a new prefill process
@@ -118,7 +118,7 @@ export function ScaleWorkloadDialog({
       )}
       <p className="text-xs text-muted-foreground">
         The workload's share on each cluster is derived, never typed. Nothing
-        autoscales between the minimum and the maximum — they are the bounds
+        autoscales between the minimum and the maximum: they are the bounds
         placement is allowed to move within, and today it sits on the desired.
       </p>
     </FormDialog>
@@ -213,18 +213,18 @@ export function DrainWorkloadDialog({
 /**
  * Agg ↔ disagg, as an operation and not a field write.
  *
- * It is imperative, long-running and able to fail — it changes the device
+ * It is imperative, long-running and able to fail: it changes the device
  * footprint per unit, so it can sit pending on quota indefinitely, which is the
  * failure mode `workload.scale` already exists to carry. A PATCH would report
  * success the moment the plane accepted the intent, and "why has this model
  * been half-rolled for twenty minutes" would have no answer.
  *
  * The new group count is asked for and never inherited. A workload at three
- * replicas means three aggregated replicas today and would mean three GROUPS —
- * seventy-two devices at 1:2 and TP8 — the moment the topology flips.
+ * replicas means three aggregated replicas today and would mean three GROUPS,
+ * seventy-two devices at 1:2 and TP8, the moment the topology flips.
  * Reinterpreting a live number by a factor of three is the mistake this form
  * exists to make impossible, so a flip that does not say how many groups it
- * wants is rejected rather than defaulted.
+ * wants is rejected, not defaulted.
  */
 export function ReshapeWorkloadDialog({
   workload,
@@ -324,8 +324,8 @@ export function ReshapeWorkloadDialog({
       </FormGrid>
       <p className="text-xs text-muted-foreground">
         One {unit.replace(/s$/, "")} costs {perUnit} devices, at {perWorker} per
-        worker. The count is asked for rather than carried over, because the
-        same number means a different amount of hardware on either side of this.
+        worker. The count is asked for, not carried over, because the same
+        number means a different amount of hardware on either side of this.
       </p>
       <p
         className={

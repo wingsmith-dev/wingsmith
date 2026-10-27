@@ -113,7 +113,7 @@ describe("moving what is running, in the sandbox", () => {
     })
   })
 
-  it("moves the allocation rather than copying it", () => {
+  it("moves the allocation instead of copying it", () => {
     paint("sandbox")
 
     fireEvent.click(cell(0))

@@ -22,7 +22,7 @@ export function setRefreshToken(next: string | null): void {
 }
 
 /**
- * Called when the plane rejects a token. Lives here rather than in the store so
+ * Called when the plane rejects a token. Lives here, not in the store so
  * the HTTP transport can report an expiry without importing the store, which
  * imports the transport for its base URL.
  */

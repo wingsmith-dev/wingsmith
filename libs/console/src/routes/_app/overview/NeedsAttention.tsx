@@ -22,7 +22,7 @@ const ICON_TONE: Record<StatusTone, string> = {
 
 /**
  * The inbox. Everything a person has to decide about, loudest first, with the
- * discovered half beside the unhealthy half rather than on a page of its own —
+ * discovered half beside the unhealthy half, not on a page of its own:
  * an unadopted workload holding eight accelerators is the same kind of problem
  * as a degraded one.
  */

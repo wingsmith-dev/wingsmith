@@ -16,10 +16,10 @@ import { toast } from "sonner"
 /**
  * Track, ignore, remove, promote. All but the last record a decision beside the
  * sighting and send nothing to a cluster; only promote produces declared state,
- * which is why it is the one that opens a dialog rather than firing on click.
+ * which is why it is the one that opens a dialog instead of firing on click.
  *
  * Remove is offered on anything not yet promoted and is undone by Restore, which
- * is the only action a removed sighting shows — it is still running, and the
+ * is the only action a removed sighting shows: it is still running, and the
  * workload underneath was never touched.
  */
 export function DecisionActions({
