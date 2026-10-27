@@ -695,12 +695,10 @@ class DatabaseSink:
             domains = await db.execute(statements.prune_topology_domains(resolved, epoch.present[TOPOLOGY]))
             workloads = await db.execute(statements.prune_discovered_workloads(resolved, epoch.present[WORKLOAD]))
             nodes = await db.execute(statements.prune_nodes(resolved, epoch.present[NODE]))
-            for uid, name in going:
-                await db.execute(statements.insert_prune_event(resolved, "node", uid, f"node {name}", moment))
-            for uid, namespace, name in leaving:
-                await db.execute(
-                    statements.insert_prune_event(resolved, "workload", uid, f"workload {namespace}/{name}", moment)
-                )
+            removed = [("node", uid, f"node {name}") for uid, name in going]
+            removed += [("workload", uid, f"workload {namespace}/{name}") for uid, namespace, name in leaving]
+            if (recorded := statements.insert_prune_events(resolved, removed, moment)) is not None:
+                await db.execute(recorded)
             await db.execute(statements.upsert_sync_state(resolved, {"last_sync_at": moment}))
         logger.info(
             "ingestion.resync.pruned cluster=%s received=%d nodes=%d devices=%d domains=%d workloads=%d",

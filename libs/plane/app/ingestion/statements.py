@@ -855,6 +855,10 @@ def update_benchmark_run(cluster_id: UUID, payload: BenchmarkObserved) -> Update
     )
 
 
+EVENT_OCCURRENCE = [Event.cluster_id, Event.type, Event.subject_type, Event.occurred_at, func.md5(Event.message)]
+"""The columns of `uq_ops_event_occurrence`, the index that decides one occurrence from a replay of it."""
+
+
 def _insert_event(
     cluster_id: UUID,
     type_name: str,
@@ -895,19 +899,7 @@ def _insert_event(
         literal(details, JSONB).label("details"),
         literal(occurred_at, Event.occurred_at.type).label("occurred_at"),
     )
-    return (
-        pg_insert(Event)
-        .from_select(columns, values)
-        .on_conflict_do_nothing(
-            index_elements=[
-                Event.cluster_id,
-                Event.type,
-                Event.subject_type,
-                Event.occurred_at,
-                func.md5(Event.message),
-            ]
-        )
-    )
+    return pg_insert(Event).from_select(columns, values).on_conflict_do_nothing(index_elements=EVENT_OCCURRENCE)
 
 
 def insert_node_event(cluster_id: UUID, payload: NodeEvent) -> Insert:
@@ -1237,25 +1229,37 @@ def doomed_workloads(cluster_id: UUID, keep: set[str]) -> Select:
     )
 
 
-def insert_prune_event(cluster_id: UUID, subject_type: str, subject_uid: str, label: str, moment: Any) -> Insert:
-    """Records that a complete snapshot stopped mentioning something.
+def insert_prune_events(cluster_id: UUID, removed: list[tuple[str, str, str]], moment: Any) -> Insert | None:
+    """Records that a complete snapshot stopped mentioning things, one row per `(kind, uid, label)`.
 
     Raised by the plane rather than by a cluster, which is why the message says
     what the plane actually knows: the snapshot did not include it. The operator
     may well have sent a `node.left` too, and the two are not duplicates — that
     one is the cluster reporting an event, this one is the plane noticing an
     absence, and an incident where only the second exists is the interesting one.
+
+    One statement for the lot, because a resync after an outage can drop a whole
+    node pool at once. `None` when nothing went. The same occurrence guard as
+    `_insert_event`.
     """
-    return _insert_event(
-        cluster_id,
-        f"{subject_type}.removed",
-        EVENT_SEVERITY.get("left", "warning"),
-        subject_type,
-        None,
-        f"{label} is no longer reported by its cluster",
-        {"reason": "absent_from_snapshot", f"{subject_type}_id": subject_uid},
-        moment,
-    )
+    if not removed:
+        return None
+    severity = EVENT_SEVERITY.get("left", "warning")
+    rows = [
+        {
+            "uid": new_uid(EVENT),
+            "cluster_id": cluster_id,
+            "type": f"{subject_type}.removed",
+            "severity": severity,
+            "subject_type": subject_type,
+            "subject_id": None,
+            "message": f"{label} is no longer reported by its cluster",
+            "details": {"reason": "absent_from_snapshot", f"{subject_type}_id": subject_uid},
+            "occurred_at": moment,
+        }
+        for subject_type, subject_uid, label in removed
+    ]
+    return pg_insert(Event).values(rows).on_conflict_do_nothing(index_elements=EVENT_OCCURRENCE)
 
 
 def prune_deployment_replicas(cluster_id: UUID, deployment_id: UUID, keep: list[str]) -> Delete:

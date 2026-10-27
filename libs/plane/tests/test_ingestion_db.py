@@ -983,6 +983,22 @@ async def test_a_pruned_node_leaves_an_event_behind(sessions, cluster) -> None:
     assert events[0][3]["node_id"] == NODE
 
 
+async def test_everything_a_snapshot_dropped_gets_its_own_removal_event(sessions, cluster) -> None:
+    """A node and a discovered workload gone in one resync: two rows, written together."""
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await sink.apply_observed(observed("workload.discovered"))
+
+    request = new_id()
+    await sink.begin_resync(CLUSTER, "supply", request)
+    await sink.end_resync(CLUSTER, request, 0, True)
+
+    events = await fetch(
+        sessions, "SELECT type, details->>'reason' FROM ops_event WHERE type LIKE '%.removed' ORDER BY type"
+    )
+    assert events == [("node.removed", "absent_from_snapshot"), ("workload.removed", "absent_from_snapshot")]
+
+
 async def test_an_incomplete_snapshot_leaves_no_removal_event_either(sessions, cluster) -> None:
     """No prune, no event. A truncated snapshot must not be reported as things leaving."""
     sink = DatabaseSink(sessions)
