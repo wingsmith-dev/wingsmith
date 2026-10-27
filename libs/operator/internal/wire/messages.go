@@ -40,11 +40,9 @@ type Error struct {
 	Retryable bool   `json:"retryable"`
 }
 
-// StreamEnd terminates a sequence of frames sharing one ReplyTo, and closes a resync.
-//
-// Complete is load-bearing: a receiver prunes local state against a snapshot only when the
-// stream ended with Complete true. A truncated snapshot must leave local state untouched
-// rather than be treated as an authoritative empty set.
+// StreamEnd terminates a sequence of frames sharing one ReplyTo, and closes a resync. A receiver
+// prunes local state against a snapshot only when Complete is true; a truncated snapshot leaves
+// local state untouched.
 type StreamEnd struct {
 	Count    int  `json:"count"`
 	Complete bool `json:"complete"`
@@ -59,33 +57,14 @@ type ResyncBegin struct {
 
 // ---------------------------------------------------------------------------- supply
 
-// ClusterObserved is what the cluster reports about itself as a whole.
+// ClusterObserved is what the cluster reports about itself as a whole. It is observed, never
+// declared, and does not overwrite the plane's registry entry: the two disagreeing is worth seeing.
 //
-// Everything here is observed and none of it is declared. A cluster's registry entry says what we
-// decided about it — its name, its region, whether it is draining. This says what it turned out to
-// be: which cloud its machines are actually on and which Kubernetes distribution is actually
-// running. The two disagreeing is a fact worth being able to see, which is exactly why the
-// observed answer does not overwrite the declared one.
-//
-// Distribution is the one string on the wire that names an orchestrator. That is deliberate and
-// bounded: it is an opaque label the plane stores and displays, never something it branches on.
-// The moment the plane reads it to decide what to send, rule 2 is broken.
-// ReadOnly is the one field here that is about the operator rather than the cluster, and it is
-// the most consequential thing this frame can say. A read-only operator runs without the
-// reconcile loop: it reports everything the cluster has and applies nothing the plane declares.
-// Left off the wire, that is invisible from the plane — placement picks the cluster, the hub
-// streams the desired state, the operator acknowledges the session and silently does nothing,
-// and a workload sits at zero replicas with no error anywhere to explain it. Reporting it is
-// what lets the console say that nothing will happen here, rather than leaving somebody to
-// discover it by waiting.
-//
-// Multinode says a leader-worker backend — Grove or LeaderWorkerSet — is installed, so Dynamo
-// can render a replica whose devices do not fit on one machine. Unlike ReadOnly and Distribution
-// this one is not inert: placement must not send a replica that spans nodes to a cluster that
-// cannot run one, so the plane reads it. It is discovered from the API groups the cluster serves
-// rather than declared in the operator's config, because a flag asserting it is a second copy of
-// a truth the operator can simply look up — and when the two disagree the cluster wins, silently,
-// by hanging in collective initialisation.
+// Distribution is an opaque label the plane stores and displays and never branches on. ReadOnly
+// tells the plane this operator applies nothing it declares, so the console can say so instead of
+// a workload sitting at zero replicas unexplained. Multinode says a leader-worker backend (Grove or
+// LeaderWorkerSet) is installed; placement reads it, and it is discovered from the API groups the
+// cluster serves, not configured.
 type ClusterObserved struct {
 	ClusterID    string `json:"cluster_id"`
 	Distribution string `json:"distribution"`
@@ -116,16 +95,9 @@ type NodeTaint struct {
 	Effect string `json:"effect"`
 }
 
-// NodeObserved is the full observed state of one node.
-//
-// InstanceType, CPUCores, MemoryMiB, CPUArch and OSImage are what the machine *is*, as opposed to
-// how it is currently doing. They are stated in neutral units — cores and mebibytes — rather than
-// forwarded as the orchestrator's own quantity strings, because the plane does not know a cluster
-// is Kubernetes and must not learn to parse its resource grammar to read a number.
-//
-// Cloud is the provider the machine belongs to, taken from the node's provider reference. It is
-// observed per node rather than declared per cluster: a cluster can be told it is in one place and
-// be wrong, and a hybrid cluster would make the cluster-level answer a lie for some of its nodes.
+// NodeObserved is the full observed state of one node. Machine facts are in neutral units (cores,
+// MiB), not orchestrator quantity strings, so the plane never parses Kubernetes resource grammar.
+// Cloud is read per node from its provider reference, so a hybrid cluster reports each node truly.
 type NodeObserved struct {
 	NodeID          string            `json:"node_id"`
 	ClusterID       string            `json:"cluster_id"`
@@ -186,8 +158,7 @@ type DeviceAllocation struct {
 }
 
 // DeviceObserved is the full observed state of one accelerator. Utilization, temperature,
-// throughput and memory in use are deliberately absent; see PROTOCOL §7. MemoryTotalMB is
-// capacity, which is state; how much of it is occupied is a measurement and goes elsewhere.
+// throughput and memory in use are measurements, not state, and are absent; see PROTOCOL §7.
 type DeviceObserved struct {
 	DeviceID         string            `json:"device_id"`
 	NodeID           string            `json:"node_id"`
@@ -218,11 +189,8 @@ type DeviceEvent struct {
 	OccurredAt string `json:"occurred_at"`
 }
 
-// TopologyObserved is one topology domain, the devices that share it, and the nodes it spans.
-//
-// NodeIDs is a set because a domain is not a property of a machine: an NVSwitch fabric or a
-// GB200 rack is one NVLink domain across many nodes. Zero, one, or many are all legal, and
-// SpansNodes is the cluster's own answer rather than something the plane recomputes.
+// TopologyObserved is one topology domain, the devices that share it, and the nodes it spans. A
+// domain such as an NVLink rack can span many nodes, and SpansNodes is the cluster's own answer.
 type TopologyObserved struct {
 	DomainID   string   `json:"domain_id"`
 	ClusterID  string   `json:"cluster_id"`
@@ -252,11 +220,8 @@ type CapacityObserved struct {
 
 // ---------------------------------------------------------------------------- demand, hub -> op
 
-// Overlay is the escape hatch for what this plane does not model.
-//
-// Engines and their operators carry far more configuration than a control plane wants to mirror
-// field by field, and mirroring it is a losing race. The serving configuration models what the
-// plane reasons about and passes the rest through.
+// Overlay passes through engine configuration the serving spec does not model, limited to an
+// allowlist on both the plane and the operator.
 type Overlay struct {
 	// PodSpec is merged over the rendered pod with strategic-merge semantics, so containers and
 	// env merge by name. The renderer refuses any key outside its allowlist (render/overlay.go),
@@ -282,38 +247,21 @@ type Resources struct {
 	DiskGiB   *int   `json:"disk_gib,omitempty"`
 }
 
-// ServingSpec is how to serve an artifact, in enough detail for a cluster to render it.
-//
-// It travels inlined on the deployment rather than as a declared object of its own. The separate
-// object it replaces was filtered and serialised per cluster anyway, so sharing one between two
-// deployments saved nothing on the wire and bought an ordering rule, a pending reason, and a
-// resume race in which a deployment waited forever on a configuration it was never sent.
-//
-// Digest is the identity: two deployments that would produce the same running process carry the
-// same digest, which is what reuse means now that nothing is shared by reference.
-//
-// The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
-// this configuration, and carrying it twice invites the two copies to disagree.
+// ServingSpec is how to serve an artifact, inlined on each deployment so there is no ordering
+// between the two. Digest is its identity: two deployments that would run the same process carry
+// the same digest. The device shape is on the deployment's Placement, not here.
 type ServingSpec struct {
 	// Engine is which engine the worker launches inside the runtime: a module name and a flag
 	// dialect, and no version at all.
 	Engine string `json:"engine"`
-	// EngineRuntimeVersion is a tag of the Dynamo runtime the engine runs in -- 1.4.1 -- and is
-	// never the engine's own version. The vLLM inside vllm-runtime:1.4.1 is on 0.28.0; the two
-	// count in different sequences, and which build NVIDIA compiled in is not on this wire.
+	// EngineRuntimeVersion is a Dynamo runtime tag, e.g. 1.4.1, never the engine's own version.
 	EngineRuntimeVersion string `json:"engine_runtime_version"`
 	// EngineRuntimeImage is the whole address when the plane pins one instead of deriving it.
 	EngineRuntimeImage *string `json:"engine_runtime_image"`
 
-	// FrontendImage is the runtime the OpenAI-compatible frontend for this model runs, when it
-	// must differ from the engine's.
-	//
-	// A field of its own rather than a reuse of EngineRuntimeImage, because the two can be
-	// genuinely different builds: a model can need a patched frontend while its workers stay on
-	// the stock engine image, when the defect is in the frontend binary and not in the engine.
-	// Nil is the ordinary case and means the
-	// cluster's own default, which is why this is a pointer — an empty string from a plane too
-	// old to send the field must not read as a deliberate blank image.
+	// FrontendImage is the frontend's runtime when it must differ from the engine's, e.g. a patched
+	// frontend over a stock engine. Nil means the cluster's default; a pointer so an older plane's
+	// missing field does not read as a blank image.
 	FrontendImage      *string           `json:"frontend_image"`
 	EngineArgs         map[string]string `json:"engine_args"`
 	Quantization       *string           `json:"quantization"`
@@ -326,51 +274,27 @@ type ServingSpec struct {
 	PrefixCacheEnabled bool              `json:"prefix_cache_enabled"`
 	PrefixCacheConfig  map[string]string `json:"prefix_cache_config"`
 	Resources          Resources         `json:"resources"`
-	// Digest is `svg_` and a sha256 over the fields above, computed by the plane and never
-	// derived here. It names the footprint and nothing else: what a model is called, what it
-	// was imported with and what it asserts are all outside it, because the question it answers
-	// is whether two deployments would produce the same running process.
+	// Digest is `svg_` and a sha256 over the fields above, computed by the plane and never here.
+	// It covers only what changes the running process.
 	Digest  string  `json:"digest"`
 	Overlay Overlay `json:"overlay"`
 
-	// Topology is `aggregated` or `disaggregated`, and empty from a plane too old to send it.
-	//
-	// Empty reads as aggregated, which is what `Disaggregated` is for. That is not politeness
-	// about old planes: it is the same guarantee the digest keeps, because an aggregated
-	// deployment must render byte-identically to what it rendered before this field existed.
+	// Topology is `aggregated` or `disaggregated`. Empty reads as aggregated, so an aggregated
+	// deployment renders exactly as it did before the field existed.
 	Topology string `json:"topology,omitempty"`
 
-	// Roles is the per-role configuration of a disaggregated deployment, and it carries no
-	// counts.
-	//
-	// The split between this and `DeploymentDesired.RoleReplicas` is the digest split made
-	// structural. What is here decides what the process *is* — prefill runs
-	// `--max-num-batched-tokens` 32768 against decode's 2048 — and is therefore inside
-	// `Digest` above. How many of each there are is scale, it is in the deployment's frame
-	// beside `MinReplicas`, and it is deliberately not hashed: `ops_benchmark_run.serving_digest`
-	// is what links a measurement to the configuration it measured, and a count in that hash
-	// would orphan every benchmark on a model the moment somebody added a prefill worker.
-	//
-	// Empty on an aggregated deployment, and empty is the only way to say that — a single-entry
-	// `roles` meaning "one worker" would make every existing deployment a disaggregated one with
-	// a degenerate ratio, and the render has to stay byte-identical for those.
+	// Roles is the per-role configuration of a disaggregated deployment, inside Digest. It carries
+	// no counts: those are scale, in DeploymentDesired.RoleReplicas and outside the digest, so
+	// adding a worker does not orphan the benchmarks linked to this configuration. Empty on an
+	// aggregated deployment.
 	Roles []RoleSpec `json:"roles,omitempty"`
 
-	// Router is how this deployment's own frontend routes between its workers, and nil from a
-	// plane too old to send it or for a workload that declares nothing.
-	//
-	// Nil and a block with every field nil are the same statement, and both render exactly what
-	// the frontend rendered before this field existed: KV routing and nothing else. That is the
-	// byte-identity bar `Topology` keeps, for the same reason — Dynamo hashes the frontend's pod
-	// template, so an extra variable is a rolled frontend on every deployment in the fleet.
+	// Router is how this deployment's frontend routes between its workers. Nil, or every field nil,
+	// renders plain KV routing, so the frontend pod template stays unchanged.
 	Router *RouterSpec `json:"router,omitempty"`
 
-	// OutputModality is what the engine emits: `image` or `video` for a diffusion workload, and
-	// empty for everything else, which means text.
-	//
-	// Empty rather than `text` on a chat deployment so that its frame is byte-identical to what it
-	// was before this field existed. It renders as `--output-modalities` on the omni engine and is
-	// refused by the render on any other, because `dynamo.vllm` has no such flag.
+	// OutputModality is `image` or `video` for a diffusion workload and empty (text) otherwise. It
+	// renders as `--output-modalities` on the omni engine and is refused on any other.
 	OutputModality string `json:"output_modality,omitempty"`
 
 	// Diffusion is the per-deployment pipeline configuration of an omni worker, nil when none is
@@ -378,13 +302,8 @@ type ServingSpec struct {
 	Diffusion *DiffusionSpec `json:"diffusion,omitempty"`
 }
 
-// DiffusionSpec is what vLLM-Omni reads from a stage-config file and not from its command line.
-//
-// Typed rather than a raw YAML blob, for the reason RouterSpec is: the operator writes the file
-// and owns its fixed parts (one stage, the devices the pod holds, the executor), and the plane
-// declares only the two things that vary per model. The Dynamo omni CLI refuses
-// `--model-class-name`, so the class has no other way in, and omni's default of 50 inference
-// steps is wrong for every distilled model we serve.
+// DiffusionSpec is what vLLM-Omni reads from a stage-config file. The operator writes the file and
+// owns its fixed parts; the plane declares the pipeline class and sampling defaults.
 type DiffusionSpec struct {
 	// ModelClassName is the pipeline class, e.g. `LTX2Pipeline`, or empty to let omni infer it.
 	ModelClassName string `json:"model_class_name,omitempty"`
@@ -393,11 +312,8 @@ type DiffusionSpec struct {
 	DefaultSamplingParams map[string]any `json:"default_sampling_params,omitempty"`
 }
 
-// RouterSpec is the frontend's router configuration, one field per Dynamo setting it renders.
-//
-// Typed and closed rather than an environment passthrough. Each field names exactly one
-// `DYN_ROUTER_*` variable, the plane validates every value against what Dynamo accepts before it
-// is sent, and a nil field renders no variable at all, so Dynamo's own default stands.
+// RouterSpec is the frontend's router configuration. Each field is one `DYN_ROUTER_*` variable,
+// validated by the plane; a nil field renders nothing and leaves Dynamo's default.
 type RouterSpec struct {
 	// Mode is `DYN_ROUTER_MODE`. Nil keeps the operator's own default, `kv`.
 	Mode *string `json:"mode,omitempty"`
@@ -412,26 +328,15 @@ type RouterSpec struct {
 	KVOverlapScoreCredit *float64 `json:"kv_overlap_score_credit,omitempty"`
 }
 
-// RoleSpec is one role of a disaggregated deployment: what makes its process different from the
-// other role's, and nothing about how many of it run.
-//
-// Narrow because the difference is narrow. Across NVIDIA's published recipe the two roles differ
-// on six arguments and agree on the artifact, the tensor degree, the device class, the context
-// length, the quantization and the `kv-cache-dtype` — and on `kv-transfer-config`, which is
-// literally the same string on both sides because the transfer mechanism belongs to the topology
-// rather than to the role. So a role is one typed number and an argument map.
+// RoleSpec is what makes one role's process differ from the other's in a disaggregated
+// deployment, and nothing about how many of it run.
 type RoleSpec struct {
-	// Role is `prefill` or `decode`. A closed set, validated by the plane before it is sent,
-	// because a role outside it renders a `--disaggregation-mode` no engine accepts — a worker
-	// that will not start rather than a validation error somebody can read.
+	// Role is `prefill` or `decode`, validated by the plane.
 	Role string `json:"role"`
-	// MaxBatchTokens is this role's `--max-num-batched-tokens`, or nil to inherit the
-	// deployment's. Typed rather than left to EngineArgs because the serving spec already types
-	// it and the operator already derives the flag from it.
+	// MaxBatchTokens is this role's `--max-num-batched-tokens`, or nil to inherit the deployment's.
 	MaxBatchTokens *int `json:"max_batch_tokens,omitempty"`
-	// EngineArgs is laid over the deployment's own, and may not name a flag the operator
-	// derives — including `disaggregation-mode` and `kv-transfer-config`, which this topology
-	// now decides. The plane refuses those at declaration; this only carries what survived.
+	// EngineArgs is laid over the deployment's own. The plane refuses flags the operator derives,
+	// including `disaggregation-mode` and `kv-transfer-config`.
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 }
 
@@ -459,10 +364,8 @@ type PlacementConstraints struct {
 	NodeSelector      map[string]string `json:"node_selector"`
 }
 
-// DeploymentDesired is the declared state of one deployment. Full object, never a patch.
-// WorkloadDiscovered is a workload found already running in the cluster that the plane never
-// declared. It is a sighting and nothing more: there is no declared object behind it, so there is
-// nothing for a reconciler to converge and no reason for anything to restart.
+// WorkloadDiscovered is a workload found running in the cluster that the plane never declared. It
+// is a sighting only: nothing reconciles it.
 type WorkloadDiscovered struct {
 	WorkloadID        string            `json:"workload_id"`
 	ClusterID         string            `json:"cluster_id"`
@@ -482,13 +385,8 @@ type WorkloadDiscovered struct {
 	ObservedAt        string            `json:"observed_at"`
 }
 
-// WorkloadSpec is how a discovered workload was told to serve: the image it runs, the arguments
-// it was given, and the resources it asked for. Verbatim and uninterpreted — the plane reads
-// `--tensor-parallel-size` as parallelism, this only carries it.
-//
-// `env_names` is names without values, and that is a guarantee rather than an omission. Serving
-// pods are routinely handed registry credentials and HuggingFace tokens through their
-// environment; shipping values would copy them into the plane's database and into its backups.
+// WorkloadSpec is how a discovered workload was told to serve, carried uninterpreted. EnvNames
+// holds names without values, so credentials in a pod's environment never reach the plane.
 type WorkloadSpec struct {
 	Image        string            `json:"image,omitempty"`
 	Command      []string          `json:"command,omitempty"`
@@ -499,14 +397,10 @@ type WorkloadSpec struct {
 	NodeSelector map[string]string `json:"node_selector,omitempty"`
 }
 
-// Adopt rides on a DeploymentDesired that was promoted from a discovered workload. Its presence
-// changes the frame's meaning entirely: the named object already exists and is already serving, so
-// the operator takes ownership of it in place rather than applying a rendered spec over it.
-//
-// SpecFingerprint is what was true when the promotion was accepted. A reconciler that finds the
-// live object digesting to anything else must refuse and say so — the workload drifted, or the
-// render disagrees with reality, and either way converging means restarting a model to close a gap
-// nobody asked to close.
+// Adopt marks a DeploymentDesired promoted from a discovered workload: the operator takes
+// ownership of the running object in place instead of applying a render over it. A live object
+// whose fingerprint no longer matches SpecFingerprint is refused, since converging it would
+// restart a model nobody asked to restart.
 type Adopt struct {
 	Namespace       string `json:"namespace"`
 	Kind            string `json:"kind"`
@@ -514,6 +408,7 @@ type Adopt struct {
 	SpecFingerprint string `json:"spec_fingerprint"`
 }
 
+// DeploymentDesired is the declared state of one deployment. Full object, never a patch.
 type DeploymentDesired struct {
 	DeploymentID  string `json:"deployment_id"`
 	Name          string `json:"name,omitempty"`
@@ -521,39 +416,20 @@ type DeploymentDesired struct {
 	ProjectID     string `json:"project_id"`
 	Lifecycle     string `json:"lifecycle"`
 	PriorityClass string `json:"priority_class"`
-	// MinReplicas is this cluster's share of the workload's total scale, never the total, and
-	// it is the number that is actually rendered. MaxReplicas is reserved for an autoscaler on
-	// the roadmap; nothing reads it today. Neither may be summed with, or derived from, anything
-	// outside this frame.
+	// MinReplicas is this cluster's share of the workload's scale, rendered exactly as sent and never
+	// summed or derived against anything else. MaxReplicas is reserved for a future autoscaler.
 	MinReplicas int `json:"min_replicas"`
 	MaxReplicas int `json:"max_replicas"`
-	// RoleReplicas is the absolute worker count for each role of a disaggregated deployment,
-	// already multiplied by the plane. Empty on an aggregated one, where `MinReplicas` is the
-	// whole answer.
-	//
-	// Absolute, and that is the point of the field. `MinReplicas` under a disaggregated topology
-	// counts *groups*, and a group is the per-role weights taken together — so the per-role
-	// count is `MinReplicas x weight`. The multiplication happens in the plane and never here,
-	// because `Replicas` below states its own contract: it "renders exactly the number it is
-	// sent, and must never sum, scale, or re-derive it against anything else". An operator doing
-	// arithmetic on a replica count would be the first exception to an invariant that is
-	// currently absolute and cheap to check, and the alternative costs one map on a frame the
-	// plane already sends.
-	//
-	// Keyed by the same role names as `Serving.Roles`, and carried here rather than inside them
-	// because this is scale and those are configuration. See `RoleSpec`.
+	// RoleReplicas is the absolute worker count per role of a disaggregated deployment, keyed like
+	// Serving.Roles. MinReplicas counts groups there, and the plane does the multiplication so the
+	// operator never does arithmetic on a replica count. Empty on an aggregated deployment.
 	RoleReplicas map[string]int       `json:"role_replicas,omitempty"`
 	Placement    PlacementConstraints `json:"placement"`
-	// Serving is how to run this deployment's model, inlined rather than referenced. It is
-	// never absent and never late: it arrives in the same frame as the deployment that needs
-	// it, so there is no ordering between the two and nothing to wait for.
+	// Serving is inlined, so it always arrives with the deployment.
 	Serving     ServingSpec `json:"serving"`
 	ArtifactIDs []string    `json:"artifact_ids"`
-	// ServedModelName is the model id an API client sends, already resolved by the plane: the
-	// workload's own declaration, or the artifact's lowercase Hugging Face slug when it declares
-	// none. Never empty, and never derived here — the plane owns the order so that one function
-	// answers "what is this model called" for the console, the gateway and the engine alike.
-	// Serving.EngineArgs still wins over it, because engine_args is laid over the derived flags.
+	// ServedModelName is the model id clients send, resolved by the plane and never empty.
+	// Serving.EngineArgs can still override it.
 	ServedModelName string `json:"served_model_name"`
 	Generation      int64  `json:"generation"`
 	UpdatedAt       string `json:"updated_at"`
@@ -627,11 +503,7 @@ type LastError struct {
 	At      string `json:"at"`
 }
 
-// RoleObserved is one role's own share of a deployment's rollout.
-//
-// Desired is what this cluster rendered for the role, which is `role_replicas` echoed back, and
-// not a number this operator derived. See DeploymentObserved.Roles for why the scalars beside it
-// are still the whole answer for anyone who does not read this.
+// RoleObserved is one role's share of a deployment's rollout. Desired echoes role_replicas.
 type RoleObserved struct {
 	Role    string `json:"role"`
 	Desired int    `json:"desired"`
@@ -651,39 +523,20 @@ type DeploymentObserved struct {
 	LastError           *LastError `json:"last_error,omitempty"`
 	ObservedAt          string     `json:"observed_at"`
 
-	// ReplicaIDs is every replica this deployment has on this cluster right now, and it is
-	// what lets the plane forget the ones it no longer has. Demand state is never pruned
-	// against a resync, so a replica that simply stopped being reported — a rolled pod, a
-	// restarted one, a node that moved — stayed in the plane's database for ever and kept
-	// counting towards the rollup, which is why a deployment of one read three ready of one.
-	//
-	// Nil and empty mean different things and the field is deliberately not `omitempty`: nil
-	// is a frame from an operator that predates this and makes no claim, empty is a claim
-	// that there are none. A scale to zero has to be able to say so.
+	// ReplicaIDs is every replica this deployment has here now, which lets the plane forget the
+	// rest. Not omitempty: nil is an older operator making no claim, empty says there are none.
 	ReplicaIDs []string `json:"replica_ids"`
 
-	// Reason is the cluster's sub-state within Phase, from the closed set in MESSAGES.md.
-	// It is not an error: most of what it reports is an ordering that has not been satisfied
-	// yet, which is the normal way a deployment spends its first minutes.
+	// Reason is the sub-state within Phase, from the closed set in MESSAGES.md; usually an
+	// ordering not yet satisfied, not an error.
 	Reason string `json:"reason,omitempty"`
 
 	// Message is the same fact written for a person, and is never parsed.
 	Message string `json:"message,omitempty"`
 
-	// Roles is the same rollout split by role, and it is added beside the four scalars above
-	// rather than instead of them.
-	//
-	// The scalars stay the group rollup, and that is the compatibility story rather than a
-	// concession to it: a plane too old to read this field sums the roles the same way this
-	// operator already did and is *right, less precisely*. Nothing it can conclude from
-	// `3 of 3 ready` becomes false; it simply cannot see which of the three is the one missing
-	// when it is `2 of 3`, which for a 1P:2D group is the whole question — two ready decode
-	// workers and no prefill serve nothing, and the totals cannot say so.
-	//
-	// Omitted entirely on an aggregated deployment. An empty array would be a claim that this
-	// deployment has no roles, where a single-entry one would make every deployment in the fleet
-	// a disaggregated one with a degenerate ratio; absent is the only spelling that says the
-	// question does not apply.
+	// Roles splits the rollout by role, beside the scalars, which stay the group rollup an older
+	// plane reads. They show which role is short, e.g. ready decode workers with no prefill.
+	// Omitted on an aggregated deployment.
 	Roles []RoleObserved `json:"roles,omitempty"`
 }
 
@@ -704,15 +557,8 @@ type ReplicaObserved struct {
 	ObservedGeneration   int64    `json:"observed_generation"`
 	StartedAt            *string  `json:"started_at,omitempty"`
 	ObservedAt           string   `json:"observed_at"`
-	// Role is `prefill` or `decode` for a replica of a disaggregated deployment, and empty for
-	// an aggregated one.
-	//
-	// Read off the pod label the renderer stamps, never inferred from the pod's name: the name
-	// is Dynamo's convention and could change under us, where the label is a string this
-	// operator wrote and both sides agree on.
-	//
-	// Omitted when empty so an aggregated deployment's replica frames stay byte-identical to
-	// what they were, which matters to the fixture corpus rather than to any cluster.
+	// Role is `prefill` or `decode` on a disaggregated deployment, read from the pod label the
+	// renderer stamps, never from the pod name. Omitted when empty.
 	Role string `json:"role,omitempty"`
 }
 
@@ -761,9 +607,8 @@ type CacheObserved struct {
 	EvictionPressure float64              `json:"eviction_pressure"`
 	LastAccessedAt   *string              `json:"last_accessed_at,omitempty"`
 	ObservedAt       string               `json:"observed_at"`
-	// Reason and Message say why this state and not another. Free text, omitted when empty, so
-	// a plane that predates them is unaffected: `absent` alone cannot distinguish a download
-	// that has not started from one nothing on this cluster is able to start.
+	// Reason and Message say why this state, e.g. a download not started versus one nothing here
+	// can start. Omitted when empty.
 	Reason  string `json:"reason,omitempty"`
 	Message string `json:"message,omitempty"`
 }
@@ -824,18 +669,9 @@ type OperationObserved struct {
 	ObservedAt  string            `json:"observed_at"`
 }
 
-// OperationCancel withdraws an operation the plane has already sent.
-//
-// A frame of its own rather than a field on OperationDesired, because a cancellation is not a
-// restatement of the instruction: the operation is already accepted, probably already running, and
-// what is being sent is a second imperative about the first. Re-sending the desired frame with a
-// flag on it would also make cancellation prunable by a resync, which is exactly the property
-// operations are kept out of the snapshot to avoid.
-//
-// The receiver answers by reporting a terminal phase for OperationID, the same as it would for an
-// operation that finished on its own. An id this operator does not hold is not an error — the
-// operation may have finished a moment before the frame arrived, or been refused, or belonged to a
-// process that has since restarted — so a cancellation is at-least-once and idempotent.
+// OperationCancel withdraws an operation already sent. A frame of its own, so a resync cannot
+// prune it. The receiver reports a terminal phase for OperationID; an unknown id is not an error,
+// so cancellation is at-least-once and idempotent.
 type OperationCancel struct {
 	OperationID string `json:"operation_id"`
 	ClusterID   string `json:"cluster_id"`
@@ -844,16 +680,9 @@ type OperationCancel struct {
 	RequestedAt string `json:"requested_at"`
 }
 
-// BenchmarkObserved is the outcome of a benchmark run.
-//
-// Beside OperationObserved rather than inside it: that message's Result is a map[string]string and
-// every load generator worth running emits nested JSON. Widening it would widen it for drain and
-// cordon too, which have nothing to put there.
-//
-// Summary is json.RawMessage and not a struct. It is the harness's own export, forwarded byte for
-// byte, because normalising AIPerf's shape and vLLM's into shared fields is a decision that needs
-// both formats read against a real deployment first. HarnessVersion is what makes two runs
-// comparable in the meantime.
+// BenchmarkObserved is the outcome of a benchmark run, beside OperationObserved because a harness
+// emits nested JSON. Summary is the harness's own export, forwarded as is; HarnessVersion is what
+// makes two runs comparable.
 type BenchmarkObserved struct {
 	BenchmarkID    string          `json:"benchmark_id"`
 	ClusterID      string          `json:"cluster_id"`
@@ -864,11 +693,8 @@ type BenchmarkObserved struct {
 	HarnessVersion string          `json:"harness_version,omitempty"`
 	Summary        json.RawMessage `json:"summary,omitempty"`
 	ArtifactsURI   string          `json:"artifacts_uri,omitempty"`
-	// LogTail is the last few KiB of the harness's stdout, tail-biased because that is where
-	// the failure lives. A benchmark that wants its full log preserved should publish it to
-	// `ArtifactsURI`; this channel exists so a failed run and a truncated summary can both be
-	// reconstructed without shell access to a cluster somebody else owns. Capped, never the
-	// whole thing.
+	// LogTail is the capped last few KiB of the harness's stdout, where a failure shows. Full logs
+	// belong at ArtifactsURI.
 	LogTail     string  `json:"log_tail,omitempty"`
 	Error       string  `json:"error,omitempty"`
 	StartedAt   *string `json:"started_at,omitempty"`
