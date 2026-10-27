@@ -2,32 +2,32 @@
 # The one OpenAI-compatible frontend this cluster serves every model through.
 #
 # It belongs to the cluster and not to a deployment, and that is the whole reason
-# it is here rather than something the operator renders. A request names its model
+# it is here instead of something the operator renders. A request names its model
 # in the body, where no ingress and no Service can route on it, so a frontend per
 # deployment would leave nothing able to choose between them: the thing that picks
 # a worker has to be the thing that has already parsed the body. One frontend per
 # cluster, joined by every worker through `globalDynamoNamespace`, is what makes
 # `libs/operator/internal/render/dynamo.go` able to render workers alone.
 #
-# So it is cluster setup in the same sense as NATS and the model cache — a
+# So it is cluster setup in the same sense as NATS and the model cache: a
 # singleton a cluster installs once to become one the plane can serve from, not a
 # per-workload object. No manifest edit is needed when a model is added: it
 # discovers workers itself, and a model added or removed never edits this file.
 #
 # It discovers them through the Kubernetes API, not over NATS:
 # `DYN_DISCOVERY_BACKEND=kubernetes` on the running pods, and
-# the frontend lists objects labelled `nvidia.com/dynamo-namespace` — the Dynamo
+# the frontend lists objects labelled `nvidia.com/dynamo-namespace`: the Dynamo
 # namespace is a label value, and `globalDynamoNamespace` above is what sets it to
 # the shared one on both halves. What does vary with what is running is the binary:
 # every model on a cluster must be servable by this one image, tokenizer and parser
 # registries included. See docs/decisions/0013-*.md.
 #
-# Two things find it by Dynamo's own labels rather than by name, because the name
+# Two things find it by Dynamo's own labels, not by name, because the name
 # is the part that varies between clusters: the serving agent
 # (`libs/agent/internal/dynamo/resolver.go`) and the operator's benchmark
 # executor. Both look for the Service selecting
 # `nvidia.com/dynamo-component: Frontend`, which is why the component below is
-# NAMED `Frontend` — the label carries the component's name, and renaming it here
+# NAMED `Frontend`: the label carries the component's name, and renaming it here
 # would leave both halves looking for something that no longer exists.
 #
 # ORDERING, and it is not incidental: `DynamoGraphDeployment` is a CRD the Dynamo
@@ -37,13 +37,13 @@
 # install therefore has to pass `--set frontend.mode=none`, and a second
 # `helm upgrade` names the topology it wants, once the Dynamo operator has
 # registered its own types. That is stated in values.yaml and in NOTES.txt,
-# because the failure is otherwise read as a broken chart rather than as a step in
+# because the failure is otherwise read as a broken chart, not as a step in
 # the wrong order. It binds this file and the operator's per-model frontends
 # equally: both are DynamoGraphDeployments and neither can be the first thing a
 # cluster applies.
 #
 # This file renders only under `frontend.mode: shared`. The default is
-# `per-model` (ADR 0013), which renders nothing here — a model's frontend is a
+# `per-model` (ADR 0013), which renders nothing here: a model's frontend is a
 # component the operator puts in that model's own graph, on that model's own
 # image, so it is not the chart's to install.
 apiVersion: nvidia.com/v1beta1
@@ -57,7 +57,7 @@ spec:
   components:
     # `type: frontend` is what earns the component its ports and its frontend
     # labels; `name: Frontend` is what both discoverers match on. They are
-    # different fields saying different things and both are load-bearing.
+    # different fields saying different things and both are essential.
     - name: Frontend
       type: frontend
       replicas: {{ .Values.frontend.replicas }}
@@ -92,8 +92,8 @@ spec:
               env:
                 # The Anthropic Messages API is a second protocol on the same
                 # frontend, so it needs no second deployment and no proxy. Set as
-                # env rather than args because `DynamoGraphDeployment` owns the
-                # command line — appending args here would fight the operator for
+                # env, not args because `DynamoGraphDeployment` owns the
+                # command line: appending args here would fight the operator for
                 # it, and every one of these flags has an env var for that reason.
                 - name: DYN_ENABLE_ANTHROPIC_API
                   value: {{ .Values.frontend.anthropicApi.enabled | quote }}
@@ -104,8 +104,8 @@ spec:
                 # decides which worker already holds a prefix by hashing block
                 # contents; Python salts hashes per process by default, so a
                 # frontend and a worker that disagree on the salt hash identical
-                # blocks differently and every cache hit is missed — silently, as a
-                # performance loss nothing reports. Set here rather than left to
+                # blocks differently and every cache hit is missed: silently, as a
+                # performance loss nothing reports. Set here, not left to
                 # `frontend.env`, because a default that has to be right on every
                 # cluster is not a per-cluster value.
                 - name: PYTHONHASHSEED

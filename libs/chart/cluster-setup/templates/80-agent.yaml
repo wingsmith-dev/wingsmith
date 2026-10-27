@@ -4,16 +4,16 @@
 # proxies each request to this cluster's inference frontend. Nothing dials in, so
 # this adds no ingress, no public name and no firewall exception.
 #
-# Separate from the operator on purpose — a different binary, a different
+# Separate from the operator: a different binary, a different
 # Deployment, a different pod. The operator is a leader-elected singleton that
 # reconciles declared state; this is a horizontally scaled proxy on the request
 # path. The data plane never crosses the control plane, so they share neither a
 # process nor a connection. They do share the enrolment token, which is
-# identity rather than a path.
+# identity instead of a path.
 #
 # The binary is libs/agent/cmd/agent and the settings below are the ones it
 # reads (libs/agent/internal/agent/config.go); everything not named here is
-# left at that file's default on purpose, so the chart's surface stays the set of
+# left at that file's default, so the chart's surface stays the set of
 # facts that differ per cluster.
 #
 # The image tag falls back to this chart's appVersion, so the operator and the
@@ -37,8 +37,8 @@ imagePullSecrets:
 #
 # Rendered even when `agent.frontendEndpoint` overrides discovery. Clearing
 # the override later is then a values change and not also a permissions change,
-# and the failure it avoids — an agent that starts listing Services and is
-# refused — happens on the request path.
+# and the failure it avoids, an agent that starts listing Services and is
+# refused, happens on the request path.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -77,14 +77,14 @@ metadata:
 data:
   # `cluster.id` and nothing derived from it: the gateway matches the token it
   # is presented against the cluster the plane minted it for, and a mismatch here
-  # is refused at the handshake rather than routed somewhere wrong.
+  # is refused at the handshake, not routed somewhere wrong.
   HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
   HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
   HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
   HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
 
   # One address. The agent redials it until it holds a tunnel to every gateway
-  # replica, which it learns about from the handshake — see values.yaml for why
+  # replica, which it learns about from the handshake; see values.yaml for why
   # the replicas are not named here. Each replica opens
   # HANGAR_TUNNEL_CONNS_PER_GATEWAY tunnels to each of them, left at the agent's
   # own default.
@@ -147,7 +147,7 @@ spec:
         {{- include "cluster-setup.servingAgentSelectorLabels" . | nindent 8 }}
       annotations:
         # A config change is a pod restart; nothing here sends a reload signal.
-        # Hashed from the values rather than from the rendered ConfigMap the way
+        # Hashed from the values, not from the rendered ConfigMap the way
         # the operator's is, because that object lives in this same file and
         # including it here would render this annotation into its own input.
         checksum/config: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s" .Values.cluster.id (include "cluster-setup.gatewayAddress" .) .Values.agent.frontendEndpoint .Values.cluster.logLevel .Values.agent.responseHeaderTimeout .Values.agent.gateway.serverName .Values.agent.gateway.caBundle (include "cluster-setup.workloadNamespace" .) | sha256sum }}
@@ -184,7 +184,7 @@ spec:
                 name: hangar-agent
           env:
             # Identity on the tunnel. The token the plane minted for this cluster,
-            # out of the Secret the operator already reads — TLS carries
+            # out of the Secret the operator already reads: TLS carries
             # confidentiality, this carries who is calling, and there is no second
             # credential to keep in step with the first.
             - name: HANGAR_ENROLMENT_TOKEN
@@ -194,7 +194,7 @@ spec:
                   key: {{ .Values.enrolmentToken.secretKey }}
           ports:
             # HANGAR_HEALTH_ADDR's default. One listener, carrying the two probes
-            # and /metrics — the agent has no listener on its data path, so
+            # and /metrics: the agent has no listener on its data path, so
             # this port is the only thing reachable here at all.
             #
             # Nothing in this chart scrapes it: the metrics agent's scrape configs keep
@@ -205,7 +205,7 @@ spec:
           # Liveness is unconditional in the binary and readiness is coverage: a
           # agent holding no tunnel is not restarted (the gateway may be
           # mid-rollout, and restarting would discard the tunnels it does have) but
-          # it does report unready, which is what makes the rollout above safe — a
+          # it does report unready, which is what makes the rollout above safe: a
           # replacement that cannot reach the gateway stalls the rollout
           # instead of replacing a pod that was working.
           #

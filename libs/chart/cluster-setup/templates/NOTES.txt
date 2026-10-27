@@ -4,10 +4,10 @@ Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (operations: {{ include "cluster-setup.operations" . | default "none" }})
-Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ include "cluster-setup.gatewayAddress" . }}
+Inference  : {{ if .Values.agent.enabled }}tunnelled, {{ .Values.agent.replicas }} × agent -> {{ include "cluster-setup.gatewayAddress" . }}
              frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else if eq .Values.frontend.mode "per-model" }}one per model, {{ .Values.frontend.replicas }} × {{ .Values.frontend.perModel.image | default "the model's own engine image" }}, rendered by the operator and found by label{{ else if eq .Values.frontend.mode "shared" }}one shared, {{ .Values.frontend.replicas }} × {{ .Values.frontend.shared.image.repository }}:{{ .Values.frontend.shared.image.tag }}, found by label in the `{{ include "cluster-setup.workloadNamespace" . }}` namespace{{ else }}discovered by label in the `{{ include "cluster-setup.workloadNamespace" . }}` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
-Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
-             credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }} — nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured — nothing leaves this cluster (monitoring.enabled=false){{ end }}
+Telemetry  : {{ if .Values.monitoring.enabled }}configured, agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
+             credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }}, nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured; nothing leaves this cluster (monitoring.enabled=false){{ end }}
 
 {{- if not .Values.enrolmentToken.value }}
 
@@ -34,11 +34,11 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
      kubectl -n {{ .Release.Namespace }} logs deploy/hangar-metrics-agent | grep -i 'remote_write\|401\|403'
 
    {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}A 401 there means the write ingress holds no verifier for this cluster's
-   enrolment token — re-mint the token, rather than looking for a credential to
+   enrolment token: re-mint the token, instead of looking for a credential to
    fix.{{ else }}A 401 there means this basicAuth pair is not in the write ingress's htpasswd.{{ end }}
 
    Then confirm the plane's store has the label before adding this cluster to
-   HANGAR_METRICS_SOURCES — an entry added early replaces an honest "no metrics
+   HANGAR_METRICS_SOURCES: an entry added early replaces an accurate "no metrics
    source" with an empty chart that reads as an idle fleet:
 
      /api/v1/label/cluster/values
@@ -47,20 +47,20 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
 ⚠  No telemetry leaves this cluster (monitoring.enabled=false). The operator can
    still read DCGM for device identity, but every metrics panel for this cluster
    in the console will be empty. Set monitoring.enabled=true with
-   monitoring.remoteWrite.url and cluster.region — no credential to find, the
+   monitoring.remoteWrite.url and cluster.region: no credential to find, the
    agent authenticates with this cluster's enrolment token.
 {{- end }}
 {{- if .Values.agent.enabled }}
 
 ℹ  Inference reaches this cluster over tunnels the agent dialled out. Nothing
-   dials in, so there is no address to check from outside — confirm from here that
+   dials in, so there is no address to check from outside: confirm from here that
    every gateway was reached, because an agent that holds three of four
    tunnels serves whichever gateway pods it got and fails the rest:
 
      kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-agent
      kubectl -n {{ .Release.Namespace }} logs deploy/hangar-agent | grep -i tunnel
 
-   The plane's side of the same question is the gateway's tunnel coverage gauge —
+   The plane's side of the same question is the gateway's tunnel coverage gauge:
    live tunnels per cluster, measured there and nowhere else, because the gateway
    is not a writer of observed state.
 {{- else }}
@@ -73,16 +73,16 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
 {{- end }}
 {{- if and (eq .Values.frontend.mode "none") (not .Values.agent.frontendEndpoint) }}
 
-ℹ  No inference frontend was installed — frontend.mode is none, and it defaults to
+ℹ  No inference frontend was installed: frontend.mode is none, and it defaults to
    per-model. Both the agent and the benchmark executor find a frontend by Dynamo's
    labels, so until one exists this cluster can hold deployments and answer no
    requests.
 
    That is the expected state for exactly one install. A frontend is a
    DynamoGraphDeployment in either topology, and that CRD is applied by the Dynamo
-   operator at runtime rather than shipped in this chart, so the very first install
+   operator at runtime, not shipped in this chart, so the very first install
    of a new cluster has to render none. Name the topology in a second pass, once
-   the operator above is running — together with the agent, which is refused
+   the operator above is running: together with the agent, which is refused
    without a frontend:
 
      helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values \
@@ -110,14 +110,14 @@ The first handshake promotes the cluster from `pending` to `active` and stamps
 It happens once and only out of `pending`, which is what keeps it from fighting an
 operator who has since moved the cluster to `draining` or `disabled`.
 
-Check it rather than assuming it, because the phase is what decides whether this
-cluster can serve at all — endpoints resolve only on a phase that may serve, so a
+Check it instead of assuming it, because the phase is what decides whether this
+cluster can serve at all: endpoints resolve only on a phase that may serve, so a
 cluster left `pending` is absent from the gateway's routing table and its models
 answer as though they were nowhere:
 
   GET /v1/clusters/{{ .Values.cluster.id }}     -> phase, reachable, sync.state
 
-If it is still `pending`, the handshake has not happened — read the operator's logs
-rather than setting the phase by hand. Should you need to anyway:
+If it is still `pending`, the handshake has not happened: read the operator's logs
+instead of setting the phase by hand. Should you need to anyway:
 
   PATCH /v1/clusters/{{ .Values.cluster.id }}   {"phase": "active"}

@@ -1,7 +1,7 @@
 {{- if .Values.monitoring.enabled }}
 # Telemetry egress: one Prometheus in agent mode whose only job is to scrape this
 # cluster's exporters and push them to the central store. No TSDB, no query API,
-# no rules, no UI — the plane reads the central store and never dials in here.
+# no rules, no UI: the plane reads the central store and never dials in here.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -12,7 +12,7 @@ metadata:
 ---
 # Pod discovery is cluster-scoped because the targets are not: the exporter lives
 # in this namespace and Dynamo's workers live in the workload namespace. Read-only on pods and
-# nothing else — the agent needs to enumerate targets, not to know what they are.
+# nothing else: the agent needs to enumerate targets, not to know what they are.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -52,8 +52,8 @@ data:
       scrape_interval: {{ .Values.monitoring.agent.scrapeInterval }}
       scrape_timeout: {{ .Values.monitoring.agent.scrapeTimeout }}
       # `cluster` is the label the plane narrows every query on, and it must equal
-      # the cluster id the plane knows this cluster by — derived from
-      # `cluster.id` rather than asked for a second time, because a second field
+      # the cluster id the plane knows this cluster by: derived from
+      # `cluster.id`, not asked for a second time, because a second field
       # is a second chance to disagree and the symptom of disagreement is an
       # empty panel, not an error.
       external_labels:
@@ -64,7 +64,7 @@ data:
       - url: {{ .Values.monitoring.remoteWrite.url | quote }}
         remote_timeout: {{ .Values.monitoring.remoteWrite.timeout }}
         # The password is always a file out of a mounted Secret, never a literal
-        # here — this ConfigMap is readable by anything with `get configmaps`.
+        # here: this ConfigMap is readable by anything with `get configmaps`.
         # Under `useEnrolmentToken` that Secret is the enrolment one and the
         # username is the cluster id, inline because an id is not a secret and a
         # `username_file` would mean generating a file to hold a value already in
@@ -94,7 +94,7 @@ data:
     scrape_configs:
       # Per-GPU telemetry. Discovered by the exporter's own pod labels and not
       # through its Service, so every node's exporter is a target instead of
-      # whichever pod the ClusterIP picks — the same reason the operator's
+      # whichever pod the ClusterIP picks: the same reason the operator's
       # HANGAR_DCGM_SELECTOR exists.
       - job_name: dcgm-exporter
         kubernetes_sd_configs:
@@ -112,8 +112,8 @@ data:
             target_label: node
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
-      # Dynamo's frontend, workers and planner. These are the serving numbers —
-      # TTFT, inter-token latency, queue depth, KV-cache hit rate, token counts —
+      # Dynamo's frontend, workers and planner. These are the serving numbers,
+      # TTFT, inter-token latency, queue depth, KV-cache hit rate, token counts,
       # and they come from the ports the Dynamo operator names on the pods it
       # owns, so a new DynamoGraphDeployment is picked up without editing this.
       #
@@ -152,7 +152,7 @@ data:
             target_label: pod
       # The router reports itself as component type `default` and declares no
       # container port, so the job above cannot match it. Its metrics are on
-      # DYN_SYSTEM_PORT (9090), forced onto the pod IP here rather than required
+      # DYN_SYSTEM_PORT (9090), forced onto the pod IP here, not required
       # in the pod spec.
       - job_name: dynamo-router
         honor_labels: true
@@ -233,7 +233,7 @@ spec:
             - --web.listen-address=:9090
           # No reload or admin endpoint: this process is an outbound pipe, and the
           # only thing readable on it is its own health. Both are off unless asked
-          # for, so the absence of `--web.enable-lifecycle` is what disables them —
+          # for, so the absence of `--web.enable-lifecycle` is what disables them:
           # passing it `=false` is a parse error, since Prometheus' flags are
           # kingpin booleans that take no value and the `false` lands as a stray
           # positional argument.

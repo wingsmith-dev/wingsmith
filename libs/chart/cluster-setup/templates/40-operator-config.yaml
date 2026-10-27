@@ -81,7 +81,7 @@ data:
   # in values.yaml for what this changes cluster-wide.
   #
   # The keys below are read whatever the mode says, and cost nothing when the
-  # operator is not rendering frontends — it is the flag above that decides.
+  # operator is not rendering frontends: it is the flag above that decides.
   HANGAR_FRONTEND_ENABLED: {{ eq .Values.frontend.mode "per-model" | quote }}
   HANGAR_FRONTEND_REPLICAS: {{ .Values.frontend.replicas | quote }}
   HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.frontend.anthropicApi.enabled | quote }}
