@@ -47,12 +47,12 @@ def _check_url(url: str) -> None:
 
 
 class NotificationChannelService:
-    """Declared configuration, so ordinary CRUD — with one asymmetry.
+    """Declared configuration, so ordinary CRUD, with one asymmetry.
 
     `webhook_url` goes in and never comes out. Every other module's update is a
     read-modify-write over fields the caller just read back; this one cannot be,
     because the caller has never seen the current value and must not. An update that
-    omits `webhook_url` therefore leaves the stored one alone rather than clearing it.
+    omits `webhook_url` therefore leaves the stored one alone instead of clearing it.
     """
 
     def __init__(self, db: AsyncSession) -> None:

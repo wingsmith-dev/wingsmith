@@ -1,6 +1,6 @@
 """Metrics: measurement, read-only, and never mixed into the objects themselves.
 
-These live under `/v1/metrics/...` rather than as a field on a device or a
+These live under `/v1/metrics/...`, not as a field on a device or a
 deployment because the two have different failure modes and different freshness.
 An inventory read must never get slower or start failing because a Prometheus is
 unreachable, and a client that wants both should ask for both.
@@ -125,7 +125,7 @@ class MetricsRoutes(Controller):
         """One workload across every cluster it landed in, with each cluster in the breakdown.
 
         `project` disambiguates a bare name, which is unique only within its
-        project — the same rule `GET /v1/workloads/{ref}` follows.
+        project: the same rule `GET /v1/workloads/{ref}` follows.
         """
         return Response(await svc.workload(ref, project, window, step, span, series))
 
@@ -142,7 +142,7 @@ class MetricsRoutes(Controller):
         """Every cluster at once, in one widened query, with each cluster in the breakdown.
 
         `unavailable` when the fleet's clusters are not all in one store: the
-        answer then belongs to the stores rather than to this process, and a
+        answer then belongs to the stores, not to this process, and a
         merged percentile is not a measurement.
         """
         return Response(await svc.fleet(window, step, span, series))
@@ -159,7 +159,7 @@ class MetricsRoutes(Controller):
     ) -> Response[MetricsSchema]:
         """Everything the gateway answered, with one row per endpoint in the breakdown.
 
-        The fleet total, taken from the hop that saw every request — including the
+        The fleet total, taken from the hop that saw every request, including the
         ones no cluster ever did. Adding up a page of endpoints instead gives a
         total that changes when somebody pages.
         """
@@ -178,9 +178,9 @@ class MetricsRoutes(Controller):
     ) -> Response[MetricsSchema]:
         """One tenant's traffic at the front door, with one breakdown row per endpoint.
 
-        Here rather than on the tenant object for the reason at the top of this
+        Here, not on the tenant object for the reason at the top of this
         module: a tenant read must not start failing because a Prometheus is
-        unreachable. `cluster` is null — the gateway belongs to no cluster.
+        unreachable. `cluster` is null: the gateway belongs to no cluster.
         """
         return Response(await svc.tenant(ref, window, step, span, series))
 
@@ -195,7 +195,7 @@ class MetricsRoutes(Controller):
         span: int = 3600,
         series: bool = False,
     ) -> Response[MetricsSchema]:
-        """One endpoint, measured at the front door rather than inside a cluster.
+        """One endpoint, measured at the front door, not inside a cluster.
 
         `cluster` is null on the answer: an endpoint is global, and a request that
         was refused before it was routed belongs to no cluster.

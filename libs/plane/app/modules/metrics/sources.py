@@ -2,7 +2,7 @@
 
 The fleet remote-writes into one central store which stamps `cluster` and
 `region` on every series, and that store holds more than the inference fleet, so
-a query carrying no `cluster` matcher does not read one cluster — it reads all of
+a query carrying no `cluster` matcher does not read one cluster: it reads all of
 them added together. Answering for a cluster is therefore two facts: an endpoint,
 and the label value that cluster's series carry.
 
@@ -11,9 +11,9 @@ endpoint and its credential are process-level and belong to the deployment:
 
     HANGAR_METRICS_SOURCES="default=https://prom.central:9090|token=…"
 
-The label is per-cluster and belongs to the cluster, so it is a column —
+The label is per-cluster and belongs to the cluster, so it is a column:
 `Cluster.metrics_label`. Null there means "not observable" and is honoured as
-such: no source, reported plainly. It is deliberately not defaulted at read time
+such: no source, reported plainly. It is not defaulted at read time
 to whatever the cluster happens to be called, because a guessed label returns a
 clean empty that reads as a healthy idle fleet.
 
@@ -26,7 +26,7 @@ wins over the column, so a wrong or missing label is fixable from either side:
 An entry with no URL of its own inherits `default`'s endpoint and carries the
 `cluster` matcher it names, defaulting to its own key. An entry with a URL and no
 `label=` gets no matcher at all, because a store holding one cluster has no such
-label to match on — that is the per-cluster Prometheus form, kept working while
+label to match on: that is the per-cluster Prometheus form, kept working while
 those stores are decommissioned. Adding `label=` to one moves it onto the shared
 store with no other change.
 

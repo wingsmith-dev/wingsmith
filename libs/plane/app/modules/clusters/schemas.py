@@ -50,7 +50,7 @@ class ClusterSyncSchema(Struct):
     declared.
 
     One of `never_connected`, `disconnected`, `stale` or `connected`. `stale` is the one
-    that is not about the socket — it means the link is up and the cluster has
+    that is not about the socket: it means the link is up and the cluster has
     stopped saying anything through it, which reads as healthy everywhere that
     only checks whether it is reachable.
     """
@@ -69,7 +69,7 @@ class ClusterSyncSchema(Struct):
 
 
 class ClusterServingSchema(Struct):
-    """The cluster's data-plane address, as configuration — never resolved here.
+    """The cluster's data-plane address, as configuration, never resolved here.
 
     `credential_id` is a reference, never the secret: the plane hands out the
     pointer and the gateway is what redeems it.
@@ -89,7 +89,7 @@ class ClusterSchema(Struct):
 
     `metrics_label` is the `cluster` label this cluster's series carry in the
     shared metrics store. Null means it is not observable and its panels say so,
-    rather than querying under a label nobody has confirmed.
+    instead of querying under a label nobody has confirmed.
     """
 
     id: str
@@ -119,7 +119,7 @@ class ClusterSetupSchema(Struct):
     `values_filename` is the name the console saves it under and the helm command
     reads, `values.<cluster>.local.yaml`, so it is never confused with the
     chart's own `values.yaml` and is git- and helm-ignored. `registry_login` is the `helm registry login` a private chart
-    registry needs before the pull — `None` when the registry serves anonymously.
+    registry needs before the pull: `None` when the registry serves anonymously.
     `registry_login_gh` is the same login done with an existing `gh` session
     instead of a hand-made token, and is `None` for any registry that is not
     GitHub's, where `gh` has nothing to say.
@@ -147,11 +147,11 @@ class ClusterHeadroomSchema(Struct):
 
     All three numbers are computed at read time from `supply_device`,
     `bind_allocation_device` and `supply_topology_domain`; nothing here is stored.
-    A device is free when it is allocatable *and* no live allocation holds it —
+    A device is free when it is allocatable *and* no live allocation holds it:
     `allocatable` says the accelerator is claimable at all, which is a different
     claim from unclaimed. `largest_contiguous_block` is the biggest set of free
-    devices sharing a single topology domain — what a job that wants one fabric
-    can actually get — and is not the same as `free_devices`, which is every free
+    devices sharing a single topology domain, what a job that wants one fabric
+    can actually get, and is not the same as `free_devices`, which is every free
     device regardless of where it sits. `whole_nodes_free` counts nodes on which
     every device is free, the unit a node-granular workload cares about.
     """
@@ -165,8 +165,8 @@ class ClusterRollupSchema(Struct):
     """A cluster's observed footprint in aggregate, for the list and card views.
 
     Every field is derived at read time and nothing is stored. `devices_allocatable`
-    is the free count — allocatable and held by no live allocation — and
-    `devices_allocated` is `devices_total - devices_allocatable` rather than a
+    is the free count, allocatable and held by no live allocation, and
+    `devices_allocated` is `devices_total - devices_allocatable` instead of a
     counted column, because a device is either free or spoken for and a second
     count is a second thing that can disagree with it. `pool_count` and
     `deployment_count` are the declared objects hanging off the cluster; the rest
@@ -242,7 +242,7 @@ class TunnelIdentitySchema(Struct):
     """Which cluster a verified agent token belongs to, and nothing else.
 
     No token material, no hash, no prefix. The caller sent the credential and
-    gets back only the identity it maps to — enough to key a tunnel by cluster
+    gets back only the identity it maps to: enough to key a tunnel by cluster
     and to label a metric, which is all the gateway does with it.
     """
 

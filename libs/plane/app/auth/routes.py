@@ -6,12 +6,12 @@ route that itself requires a session token.
 
 Being unauthenticated and publicly reachable, the login route is the only place
 where an anonymous caller decides how much work the plane does. Two things
-follow, and both are load-bearing rather than defensive habit:
+follow, and both are essential, not defensive habit:
 
 - The bcrypt verification runs in a worker thread (`asyncio.to_thread`), not
   on the event loop. A default-cost hash is roughly 300ms of CPU, so a handful
   of concurrent logins on the loop would stall every other request in the
-  process — the console's polling and the gateway's routing-table read
+  process: the console's polling and the gateway's routing-table read
   included.
 - Failures are budgeted and logged. One shared password with no lockout and no
   log line is a guessing oracle nobody is watching. The budgets are charged to
@@ -64,9 +64,9 @@ is keyed by the caller's address (`app.core.throttle.client_address`), spending
 it refuses that caller only; the operator signing in from anywhere else is
 unaffected.
 
-Per-process like every other budget here (see `app.core.throttle`) — two
+Per-process like every other budget here (see `app.core.throttle`): two
 replicas mean twice the limit, which is fine for a window whose purpose is to be
-slow and loud rather than exact.
+slow and loud, not exact.
 """
 
 LOGIN_CEILING = FailureBudget(limit=200, window_seconds=60.0)
@@ -83,7 +83,7 @@ process's CPU for everyone else's requests.
 TENANT_GUESSES = KeyedFailureBudget(limit=60, window_seconds=60.0)
 """Failed tenant sign-ins one caller may make against one tenant in a rolling minute.
 
-Its own budget rather than a share of `LOGIN_GUESSES`, so wrong tenant tokens
+Its own budget instead of a share of `LOGIN_GUESSES`, so wrong tenant tokens
 never spend the operator's allowance. Keyed by the caller's address and the
 tenant slug, so one caller cannot lock a tenant out for everyone, nor one tenant's
 users lock out another sharing their address.

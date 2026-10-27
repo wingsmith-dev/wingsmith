@@ -16,9 +16,9 @@ from .services import EventService
 class EventRoutes(Controller):
     """Observed, read-only, append-only: list and detail, and nothing else.
 
-    There is no `POST` here on purpose. Events are discovered, not created, and
+    There is no `POST` here. Events are discovered, not created, and
     per `libs/packages/contract/API.md` §6 writing to an observed resource is a category error
-    rather than a validation failure.
+    instead of a validation failure.
     """
 
     tags = ["Events"]

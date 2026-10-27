@@ -2,7 +2,7 @@
 
 A scheduler that answers "no capacity" is unoperable. Every cluster considered
 gets a verdict carrying the numbers the rejection was computed from, so the
-answer to "why not iad-1" is in the return value rather than in a log line
+answer to "why not iad-1" is in the return value, not in a log line
 someone has to go and find.
 """
 
@@ -45,7 +45,7 @@ class PreemptionVictim(Verdict):
 
     `devices_in_scope` is what preempting it contributes here; `devices_released`
     is everything it holds in the cluster. They differ when a workload straddles
-    topology domains, and the difference is the honest cost of the eviction —
+    topology domains, and the difference is the accurate cost of the eviction:
     an allocation dies whole, so the devices outside the scope are freed too.
     """
 
@@ -88,7 +88,7 @@ class ClusterVerdict(Verdict):
     reserved_devices: int = 0
     """Devices this cluster already owes a deployment that has not bound them yet.
 
-    Reported beside `free_devices` rather than folded into it, because the two are
+    Reported beside `free_devices`, not folded into it, because the two are
     different kinds of fact and an operator reading "0 free" when eight accelerators
     are visibly idle has been told something untrue. Free is observed; reserved is
     promised; `available_devices` is what is actually on offer.
@@ -105,8 +105,8 @@ class ClusterVerdict(Verdict):
     """How many whole copies of the request this cluster can take now, 0 when it is not feasible.
 
     Counted on free devices net of reservations, packed into topology domains for a
-    single-domain unit and into nodes for a tensor group. Expansion splits on this
-    rather than on `available_devices`, which would count devices no unit can use.
+    single-domain unit and into nodes for a tensor group. Expansion splits on this,
+    not on `available_devices`, which would count devices no unit can use.
     """
     quota_headroom: int | None = None
     preemption: PreemptionPlan | None = None
@@ -134,8 +134,8 @@ class PlacementDecision(Verdict):
 class Share(Verdict):
     """One cluster's slice of a workload's total scale.
 
-    `replicas` is counted in the workload's own unit — replicas for a service, ranks
-    for a gang, completions for a task — and is always whole. It is this cluster's
+    `replicas` is counted in the workload's own unit, replicas for a service, ranks
+    for a gang, completions for a task, and is always whole. It is this cluster's
     share and never the total; summing a share against a total is always a bug.
     """
 
@@ -149,7 +149,7 @@ class ExpansionDecision(Verdict):
 
     `shares` is the answer, `verdicts` is the reasoning for every cluster considered,
     and `shortfall` is what could not be placed anywhere. A shortfall is a partial
-    placement rather than a failure: the shares that were found are real, and the
+    placement instead of a failure: the shares that were found are real, and the
     workload's rollup shows placed below desired until capacity appears.
 
     `splittable` is false for a gang, whose ranks are co-scheduled. A gang that fits

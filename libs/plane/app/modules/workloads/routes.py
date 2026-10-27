@@ -25,8 +25,8 @@ class WorkloadRoutes(Controller):
     """The global object: what you asked to run, across every cluster it may use.
 
     `{ref}` is a `wkl_` id or a name. A name is unique only within its project, so
-    a bare one is resolved inside the `project` filter and is ambiguous without it —
-    which is a 400 naming the candidates rather than a guess.
+    a bare one is resolved inside the `project` filter and is ambiguous without it,
+    which is a 400 naming the candidates instead of a guess.
     """
 
     tags = ["Workloads"]
@@ -107,9 +107,9 @@ class WorkloadRoutes(Controller):
 
         Each entry's `serving` block is a body this same controller accepts: `PATCH` it back
         under `serving` and the workload returns to that configuration. There is no rollback
-        verb because there is nothing for one to do that an ordinary update does not — and a
+        verb because there is nothing for one to do that an ordinary update does not, and a
         revision that would no longer validate is refused by the checks that refuse any patch,
-        rather than restored by a path that never learned about them.
+        not restored by a path that never learned about them.
         """
         return Response(await svc.revisions(ref, project, limit=limit, cursor=cursor))
 
@@ -125,7 +125,7 @@ class WorkloadRoutes(Controller):
         """One revision, by `wkr_` id or by the number the history lists it under.
 
         A number is what somebody reads off the history and types back, and it is unique only
-        within the workload — which is why it is resolved here rather than at `/v1/revisions`.
+        within the workload, which is why it is resolved here, not at `/v1/revisions`.
         """
         return Response(await svc.revision(ref, revision, project))
 
@@ -142,7 +142,7 @@ class WorkloadRoutes(Controller):
         """Writes why a configuration was chosen, onto the revision holding it.
 
         The only write a revision accepts. Everything else on it records what ran, and editing
-        that would be editing history; a note is an account of the record rather than part of
+        that would be editing history; a note is an account of the record, not part of
         it, and the account is often written after the run that explains it. Sending `null`
         clears one.
         """

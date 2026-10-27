@@ -15,7 +15,7 @@ from. The consequence is concrete: a cluster registered before this migration
 does not appear in the htpasswd the reactor renders, and its metrics agent gets a
 401 on every remote-write until someone re-issues its enrolment token
 (`POST /v1/clusters/<ref>/enrolment-token`) and reinstalls the chart with the new
-values. That is a deliberate cost — the alternative is a second, separate
+values. That is a deliberate cost: the alternative is a second, separate
 credential for telemetry, which is the per-cluster manual step this whole change
 exists to remove.
 """

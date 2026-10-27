@@ -1,6 +1,6 @@
 """The htpasswd the plane is now the source of, and the pass that writes it.
 
-The failure this guards is not a wrong file — it is a per-cluster manual step
+The failure this guards is not a wrong file: it is a per-cluster manual step
 coming back. So the tests here are about the three ways that could happen
 quietly: a cluster omitted from the render, a write skipped when it was needed
 (or made when it was not), and a reconciler that decides it is not configured and

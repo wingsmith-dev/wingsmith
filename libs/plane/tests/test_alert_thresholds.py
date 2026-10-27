@@ -3,7 +3,7 @@
 No database anywhere in here, which is the property the design is for. `rules.py`
 takes floats and returns intents, `conditions.metric_thresholds` takes a reader it
 does not construct, and the module's validation is functions over a request struct.
-The one thing that needs Postgres — the threshold rows themselves — is the one thing
+The one thing that needs Postgres, the threshold rows themselves, is the one thing
 these tests stub.
 """
 
@@ -98,12 +98,12 @@ def test_no_rule_claims_to_measure_availability_from_cluster_side_series():
 
     A request refused at the front door, routed nowhere or timed out upstream emits
     nothing an engine exporter can count, so any ratio built out of these series
-    reports a fully-broken cluster as "no traffic" rather than as an outage. A rule
+    reports a fully-broken cluster as "no traffic", not as an outage. A rule
     here that claimed to watch availability would be a green light with nothing
     behind it, and it would be believed.
 
     `serving.availability` exists and is exempt, because it is measured at the
-    gateway — the one hop that saw the requests no cluster did. The ban is on
+    gateway: the one hop that saw the requests no cluster did. The ban is on
     claiming the number out of `gpu` or `inference` series, not on the number.
     """
     banned = ("availability", "failure", "error_rate", "success_rate", "uptime")
@@ -247,7 +247,7 @@ def test_rules_stay_free_of_io():
     """`rules.py` is pure by design, and the design is only worth as much as this test.
 
     The moment a rule can fetch its own number, the interesting half of an alerting
-    system needs a database and a metrics store to exercise — and judgement that
+    system needs a database and a metrics store to exercise, and judgement that
     needs a fixture to run is judgement that stops being run.
     """
     tree = ast.parse(Path(rules.__file__).read_text())
@@ -428,7 +428,7 @@ async def test_an_unavailable_answer_is_withheld_with_its_reason():
 
 
 async def test_a_narrowed_read_is_withheld_rather_than_answered_with_the_wide_number():
-    """The reader cannot narrow by an arbitrary dimension yet, and says so rather than lying."""
+    """The reader cannot narrow by an arbitrary dimension yet, and says so instead of lying."""
     stub = StubMetrics(answer(**{"inference.ttft": 3.0}))
     reader = reader_over(stub)
     reading = await reader.read(

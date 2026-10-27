@@ -6,7 +6,7 @@ the wrong cluster's rows. Everything here goes through `DatabaseSink` onto a mig
 
 The suite is marked `database` and deselected by default (`addopts`), so `uv run pytest` stays
 fast and needs nothing running. `just test-db` selects it; with no reachable server every test in
-the file skips rather than fails.
+the file skips, not fails.
 """
 
 import json
@@ -513,7 +513,7 @@ async def test_a_cancelled_operation_closes_the_run_it_was_carrying(sessions, cl
     """The bug this exists for: a run whose operation ended without one reporting.
 
     A benchmark's phase is written from `benchmark.observed`, and everything that
-    fails before the executor reaches the harness sends none — a refused kind, an
+    fails before the executor reaches the harness sends none: a refused kind, an
     operator too old to know it, a cancellation while still pending. The run sat
     `pending` for ever with nothing on it saying why.
     """
@@ -655,7 +655,7 @@ async def test_a_device_a_pass_could_not_see_is_held_again_when_it_is_named_agai
     """The bug the allocations board showed: cards in use, drawn free, and never redrawn.
 
     A reconcile that cannot read every card a pod holds names fewer of them, and
-    the ones it missed are released — correctly, because that is the same
+    the ones it missed are released: correctly, because that is the same
     statement a shrinking gang makes. What was missing is the way back: the next
     frame names all four again, and while attaching did nothing on conflict the
     released rows stayed released for ever. The allocation went on existing, live
@@ -680,7 +680,7 @@ async def test_an_allocation_holding_nothing_hands_its_devices_back(sessions, cl
 
     It used to take the whole transaction down instead: with no device to read a
     class off, the upsert wrote a null into a column that refuses one, the sink
-    re-raised, and the frame went unacknowledged — so the release it carried
+    re-raised, and the frame went unacknowledged, so the release it carried
     never happened and the accelerators stayed committed to a replica that was
     gone.
     """
@@ -864,7 +864,7 @@ async def test_a_discovered_workload_is_recorded_without_a_deployment(sessions, 
     """The sighting lands and nothing declared appears beside it.
 
     A row in `demand_deployment` would be a declaration, and the operator would be
-    handed a difference between it and what is running — a rollout of a model that
+    handed a difference between it and what is running: a rollout of a model that
     was already serving.
     """
     sink = DatabaseSink(sessions)
@@ -982,8 +982,8 @@ async def test_a_pruned_node_leaves_an_event_behind(sessions, cluster) -> None:
     """Deleting the row must not delete the fact. The spot-instance case depends on this.
 
     A node that vanishes from a complete snapshot used to be removed in silence,
-    which meant the single most informative moment in an outage — the only GPU node
-    going away — produced nothing anyone could read afterwards. `subject_id` stays
+    which meant the single most informative moment in an outage, the only GPU node
+    going away, produced nothing anyone could read afterwards. `subject_id` stays
     null because the subject is being deleted in the same transaction; the uid is in
     `details`, where nothing can cascade it away.
     """
@@ -1183,7 +1183,7 @@ async def test_a_residency_frame_lands_a_row_and_an_event(sessions, cluster) -> 
 
 
 async def test_the_reason_a_download_is_stalled_reaches_the_plane(sessions, cluster) -> None:
-    """The whole point of the field: `absent` alone is not an answer anybody can act on."""
+    """The point of the field: `absent` alone is not an answer anybody can act on."""
     await seed_warm_artifact(sessions, cluster)
     sink = DatabaseSink(sessions)
 

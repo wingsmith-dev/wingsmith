@@ -16,10 +16,10 @@ so a rotated token can be recognised when it is presented again.
   session the winner just rotated is left alone.
 - Rotation never extends the session: every row inherits the first row's expiry,
   so `REFRESH_TTL_SECONDS` is an absolute lifetime, not a sliding one.
-- A session is bound to the credential that opened it — the admin password's
-  generation, or the tenant token — so changing the one ends the other.
+- A session is bound to the credential that opened it, the admin password's
+  generation, or the tenant token, so changing the one ends the other.
 - `session_is_live` is what the API guard asks on every request a session token
-  makes, so logout and revocation take effect on the next request rather than
+  makes, so logout and revocation take effect on the next request, not
   when the access token expires.
 """
 
@@ -61,7 +61,7 @@ that a polling console repeats, for a resolution nobody reads.
 
 REFRESH_RACE_GRACE_SECONDS = 10.0
 """How recently a token must have been rotated for presenting it again to count as
-a race rather than reuse.
+a race, not reuse.
 
 Two copies of one client refresh at the same moment, so this only has to cover
 a round trip and a little clock jitter. It is short because inside it a thief
@@ -173,7 +173,7 @@ class AuthService:
 
         Returns `(new_refresh_plaintext, new_access_token, kind, tenant_slug)` on
         success, and `None` on any invalid, expired, revoked or already-rotated
-        token — and on a session whose credential has since changed: a new admin
+        token, and on a session whose credential has since changed: a new admin
         password, or a tenant token revoked or a tenant disabled.
         """
         parsed = AuthManager.parse_refresh_token(plaintext)

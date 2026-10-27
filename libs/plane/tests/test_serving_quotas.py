@@ -1,7 +1,7 @@
 """The second kind of quota: traffic, declared here and not enforced by any gateway yet.
 
 Every test in this file is offline. That is not a limitation of the suite, it is
-the property under test — a serving quota is declared state and a resolution over
+the property under test: a serving quota is declared state and a resolution over
 rows this database already owns, so nothing here needs a counter, a metrics
 backend or a request to have happened.
 """

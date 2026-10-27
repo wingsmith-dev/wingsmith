@@ -7,7 +7,7 @@ So the plane reports its own effective configuration.
 
 **The exposed set is an allowlist and must stay one.** Every field below is
 named by hand in a `Struct` and copied across in `effective_config`. There is no
-`asdict(settings)` here and there is deliberately no denylist of suspicious
+`asdict(settings)` here and there is no denylist of suspicious
 names: a denylist means the next credential anyone adds to `Settings` is public
 the moment it is committed, and nobody would notice until it was in a screenshot.
 Adding a field here is one line and a decision; forgetting to add one costs
@@ -16,7 +16,7 @@ nothing.
 Three rules follow from that:
 
 - A credential is never a value, only a boolean. `gateway_service_token_set`
-  says whether the gateway's token is configured and nothing else — not a prefix, not a
+  says whether the gateway's token is configured and nothing else, not a prefix, not a
   length, not a digest. Any of those three narrow a search for the real thing.
 - `DATABASE_URL` is reported in parts, never as a string. The driver, host, port
   and database name are what tell an operator the plane is pointed at the wrong
@@ -79,7 +79,7 @@ class HubConfigSchema(Struct):
     public_host: str
     public_url: str
     instance_id: str
-    """As configured. Empty resolves per-process — see `app.hub.identity.instance_id`."""
+    """As configured. Empty resolves per-process; see `app.hub.identity.instance_id`."""
 
     session_ttl_seconds: int
     reaper_interval_seconds: float
@@ -122,7 +122,7 @@ class MetricsConfigSchema(Struct):
     remote_write_url: str
     """Where the fleet is told to push, i.e. what the setup values render.
 
-    Not a credential and not a secret — it is a public ingress, and it is the one
+    Not a credential and not a secret: it is a public ingress, and it is the one
     value that decides whether a freshly enrolled cluster sends anything at all.
     Empty means the register screen hands out `monitoring.enabled: false`.
     """
@@ -170,8 +170,8 @@ class ConfigSchema(Struct):
 def _database() -> DatabaseConfigSchema:
     """Splits `DATABASE_URL` and keeps only the parts that name the server.
 
-    `urlsplit().hostname` is read rather than `netloc` precisely because it
-    cannot carry `user:password@` — the redaction is structural, not a regex
+    `urlsplit().hostname` is read instead of `netloc` precisely because it
+    cannot carry `user:password@`; the redaction is structural, not a regex
     that a future URL shape could slip past.
     """
     parsed = urlsplit(settings.DATABASE_URL)
@@ -206,7 +206,7 @@ def _shared_url() -> str:
 def _remote_write_auth_secret() -> str:
     """`<namespace>/<name>` the reactor reconciles, or empty when it is off.
 
-    Empty rather than the configured names when the flag is false, because the
+    Empty instead of the configured names when the flag is false, because the
     question this answers is "is the plane maintaining that file", and printing
     coordinates it is not writing to would answer it wrongly.
     """
@@ -281,7 +281,7 @@ class SystemRoutes(Controller):
 
         Admin only. The gateway's service credential reads the routing and
         tenant tables, and the plane's process configuration is neither; it is a
-        human's diagnostic rather than anything a service consumes. The central
+        human's diagnostic instead of anything a service consumes. The central
         policy already refuses every other kind here, and this check keeps the
         route closed if that policy is ever widened.
         """

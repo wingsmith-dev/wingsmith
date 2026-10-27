@@ -1,13 +1,13 @@
 """Fetching the numbers a metric rule is judged on, so that the judging stays pure.
 
-`rules.py` is deliberately free of I/O and this file is the reason it can stay that
+`rules.py` is free of I/O and this file is the reason it can stay that
 way: everything that has to talk to a measurement store lives here, and what crosses
 back into `rules` is a plain float or nothing at all.
 
 **Nothing is a first-class answer.** A `Reading` with no value carries the reason it
-has none — no source configured for the cluster, the store refused, the deployment
+has none: no source configured for the cluster, the store refused, the deployment
 has no dialect, the series is empty. `metric_breach` never alerts on one, so a rule
-cannot mistake silence for a number, and the reason is kept rather than discarded
+cannot mistake silence for a number, and the reason is kept, not discarded
 because "why is this not being evaluated" is the question that gets asked about an
 alert that never fired.
 
@@ -62,10 +62,10 @@ class MetricReader(Protocol):
 class ServiceMetricReader:
     """Reads through `MetricsService`, once per subject and window per tick.
 
-    The cache is the reason this is a class rather than a function. A tick asks for
-    several metrics about the same deployment — TTFT, queue time, output speed —
+    The cache is the reason this is a class instead of a function. A tick asks for
+    several metrics about the same deployment (TTFT, queue time, output speed)
     and `MetricsService` answers a whole engine's worth of metrics in one round
-    trip, so keying on the subject rather than on the metric turns eight rules into
+    trip, so keying on the subject, not on the metric turns eight rules into
     one query.
 
     Nothing here raises. A cluster with no configured metrics source is the

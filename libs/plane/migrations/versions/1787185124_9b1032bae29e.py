@@ -6,13 +6,13 @@ Create Date: 2026-08-19 21:18:44.752486
 
 The digest is the gate. `spec_fingerprint` is what the cluster says a workload's pod
 template currently is; `adopted_fingerprint` is what it was when we accepted the
-promotion. A reconciler that finds the two disagreeing refuses and reports, rather than
-converging — converging means replacing a serving pod template and reloading every model
+promotion. A reconciler that finds the two disagreeing refuses and reports, instead of
+converging: converging means replacing a serving pod template and reloading every model
 behind it, which is the cost the whole adoption path exists to avoid.
 
 Both are nullable. A deployment created the ordinary way was never adopted and has no
 digest to be measured against, and a sighting from an operator too old to publish one is
-still worth listing — it simply cannot be promoted.
+still worth listing: it simply cannot be promoted.
 
 """
 from typing import Sequence

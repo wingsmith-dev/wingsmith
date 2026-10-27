@@ -7,10 +7,10 @@ at 2K tokens and far outside it at 100K, and the average says neither. One
 AIPerf invocation measures one load point, so a swept request is N runs and the
 re-aggregation is a group-by over its own children.
 
-**The boundaries are literals here and are duplicated on purpose.** They belong
+**The boundaries are literals here and are duplicated.** They belong
 to a frozen criteria version and to the gateway's Go constant, and to nothing
-else. A shared constant in the metric registry — editable by anybody adding a
-metric — would let an edit silently rewrite what a two-year-old verdict meant.
+else. A shared constant in the metric registry, editable by anybody adding a
+metric, would let an edit silently rewrite what a two-year-old verdict meant.
 The eight label strings are the contract; the numbers are their definition.
 
 K is 1024 throughout, the way a context window is quoted.
@@ -25,7 +25,7 @@ from . import summaries
 UNKNOWN = "unknown"
 """No prompt length was declared, so no band can be claimed.
 
-Its own value rather than a silent drop, for the same reason the gateway has
+Its own value instead of a silent drop, for the same reason the gateway has
 one: a coverage gap belongs on the panel, not inside the number.
 """
 
@@ -70,13 +70,13 @@ class Sample(NamedTuple):
 class BandReport(NamedTuple):
     """Every run of one request that landed in one band, read back together.
 
-    `p90` and `p50` are the worst of the band rather than a mean of percentiles:
+    `p90` and `p50` are the worst of the band instead of a mean of percentiles:
     percentiles do not average, and a claim about a band has to hold for every
     load point inside it. `avg` is weighted by each run's request count, which
     is the one of the three that genuinely combines.
 
     `incomplete` names the runs whose summary carried no TTFT at all, or an average with no
-    request count to weight it by. They are listed rather than dropped, so a band that measured
+    request count to weight it by. They are listed, not dropped, so a band that measured
     less than it claims says so.
     """
 
@@ -125,8 +125,8 @@ def sample(run: Any) -> Sample:
 def reaggregate(samples: list[Sample]) -> list[BandReport]:
     """Groups a request's runs into bands, newest boundaries first.
 
-    Discarded runs — a `warmup` mode's single low-concurrency pass — are excluded
-    outright rather than reported empty. They were never a measurement, and a
+    Discarded runs, a `warmup` mode's single low-concurrency pass, are excluded
+    outright, not reported empty. They were never a measurement, and a
     band whose only member is a warm-up would otherwise claim one.
 
     Bands nothing landed in are absent from the result. A report listing six

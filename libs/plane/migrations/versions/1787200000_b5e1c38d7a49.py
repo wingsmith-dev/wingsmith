@@ -9,11 +9,11 @@ instant and message. Two sessions replaying the same frame both read nothing and
 insert, which is exactly the case replay exists to survive.
 
 Two details decide whether the index actually stops it. `cluster_id` is null for events
-the plane raises about itself, and under the default rule two nulls never conflict — so a
+the plane raises about itself, and under the default rule two nulls never conflict, so a
 plain unique index would exclude precisely the rows nothing else de-duplicates; `NULLS
 NOT DISTINCT` is what makes null a value here, the same choice `uq_ops_cache_entry_scope`
 made and for the same reason. And `message` is unbounded text, where a btree entry over
-about 2.7kB is refused on insert — a long message would turn a duplicate event into a
+about 2.7kB is refused on insert: a long message would turn a duplicate event into a
 frame that can never be acked. It is hashed, so the index entry is fixed width and the
 conflict target is `md5(message)`.
 

@@ -18,7 +18,7 @@ _factory: async_sessionmaker[AsyncSession] | None = None
 def engine() -> AsyncEngine:
     """Returns the process-wide async engine, creating it on first use.
 
-    Lazy so that importing the package never opens a pool — the test suite and
+    Lazy so that importing the package never opens a pool: the test suite and
     the alembic environment both import `app.db` without a live database.
     """
     global _engine

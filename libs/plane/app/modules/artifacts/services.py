@@ -77,7 +77,7 @@ DEFAULT_FITMENT_LIMIT = 5
 """Ranked rows a fitment returns unless asked for more.
 
 Nineteen device classes is a wall, and the answer to "what do I run this on" is in the
-first few. The cap is on the response rather than on the ranking — every candidate is
+first few. The cap is on the response, not on the ranking: every candidate is
 still fitted and ranked, so the head is genuinely the best five and not the first five
 that happened to be looked at.
 """
@@ -92,10 +92,10 @@ REFRESHED = ("format", "size_bytes", "licence", "parameter_count", "verified")
 """The scalar half a re-read of the source may move. Everything absent here is deliberate.
 
 `digest` is identity: different bytes are a different artifact, which is why a refresh
-that resolves to another digest is refused rather than applied. `name`, `kind`,
+that resolves to another digest is refused, not applied. `name`, `kind`,
 `project` and `base_artifact_id` are somebody's opinion about what these weights are
 for, and the repo has none. `verified` *is* here, and it is the one field
-`ArtifactUpdateRequest` refuses — verification is resolving the bytes, and this is
+`ArtifactUpdateRequest` refuses: verification is resolving the bytes, and this is
 where the bytes get resolved.
 """
 
@@ -103,7 +103,7 @@ where the bytes get resolved.
 def _upstream(row: Artifact) -> ArtifactUpstreamSchema:
     """The claim block as a struct, keyed defensively.
 
-    Read key by key rather than converted wholesale: the column predates the
+    Read key by key, not converted wholesale: the column predates the
     schema and holds `{}` on every artifact registered before this, so a strict
     decode would turn every one of those reads into a 500.
     """
@@ -130,7 +130,7 @@ def _declared_context(artifact: Artifact, sizing: Sizing | None) -> int:
     Read from `metadata.context_length` first because that is what the repo
     published, then from the persisted attention shape, then a floor that only
     exists so the arithmetic has a number. An artifact that declares 131k is fitted
-    at 131k — choosing a smaller window here would make more cards look workable by
+    at 131k: choosing a smaller window here would make more cards look workable by
     quietly answering a different question.
     """
     declared = artifact.metadata_.get("context_length")
@@ -144,9 +144,9 @@ def _declared_context(artifact: Artifact, sizing: Sizing | None) -> int:
 def _observed_class(row: Row) -> DeviceClass:
     """A device class built from what a cluster reported, for hardware the table lacks.
 
-    `app.core.devices` slugifies an unrecognised vendor string rather than dropping
+    `app.core.devices` slugifies an unrecognised vendor string instead of dropping
     it, so the fleet can legitimately hold classes the contract table has never
-    named. Those still have an observed memory size, which is all a fit needs — the
+    named. Those still have an observed memory size, which is all a fit needs: the
     label falls back to the class itself, exactly as `label_for` does.
     """
     return DeviceClass(
@@ -166,7 +166,7 @@ def _candidates(scope: str, fleet: dict[str, Row], catalog: DeviceTable) -> list
     `fleet` is what clusters have reported, preferring the contract table's entry for
     a class it names and falling back to the observed one for a class it does not.
     `catalog` is that set plus every class the table carries, so a fit on hardware we
-    own none of is still shown — that is the procurement answer, and filtering it out
+    own none of is still shown: that is the procurement answer, and filtering it out
     is what makes people ask us for the number by hand.
     """
     observed = [catalog.get(name) or _observed_class(row) for name, row in fleet.items()]
@@ -189,7 +189,7 @@ def _note(scope: str, candidates: list[DeviceClass], weights_only: bool) -> str 
     if weights_only:
         return (
             "this artifact publishes no attention shape, so these rows size the weights only "
-            "and no context window is costed — every requirement shown is a floor. Re-resolving "
+            "and no context window is costed: every requirement shown is a floor. Re-resolving "
             "its source records the shape and prices the window."
         )
     return None
@@ -204,7 +204,7 @@ def _short(result: Fit, row: Row | None) -> bool:
     own the right card and not enough of them, so the row is arithmetically a fit and
     nothing anyone can run today.
 
-    Counted against `devices_total` rather than `devices_allocatable` because the two
+    Counted against `devices_total` instead of `devices_allocatable` because the two
     are different problems. Cards busy with somebody else's work come back; cards that
     were never bought do not.
     """
@@ -305,7 +305,7 @@ def _apply(data: ArtifactCreateRequest, draft: ResolvedArtifact) -> ArtifactCrea
 def _recorded(claims: ArtifactUpstreamRequest) -> ArtifactUpstreamRequest:
     """Stamps a resolved claim block with when it was recorded.
 
-    Here rather than in `resolve`, because resolving is a read anybody may do and
+    Here, not in `resolve`, because resolving is a read anybody may do and
     a `recorded_at` on a draft nobody registered dates a record that does not
     exist.
     """
@@ -315,10 +315,10 @@ def _recorded(claims: ArtifactUpstreamRequest) -> ArtifactUpstreamRequest:
 def _reread(artifact: Artifact, draft: ResolvedArtifact) -> list[str]:
     """Lays a fresh draft over an artifact's derived half, naming what actually moved.
 
-    Metadata is overlaid key by key rather than replaced, so labels a person put on the
-    artifact survive a refresh and the derived keys are the only ones rewritten — including
+    Metadata is overlaid key by key, not replaced, so labels a person put on the
+    artifact survive a refresh and the derived keys are the only ones rewritten, including
     to null, because a key the repo no longer publishes is a fact about the repo. The dict
-    is rebuilt rather than mutated: `JSONB` is not change-tracked in place, and an
+    is rebuilt, not mutated: `JSONB` is not change-tracked in place, and an
     in-place update is a refresh that reports success and writes nothing.
     """
     changed = []
@@ -338,7 +338,7 @@ def _reread(artifact: Artifact, draft: ResolvedArtifact) -> list[str]:
     claims = dict(artifact.upstream or {})
     for key, value in msgspec.to_builtins(draft.publisher).items():
         # Only the blanks. A re-read is the Hub speaking again, and the Hub does not
-        # get to overwrite a claim a person asserted — including the `false` that a
+        # get to overwrite a claim a person asserted, including the `false` that a
         # publisher_claims block always leaves null.
         if value in (None, [], "") or claims.get(key) not in (None, [], ""):
             continue
@@ -352,7 +352,7 @@ def check_locations(locations: list[ArtifactLocationRequest]) -> None:
     """Rejects a location set that cannot be satisfied.
 
     A duplicate uri would fail on the table's unique constraint anyway, but as an
-    integrity error at commit time rather than as a message naming the uri.
+    integrity error at commit time, not as a message naming the uri.
     """
     seen: set[str] = set()
     for item in locations:
@@ -367,7 +367,7 @@ def check_locations(locations: list[ArtifactLocationRequest]) -> None:
 
 class ArtifactService:
     def __init__(self, db: AsyncSession, hub: HuggingFaceClient | None = None) -> None:
-        """`hub` is injected rather than built here so a test can substitute a fake.
+        """`hub` is injected, not built here so a test can substitute a fake.
 
         Constructing an `httpx` client inside the service would make every create
         path a network path, and the only way to test registration would be to
@@ -380,10 +380,10 @@ class ArtifactService:
     async def resolve(self, source: str) -> ResolvedArtifact:
         """Reads a source manifest as a proposed artifact. Writes nothing.
 
-        The Hub's failures are typed here rather than leaking: an unknown slug is a
+        The Hub's failures are typed here instead of leaking: an unknown slug is a
         404 because the thing named does not exist, a gated repo is `Invalid`
         because the request is coherent but this plane holds no token that may read
-        it, and the Hub being down is the base `PlaneError` — the contract has no
+        it, and the Hub being down is the base `PlaneError`: the contract has no
         502-shaped class, and a 500 saying the upstream failed is closer than
         claiming the caller asked for something wrong.
         """
@@ -415,20 +415,20 @@ class ArtifactService:
         """Re-reads a registered artifact's own source and updates what is derived from it.
 
         The case this exists for: the plane learns to extract something it did not
-        extract before — an attention shape, a native quantization, an active parameter
-        count — and every artifact registered until then is missing it. Without this
+        extract before, an attention shape, a native quantization, an active parameter
+        count, and every artifact registered until then is missing it. Without this
         route the only way to record it is to delete the artifact and register it again,
         which breaks every workload that names it, or to `PATCH` the metadata by hand,
         which is a person retyping what the plane can read.
 
         It is a `POST` and not a `PATCH` because it is an operation: it reaches the
         network, it can fail for reasons that have nothing to do with the request, and
-        the caller supplies no body — there is nothing here for them to state.
+        the caller supplies no body: there is nothing here for them to state.
 
         A source resolving to a different digest is refused. That is not a stale record
         to be corrected, it is different bytes, and different bytes are a different
         artifact: applying the new size and parameter count over this digest would leave
-        a row describing weights nobody can fetch. Register the new source instead —
+        a row describing weights nobody can fetch. Register the new source instead:
         `GET /artifacts/resolve` will say whether it already exists.
 
         No commit happens when nothing moved, so a refresh that finds the source
@@ -445,7 +445,7 @@ class ArtifactService:
         draft = await self.resolve(source)
         if draft.digest != artifact.digest:
             raise Conflict(
-                f"{source} now resolves to different bytes, which is a new artifact rather than a change to this one",
+                f"{source} now resolves to different bytes, which is a new artifact instead of a change to this one",
                 {
                     "source": source,
                     "digest": artifact.digest,
@@ -510,7 +510,7 @@ class ArtifactService:
 
         Reads nothing but the artifact and the observed device counts. The sizing is
         `app.core.vram`'s and the fleet half is three aggregates, so this is a view
-        rather than a decision — nothing here reserves anything, and a class it calls
+        instead of a decision: nothing here reserves anything, and a class it calls
         a fit still has to survive placement.
         """
         if query.scope not in FITMENT_SCOPES:
@@ -562,8 +562,8 @@ class ArtifactService:
         fallback_node = query.devices_per_node or DEFAULT_DEVICES_PER_NODE
         """Precedence for how big a node is, most authoritative first: what the fleet has
         observed, then what the contract says the part is packaged as, then whatever the
-        caller assumed, then the default. The caller's figure fills gaps rather than
-        overruling either — an NVL72 is 72 devices whether or not somebody said eight."""
+        caller assumed, then the default. The caller's figure fills gaps instead of
+        overruling either: an NVL72 is 72 devices whether or not somebody said eight."""
 
         results: list[tuple[Fit, int, DeviceClass, Intent]] = []
         for candidate in candidates:
@@ -629,7 +629,7 @@ class ArtifactService:
     async def create(self, data: ArtifactCreateRequest) -> ArtifactSchema:
         """`source` and `digest` are alternatives, and the draft only ever fills blanks.
 
-        Both given is refused rather than reconciled: two ways to state identity is
+        Both given is refused, not reconciled: two ways to state identity is
         two ways to disagree, and picking a winner would silently register bytes the
         caller did not name. Everything the caller passed explicitly survives the
         draft, which is a default and not an override.
@@ -775,7 +775,7 @@ class ArtifactService:
 class ArtifactBaselineService:
     """The declared quality floors under one artifact.
 
-    Declared state, so this is ordinary CRUD and this service owns the commit —
+    Declared state, so this is ordinary CRUD and this service owns the commit:
     a baseline is somebody's assertion about these weights, not a number the
     plane observed. `actor` is the authenticated principal and is the only source
     of `recorded_by`: the whole use of the table is that an acceptance review
@@ -844,7 +844,7 @@ class ArtifactBaselineService:
     async def create(self, ref: str, data: ArtifactBaselineCreateRequest) -> ArtifactBaselineSchema:
         """One floor per dataset and metric, recorded in the principal's name.
 
-        A second row for the same pair is refused rather than reconciled: two
+        A second row for the same pair is refused, not reconciled: two
         declared floors for one eval is two standards, and a verdict would grade
         against whichever the query returned first.
         """

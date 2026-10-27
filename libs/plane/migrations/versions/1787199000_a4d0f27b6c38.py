@@ -10,7 +10,7 @@ machines stored a null with `spans_nodes` true. "Which domains does this node be
 was therefore answerable only through the domain's devices, and "which nodes does this
 domain span" not at all.
 
-The scalar is dropped rather than kept alongside the join table. It would have to be
+The scalar is dropped, not kept alongside the join table. It would have to be
 maintained in step with the rows, it would still be null for exactly the domains anyone
 wants it for, and two spellings of one fact is how they drift apart. Existing single-node
 domains are carried into the new table first, so nothing already observed is lost.

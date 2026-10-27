@@ -2,7 +2,7 @@
 
 The Go side has its own copy of these cases in `libs/operator/internal/devices`.
 The normalization rule is the only thing keeping two hand-written loaders on one
-table, so it is asserted here character by character rather than in spirit.
+table, so it is asserted here character by character, not in spirit.
 """
 
 import json

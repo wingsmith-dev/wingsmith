@@ -144,7 +144,7 @@ def violated(exc: IntegrityError) -> str | None:
 
 
 def _conflict(exc: IntegrityError, name: str, project: str | None, policy: str | None = None) -> Conflict:
-    """A conflict that says which name collided, rather than blaming the workload's for all of them."""
+    """A conflict that says which name collided, instead of blaming the workload's for all of them."""
     constraint = violated(exc)
     if constraint == POLICY_NAME_CONSTRAINT and policy is not None:
         return Conflict(
@@ -178,11 +178,11 @@ def constraint_name(workload_uid: str) -> str:
 def _reshape_unavailability(before_devices: int, after_devices: int) -> dict:
     """What a flip costs while it happens, in the caller's own numbers.
 
-    Carried in the result rather than checked, because nothing here is a refusal: whether to take
+    Carried in the result, not checked, because nothing here is a refusal: whether to take
     a full weight reload now is a judgement about traffic that the plane has no input to. What it
     can do is stop the cost being a surprise, and the cost is larger than the word "reshape"
     suggests. Dynamo's worker spec hash is one value across every worker component in the graph,
-    so a flip renames both roles' objects and every worker reloads its weights — twenty minutes
+    so a flip renames both roles' objects and every worker reloads its weights: twenty minutes
     apiece for a large model. The rollout then holds the old generation up while the new one
     starts, so the peak is the sum of the two footprints, and on a fleet sized for one of them the
     new generation waits on cards the old one has not let go of.
@@ -223,7 +223,7 @@ class WorkloadChange:
     """What a workload write did before it is committed: the result to report and the clusters to wake.
 
     The write methods that return one flush and never commit, so a caller that records
-    something about the change — an operation closing as succeeded — commits both in
+    something about the change, an operation closing as succeeded, commits both in
     one transaction and then calls `WorkloadService.announce`.
     """
 
@@ -282,7 +282,7 @@ class WorkloadService:
     ) -> None:
         """Files what the plane just did, in the caller's transaction.
 
-        Before the caller's `commit()` on purpose: the event and the write it
+        Before the caller's `commit()`: the event and the write it
         describes are one fact. The timeline is keyed by deployment because that is
         where a cluster's own account of the same object is filed, and a reader
         chasing a stuck workload should not have to consult two timelines.
@@ -312,12 +312,12 @@ class WorkloadService:
         """Files what the plane did to the workload itself, in the caller's transaction.
 
         The deployment timeline can only begin once there is a deployment, which is
-        after placement has already answered. Everything before that — the request
+        after placement has already answered. Everything before that, the request
         arriving, the clusters that were considered, the reason each one was ruled
-        out — happens to the workload and has nowhere else to be filed.
+        out, happens to the workload and has nowhere else to be filed.
 
         `moment` is passed by a caller that is filing several events for one call, so
-        that the story reads in the order it happened rather than in the order the
+        that the story reads in the order it happened, not in the order the
         writes were issued.
         """
         await self.db.execute(
@@ -342,7 +342,7 @@ class WorkloadService:
     ) -> None:
         """Files placement's whole answer against the workload: what it asked, and what it got.
 
-        Placement already reasons per cluster and returns every verdict — the counts
+        Placement already reasons per cluster and returns every verdict: the counts
         it decided on and the coded reasons a cluster lost. All of that was computed
         on every expansion and then dropped on the floor, except for one summary
         string copied onto the deployments that were created. A workload that fit
@@ -453,7 +453,7 @@ class WorkloadService:
         """Records what a workload was already serving, once, before its history begins.
 
         A workload created before `demand_workload_revision` existed has nothing in it, and the
-        first edit after the upgrade would otherwise file only the state it *arrived at* —
+        first edit after the upgrade would otherwise file only the state it *arrived at*:
         leaving the one configuration somebody is most likely to want back, the one they just
         replaced, unrecorded. So the pre-image every serving write already builds for its own
         validation is filed first, as `imported`.
@@ -484,7 +484,7 @@ class WorkloadService:
         """Appends the serving configuration the workload now holds, in the caller's transaction.
 
         Called after `apply_serving`, never before: what is filed has to be what was stored, the
-        same rule the digest itself keeps. Declared state, and nothing reconciles against it —
+        same rule the digest itself keeps. Declared state, and nothing reconciles against it:
         no generation moves and no cluster is told.
 
         Only the serving configuration is versioned. `overrides`, `labels` and the adapter list
@@ -515,10 +515,10 @@ class WorkloadService:
     async def _note(self, workload: Workload, note: str | None) -> None:
         """Attaches a caller's account of a change to the revision that change produced.
 
-        Called after the write, so the revision in force is the one the write just filed — and
+        Called after the write, so the revision in force is the one the write just filed, and
         when the write filed nothing, the one it left in force. That is what makes a note
         impossible to drop: a patch carrying only a note comments on what is running, and a
-        patch that arrives at the configuration already in force comments on that, rather than
+        patch that arrives at the configuration already in force comments on that, not
         either of them being a quiet no-op.
         """
         last = await self.repo.last_revision(workload.id)
@@ -567,7 +567,7 @@ class WorkloadService:
         Every caller of this is on the far side of its own `commit()`: the hub
         answers the hint by re-reading the row, so announcing first would race the
         reader against a transaction that has not landed. Missing the wakeup costs
-        latency and nothing else — the next resync carries the same state.
+        latency and nothing else: the next resync carries the same state.
         """
         await self.notifier.changed(
             self.db,
@@ -742,8 +742,8 @@ class WorkloadService:
 
         Read-only over observed state: the allocation, its devices, and the nodes
         they sit on are all written by ingestion, and nothing here writes. Only
-        membership and placement are reported — device counts, node occupancy, and
-        the per-replica assignment — never any serving telemetry about them.
+        membership and placement are reported, device counts, node occupancy, and
+        the per-replica assignment, never any serving telemetry about them.
         """
         row = await self._one(ref, project)
         workload = row[0]
@@ -842,12 +842,12 @@ class WorkloadService:
 
         A partial expansion is not a failure. Fewer shares than the total asked for
         means the clusters that could take some of it took some of it, and the
-        shortfall is visible in the scale rollup rather than costing the caller the
+        shortfall is visible in the scale rollup instead of costing the caller the
         capacity that was found. A gang is the one shape with no partial answer, and
-        placement raises rather than returning half of one.
+        placement raises instead of returning half of one.
 
         `extra_policies` exists for exactly one caller: `create`, whose workload has no
-        primary key yet — the column is `server_default` — so nothing can be attached to
+        primary key yet, the column is `server_default`, so nothing can be attached to
         it and `_policies` has nothing to find. The constraint the caller declared is
         handed to the expansion directly and persisted as a real Policy in the same
         write, so this is the only expansion in the object's life that needs it. Every
@@ -875,13 +875,13 @@ class WorkloadService:
         A declared `allowed_regions` or `allowed_clusters` becomes a real Policy attached
         to the workload, written in this same transaction. It is also handed to the
         expansion directly, because placement runs here and the attachment cannot exist
-        yet — `Workload.id` is `server_default`, so there is no primary key to attach to
+        yet: `Workload.id` is `server_default`, so there is no primary key to attach to
         until `repo.add` has flushed. Those are the same constraint expressed twice for
         one call only; every expansion after this one reads the attachment.
 
         The serving block is validated before anything is placed, and its digest is
-        derived from the row rather than taken from the caller. A digest somebody else
-        computed is a claim about a configuration rather than a reading of one.
+        derived from the row, not taken from the caller. A digest somebody else
+        computed is a claim about a configuration instead of a reading of one.
         """
         requested_at = dt.datetime.now(dt.UTC)
         if data.kind not in KINDS:
@@ -1062,8 +1062,8 @@ class WorkloadService:
         """Merges a serving patch onto the stored configuration and rewrites the columns.
 
         The whole configuration is validated, not the fields the caller named, so a
-        patch cannot reach a state a create would have refused — a runtime version
-        bumped past what the shape can hold is caught here rather than by a cluster.
+        patch cannot reach a state a create would have refused: a runtime version
+        bumped past what the shape can hold is caught here, not by a cluster.
 
         `engine_runtime_image` re-derives when the stored one is the image this plane
         produced and the caller did not name a new one, so that moving
@@ -1091,7 +1091,7 @@ class WorkloadService:
             request.engine_runtime_image = None
         check_serving_request(request, artifact)
         # An update is validated and written as the whole configuration it would leave behind, so
-        # the roles are re-derived from the request rather than from the patch: a patch that says
+        # the roles are re-derived from the request, not from the patch: a patch that says
         # nothing about the topology has already had the stored one read into `request` above, and
         # one that restates it replaces the block whole. Either way what is hashed is what is
         # stored, which is the same rule `apply_serving` keeps for every other column.
@@ -1126,7 +1126,7 @@ class WorkloadService:
         Scale is not here and cannot be: changing it re-expands the workload across
         clusters and can sit pending on quota indefinitely, which is the
         `workload.scale` operation. `strategy`, `cluster_floors` and `max_clusters`
-        are declared here and take effect at the next expansion rather than
+        are declared here and take effect at the next expansion instead of
         reshuffling a running workload the moment they are written.
 
         The name is fixed. Every deployment is named after it and a cluster knows the
@@ -1134,9 +1134,9 @@ class WorkloadService:
         either leave them behind or replace every running copy. A patch restating the
         current name is accepted.
 
-        A serving change that moves what one unit needs from placement — device class,
+        A serving change that moves what one unit needs from placement, device class,
         count or memory floor, tensor degree, topology domain, or the role weights of a
-        disaggregated group — is placed again in this same write. If the new shape
+        disaggregated group, is placed again in this same write. If the new shape
         places fewer units than are placed now, the patch is refused and nothing
         changes. Flipping between aggregated and disaggregated is `workload.reshape`,
         because the unit the scale numbers count changes with it.
@@ -1244,15 +1244,15 @@ class WorkloadService:
     async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> WorkloadChange:
         """Re-expands a workload and moves the per-cluster deployments onto the answer.
 
-        Three outcomes per cluster, and they are deliberately not the same write: a
+        Three outcomes per cluster, and they are not the same write: a
         cluster that keeps a share has its counts moved and its generation bumped so
         the agent re-reads; a cluster that appears gets a deployment; a cluster whose
-        share fell to zero has its deployment deleted rather than parked at zero, so
+        share fell to zero has its deployment deleted, not parked at zero, so
         that "which clusters is this on" stays answerable by looking at the rows.
 
         The generation is bumped only when the share actually moved. Re-expanding a
-        workload that landed on the same split is common — anything that touches the
-        workload re-derives it — and making every one of those a new generation would
+        workload that landed on the same split is common, anything that touches the
+        workload re-derives it, and making every one of those a new generation would
         have clusters restarting replicas to arrive where they already are.
 
         Flushes and never commits: the caller decides what else lands in the same write.
@@ -1343,7 +1343,7 @@ class WorkloadService:
         """Changes what was asked for, then re-expands it across clusters. Does not commit.
 
         The totals are validated against the kind before anything is placed, so a
-        total the kind cannot honour is refused here rather than discovered by an
+        total the kind cannot honour is refused here, not discovered by an
         engine that has already started moving shares.
 
         Absent parameters leave their bound alone. Sending only `desired` is the
@@ -1369,7 +1369,7 @@ class WorkloadService:
     async def change_paused(self, ref: str, paused: bool) -> WorkloadChange:
         """Parks a workload without forgetting what it was, or brings it back. Does not commit.
 
-        Pausing disables every cluster's copy rather than deleting them or zeroing
+        Pausing disables every cluster's copy instead of deleting them or zeroing
         the workload's totals: the shares are what the workload should return to,
         and a pause that destroyed them would make resuming a re-placement with a
         different answer. Resuming re-expands, because the clusters that could take
@@ -1377,7 +1377,7 @@ class WorkloadService:
 
         Both halves announce every deployment they touched, and the resuming half
         has to say so itself. `_reconcile` announces a cluster only when its share
-        moved, and a pause leaves the shares exactly where they were — so a workload
+        moved, and a pause leaves the shares exactly where they were, so a workload
         that comes back to the split it left moves nothing, announces nothing, and
         the clusters never hear that the deployments are enabled again.
         """
@@ -1419,21 +1419,21 @@ class WorkloadService:
     async def change_topology(self, ref: str, parameters: WorkloadReshapeParameters) -> WorkloadChange:
         """Flips a workload between aggregated and disaggregated serving, and re-expands it.
 
-        Does not commit. An operation rather than a `PATCH`: it changes the device footprint
-        per unit, so it can sit pending on quota for as long as quota withholds the capacity —
+        Does not commit. An operation instead of a `PATCH`: it changes the device footprint
+        per unit, so it can sit pending on quota for as long as quota withholds the capacity:
         the failure mode `workload.scale` already exists to carry. A field write would report
         success the moment the plane accepted the intent.
 
         **The new count is named and never inherited.** A workload at `desired 3` means three
-        aggregated replicas today and would mean three *groups* — seventy-two devices at 1:2 and
-        TP8 — the moment the topology flips. The unit under the number changes, so the number is
+        aggregated replicas today and would mean three *groups*, seventy-two devices at 1:2 and
+        TP8, the moment the topology flips. The unit under the number changes, so the number is
         re-stated: a flip that does not say how many it wants is refused, not defaulted. The
-        bounds follow the same argument and default to the count rather than to what they were,
+        bounds follow the same argument and default to the count, not to what they were,
         because carrying them forward is the same reinterpretation one field over.
 
         Every deployment's generation is bumped whether or not its share moved. `_reconcile`
         announces a cluster only when the count changed, and a flip at the same count changes no
-        count at all — while changing which processes exist. The clusters would go on rendering
+        count at all, while changing which processes exist. The clusters would go on rendering
         the old topology against a digest that no longer describes it.
         """
         row = await self._one(ref, lock=True)
@@ -1515,7 +1515,7 @@ class WorkloadService:
         A drain is not a scale-down: the totals are untouched, so the share the
         drained cluster was carrying is offered to the others. If none of them can
         take it the workload runs short, which is visible in the scale rollup and is
-        the honest outcome — quietly lowering what was asked for would hide it.
+        the accurate outcome: quietly lowering what was asked for would hide it.
 
         Nothing here permanently excludes the cluster. Draining is a move, not a
         policy; keeping a workload off a cluster for good is what a Policy on it is

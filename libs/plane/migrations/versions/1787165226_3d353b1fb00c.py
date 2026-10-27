@@ -6,7 +6,7 @@ Create Date: 2026-08-19 15:47:06.472650
 
 Five objects reached the API as bare UUIDs because their tables carried no `uid`.
 This adds one to each and backfills the rows that already exist before the column
-is made `NOT NULL`, so an id is minted for history rather than left null in a
+is made `NOT NULL`, so an id is minted for history, not left null in a
 column that forbids nulls.
 
 Three constraints come with it: priority values become unique, because a tie in
@@ -59,7 +59,7 @@ def _encode(value: int, length: int) -> str:
 def _mint(prefix: str, counter: int) -> str:
     """Mints one backfill id in the same shape `app.core.ids.new_uid` produces.
 
-    Spelled out here rather than imported: a migration is a record of what was
+    Spelled out here, not imported: a migration is a record of what was
     run against a database on a given day, and importing application code would
     let a later edit to that code change what this revision means.
     """

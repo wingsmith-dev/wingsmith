@@ -202,7 +202,7 @@ def test_the_tenant_scoped_surface_takes_no_tenant_from_the_caller():
     """The defect this shape was written for.
 
     `depends` used to read `?tenant=` for an admin, and no handler declared the
-    parameter — so the request was refused as an unknown query parameter before
+    parameter, so the request was refused as an unknown query parameter before
     the dependency that wanted it ever ran, and the admin view was unreachable
     by construction. Nothing on this surface reads a tenant from the request
     now, so there is no parameter to declare and none to forget.

@@ -1,10 +1,10 @@
 """The workload's own surface: what a caller may state, and how a read is narrowed.
 
 The serving configuration it absorbed from `Recipe` is tested in `test_serving.py`.
-What is here is the object — the request and response shapes, the repository's
-filters, the routes — including the shapes of the serving block *as an API surface*,
-because "can a patch clear the device class" is a question about the request struct
-rather than about what a validator does with it.
+What is here is the object, the request and response shapes, the repository's
+filters, the routes, including the shapes of the serving block *as an API surface*,
+because "can a patch clear the device class" is a question about the request struct,
+not about what a validator does with it.
 """
 
 import inspect
@@ -147,7 +147,7 @@ def test_a_revision_snapshot_decodes_as_a_patch_because_the_two_structs_agree():
 
 
 def test_the_serving_configuration_is_declared_on_the_workload_and_patchable():
-    """It is stated inline rather than named: there is no shared object to point at."""
+    """It is stated inline, not named: there is no shared object to point at."""
     assert decode(a_create_body(), WorkloadCreateRequest).serving == a_serving()
     data = patch(b'{"serving": {"engine_runtime_version": "0.7.0"}}')
     assert data.serving.to_dict(exclude_unset=True) == {"engine_runtime_version": "0.7.0"}
@@ -176,7 +176,7 @@ def test_device_class_cannot_be_cleared_by_a_patch():
     """The shape replaces whole, and `device_class` is not nullable inside it.
 
     Sending a shape means stating one: its fields are meaningless apart, so a patch
-    that named half of it would leave the rest at its defaults rather than at what
+    that named half of it would leave the rest at its defaults, not at what
     was stored, and the caller could not tell which it got.
     """
     for body in (b'{"shape": null}', b'{"shape": {"device_class": null}}'):
@@ -326,7 +326,7 @@ def test_the_served_weights_are_loaded_with_the_page_and_not_labelled_field_by_f
     The served model name and the serving digest are both resolved from the whole
     object, so a label per field they read is one more thing to keep in step every
     time that order changes. `Workload.artifact` is `lazy="noload"`, so the page
-    loads it explicitly rather than one round trip per row.
+    loads it explicitly instead of one round trip per row.
     """
     query = repo.list_query(limit=10)
     assert "demand_artifact" not in sql(query)
@@ -344,7 +344,7 @@ def test_the_weights_are_named_inside_the_serving_block():
 
 
 def test_label_selector_becomes_a_predicate_per_key(repo):
-    """One `->>` comparison per key, so two labels narrow rather than widen."""
+    """One `->>` comparison per key, so two labels narrow, not widen."""
     text = sql(repo.list_query(limit=10, labels={"tier": "gold", "team": "search"}))
     assert text.count("demand_workload.labels ->>") == 2
     assert "->>" not in sql(repo.list_query(limit=10))

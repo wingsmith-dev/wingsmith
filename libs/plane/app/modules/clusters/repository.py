@@ -246,7 +246,7 @@ class ClusterRepository:
         """What still depends on a cluster: deployments on it, allocations it has
         not released, and workloads pinned to it.
 
-        All three are counted rather than left to the foreign keys, because the
+        All three are counted, not left to the foreign keys, because the
         keys cascade (deployments, allocations) or quietly unpin (workloads),
         and a delete would take them along without anyone having asked.
         """

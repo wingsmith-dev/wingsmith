@@ -2,7 +2,7 @@
 
 Everything else in the discovered-workload module is inert by construction. Promotion is the
 one call that writes declared state, so the guards on it are worth exercising against a
-database rather than against a compiled statement: a refusal that does not fire is a rollout.
+database, not against a compiled statement: a refusal that does not fire is a rollout.
 """
 
 import uuid
@@ -35,7 +35,7 @@ FINGERPRINT = "sha256:9f2c1b7d4e6a08"
 
 
 async def seed_demand(sessions) -> None:
-    """A tenant, project, priority class and artifact — the minimum a deployment needs.
+    """A tenant, project, priority class and artifact: the minimum a deployment needs.
 
     The artifact is the only part of the serving configuration a promotion is given.
     Everything else is read off the sighting, so there is no second row to seed here
@@ -82,7 +82,7 @@ async def sighted(sessions) -> DatabaseSink:
 
     The nodes come first because the serving block a promotion declares is read off
     the sighting, and the device class in it is read off the devices of the nodes the
-    workload holds — the cluster is the only authority on what its own hardware is.
+    workload holds: the cluster is the only authority on what its own hardware is.
     A sighting with no supply under it reads as a workload nobody can say enough
     about to declare.
     """
@@ -209,7 +209,7 @@ async def test_an_adoption_survives_its_sighting_being_pruned(sessions, cluster)
     for as long as the wire's adopt block was joined onto that row every frame
     rendered inside the window went down without one. An operator receiving one
     stops recognising the deployment as adopted and never reads a rollout for it
-    again — and nothing re-dispatches when the sighting returns, so a serving
+    again, and nothing re-dispatches when the sighting returns, so a serving
     workload reads `placed · 0/1` until somebody writes to it by hand.
     """
     await seed_demand(sessions)
@@ -262,7 +262,7 @@ async def test_taking_management_needs_the_digest_of_what_is_running(sessions, c
     """The same gate promotion uses, at the moment it starts to matter.
 
     Promotion is free; taking management is the act that can render over a live
-    pod template, so it re-asks the question rather than trusting an answer given
+    pod template, so it re-asks the question instead of trusting an answer given
     when the deployment was catalogued.
     """
     await seed_demand(sessions)

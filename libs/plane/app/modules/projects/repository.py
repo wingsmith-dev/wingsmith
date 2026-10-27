@@ -25,7 +25,7 @@ class ProjectRepository:
     """Reads projects with their tenant and default priority class joined in.
 
     Both relationships are `lazy="noload"` and both are on every response, so the
-    join is explicit here rather than a per-row round trip in the serializer.
+    join is explicit here instead of a per-row round trip in the serializer.
     """
 
     def __init__(self, db: AsyncSession) -> None:

@@ -3,14 +3,14 @@
 A verdict is a judgement *about* a run, not a phase *of* one. The run already
 has a phase, written by ingestion from the frame that reported it, and a
 `verdict` column beside it would be a second status with a second writer and no
-frame behind it — an operation modelled as a status field, which is the first
+frame behind it: an operation modelled as a status field, which is the first
 rule.
 
-Derived-at-read is only honest if the standard is pinned, so the criteria are a
+Derived-at-read is only accurate if the standard is pinned, so the criteria are a
 frozen table in code and the request records which entry it was created under.
 A verdict is then a pure function of `(summary, harness, harness_version,
 criteria)`: deterministic, re-derivable forever, and answerable for a version
-other than its own — "would this run have passed under the new rules" is a
+other than its own: "would this run have passed under the new rules" is a
 question a stored verdict cannot answer at all.
 
 `inconclusive` is a first-class outcome and it is what a missing measurement
@@ -57,7 +57,7 @@ class Check(NamedTuple):
 class Verdict(NamedTuple):
     """The rollup of a run's checks under one criteria version.
 
-    Unforgiving on purpose: any `fail` makes the verdict `fail`; otherwise any
+    Unforgiving: any `fail` makes the verdict `fail`; otherwise any
     `inconclusive` makes it `inconclusive`; otherwise `pass`. A run with no
     applicable checks at all is `inconclusive`, because nothing was measured.
     """
@@ -82,7 +82,7 @@ class Criteria(NamedTuple):
 
     Entries are never edited, only superseded. Editing one would silently
     rewrite every verdict in history that sat near a line, with nothing on any
-    row recording that it happened — worse than a stored status, because a
+    row recording that it happened: worse than a stored status, because a
     stored status at least does not lie about the past.
     """
 
@@ -99,7 +99,7 @@ ACCEPTANCE_2026_1 = Criteria(
     description="The 2026.1 serving acceptance standard, transcribed as published.",
     ttft=(
         TtftTarget("lt6k", 5_000.0, 2_000.0, 2_000.0),
-        # Transcribed as given. This row is internally odd — its average ceiling sits above its
+        # Transcribed as given. This row is internally odd: its average ceiling sits above its
         # P50 by 1.5s, implying a tail the P90 has already excluded. Copied faithfully rather
         # than corrected: a frozen criteria entry is a record of what was published.
         TtftTarget("6k_16k", 5_000.0, 2_500.0, 4_000.0),
@@ -112,7 +112,7 @@ ACCEPTANCE_2026_1 = Criteria(
     output_speed_small=100.0,
     baseline_floor=0.85,
 )
-"""The floor is `0.85 x baseline` and it lives here rather than on the baseline row.
+"""The floor is `0.85 x baseline` and it lives here, not on the baseline row.
 
 `ArtifactBaseline.tolerance_pct` is the per-row slack the recorder declared for that
 dataset; the acceptance floor is a property of the standard. Burying the floor in the
@@ -137,7 +137,7 @@ class Baseline(NamedTuple):
     """One declared quality floor, flattened off `demand_artifact_baseline`.
 
     `value` and `tolerance_pct` are floats here and `Numeric` on the row, so the
-    service converts once at the seam rather than leaving `Decimal` to meet a
+    service converts once at the seam instead of leaving `Decimal` to meet a
     float threshold halfway through an expression.
     """
 
@@ -150,8 +150,8 @@ class Baseline(NamedTuple):
 class RunFacts(NamedTuple):
     """Everything a verdict needs about one run, read off the rows by the service.
 
-    A record rather than eight arguments, and flat rather than the ORM objects,
-    so that grading stays a pure function of values — which is what makes it
+    A record instead of eight arguments, and flat instead of the ORM objects,
+    so that grading stays a pure function of values, which is what makes it
     re-derivable against a criteria version that did not exist when the run was
     taken.
     """
@@ -204,7 +204,7 @@ def verdict(facts: RunFacts, criteria: Criteria) -> Verdict:
 def rollup(checks: tuple[Check, ...]) -> str:
     """Any fail is a fail; otherwise any inconclusive; otherwise pass.
 
-    `not_applicable` never carries the rollup on its own — a run whose every
+    `not_applicable` never carries the rollup on its own: a run whose every
     check was inapplicable measured nothing, and nothing is not a pass.
     """
     graded = [check for check in checks if check.outcome != NOT_APPLICABLE]
@@ -272,7 +272,7 @@ def _output_speed(facts: RunFacts, adapter: summaries.Adapter, criteria: Criteri
     one reader observes.
 
     The population comes from the artifact's parameter count. When that is null
-    the check is `inconclusive` rather than defaulting to either branch — an
+    the check is `inconclusive` instead of defaulting to either branch: an
     unstated size must not silently take the lenient floor.
     """
     field_id = summaries.OUTPUT_SPEED_PER_STREAM
@@ -309,11 +309,11 @@ def _output_speed(facts: RunFacts, adapter: summaries.Adapter, criteria: Criteri
 def _accuracy_checks(facts: RunFacts, criteria: Criteria) -> tuple[Check, ...]:
     """Each dataset's score against `0.85 x baseline`.
 
-    A heterogeneous coverage is refused outright rather than graded: two
+    A heterogeneous coverage is refused outright, not graded: two
     upstreams running different quantizations produce one score that belongs to
     neither, and a number nobody can attribute is worse than no number.
 
-    A dataset with no baseline row is `inconclusive`, never a pass — the whole
+    A dataset with no baseline row is `inconclusive`, never a pass: the whole
     point of the baseline table is that an undeclared floor is an open question.
     A dataset that has a baseline but was not sat is `not_applicable`: a partial
     eval is a partial eval, and the request's own list says which exam was sat.
@@ -368,7 +368,7 @@ def _conformance_checks(facts: RunFacts, adapter: summaries.Adapter) -> tuple[Ch
     """Every required probe must have passed, and the summary must agree with itself.
 
     A `counts.fail` above zero beside an empty failure list is `inconclusive`
-    rather than a fail: the summary contradicted itself and neither half of it
+    instead of a fail: the summary contradicted itself and neither half of it
     can be relied on to say what broke.
     """
     total = summaries.read(adapter, facts.summary, summaries.PROBE_TOTAL)

@@ -95,7 +95,7 @@ def test_the_public_name_and_the_owning_project_are_not_patchable():
 def test_the_public_id_is_patchable_and_the_handle_is_not():
     """An endpoint has two names and only one of them may move.
 
-    `name` is the handle — URLs, metric labels, every link the console holds — and it is absent
+    `name` is the handle (URLs, metric labels, every link the console holds) and it is absent
     from the update request by construction. `slug` is what a client sends, and correcting it is
     the whole reason the two are separate: it costs one gateway poll and touches no cluster.
 
@@ -363,7 +363,7 @@ class FakeWorkload:
     It carries what a `FakeRecipe` used to as well as what a workload already did.
     The serving configuration moved onto the workload, so the `engine_args` hatch,
     the declared name and the digest the revision is built from are one object's
-    fields now rather than two objects' — and the fit-shaped name is still here,
+    fields now instead of two objects', and the fit-shaped name is still here,
     because it is the string these tests exist to keep off the routing table.
     """
 
@@ -486,7 +486,7 @@ async def test_an_upstream_carries_the_name_the_engine_answers_to():
 
     A client calling the endpoint by name asks the frontend for a model it has
     never heard of. The gateway rewrites `model` to this, and cannot without being
-    told it. The slug rather than the workload's derived fit name, so that
+    told it. The slug instead of the workload's derived fit name, so that
     re-fitting the same weights does not rename the model every caller codes
     against.
     """
@@ -516,8 +516,8 @@ async def test_the_engines_name_is_the_artifacts_slug_and_the_workload_cannot_ov
     """There used to be a ladder here: the workload's declaration, then the recipe's, then a slug
     the plane re-derived at read time. It is one column now, on the artifact.
 
-    The ladder is what broke the fleet. The plane's derivation could not produce an organisation —
-    it read the artifact's bare `name` — while the operator started every engine on a `--model`
+    The ladder is what broke the fleet. The plane's derivation could not produce an organisation,
+    it read the artifact's bare `name`, while the operator started every engine on a `--model`
     taken from the artifact's location, which had one. The gateway rewrote to the plane's answer
     and the frontend had registered the operator's, so a healthy deployment behind an open tunnel
     answered `model_not_found` from inside the cluster.
@@ -545,8 +545,8 @@ async def test_an_explicit_served_model_name_wins_over_the_declared_name():
 async def test_two_clusters_serving_different_weights_carry_their_own_served_names():
     """Why this rides the upstream and not the endpoint: there is no single answer.
 
-    One public name over two deployments of *different* artifacts — a quantised build beside a
-    full-precision one — is the canary case, and each engine answers to its own weights' slug.
+    One public name over two deployments of *different* artifacts, a quantised build beside a
+    full-precision one, is the canary case, and each engine answers to its own weights' slug.
     That is why the routing table carries the name per upstream: an endpoint-level field would
     have to pick one and rewrite half the traffic to a string nothing had registered.
     """
@@ -570,7 +570,7 @@ async def test_renaming_the_served_model_moves_the_revision_the_gateway_polls():
 
     The rename is on the artifact, because that is where the name lives. A slug corrected on an
     artifact that three clusters serve has to reach every gateway on the next poll, and the row
-    the gateway would otherwise watch — the endpoint's — has not been touched at all.
+    the gateway would otherwise watch, the endpoint's, has not been touched at all.
     """
     before = await resolution([tunnelled_row()]).resolved()
     renamed = tunnelled_row(artifact=FakeArtifact(slug="acme/llama-70b"))
@@ -598,7 +598,7 @@ async def test_a_configuration_change_alone_moves_the_revision():
 async def test_a_cluster_with_no_serving_address_is_an_upstream_with_no_url():
     """The tunnelled case, and the only one in production: the cluster id is the route.
 
-    Dropping it would empty the table on every cluster we run — nothing declares a
+    Dropping it would empty the table on every cluster we run: nothing declares a
     `ClusterServing`, so the gateway would be told no model is serving anywhere.
     """
     table = await resolution([tunnelled_row()]).resolved()
@@ -813,7 +813,7 @@ async def test_an_endpoint_that_declares_no_slug_takes_the_name_of_the_weights_b
 
     An endpoint in front of one model answers to that model's name, and making a
     caller type it a second time is exactly how the public id and the id the
-    engine registered come to differ — which is not a visible failure but a 404
+    engine registered come to differ, which is not a visible failure but a 404
     from inside the cluster with the deployment healthy and the tunnel open.
     """
     repo = FakeCreateRepo(artifact_slug="moonshotai/kimi-k3", deployment=SimpleNamespace(id=uuid.uuid4()))
@@ -849,8 +849,8 @@ async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
     """A real workload holds the dashes, because that is what a command line looks like.
 
     This is the spelling every serving configuration in the fleet actually carried,
-    and matching the raw key missed all of them. The miss was silent — the plane
-    fell through to the declared name and published it — so the first symptom was
+    and matching the raw key missed all of them. The miss was silent, the plane
+    fell through to the declared name and published it, so the first symptom was
     Kimi K3 404ing from inside the cluster with a healthy deployment and an open
     tunnel.
     """
@@ -908,14 +908,14 @@ actually reads, so the level the caller asked for is the level that runs, and th
 
 It was a `drop` first, and a drop is only half the contract. Nothing behind this
 endpoint reads `thinking.effort`, so removing the loser left the engine on its own
-default — `thinking.effort=low` sent with no `reasoning_effort` at all still ran at
-max — and the trace-length comparison standing in for the term was comparing two
+default, `thinking.effort=low` sent with no `reasoning_effort` at all still ran at
+max, and the trace-length comparison standing in for the term was comparing two
 samples of one distribution."""
 
 
 @pytest.mark.asyncio
 async def test_an_endpoint_that_sold_no_terms_resolves_with_no_policy():
-    """The default, and the reason this is per endpoint rather than per gateway.
+    """The default, and the reason this is per endpoint, not per gateway.
 
     Conforming on one model must never narrow another, so absence has to reach
     the gateway as null and mean "forward what you were given".
@@ -944,7 +944,7 @@ async def test_a_sold_policy_reaches_the_resolved_table():
 
 @pytest.mark.asyncio
 async def test_a_policy_stored_in_the_old_shape_reaches_the_gateway_as_rules():
-    """The migration, and it is a read rather than a batch job.
+    """The migration, and it is a read instead of a batch job.
 
     Converting here is what makes it one nobody has to schedule: no window where
     half the rows are in one language, and no way for a policy written before
@@ -969,8 +969,8 @@ def test_a_rule_that_only_removes_a_field_is_valid():
     """`drop` is the term for a field the provider accepts and ignores.
 
     Denying one of those would 400 a request the vendor serves, and leaving it in
-    place lets an engine honour a field the provider does not — a wrong answer
-    rather than an error, and the harder of the two to notice.
+    place lets an engine honour a field the provider does not: a wrong answer
+    instead of an error, and the harder of the two to notice.
     """
     check_surface(
         {
@@ -1022,7 +1022,7 @@ def test_a_rule_that_carries_one_field_onto_another_is_valid():
     A drop makes the engine's spelling ignored, which is half of "the provider's
     field wins". The other half is that the provider's field is read at all, and
     where nothing downstream reads it the removal leaves the engine on its own
-    default — which is how `thinking.effort=low` ran at max on an endpoint whose
+    default, which is how `thinking.effort=low` ran at max on an endpoint whose
     policy said the drop was in place.
     """
     check_surface({"policy": {"rules": [{"key": "reasoning_effort", "value_from": "thinking.effort"}]}})
@@ -1088,7 +1088,7 @@ def test_two_writes_guarded_on_different_paths_still_conflict():
 
 
 def test_a_migrated_policy_keeps_the_scope_it_had_which_is_none():
-    """v1 had no route, so a term it sold applied to every path — and it still does.
+    """v1 had no route, so a term it sold applied to every path, and it still does.
 
     Narrowing these to chat completions would be the right guess for every policy
     in the fleet today and still the wrong thing to do: a migration that quietly
@@ -1135,7 +1135,7 @@ def test_an_inverted_range_is_refused():
 
 def test_an_unknown_field_is_refused_rather_than_ignored():
     """A typo in a policy is a conformance gap that looks like a working config,
-    so it is refused on write rather than dropped on read."""
+    so it is refused on write, not dropped on read."""
     with pytest.raises(Invalid):
         check_surface({"policy": {"parmeters": {"temperature": {"enum": [1]}}}})
     with pytest.raises(Invalid):
@@ -1164,8 +1164,8 @@ def test_an_unknown_field_is_refused_rather_than_ignored():
 def test_a_rule_the_gateway_could_not_act_on_is_refused(rule):
     """Every one of these would be stored, read, and enforce nothing.
 
-    A key and a predicate are different namespaces — one is read out of the body,
-    the other is looked up in a registry — so a rule that names both names
+    A key and a predicate are different namespaces, one is read out of the body,
+    the other is looked up in a registry, so a rule that names both names
     nothing the gateway can resolve. A route that is not a path matches no
     request. A key with an empty segment resolves to no value. None of them has a
     symptom anywhere downstream, which is why they have to fail on write.
@@ -1259,7 +1259,7 @@ def test_a_surface_value_the_gateway_could_not_read_is_refused(surface):
     """The surface is patchable and half of it the gateway acts on.
 
     A bad `streaming_transport` is also a term an operator reads off a page and
-    repeats to a customer, so a typo here has to fail on write — nothing
+    repeats to a customer, so a typo here has to fail on write: nothing
     downstream would catch it.
     """
     with pytest.raises(Invalid):
@@ -1289,7 +1289,7 @@ def test_a_surface_is_read_back_field_by_field():
     """Declared state with no reader is state nobody can check.
 
     The surface is accepted on a patch and acted on by the gateway, so the
-    object a console or the CLI reads has to carry it — otherwise the only way
+    object a console or the CLI reads has to carry it, otherwise the only way
     to see what an endpoint sells is the routing table the gateway polls.
     """
     surface = endpoint_surface(

@@ -95,7 +95,7 @@ def test_every_argument_read_survives_as_an_imported_one() -> None:
     assert draft.imported_args["--enforce-eager"] == ""
     assert draft.imported_args["--swap-space"] == "8"
     assert draft.imported_args["--model"] == "Qwen/Qwen3.8-27B", (
-        "arguments with a column are repeated here too — the record is of what was read, "
+        "arguments with a column are repeated here too: the record is of what was read, "
         "and a partial one cannot be checked against the cluster"
     )
 
@@ -193,7 +193,7 @@ def test_a_revision_sharpens_the_reference_and_its_absence_is_said() -> None:
     assert draft.artifact.revision == "a1b2c3d"
 
     bare = derive(spec=QWEN, labels={}, name="w", devices_per_replica=2)
-    assert any("names a repository rather than a commit" in note for note in bare.artifact.notes)
+    assert any("names a repository instead of a commit" in note for note in bare.artifact.notes)
 
 
 def test_parameter_count_is_read_from_the_name_and_flagged_as_such() -> None:

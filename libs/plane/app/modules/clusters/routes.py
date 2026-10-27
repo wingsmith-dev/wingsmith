@@ -105,13 +105,13 @@ class ClusterRoutes(Controller):
 
         `200`, not the `201` a POST defaults to: nothing is created, and the
         gateway treats any status it was not promised as "the plane could not be
-        reached" — which refuses every dial while looking like a network fault.
+        reached", which refuses every dial while looking like a network fault.
         It is a POST only because the credential being checked must not travel in
         a query string.
 
         The gateway principal only. The gateway terminates the outbound tunnels
         serving agents dial and needs to know which cluster is on the other end
-        of one. An admin session is refused rather than accommodated — a human
+        of one. An admin session is refused, not accommodated: a human
         credential that can turn tokens into identities is a credential that can
         sweep for them, and no console screen asks this question.
         """

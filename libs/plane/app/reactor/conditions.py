@@ -1,10 +1,10 @@
 """Level-triggered evaluation: what is wrong right now, recomputed from scratch.
 
 Four queries, one per condition, each returning the full current set. Recomputing
-rather than tracking transitions is the design decision that matters here — it
+instead of tracking transitions is the design decision that matters here: it
 means the reactor has no memory to lose, a restart mid-outage produces the same
 answer as one that ran throughout, and "how long has this been true" is a fact
-about the alert row (`first_seen_at`) rather than something this module has to
+about the alert row (`first_seen_at`) instead of something this module has to
 persist.
 
 Every condition here answers a question the founding object model left to a human reading a
@@ -51,7 +51,7 @@ LIVE_PHASES = ("active", "draining")
 
 `pending` is excluded because a cluster that has been enrolled and not yet
 connected is not an incident, it is a Tuesday; `disabled` because someone turned
-it off on purpose. Alerting on either is how an alerting system gets muted.
+it off. Alerting on either is how an alerting system gets muted.
 """
 
 
@@ -63,7 +63,7 @@ def _tuned(pairs) -> list[AlertIntent]:
 async def unreachable_clusters(db: AsyncSession) -> list[AlertIntent]:
     """Clusters that should be talking to us and are not.
 
-    The outer join is load-bearing: a cluster whose agent has never connected has
+    The outer join is essential: a cluster whose agent has never connected has
     no `ClusterSyncState` row at all, and an inner join would quietly exclude the
     one case where nothing has ever worked.
     """
@@ -85,9 +85,9 @@ async def unreachable_clusters(db: AsyncSession) -> list[AlertIntent]:
 
 
 async def empty_clusters(db: AsyncSession) -> list[AlertIntent]:
-    """Connected clusters reporting no devices — the spot-node case.
+    """Connected clusters reporting no devices: the spot-node case.
 
-    Scoped to reachable clusters on purpose. An unreachable cluster also has no
+    Scoped to reachable clusters. An unreachable cluster also has no
     fresh inventory, and reporting both would mean two alerts for one problem with
     the less useful of them naming the wrong cause.
     """
@@ -111,9 +111,9 @@ async def behind_deployments(db: AsyncSession) -> list[AlertIntent]:
     """Enabled deployments whose cluster reports fewer ready replicas than we asked for.
 
     Splits on whether a status row exists at all. Missing means the declared state
-    has not reached the cluster — `deployment.unobserved`, an operator or sync
+    has not reached the cluster: `deployment.unobserved`, an operator or sync
     problem. Present but short means it reached the cluster and the cluster cannot
-    satisfy it — `deployment.behind`, a capacity problem. Reporting both as one
+    satisfy it: `deployment.behind`, a capacity problem. Reporting both as one
     alert would send people to the wrong half of the system.
 
     One alert per deployment, never per workload. A workload spread over two
@@ -158,7 +158,7 @@ async def stalled_workloads(db: AsyncSession) -> list[AlertIntent]:
     declared, so "fewer than we wanted" is not a sentence this can finish. Zero
     ready against a non-zero desired needs no declared intent to be wrong.
 
-    Workloads explicitly dismissed are skipped — a decision to stop showing
+    Workloads explicitly dismissed are skipped: a decision to stop showing
     something is a decision to stop being told about it, and an alerting system
     that ignores that is one people learn to ignore back.
     """
@@ -197,9 +197,9 @@ async def stalled_workloads(db: AsyncSession) -> list[AlertIntent]:
 async def declared_thresholds(db: AsyncSession) -> list[Threshold]:
     """Every enabled threshold naming a rule this reactor knows how to evaluate.
 
-    Rows for an unknown rule are left where they are rather than raising. A plane
+    Rows for an unknown rule are left where they are instead of raising. A plane
     that has been rolled back sees rows written against a newer catalogue, and the
-    right response to one is to evaluate the rules it does have — the write path
+    right response to one is to evaluate the rules it does have: the write path
     is where a rule name is checked, and it rejects there.
 
     `value` is `Numeric` and arrives as `Decimal`; it is converted here, at the
@@ -207,8 +207,8 @@ async def declared_thresholds(db: AsyncSession) -> list[Threshold]:
     float is an error in Python and a rounding decision in Postgres.
 
     Read inside a savepoint, and a table this cannot read is not fatal. A tick is
-    one transaction — every condition, every event it drains and every notified
-    marker it moves — and in Postgres one failed statement aborts all of it. A
+    one transaction, every condition, every event it drains and every notified
+    marker it moves, and in Postgres one failed statement aborts all of it. A
     plane whose migration has not been applied yet would therefore lose its entire
     alerting pass because of the least important query in it, which is exactly
     backwards: the cluster that went away still needs someone told about it.
@@ -246,7 +246,7 @@ async def deployment_subjects(db: AsyncSession) -> list[tuple[MetricSubject, dic
     """Deployments a metric rule can be asked about, with the labels that tune them.
 
     Enabled and wanting replicas, for the same reason `behind_deployments` scopes
-    that way: a deployment scaled to zero is serving nothing on purpose, and every
+    that way: a deployment scaled to zero is serving nothing, and every
     serving metric about it is legitimately empty.
 
     The labels are the workload's, which is where `tuning` says the knob lives.
@@ -285,14 +285,14 @@ async def metric_thresholds(db: AsyncSession, reader: MetricReader) -> list[Aler
 
     The threshold table is the work list. Nothing is measured for a rule nobody
     declared a number for, so the cost of this pass is proportional to the
-    commitments made rather than to the size of the fleet — which is the argument
+    commitments made, not to the size of the fleet, which is the argument
     for a table of thresholds over a table of rules.
 
-    Reading and judging are separate on purpose. This function decides which
+    Reading and judging are separate. This function decides which
     questions to ask and `reader` answers them; `rules.metric_breach` then decides
     what the answer means and has never heard of a metrics backend. A reading with
-    no value produces no alert and no resolution either way — an unmeasurable
-    subject is not a healthy one, and the pass says nothing about it rather than
+    no value produces no alert and no resolution either way: an unmeasurable
+    subject is not a healthy one, and the pass says nothing about it instead of
     guessing in either direction.
     """
     declared = await declared_thresholds(db)
@@ -336,15 +336,15 @@ async def evaluate(db: AsyncSession, reader: MetricReader | None = None) -> list
     """Every condition currently true, across the whole fleet.
 
     The caller treats this as authoritative and resolves any condition-sourced
-    alert whose key is absent, so a query that fails must raise rather than
-    return a short list — a partial answer here reads as "everything recovered".
+    alert whose key is absent, so a query that fails must raise, not
+    return a short list: a partial answer here reads as "everything recovered".
 
-    That is also why the metric pass is last and why it withholds rather than
+    That is also why the metric pass is last and why it withholds, not
     reports zero: a threshold whose measurement could not be taken contributes no
     key, which resolves its alert. Adding a metrics store to the fleet must not be
     a way to make an unrelated condition disappear, so a reader that cannot answer
-    leaves the rest of the set untouched — but a store that is down does close the
-    alerts it opened, which is the honest reading of "we can no longer see this".
+    leaves the rest of the set untouched, but a store that is down does close the
+    alerts it opened, which is the accurate reading of "we can no longer see this".
     """
     intents: list[AlertIntent] = []
     intents += await unreachable_clusters(db)

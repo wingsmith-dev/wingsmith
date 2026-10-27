@@ -6,7 +6,7 @@ Create Date: 2026-09-15 10:00:00.000000
 
 `demand_endpoint_alias` is new: one row per additional model id that resolves to an endpoint.
 `alias` is globally unique, which is what makes aliases and canonical slugs one namespace as far
-as a constraint can reach — two endpoints cannot claim one alias. The rest of that namespace
+as a constraint can reach: two endpoints cannot claim one alias. The rest of that namespace
 spans two tables and is the service's to refuse.
 
 Additive and empty. Nothing resolves differently until somebody writes a row, because the

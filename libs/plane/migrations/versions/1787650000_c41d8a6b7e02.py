@@ -26,7 +26,7 @@ def upgrade() -> None:
 
     # Backfilled from the sighting the wire used to be rendered from, which is the only place the
     # namespace has ever been recorded. A deployment whose sighting is pruned at this instant gets
-    # nothing and keeps rendering no `adopt` block until it is promoted again — the same state it
+    # nothing and keeps rendering no `adopt` block until it is promoted again: the same state it
     # was already in, and not one this migration can invent its way out of.
     op.execute(
         sa.text(

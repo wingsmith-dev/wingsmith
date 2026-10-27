@@ -10,7 +10,7 @@ disagree (for example when `engine_args` carries a `--served-model-name` overrid
 When they did, the gateway rewrote the inbound `model` to a name the frontend did not
 serve.
 
-This column is the correction, at the routing table rather than anywhere that renders
+This column is the correction, at the routing table, not anywhere that renders
 a command line: fixing a disagreement costs a gateway poll, not a pod respec and a full
 reload of the weights.
 

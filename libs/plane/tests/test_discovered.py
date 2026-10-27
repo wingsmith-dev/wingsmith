@@ -146,7 +146,7 @@ def service_over(row: Row) -> tuple[DiscoveredWorkloadService, SightingRepo, Wri
 
 @pytest.mark.parametrize("decision", ["tracked", "ignored"])
 async def test_tracking_a_workload_declares_nothing(decision) -> None:
-    """The load-bearing test. Tracking writes a decision and no declared state.
+    """The essential test. Tracking writes a decision and no declared state.
 
     Promotion is the only path that creates a deployment, and it is a separate,
     explicitly gated call. Track and ignore construct nothing a reconciler could
@@ -328,7 +328,7 @@ def test_the_decision_request_carries_nothing_a_cluster_could_obey() -> None:
 def test_the_controller_reads_and_decides_and_does_nothing_else() -> None:
     """DELETE is here, and it still writes nothing but a decision.
 
-    It removes an entry from the list rather than the sighting under it, which is
+    It removes an entry from the list instead of the sighting under it, which is
     why it is allowed to exist beside a rule that gives observed state one writer.
     """
     handlers = [h for h in vars(DiscoveredWorkloadRoutes).values() if hasattr(h, "http_methods")]
@@ -341,7 +341,7 @@ def test_the_draft_is_read_as_a_serving_block_and_writes_nothing() -> None:
     """The reading a promotion declares, offered under the name of what it drafts.
 
     There is no recipe to draft any more: the fields land on the workload the
-    promotion mints, so the path is `/serving-draft` and it is a GET — the same
+    promotion mints, so the path is `/serving-draft` and it is a GET: the same
     sighting derives the same draft every time, and asking does not change it.
     """
     handler = DiscoveredWorkloadRoutes.draft_serving

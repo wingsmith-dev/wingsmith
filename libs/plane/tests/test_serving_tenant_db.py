@@ -1,8 +1,8 @@
 """The tenant serving view against a real database, because the isolation is a join.
 
 `test_serving_tenant.py` proves what a tenant principal cannot reach. This proves
-the other half — that inside the one surface it can reach, it sees its own rows
-and no others — and that is a property of a query, which no fake session can show.
+the other half, that inside the one surface it can reach, it sees its own rows
+and no others, and that is a property of a query, which no fake session can show.
 """
 
 import pytest

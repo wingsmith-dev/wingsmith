@@ -50,13 +50,13 @@ class Settings:
 
     HUB_INSTANCE_ID: str = ""
     """Identity this hub process claims clusters under. Empty resolves, in order, to
-    `HOSTNAME` (a pod name under Kubernetes) and then a random id — see
+    `HOSTNAME` (a pod name under Kubernetes) and then a random id; see
     `app.hub.identity.instance_id`. Never a default worth hardcoding: two pods that
     resolved to the same value would be indistinguishable owners in the claim table.
     """
 
     HUB_SESSION_TTL_SECONDS: int = 600
-    """How long an idle `SessionState` — cursors and replay buffer — survives with no
+    """How long an idle `SessionState`, cursors and replay buffer, survives with no
     connection attached before the reaper drops it. Sized well past a rolling restart
     (PROTOCOL §4's buffer is sized the same way) so a routine redeploy never reaps a
     session an operator is about to resume; a cluster gone for longer than this pays a
@@ -75,7 +75,7 @@ class Settings:
     REACTOR_ENABLED: bool = True
     """Whether the hub process also runs the reactor loop. Turn off to run
     `python -m app.reactor` as its own Deployment instead; the lease makes either
-    arrangement safe, and running both is a waste rather than a hazard.
+    arrangement safe, and running both is a waste instead of a hazard.
     """
 
     REACTOR_INTERVAL_SECONDS: float = 60.0
@@ -94,7 +94,7 @@ class Settings:
 
     REACTOR_EVENT_BATCH: int = 500
     """Events matched per tick. Bounds the catch-up after downtime: a reactor that
-    has been off for a day works through the backlog over several ticks rather than
+    has been off for a day works through the backlog over several ticks instead of
     holding one transaction open across all of it.
     """
 
@@ -134,7 +134,7 @@ class Settings:
     A fleet constant, not a per-cluster fact: one store fronts the fleet, so this
     is rendered verbatim into `monitoring.remoteWrite.url` in the setup values the
     register screen produces. Empty renders `monitoring.enabled: false` instead, so
-    a deployment with no store still hands out installable values — an agent with
+    a deployment with no store still hands out installable values: an agent with
     no `remote_write` scrapes a cluster and discards every sample, which is worse
     than not scraping it.
     """
@@ -151,8 +151,8 @@ class Settings:
     Off by default because it is the one thing the plane does that reaches outside
     its own namespace, and because it is inert without a service account to
     authenticate with. Enabled without `REMOTE_WRITE_AUTH_NAMESPACE`, or with no
-    in-cluster credential (local dev, tests), the pass logs once and does nothing
-    — never a crash loop.
+    in-cluster credential (local dev, tests), the pass logs once and does nothing,
+    never a crash loop.
     """
 
     REMOTE_WRITE_AUTH_NAMESPACE: str = ""
@@ -170,7 +170,7 @@ class Settings:
     """Bearer token the inference gateway presents to the plane API.
 
     It resolves to the `gateway` principal, which may read the routing table and
-    the tenant table and verify an agent's enrolment token, and nothing else — no
+    the tenant table and verify an agent's enrolment token, and nothing else: no
     admin rights, no writes. Generate a long random value and give the same one
     to the gateway as `HANGAR_GATEWAY_SERVICE_TOKEN`.
 
@@ -197,12 +197,12 @@ class Settings:
     Keyed by engine because that is what a repository is: `vllm-runtime` is the
     Dynamo runtime with vLLM compiled into it, and `dynamo.vllm` exists nowhere
     else. Picking the engine therefore picks the repository, and the tag beside it
-    — `engine_runtime_version` — is a Dynamo release rather than the engine's own number.
+    (`engine_runtime_version`) is a Dynamo release instead of the engine's own number.
 
     A workload names an engine and a runtime version; the image those two mean is a
     property of the deployment, not of the configuration, and asking every author
     to retype it is how a workload reaches a cluster with no image at all. A workload
-    with no image is not rejected by anything downstream — the operator simply
+    with no image is not rejected by anything downstream: the operator simply
     never renders a prefetch job for its weights, and the deployment waits on a
     download nobody was told to start. Resolving it here removes the field from
     the set of things a user can silently get wrong.
@@ -215,7 +215,7 @@ class Settings:
     """Tag used when a workload's `engine_runtime_version` is empty or `latest`.
 
     `latest` is not a tag these registries publish, so accepting it verbatim
-    produces an `ImagePullBackOff` rather than a validation error. Keep this in
+    produces an `ImagePullBackOff` instead of a validation error. Keep this in
     step with `frontend.shared.image.tag` in the cluster-setup chart: the
     prefetch job's layout has to be the one the engine later reads.
     """
@@ -230,7 +230,7 @@ class Settings:
 
     ADMIN_AUTH: str = ""
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
-    to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see
+    to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else; see
     `app.auth.manager.AuthManager.admin_auth_enabled`. This is the one switch that turns admin
     authentication on the HTTP API off entirely, and `validate` refuses `disabled`
     outside `local`. It never affects the hub, whose enrolment-token check cannot
@@ -240,7 +240,7 @@ class Settings:
     ADMIN_PASSWORD_HASH: str = ""
     """Bcrypt hash of the admin password. Generate one with `uv run python -m app.auth hash`
     (or `docker run --rm -it <plane image> python -m app.auth hash`), which prompts for the
-    password rather than taking it as an argument. Changing it ends every admin session."""
+    password instead of taking it as an argument. Changing it ends every admin session."""
 
     SESSION_SIGNING_SECRET: str = ""
     """HMAC key signing session tokens. Required outside `local`, where the plane
@@ -276,7 +276,7 @@ class Settings:
     """The `wss://` URL cluster operators dial, written into the setup values.
 
     Required for cluster setup outside `APP_ENV=local`. Empty refuses to render
-    setup values or mint an enrolment token rather than guessing the address
+    setup values or mint an enrolment token instead of guessing the address
     from a request header, which a caller controls. Under `local`, empty means
     `ws://localhost:{HUB_PORT}{HUB_PATH}`, the compose hub.
     """
@@ -297,7 +297,7 @@ class Settings:
 
     Empty renders no pull secret at all, which is right when those images are
     public or sit in a registry the nodes already authenticate to. Set it, with the
-    username and token below, when they are private — otherwise a registered
+    username and token below, when they are private, otherwise a registered
     cluster is handed values that install cleanly and cannot pull."""
 
     IMAGE_PULL_SECRET_REGISTRY: str = "ghcr.io"
@@ -332,14 +332,14 @@ class Settings:
     setup values.
 
     One address, however many replicas the gateway runs. Coverage does have to be
-    complete — the tunnel pool is in-process, so a gateway replica can only answer
-    for a cluster whose tunnel it is itself holding — but the replica count rides
+    complete, the tunnel pool is in-process, so a gateway replica can only answer
+    for a cluster whose tunnel it is itself holding, but the replica count rides
     the handshake, so an agent given this one name redials it until it has found
     them all. Naming the replicas here instead would mean that scaling the gateway
     is an edit to the values of every cluster in the fleet.
 
-    This is the plane's own deployment fact — the public tunnel name of the
-    gateway's StatefulSet — which is why it is configuration here and not a
+    This is the plane's own deployment fact, the public tunnel name of the
+    gateway's StatefulSet, which is why it is configuration here and not a
     column. Empty renders the agent block as a blank with an example,
     because a cluster cannot be handed an address the plane does not know, and
     because values that install and serve nothing beat values that do not
@@ -353,8 +353,8 @@ class Settings:
 
     SETUP_CHART_VERSION: str = ""
     """Chart version the setup instructions pin (`helm upgrade --version`). The
-    chart version is the compatibility unit — its `appVersion` names the operator
-    image — so an install records exactly what it ran. Empty omits `--version`
+    chart version is the compatibility unit, its `appVersion` names the operator
+    image, so an install records exactly what it ran. Empty omits `--version`
     and takes whatever the registry resolves as latest, which is fine for dev but
     should be pinned in a deployment."""
 
@@ -368,7 +368,7 @@ class Settings:
     """Comma-separated addresses or CIDRs of the proxies in front of the API whose
     `X-Forwarded-For` the plane believes, e.g. the ingress controller's pod range.
 
-    Used to charge failed sign-ins to the caller rather than to the proxy
+    Used to charge failed sign-ins to the caller, not to the proxy
     (`app.core.throttle.client_address`). Empty ignores the header, so every
     caller behind a proxy shares one budget: set it whenever the API sits behind
     one, or one caller's failures lock out everyone else behind it too.
@@ -378,7 +378,7 @@ class Settings:
     """Comma-separated origins the API's CORS policy accepts. Empty disallows
     every browser origin; there is no `*` option.
 
-    5273 rather than Vite's default 5173: the console pins its own port
+    5273, not Vite's default 5173: the console pins its own port
     (`libs/console/vite.config.ts`) because Vite otherwise walks forward from 5173
     until it finds a free one, which makes the console's origin depend on which
     other projects are running. An origin list cannot be written against that.
@@ -386,7 +386,7 @@ class Settings:
     Both spellings are listed because they are two origins to a browser and one
     address to everything else. Vite prints `localhost` and serves `127.0.0.1`
     just as happily, so which one is in the address bar is not a decision anyone
-    makes — and listing only one turns it into the difference between a working
+    makes, and listing only one turns it into the difference between a working
     console and a wall of blocked requests.
     """
 
@@ -418,7 +418,7 @@ def api_host(s: "Settings") -> str:
 
 def trusted_proxies(s: "Settings") -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     """`TRUSTED_PROXIES` parsed. Raises `RuntimeError` naming the entry that is
-    not an address or a CIDR, so `validate` stops the boot on it rather than
+    not an address or a CIDR, so `validate` stops the boot on it instead of
     every sign-in failing with a 500."""
     networks = []
     for part in s.TRUSTED_PROXIES.split(","):

@@ -6,7 +6,7 @@ from app.core.schemas import Struct
 class OperationTargetSchema(Struct):
     """What the operation acts upon, as a kind and a public id.
 
-    The kind is carried explicitly rather than left to be read off the prefix,
+    The kind is carried explicitly, not left to be read off the prefix,
     because a client that has to parse ids to know what it is looking at is a
     client that will eventually parse one wrong.
     """
@@ -18,10 +18,10 @@ class OperationTargetSchema(Struct):
 class OperationSchema(Struct):
     """An imperative action with a lifecycle, not a verb that returned 200.
 
-    The declared half — type, target, reason, actor, deadline — is written once
+    The declared half (type, target, reason, actor, deadline) is written once
     by the API at creation, with `cancel_requested_at` as the one field the plane
-    may write afterwards. The observed half — phase, result, error, attempts,
-    and the two timestamps — is written by ingestion from `operation.observed`
+    may write afterwards. The observed half, phase, result, error, attempts,
+    and the two timestamps, is written by ingestion from `operation.observed`
     thereafter. The two writers do not share a field after creation, the same way
     `Cluster.phase` and `ClusterSyncState` are split.
     """
@@ -51,7 +51,7 @@ class OperationSummarySchema(Struct):
     `by_phase` carries a count for every phase the fleet currently holds, so a
     console can render the mix without paging the collection. `total` is their
     sum. The two `_24h` fields are the terminal phases that matter for an
-    at-a-glance health read — how many finished badly or well in the last day —
+    at-a-glance health read, how many finished badly or well in the last day,
     and their window is closed by the database's own `now()`, not the plane's
     wall clock, so the answer is the same regardless of which process asked.
     """
@@ -63,7 +63,7 @@ class OperationSummarySchema(Struct):
 
 
 class OperationCreateRequest(Struct):
-    """`{ "type": ..., "target": ... }` — never a verb on the target's own path.
+    """`{ "type": ..., "target": ... }`, never a verb on the target's own path.
 
     `target` is either a prefixed id (`nod_01hq0v...`) or a kind-qualified name
     (`node:gpu-node-04`). Both forms say what kind of thing they name, which is

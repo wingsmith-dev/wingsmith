@@ -24,10 +24,10 @@ def device_ids(ref: str) -> Select:
 class AllocationRepository:
     """Reads only. Allocations are made by placement and reported by the cluster.
 
-    Nothing here writes, and that is structural rather than a convention: the
+    Nothing here writes, and that is structural instead of a convention: the
     partial unique index on `bind_allocation_device.device_id` for live rows is
-    what makes a gang atomic, and it can only mean that if exactly one writer —
-    ingestion — ever inserts against it.
+    what makes a gang atomic, and it can only mean that if exactly one writer,
+    ingestion, ever inserts against it.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -59,9 +59,9 @@ class AllocationRepository:
     def holder_query(self, device_ref: str) -> Select:
         """Which allocation holds this device right now.
 
-        Answered by the same partial unique index that enforces the rule —
-        `device_id WHERE released_at IS NULL` — so it is an index lookup on one
-        row rather than a scan of allocation history.
+        Answered by the same partial unique index that enforces the rule,
+        `device_id WHERE released_at IS NULL`, so it is an index lookup on one
+        row instead of a scan of allocation history.
         """
         return select(AllocationDevice.allocation_id).where(
             AllocationDevice.device_id.in_(device_ids(device_ref)),

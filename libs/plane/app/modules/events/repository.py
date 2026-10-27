@@ -61,7 +61,7 @@ SUBJECT_DETAIL_KEYS = {
 """Where an event records its subject's public id as well as its row id.
 
 `subject_id` holds a primary key, so a subject that has been deleted can no
-longer be found by the identifier a reader holds — the join that resolves
+longer be found by the identifier a reader holds: the join that resolves
 `dep_...` to a uuid returns nothing once the row is gone. For the kinds listed
 here the public id is also written into `details`, and the filter falls back to
 it, so the timeline of a deleted object stays queryable by its public id.
@@ -86,7 +86,7 @@ def workload_clause(ref: str):
     """Every event in one workload's story, including its children's.
 
     The workload's own events come first in the clause and first in life: they are
-    what the plane did before any cluster had been chosen — the request landing,
+    what the plane did before any cluster had been chosen: the request landing,
     placement running, and where it landed or why it landed nowhere. Everything
     after that happens to a deployment, a replica, or the weights those replicas
     load, and a workload that never got as far as a deployment has only the first
@@ -96,7 +96,7 @@ def workload_clause(ref: str):
     Four generations, in the order a reader meets them. The deployments are the
     workload's share of each cluster; the replicas are what those deployments
     run; and the artifact is the one thing outside the workload's own tree that
-    can hold all of it — a deployment waiting on weights that are not resident is
+    can hold all of it: a deployment waiting on weights that are not resident is
     waiting on an event filed against the artifact.
 
     The artifact leg is scoped to the clusters this workload is deployed on. The
@@ -139,7 +139,7 @@ def endpoint_clause(ref: str):
     alone returned an empty timeline for an endpoint that was visibly failing.
 
     Only the deployments its targets name, and only their replicas. The
-    workload behind a target is deliberately not walked: a target is a share of
+    workload behind a target is not walked: a target is a share of
     traffic sent to one deployment, and the other clusters the same workload
     landed on are not this endpoint's story even though they serve the same
     weights. The endpoint's own subject stays in the clause so that a writer
@@ -199,13 +199,13 @@ class EventRepository:
         since: dt.datetime | None = None,
         until: dt.datetime | None = None,
     ) -> Select:
-        """Newest first: the page walks `seq` downwards rather than upwards.
+        """Newest first: the page walks `seq` downwards, not upwards.
 
         Ordering is on `seq` and not on `occurred_at`. `occurred_at` is written
         by the cluster, so it is neither unique nor monotonic across clusters,
         and a cursor on it would skip or repeat rows whenever two events shared a
         timestamp or a clock stepped backwards. `seq` is assigned on insert, is
-        unique, and is the same key `app/core/pagination` already encodes — only
+        unique, and is the same key `app/core/pagination` already encodes, only
         the direction of the comparison changes, which is why this needs no
         cursor format of its own.
         """

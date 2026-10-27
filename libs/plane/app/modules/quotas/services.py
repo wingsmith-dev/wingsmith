@@ -47,8 +47,8 @@ def usage_for(quota: Quota, rollup: dict) -> QuotaUsageSchema:
     """Folds the per-(project, cluster, class) rollup down to one quota's scope.
 
     A quota with no cluster spans every cluster, so its usage is the sum of all
-    the cluster-keyed rows for its project and device class rather than the row
-    whose cluster is null — no allocation is ever recorded without a cluster, so
+    the cluster-keyed rows for its project and device class instead of the row
+    whose cluster is null: no allocation is ever recorded without a cluster, so
     reading a null-cluster quota as a null-cluster lookup would always report
     zero usage against a limit that is really being consumed.
     """
@@ -231,7 +231,7 @@ to R times what was sold. `divided` gives each replica its share, so an
 uneven connection balance would refuse a caller who is inside the limit it bought.
 The design has no shared counter and no coordination hop on the request path, which
 keeps the gateway's availability a function of its own process, so one of those two
-error directions is chosen rather than avoided.
+error directions is chosen, not avoided.
 """
 
 ON_EXCEED = frozenset({"reject", "queue"})
@@ -262,7 +262,7 @@ POSITIVE_LIMITS = (
 DIVISIBLE_LIMITS = ("committed_rpm", "committed_tpm", "max_concurrent_requests", "burst_rpm")
 """The limits that are a fleet budget and therefore divide.
 
-`max_output_tokens` is deliberately not among them: it is a ceiling on what one
+`max_output_tokens` is not among them: it is a ceiling on what one
 request may ask for, not an allowance spent over a minute, and a fleet of four
 that let each replica accept a quarter of the sold context would be refusing
 every caller. `ramp_up_seconds` and `queue_timeout_ms` are durations for the same
@@ -273,9 +273,9 @@ reason.
 def replica_share(limit: int | None, replicas: int, index: int) -> int | None:
     """One replica's slice of a fleet-wide limit, under `divided`.
 
-    Largest remainder rather than `limit // replicas`: the floor alone throws away
-    `limit % replicas` of what was sold on every uneven split — 1,000 rpm across
-    three replicas would enforce 999 — and the ceiling over-admits by as much. The
+    Largest remainder instead of `limit // replicas`: the floor alone throws away
+    `limit % replicas` of what was sold on every uneven split, 1,000 rpm across
+    three replicas would enforce 999, and the ceiling over-admits by as much. The
     remainder goes to the lowest-numbered replicas, so the shares sum to exactly
     the declared limit at any replica count, and one index always gets the same
     slice, which is what keeps a restart from handing a pod a different share.
@@ -293,9 +293,9 @@ def replica_share(limit: int | None, replicas: int, index: int) -> int | None:
 def check_fleet(replicas: int, index: int) -> None:
     """Rejects a fleet a share cannot be taken of.
 
-    The plane never discovers the replica count on its own — doing so would put a
-    Kubernetes client on the inference path — so it arrives from the caller and is
-    checked here rather than trusted.
+    The plane never discovers the replica count on its own, doing so would put a
+    Kubernetes client on the inference path, so it arrives from the caller and is
+    checked here, not trusted.
     """
     if replicas < 1:
         raise Invalid("replicas must be at least 1", {"replicas": replicas})
@@ -315,9 +315,9 @@ def starved_replicas(quota: ServingQuota, replicas: int) -> int:
     replicas are always the highest-numbered ones, because the remainder goes to
     the lowest, so the union across limits is a count and not a set.
 
-    Reported rather than refused: which replica a caller lands on is the load
+    Reported, not refused: which replica a caller lands on is the load
     balancer's business, and an operator lowering a fleet below a sold rate needs
-    to see the consequence rather than be told the number is invalid.
+    to see the consequence, not be told the number is invalid.
     """
     if quota.limit_scope != "divided":
         return 0
@@ -348,8 +348,8 @@ def declared_limits(quota: ServingQuota) -> ResolvedLimitsSchema:
 def effective_limits(quota: ServingQuota, replicas: int = 1, index: int = 0) -> ResolvedLimitsSchema:
     """The share of the declared limits the replica at `index` would hold, once `limit_scope` is applied.
 
-    Under `per_replica` this is the declared set unchanged — that is what the mode
-    means — and the arithmetic below is skipped rather than run with a divisor of
+    Under `per_replica` this is the declared set unchanged, that is what the mode
+    means, and the arithmetic below is skipped, not run with a divisor of
     one, so the two modes cannot converge by accident at a single replica.
     """
     if quota.limit_scope != "divided":
@@ -388,7 +388,7 @@ def output_length_params(surface: dict | None) -> list[str]:
     """Which request fields carry the caller's requested output length.
 
     Declared on the endpoint's surface, because which fields an API accepts is a
-    property of the API rather than of the commitment. Absent means the default
+    property of the API, not of the commitment. Absent means the default
     set and not none: an endpoint that has never said otherwise speaks the
     ordinary chat surface, and reading absence as "no field" would refuse a
     ceiling on every endpoint that exists today.
@@ -403,8 +403,8 @@ def validate_serving(fields: dict, surface: dict | None = None) -> None:
     """Rejects a commitment that cannot mean anything.
 
     Takes the row as it would be after the write, never the patch, so that a
-    partial update is checked against what it produces rather than against what
-    it mentions — a `burst_rpm` lowered under an untouched `committed_rpm` is the
+    partial update is checked against what it produces, not against what
+    it mentions: a `burst_rpm` lowered under an untouched `committed_rpm` is the
     case that a patch-only check misses.
     """
     for name in POSITIVE_LIMITS:
@@ -493,7 +493,7 @@ def _table_revision(stamps: list[dt.datetime | None]) -> str:
     Two terms, because a maximum alone cannot see a deletion: removing a row
     removes a stamp, and unless that stamp happened to be the maximum across the
     whole table the value does not move. A withdrawn commitment would then sit
-    behind a `304` and go on being applied by every replica that reads it — the asymmetry is
+    behind a `304` and go on being applied by every replica that reads it: the asymmetry is
     what makes it dangerous, since create and update move the maximum and only
     delete does not. The count moves on any disappearance, and the maximum still
     catches a simultaneous add and delete because the added row is freshly
@@ -649,10 +649,10 @@ class ServingQuotaService:
         is: the quota is what somebody declared, and this is what it currently
         means for a fleet the plane does not otherwise know the size of.
 
-        A reference that matches nothing comes back as an empty table rather than
+        A reference that matches nothing comes back as an empty table instead of
         a `404`. An endpoint with no commitment is unlimited, and answering "no
         such thing" would let a caller read an unlimited endpoint as a missing
-        one — which is the direction that turns a withdrawn quota into an outage.
+        one, which is the direction that turns a withdrawn quota into an outage.
         """
         check_fleet(replicas, replica_index)
         rows = await self.repo.resolved(endpoint=endpoint, workload=workload)

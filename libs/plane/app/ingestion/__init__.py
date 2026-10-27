@@ -1,4 +1,4 @@
-"""Ingestion — writes arriving from the hub.
+"""Ingestion: writes arriving from the hub.
 
 High frequency, idempotent, last-writer-wins per cluster. Consumes observed
 state off hub sessions and denormalises it into Postgres so that the API and

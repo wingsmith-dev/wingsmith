@@ -157,7 +157,7 @@ class NodeRepository:
     async def summary(self) -> tuple[int, int, int, int]:
         """Fleet-wide node counts and faulted-device count, computed server-side.
 
-        Two aggregates rather than a scan of a page: node membership from
+        Two aggregates instead of a scan of a page: node membership from
         `supply_node`, faulted accelerators from `supply_device` where observed
         health is not `healthy`.
         """

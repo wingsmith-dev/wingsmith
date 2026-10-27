@@ -1,16 +1,16 @@
 """Operations, read out of Postgres and shaped into the frame each is owed.
 
-Beside `desired.py` rather than inside it, and the distance is the point. That
+Beside `desired.py`, not inside it, and the distance is the point. That
 module renders the resync snapshot, and everything a snapshot carries is
 prunable by definition: what is absent from a complete snapshot is what the
-cluster stops running. An operation is the third kind of thing — imperative, long-running, and usually half-done by the time a session drops
-— so folding it into that stream would make a drain that is already evicting pods
+cluster stops running. An operation is the third kind of thing, imperative, long-running, and usually half-done by the time a session drops,
+so folding it into that stream would make a drain that is already evicting pods
 cancellable by a reconnect. Keeping the renderer in its own file means there is
 no query shape in which an operation can accidentally end up inside
 `stream_desired`.
 
 Read-only, like its neighbour: nothing here opens a transaction or writes a row.
-The wire kind and the open phases come from `app.modules.operations` rather than
+The wire kind and the open phases come from `app.modules.operations` instead of
 being restated here, because a second copy of that table is a second answer to
 what `node.uncordon` puts on the wire.
 
@@ -54,7 +54,7 @@ async def operation_desired(db: AsyncSession, uid: str) -> tuple[str, OperationD
     """One operation, rendered for the cluster it was created against.
 
     `None` when there is no such operation, when it belongs to no cluster, or
-    when its type is one this seam does not know — an operation with nowhere to
+    when its type is one this seam does not know: an operation with nowhere to
     go is not an error here, it is simply nothing to send.
     """
     row = (
@@ -96,8 +96,8 @@ async def _render(
 
     An operation the plane has asked to stop renders as `operation.cancel` and
     never again as `operation.desired`. One row therefore has two renderings and
-    this is where they part, which keeps every caller — the live hint, the replay
-    of open operations on reconnect — sending the right one without knowing there
+    this is where they part, which keeps every caller, the live hint, the replay
+    of open operations on reconnect, sending the right one without knowing there
     are two. Re-sending the instruction to a cluster that was told to abandon it
     is the failure this ordering exists to prevent, and a reconnect is exactly
     when it would happen.

@@ -1,16 +1,16 @@
 """One backend's dialect: what Hangar's metrics are called in Prometheus.
 
-Everything Prometheus-shaped lives here — the series names, the label names, the
-expression each metric is answered by — keyed by the Hangar name in
+Everything Prometheus-shaped lives here, the series names, the label names, the
+expression each metric is answered by, keyed by the Hangar name in
 `registry.py`. Nothing else in the module renders PromQL.
 
 **Candidates, not a name.** An expression carries its source series in
-preference order rather than one hardcoded name, because upstream renames and
+preference order instead of one hardcoded name, because upstream renames and
 we find out by a panel going blank. `vllm:time_per_output_token_seconds` became
 `vllm:inter_token_latency_seconds` and `vllm:gpu_cache_usage_perc` became
 `vllm:kv_cache_usage_perc`; both are still listed, first, so a cluster that has
-not been upgraded keeps answering. Names DCGM does not emit by default —
-`DCGM_FI_DEV_CLOCK_THROTTLE_REASONS`, the ECC aggregates — stay listed for the
+not been upgraded keeps answering. Names DCGM does not emit by default,
+`DCGM_FI_DEV_CLOCK_THROTTLE_REASONS`, the ECC aggregates, stay listed for the
 same reason in the other direction: the panel reads "no data" until the
 exporter's field csv is extended, and then it works with no code change.
 
@@ -50,11 +50,11 @@ LABELS: dict[str, str] = {
 `dynamo_namespace` is not a namespace in the Kubernetes sense and is not the
 `dynamo-namespace` pod label either. Dynamo composes it at runtime from
 `DYN_NAMESPACE` and `DYN_NAMESPACE_WORKER_SUFFIX`, which reach the plane as the
-`dynamo-namespace` and `dynamo-worker-hash` labels — see `worker_identity`. It is
+`dynamo-namespace` and `dynamo-worker-hash` labels; see `worker_identity`. It is
 the only label on a vLLM series that distinguishes one deployment of a model from
 another.
 
-`hangar_endpoint` is a plane uid rather than a name, and the gateway puts
+`hangar_endpoint` is a plane uid instead of a name, and the gateway puts
 `endpoint_name` beside it for panels. Joining on the name would break the moment
 an endpoint is renamed, which is one of the things having an endpoint object is
 for.
@@ -72,9 +72,9 @@ def worker_identity(labels: dict) -> str:
     the result cannot be rebuilt from the deployment's name: three of the fleet's
     four deployments render `dynamo-<hash>` while one whose graph sets its own
     `DYN_NAMESPACE` renders `dynamo-<graph>-<hash>`. Both halves arrive as pod
-    labels, so this reads them rather than guessing.
+    labels, so this reads them instead of guessing.
 
-    Empty when either half is missing, which is the honest answer for a
+    Empty when either half is missing, which is the accurate answer for a
     deployment the plane declared itself: Dynamo mints the hash after the fact,
     so there is nothing to know until it has been observed.
     """
@@ -92,7 +92,7 @@ class Expression:
     wrapped around it, which is the whole of DCGM.
 
     `grouped` is the same expression with `$BY` where the label a breakdown groups
-    by goes, and it has to be written out rather than derived: `sum by (x)` sits
+    by goes, and it has to be written out, not derived: `sum by (x)` sits
     outside a rate and inside a `histogram_quantile`'s own `by (le)`, and a ratio
     needs it on both halves or the division matches nothing. Empty means this
     metric does not appear in a breakdown, which is the truthful outcome for a
@@ -117,7 +117,7 @@ GAUGE_BY = "sum by ($BY) ($SERIES{$SELECTOR})"
 """The grouped halves of the four shapes a fleet answer is built from.
 
 A quantile keeps `le` alongside the grouping label because `histogram_quantile`
-reads the buckets out of it; dropping it there returns nothing rather than a
+reads the buckets out of it; dropping it there returns nothing instead of a
 wrong number, which is why this is written out per shape instead of derived.
 """
 
@@ -130,17 +130,17 @@ GATEWAY_IN_FLIGHT = "hangar_gateway_requests_in_flight"
 INPUT = 'direction="input"'
 CACHED_INPUT = 'direction="cached_input"'
 """The two token directions a cache-hit ratio is built from. `output` is not one
-of them, and `cached_input` is a subset of `input` rather than a sibling."""
+of them, and `cached_input` is a subset of `input` instead of a sibling."""
 
 LIVE = 'origin="live"'
-"""Every gateway query carries it. The conformance suite sends deliberately
+"""Every gateway query carries it. The conformance suite sends
 malformed requests at a live endpoint, so counting its probes would manufacture
 the availability breach they exist to detect."""
 
 FAILED = AVAILABILITY_2026_1.failed_matcher
 """The outcomes that are ours, matched by name and never by status class.
 
-Rendered from the frozen objectives table (`objectives.py`) rather than written
+Rendered from the frozen objectives table (`objectives.py`), not written
 here, so the number and the definition a quota names cannot drift apart. See
 `libs/gateway/internal/metrics/outcome.go`, which is where the set is closed.
 """
@@ -179,19 +179,19 @@ def _failure_ratio(group: str, objective: Objective = AVAILABILITY_2026_1) -> st
     Two different shapes of nothing meet in this one expression and a plain
     division confuses both of them.
 
-    A healthy endpoint emits no failed-outcome series at all — the gateway only
-    creates a child series once that outcome happens — and `sum` over an empty
+    A healthy endpoint emits no failed-outcome series at all, the gateway only
+    creates a child series once that outcome happens, and `sum` over an empty
     vector is empty, not zero, so the division would vanish exactly when
     everything works and would only produce a number once something broke. The
     numerator is therefore unioned with a zeroed copy of the denominator, which
     exists wherever the denominator does; a served window with no failures reads
-    0% failed and 100% available, which is measured rather than assumed.
+    0% failed and 100% available, which is measured, not assumed.
 
     A window nothing called, by contrast, has both rates at zero over series that
-    are still being scraped from earlier traffic. Dividing that — clamped
-    denominator or not — answers 0% failed and 100% available for a period nothing
+    are still being scraped from earlier traffic. Dividing that, clamped
+    denominator or not, answers 0% failed and 100% available for a period nothing
     measured, which is the invented SLA this module exists to refuse. So the
-    denominator is filtered to `> 0` rather than clamped: with no counted requests
+    denominator is filtered to `> 0`, not clamped: with no counted requests
     in the window there is no series, the service reports the sample as absent, and
     the console says it was not measured. An untouched endpoint is not 100%
     available and it is not 0% either.
@@ -205,15 +205,15 @@ def _failure_ratio(group: str, objective: Objective = AVAILABILITY_2026_1) -> st
 def _cache_hit_ratio(group: str) -> str:
     """Cached input tokens over input tokens, as a percentage, per group or in total.
 
-    Sound as a ratio because cached input is a *subset* of input rather than a
-    fourth kind of token — the gateway reads all three off the upstream's own
+    Sound as a ratio because cached input is a *subset* of input instead of a
+    fourth kind of token: the gateway reads all three off the upstream's own
     usage object, so the denominator already contains the numerator and the
     result cannot exceed 100%.
 
     The numerator needs none of the union `_failure_ratio` uses: the gateway
     records `cached_input` on every request that carried a usage object, zero
     included, so the series exists wherever `input` does. The denominator is
-    still filtered to `> 0` for the same reason as there — a window nothing
+    still filtered to `> 0` for the same reason as there: a window nothing
     called has both rates at zero over series still being scraped from earlier
     traffic, and answering 0% cached for a period nothing measured is the
     invented number this module refuses. No series, no sample, and the console
@@ -295,7 +295,7 @@ DIALECT: dict[str, Expression] = {
 }
 """`direction="cached_input"` is never summed into either token rate. The gateway
 records all three from the upstream's own usage object, and cached input is a
-subset of input rather than a fourth kind of token — adding it double-counts the
+subset of input instead of a fourth kind of token: adding it double-counts the
 prompt."""
 
 for _objective in AVAILABILITY_OBJECTIVES.values():
@@ -309,19 +309,19 @@ for _objective in AVAILABILITY_OBJECTIVES.values():
     )
 """Each objective's failure and availability metrics, rendered from its own entry.
 
-Generated rather than written out so the outcome sets exist once: a hand-copied
+Generated, not written out so the outcome sets exist once: a hand-copied
 regex here is how the denominator drifts away from the definition a quota names,
 and a drifted denominator is a wrong availability number that renders perfectly.
 """
 
 
 def is_quantile(name: str) -> bool:
-    """Whether this metric is read out of a histogram's buckets rather than added up.
+    """Whether this metric is read out of a histogram's buckets, not added up.
 
     A quantile cannot be combined with another quantile after the fact: two p95s
     measured in two stores have no mean, and the store that would know is the one
     holding both sets of buckets. A caller merging numbers across clusters asks
-    this so it can leave the percentile out rather than average one into
+    this so it can leave the percentile out, not average one into
     existence.
     """
     return "histogram_quantile" in DIALECT[name].template
@@ -345,7 +345,7 @@ def device_class_values(name: str) -> tuple[str, ...]:
     DCGM has never heard of a hangar class, so one class expands into the vendor
     strings `libs/packages/contract/devices.json` maps onto it. A class the table does not
     carry falls back to matching its own name literally, which selects nothing
-    until the table grows — an unscoped selector here would report the whole
+    until the table grows: an unscoped selector here would report the whole
     fleet as one card.
     """
     values = table().aliases(name, DIALECT_DCGM)
@@ -358,8 +358,8 @@ def device_class_values(name: str) -> tuple[str, ...]:
 def selector(scope: Scope) -> str:
     """The label matchers for one scope, cluster first and never absent.
 
-    A scope whose source has no cluster label — a Prometheus that only holds one
-    cluster's data — yields no cluster matcher, which is correct there and only
+    A scope whose source has no cluster label, a Prometheus that only holds one
+    cluster's data, yields no cluster matcher, which is correct there and only
     there.
     """
     parts: list[str] = []
@@ -378,9 +378,9 @@ def selector(scope: Scope) -> str:
 def render(metric: Metric, series: str, where: str, window: str, by: str = "") -> str:
     """The PromQL that answers one metric out of one candidate series.
 
-    A scope that narrows nothing — the whole served surface, which is a real
-    question — renders an empty `$SELECTOR`, and a matcher list may not begin with
-    the comma that leaves behind. It is dropped here rather than by making every
+    A scope that narrows nothing, the whole served surface, which is a real
+    question, renders an empty `$SELECTOR`, and a matcher list may not begin with
+    the comma that leaves behind. It is dropped here, not by making every
     template carry a conditional.
     """
     expression = DIALECT[metric.name]

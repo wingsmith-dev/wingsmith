@@ -2,11 +2,11 @@
 
 The ask this answers is "let us adjust what alerts without shipping code", and the
 tempting shape for it is a `monitoring_label` column on the workload. That column is
-not here on purpose: `labels` is already a `JSONB` dict on `Workload`,
+not here: `labels` is already a `JSONB` dict on `Workload`,
 `Cluster`, `Pool`, `Node`, `Endpoint` and `DiscoveredWorkload`, already declared,
 already editable through `PATCH` and already rendered in the console. A dedicated
 column would be a second place to say the same thing, needing its own migration,
-its own form field and its own CLI flag — and it would only ever work for the one
+its own form field and its own CLI flag, and it would only ever work for the one
 object it was added to.
 
 So the reactor reads a reserved namespace out of the labels it already has:
@@ -17,7 +17,7 @@ So the reactor reads a reserved namespace out of the labels it already has:
 
 The knob lives on the **workload**, and there is nothing above it to put it on: the
 recipe that was once shared between workloads is gone, and muting on a shared object
-would have quietened every workload built from that model at once — a much bigger
+would have quietened every workload built from that model at once: a much bigger
 hammer than "this one is noisy". It is not on the deployment either: labels moved up
 when `Workload` became the umbrella, and per-cluster muting would mean the same noisy
 model had to be quietened once per region. `resolve` takes any number of label dicts
@@ -25,8 +25,8 @@ most-specific-first, so a project-level default is a one-line change if it turns
 to be wanted; nothing reads anything above the workload today.
 
 Cluster conditions read `Cluster.labels` and stalled workloads read
-`DiscoveredWorkload.labels`. The latter come from the cluster rather than from us,
-which makes the manifest the place to mute a workload nobody has imported — the
+`DiscoveredWorkload.labels`. The latter come from the cluster, not from us,
+which makes the manifest the place to mute a workload nobody has imported: the
 same knob, at the only altitude that exists before promotion.
 
 Muting is `off` and nothing else. There is no "lower the severity until it stops
@@ -53,8 +53,8 @@ UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 def parse_duration(raw: str) -> int | None:
     """`45m`, `2h`, `900s`, or a bare number of seconds. None if it is not any of those.
 
-    Returns None rather than raising on nonsense. A typo in a label must not stop
-    the tick that would have told someone their cluster is down — the override is
+    Returns None instead of raising on nonsense. A typo in a label must not stop
+    the tick that would have told someone their cluster is down: the override is
     ignored, the rule's own window applies, and the alert still happens.
     """
     value = raw.strip().lower()
@@ -74,7 +74,7 @@ def parse_duration(raw: str) -> int | None:
 
 @dataclass(frozen=True)
 class Override:
-    """What one object's labels ask for. Every field optional — absent means "no opinion"."""
+    """What one object's labels ask for. Every field optional: absent means "no opinion"."""
 
     muted: bool = False
     severity: str | None = None
@@ -105,7 +105,7 @@ def read(labels: Any) -> Override:
 def resolve(*label_sources: Any) -> Override:
     """Merges label dicts most-specific-first, field by field.
 
-    Field by field rather than whole-dict, so a deployment that only sets
+    Field by field, not whole-dict, so a deployment that only sets
     `hangar.dev/alert.for` still inherits the severity its workload chose. Whole-dict
     precedence would make every override an all-or-nothing copy of the parent's.
     """
@@ -126,8 +126,8 @@ def apply(intent: AlertIntent, *label_sources: Any) -> AlertIntent | None:
     """The tuned intent, or None if the labels muted it.
 
     Records what was applied in `details` under `tuned_by`, so an alert that fired
-    at an unexpected severity — or a condition someone is wondering why they never
-    hear about — can be traced back to the label that did it without anyone having
+    at an unexpected severity, or a condition someone is wondering why they never
+    hear about, can be traced back to the label that did it without anyone having
     to guess which object carried it.
     """
     override = resolve(*label_sources)

@@ -85,7 +85,7 @@ async def seed_demand(sessions) -> None:
 async def seed_workload(db, name: str, digest_seed: str) -> uuid.UUID:
     """One workload row carrying the serving configuration, written directly.
 
-    Not through `WorkloadService`, deliberately: creating a workload expands it
+    Not through `WorkloadService`: creating a workload expands it
     onto a cluster, and a subject seeded that way would be holding the very
     capacity the test is about to ask after.
     """
@@ -170,7 +170,7 @@ async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
     """Gives one of the cluster's devices to a workload nobody asked about.
 
     A live `bind_allocation_device` row is the only record that an accelerator is
-    spoken for — `supply_device.allocatable` stays true, because the card is still
+    spoken for: `supply_device.allocatable` stays true, because the card is still
     claimable hardware. Anything that reports free devices has to read this.
     """
     async with sessions.begin() as db:
@@ -200,7 +200,7 @@ async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
 
 
 def four_devices(**overrides) -> PlacementShapeRequest:
-    """The shape a preview asks about, stated rather than named.
+    """The shape a preview asks about, stated, not named.
 
     A recipe was a declared object you could ask about before any workload
     referenced it, and this is what asking looks like without one. Field for field
@@ -216,7 +216,7 @@ def four_devices(**overrides) -> PlacementShapeRequest:
 def serving(**overrides) -> WorkloadServingRequest:
     """The four-device vLLM configuration every workload here asks for.
 
-    Stated on the create rather than named, because there is no shared serving
+    Stated on the create, not named, because there is no shared serving
     object to point at any more. Two of these produce the same `serving_digest`,
     which is the whole of what naming a recipe used to buy.
     """
@@ -245,7 +245,7 @@ def scale(total: int) -> dict:
 async def test_placement_takes_the_roomiest_of_the_clusters_that_work(sessions) -> None:
     """The roomiest, and every cluster that could have held it says why it did not win.
 
-    Tightness is scoped to a topology domain and nothing else — `_rank` in the
+    Tightness is scoped to a topology domain and nothing else: `_rank` in the
     engine, and the alternation tests beside it in `test_placement.py`. Best-fit
     packing across whole clusters drains one before touching the next, which sends
     every small workload to the same cluster until it is full; an aggregate fit
@@ -304,7 +304,7 @@ async def test_a_shape_and_the_workload_that_carries_it_get_the_same_answer(sess
     The shape form exists so a fit can be previewed before it is created; if it
     answered differently from the workload it becomes, the preview would be
     advertising a placement the create does not make. Everything but the id the
-    decision is filed under has to match — same cluster, same verdicts, same
+    decision is filed under has to match: same cluster, same verdicts, same
     reasons, in the same order.
     """
     await seed_demand(sessions)
@@ -393,7 +393,7 @@ async def test_a_gang_is_refused_before_anything_is_written(sessions) -> None:
 
 
 async def test_a_cluster_with_no_live_session_is_not_a_placement_target(sessions) -> None:
-    """Nowhere to put it is a shortfall, not a refusal — the declaration survives."""
+    """Nowhere to put it is a shortfall, not a refusal: the declaration survives."""
     await seed_demand(sessions)
     await seed_supply(sessions, "dark", devices=8, reachable=False)
 
@@ -453,7 +453,7 @@ async def test_a_pin_at_a_cluster_that_cannot_take_it_places_nothing(sessions) -
 async def test_a_region_allow_list_narrows_placement_without_choosing_for_it(sessions) -> None:
     """A region allow-list is a constraint, not a pin.
 
-    The roomier cluster is the one that loses, which is the whole point: placement still
+    The roomier cluster is the one that loses, which is the point: placement still
     ranks and still picks, it just cannot leave the region it was given.
     """
     await seed_demand(sessions)
@@ -471,7 +471,7 @@ async def test_a_region_allow_list_becomes_a_policy_attached_to_the_workload(ses
     """The constraint is discoverable afterwards, not a field nothing else can see.
 
     §6.3 says placement constraints are Policy. Declaring one on the create request is a
-    shortcut past `POST /policies`, not a second mechanism beside it — so what lands is an
+    shortcut past `POST /policies`, not a second mechanism beside it, so what lands is an
     ordinary policy row with an ordinary attachment.
     """
     await seed_demand(sessions)
@@ -496,7 +496,7 @@ async def test_the_constraint_a_workload_declared_survives_into_later_expansions
 
     This is the half that a create-time-only constraint would get wrong. The policy is
     read back through its attachment on every expansion, so a workload that outgrows its
-    region takes a shortfall rather than quietly spilling into another one.
+    region takes a shortfall, not quietly spilling into another one.
     """
     await seed_demand(sessions)
     await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
@@ -531,7 +531,7 @@ async def test_a_cluster_allow_list_still_checks_capacity(sessions) -> None:
 
 
 async def test_a_pin_and_an_allow_list_together_are_refused(sessions) -> None:
-    """They are contradictory instructions, so the plane refuses rather than ranking them.
+    """They are contradictory instructions, so the plane refuses instead of ranking them.
 
     A pin says placement does not decide; an allow-list says it decides inside a smaller
     set. Silently letting one win would make the other a field that sometimes does nothing.
@@ -681,7 +681,7 @@ async def test_scaling_down_removes_a_clusters_share_rather_than_parking_it(sess
     Three replicas over two clusters that hold two each spill into both; scaling
     back to two fits the first alone, and the second's deployment goes away. The
     invariant is that "which clusters is this on" stays answerable by reading the
-    rows — a deployment parked at zero replicas would answer it wrongly.
+    rows: a deployment parked at zero replicas would answer it wrongly.
     """
     await seed_demand(sessions)
     await seed_supply(sessions, "first", devices=8)
@@ -729,8 +729,8 @@ async def test_re_expanding_onto_the_same_split_does_not_bump_a_generation(sessi
 async def test_a_workload_operation_needs_no_cluster(sessions) -> None:
     """A workload spans clusters, so the plane executes these itself.
 
-    The guard that every other operation type relies on — a target belonging to
-    one cluster — would reject these outright, which is what made the console's
+    The guard that every other operation type relies on, a target belonging to
+    one cluster, would reject these outright, which is what made the console's
     scale button a 400 before they were plane-executed.
     """
     await seed_demand(sessions)
@@ -748,7 +748,7 @@ async def test_a_service_scaled_past_capacity_places_what_fits(sessions) -> None
     """A partial expansion is not a failure for a splittable kind.
 
     The clusters that could take some of it took some of it, and the shortfall is
-    visible in the rollup rather than costing the caller the capacity that was
+    visible in the rollup instead of costing the caller the capacity that was
     found. Only a gang, which has no partial answer, refuses outright.
     """
     await seed_demand(sessions)
@@ -787,7 +787,7 @@ async def test_a_refused_operation_is_failed_with_a_reason(sessions) -> None:
 
 
 async def test_pausing_disables_every_cluster_copy(sessions) -> None:
-    """Pause parks the shares rather than destroying them."""
+    """Pause parks the shares instead of destroying them."""
     await seed_demand(sessions)
     await seed_supply(sessions, "first", devices=8)
     await seed_supply(sessions, "second", devices=8)
@@ -1017,8 +1017,8 @@ async def test_a_second_workload_does_not_land_on_capacity_the_first_was_already
 
     Two clusters of eight, a recipe wanting four, and two workloads created one
     after the other at two replicas each. The first fills a cluster exactly. Nothing
-    has bound a device yet — allocations come from the cluster, and the cluster has
-    not spoken — so the only record that the capacity is gone is the deployment
+    has bound a device yet, allocations come from the cluster, and the cluster has
+    not spoken, so the only record that the capacity is gone is the deployment
     itself. Read from observed state alone, both clusters look empty both times and
     both workloads pile onto the same one.
     """
@@ -1137,7 +1137,7 @@ async def test_scaling_up_does_not_move_a_workload_off_its_own_reservation(sessi
 
     Without the exclusion the re-expansion reads its own pending replicas as somebody
     else's, finds its home cluster full, and moves the share to a cluster that is
-    merely emptier — reshuffling a service in the middle of coming up.
+    merely emptier: reshuffling a service in the middle of coming up.
     """
     await seed_demand(sessions)
     await seed_supply(sessions, "first", devices=12)

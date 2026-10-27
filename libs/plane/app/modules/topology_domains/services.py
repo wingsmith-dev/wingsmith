@@ -13,9 +13,9 @@ from .repository import TopologyDomainRepository
 
 
 class TopologyDomainService:
-    """Read-only, by construction rather than by refusal.
+    """Read-only, by construction, not by refusal.
 
-    Topology is observed — the operator discovers the fabric — so no create,
+    Topology is observed, the operator discovers the fabric, so no create,
     update or delete method exists on this class.
 
     This collection and the summary embedded on a device are both correct and

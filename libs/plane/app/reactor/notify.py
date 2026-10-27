@@ -6,7 +6,7 @@ thread per webhook call and nothing else. This runs on the reactor's tick, not o
 a request, so the thread is not on anyone's critical path.
 
 Nothing here raises into the loop. A webhook that is wrong, revoked, or rate
-limited must not stop conditions from being evaluated — the alert is already
+limited must not stop conditions from being evaluated: the alert is already
 durable in `ops_alert` and the console shows it either way. A delivery failure is
 recorded on the alert (`notify_error`) and retried on the next tick, because the
 notified marker is only advanced on success.
@@ -45,7 +45,7 @@ class DeliveryFailed(Exception):
 class Message:
     """What a channel is asked to deliver, already flattened out of the alert.
 
-    A struct rather than the `Alert` row so that rendering is testable without a
+    A struct instead of the `Alert` row so that rendering is testable without a
     database, and so a future channel kind cannot quietly start depending on
     columns the alert happens to carry.
     """

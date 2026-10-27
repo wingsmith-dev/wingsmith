@@ -3,8 +3,8 @@
 The bug these exist for: `zai-org/GLM-5.3-Flash` at 1,048,576 context is a hybrid
 model, every decode sequence holds one Mamba state block, and at that context only
 512 blocks fit. vLLM's default `max_num_seqs` is 1024, so the worker raises a
-`ValueError` at CUDA graph capture and crash-loops — a hard refusal, not an
-out-of-memory, and a property of the model rather than of our cluster. NVIDIA
+`ValueError` at CUDA graph capture and crash-loops: a hard refusal, not an
+out-of-memory, and a property of the model, not of our cluster. NVIDIA
 publishes the answer in `ai-dynamo/dynamo` `recipes/glm-5.3-flash/vllm/`, against
 the exact program the operator starts, and the plane used to read none of it.
 
@@ -50,7 +50,7 @@ MAMBA_CACHE_BLOCKS = 512
 
     max_num_seqs (1024) exceeds available Mamba cache blocks (512)
 
-Pinned as the bar rather than the published 32, because the published number is
+Pinned as the bar instead of the published 32, because the published number is
 allowed to move and the failure is not: anything above this is a crash loop.
 """
 
@@ -212,7 +212,7 @@ def test_a_card_with_no_recipe_of_its_own_gets_the_lowest_published_value():
 
     `max_num_seqs` is ceiling-shaped: under the true limit the engine starts and
     runs slower, over it the engine refuses. So a model with no recipe for this card
-    takes the lowest number anybody published for it — GLM-5.3-Flash has no
+    takes the lowest number anybody published for it: GLM-5.3-Flash has no
     aggregated B200 recipe, and 32 is the floor of its H200 and GB200 ones.
     """
     assert recipe_engine_args(a_workload(device_class=B200), an_artifact())["max-num-seqs"] == "32"
@@ -242,7 +242,7 @@ def test_every_adopted_flag_is_one_the_corpus_passes_to_a_dynamo_worker(corpus):
 
     An argument is adoptable only where NVIDIA is observed handing that exact
     spelling to `python3 -m dynamo.vllm`. It is what separates this from lifting a
-    flag out of `vllm serve`'s help text and hoping the other program takes it — the
+    flag out of `vllm serve`'s help text and hoping the other program takes it: the
     mistake that put `--tool-call-parser` on a worker that exits on unrecognised
     arguments.
     """

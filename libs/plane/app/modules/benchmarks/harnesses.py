@@ -1,13 +1,13 @@
 """The harnesses this plane knows how to point at a serving surface.
 
-One entry per harness, and an entry is small on purpose: the levels it makes
+One entry per harness, and an entry is small: the levels it makes
 sense at, the parameters it accepts, their defaults, and the wire name the
-operator dispatches on. What a harness *produces* is not described here at all —
+operator dispatches on. What a harness *produces* is not described here at all:
 results are stored in whatever shape the tool emits, and a schema for them would
 be this plane asserting it knows the union of three output formats it has not
 read yet. What one *means* is `summaries.py`, per version.
 
-Parameters are declared rather than passed through blind because the console
+Parameters are declared, not passed through blind because the console
 renders a form from them and because a typo in a flag name should be a 400 here,
 not a job that fails inside a cluster ten minutes later. There is no free-form
 flag or command-line parameter: the operator builds each harness's argv itself
@@ -16,7 +16,7 @@ knob that is not declared here is not one a run can turn.
 
 The level is not a free choice per run. A harness that emits per-dataset scores
 has nothing to say about one cluster's time-to-first-token, and a probe suite
-has nothing to say about a deployment that has no public name — so `levels` is a
+has nothing to say about a deployment that has no public name, so `levels` is a
 property of the harness and asking for one it does not declare is refused here,
 the same way an unknown knob is.
 """
@@ -37,7 +37,7 @@ ENDPOINT = "endpoint"
 LEVELS: tuple[str, ...] = (DEPLOYMENT, WORKLOAD, ENDPOINT)
 """The three things a run can be a measurement *of*, and they are different claims.
 
-A deployment run measures one cluster's configuration — the device class, the
+A deployment run measures one cluster's configuration: the device class, the
 tensor-parallel degree, the quantization, the engine flags. A workload run
 measures the serving configuration, which since ADR 0010 is a workload-level fact and is the
 same experiment however many clusters it was placed on. An endpoint run measures
@@ -67,9 +67,9 @@ class Parameter(NamedTuple):
     """One knob a harness accepts, and what it is when nobody sets it.
 
     `levels` narrows a knob to a subset of the harness's own. Empty means every
-    level the harness declares. A knob that only means something at one level —
-    exercising a failover order, which needs a second target to fail over to —
-    is refused elsewhere rather than quietly ignored.
+    level the harness declares. A knob that only means something at one level,
+    exercising a failover order, which needs a second target to fail over to,
+    is refused elsewhere, not quietly ignored.
     """
 
     name: str
@@ -118,8 +118,8 @@ DATASETS: tuple[str, ...] = (
 
 Declared for the same reason a parameter is: a misspelled dataset is a run that
 sits an exam nobody asked for, or none at all, and it should be a 400 here
-rather than an empty `results` block an hour later. A dataset the standard does
-not name is not refused because it is bad — it is refused because a score
+instead of an empty `results` block an hour later. A dataset the standard does
+not name is not refused because it is bad: it is refused because a score
 against it has no declared baseline to be graded against.
 """
 
@@ -167,7 +167,7 @@ CONFORMANCE = Harness(
         ),
         Parameter("strict", bool, True, "Treat advisory probes as required."),
         Parameter("request_timeout_s", int, 60, "Per-probe timeout."),
-        Parameter("concurrency", int, 4, "Probes in flight; low by design — this is not a load test."),
+        Parameter("concurrency", int, 4, "Probes in flight; low by design: this is not a load test."),
         Parameter("max_output_tokens", int, 64, "Generation cap; probes assert shape, not content."),
         Parameter(
             "failover_probe",
@@ -178,8 +178,8 @@ CONFORMANCE = Harness(
         ),
     ),
 )
-"""Not a load generator. A fixed, bounded catalogue of requests — most of them
-deliberately malformed — asserting on the response *shape*: which protocols answer,
+"""Not a load generator. A fixed, bounded catalogue of requests, most of them
+malformed, asserting on the response *shape*: which protocols answer,
 whether thinking mode and streaming behave as the workload declares, whether structured
 output and tool calls come back in the documented envelope, and whether an error is the
 error we promised. Its output is naturally boolean per probe.
@@ -232,7 +232,7 @@ EVALSCOPE = Harness(
 model that is**. The judge is harness configuration and nothing more: a base URL, a model
 name, a credential *reference*, and the two decoding knobs. Nothing here is pinned, no
 default names a grader, and no code path anywhere in `libs/plane` holds credential
-material — the reference is stored and the executor redeems it.
+material: the reference is stored and the executor redeems it.
 
 `dataset_revision`, `seed` and `repeats` are provenance wearing parameter clothes. A
 dataset that gained or corrected items is a different exam; the reasoning sets on this
@@ -272,7 +272,7 @@ def resolve_level(harness: Harness, level: str) -> str:
     A per-dataset accuracy score is not a statement about one cluster's latency
     and a probe against a public surface is not a statement about a deployment
     that has no public name. Both would run, both would produce a number, and
-    the number would be attributed to a claim it does not support — which is the
+    the number would be attributed to a claim it does not support, which is the
     failure the provenance columns exist to prevent, one level up.
     """
     if level not in LEVELS:
@@ -334,7 +334,7 @@ def resolve_datasets(supplied: str) -> tuple[str, ...]:
 
     Empty is not an error and is not a default set: it means the artifact's own
     declared baselines say which exams apply, which is resolved against the
-    baseline table at expansion rather than guessed at here.
+    baseline table at expansion, not guessed at here.
     """
     named = [entry.strip().lower() for entry in supplied.split(",") if entry.strip()]
     unknown = sorted({entry for entry in named if entry not in DATASETS})
@@ -355,7 +355,7 @@ def check_judge(harness: Harness, parameters: dict) -> None:
 
     A workload- or deployment-level run is dispatched into a cluster, into a pod
     built for no egress and mounting no credential material. A judge it can
-    resolve locally is fine and this plane cannot verify that either way — what
+    resolve locally is fine and this plane cannot verify that either way: what
     it can see is a `judge_credential_id`, whose presence is the tell that the
     grader is somewhere the cluster was not built to reach. That parameter is
     therefore endpoint-level, and `normalise` refuses it below the endpoint
@@ -446,14 +446,14 @@ def wire_parameters(
 
     Every value goes as a string because that is what the parameters map is; the
     operator parses them back against the same names. Booleans go as `true` and
-    `false` rather than Python's capitalised repr, which `strconv.ParseBool` on
+    `false`, not Python's capitalised repr, which `strconv.ParseBool` on
     the other side would not read.
 
     `model` is the served model name the run asks for, resolved from the deployment's
-    workload and artifact. It is not a harness parameter — the harness has no default
-    for it because there is no default model — but the operator keys everything it
+    workload and artifact. It is not a harness parameter, the harness has no default
+    for it because there is no default model, but the operator keys everything it
     renders off it (`parameters["model"]` at the top of `BenchmarkJob`), so it travels
-    inside the same map rather than beside it.
+    inside the same map, not beside it.
 
     `endpoint_model` is what the harness should put in the request body's `model`
     field when it dials the endpoint. That is almost always the same string as

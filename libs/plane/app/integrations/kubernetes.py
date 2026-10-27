@@ -1,13 +1,13 @@
 """The narrowest possible Kubernetes client: read a Secret key, patch a Secret key.
 
 The plane is not a Kubernetes controller and must not start looking like one. It
-knows nothing about Deployments — rule 2 of the project guide — and the operator is
+knows nothing about Deployments, rule 2 of the project guide, and the operator is
 the only thing that talks to a cluster's API. This module is the single exception,
 and it exists for exactly one object: the htpasswd Secret behind the central
 metrics store's write ingress, which lives in the plane's *own* cluster and which
 the plane is now the source of (ADR 0012).
 
-Deliberately hand-rolled over `httpx` rather than adding `kubernetes-asyncio`. The
+Hand-rolled over `httpx` instead of adding `kubernetes-asyncio`. The
 whole surface is two verbs on one resource kind; a generated client would bring a
 model hierarchy, a watch implementation and a discovery cache for that.
 
@@ -15,7 +15,7 @@ Authentication is the in-cluster service account and nothing else: the projected
 token at `TOKEN_PATH`, the cluster CA at `CA_PATH`, and the API address from the
 environment Kubernetes injects. `in_cluster()` returns `None` when any of the
 three is missing, which is what makes local development and the test suite a
-no-op rather than a failure — see `app.reactor.remote_write`.
+no-op instead of a failure; see `app.reactor.remote_write`.
 """
 
 from __future__ import annotations
@@ -118,9 +118,9 @@ class KubernetesApi:
 def in_cluster() -> KubernetesApi | None:
     """A client from the ambient service account, or `None` when there is not one.
 
-    Returns rather than raises on every missing piece. Outside Kubernetes there is
+    Returns, not raises on every missing piece. Outside Kubernetes there is
     no token file and no `KUBERNETES_SERVICE_HOST`, and the correct behaviour for
-    the caller is to do nothing at all — a plane that refused to boot without a
+    the caller is to do nothing at all: a plane that refused to boot without a
     service account would be a plane that cannot run locally.
     """
     host = os.environ.get("KUBERNETES_SERVICE_HOST")

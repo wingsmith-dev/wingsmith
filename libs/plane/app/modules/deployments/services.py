@@ -43,7 +43,7 @@ MANAGED = "managed"
 AUTHORITIES = frozenset({OBSERVED, MANAGED})
 """Who owns a deployment, and the only two answers there are.
 
-Binary on purpose. A deployment with some fields enforced and others left to drift
+Binary. A deployment with some fields enforced and others left to drift
 cannot be reasoned about at the moment somebody needs to, so the object answers in
 one word (ADR 0009).
 """
@@ -130,7 +130,7 @@ class DeploymentService:
     A deployment is not created here and not deleted here: placement creates it
     when it expands a workload, and removes it when the workload contracts. What
     is left is reading, taking or releasing management of one cluster's copy, and
-    enabling or disabling it — none of which is a statement about what was asked
+    enabling or disabling it: none of which is a statement about what was asked
     for, all of which are statements about this one cluster.
     """
 
@@ -149,16 +149,16 @@ class DeploymentService:
     ) -> None:
         """Files what the plane just did to a deployment, in the caller's transaction.
 
-        Before the caller's `commit()` on purpose. The event and the write it
+        Before the caller's `commit()`. The event and the write it
         describes are one fact, and committing them separately would allow the
-        pair where a deployment exists and nothing records it being asked for —
+        pair where a deployment exists and nothing records it being asked for:
         the exact gap that made a deployment's first minutes unreadable.
 
         This is a declared-state module writing to an observed table, which the
         layout otherwise forbids. It is allowed here because the event is not an
         observation of a cluster: it is the record of an intent this service is
         the only writer of, and `ops_event` is the one timeline a reader should
-        have to consult. The distinction is kept visible in the event type —
+        have to consult. The distinction is kept visible in the event type:
         `deployment.authority_changed` is something a human did,
         `deployment.placed` is something a cluster concluded.
         """
@@ -180,8 +180,8 @@ class DeploymentService:
         Every caller of this is on the far side of its own `commit()`, and that
         ordering is the contract: the hub answers the hint by re-reading the row,
         so announcing first would race the reader against a transaction that has
-        not landed. Missing the wakeup entirely costs latency and nothing else —
-        the next full resync carries the same state — which is why this never
+        not landed. Missing the wakeup entirely costs latency and nothing else,
+        the next full resync carries the same state, which is why this never
         stands between the caller and its response.
         """
         await self.notifier.changed(
@@ -286,7 +286,7 @@ class DeploymentService:
         promoted. `observed` is the plane letting go and needs nothing.
 
         A deployment the plane created itself has no sighting and no fingerprint to
-        check, and taking management of it is not a change of ownership — it is the
+        check, and taking management of it is not a change of ownership: it is the
         ownership it was created with, made explicit (ADR 0009).
         """
         if data.authority not in AUTHORITIES:
@@ -333,9 +333,9 @@ class DeploymentService:
         """Enables or disables one cluster's copy, and nothing else.
 
         The rest of what a deployment used to accept is declared on the workload
-        now, once, globally; scale is derived by placement from the workload total
-        rather than asserted per cluster. Disabling is the one per-cluster
-        statement left, and it is a declaration rather than an operation because it
+        now, once, globally; scale is derived by placement from the workload total,
+        not asserted per cluster. Disabling is the one per-cluster
+        statement left, and it is a declaration instead of an operation because it
         takes effect the moment the cluster reads it.
         """
         row = await self._one(ref, lock=True)

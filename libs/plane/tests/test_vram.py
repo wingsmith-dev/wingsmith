@@ -154,7 +154,7 @@ def test_a_sliding_layer_holds_its_window_and_not_the_sequence():
 
     gemma-4-26b declares 131k and runs 51 of its 62 layers on a 1024-token window. Sized
     as if all 62 were global it needs 122 GiB, which is two RTX PRO 6000s and then a
-    per-device floor of 122 GiB on a card that has 96 — so the plane refused the single
+    per-device floor of 122 GiB on a card that has 96, so the plane refused the single
     card the model actually serves on. The local layers are two orders of magnitude
     cheaper than the arithmetic charged them.
     """
@@ -283,7 +283,7 @@ def test_multimodal_quantization_is_read_from_the_nested_text_config():
     """A multimodal repo nests `quantization_config` under `text_config`.
 
     Reading only the top level returned None, which `sizing_of` turns into the
-    fp16 default — a fourfold overcount on 4-bit weights, and four times the
+    fp16 default: a fourfold overcount on 4-bit weights, and four times the
     cards.
     """
     config = {
@@ -395,7 +395,7 @@ def test_quantization_changes_what_has_to_be_resident():
 def test_the_same_model_fits_on_small_cards_by_needing_more_of_them():
     """A fit is about memory, not about whether the layout is a good idea.
 
-    A 70B at 8k does fit across a whole node of L4s — 180 GiB is 180 GiB, and the
+    A 70B at 8k does fit across a whole node of L4s: 180 GiB is 180 GiB, and the
     reason nobody serves it that way is interconnect, which is a performance
     judgement this module does not hold and must not smuggle in as a no-fit.
     """
@@ -444,7 +444,7 @@ def test_a_frontier_model_is_answered_in_domains_rather_than_refused():
 
 
 def test_one_nvl72_rack_is_a_single_node_and_says_so():
-    """72 coherent devices is one node, not nine chassis — the interconnect is the node."""
+    """72 coherent devices is one node, not nine chassis: the interconnect is the node."""
     sizing = Sizing(total_params=2_800_000_000_000, shape=None, quantization="fp8")
 
     chassis = fit(sizing, klass("b300-288gb-sxm"), Intent(context_length=8192, devices_per_node=8))
@@ -498,9 +498,9 @@ def test_heads_are_checked_against_the_tensor_degree_not_the_device_count():
 def test_a_no_fit_still_says_how_far_off_it_was():
     """ "needs more than 8× L4" is a procurement answer; "does not fit" is not.
 
-    Bounded with `max_devices` rather than by a model too large to fit anywhere. Now
+    Bounded with `max_devices`, not by a model too large to fit anywhere. Now
     that a fit crosses domains freely, "does not fit" means "does not fit inside the
-    ceiling you asked for", and naming the ceiling is the honest way to say it.
+    ceiling you asked for", and naming the ceiling is the accurate way to say it.
     """
     sizing = sizing_of_config(llama_config(), 405_000_000_000)
     verdict = fit(sizing, klass("l4-24gb-pcie"), Intent(context_length=8192, max_devices=8))
@@ -547,7 +547,7 @@ def test_a_truncated_context_is_offered_rather_than_hidden():
     verdict = fit(sizing, klass("a100-40gb-sxm"), Intent(context_length=163840))
     if verdict.fits and verdict.reduced:
         assert verdict.context_length < 163840
-        assert "rather than" in verdict.reason
+        assert "instead of" in verdict.reason
 
 
 def test_the_ladder_offers_every_count_that_serves_and_not_only_the_smallest():
@@ -585,7 +585,7 @@ def test_the_ladder_reaches_the_recommendation_when_it_spans_several_nodes():
 
 
 def test_the_ladder_keeps_a_trimmed_window_as_a_choice_rather_than_dropping_it():
-    """Fewer cards at a shorter window is a trade somebody makes on purpose."""
+    """Fewer cards at a shorter window is a trade somebody makes."""
     sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
     device = klass("h200-141gb-sxm")
     intent = Intent(context_length=131072, concurrency=32, devices_per_node=8)
@@ -787,7 +787,7 @@ def deepseek_v4_pro_config(**kwargs) -> dict:
     """`deepseek-ai/DeepSeek-V4-Pro-0813` as the Hub publishes it, trimmed to the sizing fields.
 
     Three things in one config that each broke a different term, which is why it is
-    here whole rather than as three synthetic shapes. It writes its MLA latent as
+    here whole, not as three synthetic shapes. It writes its MLA latent as
     `head_dim` with a single KV head and no `kv_lora_rank`; it declares a
     `sliding_window` beside an `index_topk` that is sparse selection and not a
     smaller cache; and it is quantized twice, fp8 in the header and fp4 for the
@@ -860,7 +860,7 @@ def test_a_latent_kv_cache_is_found_under_head_dim_when_kv_lora_rank_is_absent()
     """Transformers 4.57 writes MLA as one KV head holding the whole latent.
 
     Read as ordinary attention it charges key and value separately across a 512-wide
-    head — 1.78x the 61 x (512 + 64) x 2 bytes a token actually costs.
+    head: 1.78x the 61 x (512 + 64) x 2 bytes a token actually costs.
     """
     shape = extract_shape(deepseek_v4_pro_config())
 
@@ -931,7 +931,7 @@ def test_the_expert_precision_survives_being_written_down_and_read_back():
 
     So the second precision has to be persisted beside the shape. Losing it on the way
     to the database would put DeepSeek-V4-Pro back on two nodes the moment anybody
-    fitted it from the catalogue rather than from a resolve.
+    fitted it from the catalogue, not from a resolve.
     """
     config = deepseek_v4_pro_config()
     metadata = {

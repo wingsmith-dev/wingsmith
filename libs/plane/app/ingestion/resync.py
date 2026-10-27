@@ -25,7 +25,7 @@ ALLOCATION = "allocation"
 class ResyncEpoch:
     """One open snapshot, accumulated in memory between `resync.begin` and `stream.end`.
 
-    In memory and nowhere else, deliberately: the epoch is the sole authority
+    In memory and nowhere else: the epoch is the sole authority
     for pruning, so losing it is indistinguishable from never having opened one.
     """
 

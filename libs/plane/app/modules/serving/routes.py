@@ -1,9 +1,9 @@
 """The serving view: what one tenant is being served, and nothing else.
 
-`/v1/serving` is the only surface a tenant credential can reach —
-`app.core.context` refuses one everywhere else — which makes the module's
-boundary the security boundary. Two rules follow, and both are load-bearing
-rather than tidiness:
+`/v1/serving` is the only surface a tenant credential can reach,
+`app.core.context` refuses one everywhere else, which makes the module's
+boundary the security boundary. Two rules follow, and both are essential,
+not tidiness:
 
 Nothing on `/v1/serving` takes a tenant from the caller. The scope comes off the
 principal in `depends`, so no handler can be written that reads the wrong one.
@@ -15,10 +15,10 @@ of both.
 An admin reads a customer's view through the second controller, mounted under
 `/v1/tenants/{ref}/serving`. It renders the same three reads from the same
 service, so the console never grows a second rendering of what a tenant sees.
-Which tenant is a path segment there rather than a query parameter on the
+Which tenant is a path segment there instead of a query parameter on the
 tenant-scoped surface, and that is the whole security argument: `/v1/tenants` is
 outside `TENANT_SURFACE`, so a tenant credential cannot reach it at all. The
-query-parameter shape it replaces could never have worked — the dependency read
+query-parameter shape it replaces could never have worked: the dependency read
 `?tenant=`, the handlers never declared it, and the request was refused as an
 unknown parameter before the dependency ran.
 """
@@ -78,7 +78,7 @@ class ServingRoutes(Controller):
 
         The reference is resolved against this tenant before the metrics service
         sees it, so what reaches the query is a uid this tenant was proved to own
-        rather than a name they typed.
+        instead of a name they typed.
         """
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)

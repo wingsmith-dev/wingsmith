@@ -28,7 +28,7 @@ def gang_complete(allocation: Allocation, live_devices: int) -> bool:
 class AllocationService:
     """Observed, read-only, and read-only by construction.
 
-    There is no create, update or delete method on this class — not methods that
+    There is no create, update or delete method on this class, not methods that
     refuse, methods that do not exist. Allocation is decided by placement and
     reported by the cluster, and ingestion is its only writer. Releasing capacity
     is a consequence of a workload ending, never a `DELETE` on this resource.

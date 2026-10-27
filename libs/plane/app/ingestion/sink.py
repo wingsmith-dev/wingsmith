@@ -7,7 +7,7 @@ write path in the system, and the API would be the thing that noticed.
 
 Raising is the whole error contract. `OperatorSession` withholds the
 acknowledgement for any frame whose sink call raised and the operator replays
-it, so a method here either commits or raises — never logs and returns, which
+it, so a method here either commits or raises, never logs and returns, which
 would acknowledge state that was never written.
 """
 
@@ -74,13 +74,13 @@ PERMANENT = (MalformedObservation, IntegrityError, DataError)
 A constraint violation is one: a component nobody declared, a device whose node was
 never reported, an identifier claimed by another cluster. Withholding the ack for one
 of these wedged the stream behind it until a person intervened, and the frames it
-held back were the ones that would have repaired the state — the node frame after
+held back were the ones that would have repaired the state: the node frame after
 its device, the release after the claim. Transient failures (a dropped connection, a
 timeout, a serialisation conflict) are not in here and are retried by the session.
 """
 
 TERMINAL_OPERATION_PHASES = statements.TERMINAL_OPERATION_PHASES
-"""Restated in `statements` rather than imported from `app.modules.operations`: ingestion must not
+"""Restated in `statements`, not imported from `app.modules.operations`: ingestion must not
 depend on a module's service layer, and this is the one fact it needs from it."""
 
 SYNC_STAMP_SECONDS = 1.0
@@ -97,8 +97,8 @@ DEMAND_SCOPES = frozenset({"demand", "all"})
 def _roles(roles: Any) -> tuple:
     """The per-role counts as a comparable tuple, from either the stored row or the frame.
 
-    One function for both sides because they are the same fact in two shapes — a list of dicts
-    read back out of JSONB, and a list of Structs decoded off the wire — and comparing them
+    One function for both sides because they are the same fact in two shapes, a list of dicts
+    read back out of JSONB, and a list of Structs decoded off the wire, and comparing them
     directly would be true only by accident.
     """
     out = []
@@ -114,8 +114,8 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
     """Whether this frame says anything the last one did not.
 
     The operator already suppresses a report identical to its own previous one,
-    but that memory is per process and does not survive a restart or a failover
-    — after either, the first frame for every deployment restates whatever was
+    but that memory is per process and does not survive a restart or a failover,
+    after either, the first frame for every deployment restates whatever was
     already true. Comparing against the stored row instead is what keeps a hub
     reconnect from filing a page of events that record nothing having happened.
 
@@ -142,10 +142,10 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
 
 
 #: Phases a deployment reaches only after its work has been handed to the cluster. Reaching one of
-#: them is what makes an earlier stage of the same generation impossible rather than merely old.
+#: them is what makes an earlier stage of the same generation impossible, not merely old.
 SETTLED_PHASES = frozenset({"placed", "running", "degraded"})
 
-#: The reasons a `pending` frame can carry that describe a step on the way to applying rather than
+#: The reasons a `pending` frame can carry that describe a step on the way to applying, not
 #: a state the deployment has come to rest in. They are the operator's `stageRank` keys, and its
 #: `stage` helper is the only thing that sends them.
 STAGE_REASONS = frozenset({"Accepted", "Rendering"})
@@ -157,8 +157,8 @@ def _regressed(before, payload) -> bool:
     The operator suppresses a stage it has already sent, but that memory is per
     process: a restart, a failover or a fresh hub session leaves it empty, and the
     next pass replays `Accepted` and `Rendering` for a deployment that has been
-    serving for a week. The frames are not wrong — they are what the loop does on
-    its first pass — they are simply about a moment that has passed.
+    serving for a week. The frames are not wrong, they are what the loop does on
+    its first pass, they are simply about a moment that has passed.
 
     Applied blindly they cost more than a noisy timeline. The status row is
     last-writer-wins, so a replayed `pending` overwrites `running 1/1` and the
@@ -168,8 +168,8 @@ def _regressed(before, payload) -> bool:
     What makes a frame stale is its reason, not its phase. A stage is true once
     per instruction and the operator walks the set once per generation, so a
     stage arriving for a generation already placed is stale by definition. A
-    `pending` that names a *state* — `NoSchedulableCapacity`, `WeightsNotResident`
-    — is a fact about now, and the generation cannot move to tell it apart from a
+    `pending` that names a *state*, `NoSchedulableCapacity`, `WeightsNotResident`,
+    is a fact about now, and the generation cannot move to tell it apart from a
     replay: nothing was redeployed. Judging those two alike is what let a cluster
     that lost its nodes report `NoSchedulableCapacity` every fifteen seconds for
     hours into a guard that dropped every frame, while the plane went on showing
@@ -196,7 +196,7 @@ class DatabaseSink:
         """Open snapshots, by cluster and then by request, with the session each arrived on.
 
         Keyed by cluster so a `reply_to` can only ever reach its own cluster's snapshot,
-        bounded per cluster, and dropped when the session that opened them goes away —
+        bounded per cluster, and dropped when the session that opened them goes away:
         an epoch nothing will ever close used to stay in memory for the life of the hub.
         """
 
@@ -211,7 +211,7 @@ class DatabaseSink:
     async def _cluster_id(self, db: AsyncSession, cluster_ref: str) -> UUID:
         """Resolves a wire cluster id to a primary key, in the write's own transaction.
 
-        Accepts either a uid or a name, the same way the REST layer does — an
+        Accepts either a uid or a name, the same way the REST layer does: an
         operator is configured by hand, long before anyone has read back the uid
         the plane minted, and a name someone chose is the only identity a cluster
         has at that point.
@@ -261,7 +261,7 @@ class DatabaseSink:
 
         Serialised per cluster with a transaction-scoped advisory lock. The upserts
         below are idempotent one at a time, but an `ON CONFLICT` names one arbiter,
-        and an observed table has two unique keys — the natural key and the
+        and an observed table has two unique keys: the natural key and the
         cluster-minted `uid`. Two transactions inserting the same object at once
         both pass the arbiter's check, and the second fails on the other key
         instead of updating. One cluster's frames normally arrive on one session
@@ -293,7 +293,7 @@ class DatabaseSink:
     async def _fence(self, db: AsyncSession, cluster_id: UUID, frame_cluster: str, session_id: str | None) -> None:
         """Refuses the write unless the session it arrived on still owns the cluster.
 
-        A frame with no session — a test, a caller outside the hub — is not fenced.
+        A frame with no session (a test, a caller outside the hub) is not fenced.
         """
         if session_id is not None and not await self._holds(db, cluster_id, session_id):
             raise ClaimLost(frame_cluster)
@@ -308,7 +308,7 @@ class DatabaseSink:
     async def _deployment(self, db: AsyncSession, cluster_id: UUID, uid: str) -> tuple[UUID, UUID] | None:
         """`(deployment_id, workload_id)` for a declared deployment in this cluster.
 
-        Scoped to the cluster deliberately: a frame naming a deployment that lives
+        Scoped to the cluster: a frame naming a deployment that lives
         somewhere else is not a deployment this stream may write about.
         """
         result = await db.execute(
@@ -324,20 +324,20 @@ class DatabaseSink:
     ) -> bool:
         """Writes one allocation and reconciles its device membership in the same transaction.
 
-        Three statements rather than one because an allocation is a row and a set:
+        Three statements instead of one because an allocation is a row and a set:
         the row says what is committed and to whom, the set says which accelerators,
-        and a device dropped from the set has to be stamped released — that is what
+        and a device dropped from the set has to be stamped released: that is what
         frees it for the next allocation under the partial unique index.
 
         A frame naming a deployment or project the plane does not have is accepted
-        and dropped, not replayed. Ingestion may not create either one — both are
-        declared — and withholding the ack would wedge the stream behind a frame
+        and dropped, not replayed. Ingestion may not create either one, both are
+        declared, and withholding the ack would wedge the stream behind a frame
         that can never be applied.
 
         A frame naming no accelerators is a release and takes the other path
         entirely: there is no device to read a class off, so the upsert would
         write a null into a column that refuses one and take the whole
-        transaction down — including the release it was sent to perform.
+        transaction down, including the release it was sent to perform.
         """
         deployment = await self._deployment(db, cluster_id, payload.deployment_id)
         project_id = await self._uid_ref(db, Project, payload.project_id)
@@ -375,7 +375,7 @@ class DatabaseSink:
         """Hands back everything one allocation was holding.
 
         The cluster states a departure by restating the allocation with no
-        devices, which is the only signal the plane gets that a replica is gone —
+        devices, which is the only signal the plane gets that a replica is gone:
         demand state is not reaped by the supply resync, so an allocation nobody
         released stays held and its accelerators stay spoken for.
 
@@ -408,7 +408,7 @@ class DatabaseSink:
         unchanged forever and the stream behind it would never advance, so it is
         accepted, discarded and logged instead (PROTOCOL.md 6b): a malformed
         payload, and a frame the database refuses on a constraint (`PERMANENT`).
-        The resync epoch is poisoned either way — a frame that did not land is not
+        The resync epoch is poisoned either way: a frame that did not land is not
         evidence about what exists.
         """
         try:
@@ -484,7 +484,7 @@ class DatabaseSink:
                     )
                     return None
                 # Read, then file, then overwrite. The status row is last-writer-wins, so the
-                # transition only exists in the gap between the read and the upsert — after it
+                # transition only exists in the gap between the read and the upsert, after it
                 # there is nothing left to compare against.
                 before = (await db.execute(statements.deployment_status_before(deployment[0]))).first()
                 if _regressed(before, payload):
@@ -503,7 +503,7 @@ class DatabaseSink:
                 # The frame names this deployment's whole replica set on this cluster, so the
                 # replicas it does not name are gone. Nothing else ever removes one: demand
                 # state is not pruned against a resync, so a rolled or restarted pod left its
-                # row behind for ever and kept counting towards the rollup — which is how a
+                # row behind for ever and kept counting towards the rollup, which is how a
                 # deployment of one came to read three ready of one in the console.
                 #
                 # `None` is an operator too old to make the claim and prunes nothing; an empty
@@ -521,8 +521,8 @@ class DatabaseSink:
                             len(payload.replica_ids),
                         )
                 # Admission moves with it, on this deployment alone. A workload has one of these
-                # per cluster and they do not agree — one region can be running while another sits
-                # queued on quota — so the phase is written here and the workload only takes the
+                # per cluster and they do not agree, one region can be running while another sits
+                # queued on quota, so the phase is written here and the workload only takes the
                 # rollup that is genuinely global: when the first of its clusters started.
                 advance = statements.advance_admission_phase(deployment[0], payload)
                 if advance is not None:
@@ -643,7 +643,7 @@ class DatabaseSink:
                 )
             elif payload.phase in TERMINAL_OPERATION_PHASES:
                 # A benchmark reports its own result on `benchmark.observed`, and everything that
-                # fails before the executor gets that far reports nothing at all — a refused kind,
+                # fails before the executor gets that far reports nothing at all: a refused kind,
                 # an operator too old to know it, a cluster that never came back. Without this the
                 # run stays open for ever with nothing saying why.
                 await db.execute(
@@ -715,14 +715,14 @@ class DatabaseSink:
 
         The half that was missing, and the reason a paused workload kept holding
         cards. Demand state used to be reaped only by
-        `deployment.observed.replica_ids` — a per-deployment claim, carried on a
+        `deployment.observed.replica_ids`: a per-deployment claim, carried on a
         frame that stops arriving the moment the deployment is torn down. Every
         way of losing that frame left a row nothing would ever collect again: a
         pause, a delete, an operator restarted while the pod was going away.
 
         Cluster-wide and under the same guard as the supply side. `decide` has
         already established that the snapshot arrived whole and unpoisoned, so
-        absence from it is evidence rather than silence. Nothing here reads a
+        absence from it is evidence, not silence. Nothing here reads a
         transition, which is the point: the cluster states what it holds and the
         plane converges on it, from any starting state and after any outage.
         """
@@ -775,7 +775,7 @@ class DatabaseSink:
         checked against the sender's declared total. A type ingestion does not
         yet write still arrived.
 
-        A live frame — one that answers no snapshot — still lands while a snapshot
+        A live frame, one that answers no snapshot, still lands while a snapshot
         of its cluster is open, and what it wrote must survive that snapshot's
         prune. It is kept by every open epoch of its cluster without being counted.
         """
@@ -838,14 +838,14 @@ class DatabaseSink:
     async def _sync_state(self, cluster_uid: str, values: dict[str, Any], session_id: str | None = None) -> str | None:
         """Writes one cluster's sync state and reports the uid of the row it wrote.
 
-        The uid is returned rather than assumed because `cluster_uid` is a
+        The uid is returned, not assumed because `cluster_uid` is a
         reference and may be either identity; callers that already hold a uid pay
         nothing for it beyond the row they were reading anyway.
 
         Fenced on the claim when a session is named: liveness is the one fact a
         displaced session is most likely to get wrong, because its last act is to
         report the cluster it no longer serves as gone. Skipped silently rather
-        than raised — the session is closing either way.
+        than raised: the session is closing either way.
 
         Also writes whatever `_stamp` is still holding for the cluster, so the tail of
         a burst reaches the row within one liveness interval of its last frame.
@@ -899,7 +899,7 @@ class DatabaseDesiredSource:
         A session replays these on connect because an operation created while the
         cluster was offline has nothing else to carry it: the notification that
         would have dispatched it live found no session, and the resync that
-        repairs declared state deliberately does not cover operations.
+        repairs declared state does not cover operations.
         """
         from app.ingestion.operations import open_operations
 

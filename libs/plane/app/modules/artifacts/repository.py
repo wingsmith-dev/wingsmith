@@ -27,7 +27,7 @@ class ArtifactRepository:
     """Reads artifacts with their locations and the uids of what they point at.
 
     `base_artifact_id` and `project_id` are foreign keys to rows whose public
-    identifier is a uid, so both are resolved in the same statement rather than
+    identifier is a uid, so both are resolved in the same statement, not
     by a follow-up load per artifact.
     """
 
@@ -45,8 +45,8 @@ class ArtifactRepository:
     def get_query(self, ref: str) -> Select:
         """An id or a name, per the contract. Prefixes are the client's problem.
 
-        An artifact name is not unique — two quantizations of one base model are
-        routinely named the same — so a name resolves to the oldest match. Only
+        An artifact name is not unique, two quantizations of one base model are
+        routinely named the same, so a name resolves to the oldest match. Only
         the digest and the uid identify an artifact exactly.
         """
         if is_uid(ref):
@@ -189,9 +189,9 @@ class ArtifactRepository:
         and answering it here would fold a fact that changes by the minute into one
         that only changes when a card is bought.
 
-        `memory_mib` is the largest figure observed for the class rather than the
+        `memory_mib` is the largest figure observed for the class instead of the
         contract table's, because the fleet is entitled to hold hardware the table
-        has never heard of — `app.core.devices` slugifies those rather than dropping
+        has never heard of: `app.core.devices` slugifies those instead of dropping
         them, and a fit against what the cluster reported beats no fit at all.
         """
         return (
@@ -217,10 +217,10 @@ class ArtifactRepository:
         devices, and that number is only meaningful against a card somebody can be
         given. Sized against the largest card the *catalogue* names, the suggestion
         divides by hardware that may exist nowhere in the fleet and produces a shape
-        no cluster can satisfy — a per-device floor above every card we own, which
+        no cluster can satisfy: a per-device floor above every card we own, which
         placement reads as "this cluster has no such device".
 
-        Observed rather than from the contract table, for the same reason
+        Observed, not from the contract table, for the same reason
         `fleet_classes` reports observed memory: what a cluster said it has is the
         only figure a placement will later be decided on.
         """
@@ -232,12 +232,12 @@ class ArtifactRepository:
         """The largest node each device class has been observed in, in devices.
 
         A node here is a set of devices sharing a coherent interconnect, which is what
-        makes it the unit a replica is laid out in — eight on an HGX board, seventy-two in
+        makes it the unit a replica is laid out in: eight on an HGX board, seventy-two in
         a GB300 NVL72, where the rack is many chassis of silicon and one node to anything
         scheduling on it. `supply_topology_domain.device_count` already carries exactly
         that, so the fleet answers the question and nothing is assumed for what we run.
 
-        The maximum rather than the mode: a class present in both an 8-way chassis and a
+        The maximum instead of the mode: a class present in both an 8-way chassis and a
         72-way rack can be laid out either way, and the wider option is the one a fit
         should be allowed to reach for.
         """

@@ -8,10 +8,10 @@ still a lie the plane can catch before a cluster does.
 
 What is new here is `serving_digest`. The identity of a serving configuration is its
 content, so the tests that used to ask whether two recipes were the same object now ask
-whether two workloads hash the same — including across a write and the reload after it,
+whether two workloads hash the same, including across a write and the reload after it,
 which is a question a separate object never had to answer.
 
-The workload's own surface — its request shapes, its routes, its repository — is
+The workload's own surface (its request shapes, its routes, its repository) is
 `test_workloads.py`. This file is the configuration, not the object that holds it.
 """
 
@@ -257,7 +257,7 @@ def test_a_whole_serving_request_is_checked_at_once():
     """One entry point, so a patch cannot arrive at a state a create would have refused.
 
     Every rule above is reachable through it, and each of them is reached from a
-    different corner of the nested request — the shape from `shape`, the parallel
+    different corner of the nested request: the shape from `shape`, the parallel
     layout from `parallelism`, the fraction from `cache`.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT), name="llama", digest="sha256:beef")
@@ -598,7 +598,7 @@ def test_an_image_cap_is_json_and_arrives_with_the_switch_that_turns_images_on()
 
     `--limit-mm-per-prompt` on this engine takes JSON. Rendered as `image=4` the worker
     exits on `Value image=4 cannot be converted to <function loads>` before it loads a
-    weight — a crashloop for every workload that declared a cap. And a cap on its own
+    weight: a crashloop for every workload that declared a cap. And a cap on its own
     caps a path that is off: `--enable-multimodal` is what turns the multimodal
     components on at all, so without it the flag that survived would have limited
     nothing.
@@ -740,7 +740,7 @@ def test_a_floor_no_card_of_the_declared_class_can_meet_is_refused():
     A workload asked for `h200-141gb-sxm` with a floor of 192 GiB per device. Every
     H200 in the fleet has 141, so placement filtered all eight out before it looked at
     which were free, reported `no_such_device_class`, and the workload expanded to no
-    deployment at all — while the plane's own capacity check had already agreed that
+    deployment at all, while the plane's own capacity check had already agreed that
     four of those cards can serve the model.
     """
     with pytest.raises(Invalid) as raised:
@@ -812,7 +812,7 @@ def test_a_declared_frontend_image_is_carried_verbatim():
 
     The plane knows which repository an engine's workers come from because
     `ENGINE_RUNTIME_REPOS` tells it. Nothing tells it what a cluster serves its
-    frontends through — that is the operator's fact — so the only frontend image
+    frontends through, that is the operator's fact, so the only frontend image
     this side can state is one a person pinned.
     """
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"
@@ -858,8 +858,8 @@ def test_the_serving_spec_carries_no_identity_and_no_routing():
 def test_the_typed_serving_block_reaches_the_cluster():
     """The flags a workload declares must be the flags the engine is started with.
 
-    `ServingSpec` carries no typed block — the operator renders a command line and
-    has no use for a typed one — so the resolved arguments are what goes on the
+    `ServingSpec` carries no typed block, the operator renders a command line and
+    has no use for a typed one, so the resolved arguments are what goes on the
     wire. Sending `engine_args` raw instead made the whole serving block a view: the
     console rendered `--reasoning-parser` and no cluster was ever told.
     `libs/conformance` found it that way round, against a live endpoint whose
@@ -893,7 +893,7 @@ def test_renaming_a_column_does_not_move_the_identity_of_a_configuration():
 
     `ops_benchmark_run.serving_digest` names the configuration a measurement was taken
     against, so a digest that shifted when a column was renamed would leave every stored
-    run pointing at a configuration no workload has — a benchmark attributed to nothing,
+    run pointing at a configuration no workload has: a benchmark attributed to nothing,
     failing silently. `DIGEST_FIELDS` is `(hash key, attribute)` for exactly this: the
     attribute half follows the code, the key half never moves.
 
@@ -967,9 +967,9 @@ def test_two_workloads_asking_for_the_same_thing_carry_one_digest():
 def test_every_field_that_decides_what_process_runs_moves_the_digest(field, value):
     """The digest answers "would this produce the same running process".
 
-    Parametrised over the whole list rather than spot-checked, because a field
+    Parametrised over the whole list, not spot-checked, because a field
     quietly dropped from it is a digest that says two different engines are the
-    same configuration — and nothing downstream would notice until a benchmark
+    same configuration, and nothing downstream would notice until a benchmark
     result was attributed to the wrong fit.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
@@ -1010,7 +1010,7 @@ def test_a_fraction_is_quantised_on_the_way_in_so_a_reload_hashes_the_same():
     `kv_cache_fraction` is `Numeric(5, 4)`, so a float written straight through comes
     back as `Decimal("0.9000")`, and the digest hashes the column as the string it
     round-trips as. Without quantising on the way in, the digest a create returned
-    and the digest the next write computed would differ for a row nobody touched —
+    and the digest the next write computed would differ for a row nobody touched:
     one configuration with two identities, produced by nothing but a reload.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
@@ -1033,7 +1033,7 @@ def test_the_digest_is_read_off_the_row_and_never_off_the_request():
     """What is hashed is what was stored, coercions included.
 
     A digest computed from the request would name a configuration nobody is running
-    the moment the write path coerces anything — which it does, on every fraction.
+    the moment the write path coerces anything, which it does, on every fraction.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
     workload = a_workload()
@@ -1046,7 +1046,7 @@ def test_the_digest_is_read_off_the_row_and_never_off_the_request():
 def test_the_slug_of_the_weights_is_what_the_engine_answers_to():
     """A fact about the weights, which survives a re-fit.
 
-    It used to be `Recipe.name` — `kimi-k3-mxfp4-tp8-1024k` — so re-fitting the same
+    It used to be `Recipe.name` (`kimi-k3-mxfp4-tp8-1024k`) so re-fitting the same
     model at a different tensor degree renamed the model every client codes against.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT), name="Kimi-K3", slug="moonshotai/kimi-k3")
@@ -1084,7 +1084,7 @@ def test_a_model_with_no_recipe_hashes_exactly_as_it_did():
     An absent key and an empty map are different hashes. If this function wrote
     `engine_defaults: {}` for every model the corpus does not cover, every workload
     in the fleet would take a new digest at once and every deployment would
-    re-render — which is the fleet-wide reload the digest exists to prevent.
+    re-render, which is the fleet-wide reload the digest exists to prevent.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT), slug="nobody/not-in-the-corpus")
     workload = a_workload(device_class="h200-141gb-sxm")
@@ -1110,7 +1110,7 @@ def test_an_aggregated_workload_hashes_exactly_as_it_did_before_roles_existed():
     """The pin that makes the migration additive, and the reason the fields are conditional.
 
     Every workload in the fleet is aggregated. If `serving_topology` or the role block reached
-    the payload for them, every digest would move at migration — every deployment's
+    the payload for them, every digest would move at migration: every deployment's
     `ServingDigestAnnotation` with it, and every `ops_benchmark_run` would lose the link back to
     the configuration it measured. The literal is assembled the way the pre-roles code assembled
     it, so this fails if anyone makes either field unconditional.
@@ -1131,7 +1131,7 @@ def test_an_aggregated_workload_hashes_exactly_as_it_did_before_roles_existed():
 def test_a_ratio_change_does_not_change_the_identity_of_the_configuration():
     """1:2 and 2:4 are the same configuration served at two scales, and one digest.
 
-    Not because a digest change would restart anything — it would not; every scale in the system
+    Not because a digest change would restart anything: it would not; every scale in the system
     already bumps the generation and re-applies. Because `ops_benchmark_run.serving_digest` is
     what links a measurement to what it measured, and a weight in the hash would orphan every
     benchmark on a model the moment somebody added a prefill worker. Those benchmarks are the
@@ -1189,8 +1189,8 @@ def test_disaggregating_is_a_configuration_change_and_aggregating_back_returns_t
 def test_device_count_is_per_worker_and_the_group_total_is_not_a_column():
     """The side door the weights would otherwise come back through.
 
-    `device_count` *is* a digest field. If it ever held the group's 24 devices rather than one
-    worker's 8, the weights would be in the hash again — silently, because nothing about the
+    `device_count` *is* a digest field. If it ever held the group's 24 devices instead of one
+    worker's 8, the weights would be in the hash again: silently, because nothing about the
     column's name says which of the two it holds. So the group's cost is `Σ (weight × device_count)`,
     derived where it is used and stored nowhere, and these two assertions are what say so: the
     weights move nothing, and the per-worker count moves everything.
@@ -1240,7 +1240,7 @@ def test_a_role_with_no_workers_is_not_a_role():
 def test_any_pair_of_positive_weights_is_a_legitimate_ratio():
     """`2:2` says two of each. Coprimality was dropped with the argument that required it.
 
-    It existed so that one footprint had one spelling in the digest — but the weights are not in
+    It existed so that one footprint had one spelling in the digest, but the weights are not in
     the digest at all, so all it bought was making "two of each" inexpressible as such.
     """
     for prefill, decode in ((1, 2), (2, 2), (3, 1), (2, 4)):
@@ -1261,7 +1261,7 @@ def test_a_role_may_not_contradict_a_flag_the_plane_already_decided(flag):
     `kv-transfer-config` is the same string on both roles because the transfer mechanism belongs
     to the topology, and `disaggregation-mode` *is* the role. A value for either from a role's
     own arguments is a second answer to a settled question, and `engine_args` wins on the command
-    line — so it would not be overruled, it would win.
+    line, so it would not be overruled, it would win.
     """
     roles = [a_role("prefill", engine_args={flag: "1"}), a_role("decode")]
     with pytest.raises(Invalid):
@@ -1281,7 +1281,7 @@ def test_a_group_costs_the_sum_of_its_roles_and_device_count_stays_per_worker():
 
     `device_count` is a digest field and means devices per worker. The group's cost is derived
     wherever it is used and stored nowhere, because a column holding it would put the role weights
-    into `serving_digest` through a second door — silently, since nothing about such a column's
+    into `serving_digest` through a second door: silently, since nothing about such a column's
     name would say which of the two it held.
     """
     roles = [a_role("prefill", weight=1), a_role("decode", weight=2)]
@@ -1295,7 +1295,7 @@ def test_the_topology_is_refused_as_part_of_the_whole_serving_request():
     """`check_topology` is reached through the one entry point create and update share.
 
     An update is validated as the whole configuration it would leave behind, so a patch cannot
-    arrive at a topology a create would have refused — which is the property `check_serving_request`
+    arrive at a topology a create would have refused, which is the property `check_serving_request`
     exists for, and it only holds if the topology check is inside it.
     """
     artifact = an_artifact()

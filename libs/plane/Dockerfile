@@ -25,7 +25,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 COPY console/ ./
 
 # Empty, not unset. Vite inlines these at build time, and `http.ts` falls back to
-# http://localhost:8000 only when the variable is *absent* — which is what a dev server wants and
+# http://localhost:8000 only when the variable is *absent*, which is what a dev server wants and
 # what an image serving its own console must not have. An empty value makes every request relative
 # to wherever the bundle was loaded from, so the same image is correct behind a port-forward, a
 # tunnel, or an ingress without being rebuilt for each.
@@ -54,14 +54,14 @@ COPY plane/alembic.ini ./
 COPY plane/README.md ./
 # The device-class table is shared with the operator and lives in the contract, not in this
 # package. `app/core/devices.py` reads it at import, so an image without it cannot answer a
-# metrics request — it fails resolving the path before it fails finding the file.
+# metrics request: it fails resolving the path before it fails finding the file.
 COPY packages/contract/devices.json ./contract/devices.json
 RUN uv sync --locked --no-dev
 
 FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
 
 # psycopg is the pure-Python build and loads libpq at import time. A developer's machine has one
-# already, which is why this is missing rather than wrong: the image had never been run. Installing
+# already, which is why this is missing, not wrong: the image had never been run. Installing
 # the system library keeps the dependency pinned as it is, where switching to psycopg[binary] would
 # vendor a second copy of libpq into the wheel and pin it to psycopg's release cadence.
 RUN apt-get update && \

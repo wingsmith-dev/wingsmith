@@ -26,8 +26,8 @@ from app.core.filters import ref_ids
 RUNNING_PHASES = ("starting", "ready", "draining")
 """The observed phases in which a replica's process is actually up.
 
-`running` is not one of the phases a cluster reports — the wire enum is
-`pending | starting | ready | draining | terminated | failed` — so counting rows
+`running` is not one of the phases a cluster reports, the wire enum is
+`pending | starting | ready | draining | terminated | failed`, so counting rows
 equal to the string would have counted nothing, forever. A replica that is
 draining is still serving what it already accepted, which is why it is here and
 `terminated` is not.
@@ -37,7 +37,7 @@ draining is still serving what it already accepted, which is why it is here and
 async def bump_generation(db: AsyncSession, deployment: Deployment) -> int:
     """Increments a deployment's generation in the database and returns the new value.
 
-    `UPDATE ... SET generation = generation + 1 RETURNING` rather than `+= 1` on the
+    `UPDATE ... SET generation = generation + 1 RETURNING` instead of `+= 1` on the
     loaded row, so two writers that both read generation n write n+1 and n+2 instead
     of both writing n+1, which would leave a cluster that saw the first write
     believing it is already current with the second. Pending column changes are
@@ -61,17 +61,17 @@ async def bump_generation(db: AsyncSession, deployment: Deployment) -> int:
 class DeploymentRepository:
     """Reads deployments joined to the workload they belong to.
 
-    The join is many-to-one now rather than one-to-one: a workload has one
+    The join is many-to-one now, not one-to-one: a workload has one
     deployment per cluster it was expanded onto, and this module reads a single
     one of them. It is still always present, because a deployment carries only
-    this cluster's share and its admission — what was actually asked for is on
+    this cluster's share and its admission: what was actually asked for is on
     the parent, and a deployment read without at least its name is half an answer.
 
     The observed status is an outer join because it is written by the cluster and
     a deployment that no cluster has reported on yet is the normal state for the
-    first seconds of its life — and the permanent state of one whose cluster is
-    unreachable. An inner join would make those deployments vanish from the list
-    rather than show up without a status, which is the opposite of what somebody
+    first seconds of its life, and the permanent state of one whose cluster is
+    unreachable. An inner join would make those deployments vanish from the list,
+    not show up without a status, which is the opposite of what somebody
     looking for a stuck deployment needs.
     """
 
@@ -155,7 +155,7 @@ class DeploymentRepository:
         """By id, or by name narrowed by `cluster`.
 
         A workload expanded onto three clusters has three deployments of one name, so a
-        bare name that matches more than one is refused rather than resolved to any of
+        bare name that matches more than one is refused, not resolved to any of
         them. `lock` holds the deployment row until the transaction ends, re-read, for a write.
         """
         query = self.get_query(ref, cluster).limit(2)
@@ -167,7 +167,7 @@ class DeploymentRepository:
     async def sighting_fingerprint(self, cluster_id: UUID, workload_uid: str) -> str | None:
         """What the cluster currently reports the adopted object is running.
 
-        Read from the sighting rather than from `adopted_fingerprint`, because the
+        Read from the sighting, not from `adopted_fingerprint`, because the
         point of the check is to compare the caller's view against what is live
         now. A sighting that has been pruned returns None, which is a refusal: an
         adopted object the cluster is no longer reporting is not one to take

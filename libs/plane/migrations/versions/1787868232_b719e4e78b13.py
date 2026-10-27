@@ -4,8 +4,8 @@ Revision ID: b719e4e78b13
 Revises: fac33e4dd051
 Create Date: 2026-08-27 19:03:52.990111
 
-Existing rows are left null rather than backfilled with their own name. Null
-means "not observable": metrics report no source for the cluster rather than
+Existing rows are left null, not backfilled with their own name. Null
+means "not observable": metrics report no source for the cluster instead of
 querying the shared store under a label nothing has confirmed, where an empty
 answer would read as a healthy idle fleet.
 

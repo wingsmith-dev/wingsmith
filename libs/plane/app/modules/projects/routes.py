@@ -3,7 +3,7 @@
 Not a request scope: nothing reads a project header, and no request is
 filtered by project.
 
-A project carries its tenant as an embedded field rather than a link, so no reader
+A project carries its tenant as an embedded field instead of a link, so no reader
 has to join for it; `/v1/tenants` is where one is made. A path segment takes the
 project id or its slug; the slug is unique only within a tenant, so `tenant`
 narrows an ambiguous one.

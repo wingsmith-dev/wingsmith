@@ -10,7 +10,7 @@ class PlacementShapeRequest(Struct):
     previews would be a second vocabulary to keep in step, and the first divergence
     would be a preview that answers about something the create then refuses.
 
-    Nothing here is stored and nothing is validated against an artifact — this is a
+    Nothing here is stored and nothing is validated against an artifact: this is a
     question, not a declaration. `check_shape` still governs what may be created.
     """
 
@@ -25,8 +25,8 @@ class PlacementShapeRequest(Struct):
 class PlacementPreviewRequest(Struct):
     """A placement question asked without creating anything.
 
-    The same inputs a deployment supplies — what to run, who for, and at what
-    priority — because a preview that took a different shape from the real call
+    The same inputs a deployment supplies, what to run, who for, and at what
+    priority, because a preview that took a different shape from the real call
     would be a second scheduler to keep in step.
 
     Exactly one of `workload` and `shape` says what to place, and the pair is the
@@ -38,9 +38,9 @@ class PlacementPreviewRequest(Struct):
     That second form is a capability this endpoint briefly lost. It used to name a
     recipe, and a recipe was an object you could declare and ask about before any
     workload referenced it; when the recipe went away the only askable thing left
-    was a workload that, on a create form, does not exist yet. Rather than restore
+    was a workload that, on a create form, does not exist yet. Instead of restoring
     an object to be the subject of a question, the question takes the shape
-    directly — which is what it always wanted, and is why the recipe could answer
+    directly, which is what it always wanted, and is why the recipe could answer
     it in the first place.
 
     `project` is required in both forms. Capacity is read per project, so there is
@@ -70,12 +70,12 @@ class ReservationSchema(Struct):
     """Capacity a cluster owes a deployment that has not bound a device yet.
 
     Derived on read and stored nowhere. It is the difference between what a
-    deployment declares — this cluster's share, times the workload's device shape —
+    deployment declares (this cluster's share, times the workload's device shape)
     and what ingestion has confirmed the cluster actually bound, so it appears the
     moment placement chooses a cluster and reaches zero on its own as the
     allocations arrive.
 
-    Deliberately not an `AllocationSchema` and deliberately not on that route. An
+    Not an `AllocationSchema` and not on that route. An
     allocation is observed and names its devices; this is declared and names none,
     because which accelerators the promise lands on is the cluster's answer and it
     has not given it. Rendering the two as one list would tell an operator we know

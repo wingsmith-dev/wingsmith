@@ -261,8 +261,8 @@ def test_deployment_status_stores_the_per_role_counts_beside_the_scalars() -> No
 
     `2 of 3` is the same pair of integers for a missing prefill worker and a missing
     decode one, and those are a deployment serving nothing and a deployment serving
-    slowly. The scalars stay the rollup — a reader that ignores `roles` is right and
-    merely coarse — which is what makes the column additive rather than a replacement.
+    slowly. The scalars stay the rollup, a reader that ignores `roles` is right and
+    merely coarse, which is what makes the column additive instead of a replacement.
     """
     observed = payload("deployment.observed")
     assert observed.roles
@@ -361,7 +361,7 @@ def test_replica_stores_the_runtime_version_and_not_the_engine() -> None:
 def test_replica_stores_the_role_the_cluster_read_off_its_pod() -> None:
     """Observed with ingestion as its only writer, and null when there is no ratio.
 
-    It is the cluster's answer about a running pod rather than the workload's
+    It is the cluster's answer about a running pod instead of the workload's
     declaration about what should exist, and a rollout is exactly the interval in
     which the two disagree.
     """
@@ -601,7 +601,7 @@ def test_cluster_observed_carries_whether_the_operator_reconciles() -> None:
     """`read_only` is the operator's posture and only the operator knows it.
 
     The plane renders `cluster.readOnly` into the install values and then forgets
-    it, and that field is the one the header invites an operator to override — so
+    it, and that field is the one the header invites an operator to override, so
     what was rendered is not evidence of what is running.
     """
     frame = payload("cluster.observed")
@@ -661,7 +661,7 @@ def test_a_departed_node_stops_claiming_to_be_ready() -> None:
 
     Until this existed the plane recorded the departure and left the row saying
     the node was ready, so it stayed a placement candidate until a completed
-    resync happened to prune it — which, on a session that never dropped, was
+    resync happened to prune it, which, on a session that never dropped, was
     never.
     """
     sql, params = compile_sql(statements.mark_node_left(CLUSTER_ID, NODE_UID, MOMENT))
@@ -763,8 +763,8 @@ def test_a_whole_snapshot_prunes() -> None:
 class FakeResult:
     """Answers the two shapes the sink reads: a scalar lookup and a row set.
 
-    `all()` returns nothing, which is the honest stand-in here — this fake records
-    statements rather than executing them, so a prune it never ran has no rows to
+    `all()` returns nothing, which is the accurate stand-in here: this fake records
+    statements instead of executing them, so a prune it never ran has no rows to
     have deleted and therefore no removal events to raise.
     """
 
@@ -855,7 +855,7 @@ async def test_applying_one_frame_commits_once() -> None:
 async def test_a_malformed_id_is_acknowledged_and_dropped_not_replayed() -> None:
     """A poison frame would come back forever; the stream behind it must advance.
 
-    The contrast with the unknown-cluster case below is the whole point: that one
+    The contrast with the unknown-cluster case below is the point: that one
     raises, because a cluster the plane has not enrolled yet is a condition a
     later retry can resolve.
     """
@@ -935,7 +935,7 @@ async def test_a_truncated_snapshot_deletes_nothing() -> None:
 async def test_a_demand_resync_prunes_the_replicas_and_allocations_it_did_not_name(caplog) -> None:
     """The gap this closes: demand state that nothing would ever collect again.
 
-    It used to be reaped only by `deployment.observed.replica_ids` — a claim
+    It used to be reaped only by `deployment.observed.replica_ids`: a claim
     carried per deployment, on a frame that stops arriving the moment the
     deployment is torn down. A paused workload's replicas stayed `ready` and the
     cards under them stayed held, for ever. A complete demand snapshot is now
@@ -1222,7 +1222,7 @@ def test_a_deployment_still_coming_up_accepts_its_next_stage() -> None:
 
 def test_a_pending_state_at_a_settled_generation_is_not_a_replayed_stage() -> None:
     """A workload whose nodes are reclaimed reports `NoSchedulableCapacity` at the generation it
-    was already serving on — nothing was redeployed, so the generation cannot move to separate it
+    was already serving on: nothing was redeployed, so the generation cannot move to separate it
     from a stage replay. Refusing it left the plane showing four of four ready for hours while the
     operator said the opposite every fifteen seconds."""
     observed = payload("deployment.observed")
@@ -1282,7 +1282,7 @@ def test_a_cache_event_replay_lands_on_the_row_it_already_wrote():
 
 def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
     """The frame that finally says why a deployment is stuck carries the phase, reason and counts
-    the deployment already had — it is the `last_error` that is new. Compared without it, the one
+    the deployment already had: it is the `last_error` that is new. Compared without it, the one
     frame anybody was waiting for is the one suppressed as a repeat."""
     observed = payload("deployment.observed")
     before = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas)
@@ -1296,9 +1296,9 @@ def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
 def _workload(**kwargs):
     """A workload carrying the serving configuration a recipe used to hold.
 
-    The name is still the fit — `example-moe-mxfp4-tp8-1024k` — because that is the
+    The name is still the fit (`example-moe-mxfp4-tp8-1024k`) because that is the
     string these tests exist to keep off the wire. It is a workload's name now
-    rather than a recipe's, and it is no more a model id than it was.
+    instead of a recipe's, and it is no more a model id than it was.
     """
     from app.db.models import Workload
 
@@ -1353,7 +1353,7 @@ def _wire_serving(**kwargs):
 def _wire_served_model(**kwargs):
     """The `served_model_name` the sender puts on the frame beside that spec.
 
-    It is resolved on the deployment rather than inside the serving block: the
+    It is resolved on the deployment, not inside the serving block: the
     block is what renders, and the name is what a caller asks for.
     """
     from app.core.serving import declared_served_model
@@ -1394,7 +1394,7 @@ def test_a_workload_with_no_frontend_image_sends_nothing_not_the_runtime_image()
     The field is not one field because a model can need a fix compiled into the
     frontend binary (a tokenizer, say) while the worker correctly stays on the base
     image, so a plane that filled an absent frontend image in with the engine's
-    would be stating the exact thing that broke — and on any cluster whose
+    would be stating the exact thing that broke, and on any cluster whose
     frontends are not published from the engine's repository it would be an
     ImagePullBackOff.
     """
@@ -1420,7 +1420,7 @@ def test_the_serving_block_carries_the_digest_that_names_the_configuration() -> 
 
     The cluster does not act on it. It is carried so that a replica reporting
     what it runs, a benchmark run recording what it measured, and this frame all
-    spell the configuration the same way — which the recipe id could not, being a
+    spell the configuration the same way, which the recipe id could not, being a
     handle on a row somebody could edit underneath all three.
     """
     assert _wire_serving().digest == "svg_" + "0" * 64
@@ -1429,7 +1429,7 @@ def test_the_serving_block_carries_the_digest_that_names_the_configuration() -> 
 def test_the_plane_multiplies_groups_by_weights_and_the_operator_never_does():
     """`role_replicas` is absolute, and this is the test that says the arithmetic happens here.
 
-    `Replicas()` in the operator states its own contract — it "renders exactly the number it is
+    `Replicas()` in the operator states its own contract: it "renders exactly the number it is
     sent, and must never sum, scale, or re-derive it against anything else". That invariant is
     absolute today and cheap to check, and an operator multiplying groups by weights would be its
     first exception. So the plane multiplies, and the wire carries the product.

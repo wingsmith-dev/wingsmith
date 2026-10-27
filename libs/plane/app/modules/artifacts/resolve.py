@@ -1,12 +1,12 @@
 """Reading a HuggingFace slug as a proposed artifact.
 
-The plane derives the digest rather than letting the client assert one. A client
+The plane derives the digest instead of letting the client assert one. A client
 that types a digest is making a claim nobody checked, and two clients registering
 the same weights would land on two identities; deriving it from the Hub's per-file
 LFS oids means the same repo at the same commit always resolves to the same
 artifact, without a byte of weights crossing the control plane.
 
-Nothing here writes. It proposes, and the caller confirms — either by looking at
+Nothing here writes. It proposes, and the caller confirms, either by looking at
 the draft or by posting `source` and letting `create` apply it.
 """
 
@@ -70,13 +70,13 @@ class ServingDefaults(Struct):
 class UpstreamDeployment(Struct):
     """What the corpus's own rules render for one node shape.
 
-    A large model has no single tested parallelism — it has one per node it can
+    A large model has no single tested parallelism: it has one per node it can
     run on. Kimi K3 is TP 8 on an H200 and TP 8 on a GB300 tray of four, needs one
     node by the corpus's declared GPU floor and four on an H100, and cannot use
     `multi_node_dep` on either. Flattening that to one number loses every part of
     it that a placement decision turns on.
 
-    `nodes_declared` is the corpus's floor — `strategy_min_gpus`, resolved their
+    `nodes_declared` is the corpus's floor: `strategy_min_gpus`, resolved their
     way. `nodes_by_memory` is our own division of the published memory floor by
     what the node holds, and the two answer different questions: theirs is what
     the layout needs to work at all, ours is what the weights need to fit. The
@@ -95,9 +95,9 @@ class UpstreamDeployment(Struct):
 class UpstreamRecipe(Struct):
     """Serving parameters somebody upstream has run, attributed to them.
 
-    Kept apart from `ServingDefaults` on purpose. That struct is the plane's own
+    Kept apart from `ServingDefaults`. That struct is the plane's own
     arithmetic over `config.json`, and this is a third party's measurement of a
-    different question — not "what do these weights need" but "what did this
+    different question, not "what do these weights need" but "what did this
     configuration do when we served it". Merging the two would produce a draft
     where no field can say where its number came from, and the numbers do not
     always agree.
@@ -109,7 +109,7 @@ class UpstreamRecipe(Struct):
     `verified_hardware` names the node shapes vLLM ran on, which is evidence that
     the configuration works and no evidence at all that we own such a node.
 
-    `args` is the whole tested command line — base flags, the variant's flags, and
+    `args` is the whole tested command line: base flags, the variant's flags, and
     the flags of every feature that is on by default. The parsers are lifted out
     of it because a workload's serving block has typed fields for them; the list
     stays whole because the flags we have no field for are exactly the ones a person
@@ -126,7 +126,7 @@ class UpstreamRecipe(Struct):
     engine_version_min: str | None
     """The lowest vLLM release that serves these weights, as the recipe declares it.
 
-    vLLM's own version — `0.28.0` — and not a workload's `engine_runtime_version`,
+    vLLM's own version (`0.28.0`) and not a workload's `engine_runtime_version`,
     which names a tag of the Dynamo runtime image (`vllm-runtime:1.4.1`). The two
     count in different sequences and one is not the other spelled differently, so
     this is reported and never seeded into a serving block: `vllm-runtime:0.28.0`
@@ -142,11 +142,11 @@ class UpstreamRecipe(Struct):
 
     Reported and never proposed. It is a third party's runtime with no `ai-dynamo`
     in it, so a workload that set `engine_runtime_image` to this would fail on the
-    operator's `python3 -m dynamo.vllm` instead of on the weights — a different
+    operator's `python3 -m dynamo.vllm` instead of on the weights: a different
     error, no closer to serving. What it is good for is the negative claim: a
     recipe that names an image is one the plane's derived
     `<engine>:<engine_runtime_version>` cannot load, and that is worth saying before a
-    workload is created rather than two minutes into a pod.
+    workload is created instead of two minutes into a pod.
     """
     tensor_parallel: int | None
     default_strategy: str | None
@@ -169,7 +169,7 @@ class UpstreamRecipe(Struct):
 class ResolvedArtifact(Struct):
     """A source manifest read as an artifact, ready to be registered.
 
-    The field names overlap `discovered.derive.ArtifactDraft` deliberately: both
+    The field names overlap `discovered.derive.ArtifactDraft`: both
     answer "what artifact is this", and two drafts naming the same fact differently
     is how a console ends up with two ways to register one set of weights.
 
@@ -237,7 +237,7 @@ def source_of(metadata: dict, uris: tuple[str, ...] = ()) -> str | None:
     `metadata.huggingface_id` first, because that is what `resolved` wrote and it
     names the repo without a revision attached. The locations are the fallback for
     artifacts registered before that key existed or adopted by reference from a
-    running workload — their uris carry `@revision`, which is dropped: a refresh
+    running workload; their uris carry `@revision`, which is dropped: a refresh
     asks the repo what it says now, and pinning the commit it said it at would make
     the answer the one already stored.
 
@@ -278,7 +278,7 @@ _MODALITY_CONFIGS = {
 
 A weaker signal than a model card and a much stronger one than a name: a repo
 that ships a `vision_config` has a vision tower in the checkpoint, which is a
-fact about the bytes rather than a claim about them.
+fact about the bytes instead of a claim about them.
 """
 
 
@@ -287,7 +287,7 @@ def publisher_claims(model: HuggingFaceModel, shape_context: int | None) -> Arti
 
     Only what the repo actually states. `reasoning` and `tool_calling` stay null,
     because `config.json` says nothing about either and inventing a `false` here
-    would deny a capability the publisher never spoke about — the engine recipe
+    would deny a capability the publisher never spoke about: the engine recipe
     is where evidence for those comes from, one level down.
 
     `recorded_at` is left for the writer to stamp: this module is pure, and a
@@ -359,19 +359,19 @@ def suggest_serving(
     what the model is spread across. Sized against the largest card the contract
     table names instead, the suggestion divides a model by hardware nobody here
     owns: GLM-5.3-Flash needed 383 GB, was divided by a 288 GB B300, and came back
-    as two devices at a 192 GiB floor — a floor no H200 in the fleet can meet, so
+    as two devices at a 192 GiB floor: a floor no H200 in the fleet can meet, so
     every cluster reported having no such device and the workload was placed
     nowhere. `None` falls back to the table, which is right for a plane that has
     not enrolled a cluster yet and has nothing better to divide by.
 
     The direction matters. The serving parameters are the repo's own: its native
     quantization, its dtype, and the full context window it declares. Those are
-    read and never trimmed — an artifact knows nothing about what we operate, so
+    read and never trimmed: an artifact knows nothing about what we operate, so
     it cannot be the thing that decides a 131k model should be served at 8k. The
     device shape is the consequence: how much memory that configuration needs, and
     across how many accelerators it has to spread to get it.
 
-    Quantization is resolved from the repo rather than defaulted: a repo shipping
+    Quantization is resolved from the repo, not defaulted: a repo shipping
     mxfp4 sized as fp16 overcounts weights fourfold, which turns a suggestion into
     a placement that never schedules.
 
@@ -448,7 +448,7 @@ _SINGLE_NODE_TP = "single_node_tp"
 _DISAGREEMENT_RATIO = 1.25
 """How far the two sizings may drift before the difference is worth a warning.
 
-Below this they are two honest answers to slightly different questions — ours
+Below this they are two correct answers to slightly different questions: ours
 sizes the declared context at concurrency one, theirs is a floor measured under
 whatever load they ran. Above it one of them is wrong about the weights, and
 that is a thing to look at before the workload is submitted.
@@ -456,10 +456,10 @@ that is a thing to look at before the workload is submitted.
 It was 2.0, and 2.0 is wide enough to hide the error it exists to catch.
 DeepSeek-V4-Pro sized every one of its 1.65 T parameters at the fp8 its
 `quantization_config` names, ignoring the `expert_dtype: fp4` that holds 94% of
-them, and came out at 1,537 GB against a published 960 GB. A ratio of 1.6 — a
-whole extra H200 node — and the guard rail let it through without a word.
+them, and came out at 1,537 GB against a published 960 GB. A ratio of 1.6, a
+whole extra H200 node, and the guard rail let it through without a word.
 
-The honest gap between the two questions is the KV cache and the activation peak,
+The accurate gap between the two questions is the KV cache and the activation peak,
 which on a model this size are under a tenth of the total. A quarter is loose
 enough for that and tight enough that a misread precision cannot sit inside it.
 """
@@ -476,9 +476,9 @@ def upstream_recipe(
     nothing about the rest. It produces no note, because "nobody upstream has
     published a recipe for this" is not a remark about the weights.
 
-    The lookup takes the slug as typed. A slug that is a requantized variant —
-    `RedHatAI/...-FP8-dynamic` — resolves to the family recipe *and* to the
-    variant inside it, so the precision is read rather than guessed.
+    The lookup takes the slug as typed. A slug that is a requantized variant,
+    `RedHatAI/...-FP8-dynamic`, resolves to the family recipe *and* to the
+    variant inside it, so the precision is read, not guessed.
     """
     match = vllm_recipes.lookup(model.slug)
     if match is None:
@@ -571,7 +571,7 @@ def _note_disagreement(
     which the two compare at all: eight devices at 40 GB and four at 80 GB are one
     sizing, and a per-device comparison would call them different. The published
     figure is already a replica total and must not be multiplied by the tested
-    parallelism — doing that counts a 1.6 TB model eight times over.
+    parallelism: doing that counts a 1.6 TB model eight times over.
     """
     if not replica_memory_mib_min:
         return
@@ -586,7 +586,7 @@ def _note_disagreement(
             level=WARN,
             message=(
                 f"the sizing derived here needs about {ours // _MIB_PER_GB} GB across the replica, "
-                f"while the published vLLM recipe was served in {replica_memory_mib_min // _MIB_PER_GB} GB — "
+                f"while the published vLLM recipe was served in {replica_memory_mib_min // _MIB_PER_GB} GB: "
                 "the two disagree by more than a factor of two"
             ),
         )
@@ -736,7 +736,7 @@ def resolved(
                 level=WARN,
                 message=(
                     "the weights are not content-addressable, so the digest names the commit "
-                    "rather than hashing the bytes"
+                    "instead of hashing the bytes"
                 ),
             )
         )
@@ -744,7 +744,7 @@ def resolved(
             notes.append(
                 ResolveNote(
                     level=WARN,
-                    message=f"{path} is committed to git rather than LFS and carries no content hash",
+                    message=f"{path} is committed to git, not LFS and carries no content hash",
                 )
             )
         if not model.weight_files:

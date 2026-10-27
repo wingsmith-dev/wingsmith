@@ -4,10 +4,10 @@
 normalises it, which is the rule and stays the rule. This module is the other
 half of that rule: refusing to assert a union across formats does not mean
 refusing to be able to read one. An entry here says *for this harness, between
-these versions, the P90 time-to-first-token is at this path, in these units* —
+these versions, the P90 time-to-first-token is at this path, in these units*:
 a reader's knowledge of one producer, per version, and never a shared schema.
 
-Per-version and explicit rather than a fuzzy search, because a harness renaming
+Per-version and explicit instead of a fuzzy search, because a harness renaming
 a percentile between releases is precisely the failure the `harness_version`
 comparability rule exists to catch, and a lookup that guessed would paper over
 it. A path that does not resolve is a named miss, never a silent zero.
@@ -86,7 +86,7 @@ REQUEST_THROUGHPUT = "request.throughput"
 DISPLAY_ONLY: frozenset[str] = frozenset({TTFT_P95, TTFT_P99, ITL_P50, E2E_P95, OUTPUT_SPEED_TOTAL, REQUEST_THROUGHPUT})
 """Every id a chart may read and no verdict may.
 
-Not the mechanism — `read` searching only `fields` is the mechanism — but the
+Not the mechanism (`read` searching only `fields` is the mechanism) but the
 assertion a test holds that mechanism to.
 """
 
@@ -109,7 +109,7 @@ AIPERF_0_4 = Adapter(
         # `output_token_throughput` is not a fallback here and never becomes one: a serving
         # GPU's aggregate rate clears a per-stream floor under every possible condition, so a
         # check that could reach it would be a check that can never fail. It is a number worth
-        # drawing all the same — flattening aggregate throughput is what a knee looks like —
+        # drawing all the same, flattening aggregate throughput is what a knee looks like,
         # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
@@ -163,7 +163,7 @@ def adapter_for(harness: str, harness_version: str | None) -> Adapter | None:
 
     Nothing when the harness has no map, when the run never reported a version,
     or when the version it reported falls outside every declared range. All
-    three end at the same place — a verdict of `inconclusive` — because all
+    three end at the same place, a verdict of `inconclusive`, because all
     three mean the same thing: we cannot say we know what these numbers are.
     """
     if harness_version is None:
@@ -188,7 +188,7 @@ def read(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
 
     Searches `adapter.fields` and nothing else. A display id asked for here is
     the same named miss an unknown id is, which is what keeps a display-only
-    number structurally out of every verdict rather than out of it by memory.
+    number structurally out of every verdict, not out of it by memory.
     """
     field = next((candidate for candidate in adapter.fields if candidate.id == field_id), None)
     if field is None:
@@ -199,7 +199,7 @@ def read(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
 def show(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
     """One field a chart may read, from either half of the map.
 
-    The inverse of `read` and deliberately not its replacement: a curve plots a
+    The inverse of `read` and not its replacement: a curve plots a
     graded percentile and an ungraded aggregate side by side through one call,
     while grading stays one-way.
     """
@@ -229,9 +229,9 @@ def _resolve(field: Field, summary: dict | None) -> Reading:
 def failures(summary: dict | None) -> list[dict]:
     """The enumerated probe failures a conformance summary carries.
 
-    A list rather than a count because the required/advisory split is per entry
-    and the verdict grades only the required ones. The full per-probe record —
-    every probe, passing and failing, with its latency — is telemetry and lives
+    A list instead of a count because the required/advisory split is per entry
+    and the verdict grades only the required ones. The full per-probe record,
+    every probe, passing and failing, with its latency, is telemetry and lives
     behind `artifacts_uri`, never here.
     """
     listed = (summary or {}).get("failures")
@@ -243,9 +243,9 @@ def failures(summary: dict | None) -> list[dict]:
 def dataset_scores(summary: dict | None) -> dict[str, tuple[str, float]]:
     """Every `dataset -> (metric, score)` an accuracy summary reports.
 
-    Entries that do not carry a numeric score are dropped rather than defaulted,
-    which leaves the dataset looking absent — and an absent dataset is graded
-    `not_applicable` rather than passed, which is the safe direction.
+    Entries that do not carry a numeric score are dropped, not defaulted,
+    which leaves the dataset looking absent, and an absent dataset is graded
+    `not_applicable`, not passed, which is the safe direction.
 
     Two producers land here. The plan-doc shape `{results: {<dataset>: {metric, score}}}`
     is what a future harness that emits the union directly would write; the operator's

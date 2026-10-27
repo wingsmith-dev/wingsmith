@@ -110,7 +110,7 @@ class DiscoveredWorkloadService:
     workload writes one row in `demand_workload_adoption` and stops there: it
     creates no `Deployment`, declares no serving configuration, and produces nothing that
     `stream_desired` will ever read. That is deliberate and is the reason this
-    module exists rather than an "import to deployment" endpoint — the plane
+    module exists instead of an "import to deployment" endpoint: the plane
     cannot cause a rollout of a workload it has declared nothing about, and a
     model whose weights are already resident stays resident.
     """
@@ -227,7 +227,7 @@ class DiscoveredWorkloadService:
         The row is not deleted and could not be: it is observed state, ingestion is
         its only writer, and a row deleted here would be written straight back on
         the next observation because the workload is still running. What is
-        recorded instead is the decision, and the listing honours it — which is
+        recorded instead is the decision, and the listing honours it, which is
         also what makes it reversible, where a delete racing an observation would
         not be.
 
@@ -258,9 +258,9 @@ class DiscoveredWorkloadService:
     async def restore(self, ref: str) -> DiscoveredWorkloadSchema:
         """Undoes a dismissal, so the workload is listed again as it was.
 
-        The decision is dropped rather than replaced. A dismissal that had been
+        The decision is dropped, not replaced. A dismissal that had been
         recorded as `new` would be a decision nobody made, and the sighting has
-        been sitting there the whole time — putting it back means having no
+        been sitting there the whole time: putting it back means having no
         opinion about it again.
         """
         row = await self._one(ref)
@@ -277,11 +277,11 @@ class DiscoveredWorkloadService:
     async def serving_draft(self, ref: str, cluster: str | None = None) -> ServingDraft:
         """Reads a sighting as a proposed serving block. Writes nothing.
 
-        A read rather than a POST because it is one: the same sighting derives the
+        A read instead of a POST because it is one: the same sighting derives the
         same draft every time, and nothing about asking the question changes the
-        answer. What a person does with the draft — edit it, promote with it, throw
-        it away — happens on `promote`, so there is one path that declares a serving
-        configuration rather than two that must agree.
+        answer. What a person does with the draft, edit it, promote with it, throw
+        it away, happens on `promote`, so there is one path that declares a serving
+        configuration instead of two that must agree.
         """
         return await self._draft(await self._one(ref, cluster=cluster))
 
@@ -289,7 +289,7 @@ class DiscoveredWorkloadService:
         """Derives the sighting's serving block, once, for whoever asked.
 
         Read by the draft endpoint and by `promote` alike, so that what a person is
-        shown and what an adoption declares are the same reading rather than two
+        shown and what an adoption declares are the same reading instead of two
         readings that have to agree.
         """
         workload: DiscoveredWorkload = row.DiscoveredWorkload
@@ -311,7 +311,7 @@ class DiscoveredWorkloadService:
         The pair is minted together: one Workload pinned to the cluster the sighting
         is running in, and its one Deployment there. Pinned and capped at one cluster
         because an adopted object is a record of something that already exists in one
-        place — expanding it elsewhere would be starting a second copy, which is the
+        place: expanding it elsewhere would be starting a second copy, which is the
         opposite of cataloguing.
 
         This is the one call in this module that writes declared state, and every
@@ -322,20 +322,20 @@ class DiscoveredWorkloadService:
         sighting currently reports, so a caller cannot promote a workload that
         changed between reading and deciding; and the digest is then recorded on
         the deployment, so the cluster refuses to reconcile it if it drifts later.
-        The second check is the load-bearing one — the sighting can be up to one
+        The second check is the essential one: the sighting can be up to one
         observation interval stale, and the cluster is the only thing that knows
         what is running right now.
 
-        Scale comes from the workload rather than the caller. A promotion that also
+        Scale comes from the workload instead of the caller. A promotion that also
         set the replica count would scale a live workload as a side effect of
         cataloguing it.
 
-        The serving block is read off the sighting rather than taken from the caller,
+        The serving block is read off the sighting, not taken from the caller,
         and is then validated and digested exactly as a create's is. Adoption is the
         one call in this module that declares anything, so it goes through the same
-        gate — a configuration nobody could have created is not one an adoption may
+        gate: a configuration nobody could have created is not one an adoption may
         write in through the side. What the caller names is the artifact, because the
-        weights are the one thing a cluster reports by a name it was told rather than
+        weights are the one thing a cluster reports by a name it was told, not
         by an identity this catalogue holds.
         """
         row = await self._one(ref)
@@ -390,7 +390,7 @@ class DiscoveredWorkloadService:
             labels=dict(workload.labels or {}),
         )
         # No roles: what was discovered is one running process, and promotion records what is
-        # there rather than proposing a shape for it. A disaggregated topology is declared, so
+        # there instead of proposing a shape for it. A disaggregated topology is declared, so
         # adopting one would mean inferring a ratio from pods nobody said were a group.
         apply_serving(deployment_workload, serving, artifact, ())
         deployment = Deployment(

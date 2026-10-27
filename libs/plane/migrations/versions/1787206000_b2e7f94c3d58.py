@@ -11,9 +11,9 @@ would silently span two tools. It is a provenance column like `engine_args`, and
 it is written at creation from the harness default or from a per-run override.
 
 Existing rows are backfilled with `nvcr.io/nvidia/ai-dynamo/aiperf:latest`, which
-is what they were actually dispatched with — the column says what ran, so
+is what they were actually dispatched with: the column says what ran, so
 backfilling it with the current default would be a lie about older runs. The
-server default is empty rather than a real reference for the same reason: a row
+server default is empty instead of a real reference for the same reason: a row
 that somehow arrives without one should read as unknown, not as a claim.
 """
 

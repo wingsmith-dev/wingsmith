@@ -1,7 +1,7 @@
 """Device classes: the GPU model catalog.
 
 `GET` list and `GET` one, and nothing else. A class is neither declared nor
-observed — it is a definition the plane and the operator share, versioned in
+observed: it is a definition the plane and the operator share, versioned in
 `libs/packages/contract/devices.json`, so there is no `POST /v1/device-classes`.
 Adding hardware is a change to the contract table and a release of both sides,
 not an API call that would leave the two halves naming cards differently.

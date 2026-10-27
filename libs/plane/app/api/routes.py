@@ -84,7 +84,7 @@ def init_app(app: Litestar) -> Litestar:
     app.register(Router(path="", route_handlers=[HealthRoutes, PrometheusRoutes]))
     app.register(Router(path="/v1", route_handlers=[AuthRoutes, SystemRoutes, *V1_ROUTES]))
     # Registered last and only when the image carries a build: the console is a
-    # catch-all, and an image built without one should 404 rather than answer
+    # catch-all, and an image built without one should 404, not answer
     # every unmatched path with a missing file.
     if has_console():
         app.register(Router(path="", route_handlers=[ConsoleRoutes]))

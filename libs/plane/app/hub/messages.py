@@ -2,7 +2,7 @@
 
 The envelope and its semantics are specified in `libs/packages/contract/PROTOCOL.md`; the type registry is
 `libs/packages/contract/MESSAGES.md`. These Structs are hand-written by design (see ADR 0001) and are kept
-honest against the Go side by the golden corpus in `libs/packages/contract/fixtures/`.
+accurate against the Go side by the golden corpus in `libs/packages/contract/fixtures/`.
 
 Timestamps are RFC 3339 UTC with milliseconds and are carried as `str`, not `datetime`. The wire
 form is the contract, and a datetime round-trip is lossy with respect to its own text: msgspec
@@ -34,7 +34,7 @@ OPERATOR_MAJOR = 0
 
 An operator reports its version on `hello`. A release-shaped version (`0.4.2`, `v0.4.2`) outside
 this major is refused at the handshake, because a different major is free to change the meaning
-of a frame. A version that is not release-shaped — `dev`, a commit — is a build from source and is
+of a frame. A version that is not release-shaped (`dev`, a commit) is a build from source and is
 admitted, with a log line. The first tagged release is what sets a floor within the line.
 """
 
@@ -107,7 +107,7 @@ class Hello(Struct):
     """The operator's first frame. Never sent twice on one connection.
 
     `lossy` is how a sender whose replay buffer overflowed asks for a fresh session instead of
-    pretending it can resume. `session_id` names which session `resume_from` counts within — a
+    pretending it can resume. `session_id` names which session `resume_from` counts within: a
     sequence number alone is meaningless across sessions.
     """
 
@@ -152,9 +152,9 @@ class Error(Struct):
 class StreamEnd(Struct):
     """Terminates a stream sharing one `reply_to`, and closes a resync.
 
-    `complete` is load-bearing: a receiver prunes local state against a snapshot only when the
-    stream ended with `complete` true. A truncated snapshot must leave local state untouched
-    rather than be read as an authoritative empty set.
+    `complete` is essential: a receiver prunes local state against a snapshot only when the
+    stream ended with `complete` true. A truncated snapshot must leave local state untouched,
+    not be read as an authoritative empty set.
     """
 
     count: int
@@ -177,10 +177,10 @@ class ClusterObserved(Struct):
     """What a cluster turned out to be, as opposed to what it was declared to be.
 
     `distribution` is the only orchestrator name anywhere in the plane, and it is
-    stored and displayed rather than read: the moment something branches on it,
+    stored and displayed, not read: the moment something branches on it,
     the plane knows what Kubernetes is and rule 2 is gone.
 
-    `read_only` is about the operator rather than the cluster, and it is the one
+    `read_only` is about the operator instead of the cluster, and it is the one
     field here that changes what an answer from this cluster means. A read-only
     operator runs without its reconcile loop: it reports everything and applies
     nothing. Without it on the wire the plane cannot tell an operator that
@@ -190,7 +190,7 @@ class ClusterObserved(Struct):
 
     `multinode` says a leader-worker backend is installed, so this cluster can run
     a replica whose devices do not fit on one machine. It is the one observed field
-    here that placement reads rather than merely displays: sending a replica that
+    here that placement reads, not merely displays: sending a replica that
     spans nodes to a cluster without a backend renders a single pod holding a
     fraction of the devices the engine expects, which hangs in collective
     initialisation instead of failing. It defaults false because an operator too
@@ -234,7 +234,7 @@ class NodeObserved(Struct):
     kernel_version: str
     driver_version: str
     runtime_version: str
-    """The node's container runtime — `containerd://1.7.20`, off the kubelet.
+    """The node's container runtime: `containerd://1.7.20`, off the kubelet.
 
     A machine's runtime, not a workload's: `ServingSpec.engine_runtime_image` is the
     Dynamo build the engine runs in, and this is what would start a container of it.
@@ -317,7 +317,7 @@ class TopologyObserved(Struct):
     `node_ids` is a list because a domain is not a property of a machine: an
     NVSwitch fabric or a GB200 rack is one NVLink domain across several nodes.
     Zero, one, or many are all legal, and `spans_nodes` is the cluster's own
-    answer rather than something the plane recomputes.
+    answer instead of something the plane recomputes.
     """
 
     domain_id: str
@@ -332,10 +332,10 @@ class TopologyObserved(Struct):
 class WorkloadSpec(Struct):
     """How a discovered workload was told to serve, verbatim from its own cluster.
 
-    Uninterpreted on purpose. `args` arrives as the list the container was given
+    Uninterpreted. `args` arrives as the list the container was given
     and stays that way through ingestion; reading `--tensor-parallel-size` as
     parallelism happens in `modules/discovered/derive.py`, so that improving the
-    reading is a plane deploy rather than an operator roll across the fleet.
+    reading is a plane deploy instead of an operator roll across the fleet.
 
     `env_names` carries names and never values. A serving pod is routinely handed
     a HuggingFace token or a registry credential through its environment, and a
@@ -355,19 +355,19 @@ class WorkloadSpec(Struct):
 class WorkloadDiscovered(Struct):
     """A workload already running in a cluster that the plane never declared.
 
-    Purely observed, and deliberately not a `Deployment`: the plane has declared
+    Purely observed, and not a `Deployment`: the plane has declared
     nothing about this object, so giving it a declared record would immediately
-    create a difference between what we say and what is running — and the first
+    create a difference between what we say and what is running, and the first
     reconcile of that difference is a rollout of weights that are already warm.
     It stays a sighting until someone decides otherwise.
 
     `devices_per_replica` and `devices_total` are the cluster's own accounting,
-    not a measurement, which is what keeps this on the sync stream rather than in
+    not a measurement, which is what keeps this on the sync stream, not in
     the telemetry pipeline.
 
     `kind` is open text where every other enum on the wire is closed. A cluster is
     entitled to run models under something we have never heard of, and a closed
-    set would make that workload undecodable — dropped rather than reported,
+    set would make that workload undecodable: dropped, not reported,
     which is the one outcome an inventory must not have.
     """
 
@@ -411,7 +411,7 @@ class Overlay(Struct):
     """Escape hatches for what this plane does not model.
 
     Engines and their operators carry far more configuration than any control
-    plane wants to mirror field by field, and mirroring it is a losing race —
+    plane wants to mirror field by field, and mirroring it is a losing race:
     every vLLM release adds flags. So the plane models what it reasons about
     (shape, parallelism, context, cache) and passes the rest through.
 
@@ -420,7 +420,7 @@ class Overlay(Struct):
     adding one environment variable does not mean restating the others.
 
     `dynamo` is merged over the rendered graph deployment. There is no schema to
-    read merge keys from there, so maps merge and lists replace — which is the
+    read merge keys from there, so maps merge and lists replace, which is the
     intended way to hand-write a topology the renderer cannot derive.
     """
 
@@ -444,9 +444,9 @@ class RoleSpec(Struct):
     """One role of a disaggregated deployment: what makes its process different, and no counts.
 
     The split between this and `DeploymentDesired.role_replicas` is `serving_digest`'s own split
-    made structural. What is here decides what the process *is* — prefill runs
-    `--max-num-batched-tokens` 32768 against decode's 2048 — and is inside the digest. How many of
-    each there are is scale, travels beside `min_replicas`, and is deliberately outside it.
+    made structural. What is here decides what the process *is*, prefill runs
+    `--max-num-batched-tokens` 32768 against decode's 2048, and is inside the digest. How many of
+    each there are is scale, travels beside `min_replicas`, and is outside it.
     """
 
     role: Literal["prefill", "decode"]
@@ -458,8 +458,8 @@ class RouterSpec(Struct, omit_defaults=True):
     """How a deployment's own frontend routes between its workers. Every field optional.
 
     Each field is one `DYN_ROUTER_*` variable on the frontend, and an absent field renders no
-    variable, so Dynamo's own default stands — except `mode`, whose absence the operator renders as
-    `kv`, which is what it rendered before this block existed. A typed block rather than an
+    variable, so Dynamo's own default stands, except `mode`, whose absence the operator renders as
+    `kv`, which is what it rendered before this block existed. A typed block instead of an
     environment passthrough: the plane validates every value against what Dynamo accepts before it
     is sent.
     """
@@ -480,7 +480,7 @@ class DiffusionSpec(Struct):
 class ServingSpec(Struct):
     """How to serve an artifact, in enough detail for a cluster to render it.
 
-    Inlined on the deployment that asks for it rather than travelling as a
+    Inlined on the deployment that asks for it instead of travelling as a
     declared object of its own. It used to be `recipe.desired`, on the argument
     that recipes are shared and inlining would ship one body repeatedly. The
     argument did not survive contact with the sender: recipes were filtered and
@@ -491,13 +491,13 @@ class ServingSpec(Struct):
     in which a deployment waited forever for a recipe it was never sent. Inlined,
     a deployment is renderable the moment its artifact has landed.
 
-    The device shape is deliberately absent, and that rule is unchanged. It
+    The device shape is absent, and that rule is unchanged. It
     reaches the cluster on the deployment's `placement`, derived from these same
     fields; two copies of one fact on one wire is two chances to disagree.
 
     `frontend_image` is a second image and not a spelling of `engine_runtime_image`, because a
     frontend and a worker are separately versioned binaries. It is empty in the ordinary
-    case, and empty means the cluster decides — never "use the engine image", which is a
+    case, and empty means the cluster decides, never "use the engine image", which is a
     default only the operator is entitled to pick.
 
     `digest` is the `serving_digest` of the workload this came from. The cluster does
@@ -506,12 +506,12 @@ class ServingSpec(Struct):
     """
 
     engine: str
-    """Which engine the worker launches inside the runtime — a module and a flag dialect."""
+    """Which engine the worker launches inside the runtime: a module and a flag dialect."""
     engine_runtime_version: str
-    """A tag of the Dynamo runtime the engine runs in — `1.4.1` — never the engine's version.
+    """A tag of the Dynamo runtime the engine runs in (`1.4.1`) never the engine's version.
 
     The two count in different sequences: the vLLM inside `vllm-runtime:1.4.1` is on
-    `0.28.0`. The engine's own version is on no frame at all — which build NVIDIA
+    `0.28.0`. The engine's own version is on no frame at all, which build NVIDIA
     compiled in is a property of that image, and the cluster does not report it.
     """
     engine_runtime_image: str | None
@@ -533,7 +533,7 @@ class ServingSpec(Struct):
     topology: Literal["aggregated", "disaggregated"] = "aggregated"
     """Whether prefill and decode are one process or two exchanging a KV cache.
 
-    Defaulted rather than optional so an operator too old to read it is unaffected, and so an
+    Defaulted, not optional so an operator too old to read it is unaffected, and so an
     aggregated deployment's frame is byte-identical to what it was.
     """
 
@@ -555,7 +555,7 @@ class ServingSpec(Struct):
     output_modality: Literal["image", "video"] | None = None
     """What an omni worker emits, rendered as `--output-modalities`. None on every chat deployment.
 
-    None rather than `text`, so an operator that predates the field and one that knows it read a
+    None instead of `text`, so an operator that predates the field and one that knows it read a
     chat deployment's frame the same way.
     """
 
@@ -607,19 +607,19 @@ class DeploymentDesired(Struct):
     re-derive it against anything else. `min_replicas` is what is rendered;
     `max_replicas` is a ceiling for an autoscaler that does not exist yet.
 
-    There is deliberately no workload id here and no total-versus-share field of
+    There is no workload id here and no total-versus-share field of
     any kind. Nothing in a cluster ever needs to know it is one of several.
 
     `served_model_name` is the model id an API client sends, already resolved: the
     workload's own declaration, or the artifact's lowercase Hugging Face slug when
     it declares none. The plane resolves it so the operator holds no derivation
     logic and renders the string it is told. It is never empty, and
-    `engine_args` still wins over it at render time — the escape hatch is laid
-    over the derived flags, which is why the resolved hatch is deliberately not
+    `engine_args` still wins over it at render time: the escape hatch is laid
+    over the derived flags, which is why the resolved hatch is not
     folded in here.
 
     `serving` carries the engine configuration this deployment renders. It is
-    inlined rather than referenced; see `ServingSpec` for why.
+    inlined, not referenced; see `ServingSpec` for why.
     """
 
     deployment_id: str
@@ -642,7 +642,7 @@ class DeploymentDesired(Struct):
     """The absolute worker count per role, already multiplied by the plane. Empty when aggregated.
 
     Absolute, and the multiplication is the point. Under a disaggregated topology `min_replicas`
-    counts **groups**, and a group is the per-role weights taken together — so a role's count is
+    counts **groups**, and a group is the per-role weights taken together, so a role's count is
     `min_replicas x weight`. The plane does that arithmetic because the operator is forbidden it:
     a receiver "renders exactly the number it is sent and must never sum, scale or re-derive it
     against anything else", as this class says of `min_replicas` above. Making the operator
@@ -714,7 +714,7 @@ class RoleObserved(Struct):
     """One role's own share of a deployment's rollout, as its cluster counts it.
 
     `desired` is the `role_replicas` count the cluster rendered, echoed back, and
-    never a number the operator derived — the same rule `desired_replicas` is held
+    never a number the operator derived: the same rule `desired_replicas` is held
     to one level up.
     """
 
@@ -726,7 +726,7 @@ class RoleObserved(Struct):
 class DeploymentObserved(Struct):
     """What one cluster reports about the deployment it was handed.
 
-    `desired_replicas` is what this cluster rendered — its own `min_replicas`,
+    `desired_replicas` is what this cluster rendered: its own `min_replicas`,
     echoed back so the plane can see that render and declaration agree. Summing
     it across a workload's deployments is the plane's job and only the plane's;
     the operator never does.
@@ -734,7 +734,7 @@ class DeploymentObserved(Struct):
     `replica_ids` is every replica this cluster has for this deployment, and it
     is the only thing that lets the plane forget one. Demand state is not pruned
     against a resync, so a replica that stopped being reported used to stay in
-    the database for ever and keep counting — a deployment of one reading three
+    the database for ever and keep counting: a deployment of one reading three
     ready of one. `None` is an operator that predates the field and makes no
     claim; an empty list is a claim that there are none, which is what a scale
     to zero says.
@@ -754,13 +754,13 @@ class DeploymentObserved(Struct):
     message: str | None = None
     replica_ids: list[str] | None = None
     roles: list[RoleObserved] | None = None
-    """The same rollout split by role, beside the four scalars rather than instead of them.
+    """The same rollout split by role, beside the four scalars, not instead of them.
 
     The scalars stay the group rollup, so a plane reading only those is right and
     merely coarse. The precision is what the split is for: a 1P:2D group with two
     ready decode workers and no prefill is `2 of 3`, which reads as a shortfall
-    that will resolve itself, where in fact nothing is serving — a decode worker
-    with no prefill peer has nothing to decode from — and no arrangement of the
+    that will resolve itself, where in fact nothing is serving, a decode worker
+    with no prefill peer has nothing to decode from, and no arrangement of the
     totals can say so.
 
     `None` from an aggregated deployment and from an operator that predates the
@@ -793,10 +793,10 @@ class ReplicaObserved(Struct):
     role: Literal["prefill", "decode"] | None = None
     """Which role of a disaggregated deployment this replica is, and `None` when it is not one.
 
-    Read by the operator off the pod label it stamped itself rather than off the pod's
-    name, so it is a string both sides agreed on rather than Dynamo's naming convention
-    seen from the outside. Observed, with ingestion as its only writer — which is what
-    keeps a worker that can change role at runtime a value that moves rather than a
+    Read by the operator off the pod label it stamped itself, not off the pod's
+    name, so it is a string both sides agreed on, not Dynamo's naming convention
+    seen from the outside. Observed, with ingestion as its only writer, which is what
+    keeps a worker that can change role at runtime a value that moves instead of a
     declaration that has to be revised.
     """
 
@@ -828,8 +828,8 @@ class CacheNodeResidency(Struct):
     """What one node holds of one artifact.
 
     A node mid-fetch and a node already serving are not the same fact, and a
-    router choosing where to send a request needs to tell them apart — so state
-    and bytes are per node here rather than rolled up. The cluster-level numbers
+    router choosing where to send a request needs to tell them apart, so state
+    and bytes are per node here, not rolled up. The cluster-level numbers
     on `CacheObserved` stay, because a tier that is not a local disk has
     residency with no node to attribute it to.
     """
@@ -897,9 +897,9 @@ class OperationDesired(Struct):
 class OperationCancel(Struct):
     """Withdraws an operation the plane has already sent.
 
-    A message of its own rather than a field on `OperationDesired`. The operation
+    A message of its own instead of a field on `OperationDesired`. The operation
     is already accepted and probably already running, so what travels here is a
-    second imperative about the first, not a restatement of it — and re-sending
+    second imperative about the first, not a restatement of it, and re-sending
     the desired frame with a flag on it would make the withdrawal prunable by a
     resync, which is the property operations are kept outside the snapshot to
     avoid.
@@ -941,7 +941,7 @@ class OperationObserved(Struct):
 class BenchmarkObserved(Struct):
     """The outcome of a benchmark run, in whatever shape the harness emits.
 
-    Beside `operation.observed` rather than folded into it, because
+    Beside `operation.observed`, not folded into it, because
     `OperationObserved.result` is `dict[str, str]` and every load generator worth
     running emits nested JSON. Widening that field would widen it for drain and
     cordon too, which have nothing to put in it.
@@ -952,8 +952,8 @@ class BenchmarkObserved(Struct):
     has yet had cause to design. It is stored verbatim and `harness_version` is
     what makes two of them comparable.
 
-    `artifacts_uri` is where the per-request records went. They are telemetry —
-    high volume, append-only, never joined — so they go from the cluster to
+    `artifacts_uri` is where the per-request records went. They are telemetry,
+    high volume, append-only, never joined, so they go from the cluster to
     object storage directly and only the reference travels this stream.
     """
 
@@ -1014,8 +1014,8 @@ def decode(data: bytes) -> Envelope[Struct]:
     """Decode a frame into an Envelope whose payload is the Struct registered for its type.
 
     Raises:
-        KeyError: the `type` is not in `MESSAGE_TYPES`. Callers on the hot path log and drop
-            rather than propagate, per PROTOCOL §2.
+        KeyError: the `type` is not in `MESSAGE_TYPES`. Callers on the hot path log and drop,
+            not propagate, per PROTOCOL §2.
     """
     raw = msgjson.decode(data, type=RawEnvelope)
     payload = msgjson.decode(raw.payload, type=MESSAGE_TYPES[raw.type])

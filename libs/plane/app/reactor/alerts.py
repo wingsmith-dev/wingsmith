@@ -64,7 +64,7 @@ async def apply_conditions(db: AsyncSession, intents: list[AlertIntent], now: dt
 
     Three moves, in one pass: open what is new, promote what has waited long
     enough, and resolve what is no longer in the set. The third is why this takes
-    the whole set rather than one intent at a time — auto-resolution is an argument
+    the whole set instead of one intent at a time: auto-resolution is an argument
     from absence, and absence is only meaningful against a complete list.
     """
     by_key = {intent.dedupe_key: intent for intent in intents}
@@ -106,7 +106,7 @@ async def apply_conditions(db: AsyncSession, intents: list[AlertIntent], now: dt
 async def apply_event(db: AsyncSession, intent: AlertIntent, now: dt.datetime) -> None:
     """Opens an alert for one event, or does nothing if that event already has one.
 
-    `ON CONFLICT DO NOTHING` rather than a read-then-insert: the reactor's cursor
+    `ON CONFLICT DO NOTHING` instead of a read-then-insert: the reactor's cursor
     only advances on a committed batch, so a crash mid-batch replays events that
     may already have alerts, and this is the path that has to be idempotent.
     """
@@ -117,7 +117,7 @@ async def apply_event(db: AsyncSession, intent: AlertIntent, now: dt.datetime) -
 async def due_for_notice(db: AsyncSession) -> list[Alert]:
     """Alerts whose current state has not yet been announced.
 
-    Pending is silent by construction — that is what pending means. Acknowledged
+    Pending is silent by construction: that is what pending means. Acknowledged
     is silent because someone already knows. What is left is `firing`, and
     `resolved`, which `should_send` then filters further.
     """
@@ -136,8 +136,8 @@ def should_send(alert: Alert) -> bool:
     """Whether this state change is worth a message, as opposed to merely worth recording.
 
     A recovery for an alert nobody was ever told about is the case this exists to
-    catch — a condition that flapped from pending to resolved without ever firing.
-    Callers still mark it notified, so it is skipped once rather than reconsidered
+    catch: a condition that flapped from pending to resolved without ever firing.
+    Callers still mark it notified, so it is skipped once, not reconsidered
     on every tick for as long as the row exists.
     """
     if alert.state == RESOLVED:

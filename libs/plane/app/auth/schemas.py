@@ -28,9 +28,9 @@ class Principal(Struct):
     """The identity of a caller.
 
     `kind` is the whole of a principal's authority: what each kind may reach is
-    decided in one place, `app.core.context.authorize`, rather than by scopes a
+    decided in one place, `app.core.context.authorize`, not by scopes a
     route would have to remember to check. `scope` narrows a kind to one object
-    — the tenant's uid for a tenant, the cluster's uid for an operator — and is
+    (the tenant's uid for a tenant, the cluster's uid for an operator) and is
     empty for kinds that are not narrowed. `session_id` names the signed-in
     session an admin or tenant principal came from, which the guard checks is
     still live; it is empty for a service credential.
@@ -46,7 +46,7 @@ class Principal(Struct):
 class LoginRequest(Struct):
     """One form for both kinds of caller: a handle and a credential.
 
-    `slug` names who is signing in — `admin` for the people who operate the fleet,
+    `slug` names who is signing in: `admin` for the people who operate the fleet,
     a tenant's slug for the people we serve. It defaults to `admin` so that every
     caller written against the single-field form keeps working unchanged.
     """
@@ -59,7 +59,7 @@ class LoginResponse(Struct):
     """`kind` and `tenant` say what was signed in to.
 
     The console needs it to decide which application to render, and it must come
-    from here rather than from what was typed: the slug is a claim until the
+    from here, not from what was typed: the slug is a claim until the
     credential behind it is verified.
     """
 

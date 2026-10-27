@@ -7,15 +7,15 @@ Create Date: 2026-08-19 22:40:00.000000
 `deployment.observed` arrives from the cluster and had nowhere to land: every column on
 `demand_deployment` is declared state written by the API. Adding `phase` and the replica
 counts there would put two writers on one row, which is the difference rule 1 exists to
-keep. `ops_component_status` already sets the shape — a declared row and an observed row,
-read together — and this is the same shape for deployments.
+keep. `ops_component_status` already sets the shape, a declared row and an observed row,
+read together, and this is the same shape for deployments.
 
 `observed_generation` is what makes the counts readable during a rollout: four ready at
 the previous generation and four ready at the current one are the same four integers and
 different facts.
 
 `uq_ops_cache_entry_scope` becomes `NULLS NOT DISTINCT` in the same revision. `node_id` is
-null for cluster-scoped residency, and under the default rule two nulls never conflict — so
+null for cluster-scoped residency, and under the default rule two nulls never conflict, so
 the cluster-scoped row could never be upserted and every observation would append another
 copy of the same fact.
 

@@ -4,9 +4,9 @@ Revision ID: a1d6e83f2b47
 Revises: f9c5a7b3e401
 Create Date: 2026-08-20 20:40:00.000000
 
-One table. A benchmark is carried out by an `Operation` — that machinery already
+One table. A benchmark is carried out by an `Operation`, that machinery already
 has phases, a deadline, cancellation and replay across a reconnect, and none of it
-is worth building twice — so what is missing is only the record of the run and its
+is worth building twice, so what is missing is only the record of the run and its
 result, which is this.
 
 `summary` is JSONB and holds the harness's own output verbatim. No normalised
@@ -16,12 +16,12 @@ premature one would be permanent. Same-harness comparison is what this table
 promises, and `harness` plus `harness_version` are what make that promise hold
 across a release that redefines a percentile.
 
-The provenance columns — `model`, `deployment_generation`, `recipe_id`,
-`recipe_version`, `engine_args` — are snapshots taken at creation rather than
+The provenance columns, `model`, `deployment_generation`, `recipe_id`,
+`recipe_version`, `engine_args`, are snapshots taken at creation, not
 joins. The recipe is mutable and the deployment is disposable; a run has to keep
 describing what it measured after both have moved on.
 
-`operation_id` is `SET NULL` rather than `CASCADE`. The operation is the errand and
+`operation_id` is `SET NULL` instead of `CASCADE`. The operation is the errand and
 the run is the record, and the record is the half worth keeping.
 
 No backfill: nothing has been benchmarked yet.

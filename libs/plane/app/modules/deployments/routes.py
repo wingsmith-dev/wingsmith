@@ -21,7 +21,7 @@ class DeploymentRoutes(Controller):
 
     There is no `POST` and no `DELETE` here. One cluster's copy appears when
     placement expands a workload onto it and disappears when the workload
-    contracts — through `workload.drain` or a scale change — so a caller who wants
+    contracts, through `workload.drain` or a scale change, so a caller who wants
     either asks the workload, which is the object they declared.
     """
 

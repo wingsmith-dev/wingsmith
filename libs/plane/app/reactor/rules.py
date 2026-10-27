@@ -15,7 +15,7 @@ Two families, and the difference between them is not cosmetic:
   arrive. An event is a thing that happened; the log will never retract it, so
   nothing derived from one may ever auto-resolve.
 
-A condition may also come from a number an operator declared rather than from a
+A condition may also come from a number an operator declared, not from a
 constant here: `METRIC_RULES` names the metric and the direction, `ops_alert_threshold`
 carries the value, the window and the scope, and `app.reactor.conditions` reads both and
 hands this module plain floats. The measurement is fetched by the caller precisely so
@@ -46,7 +46,7 @@ SEVERITY_ORDER = {INFO: 0, WARNING: 1, ERROR: 2, CRITICAL: 3}
 def at_least(severity: str, floor: str) -> bool:
     """Whether `severity` clears `floor`. Unknown severities are treated as the floor's equal.
 
-    Deliberately permissive: an unrecognised severity arriving from a cluster is a
+    Permissive: an unrecognised severity arriving from a cluster is a
     contract drift worth seeing, and dropping it silently is the one response that
     guarantees nobody ever notices.
     """
@@ -57,7 +57,7 @@ def at_least(severity: str, floor: str) -> bool:
 class AlertIntent:
     """One alert as the rules see it, before anything has been written down.
 
-    `dedupe_key` is the identity and must be derivable from the condition alone —
+    `dedupe_key` is the identity and must be derivable from the condition alone:
     no timestamps, no counters, nothing that varies between two evaluations of the
     same ongoing problem. Getting this wrong does not produce an error; it
     produces a thousand alerts about one dead node.
@@ -110,8 +110,8 @@ ALERTING_EVENTS = {
 }
 """Event types that open an alert regardless of the severity the writer chose.
 
-An override rather than a filter. Severity is set by whoever wrote the event —
-the operator, for most of these — and `node.left` arriving as a `warning` is a
+An override instead of a filter. Severity is set by whoever wrote the event,
+the operator, for most of these, and `node.left` arriving as a `warning` is a
 defensible call from inside a cluster that reschedules around it and the wrong
 call for a single-node cluster whose only GPU just went away. Anything not named
 here still alerts if it arrives at `error` or above, so this list is where a
@@ -168,7 +168,7 @@ def cluster_unreachable(cluster_id: Any, cluster_uid: str, cluster_name: str, la
         subject_uid=cluster_uid,
         cluster_id=cluster_id,
         cluster_name=cluster_name,
-        title=f"cluster {cluster_name} is not connected — {seen}",
+        title=f"cluster {cluster_name} is not connected: {seen}",
         details={"last_seen_at": last_seen},
         for_seconds=CONDITION_WINDOWS[CLUSTER_UNREACHABLE],
     )
@@ -227,7 +227,7 @@ def deployment_unobserved(
 
     Distinct from `deployment.behind` because the remedy is different. Behind means
     the cluster is trying; unobserved means the plane's intent has not reached it at
-    all, which is an operator, a sync, or a claim problem rather than a capacity one.
+    all, which is an operator, a sync, or a claim problem instead of a capacity one.
     """
     return AlertIntent(
         dedupe_key=f"{DEPLOYMENT_UNOBSERVED}:{deployment_uid}",
@@ -253,7 +253,7 @@ def workload_stalled(
     desired: int,
     promoted: bool,
 ) -> AlertIntent:
-    """A workload the cluster is running — or failing to — that the plane has not adopted.
+    """A workload the cluster is running, or failing to, that the plane has not adopted.
 
     This is the gap the founding scenario fell through. A sighting has no declared
     intent to compare against, so nothing that reasons about deployments can see it;
@@ -287,11 +287,11 @@ class MetricRule:
     """One metric-backed check: which measurement, which way, and what it falls back to.
 
     The predicate is code and the number is data. A rule names a metric by its
-    `app.modules.metrics.registry` name and never by a series or an expression —
+    `app.modules.metrics.registry` name and never by a series or an expression:
     an upstream rename is then a change to one dialect table and not to anything
     an operator has declared.
 
-    `comparison` lives here rather than on the row because which way a metric is
+    `comparison` lives here, not on the row because which way a metric is
     wrong is judgement, not a commitment: nobody declares that a cache hit rate
     being *high* is the problem. What is declared is the number, the window and
     the scope, and those are the columns `ops_alert_threshold` has.
@@ -299,7 +299,7 @@ class MetricRule:
     `suggested` is what the number would be if nobody had said otherwise. It is
     not a default that fires: no metric rule evaluates until an operator declares
     a threshold row for it, which is also what keeps the fan-out of the metric
-    pass proportional to the commitments rather than to the fleet.
+    pass proportional to the commitments, not to the fleet.
     """
 
     rule: str
@@ -416,16 +416,16 @@ METRIC_RULES: dict[str, MetricRule] = {
 
 Eight of these read the serving engine and two read the cards. **None of them reads
 an availability, failure-rate or error-ratio series, and that is a decision rather
-than an omission.** A request that never reached the cluster — refused at the front
-door, routed nowhere, timed out upstream — emits nothing an engine exporter can
+than an omission.** A request that never reached the cluster, refused at the front
+door, routed nowhere, timed out upstream, emits nothing an engine exporter can
 count, so a ratio built out of these series reports a fully-broken cluster as "no
-traffic" rather than as an outage, and the alert that matters most is the one
+traffic", not as an outage, and the alert that matters most is the one
 guaranteed not to fire. Availability has to be measured at the hop that saw the
 request, which is not a cluster-side exporter and is not in
 `app.modules.metrics.registry`. A rule here that claimed otherwise would be worse
 than the absence of one: it would be a green light with nothing behind it.
 
-`METRIC_SUBJECTS` is derived from this table rather than declared beside it, so a
+`METRIC_SUBJECTS` is derived from this table, not declared beside it, so a
 rule for a new kind of subject cannot be added without the evaluator noticing.
 """
 
@@ -440,8 +440,8 @@ class Threshold:
     caller converts. Rules compare and format plain floats, which is what keeps
     them exercisable from a test that has never opened a session.
 
-    `subject_uid` of None is the fleet default for its rule — one row that covers
-    every subject of that type — and a row naming a subject overrides it for that
+    `subject_uid` of None is the fleet default for its rule, one row that covers
+    every subject of that type, and a row naming a subject overrides it for that
     subject alone.
     """
 
@@ -477,9 +477,9 @@ def _dimension_key(dimensions: dict) -> str:
 def _specificity(threshold: Threshold) -> tuple:
     """Most specific first: a row about this subject, then the fewest narrowing dimensions.
 
-    Ordered rather than filtered, and total rather than partial, because the
-    alternative is letting the planner's row order decide which commitment applies
-    — the same failure `uq_ops_alert_threshold_scope` uses `NULLS NOT DISTINCT` to
+    Ordered, not filtered, and total, not partial, because the
+    alternative is letting the planner's row order decide which commitment applies:
+    the same failure `uq_ops_alert_threshold_scope` uses `NULLS NOT DISTINCT` to
     keep out of the table in the first place.
     """
     return (
@@ -495,7 +495,7 @@ def resolve_threshold(thresholds: list[Threshold], rule: str, subject_uid: str) 
     A scoped row beats the fleet default; among rows at the same scope the least
     narrowed one wins, because a dimensioned row asks a question this evaluator
     cannot put to the store yet and an undimensioned sibling can be answered
-    honestly today.
+    accurately today.
     """
     candidates = [t for t in thresholds if t.rule == rule and t.subject_uid in (None, subject_uid)]
     if not candidates:
@@ -528,7 +528,7 @@ def metric_breach(subject: MetricSubject, threshold: Threshold, observed: float 
     is not zero and is not a breach: an engine that has served nothing reports
     nothing, and a rule that read that silence as a floor being missed would page
     someone every night for every idle deployment. It is the same asymmetry that
-    keeps an availability rule out of `METRIC_RULES` — what a cluster-side
+    keeps an availability rule out of `METRIC_RULES`: what a cluster-side
     exporter does not say is not evidence of anything.
 
     Everything the alert was decided by goes into `details`: the metric's registry

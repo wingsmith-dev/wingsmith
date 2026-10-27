@@ -154,7 +154,7 @@ class PriorityClassService:
             )
         if priority_class.is_default:
             raise Conflict(
-                f"priority class {ref!r} is the default — mark another one default first",
+                f"priority class {ref!r} is the default: mark another one default first",
                 {"is_default": True},
             )
         await self.repo.delete(priority_class)

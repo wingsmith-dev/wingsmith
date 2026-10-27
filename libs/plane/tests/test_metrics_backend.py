@@ -1,6 +1,6 @@
 """The Prometheus backend and its transport, against a stubbed store.
 
-`test_metrics.py` covers the vocabulary — sources, selectors, the PromQL the
+`test_metrics.py` covers the vocabulary: sources, selectors, the PromQL the
 renderer produces. This covers what happens to the numbers afterwards: which
 expressions are actually issued, how a store's answer becomes a sample, and
 what a store that is down looks like from the outside.
@@ -41,7 +41,7 @@ class StubClient:
 
     `answers` maps a substring of the expression onto the result to return, so a
     test says what a series holds without restating the PromQL the renderer
-    produced — which is `test_metrics.py`'s business, not this file's.
+    produced, which is `test_metrics.py`'s business, not this file's.
     """
 
     def __init__(self, answers=None, ranges=None):
@@ -188,7 +188,7 @@ async def test_a_non_summed_metric_unions_its_candidates():
     await backend(client).samples(request(throttle))
 
     issued = [q for q in client.instant_queries if not q.startswith("count(")]
-    assert " or " in issued[0], "a max over two spellings should union rather than probe"
+    assert " or " in issued[0], "a max over two spellings should union, not probe"
     assert not [q for q in client.instant_queries if q.startswith("count(")], (
         "an idempotent aggregate should not pay for a probe"
     )
@@ -330,9 +330,9 @@ async def test_the_failure_ratio_names_the_outcomes_that_are_ours():
 async def test_the_healthy_case_has_a_numerator_wherever_it_has_a_denominator():
     """An endpoint that never failed has no failed-outcome series to sum.
 
-    `sum` over an empty vector is empty rather than zero, so a bare division would
+    `sum` over an empty vector is empty, not zero, so a bare division would
     be absent for every endpoint serving traffic cleanly and would only start
-    answering once something broke — a 100% available endpoint reading "not
+    answering once something broke: a 100% available endpoint reading "not
     measured" until it has an outage. The numerator is unioned with a zeroed copy
     of the denominator so that it exists whenever the denominator does.
     """
@@ -384,7 +384,7 @@ async def test_a_gateway_nobody_scrapes_is_absent_and_never_a_hundred_percent():
     """The day-one answer: the port is exposed and no ServiceMonitor reads it.
 
     A store that holds no `hangar_gateway_*` series at all answers with nothing,
-    and nothing has to stay nothing all the way to the console — an invented 100%
+    and nothing has to stay nothing all the way to the console: an invented 100%
     is an SLA nobody measured.
     """
     got = await backend(StubClient()).samples(serving(AVAILABILITY, FAILURE_RATIO, REQUESTS))

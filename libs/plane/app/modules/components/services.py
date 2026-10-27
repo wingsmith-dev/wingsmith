@@ -33,7 +33,7 @@ UNREPORTED = ComponentStatusSchema(
 )
 """What a component looks like before any cluster has reported on it.
 
-Deliberately not `null`: a client that has to branch on the absence of the
+Not `null`: a client that has to branch on the absence of the
 observed half will forget to, and "never reported" and "reported unhealthy" are
 both answers to the same question.
 """

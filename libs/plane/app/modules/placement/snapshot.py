@@ -2,7 +2,7 @@
 
 Every struct here is something a caller builds by reading the database and
 handing in. Nothing in this module knows what a session is, and accepting an ORM
-row anywhere would quietly reintroduce lazy loads — and with them I/O — into a
+row anywhere would quietly reintroduce lazy loads, and with them I/O, into a
 function whose whole value is that it has none.
 """
 
@@ -32,7 +32,7 @@ class DeviceSnapshot(Snap):
     """One accelerator, as observed. The unit every capacity number is counted in.
 
     A device is free when its node will take work, and it is healthy, allocatable,
-    and unheld — four separate facts, because a device can be idle and still
+    and unheld: four separate facts, because a device can be idle and still
     unusable.
 
     `schedulable` is the node's fact, carried down onto the device because
@@ -83,7 +83,7 @@ class ReservedUnit(Snap):
     back to back piled both onto the same cluster for exactly this reason.
 
     Derived, never stored. A deployment *is* the declaration; this is the part of it
-    ingestion has not caught up with — `max(0, declared - observed)` — which decays
+    ingestion has not caught up with (`max(0, declared - observed)`) which decays
     to zero on its own as the allocations arrive. That is why there is no reservation
     table, no expiry and no second writer: modelling the promise separately from the
     deployment that makes it would be the same declared fact written twice, and the
@@ -113,8 +113,8 @@ class ReservedUnit(Snap):
 class ClusterSnapshot(Snap):
     """One cluster's placement-relevant surface: what it is, and what it holds free.
 
-    `phase` and `reachable` are kept apart on purpose. Phase is declared — we say
-    a cluster is draining. Reachable is observed — the agent either has a live
+    `phase` and `reachable` are kept apart. Phase is declared: we say
+    a cluster is draining. Reachable is observed: the agent either has a live
     session or it does not. A cluster can be perfectly reachable and still not a
     placement target, and it can be declared active while nothing is listening.
     """
@@ -132,7 +132,7 @@ class ClusterSnapshot(Snap):
     reserved: tuple[ReservedUnit, ...] = ()
     """Devices promised to a deployment here that no allocation covers yet.
 
-    Kept beside `devices` rather than folded into them, because a reservation names
+    Kept beside `devices`, not folded into them, because a reservation names
     no device and inventing one to mark held would put a decision the cluster owns
     into the plane's mouth. The engine nets the two: `devices` is what is observed,
     this is what is owed, and available capacity is the difference.
@@ -142,7 +142,7 @@ class ClusterSnapshot(Snap):
 
     A deployment name is unique per cluster, so expanding a workload onto a cluster
     where its name already belongs to someone else cannot succeed. Placement rejects
-    that cluster as a candidate rather than inventing a suffix, and carries the map
+    that cluster as a candidate instead of inventing a suffix, and carries the map
     in the snapshot so the check stays a pure comparison.
     """
 
@@ -169,7 +169,7 @@ class PolicySnapshot(Snap):
 
     Attachment resolution is the caller's job: by the time a policy arrives here
     it applies. An empty allow-list means "unconstrained on this axis", which is
-    what makes an all-empty policy a no-op rather than a total ban.
+    what makes an all-empty policy a no-op instead of a total ban.
     """
 
     name: str
@@ -190,7 +190,7 @@ class CapacitySnapshot(Snap):
 
 
 class PlacementRequest(Snap):
-    """What is being placed, expressed as a device shape rather than a node count.
+    """What is being placed, expressed as a device shape instead of a node count.
 
     `kind` carries the `service | task | gang` discriminator, and `device_count` is
     the whole indivisible unit this request stands for: one replica, one share of a
@@ -210,8 +210,8 @@ class PlacementRequest(Snap):
 
     Not the same question as `requires_single_domain`, and asked of every request
     whether or not one is declared. A tensor group reaching over the backend fabric
-    is the one split that does not work, so it is a floor on the node rather than a
-    preference expressed about the fabric — a cluster of one-device machines cannot
+    is the one split that does not work, so it is a floor on the node instead of a
+    preference expressed about the fabric: a cluster of one-device machines cannot
     serve a tensor-parallel-two replica however many machines it has, and however
     little it cares which domain they sit in.
     """
@@ -226,7 +226,7 @@ class PlacementRequest(Snap):
 
         A gang always must: its ranks are co-scheduled and a split gang is broken,
         not degraded. A tensor-parallel service replica is all-or-nothing too, but at
-        the granularity of one replica — which is what a share is made of — so a
+        the granularity of one replica, which is what a share is made of, so a
         service or task request is splittable across clusters and each resulting share
         is placed whole.
         """

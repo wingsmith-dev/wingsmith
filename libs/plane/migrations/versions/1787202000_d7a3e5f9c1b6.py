@@ -4,8 +4,8 @@ Revision ID: d7a3e5f9c1b6
 Revises: c6f2d49e8b5a
 Create Date: 2026-08-20 18:40:00.000000
 
-Every deployment carries a priority class — the column is not nullable, and that is
-the design: preemption should be a policy change later rather than a migration across
+Every deployment carries a priority class; the column is not nullable, and that is
+the design: preemption should be a policy change later instead of a migration across
 every workload. Without a seeded default a fresh install could not create a
 deployment at all: `POST /v1/deployments` and `.../promote` both fall back to the
 class marked default, and with none the request failed with `no priority class was

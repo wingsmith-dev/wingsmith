@@ -4,7 +4,7 @@ that no longer runs one replica.
 `SessionState` stays in memory and is not shared across pods. What does have to be
 shared is a single fact: which session's writes for a given `cluster_id` count, or
 two pods can interleave writes to the same ingestion rows. This module is that
-fact's only home — a row per `cluster_id` in `hub_cluster_claim`, claimed
+fact's only home: a row per `cluster_id` in `hub_cluster_claim`, claimed
 atomically at `hello` and polled by the session that currently believes it holds
 it.
 
@@ -16,15 +16,15 @@ refuses the write of a session that no longer holds it (`DatabaseSink._holds`).
 Claiming is unconditional by design: a `hello` is, by construction, the newest claim
 attempt for its cluster, so there is nothing to compare against before overwriting.
 The atomicity that matters is not "newer beats older" arithmetic, it is that the
-read-and-decide never happens as two statements — a single `INSERT ... ON CONFLICT
+read-and-decide never happens as two statements: a single `INSERT ... ON CONFLICT
 DO UPDATE` is the whole claim, so two pods racing to claim the same cluster cannot
 both observe themselves as the winner.
 
-A displaced session is never pushed a notification — it may be mid-stream on a pod
+A displaced session is never pushed a notification: it may be mid-stream on a pod
 that the newer claimant has no channel to. Instead every live session polls its own
 row on an interval (`HUB_OWNERSHIP_CHECK_SECONDS`) and closes itself the moment the
 row names a different `session_id`. The peer reconnects, most likely to a different
-pod under a Kubernetes Service, and the hub there resyncs it from scratch — a
+pod under a Kubernetes Service, and the hub there resyncs it from scratch: a
 `full_resync`, per PROTOCOL §4, is the correct and only consequence.
 
 Every poll that finds the session still the owner also stamps `heartbeat_at`. A hub
@@ -110,15 +110,15 @@ class ClusterClaimService:
         """The one identity a cluster is claimed under, whatever identity it arrived as.
 
         This is what makes the claim mean anything. A cluster answers to both its
-        uid and its name — `cluster_ref_clause` accepts either everywhere else in
-        the plane — and an operator is configured by hand, so which of the two it
+        uid and its name, `cluster_ref_clause` accepts either everywhere else in
+        the plane, and an operator is configured by hand, so which of the two it
         introduces itself with is a deployment detail. Keyed by the raw string,
         one cluster whose two operators were configured differently gets two rows
         that never conflict, and both hubs conclude they hold the claim: the
         mutual exclusion ADR 0005 exists to provide silently stops existing, and
         two pods interleave writes to the same ingestion rows.
 
-        An unknown reference is claimed under itself rather than rejected. The
+        An unknown reference is claimed under itself, not rejected. The
         handshake has already validated the cluster by the time anything claims
         it, so this cannot normally miss; and if it somehow does, claiming under
         the literal is the behaviour that was there before and keeps a hub that
@@ -142,7 +142,7 @@ class ClusterClaimService:
 class ClaimStore(Protocol):
     """The seam `OperatorSession` claims and checks ownership through.
 
-    Narrow on purpose, matching `app.hub.sink.Sink`: a session must be exercisable
+    Narrow, matching `app.hub.sink.Sink`: a session must be exercisable
     end to end with no database, so tests use `MemoryClaimStore` in its place.
     """
 
@@ -152,7 +152,7 @@ class ClaimStore(Protocol):
 
 
 class DatabaseClaimStore:
-    """Session-per-call, matching `DatabaseSink` — the hub has no request scope to
+    """Session-per-call, matching `DatabaseSink`: the hub has no request scope to
     borrow a session from, and this path is hit once per `hello` and then once per
     ownership poll, not once per frame.
     """

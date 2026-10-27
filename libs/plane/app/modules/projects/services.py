@@ -141,7 +141,7 @@ class ProjectService:
         """A project holding workloads or allocations refuses to go.
 
         Both foreign keys are `ON DELETE RESTRICT`, so the database is the one
-        saying no; this turns that into the contract's `409 conflict` rather than
+        saying no; this turns that into the contract's `409 conflict` instead of
         letting an integrity error surface as a 500.
         """
         row = await self._one(ref, tenant)

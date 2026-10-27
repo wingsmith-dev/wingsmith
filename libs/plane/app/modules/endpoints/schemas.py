@@ -31,7 +31,7 @@ class ParameterRuleSchema(Struct):
     Both may be given, and an absent field constrains nothing.
 
     Kept only to read what is already stored. Nothing is written in this shape
-    any more — `endpoint_policy` converts it on the way out — and nothing new
+    any more (`endpoint_policy` converts it on the way out) and nothing new
     should be added to it.
     """
 
@@ -48,8 +48,8 @@ class ParameterPolicySchema(Struct):
     written is not a migration. Read, converted, never written.
 
     It could say what a parameter may be set to and nothing else. It could not
-    say *where* a term applied — so a rule measured against chat completions was
-    enforced against `/v1/embeddings`, `/v1/messages` and `/v1/responses` too —
+    say *where* a term applied, so a rule measured against chat completions was
+    enforced against `/v1/embeddings`, `/v1/messages` and `/v1/responses` too,
     and it could not say what an absent field should become.
     """
 
@@ -66,13 +66,13 @@ class RuleSchema(Struct):
     must carry for this rule to apply at all. All three are optional and an
     omitted one matches everything, so an unscoped rule behaves exactly as a v1
     policy did. A term is a claim about one protocol's request shape, and it is a
-    claim somebody measured — writing the path down is what stops it being
+    claim somebody measured: writing the path down is what stops it being
     applied to three other protocols nobody measured.
 
     `when_present` is a scope and not a term, which is why it sits here and not
     beside `drop`. "Does this rule look at this request at all" is one question
     however it is narrowed, and keeping the condition in the scope block means it
-    composes with every term rather than with one of them: the same field that
+    composes with every term, not with one of them: the same field that
     says "drop `reasoning_effort` when `thinking.effort` is set" would say
     "`temperature` must be 1 while thinking is on", with no second way to spell
     `when`.
@@ -84,20 +84,20 @@ class RuleSchema(Struct):
     another: a key is read out of the body, a predicate is looked up in a map.
 
     **Terms.** `enum`, `min` and `max` say what the value may be; `deny` refuses
-    the request outright — whenever the key is sent at all, or whenever the
+    the request outright: whenever the key is sent at all, or whenever the
     predicate fires. `default`, `drop` and `value_from` are the terms that write
     instead of refusing, and none of them ever fails a request: `default` says what
     to put in the request when the key is absent and its parent object is not,
     `drop` takes the key back out, and `value_from` copies another path's value
-    onto the key. `drop` is for a field the provider accepts and ignores —
+    onto the key. `drop` is for a field the provider accepts and ignores:
     denying one of those would 400 a request the vendor serves, and leaving it in
     place lets an engine honour a field the provider does not, which is a wrong
-    answer rather than an error and the harder of the two to notice.
+    answer instead of an error and the harder of the two to notice.
 
     `value_from` is for the case `drop` looks like it covers and does not: a knob
     the provider spells one way and the engine behind it spells another. Removing
     the engine's spelling makes it ignored, which is only half of "the provider's
-    field wins" — the other half is that the provider's field is *read*, and if
+    field wins": the other half is that the provider's field is *read*, and if
     nothing downstream reads it, the removal just leaves the engine on its own
     default. `{key: "reasoning_effort", value_from: "thinking.effort"}` says both
     halves at once: the vendor's value is carried onto the field the engine reads,
@@ -110,10 +110,10 @@ class RuleSchema(Struct):
     them. There is no precedence and the order of the list is never read: a term
     is something that was sold, and a second term does not cancel the first. Two
     that cannot both hold are an authoring mistake and are refused here, where
-    somebody is writing the policy, rather than on a request already in flight.
+    somebody is writing the policy, not on a request already in flight.
 
     A rule is data and never an expression. This is read on every request, and it
-    is also the thing somebody reads across a negotiating table — neither
+    is also the thing somebody reads across a negotiating table, neither
     survives a small language.
     """
 
@@ -138,19 +138,19 @@ class PolicySchema(Struct):
     sale, and a provider is sometimes stricter than the engine we run: Moonshot
     answers 400 to any `temperature` but 1, where an ordinary OpenAI-compatible
     server accepts the whole range. Conforming means refusing a request the engine
-    would happily serve — and sometimes it means the opposite, filling in a field
+    would happily serve, and sometimes it means the opposite, filling in a field
     the provider treats as having a default so that the engine reads what the
     provider's own frontend would have.
 
-    Absent is the default and means no opinion — every endpoint that has not sold
+    Absent is the default and means no opinion: every endpoint that has not sold
     a consistency term behaves exactly as it did before this existed. That default
     is the whole design: the policy is per endpoint precisely so that conforming
     on one model never narrows another.
 
-    `version` is what a reader that does not understand a future rule reports
-    rather than guesses. The gateway enforces what it knows and counts what it
+    `version` is what a reader that does not understand a future rule reports,
+    not guesses. The gateway enforces what it knows and counts what it
     does not, because a policy it cannot fully read is a conformance gap somebody
-    must see — never a reason to drop traffic. 2 is this shape; a v1 policy is
+    must see, never a reason to drop traffic. 2 is this shape; a v1 policy is
     converted on read and reaches the gateway as this one.
     """
 
@@ -161,9 +161,9 @@ class PolicySchema(Struct):
 class EndpointSurfaceSchema(Struct):
     """The terms on which the served API is exposed, as they are read back.
 
-    Typed rather than the bare dict it is stored as, because half of it the
+    Typed instead of the bare dict it is stored as, because half of it the
     gateway acts on and the other half is a disclosure somebody repeats to a
-    customer — and a field that only exists when it was written cannot be drawn
+    customer, and a field that only exists when it was written cannot be drawn
     either way. Every field is nullable or empty by default and absent means the
     gateway's own behaviour, never a claim.
 
@@ -186,8 +186,8 @@ class EndpointSchema(Struct):
     """The stable public name clients call. Global and plane-only.
 
     There is no cluster on this object at any depth. An endpoint spans clusters
-    by construction — that is what the weighted target set and the failover order
-    are for — and it never syncs to one, so a cluster reference here would be a
+    by construction, that is what the weighted target set and the failover order
+    are for, and it never syncs to one, so a cluster reference here would be a
     field with no writer and no meaning.
     """
 
@@ -229,9 +229,9 @@ class EndpointCreateRequest(Struct):
 
     `aliases` are the other names a caller may type for this endpoint. They resolve to `slug` and
     nothing downstream ever sees them: usage, policy and metrics are keyed on the canonical, which
-    is what makes a rename cheap — the old id moves into this list and no record is renamed. They
+    is what makes a rename cheap: the old id moves into this list and no record is renamed. They
     share one namespace with every endpoint's slug, so an alias that is already somebody's public
-    id is refused rather than silently shadowing it."""
+    id is refused, not silently shadowing it."""
 
     name: str
     project: str
@@ -248,8 +248,8 @@ class EndpointCreateRequest(Struct):
 class EndpointUpdateRequest(Struct):
     """A partial update. An absent field is untouched; an explicit null clears.
 
-    `name` and `project` are absent by design. The name is the internal handle —
-    it is in URLs, in metrics labels and in every link the console holds — and an
+    `name` and `project` are absent by design. The name is the internal handle,
+    it is in URLs, in metrics labels and in every link the console holds, and an
     endpoint exists so that deployments can be replaced without anyone noticing.
     `slug` is what clients actually send and it *is* patchable, which is the
     point of the split: the public model id can be corrected without moving the
@@ -257,12 +257,12 @@ class EndpointUpdateRequest(Struct):
     projects is a different endpoint. Supplying `targets` replaces the whole set:
     a target is identified by its deployment, and a patch that merged element-wise
     could not express removing one. `failover_order` orders that set, so it is
-    only accepted alongside it — an order over targets that are about to be
+    only accepted alongside it: an order over targets that are about to be
     replaced is an order over nothing.
 
     `aliases` replaces the whole set for the same reason `targets` does: an alias has no identity
     beyond its own string, so a merge could add one and never remove one. Omitting it leaves the
-    set alone; sending `[]` clears it, and the two must stay distinguishable — retiring the last
+    set alone; sending `[]` clears it, and the two must stay distinguishable: retiring the last
     alias of a renamed endpoint is a deliberate act and is how its old public id stops answering.
     """
 
@@ -283,11 +283,11 @@ class ResolvedUpstreamSchema(Struct):
     This is the one place a cluster appears next to an endpoint, and it is not a
     contradiction: the endpoint still holds no cluster, and this object is not
     the endpoint. It is the resolution of one, derived on read the way an
-    `EndpointSlice` is derived from a `Service` — flattened here so that a
-    gateway can hold the whole table in memory rather than re-walking four joins
+    `EndpointSlice` is derived from a `Service`: flattened here so that a
+    gateway can hold the whole table in memory instead of re-walking four joins
     per request.
 
-    `admission_phase` is passed through rather than filtered on. Whether a
+    `admission_phase` is passed through, not filtered on. Whether a
     deployment is running is observed, it can lag what the cluster is actually
     doing, and a plane that silently drops targets on it would turn a stale
     observation into an outage. The gateway is closer to the truth and decides.
@@ -297,7 +297,7 @@ class ResolvedUpstreamSchema(Struct):
     endpoint: one endpoint can front two clusters running different
     configurations, so there is no single answer to hang one level up. The
     gateway rewrites the inbound `model` to it before forwarding. It is usually
-    *not* the endpoint's name — a workload the console derived is named for its
+    *not* the endpoint's name: a workload the console derived is named for its
     configuration (`llama-3-3-70b-instruct-fp8-tp2-32k`), which is an internal
     detail of the fit that no client should ever have to type or notice changing.
     """
@@ -317,7 +317,7 @@ class ResolvedUpstreamSchema(Struct):
 
     From the workload's `serving.output_modality`, and here for the reason `served_model_name`
     is: it is a fact about the upstream. The gateway refuses a path the upstream does not answer
-    — `/v1/images/generations` to a chat model, `/v1/embeddings` to an image model — and reports
+    (`/v1/images/generations` to a chat model, `/v1/embeddings` to an image model) and reports
     it beside the name on `GET /v1/models`.
     """
 
@@ -330,19 +330,19 @@ class ResolvedEndpointSchema(Struct):
     nowhere to go right now", and dropping the row collapses them into a 404.
 
     `limits` is the endpoint's serving quota, flattened onto the payload the
-    gateway already polls rather than given a second poll of its own. It is null
-    when nothing has been sold on this endpoint, and null means unlimited — never
+    gateway already polls, not given a second poll of its own. It is null
+    when nothing has been sold on this endpoint, and null means unlimited, never
     zeros. The commitment rides here because it is small, changes on the order of
     weeks and is needed on every request, which is the shape of everything else
     already on this object.
 
-    `policy` rides here for the same reasons and is null far more often — it
+    `policy` rides here for the same reasons and is null far more often: it
     is set only on an endpoint that has sold a consistency term. Null means the
     gateway forwards what it is given, which is what every other endpoint wants.
 
     `tenant_id` is the endpoint's project's tenant, carried here so the gateway
     can answer only for the tenant a request belongs to (docs/decisions/0016) without
-    a second lookup per request. There is exactly one tenant per endpoint —
+    a second lookup per request. There is exactly one tenant per endpoint:
     this is not a cross-tenant endpoint's table.
 
     `name` is the canonical model id and `aliases` are the other strings that reach it. The
@@ -367,9 +367,9 @@ class ResolvedEndpointSchema(Struct):
 class ResolvedTableSchema(Struct):
     """Every enabled endpoint, resolved. The whole routing table in one read.
 
-    `revision` covers everything the table was built from — endpoints, their
+    `revision` covers everything the table was built from, endpoints, their
     targets, the deployments behind them and the serving addresses of the
-    clusters those sit on — so a caller that polls can send it back as
+    clusters those sit on, so a caller that polls can send it back as
     `If-None-Match` and get a `304` for as long as none of the four have moved.
     """
 

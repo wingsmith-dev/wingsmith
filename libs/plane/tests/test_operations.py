@@ -553,7 +553,7 @@ async def test_a_withdrawn_operation_renders_as_a_cancellation_and_never_again_a
     """The property that keeps a reconnect from re-sending a drain the caller stopped.
 
     `open_operations` replays every operation that has not reached a terminal
-    phase, and a cancelled-but-still-running one is in that set by definition —
+    phase, and a cancelled-but-still-running one is in that set by definition:
     the cluster has not answered yet. Rendering the instruction there would ask
     for the work again on exactly the path that exists to recover it.
     """

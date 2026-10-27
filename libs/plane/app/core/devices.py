@@ -1,8 +1,8 @@
 """The canonical device-class dictionary, read from `libs/packages/contract/devices.json`.
 
-A card is named in at least two dialects that will never agree — GPU Feature
+A card is named in at least two dialects that will never agree, GPU Feature
 Discovery publishes `NVIDIA-H100-80GB-HBM3` on a node label and the DCGM
-exporter publishes `NVIDIA H100 80GB HBM3` on a Prometheus label — and neither
+exporter publishes `NVIDIA H100 80GB HBM3` on a Prometheus label, and neither
 is ours. So the naming is: one table in `libs/packages/contract/`, read by this module and by
 the operator's `internal/devices`, with the same normalization on both sides.
 
@@ -32,7 +32,7 @@ def _table_path() -> Path:
     """Finds `libs/packages/contract/devices.json` in a checkout and in the image alike.
 
     The table is shared with the operator, so it lives in `libs/packages/contract/` at the repo
-    root rather than inside this package — four levels above this module in a
+    root, not inside this package: four levels above this module in a
     checkout, but two in the image, where only the plane and the table are
     copied in. Walking up to the first `libs/packages/contract/devices.json` covers both
     without pinning a depth that is wrong in one of them; the env var is the
@@ -62,14 +62,14 @@ class DeviceClass:
 
     `name` is the identifier and the only form that travels on the wire; `label`
     is the one to show a person. A class the table does not carry has no label
-    of its own, and callers fall back to the name — see `label_for`.
+    of its own, and callers fall back to the name; see `label_for`.
 
     `devices_per_node` is how many of these share one coherent interconnect, and it is
     `None` unless the part is sold as a rack-scale domain: a GB300 NVL72 is 72 devices
     and one node, whatever number of chassis that is. `None` means the caller's default
     applies, and a cluster's own observed topology outranks both.
 
-    `host_architecture` is the CPU the card is attached to, and empty means x86-64 — every
+    `host_architecture` is the CPU the card is attached to, and empty means x86-64: every
     class but the Grace superchips, which are `arm64`. It exists because some engines are built
     for one of the two only: vLLM-Omni ships amd64 images, so a diffusion workload on a GB200
     would be admitted, placed, and never start.
@@ -91,7 +91,7 @@ def normalize(value: str) -> str:
 
     Lowercase, vendor prefix dropped, every run of non-alphanumeric characters
     collapsed to one hyphen. Identical to `devices.Normalize` in the operator,
-    and tested as such — spaces against hyphens is the whole difference between
+    and tested as such: spaces against hyphens is the whole difference between
     the two dialects.
     """
     out = "".join(c if c.isalnum() else "-" for c in value.lower())
@@ -142,8 +142,8 @@ class DeviceTable:
         """The name to show a person, falling back to the class itself.
 
         Hardware the table does not list still resolves to a slug and is still
-        placed against, so this never returns empty — an unlabelled class reads
-        as its own identifier rather than as nothing.
+        placed against, so this never returns empty: an unlabelled class reads
+        as its own identifier, not as nothing.
         """
         entry = self._by_name.get(name)
         return entry.label if entry is not None else name
@@ -154,7 +154,7 @@ class DeviceTable:
         Sizing a first suggestion needs an upper bound on a single accelerator, and
         a constant in the caller is a second copy of the table that goes stale the
         week a bigger card ships. An empty table returns nothing and the caller
-        decides what to do without one, rather than being handed a zero to divide by.
+        decides what to do without one, instead of being handed a zero to divide by.
         """
         return max(self.classes, key=lambda c: c.memory_mib, default=None)
 

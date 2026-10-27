@@ -29,7 +29,7 @@ def _project_ids(ref: str) -> Select:
 class QuotaRepository:
     """Reads quotas, and counts their usage in the database.
 
-    Usage is an aggregate over live allocations rather than a stored counter.
+    Usage is an aggregate over live allocations instead of a stored counter.
     A counter would be a second writer on a row the API owns and would drift the
     first time an allocation was released without the plane noticing; a `count`
     over an indexed partial set cannot drift.
@@ -182,7 +182,7 @@ class ServingQuotaRepository:
         """The quota's own id, or the endpoint it commits, by id or by name.
 
         A serving quota has no name, the same way a device quota does not. The
-        endpoint does, and the FK is unique — so naming the endpoint names at
+        endpoint does, and the FK is unique, so naming the endpoint names at
         most one quota, and an `sqt_` id can never be mistaken for an `end_` one.
         """
         if is_uid(ref) and ref.startswith(SERVING_QUOTA):
@@ -214,8 +214,8 @@ class ServingQuotaRepository:
     def workload_endpoints_query(self, ref: str) -> Select:
         """The endpoints a workload's traffic is admitted through.
 
-        Two hops — target to deployment to workload — as a subquery, so resolving
-        by workload stays one round trip rather than a fan-out. A workload can sit
+        Two hops, target to deployment to workload, as a subquery, so resolving
+        by workload stays one round trip instead of a fan-out. A workload can sit
         behind more than one endpoint and each of those carries its own
         commitment; this returns the set, and the caller reports them separately.
         """
@@ -229,7 +229,7 @@ class ServingQuotaRepository:
         """Every commitment on an enabled endpoint, with the workloads behind it.
 
         The outer joins are what make a commitment on an endpoint with no targets
-        come back rather than vanish: an endpoint that has been sold a rate and
+        come back, not vanish: an endpoint that has been sold a rate and
         has nothing behind it yet is a state an operator has to be able to see,
         and dropping the row would report it as unlimited.
         """

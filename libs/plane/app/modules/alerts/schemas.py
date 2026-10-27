@@ -9,7 +9,7 @@ class AlertSubjectSchema(Struct):
     """What the alert is about, by public id.
 
     Unlike `EventSubjectSchema`, `id` is a resolvable `dep_`/`clu_`/`nod_`
-    identifier — and it may name something that no longer exists. That is not a
+    identifier, and it may name something that no longer exists. That is not a
     bug to fix later: an alert about a node that went away has to outlive the node,
     or the alerting system deletes its own evidence.
     """
@@ -22,12 +22,12 @@ class AlertSchema(Struct):
     """A derived condition, its lifecycle, and who has seen it.
 
     `state` and `severity` are two different axes and neither substitutes for the
-    other. Severity is how bad it is; state is where it is in its life — `pending`
+    other. Severity is how bad it is; state is where it is in its life: `pending`
     (true, not yet for long enough to be worth telling anyone), `firing`,
-    `acknowledged`, `resolved`. A pending alert is deliberately visible here and
-    deliberately not notified anywhere.
+    `acknowledged`, `resolved`. A pending alert is visible here and
+    not notified anywhere.
 
-    `for_seconds` is not returned, because it is a property of the rule rather than
+    `for_seconds` is not returned, because it is a property of the rule, not
     of this occurrence; `first_seen_at` and `fired_at` together say everything a
     caller needs about how long it took.
     """
@@ -67,11 +67,11 @@ class AlertAcknowledgeRequest(Struct):
 class MetricRuleSchema(Struct):
     """One entry in the catalogue of rules a threshold may name.
 
-    Read-only, and code rather than data: the metric and the comparison are the
+    Read-only, and code, not data: the metric and the comparison are the
     judgement `app/reactor/rules.py` owns, and the only reason they are on the wire
     at all is that a client building a threshold form has to know which number it
     is being asked for and in which unit. `metric` is a name from the metrics
-    registry, never an expression — an operator who could write the query could
+    registry, never an expression: an operator who could write the query could
     write one that means something else entirely.
     """
 
@@ -90,14 +90,14 @@ class MetricRuleSchema(Struct):
 class AlertThresholdSchema(Struct):
     """A number this plane has committed to, and the rule that watches it.
 
-    `subject.id` of null is the fleet default for that rule — one row that covers
-    every subject of its type — and a row naming a subject overrides it for that
+    `subject.id` of null is the fleet default for that rule, one row that covers
+    every subject of its type, and a row naming a subject overrides it for that
     subject alone.
 
     `lookback`, `for_seconds` and `severity` are returned exactly as declared,
     null included, because null here means "whatever the rule says" and
     substituting the rule's own value would make a row look like it had pinned
-    something it deliberately left alone. `/v1/alert-rules` carries the defaults.
+    something it left alone. `/v1/alert-rules` carries the defaults.
     """
 
     id: str
@@ -118,7 +118,7 @@ class AlertThresholdSchema(Struct):
 
 
 class AlertThresholdCreateRequest(Struct):
-    """`comparison` is deliberately absent. Which way a metric is wrong is not declarable."""
+    """`comparison` is absent. Which way a metric is wrong is not declarable."""
 
     rule: str
     value: float
@@ -139,7 +139,7 @@ class AlertThresholdUpdateRequest(Struct):
     `rule`, `subject_type` and `subject_id` are not updatable. They are the row's
     identity under `uq_ops_alert_threshold_scope`, and moving a commitment onto a
     different rule or a different subject is the creation of a different
-    commitment — one that should leave the old row's history behind it.
+    commitment: one that should leave the old row's history behind it.
     """
 
     value: float | UnsetType = UNSET

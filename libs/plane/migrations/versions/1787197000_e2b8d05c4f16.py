@@ -9,7 +9,7 @@ took a bare UUID while every other path segment took a prefix. That is a rule wi
 exception, which is two rules.
 
 Existing rows are backfilled from `md5(id)`, whose hex digits are already the first
-sixteen characters of the Crockford alphabet the minter uses — so a backfilled id passes
+sixteen characters of the Crockford alphabet the minter uses, so a backfilled id passes
 the same shape check a minted one does. It is not time-sortable the way a minted ULID is,
 and it does not need to be: events page on `seq`, never on `uid`.
 

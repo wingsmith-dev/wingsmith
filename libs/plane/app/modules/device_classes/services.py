@@ -63,7 +63,7 @@ class DeviceClassService:
     """The device catalog: the contract's dictionary, joined to what we own.
 
     Read-only, and read-only for a different reason than the observed modules.
-    A class is not discovered and not declared — it is a definition, and it is
+    A class is not discovered and not declared: it is a definition, and it is
     versioned in `libs/packages/contract/devices.json` alongside the operator
     that resolves vendor strings against it. Editing one through the API would
     put the plane and the operator on different dictionaries, which is the one
@@ -95,7 +95,7 @@ class DeviceClassService:
 
         Not paginated: the catalog is a bounded dictionary of hardware we can
         buy, not a collection that grows with use. `present` narrows it to what
-        this fleet — or one cluster of it — actually holds.
+        this fleet, or one cluster of it, actually holds.
         """
         inventory = await self._inventory(cluster)
         items = catalog(self.table.classes, inventory, architecture=architecture, present=present)

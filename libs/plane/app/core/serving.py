@@ -22,13 +22,13 @@ SERVED_MODEL_ARGS = ("served-model-name", "served_model_name")
 operator renders `--` + the key verbatim (`strings.TrimPrefix(key, "--")` in
 `render/dynamo.go`) and vLLM's flag is `--served-model-name`. The underscore form
 is accepted because this function looked for nothing else for a while, so it is
-what anyone who read this code rather than the operator would have written — but
+what anyone who read this code instead of the operator would have written, but
 it does not survive the render, and a recipe carrying it gets an engine that
 refuses to start on an unrecognised argument. Both are read here so that the
 plane's answer never silently disagrees with the command line.
 
 Matched against `flag_name`, never against the raw key. Real workloads store the
-leading dashes — `{"--served-model-name": "moonshotai/kimi-k3"}` — because that is
+leading dashes (`{"--served-model-name": "moonshotai/kimi-k3"}`) because that is
 what a person copying a command line writes, and the operator strips them before
 rendering. Comparing the raw key to these names missed every one of those, which
 is not a lookup that fails loudly: the plane fell through to the declared name,
@@ -71,7 +71,7 @@ DERIVED_FLAGS = frozenset(
 The mirror of `derived` in `engineArgs` (`libs/operator/internal/render/dynamo.go`),
 written here because the plane has to know which flags it has already spoken for.
 Every one of these comes from a column a person filled in, that `check_shape` and
-`check_capacity` validated, and that placement chose devices against — so a value
+`check_capacity` validated, and that placement chose devices against, so a value
 for one of them arriving from anywhere else is not a default, it is a
 contradiction of a decision already acted on. The operator lays `engine_args` over
 its derived flags last, which means anything the plane puts in `engine_args` wins
@@ -110,7 +110,7 @@ def artifact_slug(digest: str, locations: object) -> str:
     """The slug to stamp on an artifact, read from where it says its bytes come from.
 
     The preferred location wins, then the first one given. A location is the only place the
-    organisation is written down — `hf://openai/gpt-oss-20b` — which is why deriving this from the
+    organisation is written down (`hf://openai/gpt-oss-20b`) which is why deriving this from the
     artifact's `name` never worked: a name is `gpt-oss-20b` and no amount of reading it produces
     the `openai/`.
 
@@ -137,7 +137,7 @@ def artifact_slug(digest: str, locations: object) -> str:
 def served_model(workload: Workload, artifact: Artifact) -> str:
     """The `model_name` the engine reports itself under, most authoritative first.
 
-    `engine_args` first, because it wins on the command line — the operator
+    `engine_args` first, because it wins on the command line: the operator
     renders the derived flags and then lays `engine_args` over them, so anything
     decided here that it contradicts is a lie about the running process. It is the
     escape hatch for a flag this plane has never heard of and an escape hatch that
@@ -145,17 +145,17 @@ def served_model(workload: Workload, artifact: Artifact) -> str:
 
     Then the artifact's slug, which is the answer in every ordinary case. It used to rank below a
     `Workload.served_model_name` and below `Recipe.name` before that, which put the fit on the
-    public API surface — `kimi-k3-mxfp4-tp8-1024k` — so re-fitting the same model at a different
+    public API surface (`kimi-k3-mxfp4-tp8-1024k`) so re-fitting the same model at a different
     tensor degree renamed the model every client codes against. Both declarations are gone: the
     slug is a fact about the weights, it survives a re-fit, and a second place to write it down is
     only a second place for it to be wrong.
 
-    Here in `core/` rather than in a module because four of them ask the same
+    Here in `core/`, not in a module because four of them ask the same
     question for different reasons: metrics and benchmarks narrow a series by it,
     endpoints put it on the routing table so the gateway can rewrite an inbound
     `model` to it, and the desired-state builder sends it to the cluster. It is
-    machinery — the one place that knows how a serving configuration becomes the
-    string an engine answers to — and a module that owned it would have the others
+    machinery, the one place that knows how a serving configuration becomes the
+    string an engine answers to, and a module that owned it would have the others
     importing across the domain to reach it.
     """
     args = {flag_name(key): value for key, value in (workload.engine_args or {}).items()}
@@ -169,13 +169,13 @@ def served_model(workload: Workload, artifact: Artifact) -> str:
 def declared_served_model(workload: Workload, artifact: Artifact) -> str:
     """`served_model` without the `engine_args` hatch, for what the plane declares.
 
-    The wire carries this rather than the full answer: the operator lays
+    The wire carries this instead of the full answer: the operator lays
     `engine_args` over the derived flags itself, so sending the resolved hatch
     would only give the same value twice and a chance for the two to disagree.
 
     The workload's name remains the floor, for an artifact registered before slugs existed or one
-    whose locations say nothing resolvable. It is a bad answer and it is meant to look like one —
-    it is a workload's name where a model id belongs — but it is a string, and returning empty
+    whose locations say nothing resolvable. It is a bad answer and it is meant to look like one,
+    it is a workload's name where a model id belongs, but it is a string, and returning empty
     here renders an engine with `--served-model-name ` and a frontend that registers nothing.
     """
     return (artifact.slug or "").strip() or str(workload.name)
@@ -192,7 +192,7 @@ def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]
     default `max_num_seqs` is 1024, so the engine refuses at CUDA graph capture
     before it serves a token.
 
-    Read from `app.integrations.dynamo_recipes` rather than from the vLLM corpus
+    Read from `app.integrations.dynamo_recipes`, not from the vLLM corpus
     because the cluster runs `python3 -m dynamo.vllm` and not `vllm serve`. The
     allow-list of what may be carried across lives there, next to the reasons for
     everything left out of it.
@@ -214,7 +214,7 @@ DISAGGREGATED = "disaggregated"
 SERVING_TOPOLOGIES = frozenset({AGGREGATED, DISAGGREGATED})
 """The two ways a workload's weights can be served, and there is no third.
 
-Spelled here rather than in the workloads module because `serving_digest` branches on the
+Spelled here, not in the workloads module because `serving_digest` branches on the
 value and the module validates it, and a closed set with two readers and one spelling is the
 only version of it that cannot drift. `Workload.serving_topology` names the column and says
 why it is not called `topology`.
@@ -224,7 +224,7 @@ OMNI_ENGINES = frozenset({"omni", "vllm-omni", "vllm_omni"})
 """The spellings of the vLLM-Omni engine, which Dynamo runs as `python3 -m dynamo.vllm.omni`.
 
 The operator accepts the same three (`engineModule` in `libs/operator/internal/render/dynamo.go`).
-It is the one engine here that emits images and video rather than text, runs inside the
+It is the one engine here that emits images and video, not text, runs inside the
 `vllm-runtime` image, and has no prefill/decode split.
 """
 
@@ -272,8 +272,8 @@ TOPOLOGY_FLAGS = frozenset({"disaggregation-mode", "kv-transfer-config"})
 `DERIVED_FLAGS` is the same statement about the fields a person filled in; these two are
 derived from `serving_topology` and the role instead, which is a decision nobody typed and
 therefore one nobody may contradict from `engine_args`. `kv-transfer-config` is the same
-string on both roles — the transfer mechanism is a property of the topology, not of the role
-— and `disaggregation-mode` is the role itself, so a value for either arriving from a role's
+string on both roles, the transfer mechanism is a property of the topology, not of the role,
+and `disaggregation-mode` is the role itself, so a value for either arriving from a role's
 own arguments is a second answer to a question already settled.
 """
 
@@ -475,10 +475,10 @@ still hashes under `engine_version`, and every digest written before the rename 
 still the digest of the same configuration after it.
 
 Read in this order and hashed with the artifact, which is the one field not named
-here because it is an identity rather than a column value.
+here because it is an identity instead of a column value.
 
-What is deliberately absent is the whole point of the field. `imported_args` is
-observed — it was read off somebody else's running process and is never rendered,
+What is absent is the point of the field. `imported_args` is
+observed: it was read off somebody else's running process and is never rendered,
 so two workloads that differ only there ask for the same engine. `capabilities`
 is asserted and never reaches a cluster. `served_model_name` is a name rather
 than a footprint: the same engine under two names is one configuration served
@@ -498,18 +498,18 @@ def serving_digest(
     (`matchExistingRecipe`); comparing contents to find an object is the tell that
     the contents are the object.
 
-    Canonical JSON — sorted keys, no whitespace — so that two workloads written
+    Canonical JSON (sorted keys, no whitespace) so that two workloads written
     months apart by different code paths hash the same. `Decimal` and `UUID` are
-    coerced to `str` rather than left to a JSON encoder that would refuse them,
-    and `kv_cache_fraction` therefore hashes as the string Postgres round-trips
-    rather than as a float whose repr depends on the driver.
+    coerced to `str`, not left to a JSON encoder that would refuse them,
+    and `kv_cache_fraction` therefore hashes as the string Postgres round-trips,
+    not as a float whose repr depends on the driver.
 
     Derived on every write and never accepted from a client: a digest somebody
-    else computed is a claim about a configuration rather than a reading of it.
+    else computed is a claim about a configuration instead of a reading of it.
 
     `roles` is a parameter and not `workload.roles`, for the same reason `artifact` is: the
     dependency must be impossible to forget. Every relationship on this model is `lazy="noload"`,
-    and a noloaded collection does not raise — SQLAlchemy hands back an **empty list**. A digest
+    and a noloaded collection does not raise: SQLAlchemy hands back an **empty list**. A digest
     that read the attribute would therefore hash a disaggregated workload as if it had no roles
     whenever the caller had not asked for them, silently, and produce a digest that names a
     configuration nobody is running. Passing them in makes the omission a `TypeError` at the call
@@ -519,7 +519,7 @@ def serving_digest(
     disaggregated**, so every aggregated workload's digest is byte-identical to the one this
     function returned before roles existed. That is the same trick `engine_defaults` above plays
     and it is here for the same reason: an absent key and a default value are different hashes,
-    and adding either unconditionally changes every digest in the fleet at migration — every
+    and adding either unconditionally changes every digest in the fleet at migration: every
     deployment's `ServingDigestAnnotation` with it, and every benchmark's link back to what it
     measured.
 
@@ -588,21 +588,21 @@ def declared_router(stored: dict | None) -> dict[str, Any]:
 def _role_config(role: WorkloadRole) -> dict[str, Any]:
     """One role as the digest sees it: what it configures, never how many of it there are.
 
-    `max_batch_tokens` and `engine_args` decide what the process is — prefill runs
+    `max_batch_tokens` and `engine_args` decide what the process is, prefill runs
     `--max-num-batched-tokens 32768` against decode's 2048, a sixteenfold difference in how much
-    work one engine step does — so they belong in a hash whose subject is "what process runs".
+    work one engine step does, so they belong in a hash whose subject is "what process runs".
 
-    `weight` is deliberately absent, and the reason is identity rather than restarts.
+    `weight` is absent, and the reason is identity, not restarts.
     `ops_benchmark_run.serving_digest` names the configuration a measurement was taken against,
     and `DIGEST_FIELDS` is explicit that "a run whose digest no longer matches any workload has
     lost the only link back to what it measured". A weight in this hash would orphan every
-    benchmark ever taken against a model the moment somebody added one prefill worker — and those
+    benchmark ever taken against a model the moment somebody added one prefill worker, and those
     benchmarks are precisely the measurements somebody would be consulting in order to choose the
     ratio. The rule is not new: `DIGEST_FIELDS` has always excluded scale, which is why the count
     of aggregated replicas is not in here either.
 
     The knock-on that has to be said out loud or the weights return through a side door:
-    `device_count` *is* a digest field and it means **devices per worker** — 8 at TP8, not the
+    `device_count` *is* a digest field and it means **devices per worker**: 8 at TP8, not the
     group's 24. A group's device cost is `Σ (weight × device_count)`, derived where it is used
     and stored nowhere, because a column holding the group total would put the weights into this
     hash silently: nothing about the name says which of the two it holds.

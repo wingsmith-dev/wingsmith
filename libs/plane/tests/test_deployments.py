@@ -188,7 +188,7 @@ def test_the_per_role_counts_reach_the_api_beside_the_scalars() -> None:
 
     The scalars stay the group rollup and are not replaced, so a client that ignores
     `roles` reads exactly the totals it always did. What it cannot read is which role
-    is short — and for a 1P:2D group that is the whole question, because two ready
+    is short, and for a 1P:2D group that is the whole question, because two ready
     decode workers and no prefill is `2 of 3` and serves nothing.
     """
     status = _status(

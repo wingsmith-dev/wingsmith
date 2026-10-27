@@ -1,7 +1,7 @@
 """Pure authentication logic: no database, no I/O.
 
 `AuthManager` owns credential verification, token minting and verification,
-and principal resolution. Every method is a staticmethod — nothing here holds
+and principal resolution. Every method is a staticmethod: nothing here holds
 state; the only inputs are the arguments and `settings`.
 
 Four principal kinds exist (`app.auth.schemas`): `admin`, `tenant`, `operator`
@@ -55,7 +55,7 @@ class AuthManager:
         Built only from a per-cluster enrolment token the hub has resolved by its
         hash. `scope` carries the cluster's uid, and the handshake refuses a
         `hello` that names a different cluster, so the token *is* the identity
-        rather than a fleet-wide pass. There is no unbound form.
+        instead of a fleet-wide pass. There is no unbound form.
         """
         if not cluster_uid:
             raise ValueError("an operator principal is always bound to a cluster")
@@ -94,7 +94,7 @@ class AuthManager:
 
         `scope` is the tenant's uid and is the whole of this principal's authority:
         it holds no wildcard, and every route outside the serving view refuses it
-        (`app.core.context.authorize`). The uid rather than the slug, because a
+        (`app.core.context.authorize`). The uid instead of the slug, because a
         slug is a handle somebody reads and the scope is compared.
         """
         return Principal(
@@ -110,9 +110,9 @@ class AuthManager:
         """Mints a tenant console token: `(plaintext, sha256_hex)`.
 
         Only the hash is stored; the plaintext is shown once at mint. Fast-hashed
-        for the same reason as the enrolment token — 256 bits of machine-generated
+        for the same reason as the enrolment token: 256 bits of machine-generated
         randomness has no dictionary to walk, and the login needs one indexed
-        lookup rather than a bcrypt over every live row.
+        lookup instead of a bcrypt over every live row.
         """
         token = f"{TENANT_PREFIX}.{secrets.token_urlsafe(32)}"
         return token, AuthManager.hash_tenant_token(token)
@@ -126,8 +126,8 @@ class AuthManager:
     def mint_tenant_api_key() -> tuple[str, str]:
         """Mints a gateway inference key: `(plaintext, sha256_hex)`.
 
-        Same shape and reasoning as `mint_tenant_token` — high-entropy,
-        fast-hashed, shown once — under `TENANT_API_KEY_PREFIX` so the two
+        Same shape and reasoning as `mint_tenant_token`, high-entropy,
+        fast-hashed, shown once, under `TENANT_API_KEY_PREFIX` so the two
         credential kinds can never resolve against the wrong table.
         """
         key = f"{TENANT_API_KEY_PREFIX}.{secrets.token_urlsafe(32)}"
@@ -164,7 +164,7 @@ class AuthManager:
 
         `GATEWAY_SERVICE_TOKEN` when set; `LOCAL_GATEWAY_SERVICE_TOKEN` under
         `APP_ENV=local` only. Empty anywhere else, which resolves no gateway
-        principal at all rather than matching an empty bearer.
+        principal at all instead of matching an empty bearer.
         """
         if settings.GATEWAY_SERVICE_TOKEN:
             return settings.GATEWAY_SERVICE_TOKEN
@@ -201,7 +201,7 @@ class AuthManager:
         Only the hash is ever stored; the plaintext is shown once at
         register/rotate and cannot be recovered. The token is high-entropy
         random, so a fast hash is safe against precomputation and lets the hub
-        resolve it with one indexed lookup — bcrypt would forbid the lookup
+        resolve it with one indexed lookup: bcrypt would forbid the lookup
         and buys nothing over a password.
         """
         token = f"{ENROLMENT_PREFIX}.{secrets.token_urlsafe(32)}"
@@ -218,7 +218,7 @@ class AuthManager:
 
         A second verifier over the same credential, minted alongside the sha256
         the hub compares. Traefik's `basicAuth` middleware can only check a
-        crypt-style hash, and the hub needs an indexed lookup — neither hash
+        crypt-style hash, and the hub needs an indexed lookup, neither hash
         can serve both, so both are stored and the plaintext still exists only
         at mint time.
         """
@@ -231,7 +231,7 @@ class AuthManager:
 
         Lets the hub reject obvious junk before the WebSocket upgrade while
         still admitting a well-formed-but-unknown token far enough to be
-        resolved (and then closed) — the authoritative check is the database
+        resolved (and then closed): the authoritative check is the database
         lookup.
         """
         return token is not None and token.startswith(f"{ENROLMENT_PREFIX}.")
@@ -338,7 +338,7 @@ class AuthManager:
 
         The payload carries the kind and the scope because the token is the only
         thing a request presents: a session that resolved to whatever the server
-        chose to assume would make the tenant view a guess rather than a claim, and
+        chose to assume would make the tenant view a guess instead of a claim, and
         the signature is what makes the claim safe to read back. It also carries
         the session it belongs to, so the guard can refuse it the moment that
         session is revoked, and the credential generation, so a password change
@@ -369,10 +369,10 @@ class AuthManager:
         """Verifies a session token's signature, shape, generation and expiry.
 
         Returns `None` on any malformed, tampered, unsigned-for, expired or
-        superseded token rather than raising, so `resolve_principal` can try it
+        superseded token instead of raising, so `resolve_principal` can try it
         as one option among several credential kinds. A payload that is not
-        exactly the current shape — an unknown kind, a missing field, the older
-        colon-separated form — is refused, never upgraded. Whether the session
+        exactly the current shape, an unknown kind, a missing field, the older
+        colon-separated form, is refused, never upgraded. Whether the session
         has since been revoked is a database question the guard asks next.
         """
         parts = token.split(".")
@@ -429,7 +429,7 @@ class AuthManager:
         If neither matches and admin auth is disabled (see `admin_auth_enabled`,
         allowed under `APP_ENV=local` only), the caller is treated as the
         console/CLI on a developer's machine and resolves to an admin principal.
-        Otherwise raises `NotAuthorized` — this function never returns a
+        Otherwise raises `NotAuthorized`; this function never returns a
         fabricated identity for a bad or missing credential, and never an
         operator: operator credentials open hub sessions and nothing else.
         """

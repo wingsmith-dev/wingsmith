@@ -4,9 +4,9 @@ Every cluster we operate runs Dynamo over vLLM, and this leans on that hard. It 
 general parser and does not pretend to be one: it knows what `python3 -m dynamo.vllm`
 takes, what NVIDIA's runtime images are called, and what Dynamo writes into its labels.
 A cluster serving something else produces a draft with fewer fields filled and a note
-saying so, which is the honest outcome — a wrong guess is worse than a blank.
+saying so, which is the accurate outcome: a wrong guess is worse than a blank.
 
-It lives in the plane rather than the operator on purpose. Rule 2 says the operator is the
+It lives in the plane instead of the operator. Rule 2 says the operator is the
 only thing that knows Kubernetes; it does not say the operator is the thing that knows
 vLLM. Keeping engine knowledge here means a better reading ships as a plane deploy instead
 of a roll across every cluster in the fleet.
@@ -73,14 +73,14 @@ class ServingDraft(Struct):
 
     `confident` is false when the engine could not be identified, because every
     field below it is then a guess dressed as a reading. `notes` names what could
-    not be determined so the person confirming knows where to look rather than
+    not be determined so the person confirming knows where to look instead of
     having to diff the draft against the cluster themselves.
 
     `imported_args` is the argv as discovery reported it, in flag/value pairs, including
     arguments that also populated a field above. Flags whose values discovery withheld are
     named in `notes` and not listed here. `engine_args` is empty in a draft and always
     will be: reading a flag off a pod records it, and asserting it is a separate
-    act by a person (ADR 0009). The duplication is deliberate — the draft has to
+    act by a person (ADR 0009). The duplication is deliberate: the draft has to
     be checkable against the cluster without re-reading the pod.
     """
 
@@ -118,7 +118,7 @@ REDACTED = "<redacted>"
 def parse_args(args: list[str]) -> dict[str, str]:
     """Folds a container's argv into flag/value pairs.
 
-    A bare `--flag` with no value maps to the empty string rather than being
+    A bare `--flag` with no value maps to the empty string instead of being
     dropped: `--enforce-eager` is a setting, and losing it would make the draft
     quietly disagree with what is running.
     """
@@ -149,7 +149,7 @@ def engine_runtime_from_image(image: str | None) -> tuple[str | None, str | None
 
     `vllm-runtime:1.3.1` is two facts in one string: which engine is compiled in,
     and which Dynamo release compiled it. The tag is the second and never the
-    first — vLLM's own version is not in this address and cannot be read out of it.
+    first: vLLM's own version is not in this address and cannot be read out of it.
 
     NVIDIA names these `<engine>-runtime`, which is a stronger signal than the
     repository path and is tried first. Anything else falls back to the last path
@@ -230,7 +230,7 @@ def _quantization(model_ref: str | None, values: dict[str, str]) -> str | None:
 
     The model name is consulted only when the args are silent, because vLLM reads
     quantisation out of the checkpoint's own config and a repository called
-    `...-AWQ-4bit` is a naming convention rather than a declaration. It is a hint
+    `...-AWQ-4bit` is a naming convention instead of a declaration. It is a hint
     offered for confirmation, never a fact asserted.
     """
     if explicit := values.get("quantization"):
@@ -244,8 +244,8 @@ def _quantization(model_ref: str | None, values: dict[str, str]) -> str | None:
     return None
 
 
-# `Qwen3-32B`, `Llama-3.1-70B-Instruct`, `Mixtral-8x7B` — the parameter count is in the name often
-# enough to be worth offering, and is a naming convention rather than a fact, so it is carried as a
+# `Qwen3-32B`, `Llama-3.1-70B-Instruct`, `Mixtral-8x7B`: the parameter count is in the name often
+# enough to be worth offering, and is a naming convention instead of a fact, so it is carried as a
 # hint a person confirms.
 _PARAMS = re.compile(r"(?:^|[-_./])(?P<count>\d+(?:\.\d+)?)\s*[bB](?:$|[-_./])")
 _MOE_PARAMS = re.compile(r"(?:^|[-_./])(?P<experts>\d+)x(?P<count>\d+(?:\.\d+)?)\s*[bB](?:$|[-_./])")
@@ -294,13 +294,13 @@ def derive_artifact(model_ref: str | None, values: dict[str, str], quantization:
     """Reads the weights a workload was pointed at.
 
     A repository id becomes an `hf` source, because that is what the operator turns
-    back into `--model` when it renders a workload — adopting weights by reference
+    back into `--model` when it renders a workload: adopting weights by reference
     and serving them by reference are the same string, and an artifact that cannot
     be rendered back is not worth writing.
 
-    A local path is kept as a `file` source and named as one. It is honest and it
+    A local path is kept as a `file` source and named as one. It is accurate and it
     is nearly useless: a path is meaningful only on the cluster that holds it, so
-    the draft says so rather than implying the weights are fetchable.
+    the draft says so instead of implying the weights are fetchable.
     """
     notes: list[str] = []
     metadata: dict = {"source": "discovered"}
@@ -335,7 +335,7 @@ def derive_artifact(model_ref: str | None, values: dict[str, str], quantization:
     if revision:
         reference = f"{reference}@{revision}"
     else:
-        notes.append("no --revision, so this names a repository rather than a commit of one")
+        notes.append("no --revision, so this names a repository instead of a commit of one")
 
     if tokenizer := values.get("tokenizer"):
         metadata["tokenizer"] = tokenizer
@@ -352,7 +352,7 @@ def derive_artifact(model_ref: str | None, values: dict[str, str], quantization:
     if parameter_count is not None:
         notes.append("the parameter count was read from the model's name, not from its config")
 
-    notes.append("the digest is this reference, not a hash of the bytes — nothing has resolved them")
+    notes.append("the digest is this reference, not a hash of the bytes: nothing has resolved them")
 
     return ArtifactDraft(
         reference=reference,
@@ -435,7 +435,7 @@ def derive(
     imported_args = {f"--{k}": v for k, v in values.items() if v != REDACTED}
 
     # Nothing is declared by reading. A draft proposes no engine_args at all: asserting a flag
-    # is somebody's decision, and the whole point of the split is that it stays visible as one.
+    # is somebody's decision, and the point of the split is that it stays visible as one.
     engine_args: dict[str, str] = {}
 
     return ServingDraft(

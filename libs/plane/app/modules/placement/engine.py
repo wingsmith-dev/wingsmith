@@ -1,7 +1,7 @@
 """The placement function itself: pure, synchronous, and total.
 
-It never raises for an unplaceable workload — an unplaceable workload is an
-answer, not an error — and it never touches anything but its two arguments.
+It never raises for an unplaceable workload, an unplaceable workload is an
+answer, not an error, and it never touches anything but its two arguments.
 """
 
 import logging
@@ -46,7 +46,7 @@ UNBOUNDED = 1 << 30
 def place(request: PlacementRequest, snapshot: CapacitySnapshot) -> PlacementDecision:
     """Choose the cluster a workload goes to, or explain why none will do.
 
-    Device selection is deliberately absent: which accelerators inside the winning
+    Device selection is absent: which accelerators inside the winning
     cluster get used is a hot, local decision made by the in-cluster scheduler
     with node state at millisecond scale. This picks the cluster.
     """
@@ -77,7 +77,7 @@ def _rank(verdict: ClusterVerdict) -> tuple:
     """The tiebreak, ordered so the same question always gets the same answer.
 
     The tightest domain first so large fabrics are kept whole, then the roomiest
-    cluster, then the most quota headroom, and finally the cluster name — which
+    cluster, then the most quota headroom, and finally the cluster name, which
     guarantees determinism even when two clusters are identical in every other
     respect.
 
@@ -90,7 +90,7 @@ def _rank(verdict: ClusterVerdict) -> tuple:
     the leftover in whatever the fit was made against: one topology domain for a
     single-domain unit, the whole cluster for anything else. Ranking on the second
     sorts by free devices ascending, so the fullest cluster that still fits always
-    wins — best-fit packing, which would drain one cluster before touching the next
+    wins: best-fit packing, which would drain one cluster before touching the next
     and make the roomiest-cluster key below unreachable. A single-domain unit still
     wants the smallest fabric that holds it, so the key stays for a domain fit and is
     dropped for an aggregate one.
@@ -175,7 +175,7 @@ def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[R
 
     Two deployments of the same workload in two clusters share a name and do not
     collide; a name held by a *different* workload does, and placement rejects the
-    cluster rather than inventing a suffix that would then be the name nobody typed.
+    cluster instead of inventing a suffix that would then be the name nobody typed.
 
     The namespace is the cluster's, not the tenant's: the deployment name is the
     object name rendered into the cluster, so two tenants whose workloads share a
@@ -313,7 +313,7 @@ def _headroom(quota: QuotaSnapshot | None, reserved: int, own: int = 0) -> int |
 
     `allocated_devices` is the observed draw and `reserved` is the declared one that
     has not been observed yet. Both come off the cap, because a quota that only
-    counts what a cluster has confirmed lets a project spend the same devices twice —
+    counts what a cluster has confirmed lets a project spend the same devices twice:
     the same double-spend `_owed` closes for capacity, asked of the ceiling instead of
     the fleet. `own` is the part of the observed draw held by the workload being
     placed, which is given back for the reason `_free_for` gives.
@@ -389,7 +389,7 @@ def _quota_own_draw(
 class _Supply:
     """What a cluster has to offer this request, net of what it already owes.
 
-    Free and reserved are carried side by side rather than merged, because they are
+    Free and reserved are carried side by side, not merged, because they are
     not the same kind of number. A free device has an address: it can be named and
     grouped by node or fabric. A reservation has a count and a shape and no
     address at all, because the cluster has not yet said which accelerators it will
@@ -447,7 +447,7 @@ def _tensor_group_too_wide(
 ) -> Rejection | None:
     """Rules out a cluster whose machines are too small to hold one tensor group.
 
-    Counted over every candidate device rather than the free ones, because this is a
+    Counted over every candidate device instead of the free ones, because this is a
     fact about the hardware and not about how busy it is. A cluster of one-device
     machines does not become able to run a tensor-parallel-two replica when something
     else finishes, so reporting it as a capacity shortfall would send someone to wait
@@ -486,8 +486,8 @@ def _node_groups(request: PlacementRequest, supply: _Supply) -> int | None:
     """How many tensor groups the free devices can form, each inside one node.
 
     None when the request has no tensor group to keep together. A reservation names
-    no node, so each pending unit is charged against the roomiest node still standing
-    — the pessimistic reading, for the reason `_burn` gives for fabrics.
+    no node, so each pending unit is charged against the roomiest node still standing:
+    the pessimistic reading, for the reason `_burn` gives for fabrics.
     """
     want = max(request.tensor_parallel, 1)
     if want < 2:
@@ -555,13 +555,13 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
 
     Aggregate capacity is not an answer here: eight devices spread over four
     nodes cannot serve a model that needs one NVLink fabric, which is why the
-    rejection reports the largest domain rather than the cluster total.
+    rejection reports the largest domain instead of the cluster total.
 
     Both constraints have to hold once reservations are in play, and they can fail
     independently. A fabric can look big enough while the cluster as a whole is
     already spoken for by pending replicas that will spread across it, so the domain
     check runs against the burnt-down per-domain counts and the cluster total is
-    checked separately — a request that clears one and not the other is rejected for
+    checked separately: a request that clears one and not the other is rejected for
     the one it actually failed.
 
     `units` counts whole copies of the request over the burnt-down domains, never
@@ -669,14 +669,14 @@ def _burn(
     """Charge every pending fabric-bound unit to the roomiest domain still standing.
 
     A reservation names no device, so which fabric a pending unit will take is not
-    knowable from here — the cluster has not chosen yet, and under rule 3 it is not
+    knowable from here: the cluster has not chosen yet, and under rule 3 it is not
     ours to choose. Largest-first is the pessimistic reading and the only safe one:
     if the biggest free fabric might be the one already spoken for, a unit that would
     exactly fill it has to be told no. The alternative is placing it onto a cluster
     that refuses it the moment the earlier deployment binds, which is the bounce this
     whole mechanism exists to stop.
 
-    Units that need no fabric are deliberately not charged to one. They spread, so
+    Units that need no fabric are not charged to one. They spread, so
     they come off the cluster total in `_Supply` instead; charging them here as well
     would spend the same devices twice and empty a cluster with room to spare.
 
@@ -735,7 +735,7 @@ def _group_by_domain(
 
     Domains nest, so a device attached to an NVLink island is also inside its
     PCIe root and its NUMA node; asking for one kind walks up the parent chain
-    rather than matching only the leaf.
+    instead of matching only the leaf.
     """
     grouped: dict[str, list[DeviceSnapshot]] = {}
     for device in devices:
@@ -841,7 +841,7 @@ def expand(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecis
 def _expand_gang(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecision:
     """A gang lands whole in one cluster or it does not land.
 
-    Its ranks are co-scheduled, so a split gang is broken rather than degraded and
+    Its ranks are co-scheduled, so a split gang is broken, not degraded and
     there is no second-best answer to return. The decision carries no share and a
     shortfall of the whole gang; the caller raises on it.
     """
@@ -875,7 +875,7 @@ def _expand_gang(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> Expansio
 
 
 def _unit_request(demand: WorkloadDemand) -> PlacementRequest:
-    """One unit of the workload — the thing a share is counted in, placed whole."""
+    """One unit of the workload: the thing a share is counted in, placed whole."""
     return PlacementRequest(
         workload=demand.workload,
         project=demand.project,
@@ -903,11 +903,11 @@ def _capacity(demand: WorkloadDemand, verdicts: tuple[ClusterVerdict, ...]) -> d
     A pin narrows the candidates to the named cluster and decides nothing else: the
     pinned cluster is checked for health, policy, quota and capacity like any other,
     and a pin at a cluster that cannot take the workload leaves it unplaced with the
-    cluster's own reasons, rather than writing a deployment nothing will run.
+    cluster's own reasons, instead of writing a deployment nothing will run.
 
     A candidate is a feasible verdict, and its ceiling is the lower of how many units
-    its free devices hold — net of what the cluster owes deployments that have not
-    bound yet, packed into topology domains and nodes the way `_fit` packs one — and
+    its free devices hold, net of what the cluster owes deployments that have not
+    bound yet, packed into topology domains and nodes the way `_fit` packs one, and
     what the project has left under quota in that cluster.
     """
     unit = max(demand.unit_device_count, 1)
@@ -978,8 +978,8 @@ def _assign_floors(
 ) -> int:
     """Per-cluster minimums, honoured before anything is ranked.
 
-    A floor that cannot be met is not an error — the shortfall stays in the remainder
-    and shows up as the deployment's admission reason — and floors that add up to more
+    A floor that cannot be met is not an error, the shortfall stays in the remainder
+    and shows up as the deployment's admission reason, and floors that add up to more
     than the total are honoured in cluster-name order until the total runs out, because
     silently scaling them down would answer a question the operator did not ask.
     """
@@ -1056,7 +1056,7 @@ def _fill_spread(
 ) -> int:
     """One unit at a time to whoever has the most room left, ties by the tiebreak.
 
-    Deliberately not a proportional division: replicas are whole, and rounding a
+    Not a proportional division: replicas are whole, and rounding a
     fraction produces a cluster holding a share nobody asked for. Handing them out
     one at a time gives the evenest integer split there is.
     """
@@ -1076,7 +1076,7 @@ def _admits(demand: WorkloadDemand, assigned: dict[str, int], uid: str) -> bool:
 
     A cap is a limit on how many clusters this workload may straddle, so it bites
     when a share is about to open a new one; anything beyond it stays in the
-    remainder and is reported as a shortfall rather than quietly dropped.
+    remainder and is reported as a shortfall, not quietly dropped.
     """
     if uid in assigned:
         return True

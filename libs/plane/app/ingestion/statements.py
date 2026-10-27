@@ -2,7 +2,7 @@
 
 Kept apart from the sink so that every write this package can perform is one
 pure function of a decoded payload, compilable and assertable without a
-database. The two package rules — observed state only, no telemetry — are
+database. The two package rules (observed state only, no telemetry) are
 enforced here, by which columns a builder is willing to name.
 """
 
@@ -99,9 +99,9 @@ EVENT_SEVERITY = {
 class MalformedObservation(Exception):
     """A frame that can never be applied, however many times it is replayed.
 
-    Distinct from an ordinary failure on purpose. The protocol has no negative
+    Distinct from an ordinary failure. The protocol has no negative
     acknowledgement, so the only way to refuse a frame is to withhold the ack and
-    be sent it again — which is right for a transient failure and a wedged stream
+    be sent it again, which is right for a transient failure and a wedged stream
     for a permanent one. See PROTOCOL.md 6b.
     """
 
@@ -109,8 +109,8 @@ class MalformedObservation(Exception):
 class UnknownCluster(Exception):
     """A frame arrived for, or a snapshot was asked of, a cluster with no registry entry.
 
-    Raised rather than ignored on both sides of the seam. Ingestion may not create a
-    cluster — clusters are declared — and acknowledging its state would silently
+    Raised, not ignored on both sides of the seam. Ingestion may not create a
+    cluster, clusters are declared, and acknowledging its state would silently
     discard it. A snapshot of a cluster that does not exist is not an empty snapshot:
     sent as one, complete, it tells the operator the plane declares nothing there,
     and the operator deletes everything it manages.
@@ -127,7 +127,7 @@ def observed_uid(wire_id: str, prefix: str) -> str:
     Minted by the cluster, not by the plane: an observed object needs a handle
     from the moment it is discovered, and later frames cross-reference it by that
     handle before the plane has necessarily seen the row it names (ADR 0002). The
-    plane validates the shape and stores it verbatim — `uid` never appears in an
+    plane validates the shape and stores it verbatim: `uid` never appears in an
     update set, so a row rediscovered after a reconnect keeps the id it was first
     given.
     """
@@ -141,7 +141,7 @@ def cluster_ref_clause(ref: str):
 
     An operator is configured by hand, long before anyone has read back the uid
     the plane minted for its cluster, so every lookup on the sync path accepts a
-    name too — the same way the REST layer does. Both identities are immutable,
+    name too: the same way the REST layer does. Both identities are immutable,
     and `is_uid` checks the body's shape as well as the prefix, so a name can
     never be mistaken for a uid.
     """
@@ -171,10 +171,10 @@ def _device_ref(cluster_id: UUID, device_uid: str):
 
 
 def _device_class_ref(cluster_id: UUID, device_uids: list[str]):
-    """The class of the devices an allocation holds, read back rather than restated.
+    """The class of the devices an allocation holds, read back, not restated.
 
-    A gang is homogeneous by construction — the scheduler cannot commit an H100
-    and an A100 to one replica — so the first device answers for all of them.
+    A gang is homogeneous by construction, the scheduler cannot commit an H100
+    and an A100 to one replica, so the first device answers for all of them.
     """
     return (
         select(Device.device_class)
@@ -199,7 +199,7 @@ def _upsert(model: Any, values: dict[str, Any], constraint: str, keep: set[str] 
     else is what was last observed about it. Excluding the first group from the
     update set is what makes a rediscovered row keep its identity.
 
-    `keep` names further columns a rediscovery must not move — a first-sighting
+    `keep` names further columns a rediscovery must not move: a first-sighting
     stamp is written once and is wrong the moment an upsert refreshes it.
     """
     frozen = {"uid", "cluster_id", "name", "device_uuid", "kind", "identifier", "namespace"} | (keep or set())
@@ -223,21 +223,21 @@ def node_condition(payload: NodeObserved) -> str:
 def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
     """Writes one observed node.
 
-    `runtime_version` is on the wire and deliberately not written: `Node` has no
+    `runtime_version` is on the wire and not written: `Node` has no
     orchestrator- or runtime-specific version column, because the plane does not
     know a cluster is Kubernetes.
 
-    The machine's shape — instance type, cloud, zone, region, cores, memory,
-    architecture, os image — is written only when the frame carries it. An older
+    The machine's shape, instance type, cloud, zone, region, cores, memory,
+    architecture, os image, is written only when the frame carries it. An older
     operator omits these fields entirely, and an upsert that wrote them as nulls
     would erase what a newer one had already supplied every time an old agent
     reconnected.
 
     For the scalars an empty string and a zero stand in for absent, which costs
     nothing real: a node with no architecture and a node with zero cores are both
-    nodes nobody has described yet. `taints` cannot borrow that trick — an empty
+    nodes nobody has described yet. `taints` cannot borrow that trick, an empty
     taint list is a fact, and a node that has just had its last taint removed
-    must be able to say so — so it defaults to None on the wire and is written
+    must be able to say so, so it defaults to None on the wire and is written
     only when the key was actually present.
     """
     values: dict[str, Any] = {
@@ -276,7 +276,7 @@ def upsert_cluster_observed(cluster_id: UUID, payload: ClusterObserved) -> Inser
 
     Lands on the sync state and never on the registry row: this is observed, and
     `Cluster` has exactly one writer that is not ingestion. `region` is stored as
-    `observed_region` beside the declared one rather than over it — a cluster
+    `observed_region` beside the declared one, not over it: a cluster
     enrolled as `eu-west-1` whose machines are all in `us-east-2` is a fact
     somebody needs to see, not a field to quietly correct.
     """
@@ -299,7 +299,7 @@ def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
 
     `memory_mib` is the device's capacity, which is state; how much of it is in
     use is a measurement and is not on the wire at all. Dropped as telemetry:
-    `ecc.volatile_corrected` (a rate, not a state — corrected errors are counted
+    `ecc.volatile_corrected` (a rate, not a state: corrected errors are counted
     by the metrics pipeline). The uncorrected ECC counters are kept because they
     are what makes a device unschedulable. `allocation` is not written here: a
     device's commitment is an `Allocation`, not a column.
@@ -332,11 +332,11 @@ def upsert_discovered_workload(cluster_id: UUID, payload: WorkloadDiscovered) ->
     """Writes one sighting of a workload the plane did not declare.
 
     `first_seen_at` is in the insert values and in the frozen set, so it records
-    when we first saw the workload and is never moved by a later observation —
+    when we first saw the workload and is never moved by a later observation:
     "running here since before we arrived" is the fact an operator adopting it
     wants, and an upsert that refreshed it on every tick would destroy it.
 
-    Replica counts are the cluster's own accounting rather than a measurement,
+    Replica counts are the cluster's own accounting instead of a measurement,
     which is what keeps them on this side of the telemetry line.
     """
     observed = parse_ts(payload.observed_at)
@@ -365,10 +365,10 @@ def upsert_discovered_workload(cluster_id: UUID, payload: WorkloadDiscovered) ->
 def upsert_deployment_status(cluster_id: UUID, deployment_id: UUID, payload: DeploymentObserved) -> Insert:
     """Writes the observed half of a deployment.
 
-    Its own row rather than columns on `demand_deployment`, for the reason
+    Its own row, not columns on `demand_deployment`, for the reason
     `ComponentStatus` is its own row: the declared half is written by the API and
     this half by the cluster, and one row with two writers is the difference rule
-    1 exists to keep. `observed_generation` is what makes the counts readable —
+    1 exists to keep. `observed_generation` is what makes the counts readable:
     four ready at the previous generation and four ready at the current one are
     the same integers and different facts.
     """
@@ -384,8 +384,8 @@ def upsert_deployment_status(cluster_id: UUID, deployment_id: UUID, payload: Dep
         "unavailable_replicas": payload.unavailable_replicas,
         # Written whole from the frame, and `[]` when the frame makes no claim. The counts
         # above are the rollup of this and stay authoritative for anything that only reads
-        # them, so an operator too old to send `roles` leaves a deployment right and coarse
-        # rather than wrong.
+        # them, so an operator too old to send `roles` leaves a deployment right and coarse,
+        # not wrong.
         "roles": [msgspec.to_builtins(role) for role in payload.roles or ()],
         "reason": payload.reason,
         "message": payload.message,
@@ -412,15 +412,15 @@ ADMISSION_PHASE_FOR_OBSERVED = {
 """What a cluster's observed phase means for that cluster's admission phase.
 
 The two enums overlap in spelling and not in meaning, which is why the mapping is
-written out rather than passed through. Admission is about how far through the
+written out, not passed through. Admission is about how far through the
 scheduler the work got; the observed phase is about what the cluster is doing
-with it. So `degraded` maps to `running` — a deployment missing one of four
-replicas is running, just badly, and admission has no opinion on health — while
-an observed `pending` maps to `placed` rather than back to `pending`, because
+with it. So `degraded` maps to `running`, a deployment missing one of four
+replicas is running, just badly, and admission has no opinion on health, while
+an observed `pending` maps to `placed`, not back to `pending`, because
 placement already chose a cluster and waiting for weights does not un-choose it.
 
-`terminating` is absent on purpose. A deployment being torn down is between
-phases rather than in a new one, and the delete that follows is what ends it.
+`terminating` is absent. A deployment being torn down is between
+phases, not in a new one, and the delete that follows is what ends it.
 """
 
 
@@ -429,17 +429,17 @@ def advance_admission_phase(deployment_id: UUID, payload: DeploymentObserved) ->
 
     The gap this closes: `admission_phase` was written once, as `placed`, when the
     deployment was created, and nothing ever wrote it again. Every deployment this
-    plane created therefore read `placed` for its entire life — including while it
-    was serving — and the only thing that ever reported `running` was a workload
+    plane created therefore read `placed` for its entire life, including while it
+    was serving, and the only thing that ever reported `running` was a workload
     adopted from a cluster that was already running one.
 
-    Admission is per-cluster, so this lands on the `Deployment` rather than on the
+    Admission is per-cluster, so this lands on the `Deployment`, not on the
     workload above it. A workload fanned out across two regions can be running in
     one and queued on quota in the other, and there is no single phase that is true
     of both; writing the workload from here would let whichever cluster reported
     last stomp every other cluster's answer.
 
-    Derived rather than latched, so a deployment whose replicas all die reads
+    Derived, not latched, so a deployment whose replicas all die reads
     `placed` again instead of claiming a `running` that stopped being true.
     """
     phase = ADMISSION_PHASE_FOR_OBSERVED.get(payload.phase)
@@ -455,7 +455,7 @@ def roll_up_workload_started(workload_id: UUID, payload: DeploymentObserved) -> 
     The rollup half of the statement above. `started_at` is global where the phase
     is not: a workload started when the earliest of its deployments started, and it
     is that earliest moment for the rest of its life. `coalesce` with `least` is
-    what makes the write a `min()` rather than a race — frames from N clusters
+    what makes the write a `min()` instead of a race: frames from N clusters
     arrive in no particular order, and every one of them may only move the value
     backwards, never forwards.
 
@@ -475,8 +475,8 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
     `name` is the cluster-local name and the natural key the upsert conflicts on;
     `uid` is the `rep_` handle other frames cross-reference it by, and is frozen
     so a replica re-reported after a reconnect keeps the identity it was first
-    given. The devices it holds are not written here — a replica's commitment is
-    an `Allocation`, which `allocation.observed` carries — and `engine` is not
+    given. The devices it holds are not written here, a replica's commitment is
+    an `Allocation`, which `allocation.observed` carries, and `engine` is not
     stored because it is the workload's, not the replica's; `engine_runtime_version` and
     `serving_digest` are, because those are the ones that lag during a rollout.
     """
@@ -494,7 +494,7 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
         "engine_runtime_version": payload.engine_runtime_version or None,
         # The configuration this process actually started from, read off the annotation the
         # operator rendered it with. Empty from an operator too old to stamp one, and stored as
-        # null rather than as the declared digest: "not known" and "up to date" are the two
+        # null, not as the declared digest: "not known" and "up to date" are the two
         # answers a rollout has to keep apart.
         "serving_digest": payload.serving_digest or None,
         "observed_generation": payload.observed_generation,
@@ -513,7 +513,7 @@ def upsert_allocation(
     replica_id: UUID | None,
     payload: AllocationObserved,
 ) -> Insert:
-    """Writes one observed allocation — the devices committed together to a replica.
+    """Writes one observed allocation: the devices committed together to a replica.
 
     `device_class` is not on the wire and is read back from the devices named,
     because the class is a property of the accelerator and having the cluster
@@ -523,13 +523,13 @@ def upsert_allocation(
     has to be able to name which cluster's copy it is taking devices from.
     `phase` is `held` and `released_at` is null, both unconditionally. A frame
     that names accelerators is the cluster saying this allocation holds them, so
-    it reopens one an earlier release closed — the alternative is a pod that is
+    it reopens one an earlier release closed: the alternative is a pod that is
     demonstrably running being recorded as finished for as long as it lives,
     because nothing else would ever clear the timestamp.
 
     The conflict only updates a row of the same cluster. `uid` is unique across
     the table, and a frame from one cluster naming another cluster's allocation
-    would otherwise move that row — and the devices under it — onto itself. Such
+    would otherwise move that row, and the devices under it, onto itself. Such
     a frame updates nothing and returns no row, which the caller drops.
     """
     values: dict[str, Any] = {
@@ -557,8 +557,8 @@ def upsert_allocation(
 def attach_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: AllocationObserved) -> Insert:
     """Records the devices an allocation names as the ones it currently holds.
 
-    The conflict clears `released_at` rather than doing nothing, because a device
-    named by a live allocation is held by it — whatever an earlier frame said.
+    The conflict clears `released_at` instead of doing nothing, because a device
+    named by a live allocation is held by it, whatever an earlier frame said.
     Membership is not fixed at the moment a gang is granted: the same allocation
     is restated on every reconcile, and one pass that could not see all of its
     cards releases the ones it missed. `DO NOTHING` left those rows released for
@@ -587,11 +587,11 @@ def release_devices_held_elsewhere(allocation_id: UUID, cluster_id: UUID, payloa
     """Takes the devices this frame names away from any other allocation still holding them.
 
     An accelerator is held by at most one live allocation, and the index that says
-    so refuses the attach that follows if an earlier holder was never released —
+    so refuses the attach that follows if an earlier holder was never released:
     a replica that went away without its last frame arriving, and the card handed
     to the next pod. That refusal used to fail the frame on every replay. The
     newest frame is the cluster's current answer about who holds the card, so the
-    earlier holder lets go of it here, stamped rather than deleted, like any release.
+    earlier holder lets go of it here, stamped, not deleted, like any release.
     """
     return (
         update(AllocationDevice)
@@ -609,7 +609,7 @@ def release_devices_held_elsewhere(allocation_id: UUID, cluster_id: UUID, payloa
 def release_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: AllocationObserved) -> Update:
     """Marks released every device this allocation holds that the cluster no longer names.
 
-    Stamping `released_at` rather than deleting the row is what the partial unique
+    Stamping `released_at` instead of deleting the row is what the partial unique
     index on live devices is for: history stays, and the accelerator becomes
     claimable again in the same statement.
     """
@@ -629,10 +629,10 @@ def release_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: A
 def release_allocation(allocation_id: UUID, payload: AllocationObserved) -> Update:
     """Closes an allocation the cluster reports holding nothing.
 
-    An allocation that holds no accelerators is a finished one — that is how the
+    An allocation that holds no accelerators is a finished one: that is how the
     cluster says a replica has handed its cards back, and the frame carries no
     device to read a class from, so there is nothing left to upsert. The row is
-    stamped rather than deleted for the same reason a released member is: the
+    stamped, not deleted for the same reason a released member is: the
     commitment stays auditable, and `released_at` is what takes it out of every
     answer to "what is held right now".
 
@@ -651,7 +651,7 @@ def upsert_cache_entries(cluster_id: UUID, artifact_id: UUID, payload: CacheObse
     """Writes artifact residency: one cluster-scoped row, plus one row per node.
 
     Both, not one or the other. The per-node rows are what a cache-aware router
-    reads — it has to send a request to a node that actually holds the weights,
+    reads: it has to send a request to a node that actually holds the weights,
     and a node mid-fetch is not that node. The cluster-scoped row (`node_id` null,
     `tier` `cluster`) is what a shared tier's residency has to live on, because it
     is real and has no node to attribute it to.
@@ -726,8 +726,8 @@ def replace_domain_nodes(cluster_id: UUID, payload: TopologyObserved) -> list[De
     """Makes the join table say exactly what this frame said, and nothing older.
 
     A delete of the members the frame no longer names, then an insert of the ones
-    it does — last-writer-wins per cluster, the same rule the rest of ingestion
-    follows. The insert is `ON CONFLICT DO NOTHING` rather than an upsert because
+    it does: last-writer-wins per cluster, the same rule the rest of ingestion
+    follows. The insert is `ON CONFLICT DO NOTHING` instead of an upsert because
     membership carries nothing to update: the row either exists or it does not.
     Nodes the plane has not ingested yet contribute no row and reappear on the
     next observation of the same domain.
@@ -765,7 +765,7 @@ def upsert_component_status(cluster_id: UUID, payload: ComponentObserved) -> Ins
 
     Keyed on the declared `Component` it belongs to: a status for a component
     nobody declared has nothing to be the observed half *of*, and the insert
-    resolves to a null component and fails rather than inventing one.
+    resolves to a null component and fails instead of inventing one.
     """
     component = (
         select(Component.id).where(Component.cluster_id == cluster_id, Component.name == payload.name).scalar_subquery()
@@ -794,7 +794,7 @@ def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
 
     An `UPDATE` and never an upsert: an operation is imperative and requested by
     somebody, so ingestion may report on one but must never bring one into
-    existence. `progress` is not written — there is no column for it, and a
+    existence. `progress` is not written: there is no column for it, and a
     percentage between two phases is a measurement.
 
     An operation that has ended stays ended. A replayed `running` arriving after
@@ -823,10 +823,10 @@ def update_benchmark_run(cluster_id: UUID, payload: BenchmarkObserved) -> Update
     """Applies a harness's report to the run the plane declared.
 
     An `UPDATE` for the same reason `update_operation` is one: a run is asked for
-    by somebody, and ingestion reports on one rather than inventing one.
+    by somebody, and ingestion reports on one instead of inventing one.
 
     `summary` is written through untouched. It is the harness's output shape and
-    this seam has no opinion about it — parsing it here to fill normalised
+    this seam has no opinion about it: parsing it here to fill normalised
     columns is exactly the thing this design defers until two harnesses have been
     read in anger.
 
@@ -872,7 +872,7 @@ def _insert_event(
     """An append-only event insert, guarded against replaying the same event twice.
 
     The guard is `ON CONFLICT DO NOTHING` against `uq_ops_event_occurrence`,
-    which is the unique index over the tuple that identifies one occurrence —
+    which is the unique index over the tuple that identifies one occurrence:
     cluster, type, subject kind, instant, and the message. A `NOT EXISTS` read
     first would still let two sessions replaying the same frame both see nothing
     and both insert; the index is the only thing that decides between them.
@@ -921,10 +921,10 @@ def mark_node_left(cluster_id: UUID, node_uid: str, moment: Any) -> Update:
     The operator diffs consecutive projections and says so the moment a node
     disappears, but until this existed the plane filed that as an event and left
     the row claiming the node was ready. The only thing that could correct it was
-    a prune, and a prune needs a completed resync — so a departed node stayed
+    a prune, and a prune needs a completed resync, so a departed node stayed
     placeable for as long as the session happened to last.
 
-    Marked rather than deleted, because removal is the prune's job and doing it
+    Marked, not deleted, because removal is the prune's job and doing it
     twice in two ways invites the two to disagree. `condition` already carries
     membership for exactly this: `node_condition` maps any membership that is not
     `joined` onto the condition, so `left` is a value this column was built to
@@ -943,7 +943,7 @@ def orphan_devices(cluster_id: UUID, node_uid: str, moment: Any) -> Update:
 
     A device is only observable through its node. Once the node is gone nothing
     can report on the device again, so leaving it `healthy` states a fact whose
-    only source has disappeared — and `healthy` is half of what makes a device
+    only source has disappeared, and `healthy` is half of what makes a device
     free to place on.
     """
     return (
@@ -1043,13 +1043,13 @@ def deployment_progressed(
     """Records one reconcile conclusion as an event.
 
     The operator already suppresses a report that would repeat its last one, so a
-    frame arriving here is a transition rather than a heartbeat, and filing each
+    frame arriving here is a transition instead of a heartbeat, and filing each
     one is what turns a status row that only ever shows the present into the
     history of how a deployment got there. Before this, a deployment that spent
     forty-seven minutes on `WeightsNotResident` and then landed left no trace of
     the forty-seven minutes anywhere the plane could show.
 
-    `subject_id` is the deployment rather than null: unlike a pruned node, the row
+    `subject_id` is the deployment, not null: unlike a pruned node, the row
     this points at outlives the event.
     """
     severity = DEPLOYMENT_REASON_SEVERITY.get(
@@ -1091,8 +1091,8 @@ def cache_progressed(cluster_id: UUID, artifact_id: UUID, payload: CacheObserved
     Residency had a row and no timeline. The row answers "are the weights there
     now"; nothing answered "what has been happening to them", and that is the
     question a stuck deployment actually asks. A workload whose weights were
-    never fetched — because nothing on that cluster named an engine image to
-    fetch them with — showed as a deployment repeating `WeightsNotResident`
+    never fetched, because nothing on that cluster named an engine image to
+    fetch them with, showed as a deployment repeating `WeightsNotResident`
     forever, with the reason it would never stop repeating recorded nowhere the
     plane could show.
 
@@ -1100,7 +1100,7 @@ def cache_progressed(cluster_id: UUID, artifact_id: UUID, payload: CacheObserved
     it is free text on the wire: an old operator sends none and this files the
     state alone, which is what it did before.
 
-    Filed against the artifact rather than the deployment because that is what it
+    Filed against the artifact instead of the deployment because that is what it
     is about. One download serves every deployment of those weights on the
     cluster, and copying the same event onto each of them would make the fan-out
     look like a fact.
@@ -1136,8 +1136,8 @@ def deployment_lifecycle(
     """Records something the plane itself did to a deployment.
 
     The other half of the same timeline. `deployment_progressed` covers what the
-    cluster concluded; this covers what an operator of the product asked for —
-    created, scaled, dispatched, deleted — so that a single query answers "what
+    cluster concluded; this covers what an operator of the product asked for,
+    created, scaled, dispatched, deleted, so that a single query answers "what
     happened to this deployment" without the reader having to know that the two
     facts have different writers.
     """
@@ -1173,7 +1173,7 @@ def workload_lifecycle(
     """Records something the plane itself did to a workload, before any cluster is involved.
 
     The deployment timeline starts at the moment placement has already succeeded,
-    so a workload that expands to nothing has no timeline at all — it is created,
+    so a workload that expands to nothing has no timeline at all: it is created,
     it is placed nowhere, and the only page that could say so has nothing to draw.
     That is the one state where an operator most needs the story, and it was the
     one state with no writer.
@@ -1217,7 +1217,7 @@ def doomed_nodes(cluster_id: UUID, keep: set[str]) -> Select:
 
     Read first and deleted second because the event has to outlive its subject.
     A node that vanishes from a complete snapshot is a node that left the cluster
-    — a reclaimed spot instance, most often — and that is exactly the fact worth
+    (a reclaimed spot instance, most often) and that is exactly the fact worth
     keeping once the row that carried it is deleted. The event therefore records
     the node's uid in `details` and leaves `subject_id` null: pointing a foreign
     key at a row this statement is about to remove would take the event with it.
@@ -1239,9 +1239,9 @@ def doomed_workloads(cluster_id: UUID, keep: set[str]) -> Select:
 def insert_prune_events(cluster_id: UUID, removed: list[tuple[str, str, str]], moment: Any) -> Insert | None:
     """Records that a complete snapshot stopped mentioning things, one row per `(kind, uid, label)`.
 
-    Raised by the plane rather than by a cluster, which is why the message says
+    Raised by the plane, not by a cluster, which is why the message says
     what the plane actually knows: the snapshot did not include it. The operator
-    may well have sent a `node.left` too, and the two are not duplicates — that
+    may well have sent a `node.left` too, and the two are not duplicates: that
     one is the cluster reporting an event, this one is the plane noticing an
     absence, and an incident where only the second exists is the interesting one.
 
@@ -1272,11 +1272,11 @@ def insert_prune_events(cluster_id: UUID, removed: list[tuple[str, str, str]], m
 def prune_deployment_replicas(cluster_id: UUID, deployment_id: UUID, keep: list[str]) -> Delete:
     """Forgets replicas one cluster no longer reports for one deployment.
 
-    Not a resync prune and deliberately narrower than one: `deployment.observed`
+    Not a resync prune and narrower than one: `deployment.observed`
     names the whole replica set of a single deployment on a single cluster every
     time it is sent, so absence from that list is evidence about that deployment
     alone and nothing else. A truncated snapshot cannot cost anything here the
-    way it could for nodes, because there is no snapshot — there is one frame,
+    way it could for nodes, because there is no snapshot: there is one frame,
     which either arrived whole or did not arrive.
 
     An empty `keep` deletes them all, which is what a deployment scaled to zero
@@ -1332,7 +1332,7 @@ def prune_devices(cluster_id: UUID, keep: set[str]) -> Delete:
 def orphan_held_devices(cluster_id: UUID, keep: set[str], moment: Any) -> Update:
     """Takes out of placement a device the snapshot dropped but an allocation still holds.
 
-    Kept rather than deleted so the binding survives (`_live_bound_devices`); made
+    Kept, not deleted so the binding survives (`_live_bound_devices`); made
     unplaceable because nothing on the cluster reports on it any more. It goes on
     the first snapshot after the allocation lets go of it.
     """
@@ -1369,7 +1369,7 @@ def prune_cluster_replicas(cluster_id: UUID, keep: set[str]) -> Delete:
     """Forgets every replica on this cluster a complete demand snapshot did not name.
 
     The gap this closes: demand-side observed state used to be pruned only per
-    deployment, against the `replica_ids` on that deployment's own frame — which
+    deployment, against the `replica_ids` on that deployment's own frame, which
     stops arriving the moment the deployment is torn down. A paused workload's
     replicas stayed `ready` for ever, the allocations under them stayed `held`,
     and the cards they named were never given back. Nothing that reads a
@@ -1387,7 +1387,7 @@ def prune_cluster_allocations(cluster_id: UUID, keep: set[str]) -> Delete:
     """Releases every allocation on this cluster a complete demand snapshot did not name.
 
     Mostly redundant with the replica prune above, because an allocation
-    cascades with its replica — and deliberately kept anyway. An allocation
+    cascades with its replica, and kept anyway. An allocation
     whose replica the plane never recorded has nothing to cascade from, and that
     is precisely the row that used to hold a card for ever.
     """
@@ -1400,7 +1400,7 @@ def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: int = 0) -
     `Cluster.phase` is declared and is never touched from here; the two halves
     have one writer each, which is the reason the split exists at all.
     `observed_generation` counts frames applied, so it is incremented on the
-    conflict path rather than taken from the insert values; `bump` is how many
+    conflict path, not taken from the insert values; `bump` is how many
     frames this write accounts for (`True` is one).
     """
     step = int(bump)

@@ -118,7 +118,7 @@ class ServingService:
 
         The metrics service takes an endpoint reference and knows nothing about
         tenants. Resolving the reference here first is what stops a tenant reading
-        another tenant's traffic by naming their endpoint — the metrics query is
+        another tenant's traffic by naming their endpoint: the metrics query is
         given a uid this tenant was proved to own, never the string they sent.
 
         The tenant is resolved before the endpoint for the same reason `model`

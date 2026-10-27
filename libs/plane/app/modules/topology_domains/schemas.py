@@ -11,12 +11,12 @@ class TopologyDomainSchema(Struct):
     no counts, so nesting and membership are answered here and only here.
 
     `parent` is the id of the enclosing domain, which is how a NUMA domain
-    contains PCIe roots which contain NVLink islands. All observed — a domain is
+    contains PCIe roots which contain NVLink islands. All observed: a domain is
     discovered by the operator, never declared.
 
     `nodes` is the full membership, not the one machine a scalar column could
     hold: an NVSwitch fabric across four nodes lists four, and `spans_nodes` is
-    then the cluster's own word for the same shape rather than the only place it
+    then the cluster's own word for the same shape instead of the only place it
     was recorded.
     """
 

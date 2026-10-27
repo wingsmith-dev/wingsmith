@@ -28,7 +28,7 @@ class TopologyDomainRepository:
         self.parent = aliased(TopologyDomain)
 
     def _members(self, column):
-        """The domain's membership, aggregated rather than joined into the row.
+        """The domain's membership, aggregated, not joined into the row.
 
         A domain that spans four nodes would otherwise return four copies of
         itself, and the page limit counts rows.

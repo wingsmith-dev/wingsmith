@@ -254,7 +254,7 @@ def test_setup_values_register_a_cluster_that_reconciles():
 
 
 def test_setup_values_leave_the_agent_off_for_the_first_install():
-    """Not because of `readOnly` — because the frontend's CRD is applied at runtime.
+    """Not because of `readOnly`, because the frontend's CRD is applied at runtime.
 
     The chart refuses an agent with no frontend to forward to, and the frontend
     renders a DynamoGraphDeployment whose CRD does not exist until the Dynamo
@@ -378,7 +378,7 @@ def test_setup_values_render_the_agent_off_even_with_a_gateway():
 
 
 def test_setup_values_leave_the_gateway_blank_in_the_nested_shape():
-    """A flat `gateway: ""` is a string where the chart has a map — Helm refuses it outright."""
+    """A flat `gateway: ""` is a string where the chart has a map: Helm refuses it outright."""
     out = _setup_values(values())
     assert "  gateway:" in out.splitlines()
     assert yaml.safe_load(out)["agent"]["gateway"] == {"address": ""}

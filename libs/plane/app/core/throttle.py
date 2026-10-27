@@ -1,22 +1,22 @@
 """Budgets for failed credential checks, counted in this process's memory.
 
 There is no general rate limiter in the plane and this is not one. It exists for
-the paths where a caller may present a credential the plane did not issue — the
-sign-in form and agent token verification — and its job is to make a run of
-refusals cost the caller time and show up in the logs, rather than to enforce a
+the paths where a caller may present a credential the plane did not issue, the
+sign-in form and agent token verification, and its job is to make a run of
+refusals cost the caller time and show up in the logs, not to enforce a
 quota.
 
 The sign-in budgets are keyed by who is failing (`KeyedFailureBudget`, keyed by
 `client_address` and the account named), so one caller spending its budget
 locks out itself and not everyone else.
 
-Deliberately per-process and in memory. What is being bounded is work *this*
+Per-process and in memory. What is being bounded is work *this*
 process does, so a counter in Postgres would add a write to the path a refusal is
 supposed to make cheap, and a Redis nobody deploys yet would add a dependency to
 the path that authenticates the data plane. Two API replicas therefore each hold
 their own budget: the effective fleet-wide limit is the limit times the replica
 count, which is the tradeoff and is fine for a window whose purpose is to be
-slow and loud rather than exact.
+slow and loud, not exact.
 """
 
 import time
@@ -36,8 +36,8 @@ class FailureBudget:
 
     `spent` is what a caller consults *before* doing the work, so the check stays
     cheaper than the thing it is protecting; `fail` is called only for an outcome
-    that is somebody's fault. An outcome that is the fleet's own fault — a known
-    credential belonging to an object that is out of service — must not be
+    that is somebody's fault. An outcome that is the fleet's own fault, a known
+    credential belonging to an object that is out of service, must not be
     recorded here, or one misconfigured cluster's retry loop spends the budget
     every other cluster needs.
     """

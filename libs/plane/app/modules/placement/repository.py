@@ -2,7 +2,7 @@
 
 This file exists so `engine.py` never has to. Placement is worth having as a pure
 function only if something else does the I/O, and that something has to live
-somewhere — putting it in the same directory keeps the module shaped like every
+somewhere; putting it in the same directory keeps the module shaped like every
 other one, while the purity rule stays exactly where it was: on
 `engine.py`, `snapshot.py` and `decision.py`, none of which import this.
 
@@ -47,7 +47,7 @@ from .snapshot import TopologyDomainSnapshot
 HEALTHY = "healthy"
 """The one device health that counts as usable.
 
-Everything else — `degraded`, `unhealthy`, `unknown` — is not free, and `unknown`
+Everything else (`degraded`, `unhealthy`, `unknown`) is not free, and `unknown`
 belongs on that side of the line: a device we have no current report for is a
 device we cannot promise.
 """
@@ -91,7 +91,7 @@ class PlacementRepository:
     ) -> CapacitySnapshot:
         """Everything placement is allowed to look at, for one project and device class.
 
-        Narrowed to the device class on purpose. A control plane that snapshots
+        Narrowed to the device class. A control plane that snapshots
         every accelerator it owns to place one deployment reads the whole fleet
         for an answer that could only ever have concerned one slice of it.
 
@@ -145,7 +145,7 @@ class PlacementRepository:
     async def _devices(self, device_class: str) -> dict[UUID, list[DeviceSnapshot]]:
         """Every device of the class, with whoever holds it attached.
 
-        The hold is a left join rather than a second query, so a device's freedom
+        The hold is a left join instead of a second query, so a device's freedom
         and its holder are read at the same moment and cannot disagree about a
         device released in between.
         """
@@ -228,8 +228,8 @@ class PlacementRepository:
         placement makes the same choice again and two workloads pile onto one
         cluster that only ever had room for one.
 
-        Derived from the deployment rather than stored beside it. `declared` is what
-        this cluster's share costs — its replicas times the workload's device shape —
+        Derived from the deployment, not stored beside it. `declared` is what
+        this cluster's share costs, its replicas times the workload's device shape,
         and `observed` is what ingestion has confirmed. A reservation is the
         difference, which means it needs no lifetime of its own: it appears when the
         deployment is written, shrinks as allocations arrive, and reaches zero
@@ -237,8 +237,8 @@ class PlacementRepository:
         its reservation with it because there was never a second row to leave behind.
 
         `max(0, ...)` and not a bare subtraction, because a cluster is entitled to
-        report more devices than the share asked for — a rollout with both the old
-        and new replicas alive holds two sets at once — and a negative reservation
+        report more devices than the share asked for, a rollout with both the old
+        and new replicas alive holds two sets at once, and a negative reservation
         would then hand back capacity that is genuinely in use.
 
         Narrowed to the device class the same way `_devices` is: a promise of H100s
@@ -316,7 +316,7 @@ class PlacementRepository:
     ) -> list[tuple[str, str, ReservedUnit]]:
         """The derived reservations, flattened and named, for the read side.
 
-        Shares `_reserved` with the snapshot rather than growing a second query, so
+        Shares `_reserved` with the snapshot instead of growing a second query, so
         what the console shows is by construction what the engine decided on. A
         board that had its own idea of what was pending would disagree with the
         scheduler the first time either of them changed.
@@ -341,7 +341,7 @@ class PlacementRepository:
 
         The same choice `_allocated` makes and for the same reason: `device_count` is
         what was asked for and the rows are what was given, and a partially released
-        allocation makes the two disagree. Here the disagreement is the point — it is
+        allocation makes the two disagree. Here the disagreement is the point: it is
         exactly the part of the declaration still outstanding.
         """
         query = (
@@ -412,8 +412,8 @@ class PlacementRepository:
         """The project's quota rows, each carrying the draw that applies to its own scope.
 
         The declared half is a row and the observed half is a sum over live
-        allocations, and they are joined here rather than stored together because
-        they have different writers — a quota is intent, an allocation is what a
+        allocations, and they are joined here, not stored together because
+        they have different writers: a quota is intent, an allocation is what a
         cluster reported.
         """
         rows = (
@@ -445,7 +445,7 @@ class PlacementRepository:
     async def _allocated(self, project_id: UUID, device_class: str) -> dict[UUID, int]:
         """Live devices this project holds of this class, per cluster.
 
-        Counted from `AllocationDevice` rather than `Allocation.device_count`
+        Counted from `AllocationDevice` instead of `Allocation.device_count`
         because the count is what was asked for and the rows are what was given;
         a partially released allocation makes the two disagree.
         """

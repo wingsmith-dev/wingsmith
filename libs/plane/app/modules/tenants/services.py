@@ -52,7 +52,7 @@ def needs_key(ingress: str, auth: str, host: str | None) -> bool:
     listener can reach (a host, or `ingress: public`) unless the plane's
     operator opted in with `TENANT_ALLOW_PUBLIC_NO_AUTH`. The gateway feed
     sends `auth: api_key` for the second kind, so a row stored before the
-    create/update check existed is held to a key too rather than grandfathered.
+    create/update check existed is held to a key too, not grandfathered.
     """
     if auth == "api_key":
         return True
@@ -213,7 +213,7 @@ class TenantService:
         """Every credential ever minted for this tenant, revoked ones included.
 
         Revoked rows stay in the answer because the question somebody asks here is
-        not "what works" but "what was ever handed out" — and a credential that
+        not "what works" but "what was ever handed out", and a credential that
         disappears when it is revoked cannot be told from one that never existed.
         """
         row = await self._one(ref)
@@ -228,7 +228,7 @@ class TenantService:
 
         The plaintext is on this response and nowhere else, ever. Minting a second
         one does not invalidate the first: rotation is issue, move the reader,
-        revoke — three steps, none of which is a coordinated flip.
+        revoke: three steps, none of which is a coordinated flip.
         """
         row = await self._one(ref)
         tenant: Tenant = row[0]
@@ -247,8 +247,8 @@ class TenantService:
     async def revoke_token(self, ref: str, token_ref: str) -> None:
         """Revokes one credential. Idempotent on an already-revoked one.
 
-        A revoked token also ends the sessions it opened, at their next refresh —
-        `AuthService.rotate_refresh_token` re-checks the credential rather than
+        A revoked token also ends the sessions it opened, at their next refresh:
+        `AuthService.rotate_refresh_token` re-checks the credential instead of
         trusting the session it minted.
         """
         row = await self._one(ref)
@@ -278,7 +278,7 @@ class TenantService:
         )
 
     async def list_keys(self, ref: str) -> "list[TenantAPIKeySchema]":
-        """Every key ever minted for this tenant, revoked ones included — same
+        """Every key ever minted for this tenant, revoked ones included: same
         reasoning as `list_tokens`."""
         row = await self._one(ref)
         tenant: Tenant = row[0]
@@ -290,7 +290,7 @@ class TenantService:
     async def mint_key(self, ref: str, data: TenantAPIKeyCreateRequest) -> TenantAPIKeySchema:
         """Mints a gateway inference key for one tenant and returns it once.
 
-        Operator-only, same as `mint_token` — a tenant does not mint its own
+        Operator-only, same as `mint_token`: a tenant does not mint its own
         inference credentials through this route, an operator hands them out.
         """
         row = await self._one(ref)

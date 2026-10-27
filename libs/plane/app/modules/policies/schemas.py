@@ -28,7 +28,7 @@ class PolicyAttachmentRequest(Struct):
 class PolicySchema(Struct):
     """A placement constraint and everything it currently binds to.
 
-    Allow-lists and deny-lists are separate fields rather than one signed set:
+    Allow-lists and deny-lists are separate fields instead of one signed set:
     an empty allow-list means "no opinion", not "nothing allowed", and a denial
     has to survive somebody widening the allow-list later.
 
@@ -71,7 +71,7 @@ class PolicyUpdateRequest(Struct):
     `attachments`, when present, is the complete set and replaces what is there.
     An empty list detaches everything; leaving the field out leaves the bindings
     alone. Per-attachment add and remove would be a nested sub-resource, and
-    `libs/packages/contract/API.md` §6 addresses sub-resources by filter rather than by nesting.
+    `libs/packages/contract/API.md` §6 addresses sub-resources by filter, not by nesting.
     """
 
     name: str | UnsetType = UNSET

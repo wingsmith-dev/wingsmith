@@ -6,7 +6,7 @@ from app.core.schemas import Struct
 class AllocationDeviceSchema(Struct):
     """One device inside one allocation.
 
-    Released members are returned rather than filtered out: the row is how a
+    Released members are returned, not filtered out: the row is how a
     finished allocation stays auditable, and `live` says which side of that line
     a member is on without the client having to compare timestamps.
     """
@@ -22,7 +22,7 @@ class AllocationSchema(Struct):
     """Observed: a set of devices committed together to one workload.
 
     Every field here is written by ingestion. Allocation is made by placement and
-    reported by the cluster, so there is no declared half to sit beside — the
+    reported by the cluster, so there is no declared half to sit beside: the
     closest thing is the workload's request, and that lives on the workload.
 
     `gang_complete` is the one derived field: the allocation is the unit of

@@ -1,8 +1,8 @@
 """What Hangar measures, named the Hangar way and nothing else.
 
-`libs/packages/contract/API.md` §5 keeps telemetry out of the hub deliberately: capacity is
+`libs/packages/contract/API.md` §5 keeps telemetry out of the hub: capacity is
 state and occupancy is measurement, and the two travel by different roads. This
-module is the vocabulary of the measurement road — `gpu.utilization`,
+module is the vocabulary of the measurement road: `gpu.utilization`,
 `inference.ttft`, what unit each is in, and how a set of them collapses into one
 number for a scope.
 
@@ -12,7 +12,7 @@ second dialect table and a second `Backend`, not a change to anything here.
 
 `SCOPES` is the other half of the vocabulary: the dimensions a measurement can
 be narrowed by. They are Hangar's own words for objects the plane stores, and
-each backend decides what it calls them — DCGM's label for a node is not
+each backend decides what it calls them: DCGM's label for a node is not
 ClickHouse's column for one.
 """
 
@@ -47,12 +47,12 @@ clusters it landed in, so no store is ever asked about a workload.
 
 `endpoint` is the one dimension a store does know under its own name, because the
 hop that emits it is the hop that resolved the endpoint: it is a plane uid on the
-gateway's series. `serving` narrows by nothing at all — it is every request the
-front door answered — and exists as a word so that an answer about the whole
+gateway's series. `serving` narrows by nothing at all, it is every request the
+front door answered, and exists as a word so that an answer about the whole
 served surface says which question it answered.
 
 `fleet` is the `cluster` dimension widened to every cluster one store holds, and
-it is a word rather than a missing matcher: that store holds clusters that are
+it is a word instead of a missing matcher: that store holds clusters that are
 not ours to serve from, so the fleet is an enumeration of labels and never an
 unscoped query.
 
@@ -127,20 +127,20 @@ Two throughput numbers are registered and they are different measurements, not t
 spellings of one. `output_tokens_per_second` sums across every replica in scope and
 therefore rises with scale; `output_tokens_per_stream` is what a single caller
 experiences and is scale-invariant. An acceptance floor of "30 tokens/second" means
-the second — thirty aggregate tokens a second on a serving GPU would be a fault —
+the second, thirty aggregate tokens a second on a serving GPU would be a fault,
 and reading the wrong one gives a check that passes under every condition.
 
 `ttft_p50`, `ttft_p90`, `tpot_p50` and the three `_p99` entries sit beside the p95
 `ttft`, `tpot` and `latency` because they are named percentiles somebody is held to,
 not a query dimension. A percentile a caller can ask for is a name in this vocabulary;
 that is the cost of keeping PromQL out of it. Each is quantiled out of the buckets
-in its own right — a tail read off the p95 next to it would be a number nothing
+in its own right: a tail read off the p95 next to it would be a number nothing
 measured, which is worse than a cell that says it was not measured.
 
 There is no failure-rate metric here and its absence is deliberate. A request that
-never reached the cluster — refused at the front door, routed nowhere, timed out
-upstream — emits nothing an engine exporter can count, so a ratio built from these
-series reports a fully-broken cluster as "no traffic" rather than as an outage. The
+never reached the cluster, refused at the front door, routed nowhere, timed out
+upstream, emits nothing an engine exporter can count, so a ratio built from these
+series reports a fully-broken cluster as "no traffic", not as an outage. The
 number an availability claim rests on has to come from the hop that saw the request.
 """
 
@@ -163,7 +163,7 @@ SERVING_METRICS: tuple[Metric, ...] = (
 """What the front door saw, which is the only place a failure rate can be measured.
 
 The `inference` family is what a serving engine says about itself, and a request
-that never reached one leaves no trace in it — a model that is not served, an
+that never reached one leaves no trace in it: a model that is not served, an
 endpoint with nowhere to route, a cluster that cannot be dialled. Those requests
 dominate an availability incident, so `failure_ratio` and the `availability`
 beside it are read from the gateway and from nowhere else.
@@ -180,7 +180,7 @@ this is the measurement it is compared against.
 `inference.prefix_cache_hit_rate` reports from inside the engine, and it exists
 beside it because they answer to different people. The engine's is hits over
 lookups on one vLLM instance; this is cached input tokens over input tokens for
-one endpoint, read off the usage object we return to the caller — so it is the
+one endpoint, read off the usage object we return to the caller, so it is the
 number a buyer can reconcile against their own client's
 `prompt_tokens_details.cached_tokens`, and the only one of the two that is
 scoped to a tenant at all.
@@ -200,7 +200,7 @@ ENGINES: dict[str, Engine] = {
     "vllm": Engine(kind="vllm", metrics=INFERENCE_METRICS),
     "gateway": Engine(kind="gateway", metrics=SERVING_METRICS),
 }
-"""Who emits what. `gateway` is one of ours rather than a vendor's, and is still an
+"""Who emits what. `gateway` is one of ours instead of a vendor's, and is still an
 entry here because the shape of the fact is the same: a process, and the metrics it
 is the only thing able to answer."""
 

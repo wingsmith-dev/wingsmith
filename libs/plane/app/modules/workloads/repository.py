@@ -38,8 +38,8 @@ from app.core.filters import ref_ids
 RUNNING_PHASES = ("starting", "ready", "draining")
 """The observed phases in which a replica's process is actually up.
 
-`running` is not one of the phases a cluster reports — the wire enum is
-`pending | starting | ready | draining | terminated | failed` — so counting rows
+`running` is not one of the phases a cluster reports, the wire enum is
+`pending | starting | ready | draining | terminated | failed`, so counting rows
 equal to the string would have counted nothing, forever. A replica that is
 draining is still serving what it already accepted, which is why it is here and
 `terminated` is not.
@@ -50,18 +50,18 @@ class WorkloadRepository:
     """Reads workloads, and their per-cluster expansion in one grouped query.
 
     `Workload.deployments` is `lazy="noload"`, and a page of workloads walked
-    through the relationship would be one round trip per row — three, once the
+    through the relationship would be one round trip per row: three, once the
     cluster and the observed status are wanted with it. So the deployments for a
     whole page are fetched at once and keyed by workload, and the replica counts
     for all of them at once after that.
 
-    Project and priority class are joined rather than loaded because a workload read
+    Project and priority class are joined, not loaded because a workload read
     without them is half an answer: they are who asked for it and at what priority.
 
-    The artifact is `selectinload`ed rather than joined and selected beside its own
+    The artifact is `selectinload`ed, not joined and selected beside its own
     labels, because the read needs the entity and not a column of it: the served
-    model name and the serving digest are both resolved from the whole object — see
-    `app.core.serving` — and a label per field they read is one more thing to keep in
+    model name and the serving digest are both resolved from the whole object, see
+    `app.core.serving`, and a label per field they read is one more thing to keep in
     step every time that order changes.
     """
 
@@ -85,11 +85,11 @@ class WorkloadRepository:
     def placement_query(self, workload_id) -> Select:
         """Every live device a workload currently holds, with node and replica.
 
-        Scoped to live allocations and live members — `released_at IS NULL` on
-        both — because placement is where the workload is now, not where it has
+        Scoped to live allocations and live members, `released_at IS NULL` on
+        both, because placement is where the workload is now, not where it has
         been. One row per held device, joined out to the node it sits on and the
         replica the allocation serves, so the rollup is assembled in one round
-        trip rather than one per allocation.
+        trip instead of one per allocation.
         """
         return (
             select(
@@ -147,7 +147,7 @@ class WorkloadRepository:
         fields in the browser to decide whether an existing recipe could be reused
         and got it wrong whenever a ninth had been hand-tuned. "Does this
         configuration already exist" is now one indexed equality test, asked of the
-        plane rather than reconstructed from a listing.
+        plane, not reconstructed from a listing.
 
         `device_class` answers "what is asking for H100s", which is a capacity
         question a person genuinely has and which nothing could answer while the
@@ -334,7 +334,7 @@ class WorkloadRepository:
 
         A read already carries the entity through `selectinload`, but an update
         arrives at the row through `_one` and then has to re-check the device shape
-        against the weights before it writes — this fetches it once, by key, rather
+        against the weights before it writes: this fetches it once, by key, rather
         than depending on how the caller got here.
         """
         return await self.db.get(Artifact, workload.artifact_id)
@@ -378,8 +378,8 @@ class WorkloadRepository:
     async def roles_of(self, workload: Workload) -> builtins.list[WorkloadRole]:
         """This workload's role rows, ordered so two reads of one workload agree.
 
-        A query rather than `workload.roles`, which is `lazy="noload"` and answers an empty list
-        rather than raising — the same trap `serving_digest` documents. Every caller that needs
+        A query instead of `workload.roles`, which is `lazy="noload"` and answers an empty list
+        instead of raising: the same trap `serving_digest` documents. Every caller that needs
         the rows asks for them here, so there is one place that can be wrong.
         """
         result = await self.db.execute(
@@ -421,7 +421,7 @@ class WorkloadRepository:
     async def revisions(self, workload_id: UUID, limit: int, before: int | None = None) -> Sequence[WorkloadRevision]:
         """A page of history, newest first, over-fetched by one so the caller can page.
 
-        Ordered and paged on `number` rather than on `BaseMixin.seq`, which is a global identity
+        Ordered and paged on `number`, not on `BaseMixin.seq`, which is a global identity
         column: two workloads' histories interleave in it, and a cursor built from it would skip
         rows of the one being read.
         """
@@ -440,8 +440,8 @@ class WorkloadRepository:
         """One revision of one workload, by `wkr_` id or by its number.
 
         A number is the spelling somebody reads off the history and types back, and it is only
-        unique within the workload — which is why this takes the workload and the reference
-        together rather than resolving a bare number against the table.
+        unique within the workload, which is why this takes the workload and the reference
+        together instead of resolving a bare number against the table.
         """
         query = select(WorkloadRevision).where(WorkloadRevision.workload_id == workload_id)
         if ref.isdigit():
@@ -452,9 +452,9 @@ class WorkloadRepository:
         return result.scalars().first()
 
     def live_digest_query(self, deployment_ids: Sequence[UUID]) -> Select:
-        """Ready replicas per deployment per configuration — the observed half of versioning.
+        """Ready replicas per deployment per configuration: the observed half of versioning.
 
-        Counted here rather than stored anywhere, because "which version is live" has no scalar
+        Counted here, not stored anywhere, because "which version is live" has no scalar
         answer: during a roll two configurations are up in one cluster, and across clusters they
         can differ for as long as an agent stays disconnected.
 
@@ -488,10 +488,10 @@ class WorkloadRepository:
     async def replace_roles(self, workload: Workload, roles: Sequence[WorkloadRole]) -> builtins.list[WorkloadRole]:
         """Sets a workload's roles to exactly these, deleting whatever was there.
 
-        Replace rather than merge, matching how the serving request treats every other block it
+        Replace, not merge, matching how the serving request treats every other block it
         carries: "the sub-blocks replace whole … a patch that named half of one would leave the
-        rest at its defaults rather than at what was stored, and the caller could not tell which
-        it got." A ratio is exactly that kind of block — 1:2 and 2:1 share a role name and mean
+        rest at its defaults, not at what was stored, and the caller could not tell which
+        it got." A ratio is exactly that kind of block: 1:2 and 2:1 share a role name and mean
         opposite things, so a merge keyed on the name would silently keep half of the old ratio.
         """
         await self.db.execute(delete(WorkloadRole).where(WorkloadRole.workload_id == workload.id))

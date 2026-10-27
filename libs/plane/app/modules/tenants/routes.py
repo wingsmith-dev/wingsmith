@@ -1,7 +1,7 @@
 """Tenants: the billing and isolation root a project hangs off.
 
 The collection exists because a project cannot be created without one and nothing
-else could make one. It is deliberately thin — a slug, a name and a switch — and
+else could make one. It is thin (a slug, a name and a switch) and
 it is not a place to put access control, billing accounts or contacts; those are
 their own objects when they exist, not fields smuggled onto this one.
 """
@@ -76,7 +76,7 @@ class TenantRoutes(Controller):
     async def list_tokens(
         self, context: RequestContext, svc: TenantService, ref: str
     ) -> Response[list[TenantTokenSchema]]:
-        """The tenant's console credentials. Never the plaintext — only the mint has that."""
+        """The tenant's console credentials. Never the plaintext, only the mint has that."""
         return Response(await svc.list_tokens(ref))
 
     @post("/{ref:str}/tokens")
@@ -94,7 +94,7 @@ class TenantRoutes(Controller):
     async def list_keys(
         self, context: RequestContext, svc: TenantService, ref: str
     ) -> Response[list[TenantAPIKeySchema]]:
-        """The tenant's gateway inference keys. Never the plaintext — only the mint has that."""
+        """The tenant's gateway inference keys. Never the plaintext, only the mint has that."""
         return Response(await svc.list_keys(ref))
 
     @post("/{ref:str}/keys")

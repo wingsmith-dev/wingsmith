@@ -20,9 +20,9 @@ class ServingRepository:
     would return the fleet if the filter were ever dropped, and this one returns
     nothing.
 
-    Readiness is summed across the targets rather than reported per target. Which
+    Readiness is summed across the targets, not reported per target. Which
     clusters a name is served from, and how the traffic is split between them, is
-    ours to change without telling anybody — the tenant is owed how much of their
+    ours to change without telling anybody: the tenant is owed how much of their
     model is up, not where.
     """
 

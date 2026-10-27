@@ -42,7 +42,7 @@ class DiscoveredWorkloadRepository:
         """The sighting, the decision beside it, and the deployment it became.
 
         `promoted` is not a stored status. It is the presence of a deployment
-        pointing back at this sighting, which is one fact in one place rather than
+        pointing back at this sighting, which is one fact in one place instead of
         a column that has to be kept in agreement with the deployments table.
 
         Rows are read by name: `DiscoveredWorkload`, `WorkloadAdoption`, `cluster_uid`,
@@ -92,7 +92,7 @@ class DiscoveredWorkloadRepository:
         query = self._base().order_by(DiscoveredWorkload.seq.asc()).limit(limit + 1)
         if status is None:
             # A dismissed sighting is one somebody has already looked at and does not want to
-            # see again. The row stays — ingestion owns it and goes on refreshing it — and the
+            # see again. The row stays, ingestion owns it and goes on refreshing it, and the
             # list is where the decision is honoured, so `?status=dismissed` still shows them.
             query = query.where((WorkloadAdoption.id.is_(None)) | (WorkloadAdoption.decision != DISMISSED))
         if after_seq is not None:
@@ -169,10 +169,10 @@ class DiscoveredWorkloadRepository:
     async def device_class_of(self, node_uids: Sequence[str]) -> str | None:
         """The class of accelerator the workload is actually running on.
 
-        Read from the devices of the nodes it holds rather than from anything the
+        Read from the devices of the nodes it holds, not from anything the
         workload says about itself: a workload's `device_class` decides where the
         thing can be placed, and the cluster is the only authority on what its own
-        hardware is. Ambiguity resolves to nothing — a workload spanning two
+        hardware is. Ambiguity resolves to nothing: a workload spanning two
         classes is a question for a person, not a field to guess at.
         """
         if not node_uids:
@@ -191,7 +191,7 @@ class DiscoveredWorkloadRepository:
 
         Matched on the digest first and the source uri second, because the same
         repository registered by two people is one artifact with two spellings of
-        its reference — `hf:org/model` and `hf:org/model@main` — while the `hf://`
+        its reference (`hf:org/model` and `hf:org/model@main`) while the `hf://`
         location is what both of them fetch.
         """
         if digest:

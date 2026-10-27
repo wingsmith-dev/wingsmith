@@ -1,6 +1,6 @@
 """What the gateway itself reads, distinct from what the console and CLI manage
 through `/v1/tenants`. Read-only, and the whole reason it is a separate surface
-rather than a shape on that one: `key_hashes` must never reach a console
+instead of a shape on that one: `key_hashes` must never reach a console
 response, and a feed built for a gateway holding the whole table in memory has
 different pagination needs than a list a person scrolls.
 """
@@ -33,7 +33,7 @@ class GatewayRoutes(Controller):
         """Host→tenant and hash→key, in one read.
 
         `If-None-Match` makes the steady state a `304`, the same shape as
-        `/endpoints/resolved` — this is polled on the same timer.
+        `/endpoints/resolved`: this is polled on the same timer.
         """
         table = await svc.resolve_tenants()
         if if_none_match is not None and if_none_match == table.revision:

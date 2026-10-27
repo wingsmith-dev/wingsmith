@@ -6,11 +6,11 @@ one `deploy.yaml` per model per node shape in `ai-dynamo/dynamo` under
 `recipes/<model>/<backend>/<shape>/`, and the worker container in that file holds
 the exact argument list the vendor runs against the exact binary the operator
 starts. When the two corpora disagree about the same flag, this one is closer to
-the process — and they do disagree: for `zai-org/GLM-5.3-Flash` at 1,048,576
+the process, and they do disagree: for `zai-org/GLM-5.3-Flash` at 1,048,576
 context, vLLM's recipe writes `--max-num-seqs 512` (inside its `pd_cluster`
 decode role) and Dynamo's aggregated H200 recipe writes `--max-num-seqs 32`.
 
-Three boundaries hold here, and they are why this is an integration rather than a
+Three boundaries hold here, and they are why this is an integration instead of a
 module:
 
 *Nothing here is a fact about our clusters.* A GB200 recipe is evidence about
@@ -112,7 +112,7 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
     ),
     "tokenizer-mode": (
         "a property of the checkpoint and a candidate, held back only because getting it wrong "
-        "produces wrong text rather than a refusal to start — the failure is silent, which is the "
+        "produces wrong text instead of a refusal to start: the failure is silent, which is the "
         "opposite of ceiling-shaped"
     ),
     "hf-overrides": "patches the repository's own config; a JSON blob with no bound on what it changes",
@@ -144,7 +144,7 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
     ),
     "mamba-cache-mode": (
         "the strongest remaining candidate. It is a property of a hybrid model's state layout, and "
-        "it moves how much memory a decode sequence costs — which is the same quantity max-num-seqs "
+        "it moves how much memory a decode sequence costs, which is the same quantity max-num-seqs "
         "is bounded by. Held back because it is not ceiling-shaped: a wrong mode is a slower or "
         "less accurate engine, not one that refuses to start, so a bad carry would be invisible"
     ),
@@ -158,9 +158,9 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
     "enforce-eager": "disables graph capture wholesale; a debugging setting, and a large performance loss",
     "scheduler-cls": "names a Python class inside one engine build",
 }
-"""Arguments the corpus publishes that this module deliberately does not adopt, and why.
+"""Arguments the corpus publishes that this module does not adopt, and why.
 
-Data rather than prose so that the next person to widen `ADOPTED_FLAGS` has to
+Data, not prose so that the next person to widen `ADOPTED_FLAGS` has to
 read the reason the flag was left out and disagree with it in writing. Nothing
 reads this map at run time; the tests read it, and so does anybody wondering why
 their recipe's flag did not arrive.
@@ -173,7 +173,7 @@ class Deployment:
 
     `hardware` is the card the recipe names itself after, `mode` is `agg` or
     `disagg`, and `role` is what the component is called in the graph. `args` is
-    the whole command line keyed without dashes — evidence, most of which is never
+    the whole command line keyed without dashes: evidence, most of which is never
     adopted.
     """
 
@@ -203,7 +203,7 @@ class RecipeMatch:
     ref: str
 
     def source_uri(self, deployment: Deployment) -> str:
-        """One `deploy.yaml` on the corpus's own branch — what NVIDIA publishes now."""
+        """One `deploy.yaml` on the corpus's own branch: what NVIDIA publishes now."""
         return f"{self.source}/blob/{DEFAULT_BRANCH}/{deployment.path}"
 
     def snapshot_uri(self, deployment: Deployment) -> str:
@@ -224,7 +224,7 @@ class RecipeMatch:
         aggregated recipes, which is only defensible for the ceiling-shaped flags
         `ADOPTED_FLAGS` admits: too low costs throughput and too high is a crash
         loop, so the direction to be wrong in is down. A value that is not an
-        integer is skipped rather than compared as text.
+        integer is skipped, not compared as text.
         """
         published: list[tuple[int, str]] = []
         for deployment in self.aggregated(engine):
@@ -247,7 +247,7 @@ class RecipeMatch:
 
         Empty for a model with no aggregated recipe for this engine, for a recipe
         that names none of the adopted flags, and for an engine the corpus does not
-        cover — all three of which leave the workload exactly as it was before this
+        cover: all three of which leave the workload exactly as it was before this
         existed.
         """
         hardware = hardware_key(device_class)
@@ -274,7 +274,7 @@ def hardware_key(device_class: str) -> str:
 class DynamoCorpus:
     """The snapshot, indexed by slug. Empty is a working state.
 
-    Coverage is a couple of dozen models — the ones NVIDIA benchmarks — so a miss
+    Coverage is a couple of dozen models, the ones NVIDIA benchmarks, so a miss
     is the ordinary case and never an error.
     """
 

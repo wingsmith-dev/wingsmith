@@ -26,7 +26,7 @@ from .services import BenchmarkService
 class BenchmarkRoutes(Controller):
     """Runs and their results, filtered by the deployment they were taken against.
 
-    A top-level collection rather than `/deployments/{id}/benchmarks`: the run is
+    A top-level collection instead of `/deployments/{id}/benchmarks`: the run is
     the object, and a deployment is one of several things it is filtered by. The
     console's per-deployment tab is `?deployment=`, which is the same query the
     CLI makes.
@@ -59,7 +59,7 @@ class BenchmarkRoutes(Controller):
         """`request` is aliased because Litestar owns that name on a handler.
 
         A parameter called `request` is given the `Request` object, not the query
-        string, and a `Request` is never `None` — so the filter it feeds was
+        string, and a `Request` is never `None`, so the filter it feeds was
         applied on every call and every `GET /v1/benchmarks` answered 500 with
         `cannot adapt type 'Request'`. The query key stays `request`, because
         that is what the filter is called everywhere else.
@@ -141,7 +141,7 @@ class BenchmarkRoutes(Controller):
         resolve it as one.
 
         `?criteria=` reads the curve against a version other than the one the
-        request recorded, which moves the ceiling the knee is measured against —
+        request recorded, which moves the ceiling the knee is measured against:
         the question a stored knee could not answer at all. Nothing here is
         stored: the points and the knee are derived at read, exactly as the
         verdict is.
@@ -154,7 +154,7 @@ class BenchmarkRoutes(Controller):
     ) -> Response[ServingBenchmarkSummarySchema]:
         """What one serving configuration has been measured at, rolled up now.
 
-        Addressed by `serving_digest` rather than by the workload that carries it,
+        Addressed by `serving_digest`, not by the workload that carries it,
         because the digest is what a measurement is about: every run sharing it
         measured the same running process. It keeps answering after the workload
         has been renamed, rescaled or deleted, which the recipe rollup this
@@ -176,7 +176,7 @@ class BenchmarkRoutes(Controller):
         """Whether the run met the standard, derived now and stored nowhere.
 
         `?criteria=` grades against a version other than the one the request
-        recorded, which answers "would this have passed under the new rules" —
+        recorded, which answers "would this have passed under the new rules":
         a question a stored verdict cannot answer at all.
         """
         return Response(await svc.verdict(ref, criteria))

@@ -2,8 +2,8 @@
 
 The hub is the one process that knows whether a cluster was actually told
 something. The API knows what was asked for and ingestion knows what the cluster
-concluded; between the two there is a gap — desired state written, cluster
-silent — and until something wrote this down, that gap was indistinguishable
+concluded; between the two there is a gap, desired state written, cluster
+silent, and until something wrote this down, that gap was indistinguishable
 from a hub that never delivered at all.
 """
 
@@ -26,11 +26,11 @@ logger = getLogger(__name__)
 async def record_dispatch(db: AsyncSession, change: DeclaredChange, frames: int) -> None:
     """Files that a deployment's declared state went down a cluster's session.
 
-    Resolved against the database rather than trusted from the hint, for the same
+    Resolved against the database, not trusted from the hint, for the same
     reason the renderer re-reads the row it is about to send: the hint names an
     object and asserts nothing about it. A hint for a deployment that has since
-    been deleted renders nothing, so this is never reached for one — but a hint
-    whose cluster reference is a name rather than a uid is routine, and that is
+    been deleted renders nothing, so this is never reached for one, but a hint
+    whose cluster reference is a name instead of a uid is routine, and that is
     what `cluster_ref_clause` is for.
     """
     row = (

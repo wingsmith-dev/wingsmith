@@ -2,7 +2,7 @@
 
 Every other module suite builds statements and schemas without a database. That is fast and it is
 blind to the one thing a write path can get wrong on its own: `updated_at` carries a server-side
-`onupdate`, so SQLAlchemy expires it after an UPDATE and re-reads it lazily — which in async code
+`onupdate`, so SQLAlchemy expires it after an UPDATE and re-reads it lazily, which in async code
 is a `MissingGreenlet` at response-render time, long after the write itself succeeded. Nothing
 short of executing the UPDATE and then reading the schema can see that.
 
@@ -124,7 +124,7 @@ async def a_cluster(db: AsyncSession, name: str = "alpha", phase: str = "active"
 
     The registry default is `pending` and the resolution honours it, so a seed that
     took the default would front an endpoint with a cluster nobody has put into
-    service and read as a broken routing table rather than as an unfinished one.
+    service and read as a broken routing table, not as an unfinished one.
     """
     return await ClusterService(db).create(ClusterCreateRequest(name=name, region="eu-west-1", phase=phase))
 
@@ -141,7 +141,7 @@ async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str =
 def a_serving(artifact_ref: str, **extra) -> WorkloadServingRequest:
     """The serving block every fixture workload is created with.
 
-    Stated inline rather than named, because there is no shared object to name any
+    Stated inline, not named, because there is no shared object to name any
     more: two workloads built from this helper carry the same `serving_digest`
     without either of them having to find the other first.
     """
@@ -199,8 +199,8 @@ async def an_environment(db: AsyncSession):
     """One cluster, one project, one artifact and the default priority class.
 
     Separated from `a_workload` because several tests need a second workload beside
-    the first, and every one of these seeds is unique by name — calling the whole
-    fixture twice is a conflict rather than a second workload.
+    the first, and every one of these seeds is unique by name: calling the whole
+    fixture twice is a conflict instead of a second workload.
     """
     cluster = await a_cluster(db)
     project = await a_project(db)
@@ -385,7 +385,7 @@ async def test_registered_cluster_is_labelled_by_its_own_name(db: AsyncSession) 
 
 
 async def test_a_cluster_registered_with_no_metrics_label_keeps_none(db: AsyncSession) -> None:
-    """An explicit null is how a cluster whose store label is unknown stays honest."""
+    """An explicit null is how a cluster whose store label is unknown stays accurate."""
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1", metrics_label=None))
     assert created.metrics_label is None
@@ -467,10 +467,10 @@ async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSessi
     """Covers `_resolve_connection`, which opens a session of its own.
 
     Every other test of this path goes through the repository with a session
-    handed to it, so none of them exercised the one caller that has to build one
-    — and it shipped calling the sessionmaker a level short, closing every
+    handed to it, so none of them exercised the one caller that has to build one,
+    and it shipped calling the sessionmaker a level short, closing every
     operator's handshake with an internal error. Going through the hub entry
-    point rather than the repository is the whole point of this test.
+    point instead of the repository is the point of this test.
     """
     monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     service = ClusterService(db)
@@ -704,7 +704,7 @@ async def test_a_reloaded_workload_hashes_to_the_digest_it_was_created_with(db: 
     through comes back as `Decimal("0.9000")`, and the digest hashes the column as
     the string it round-trips as. Without quantising on the way in, the digest a
     create returned and the digest the next update computed would differ for a row
-    nobody touched — one configuration with two identities, produced by a reload.
+    nobody touched: one configuration with two identities, produced by a reload.
     """
     cluster, project, artifact = await an_environment(db)
     service = WorkloadService(db)
@@ -835,7 +835,7 @@ async def test_a_revision_is_a_patch_body_which_is_the_whole_of_rollback(db: Asy
     """No rollback operation exists, and this is why one is not needed.
 
     A revision is stored as the request that would restate it, so going back is an ordinary
-    update carrying an old body — validated on the way in by the same checks as any other.
+    update carrying an old body: validated on the way in by the same checks as any other.
     """
     _, _, _, workload = await a_workload(db)
     original = workload.serving_digest
@@ -941,11 +941,11 @@ async def test_a_note_with_no_change_comments_on_what_is_running(db: AsyncSessio
     _, _, _, workload = await a_workload(db)
     service = WorkloadService(db)
 
-    await service.update(workload.id, WorkloadUpdateRequest(note="kept at 8k deliberately, see HGR-4"))
+    await service.update(workload.id, WorkloadUpdateRequest(note="kept at 8k, see HGR-4"))
     history = await service.revisions(workload.id)
 
     assert [r.number for r in history.items] == [1]
-    assert history.items[0].note == "kept at 8k deliberately, see HGR-4"
+    assert history.items[0].note == "kept at 8k, see HGR-4"
 
 
 async def test_a_redundant_patch_moves_the_note_rather_than_filing_a_revision(db: AsyncSession) -> None:
@@ -1067,7 +1067,7 @@ async def test_a_replica_that_is_not_ready_is_not_live(db: AsyncSession) -> None
 
 
 async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:
-    """Declared on create, patched, and cleared — and never confused with the engine image.
+    """Declared on create, patched, and cleared, and never confused with the engine image.
 
     The two images are the same shape and one column apart, which is exactly the
     kind of pair a write path collapses by accident. Clearing matters as much as
@@ -1144,7 +1144,7 @@ async def test_the_frontend_image_reaches_the_cluster_on_the_desired_stream(db: 
     """A frontend image nobody on a cluster can read is a field that does nothing.
 
     The operator is what renders the Frontend component, so this frame is the only
-    place the declaration can arrive. It arrives inlined on the deployment now —
+    place the declaration can arrive. It arrives inlined on the deployment now:
     there is no second frame to keep in step with it.
     """
     cluster, _, _, deployment = await a_deployment(db)
@@ -1260,10 +1260,10 @@ async def test_components_lifecycle(db: AsyncSession) -> None:
 async def test_a_deployment_write_announces_itself_to_the_hub(db: AsyncSession) -> None:
     """The wakeup that turns a write into something a cluster hears about now.
 
-    Asserted through an injected notifier rather than a real `LISTEN`, because the
+    Asserted through an injected notifier instead of a real `LISTEN`, because the
     thing worth pinning down is that every write path announces, and announces the
     cluster the object actually belongs to. Whether the notification arrives is
-    explicitly not a guarantee — resync covers a lost one.
+    explicitly not a guarantee: resync covers a lost one.
     """
     notifier = MemoryNotifier()
     cluster, _, _, created = await a_deployment(db)
@@ -1282,7 +1282,7 @@ async def test_resuming_a_workload_announces_the_clusters_it_was_parked_on(db: A
     """The gap this closes: a resume that no cluster ever heard about.
 
     Pausing announces every deployment it disabled. Resuming used to hand the job to
-    `_reconcile`, which announces a cluster only when its share moved — and a pause
+    `_reconcile`, which announces a cluster only when its share moved, and a pause
     leaves the shares exactly where they were, so a workload coming back to the split
     it left announced nothing. The row read `enabled` while the cluster still had no
     copy of it, and the model never came back up.
@@ -1302,8 +1302,8 @@ async def test_resuming_a_workload_announces_the_clusters_it_was_parked_on(db: A
 async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSession) -> None:
     """The divergence this seam exists not to introduce.
 
-    Two ways of reaching a cluster with the same deployment — the snapshot on
-    connect and the single frame on a write — have to agree field for field, or a
+    Two ways of reaching a cluster with the same deployment, the snapshot on
+    connect and the single frame on a write, have to agree field for field, or a
     reconnect silently changes what is running.
     """
     cluster, _, _, created = await a_deployment(db)
@@ -1323,7 +1323,7 @@ async def test_live_dispatch_sends_a_deployments_dependencies(
 
     A recipe used to be the sharper version of this failure: it announced to every
     cluster with a deployment naming it, which at the moment it was created was
-    none, and nothing re-announced it when one finally did — so the cluster held a
+    none, and nothing re-announced it when one finally did, so the cluster held a
     deployment pointing at a recipe it had never been sent and waited for it for
     ever, `RecipeNotDeclared` every fifteen seconds. The serving configuration is
     inlined on the deployment now, so there is nothing left to arrive out of order.
@@ -1402,7 +1402,7 @@ async def test_a_deletion_withdraws_the_warm_set_with_it(db: AsyncSession) -> No
 
     The deletion used to travel alone. The operator turns a warm-set entry into a
     prefetch Job, so a cluster that was never told the entry had gone went on
-    downloading weights for a workload that no longer existed — and for the last
+    downloading weights for a workload that no longer existed, and for the last
     workload on a cluster the warm set emptied, which the plane rendered as no
     frame at all. An empty warm set is "hold nothing", not silence.
     """
@@ -1418,7 +1418,7 @@ async def test_a_deletion_withdraws_the_warm_set_with_it(db: AsyncSession) -> No
 
 
 async def test_deployments_lifecycle(db: AsyncSession) -> None:
-    """Read, flip, and disappear with the workload — a deployment has no life of its own."""
+    """Read, flip, and disappear with the workload: a deployment has no life of its own."""
     cluster, _, _, created = await a_deployment(db)
     service = DeploymentService(db)
     assert created.cluster_id == cluster.id
@@ -1506,9 +1506,9 @@ async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession)
 async def _two_serving_deployments(db: AsyncSession):
     """Two per-cluster deployments of one project, both dialable, for one endpoint to front.
 
-    A single-target endpoint never exercises the part of resolution that matters —
+    A single-target endpoint never exercises the part of resolution that matters,
     the fan-out across clusters, the per-target weights and roles, and what
-    survives one cluster going quiet — so the routing scenarios below all start
+    survives one cluster going quiet, so the routing scenarios below all start
     from a workload that talks to two deployments in two clusters, both serving.
     """
     cluster_a, project, artifact, workload_a = await a_workload(db, name="chat-alpha")
@@ -1527,7 +1527,7 @@ async def _two_serving_deployments(db: AsyncSession):
 
 
 async def test_an_endpoint_over_two_clusters_resolves_to_both_upstreams(db: AsyncSession) -> None:
-    """One public name, two deployments, two dialable addresses — with weights and roles intact."""
+    """One public name, two deployments, two dialable addresses, with weights and roles intact."""
     project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
     endpoints = EndpointService(db)
     await endpoints.create(
@@ -1556,8 +1556,8 @@ async def test_one_cluster_going_quiet_drops_its_upstream_and_keeps_the_other(db
     Turning it off and *clearing* it are no longer the same thing, and this is where
     the difference shows. `enabled=False` is somebody saying "not this address" and
     the upstream goes; clearing the row leaves the cluster in exactly the state every
-    cluster we run is in — no published address, reached over the tunnel its agent
-    dialled — so the upstream stays with an empty url. What stops traffic to a cluster
+    cluster we run is in, no published address, reached over the tunnel its agent
+    dialled, so the upstream stays with an empty url. What stops traffic to a cluster
     outright is its `phase`, which the test below covers.
     """
     project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
@@ -1628,7 +1628,7 @@ async def test_deployment_not_running_still_appears_for_gateway(db: AsyncSession
 
     Whether a deployment is running is observed and can lag what the cluster is
     doing; the gateway is closer to the truth. A placed-but-not-yet-running
-    target is still a dialable upstream rather than silently dropped.
+    target is still a dialable upstream, not silently dropped.
     """
     project, _, deployment_a, _, _ = await _two_serving_deployments(db)
     endpoints = EndpointService(db)
@@ -2010,7 +2010,7 @@ async def test_a_serving_change_announces_to_the_cluster_running_it(db: AsyncSes
     It used to be a fan-out nothing else needed: a recipe had no cluster of its own,
     so every cluster with a deployment naming it had to be found and told exactly
     once. The configuration is on the workload now, so the reachable set is the
-    workload's own expansion — and the cluster still has to be told, or it keeps
+    workload's own expansion, and the cluster still has to be told, or it keeps
     rendering the old engine configuration for ever.
     """
     notifier = MemoryNotifier()
@@ -2025,7 +2025,7 @@ async def test_a_serving_change_announces_to_the_cluster_running_it(db: AsyncSes
 
 
 async def test_a_workload_no_cluster_took_announces_to_nobody(db: AsyncSession) -> None:
-    """Nothing to wake is not an error — there is no cluster that has been told about it."""
+    """Nothing to wake is not an error: there is no cluster that has been told about it."""
     notifier = MemoryNotifier()
     _, project, artifact = await an_environment(db)
     created = await WorkloadService(db).create(
@@ -2056,8 +2056,8 @@ async def test_a_kind_live_dispatch_does_not_carry_answers_nothing(db: AsyncSess
 async def test_a_workloads_topology_requirement_round_trips(db: AsyncSession) -> None:
     """Declared once, on the shape, and readable back.
 
-    It used to be declared twice — a requirement on the recipe and a nullable
-    override of it on the workload — so a null meant "the recipe decides" rather
+    It used to be declared twice, a requirement on the recipe and a nullable
+    override of it on the workload, so a null meant "the recipe decides" rather
     than "no". There is one level left and the column is the answer.
     """
     # Unplaced, so the shape change is not refused for placing fewer units than run now: the
@@ -2120,8 +2120,8 @@ async def test_the_creation_event_is_committed_with_the_deployment_and_not_after
     """One fact, one transaction.
 
     Rolling back afterwards is the check: an event written in a transaction of
-    its own would not survive it, and the pair it would leave behind — a
-    deployment that exists with nothing recording it having been asked for — is
+    its own would not survive it, and the pair it would leave behind, a
+    deployment that exists with nothing recording it having been asked for, is
     exactly the gap this event closes.
     """
     _, _, _, created = await a_deployment(db)
@@ -2207,7 +2207,7 @@ async def test_a_workload_that_fits_nowhere_says_so_instead_of_saying_nothing(db
     """The state that had no writer at all.
 
     An unpinned workload with no supply behind it expands to no shares, so no
-    deployment is created — and the deployment timeline was the only timeline
+    deployment is created, and the deployment timeline was the only timeline
     there was. The workload existed, the console drew "nothing has been recorded
     against this workload yet", and the reasoning placement had already computed
     was discarded on the way out of the service.
@@ -2269,8 +2269,8 @@ async def test_the_story_survives_the_workload_it_is_about(db: AsyncSession) -> 
 
 async def test_an_alias_reaches_the_resolved_table_however_it_was_declared(db: AsyncSession) -> None:
     """The loader and the write path, not the shape. Every unit test above builds its endpoint by
-    hand, so none of them exercises whether the resolution's own query loads the alias rows — and
-    `lazy="noload"` answers an unloaded collection with `[]` rather than raising, which would be a
+    hand, so none of them exercises whether the resolution's own query loads the alias rows, and
+    `lazy="noload"` answers an unloaded collection with `[]` instead of raising, which would be a
     silently empty alias set on the table the gateway routes from.
 
     The read is taken from a second session because that is what the API does: one session per
@@ -2315,7 +2315,7 @@ async def test_alias_moves_revision_when_engine_already_has_the_name(
 ) -> None:
     """The case this feature is *for*, and the one the revision missed.
 
-    Renaming an endpoint means publishing its engine's own name as the alias — which is exactly
+    Renaming an endpoint means publishing its engine's own name as the alias, which is exactly
     the string already in the revision's served-name set. That set is deduplicated, so folding
     aliases into it made the one change that matters invisible: a gateway holding an `If-None-Match`
     gets a `304`, keeps a table with no alias in it, and 404s the name a client was just told to
@@ -2347,7 +2347,7 @@ async def test_the_patch_that_changes_aliases_reports_what_it_wrote(db: AsyncSes
     """The response a console renders, from the session that just wrote.
 
     `replace_aliases` writes the rows with Core statements, which the session's identity map never
-    sees, and the app's sessions are `expire_on_commit=False` — so the endpoint keeps the alias
+    sees, and the app's sessions are `expire_on_commit=False`, so the endpoint keeps the alias
     collection it loaded before the write and the PATCH answers with the set it just replaced.
     """
     _, project, _, deployment = await a_deployment(db)

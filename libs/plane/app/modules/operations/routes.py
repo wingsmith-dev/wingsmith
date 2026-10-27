@@ -92,7 +92,7 @@ class OperationRoutes(Controller):
     async def cancel_operation(
         self, context: RequestContext, svc: OperationService, ref: str
     ) -> Response[OperationSchema]:
-        """Cancellation, and deliberately not deletion.
+        """Cancellation, and not deletion.
 
         Deleting the row would throw away the answer to who asked for this and
         why, which is the reason the object exists. A pending operation moves to

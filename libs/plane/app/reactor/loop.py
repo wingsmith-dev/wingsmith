@@ -15,16 +15,16 @@ The passes of one tick, in this order and for a reason:
    send, since a slow webhook can outlast it.
 4. **Remote-write auth.** Reconcile the central metrics store's htpasswd Secret
    against the registry (`app.reactor.remote_write`). After alerting because it is
-   not part of it and must never delay it — it is here for the lease, which is
+   not part of it and must never delay it: it is here for the lease, which is
    the only thing in the plane that guarantees one writer of that Secret.
-5. **Repair.** Every few minutes rather than every tick, time out operations past
+5. **Repair.** Every few minutes instead of every tick, time out operations past
    their deadline and re-place workloads short of their scale
    (`app.reactor.reconcile`). Last because it is the slowest and the least urgent.
 
 The lease is what makes step 3 safe. Conditions and events are idempotent by
 `dedupe_key` and two reactors would merely both write the same rows; two reactors
 both sending to Slack is the failure this is here to prevent, so the lease guards
-the whole tick rather than just the notifier — a process that is not the holder
+the whole tick, not just the notifier: a process that is not the holder
 does no work at all, which is also the cheaper thing for it to do.
 """
 
@@ -130,7 +130,7 @@ class DeliveryLedger:
     when only some channels answered. Without this, one failing channel made the next
     tick resend to every healthy channel too, every minute, for as long as the broken
     one stayed broken. A failing channel is retried on a doubling number of ticks, up
-    to `MAX_BACKOFF_TICKS`, rather than on every one.
+    to `MAX_BACKOFF_TICKS`, not on every one.
 
     In memory, like `LateCommits`: a failover costs at most one repeated message per
     healthy channel for alerts that were mid-delivery.
@@ -211,13 +211,13 @@ async def acquire(db: AsyncSession, instance: str, ttl: float) -> int | None:
 
     One statement. The `WHERE` is the whole election: a process may take the lease
     if nobody holds it, if it already holds it, or if the current holder's lease
-    has expired — and a compare-and-swap over those three cases cannot be observed
+    has expired, and a compare-and-swap over those three cases cannot be observed
     as won by two processes, which a read-then-write over the same cases can.
 
     An expired lease is taken without ceremony. The displaced holder finds out on
     its next tick, when its own renewal fails, and does nothing further; there is
     no state in memory for it to have to unwind, which is why the cursor lives in
-    the row rather than in the process.
+    the row, not in the process.
     """
     result = await db.execute(
         text(
@@ -270,9 +270,9 @@ async def drain_events(
     """Matches events from `cursor` forward, returning the new cursor.
 
     The cursor advances to the last row *examined*, not the last row that produced
-    an alert — otherwise a quiet stretch of uninteresting events would be walked
+    an alert, otherwise a quiet stretch of uninteresting events would be walked
     again on every tick forever. It advances in the same transaction as the alerts
-    those events opened, so a crash replays the batch rather than skipping it, and
+    those events opened, so a crash replays the batch instead of skipping it, and
     `apply_event` is idempotent precisely to make that replay harmless.
 
     Moving past a seq it did not see is not the same as having read it: the
@@ -314,7 +314,7 @@ async def send_pending(
 ) -> None:
     """Delivers every alert whose state has not been announced, one channel at a time.
 
-    Sequential rather than gathered. The volume is a handful of messages per tick
+    Sequential, not gathered. The volume is a handful of messages per tick
     even during an incident, and a burst of concurrent webhook posts is the fastest
     way to discover Slack's rate limit at exactly the moment the alerts matter.
 
@@ -388,7 +388,7 @@ async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> boo
         if cursor is None:
             await db.rollback()
             return False
-        # First, so conditions read reachability as it is rather than as a dead hub left it. In a
+        # First, so conditions read reachability as it is, not as a dead hub left it. In a
         # savepoint of its own, so a failure here costs this pass and never the alerting after it.
         try:
             async with db.begin_nested():

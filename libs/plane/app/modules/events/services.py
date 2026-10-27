@@ -15,10 +15,10 @@ from .repository import EventRepository
 
 
 class EventService:
-    """Read-only, and deliberately without `create`, `update` or `delete`.
+    """Read-only, and without `create`, `update` or `delete`.
 
     An event is observed and append-only: it is written by ingestion and never
-    by the API. The write methods are absent rather than present-and-raising,
+    by the API. The write methods are absent instead of present-and-raising,
     because a method that exists is a method something will eventually call, and
     the module convention says an observed module exposes no create or update at
     all.

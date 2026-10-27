@@ -17,7 +17,7 @@ def tenant_ids(ref: str) -> Select:
 class TenantRepository:
     """Reads tenants with the number of projects beneath each one counted in.
 
-    The count is a correlated subquery rather than a join and a group-by: it is
+    The count is a correlated subquery instead of a join and a group-by: it is
     one number per row, and grouping would put every selected column into the
     clause for no gain.
     """

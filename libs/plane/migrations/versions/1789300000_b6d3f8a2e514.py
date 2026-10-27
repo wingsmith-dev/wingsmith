@@ -4,11 +4,11 @@ Revision ID: b6d3f8a2e514
 Revises: c2e8a41f7b06
 Create Date: 2026-09-07 18:00:00.000000
 
-Additive throughout, and that is the requirement rather than a convenience. Every workload in
+Additive throughout, and that is the requirement instead of a convenience. Every workload in
 the fleet is `aggregated` with no role rows, and the object rendered for it must be byte-identical
-to what it produces today — the same bar `FrontendEnabled` sets for its own false case.
+to what it produces today: the same bar `FrontendEnabled` sets for its own false case.
 
-`demand_workload.serving_topology` is `NOT NULL` with a server default rather than nullable. There
+`demand_workload.serving_topology` is `NOT NULL` with a server default, not nullable. There
 is no third state: a workload either is disaggregated or is not, and a null would invent a "not
 yet decided" that nothing can render. The default is also what keeps the digest still: only a
 `disaggregated` workload contributes `serving_topology` and its role configuration to
@@ -18,7 +18,7 @@ changes underneath a running cluster.
 `demand_workload_role` is narrow because the delta between the roles is narrow. Across NVIDIA's
 `disagg-gb300-agentic` recipe the two differ on six arguments and agree on the artifact, the
 tensor degree, the device class, the context length, the quantization, the `kv-cache-dtype` and
-the `kv-transfer-config` — that last one being the same string on both sides, because the transfer
+the `kv-transfer-config`: that last one being the same string on both sides, because the transfer
 mechanism is a property of the topology and not of the role. So a role is one weight, one optional
 `max_batch_tokens` and an argument map.
 

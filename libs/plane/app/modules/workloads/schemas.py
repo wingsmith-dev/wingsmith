@@ -17,10 +17,10 @@ class ShapeSchema(Struct):
     tensor-parallel-8 configuration means nothing spread across an A100 and an
     H100, so a count without a class is not a shape.
 
-    The topology pair sits here rather than beside the scale numbers because it is
+    The topology pair sits here, not beside the scale numbers because it is
     a property of one replica's layout, the same way the counts are. It used to be
-    declared twice — once on the recipe and once as a nullable override on the
-    workload — and with one object there is one answer.
+    declared twice, once on the recipe and once as a nullable override on the
+    workload, and with one object there is one answer.
     """
 
     device_class: str
@@ -67,10 +67,10 @@ class ReasoningSchema(Struct):
 
 
 class DiffusionSchema(Struct):
-    """What a vLLM-Omni worker reads from its stage-config file rather than its command line.
+    """What a vLLM-Omni worker reads from its stage-config file instead of its command line.
 
-    Two fields because only two vary per model. The operator writes the rest of the file —
-    one stage, the devices the pod holds, the executor — and the Dynamo omni CLI refuses
+    Two fields because only two vary per model. The operator writes the rest of the file,
+    one stage, the devices the pod holds, the executor, and the Dynamo omni CLI refuses
     `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`
     exists because omni defaults every model to 50 inference steps, which is wrong for every
     distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.
@@ -103,7 +103,7 @@ class ServingSchema(Struct):
     output_modality: str | None = None
     """What the engine emits: `image` or `video` on the omni engine, null (text) on every other.
 
-    Here and not on `capabilities`, because it renders — `--output-modalities` on the worker —
+    Here and not on `capabilities`, because it renders (`--output-modalities` on the worker)
     and because the routing table carries it to the gateway, which refuses a path the upstream
     does not answer.
     """
@@ -117,8 +117,8 @@ class CapabilitiesSchema(Struct):
     The same split as `engine_args` against `imported_args`, one level up: nothing
     here becomes a flag or reaches a cluster, because a cluster has no use for a
     claim about itself. The plane checks these against the workload's own
-    declarations and against nothing else — it holds no table of what an engine
-    can do — so a block that is internally consistent and entirely false is
+    declarations and against nothing else, it holds no table of what an engine
+    can do, so a block that is internally consistent and entirely false is
     accepted, stored, and falsified by the first conformance run.
 
     `asserted_by` / `asserted_at` / `source_uri` are the provenance triple, spelled
@@ -146,7 +146,7 @@ class ResourcesSchema(Struct):
 
 
 class OverlaySchema(Struct):
-    """Overrides for what the plane deliberately does not model, inside an allowlist.
+    """Overrides for what the plane does not model, inside an allowlist.
 
     `pod_spec` merges over the rendered pod with strategic-merge semantics;
     `dynamo` merges over the rendered graph deployment, where maps merge and
@@ -169,15 +169,15 @@ class RouterSchema(Struct):
     nothing else. Null renders nothing and leaves Dynamo's default in place, except `mode`, where
     null is the operator's default of `kv`, or `round-robin` for an omni workload.
 
-    - `mode` — `kv`, `round-robin`, `random`, `power-of-two`, `least-loaded` or
+    - `mode`: `kv`, `round-robin`, `random`, `power-of-two`, `least-loaded` or
       `device-aware-weighted`.
-    - `queue_threshold` — a fraction of a worker's batched-token budget above which the router holds
-      requests back rather than dispatching them. Null means the router does not queue.
-    - `queue_policy` — `fcfs` or `wspt`, the order a queued request leaves in. Needs a threshold.
-    - `kv_overlap_score_credit` — how much a cached prefix discounts a worker's prefill load when the
+    - `queue_threshold`: a fraction of a worker's batched-token budget above which the router holds
+      requests back instead of dispatching them. Null means the router does not queue.
+    - `queue_policy`: `fcfs` or `wspt`, the order a queued request leaves in. Needs a threshold.
+    - `kv_overlap_score_credit`: how much a cached prefix discounts a worker's prefill load when the
       KV router picks one.
 
-    Typed rather than an environment passthrough, so the plane can refuse a value Dynamo would refuse
+    Typed instead of an environment passthrough, so the plane can refuse a value Dynamo would refuse
     at startup and say what it asked for. It replaces whole on a patch, like `cache`.
     """
 
@@ -192,13 +192,13 @@ class RoleSchema(Struct):
 
     Three fields because the difference between prefill and decode is three fields wide. Across
     NVIDIA's published recipe the two roles agree on the artifact, the tensor degree, the device
-    class, the context length, the quantization and the `kv-cache-dtype` — and on
+    class, the context length, the quantization and the `kv-cache-dtype`, and on
     `kv-transfer-config`, which is literally the same string on both sides, because the transfer
-    mechanism belongs to the topology rather than to either role. A schema giving each role a full
+    mechanism belongs to the topology, not to either role. A schema giving each role a full
     copy of the serving block would be charging for a difference that does not exist.
 
-    `weight` is scale and the other two are configuration, and that split is load-bearing rather
-    than tidy: the weights are deliberately outside `serving_digest` and the other two are inside
+    `weight` is scale and the other two are configuration, and that split is essential rather
+    than tidy: the weights are outside `serving_digest` and the other two are inside
     it. See `app.core.serving.serving_digest`.
     """
 
@@ -211,13 +211,13 @@ class RoleSchema(Struct):
 class TopologySchema(Struct):
     """How a workload's prefill and decode run: one process, or two that exchange a KV cache.
 
-    A block rather than two loose fields so that the aggregated case is expressible by its absence.
-    `roles` on an aggregated workload is refused rather than ignored — silently dropping a declared
+    A block instead of two loose fields so that the aggregated case is expressible by its absence.
+    `roles` on an aggregated workload is refused, not ignored: silently dropping a declared
     ratio would let somebody believe they had asked for something.
 
     Read back with `group_devices` filled in, which is derived and never stored. It is the whole
     reason this is a block on the response as well as on the request: a person declaring 1:2 at TP8
-    has asked for 24 devices per unit, and placement will refuse or strand in that unit rather than
+    has asked for 24 devices per unit, and placement will refuse or strand in that unit, not
     in the 8 they typed. Telling them the number at declaration is cheaper than a workload that
     expands to nothing.
     """
@@ -235,7 +235,7 @@ class TopologyViewSchema(Struct):
     """Devices one indivisible unit costs: `sum(weight x device_count)` over the roles.
 
     Derived on every read and stored nowhere. A column holding it would put the role weights into
-    `serving_digest` through a second door — `device_count` is a digest field — and it would do it
+    `serving_digest` through a second door (`device_count` is a digest field) and it would do it
     silently, because nothing about such a column's name would say whether it held the group's
     total or one worker's.
     """
@@ -244,7 +244,7 @@ class TopologyViewSchema(Struct):
 class WorkloadServingSchema(Struct):
     """How the workload serves its weights, as one block.
 
-    Grouped rather than flattened onto the workload because the two halves answer
+    Grouped, not flattened onto the workload because the two halves answer
     different questions: everything here decides what process runs, and everything
     outside it decides how much of it runs and where. `serving_digest` is a hash of
     exactly this block, which is only a coherent statement while the block is a
@@ -257,9 +257,9 @@ class WorkloadServingSchema(Struct):
 
     `resolved_engine_args` is derived on every read and stored nowhere. It is the
     declared `engine_args` with the flags the typed `serving` block dictates laid
-    over the top, keyed the way the operator keys them — without the leading
+    over the top, keyed the way the operator keys them, without the leading
     dashes. It exists so that "which value actually took effect" is a thing the
-    console can show rather than a thing a reader has to reconstruct from two
+    console can show instead of a thing a reader has to reconstruct from two
     fields with overlapping meaning.
     """
 
@@ -291,7 +291,7 @@ class WorkloadServingRequest(Struct):
 
     Shaped like the block a read returns, so the object a caller sends and the
     object it gets back are the same object. There is no id here and no name: a
-    serving configuration is identified by its content — `serving_digest` — and
+    serving configuration is identified by its content (`serving_digest`) and
     two workloads that ask for the same engine, weights and shape carry the same
     digest without either of them having to find the other first.
 
@@ -307,7 +307,7 @@ class WorkloadServingRequest(Struct):
     context_length: int = 0
     """The engine's `--max-model-len`. Required of every text engine; a diffusion model has none.
 
-    Defaulted rather than required so an omni workload can leave it out: 0 is stored, hashed,
+    Defaulted, not required so an omni workload can leave it out: 0 is stored, hashed,
     sent, and rendered by nothing. On any other engine `check_shape` refuses anything below 1,
     which is what omitting it always amounted to.
     """
@@ -333,7 +333,7 @@ class WorkloadServingUpdate(Struct):
 
     `artifact` is absent by design. A workload is a reproducible way to serve some
     specific weights, and repointing it at other weights makes every deployment
-    expanded from it mean something it did not mean yesterday — that is a new
+    expanded from it mean something it did not mean yesterday: that is a new
     workload, and it is cheap.
 
     The sub-blocks replace whole. `parallelism`, `cache`, `shape`, `resources`,
@@ -392,12 +392,12 @@ class WorkloadDeploymentSchema(Struct):
     live_digests: dict[str, int] = {}
     """Ready replicas in this cluster per serving configuration they actually came up on.
 
-    The observed answer to "which version is live", and a map rather than a string because
-    during a roll there are two and the pair is the whole point. One entry is a settled
+    The observed answer to "which version is live", and a map instead of a string because
+    during a roll there are two and the pair is the point. One entry is a settled
     deployment; two is a rollout in progress; an entry that is not the workload's current
     `serving_digest` is a cluster still running what it was asked for last time.
 
-    Empty when no ready replica has reported a digest — a cluster whose agent has not resynced
+    Empty when no ready replica has reported a digest: a cluster whose agent has not resynced
     since the column existed, or an operator too old to stamp the annotation. Empty means not
     known, never "none".
     """
@@ -408,7 +408,7 @@ class WorkloadRevisionUpdate(Struct):
 
     A revision is otherwise append-only: `serving`, `serving_digest` and `artifact` are a record
     of what ran and editing one would be editing history. The note is the exception because it
-    is not part of the record — it is somebody's account of it, and an account is frequently
+    is not part of the record: it is somebody's account of it, and an account is frequently
     written after the fact, when the benchmark that explains the change has finished.
     """
 
@@ -423,18 +423,18 @@ class WorkloadRevisionSchema(Struct):
     validated on the way in by the same checks that validate a hand-written patch. That is the
     whole of rollback, and why there is no operation for it.
 
-    It is handed back as an object rather than re-typed through the patch struct on purpose. A
+    It is handed back as an object, not re-typed through the patch struct. A
     snapshot is a record of what was asked for at the time, and decoding it through today's
-    struct would re-default a field added since and reject one removed since — making the oldest
+    struct would re-default a field added since and reject one removed since: making the oldest
     revisions, the ones most worth having, the first to become unreadable.
 
-    `artifact` sits beside it rather than inside it because the weights are not patchable: a
+    `artifact` sits beside it, not inside it because the weights are not patchable: a
     workload is a reproducible way to serve some specific weights, and repointing it is a new
     workload. It is here so that a revision is a complete record of what ran, and a reader can
     see that a configuration from before a weights swap is not one to reapply blind.
 
     `number` counts from 1 within the workload. It never rewinds, so going back to revision 2
-    appends a new one carrying revision 2's snapshot rather than deleting what came after.
+    appends a new one carrying revision 2's snapshot instead of deleting what came after.
     """
 
     id: str
@@ -476,7 +476,7 @@ class WorkloadSchema(Struct):
 
     `serving_digest` is derived from `serving` on every write and is never accepted
     from a client. It is what a benchmark run and a wire frame both name, so that
-    "the same configuration" is one string rather than a comparison of eight fields.
+    "the same configuration" is one string instead of a comparison of eight fields.
     """
 
     id: str
@@ -494,11 +494,11 @@ class WorkloadSchema(Struct):
     served_model_name: str
     """The model id the engine registers under. Read from the artifact's slug and never declared.
 
-    Reported rather than accepted, which is the change: the workload used to carry a nullable
+    Reported, not accepted, which is the change: the workload used to carry a nullable
     override of it and the plane resolved between the two. Two writeable spellings of one public
     identifier is how the id a client sends and the id a frontend registered come apart, and that
     failure is a 404 from inside the cluster with the deployment healthy. What a *client* sends is
-    still changeable — that is `Endpoint.slug`, and the gateway rewrites between them.
+    still changeable: that is `Endpoint.slug`, and the gateway rewrites between them.
     """
     overrides: dict
     labels: dict
@@ -521,8 +521,8 @@ class WorkloadPlacementNodeSchema(Struct):
     """One node a workload's live devices currently sit on, with its occupancy.
 
     `device_count` is how many of the node's devices this workload holds right
-    now — the node's slot occupancy from the workload's point of view — derived
-    from the live allocation rows rather than declared anywhere.
+    now, the node's slot occupancy from the workload's point of view, derived
+    from the live allocation rows, not declared anywhere.
     """
 
     node: str
@@ -533,8 +533,8 @@ class WorkloadPlacementNodeSchema(Struct):
 class WorkloadReplicaPlacementSchema(Struct):
     """Where one live allocation of a workload landed, replica by replica.
 
-    `replica` is null for an allocation the cluster has not yet tied to a replica
-    — a held allocation is a commitment of devices that may precede the process
+    `replica` is null for an allocation the cluster has not yet tied to a replica:
+    a held allocation is a commitment of devices that may precede the process
     that runs on them. `gang_complete` says whether the allocation currently holds
     every device it was granted, so a partially satisfied gang is visible here.
     """
@@ -552,7 +552,7 @@ class WorkloadPlacementSchema(Struct):
     """Where a workload physically is, derived from its live allocations.
 
     Read-only and computed at read time from observed allocation, device and node
-    rows scoped to the workload. Only membership and placement facts appear —
+    rows scoped to the workload. Only membership and placement facts appear:
     no serving telemetry. `node_count` and `gpu_count` are the distinct live nodes
     and devices the workload holds across every cluster it landed on.
     """
@@ -567,7 +567,7 @@ class WorkloadPlacementSchema(Struct):
 class WorkloadCreateRequest(Struct):
     """What it takes to run something, without saying where.
 
-    `serving` is how the weights are served, and it is stated here rather than
+    `serving` is how the weights are served, and it is stated here, not
     named: there is no shared serving object to point at any more, because the
     sharing never paid for the ordering rule and the resume race it cost. Two
     workloads asking for the same thing land on the same `serving_digest`, which is
@@ -589,21 +589,21 @@ class WorkloadCreateRequest(Struct):
     `min_scale` / `max_scale` / `desired_scale` are TOTALS across every cluster this
     workload may use, counted in replicas.
 
-    `priority_class` is optional rather than absent: every workload carries one, but
+    `priority_class` is optional, not absent: every workload carries one, but
     the project's default answers for most callers and making them repeat it is how
     defaults drift.
 
     `allowed_regions` and `allowed_clusters` narrow placement without taking the
     decision off it, which is what separates them from `cluster`: placement still runs,
-    still reads quota, still checks topology and capacity, and still picks — it just has
+    still reads quota, still checks topology and capacity, and still picks: it just has
     fewer clusters to pick from. "Any cluster in `ap`" is the common form and the reason
-    the region is a first-class field rather than a cluster list somebody has to keep up
+    the region is a first-class field instead of a cluster list somebody has to keep up
     to date as the fleet grows.
 
-    They are here rather than left to `POST /policies` because placement expands inside
+    They are here, not left to `POST /policies` because placement expands inside
     `create`: a policy attached after the response has already missed the decision it
-    was meant to constrain. What is created *is* a Policy — named after the workload and
-    attached to it — so the constraint is discoverable, editable and enforced on every
+    was meant to constrain. What is created *is* a Policy, named after the workload and
+    attached to it, so the constraint is discoverable, editable and enforced on every
     later expansion by the same machinery as any other policy. Both lists empty means no
     opinion, never "nothing allowed".
     """
@@ -632,8 +632,8 @@ class WorkloadCreateRequest(Struct):
     note: str | None = None
     """Why this configuration, in your own words. Lands on the revision this create files.
 
-    Not a description of the workload — that is what `labels` and the name are for. It
-    describes the *configuration*, and it travels with the revision rather than the row, so it
+    Not a description of the workload: that is what `labels` and the name are for. It
+    describes the *configuration*, and it travels with the revision instead of the row, so it
     is still attached to this setting after three edits have moved on from it.
     """
 
@@ -650,7 +650,7 @@ class WorkloadUpdateRequest(Struct):
     `name` is accepted only when it restates the current name: deployments and the
     workload's placement policy are named after it, so a rename is a new workload.
 
-    `cluster` is absent by design — a deployment is workload × cluster, so moving one
+    `cluster` is absent by design: a deployment is workload × cluster, so moving one
     is a re-expansion and `workload.drain` owns it. Scale is absent too: changing it is
     long-running and can sit pending on quota forever, so it is the `workload.scale`
     operation and not a field write (rule 1).
@@ -670,12 +670,12 @@ class WorkloadUpdateRequest(Struct):
     note: str | None | UnsetType = UNSET
     """Why this change, written at the moment somebody still knows.
 
-    It lands on the revision this patch files. A patch that files none — one carrying only a
-    note, or one that arrives at the configuration already in force — puts it on the revision
+    It lands on the revision this patch files. A patch that files none, one carrying only a
+    note, or one that arrives at the configuration already in force, puts it on the revision
     currently in force instead, so a note is never silently dropped and commenting on what is
     running needs no separate call.
 
-    It is the one field here that reaches a revision rather than the workload, and the only
+    It is the one field here that reaches a revision instead of the workload, and the only
     mutable thing about a revision: what the configuration was is a fact, why it changed is
     often understood later.
     """
@@ -699,7 +699,7 @@ class WorkloadReshapeParameters(Struct):
     """`workload.reshape`: the topology to flip to, and the count stated in the new unit.
 
     `desired` is required in practice and optional here only so its absence is refused
-    with the reason rather than with a decoding error. `min` and `max` default to it.
+    with the reason, not with a decoding error. `min` and `max` default to it.
     """
 
     topology: str

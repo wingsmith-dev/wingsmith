@@ -25,7 +25,7 @@ replicas or eight ranks is unreadable, so the unit travels with them.
 PHASE_ORDER = ("pending", "admitted", "placed", "running", "succeeded")
 """Admission phases from least to most advanced, for the workload rollup.
 
-`failed` is deliberately absent: it is not a point on this line. One failed
+`failed` is absent: it is not a point on this line. One failed
 deployment makes the workload failed regardless of how far the others got, which
 is a different rule from "the least advanced wins" and is applied before it.
 """
@@ -79,10 +79,10 @@ def _revision(workload: Workload, deployments: list[Deployment]) -> str:
 def _revision_view(row: WorkloadRevision) -> WorkloadRevisionSchema:
     """One revision as a read returns it.
 
-    `serving` is handed back as the object it was stored as rather than re-typed through
+    `serving` is handed back as the object it was stored as, not re-typed through
     `WorkloadServingUpdate`. A snapshot is a record of what was asked for at the time, and
     decoding it through today's struct would re-default a field added since and reject one
-    removed since — which would make the oldest revisions, the ones most worth having, the
+    removed since, which would make the oldest revisions, the ones most worth having, the
     first to become unreadable.
     """
     return WorkloadRevisionSchema(

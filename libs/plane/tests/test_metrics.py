@@ -349,7 +349,7 @@ async def test_nan_is_no_series_not_zero():
 
 
 async def test_a_backend_only_answers_the_metrics_it_has_a_dialect_for():
-    """Room for a cost family answered out of inventory rather than a store."""
+    """Room for a cost family answered out of inventory instead of a store."""
     backend, _ = backend_with({})
     assert backend.answers(BY_NAME["gpu.utilization"])
     assert not backend.answers(Metric("cost.hourly", "count", "gpu", "Cost per hour"))
@@ -391,7 +391,7 @@ def test_served_model_prefers_the_operators_explicit_flag():
 def test_served_model_is_the_artifacts_slug():
     """One column, read. The workload has nothing to say about it any more.
 
-    It used to be a ladder — the workload's declared name, then the recipe's, then a slug the
+    It used to be a ladder: the workload's declared name, then the recipe's, then a slug the
     plane re-derived from the artifact's bare `name` at read time. The derivation could not
     produce an organisation, because the organisation is only ever written in the location URI,
     so the plane published `gemma-4-31b-it` while the engine had been started on
@@ -428,14 +428,14 @@ def test_worker_identity_keeps_a_graphs_own_namespace():
     """One deployment in the fleet sets `DYN_NAMESPACE` on its graph, so the hash is not enough.
 
     `dynamo-<hash>` and `dynamo-<graph>-<hash>` both occur, which is why the
-    value is read from the labels rather than rebuilt from the deployment name.
+    value is read from the labels, not rebuilt from the deployment name.
     """
     labels = {"dynamo-namespace": "dynamo-qwen3-8-27b-agg", "dynamo-worker-hash": "b16ef7d1"}
     assert worker_identity(labels) == "dynamo-qwen3-8-27b-agg-b16ef7d1"
 
 
 def test_worker_identity_is_empty_when_either_half_is_missing():
-    """Empty means "not observed yet", which must fall back rather than select nothing."""
+    """Empty means "not observed yet", which must fall back, not select nothing."""
     assert worker_identity({"dynamo-namespace": "dynamo"}) == ""
     assert worker_identity({"dynamo-worker-hash": "891b8dda"}) == ""
     assert worker_identity({}) == ""
@@ -447,7 +447,7 @@ def test_the_worker_dimension_selects_on_the_dynamo_namespace():
 
 
 def test_the_worker_join_separates_two_deployments_of_one_model():
-    """The whole point: `model_name` cannot tell them apart and `dynamo_namespace` can."""
+    """The point: `model_name` cannot tell them apart and `dynamo_namespace` can."""
     one = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-aaaa",)})
     two = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-bbbb",)})
     assert selector(one) != selector(two)
@@ -654,7 +654,7 @@ async def test_a_fleet_in_two_stores_says_so_rather_than_merging_them_here():
     """Two stores are two questions, and the plane is not the aggregation layer.
 
     Nothing partial is returned either: half the fleet's traffic under a label
-    that claims to be all of it reads as a quiet fleet rather than as a missing
+    that claims to be all of it reads as a quiet fleet, not as a missing
     one.
     """
     backend = CaptureBackend(samples={"inference.requests_running": 7.0})
@@ -672,7 +672,7 @@ async def test_a_store_nothing_narrows_is_left_out_of_the_fleet_rather_than_wide
     """A `cluster=~` matcher that omits a cluster is a fleet total missing a cluster.
 
     A dedicated store holds one cluster and carries no `cluster` label, so it can
-    neither be matched nor be left unmatched — an unscoped query there would blend
+    neither be matched nor be left unmatched: an unscoped query there would blend
     in whatever else that store holds.
     """
     backend = CaptureBackend()
@@ -707,7 +707,7 @@ def test_every_fleet_metric_can_actually_be_grouped_by_cluster():
     """A breakdown the expression cannot render is an empty panel, not an error.
 
     `render` falls back to the ungrouped template when a metric has no `grouped`
-    one, and the ungrouped shapes all aggregate the `cluster` label away — so the
+    one, and the ungrouped shapes all aggregate the `cluster` label away, so the
     store answers a single unlabelled number, the backend finds no key to group on
     and the breakdown comes back empty with nothing anywhere reporting a problem.
     The fleet scope exists to break down by cluster, so every metric it asks for
@@ -759,5 +759,5 @@ def test_a_tenants_endpoints_go_into_one_matcher_rather_than_one_query_each():
 def test_a_tenant_owning_no_endpoint_selects_nothing_rather_than_everything():
     """An empty match is dropped from the selector, so an unscoped query would
     report the whole front door's traffic as one tenant's. The service must not
-    reach the backend at all in that case — see MetricsService.tenant."""
+    reach the backend at all in that case; see MetricsService.tenant."""
     assert selector(Scope(kind="tenant", cluster="", match={"endpoint": ()})) == ""

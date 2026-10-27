@@ -10,12 +10,12 @@ workloads and travel to a cluster once. Neither half held.
 The wire half is measurable: `ingestion/desired.py` selected recipes joined through
 the deployments of one cluster, so a configuration used in three clusters was
 serialised three times regardless. The only case that saved a frame was two
-deployments in ONE cluster naming one recipe — two workloads over one configuration,
+deployments in ONE cluster naming one recipe: two workloads over one configuration,
 both placed together, which is the canary case and nothing else. Against that the
 separate frame cost an ordering rule, a `RecipeNotDeclared` pending reason, and a
 resume race in which a deployment waited forever for a recipe it was never sent.
 
-The sharing half was already being reconstructed rather than used: the console's
+The sharing half was already being reconstructed, not used: the console's
 `matchExistingRecipe` compared eight fields to decide whether an existing recipe was
 the same one, because a person deploying the same model twice must not mint a second
 identity for it. Comparing contents to find an object says the contents are the
@@ -23,17 +23,17 @@ object, so the reuse becomes `serving_digest` and the object goes away.
 
 Nothing about what the plane knows changes. Every column lands on `demand_workload`
 under the same name and type, placement reads the shape off the workload instead of
-its recipe, and the shape still reaches a cluster on the deployment's `placement`
-rather than in the serving block.
+its recipe, and the shape still reaches a cluster on the deployment's `placement`,
+not in the serving block.
 
-Two columns merge rather than move. `requires_single_topology_domain` and
-`topology_domain_kind` existed on both — non-null on the recipe, nullable on the
-workload as an override of it — and become one non-null answer, backfilled
+Two columns merge, not move. `requires_single_topology_domain` and
+`topology_domain_kind` existed on both, non-null on the recipe, nullable on the
+workload as an override of it, and become one non-null answer, backfilled
 `COALESCE(workload, recipe)` so a workload that overrode keeps its override.
 
 `ops_benchmark_run.recipe_id` and `recipe_version` become `serving_digest`. The old
 pair named a mutable row, which is why the table already snapshotted `engine_args`
-beside it; a digest is the configuration rather than a handle on it. Every run is
+beside it; a digest is the configuration instead of a handle on it. Every run is
 backfilled from its own recipe, so attribution survives even for runs whose recipe no
 workload ever named.
 
@@ -103,7 +103,7 @@ MOVED = (
 )
 """Every recipe column that moves, with the nullability and default it lands under.
 
-Added nullable whatever the target says, backfilled, then tightened — a table with
+Added nullable whatever the target says, backfilled, then tightened: a table with
 rows in it cannot take a non-null column in one step, and inventing a default to make
 it possible would write a value nobody chose into every existing workload.
 """
@@ -291,7 +291,7 @@ def downgrade() -> None:
 
     # The recipe id is minted on the workload first, so the insert below needs no join
     # back by name, and two workloads with one name in different projects become two
-    # versions of one recipe name rather than a unique-constraint violation.
+    # versions of one recipe name instead of a unique-constraint violation.
     op.add_column("demand_workload", sa.Column("recipe_id", postgresql.UUID(as_uuid=True), nullable=True))
     bind.execute(sa.text("UPDATE demand_workload SET recipe_id = gen_random_uuid()"))
 

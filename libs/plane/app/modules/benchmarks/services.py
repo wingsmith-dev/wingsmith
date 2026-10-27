@@ -63,8 +63,8 @@ OPERATION_TYPE = "deployment.benchmark"
 A benchmark is imperative, long-running and able to fail, which is the third kind
 of thing and already has machinery: phases, a deadline, cancellation, and replay
 to a cluster that reconnected mid-run. Building a second lifecycle beside it would
-be building all of that again, worse. What `Operation` cannot hold is the result —
-its `result` is a flat string map on the wire and a harness emits nested JSON — so
+be building all of that again, worse. What `Operation` cannot hold is the result,
+its `result` is a flat string map on the wire and a harness emits nested JSON, so
 the run is its own object and the operation is how it gets done.
 
 The two new harness kinds ride this same operation and the same `benchmark.observed`
@@ -81,11 +81,11 @@ SWEEP = "sweep"
 SOAK = "soak"
 
 MODES: tuple[str, ...] = (SINGLE, WARMUP, RAMP, SWEEP, SOAK)
-"""A shape of runs over one harness, and deliberately not a harness of its own.
+"""A shape of runs over one harness, and not a harness of its own.
 
 A `soak` harness and a `ramp` harness would put the same AIPerf parameters in three
 tables and make two runs of one tool incomparable for no reason. Modes do not compose
-either: a request has one, and a full acceptance pass is three requests rather than a
+either: a request has one, and a full acceptance pass is three requests instead of a
 fourth object grouping them.
 """
 
@@ -94,13 +94,13 @@ STEPPED: dict[str, str] = {RAMP: "concurrency", SWEEP: "input_tokens_mean"}
 
 A ramp walks load, which is what "hold each concurrency for ten minutes and collect
 after stabilisation" means. A sweep walks prompt length, which is what makes a
-per-band time-to-first-token claim evidenceable at all — the standard sets a separate
+per-band time-to-first-token claim evidenceable at all: the standard sets a separate
 target for each input-length band and one aggregate number answers none of them.
 """
 
 
 class RunNames(NamedTuple):
-    """The public ids a run is rendered with, resolved by join rather than by trip."""
+    """The public ids a run is rendered with, resolved by join, not by trip."""
 
     deployment: str | None
     cluster: str | None
@@ -142,8 +142,8 @@ class BenchmarkService:
     One transaction for all of them, because a run with no operation is a
     measurement nothing will ever take, an operation with no run is a result with
     nowhere to land, and a run with no request is a band of a sweep that cannot be
-    re-aggregated with the others. Everything after creation — phase, summary, the
-    timestamps — is ingestion's, applied from `benchmark.observed`. The verdict is
+    re-aggregated with the others. Everything after creation, phase, summary, the
+    timestamps, is ingestion's, applied from `benchmark.observed`. The verdict is
     neither writer's: it is derived at read against the criteria version the request
     recorded.
     """
@@ -256,11 +256,11 @@ class BenchmarkService:
         Offline benchmark measurement, read through the same harness-and-version
         adapter the verdicts use. A run whose harness or version has no adapter,
         or whose summary lacks the throughput path, contributes no reading and is
-        left out of `graded_run_count` — the peak is the maximum of what could be
+        left out of `graded_run_count`: the peak is the maximum of what could be
         read, or `None` when nothing could.
 
         An unknown digest is not an error. It is a configuration nothing has
-        measured yet, which is a zero count and a named absence rather than a 404
+        measured yet, which is a zero count and a named absence instead of a 404
         about an object that was never an object.
         """
         rows = await self.repo.serving_runs(digest)
@@ -320,7 +320,7 @@ class BenchmarkService:
 
         `criteria` defaults to the version the request was created under, which
         is what makes the answer stable. Passing another asks the genuinely
-        useful question a stored verdict cannot answer at all — would this run
+        useful question a stored verdict cannot answer at all: would this run
         have passed under the revision that came later.
         """
         facts, recorded = await self._facts(ref)
@@ -377,9 +377,9 @@ class BenchmarkService:
     async def curve(self, ref: str, criteria: str | None = None) -> BenchmarkCurveSchema:
         """One request's runs read as a load curve, with the knee derived now.
 
-        A single object rather than a `ListResponse` of points, because the
+        A single object instead of a `ListResponse` of points, because the
         criteria version the knee was derived under belongs to the answer and a
-        list envelope has nowhere to carry it — the same reason `/verdict` is
+        list envelope has nowhere to carry it: the same reason `/verdict` is
         shaped this way.
 
         The step field comes from the mode the request was created under and
@@ -422,7 +422,7 @@ class BenchmarkService:
     async def create(self, data: BenchmarkRunCreateRequest) -> BenchmarkRunSchema:
         """The deployment-level shortcut, which is what every existing caller posts.
 
-        It expands through the same path a levelled request does rather than
+        It expands through the same path a levelled request does, not
         beside it: two creation paths would be two answers to what a run
         snapshots.
         """
@@ -446,7 +446,7 @@ class BenchmarkService:
 
         The provenance snapshot is taken here and not by the operator. What a
         deployment was running is a fact the plane already holds, and reading it
-        at creation is what pins a run to a generation rather than to whatever
+        at creation is what pins a run to a generation, not to whatever
         the deployment happens to be by the time the job finishes.
 
         Expansion is deterministic and happens once. A deployment-level request
@@ -454,7 +454,7 @@ class BenchmarkService:
         each snapshotting its own; an endpoint-level request is exactly one run
         with an empty snapshot, because a request to a public name is routed by
         weight across every enabled upstream and a run attributed to one of them
-        would be a confident wrong attribution rather than an honest absent one.
+        would be a confident wrong attribution instead of an accurate absent one.
 
         Endpoint-level requests are refused for now, after the harness and level
         checks so the error says the more specific thing first. Nothing executes
@@ -536,7 +536,7 @@ class BenchmarkService:
 
         An endpoint-level run gets no operation. The operator's benchmark job
         reaches its own cluster's inference endpoint and never dials out, which
-        is the rule that keeps the data plane off this one — so a run against a
+        is the rule that keeps the data plane off this one, so a run against a
         public name is not an errand any cluster can be handed. `create_request`
         refuses that level until an executor for the public surface exists.
         """
@@ -553,7 +553,7 @@ class BenchmarkService:
             resolved["tokenizer"] = tokenizer_for(workload, artifact)
 
         # EvalScope's OpenAI client sends a strict `model` field. What the frontend answers to is
-        # the artifact's HF repo id — not the workload's served name, which is what `model` carries.
+        # the artifact's HF repo id, not the workload's served name, which is what `model` carries.
         # `tokenizer_for` already knows how to resolve that id from the artifact's location, so the
         # harness gets it under a separate knob and the label the operator renders stays the served
         # name.
@@ -616,7 +616,7 @@ class BenchmarkService:
         """The one deployment a reference names, or an error saying which way it failed.
 
         Same rule as an operation target: a name is unique per cluster and not
-        above it, so an ambiguous one is refused rather than picked. Benchmarking
+        above it, so an ambiguous one is refused, not picked. Benchmarking
         an arbitrary one of two deployments that share a name would produce a
         number attributed to the wrong thing, which is worse than no number.
         """
@@ -641,7 +641,7 @@ class BenchmarkService:
     async def _workload_targets(self, ref: str) -> tuple[list[Target], None, list[dict]]:
         """Every placement of one workload, each run snapshotting its own.
 
-        A workload with no placement is refused rather than expanded to nothing:
+        A workload with no placement is refused, not expanded to nothing:
         a request that produced no runs would sit for ever looking pending, and
         "placement has not run yet" is a different answer from "it failed".
         """
@@ -665,7 +665,7 @@ class BenchmarkService:
         The coverage list is where the per-upstream expansion went. A request to
         a public name is routed by weight across every enabled upstream, so N
         runs would be N times the intended concurrency and each would measure
-        whatever the gateway chose rather than the upstream it was dispatched
+        whatever the gateway chose instead of the upstream it was dispatched
         for. One run, and the coverage records what the name resolved to at the
         moment it was asked.
         """
@@ -692,9 +692,9 @@ def _homogeneous(coverage: list[dict]) -> bool:
     """True when every entry agrees on artifact and serving configuration.
 
     An accuracy verdict over a heterogeneous coverage is not attributable at
-    all — two upstreams running different quantizations produce one score
-    belonging to neither — so this boolean is what turns that into a stated
-    `inconclusive` rather than a number a reader is left to misuse.
+    all, two upstreams running different quantizations produce one score
+    belonging to neither, so this boolean is what turns that into a stated
+    `inconclusive` instead of a number a reader is left to misuse.
 
     `serving_digest` is the whole configuration in one value, so this compares
     two fields where it used to compare three and is stricter for it: the pair it
@@ -708,7 +708,7 @@ def _homogeneous(coverage: list[dict]) -> bool:
 def _steps(harness: harnesses.Harness, data: BenchmarkRequestCreateRequest) -> list[int | None]:
     """The load points a mode walks, or a single unstepped run.
 
-    A stepped mode over a harness with no such knob is refused here rather than
+    A stepped mode over a harness with no such knob is refused here, not
     silently collapsing to one run: a caller who asked for a sweep and got one
     point would have a verdict covering one band and a claim covering six.
     """
@@ -839,7 +839,7 @@ def _knee_schema(knee: curves.Knee) -> BenchmarkKneeSchema:
 def _one_digest(runs: list[BenchmarkRun]) -> str | None:
     """The serving configuration a request's runs all measured, or nothing.
 
-    Nothing rather than the first of several: a curve drawn through two
+    Nothing instead of the first of several: a curve drawn through two
     configurations describes a machine that does not exist, and naming one of
     them would attribute half the points to the wrong thing.
     """
@@ -899,7 +899,7 @@ def request_phase(phases: list[str]) -> str:
 def tokenizer_for(workload: Workload, artifact: Artifact) -> str:
     """The repository AIPerf should load a tokenizer from, or nothing if we cannot say.
 
-    Most authoritative first, and the served model name is nowhere in the list —
+    Most authoritative first, and the served model name is nowhere in the list;
     it is what AIPerf falls back to on its own and it is the wrong answer: a
     deployment served as `qwen3.8-27b` is not a Hugging Face repository and the
     lookup fails before a single request is sent.
@@ -911,14 +911,14 @@ def tokenizer_for(workload: Workload, artifact: Artifact) -> str:
     running workload.
 
     Failing that, the artifact's `hf://` location, because that is the same value
-    the operator resolves `--model` to when it renders the engine — the tokenizer
+    the operator resolves `--model` to when it renders the engine: the tokenizer
     the engine loaded by default is the one in the repository it pulled from, and
     reading it from the same field keeps the two from drifting. The `hf:` digest
     is the last resort, for an artifact adopted by reference that never had its
     bytes resolved to a location.
 
     An empty string when nothing names a repository, which leaves AIPerf on its
-    own default rather than inventing an id — a run that fails on a missing
+    own default instead of inventing an id: a run that fails on a missing
     tokenizer is clearer than one that silently counted tokens with the wrong one.
     """
     engine_args = workload.engine_args or {}

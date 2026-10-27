@@ -1,9 +1,9 @@
-"""`GET /v1/system/config` — the allowlist, and the guarantee it never leaks.
+"""`GET /v1/system/config`: the allowlist, and the guarantee it never leaks.
 
 `test_no_configured_secret_appears_anywhere_in_the_response` is the reason this
 suite exists: every credential in `Settings` is set to a distinctive sentinel and
 the serialised body is searched for each one. A field added to `ConfigSchema` by
-copying a secret across fails here rather than in a screenshot.
+copying a secret across fails here, not in a screenshot.
 """
 
 import json
@@ -182,7 +182,7 @@ def test_the_api_host_is_reported_as_resolved(monkeypatch):
 def test_no_configured_secret_appears_anywhere_in_the_response():
     """Every sentinel credential is searched for in the raw serialised body.
 
-    Not a check on the fields we remembered to look at — a substring search over
+    Not a check on the fields we remembered to look at: a substring search over
     the whole payload, so a secret smuggled in under any new key fails here.
     """
     with TestClient(app=create_app()) as client:

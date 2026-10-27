@@ -10,7 +10,7 @@ class QuotaUsageSchema(Struct):
     """The observed half of a quota: what the project is actually holding.
 
     Counted over live allocations at read time. It sits in its own object so that
-    no field on the response is ever half declared and half observed — a single
+    no field on the response is ever half declared and half observed: a single
     `used_devices` next to `guaranteed_devices` would read as one number someone
     set and one number that happened, spelled identically.
     """
@@ -30,7 +30,7 @@ class QuotaSchema(Struct):
 
     `cluster` is null when the quota spans every cluster, and usage is then
     summed across all of them. `over_limit` and `headroom_devices` are derived
-    here rather than in each client, because the console and `hgr` asking the
+    here, not in each client, because the console and `hgr` asking the
     same question must not get two answers.
     """
 
@@ -67,7 +67,7 @@ class QuotaUpdateRequest(Struct):
 
     `project`, `cluster` and `device_class` are absent by design: the three of
     them are the quota's unique scope, and changing one is creating a different
-    quota rather than editing this one.
+    quota instead of editing this one.
     """
 
     guaranteed_devices: int | UnsetType = UNSET
@@ -117,7 +117,7 @@ class ServingQuotaStandardSchema(Struct):
     surface's to report, and the two must never be spelled the same.
 
     `shortfalls` names the fields, so a caller can point at the one that is short
-    rather than re-deriving the comparison. An uncommitted field is a shortfall:
+    instead of re-deriving the comparison. An uncommitted field is a shortfall:
     the standard asks for a floor, and declaring nothing is not clearing it.
     """
 
@@ -132,7 +132,7 @@ class ServingQuotaSchema(Struct):
     request over these numbers; `enforced` records whether the operator wants them
     enforced once something does.
 
-    Every field here is declared. There is no `usage`, and there is deliberately
+    Every field here is declared. There is no `usage`, and there is
     no observed sibling of the shape `QuotaSchema.usage` has: a device quota's
     usage is a join this database owns, while a serving quota's usage is measured
     per request in the gateway and never crosses into the control plane.
@@ -215,7 +215,7 @@ class ResolvedServingQuotaSchema(Struct):
     `workloads` is a lookup convenience and never a key: the commitment belongs
     to the endpoint, and a workload appears here because traffic reaching it was
     admitted through this endpoint's name. A workload behind two endpoints has
-    two commitments and they are reported separately rather than summed — summing
+    two commitments and they are reported separately, not summed: summing
     them would invent a number nobody sold.
     """
 

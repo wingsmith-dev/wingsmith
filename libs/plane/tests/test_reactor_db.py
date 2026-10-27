@@ -43,8 +43,8 @@ async def connect(sessions, cluster: uuid.UUID, reachable: bool = True) -> None:
     """Marks the cluster active and its agent connected, the way enrolment and `hello` would.
 
     The phase matters as much as the reachability. Every condition is scoped to
-    clusters we expect to be carrying work, so a `pending` cluster — which is what
-    the shared fixture seeds — is deliberately silent.
+    clusters we expect to be carrying work, so a `pending` cluster, which is what
+    the shared fixture seeds, is silent.
     """
     async with sessions.begin() as db:
         await db.execute(text("UPDATE supply_cluster SET phase = 'active' WHERE id = :cluster"), {"cluster": cluster})
@@ -437,7 +437,7 @@ async def test_the_evaluator_never_writes_declared_or_observed_state(sessions, c
 
 
 async def test_alerts_outlive_the_thing_they_are_about(sessions, cluster):
-    """`subject_uid` is a string, not a foreign key — the node going away is the alert."""
+    """`subject_uid` is a string, not a foreign key: the node going away is the alert."""
     await connect(sessions, cluster)
     await seed_node(sessions, cluster)
     uid = await seed_workload(sessions, cluster, ready=0)
@@ -467,8 +467,8 @@ async def test_a_label_on_the_deployment_mutes_it_without_a_deploy(sessions, clu
     """The knob the console can turn: a label edit, not a code change.
 
     Muting removes the condition from the evaluated set, and absence is what
-    resolves a condition alert — so an alert already firing goes quiet on the next
-    tick rather than lingering until someone closes it by hand.
+    resolves a condition alert, so an alert already firing goes quiet on the next
+    tick instead of lingering until someone closes it by hand.
     """
     await connect(sessions, cluster)
     await seed_node(sessions, cluster)

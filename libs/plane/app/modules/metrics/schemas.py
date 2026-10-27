@@ -33,7 +33,7 @@ class SeriesSchema(Struct):
 
 
 class BreakdownSchema(Struct):
-    """One member of a scope — a device under a node, a node under a pool."""
+    """One member of a scope: a device under a node, a node under a pool."""
 
     key: str
     label: str

@@ -7,7 +7,7 @@ Create Date: 2026-08-20 00:10:00.000000
 `bind_policy.max_hourly_cost` was a ceiling with nothing underneath it: no rate is
 recorded on a device, a pool or a cluster, so placement has no number to compare a
 candidate against and never read the column. A constraint that cannot be evaluated is
-worse than an absent one — it reads as enforced. Pricing, when supply learns about it,
+worse than an absent one: it reads as enforced. Pricing, when supply learns about it,
 will want a rate per device class on the supply side first, and the ceiling can come
 back then against something real.
 

@@ -4,13 +4,13 @@
 was tested, which tool-call parser the chat template needs, or that the FP8
 checkpoint lives in a different repo. Those are somebody's serving experience,
 and vLLM keeps 180 models' worth of it in a machine-readable corpus at
-`vllm-project/recipes` — one YAML per HuggingFace slug, plus a hardware taxonomy
+`vllm-project/recipes`: one YAML per HuggingFace slug, plus a hardware taxonomy
 and a table of parallelism strategies.
 
 The path in that repo *is* the slug (`models/<org>/<repo>.yaml`), so the lookup
 key is `metadata.huggingface_id`, which the plane already stores.
 
-Two boundaries hold here and are the reason this is an integration rather than a
+Two boundaries hold here and are the reason this is an integration instead of a
 module:
 
 *Nothing here is a fact about our clusters.* `hardware: {h200: verified}` means
@@ -59,7 +59,7 @@ MAX_NODES: Final = 16
 DEFAULT_BRANCH: Final = "main"
 """The branch a reader should be sent to, which is the one the corpus develops on.
 
-Not the branch the snapshot was taken from — that is a commit, and `snapshot_uri`
+Not the branch the snapshot was taken from: that is a commit, and `snapshot_uri`
 is where it is written. A permalink says what was stored and a branch link says what
 upstream says now; a person following a link from a form wants the second.
 """
@@ -73,7 +73,7 @@ _SINGLE_NODE_TP: Final = "single_node_tp"
 class HardwareProfile:
     """One node shape the corpus reports results on.
 
-    `vram_gb` is the whole node, not the card — `h200` is 8 devices and 1128 GB.
+    `vram_gb` is the whole node, not the card: `h200` is 8 devices and 1128 GB.
     Dividing is the caller's business, because a profile with `gpu_count` zero is
     a corpus bug and not something to hide behind a division here.
     """
@@ -111,7 +111,7 @@ class Strategy:
 class Variant:
     """One precision of one model, which may be a different repo entirely.
 
-    `model_id` is set only when the variant is published separately — an FP8 or
+    `model_id` is set only when the variant is published separately: an FP8 or
     NVFP4 requantization by RedHat or NVIDIA. That makes those slugs registrable
     artifacts in their own right, which is why the snapshot indexes them back to
     the recipe that describes them.
@@ -123,7 +123,7 @@ class Variant:
     precision: str = ""
     vram_minimum_gb: int | None = None
     tp: int | dict[str, int] | None = None
-    """The tested parallelism — a number, or one number per hardware profile.
+    """The tested parallelism: a number, or one number per hardware profile.
 
     Both forms are in the corpus and neither is a special case of the other. A
     Llama 3.3 70B is `{"xeon6": 8}` and nothing elsewhere, which says the tested
@@ -176,19 +176,19 @@ class Recipe:
         """The image the corpus serves this model from, on NVIDIA hardware.
 
         Empty on most recipes, which is the corpus saying the ordinary engine build
-        serves them. Set on the few that need a build of their own — GLM-5.3-Flash
+        serves them. Set on the few that need a build of their own: GLM-5.3-Flash
         is `vllm/vllm-openai:glm53-flash`, a vLLM with the GLA/KDA kernels and the
         `glm5_next` architecture that no released runtime has.
 
         Two shapes, because the corpus writes both: a string is one image for every
         accelerator, a mapping is keyed by vendor. Only `nvidia` is ours, and an
-        AMD-only entry reads as absent rather than as a fallback — a ROCm image on
+        AMD-only entry reads as absent, not as a fallback: a ROCm image on
         an H200 is not a degraded answer, it is a wrong one.
 
         This is evidence, never a value to copy into `engine_runtime_image`. The image it
         names is somebody else's runtime and has no `ai-dynamo` in it, so the
         operator's `python3 -m dynamo.vllm` does not exist there. What it supports
-        is the only honest claim: that the image the plane would derive will not
+        is the only accurate claim: that the image the plane would derive will not
         load these weights.
         """
         value = self.model.get("docker_image")
@@ -222,7 +222,7 @@ class Recipe:
 
         Membership is the default and the gate overrides it in both directions: a
         listed strategy can be `unsupported` on one card, and an unlisted one can
-        be `supported` on another — which is how a layout validated on a few GPUs
+        be `supported` on another, which is how a layout validated on a few GPUs
         is declared once instead of listed globally and opted out everywhere else.
         Reading the list alone understates where a model can run.
         """
@@ -235,7 +235,7 @@ class Recipe:
 
     @property
     def default_features(self) -> tuple[str, ...]:
-        """The features on in the tested baseline — everything not opt-in."""
+        """The features on in the tested baseline: everything not opt-in."""
         return tuple(name for name in self.features if name not in self.opt_in_features)
 
 
@@ -244,7 +244,7 @@ class RecipeMatch:
     """A recipe and the variant a slug landed on.
 
     A slug matching a variant's own repo is a *stronger* match than one matching
-    the family, because the precision is then known rather than assumed. Callers
+    the family, because the precision is then known, not assumed. Callers
     that only want the family can ignore `variant`; callers sizing a deployment
     should not.
     """
@@ -256,9 +256,9 @@ class RecipeMatch:
 
     @property
     def source_uri(self) -> str:
-        """The recipe on the corpus's own branch — what upstream says about this model now.
+        """The recipe on the corpus's own branch: what upstream says about this model now.
 
-        The link a person follows, and therefore the branch rather than the commit.
+        The link a person follows, and therefore the branch instead of the commit.
         A reader clicking through from a form is asking what vLLM recommends, not
         what this plane happened to capture, and a 40-character sha lands them on
         a detached file view of a corpus that has moved on since. The snapshot is
@@ -280,7 +280,7 @@ class RecipeMatch:
     def args(self) -> tuple[str, ...]:
         """The flags of the tested baseline: base, variant, then default-on features.
 
-        Order is the corpus's own — base, variant, then features — and the result
+        Order is the corpus's own (base, variant, then features) and the result
         is deduplicated last-wins on the flag, which is what their renderer emits.
         A variant that lowers `--gpu-memory-utilization` from the base value means
         to replace it, and a command carrying both is not the one they publish.
@@ -329,11 +329,11 @@ class RecipeMatch:
         """The TP size the corpus would render for this node shape.
 
         Their precedence, kept in their order: `variant.tp`, then
-        `strategy_overrides.single_node_tp.tp` — either one a bare number or a map
-        keyed by GPU id, generation, brand or `default` — and then an auto-fit from
+        `strategy_overrides.single_node_tp.tp`, either one a bare number or a map
+        keyed by GPU id, generation, brand or `default`, and then an auto-fit from
         the published memory floor.
 
-        The auto-fit is deliberately binary: one device when the weights fit on
+        The auto-fit is binary: one device when the weights fit on
         one, the whole node when they do not. Half a node is skipped because it
         leaves devices idle without buying the latency that would justify it. A
         declared size is clamped to the node, since a recipe naming eight cannot
@@ -355,7 +355,7 @@ class RecipeMatch:
 
         `strategy_min_gpus` is a scalar bar, a per-strategy map, or a per-GPU map
         of per-strategy bars, and the highest applicable one wins. Only exact GPU
-        ids are read for the hardware layer, never generations — two cards of one
+        ids are read for the hardware layer, never generations: two cards of one
         generation differ in memory, which is the whole reason the floor moves.
         """
         config = self.recipe.strategy_min_gpus
@@ -394,7 +394,7 @@ class RecipeMatch:
     def replica_memory_mib_min(self) -> int | None:
         """The variant's measured floor across the whole replica, in MiB.
 
-        `vram_minimum_gb` is the total the model needs, not a per-device figure —
+        `vram_minimum_gb` is the total the model needs, not a per-device figure:
         Kimi K3 reports 1680 GB, which is twelve H200s and no single card ever
         made. Reading it as per-device is the arithmetic that turns a recipe into
         a placement nothing can satisfy, so the name says which it is.
@@ -409,7 +409,7 @@ class RecipeCorpus:
 
     Coverage is 180 models against a Hub of a million, so a miss is the ordinary
     case and never an error. Every caller must already have an answer without
-    this — the corpus improves a suggestion, it does not make one possible.
+    this: the corpus improves a suggestion, it does not make one possible.
     """
 
     def __init__(self, document: dict[str, Any] | None = None) -> None:
@@ -541,8 +541,8 @@ def _hardware_keyed(value: Any, profile: HardwareProfile) -> Any:
     """Resolves a hardware-keyed map against one profile, or passes a scalar through.
 
     Their precedence, exactly: exact GPU id, then generation, then brand
-    lowercased, then `default`. Merging the keyspace instead — which is what a
-    reader assumes on seeing `{"xeon6": 2}` — silently applies a generation's
+    lowercased, then `default`. Merging the keyspace instead, which is what a
+    reader assumes on seeing `{"xeon6": 2}`, silently applies a generation's
     value to a card it was never measured on.
     """
     if not isinstance(value, dict):

@@ -2,7 +2,7 @@
 name = "hangar-plane"
 version = "0.1.0"
 license = "Apache-2.0"
-description = "Hangar control plane — API, registry, placement, hub"
+description = "Hangar control plane: API, registry, placement, hub"
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [

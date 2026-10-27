@@ -40,7 +40,7 @@ def _alembic(url: str, *args: str) -> None:
 
 @pytest.fixture
 def scratch():
-    """A database of its own, because this test drives alembic rather than reading rows."""
+    """A database of its own, because this test drives alembic instead of reading rows."""
     admin = admin_url()
     name = scratch_name(admin, "migration")
     url = recreate(admin, name)
@@ -51,8 +51,8 @@ def scratch():
 def _seed(cur) -> dict[str, uuid.UUID]:
     """One artifact, two recipes, three workloads and a benchmark run, pre-migration.
 
-    Two workloads share a recipe — the canary case, and the only shape in which the
-    old sharing bought anything — so the backfill has to give them the same digest.
+    Two workloads share a recipe, the canary case, and the only shape in which the
+    old sharing bought anything, so the backfill has to give them the same digest.
     """
     ids = {name: uuid.uuid4() for name in ("artifact", "rec_a", "rec_b", "w1", "w2", "w3", "run")}
     cur.execute(
@@ -218,7 +218,7 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
         "overlay",
         "serving",
     )
-    # `serving_topology` is stated rather than selected: the column arrives with disaggregation,
+    # `serving_topology` is stated, not selected: the column arrives with disaggregation,
     # after the revision under test, and everything was aggregated then.
     workload = SimpleNamespace(**dict(zip(names, row[2:], strict=True)), serving_topology="aggregated")
     # `slug=None`: `demand_artifact.slug` is created a revision after the one under test.

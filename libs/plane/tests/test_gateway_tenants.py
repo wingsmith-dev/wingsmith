@@ -58,7 +58,7 @@ def resolution(tenants) -> GatewayService:
 
 
 def test_controller_exposes_only_the_resolve_route():
-    """Read-only, and one route: this surface writes nothing about a tenant —
+    """Read-only, and one route: this surface writes nothing about a tenant;
     `/v1/tenants` does that."""
     handlers = {h.handler_name for h in GatewayRoutes.__dict__.values() if hasattr(h, "handler_name")}
     assert handlers == {"resolve_tenants"}

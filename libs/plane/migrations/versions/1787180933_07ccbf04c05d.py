@@ -6,9 +6,9 @@ Create Date: 2026-08-19 20:08:53.888287
 
 ADR 0005: the hub scales by shedding session state, not by sharing it. `SessionState`
 stays in memory and out of Postgres, but the single fact that makes that safe under
-more than one replica has to live here — one row per `cluster_id` naming the session
+more than one replica has to live here: one row per `cluster_id` naming the session
 and hub instance currently allowed to write for it. `hello` claims the row with an
-atomic upsert; the session it displaces finds out by polling its own row rather than
+atomic upsert; the session it displaces finds out by polling its own row instead of
 being told, since it may be mid-stream on another pod entirely.
 """
 from typing import Sequence

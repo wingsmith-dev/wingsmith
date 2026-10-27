@@ -1,9 +1,9 @@
 """The vLLM recipe corpus and what the artifact draft does with it.
 
 Two kinds of test here. The first read the committed snapshot and assert its
-internal consistency — a corpus that names a strategy nothing defines, or indexes
-a slug onto a recipe that is not there, is a broken refresh and should fail here
-rather than as a `None` three layers up. The second cover the reading: a miss is
+internal consistency: a corpus that names a strategy nothing defines, or indexes
+a slug onto a recipe that is not there, is a broken refresh and should fail here,
+not as a `None` three layers up. The second cover the reading: a miss is
 ordinary, a hit is attributed, and neither one may move the plane's own sizing.
 """
 
@@ -99,7 +99,7 @@ def test_the_link_to_follow_is_the_branch_and_the_permalink_is_kept_beside_it(co
     """Two URIs answering two questions: what upstream says now, and what we read.
 
     A person clicking through from the deploy form is asking what vLLM recommends
-    for these weights, and a 40-character sha answers a different question — it
+    for these weights, and a 40-character sha answers a different question: it
     lands them on a detached view of a corpus that has moved since. The permalink
     stays, because a claim nobody can read back against its own bytes is not one.
     """
@@ -172,7 +172,7 @@ def test_a_flag_reads_the_last_value_and_a_bare_switch_has_none():
 
 
 def test_a_declared_tp_comes_from_the_variant_first_then_the_strategy_override():
-    """A recipe that names neither has not said one — it has said "ask the hardware"."""
+    """A recipe that names neither has not said one: it has said "ask the hardware"."""
     assert _corpus(variants={"default": {"tp": 2}}).lookup("acme/model").declared_tensor_parallel() == 2
     assert (
         _corpus(strategy_overrides={"single_node_tp": {"tp": 8}}).lookup("acme/model").declared_tensor_parallel() == 8
@@ -208,7 +208,7 @@ async def test_the_draft_carries_the_upstream_recipe_attributed_to_its_source():
 
 
 async def test_uncovered_weights_resolve_without_corpus_or_remark():
-    """A miss is the ordinary case — the corpus covers a few hundred repos, the Hub a million."""
+    """A miss is the ordinary case: the corpus covers a few hundred repos, the Hub a million."""
     model = hf_model(slug="acme/not-in-the-corpus")
 
     draft = await service(hub=FakeHub(model)).resolve(model.slug)
@@ -272,7 +272,7 @@ def test_a_trillion_parameter_recipe_reads_as_a_replica_total_and_not_a_card(cor
     """Kimi K3: 2.8T parameters, 1.6 TB, and no single card that could hold it.
 
     The published floor is the whole replica. Multiplying it by the tested
-    parallelism — or handing it to placement as a per-device minimum — asks for
+    parallelism, or handing it to placement as a per-device minimum, asks for
     hardware that does not exist, and every smaller model in the corpus hides the
     error because its `tp` is one.
     """
@@ -354,7 +354,7 @@ def test_a_model_that_needs_many_nodes_is_not_claimed_to_fit_one():
 
 
 def test_the_published_floor_is_compared_as_a_replica_total_not_per_device(corpus):
-    """2.8T parameters derive 1456 GB against a published 1680 GB — the same sizing.
+    """2.8T parameters derive 1456 GB against a published 1680 GB: the same sizing.
 
     Multiplying the published figure by the tested parallelism would have called
     these two an order of magnitude apart and warned on a draft that is right.

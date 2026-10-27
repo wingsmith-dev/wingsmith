@@ -354,7 +354,7 @@ def test_settings_read_only_prefixed_names():
 
 
 def test_an_unconfigured_plane_is_production_and_refuses_to_boot():
-    """Started with no environment at all, the plane fails closed rather than opening as admin."""
+    """Started with no environment at all, the plane fails closed instead of opening as admin."""
     loaded = load({})
     assert loaded.APP_ENV == "production"
     assert resolved_admin_auth(loaded) == "enabled"

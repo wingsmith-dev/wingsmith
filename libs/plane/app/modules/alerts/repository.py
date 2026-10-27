@@ -37,9 +37,9 @@ class AlertRepository:
         """Newest first on `seq`, for the reasons `EventRepository.list_query` gives.
 
         With one difference that matters: an alert is mutable, so `seq` orders by
-        when it was first opened rather than by when it last changed. That is the
-        wanted behaviour — an alert firing for hours should not keep
-        jumping to the top of the list every time the evaluator touches it — and
+        when it was first opened, not by when it last changed. That is the
+        wanted behaviour, an alert firing for hours should not keep
+        jumping to the top of the list every time the evaluator touches it, and
         `last_seen_at` is returned for anyone who needs recency instead.
         """
         query = self._base().order_by(Alert.seq.desc()).limit(limit + 1)
@@ -94,7 +94,7 @@ class AlertThresholdRepository:
     ) -> Select:
         """Oldest first on `seq`, the way every declared collection is ordered.
 
-        `fleet_default` filters on `subject_uid IS NULL` rather than on a sentinel
+        `fleet_default` filters on `subject_uid IS NULL`, not on a sentinel
         string, because the fleet default is the absence of a subject and a client
         cannot spell that as a value of `subject`.
         """

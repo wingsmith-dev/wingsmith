@@ -4,8 +4,8 @@ A session is the unit resume counts within: sequence numbers in both directions 
 without it (PROTOCOL §4). The hub therefore keeps a `SessionState` keyed by `session_id` across
 reconnects, holding the inbound cursor, the outbound counter, and the outbound replay buffer.
 
-This is deliberately in-process. The *operator's* cursor must be durable — it lives beside the
-CRDs — but the hub's copy is recoverable: a hub that lost its state answers `full_resync`, which
+This is in-process. The *operator's* cursor must be durable, it lives beside the
+CRDs, but the hub's copy is recoverable: a hub that lost its state answers `full_resync`, which
 is the correct, if expensive, answer.
 """
 
@@ -33,8 +33,8 @@ def new_id() -> str:
 class ReplayBuffer:
     """Frames sent but not yet released by the peer's `ack`.
 
-    Bounded. Overflow is not survivable by dropping — hub → operator must never drop desired
-    state (PROTOCOL §6) — so `add` reports the overflow and the caller closes the connection.
+    Bounded. Overflow is not survivable by dropping, hub → operator must never drop desired
+    state (PROTOCOL §6), so `add` reports the overflow and the caller closes the connection.
     """
 
     __slots__ = ("_capacity", "_frames", "_released")
@@ -114,15 +114,15 @@ class SessionState:
         """How many connections are attached to this session right now, on this process.
 
         Usually one. Two for the moment a peer resumes before its previous connection has
-        finished closing — and that older connection's close must not report the cluster
+        finished closing, and that older connection's close must not report the cluster
         gone while the newer one is serving it.
         """
         self.idle_since: float | None = None
         """`time.monotonic()` of the moment the last connection detached.
 
-        `None` while a connection is attached — a live session is never a reap candidate,
+        `None` while a connection is attached: a live session is never a reap candidate,
         TTL or no TTL. Independent of `connection_count`, which counts connections
-        cumulatively rather than concurrently.
+        cumulatively, not concurrently.
         """
 
     def take_seq(self) -> int:
@@ -135,11 +135,11 @@ class SessionState:
 
         A resuming peer replays from `ack_seq + 1`, so every frame received but not applied on the
         previous connection arrives again. Carrying the old expectation across the reconnect would
-        read those frames as duplicates and drop them — and since their ack was withheld precisely
+        read those frames as duplicates and drop them, and since their ack was withheld precisely
         because they were not applied, the stream would never advance past the hole.
 
         The expectation is a guess, though, not a fact: the operator holds no durable counter,
-        because it is stateless by design — it is started on a cluster, reads what is declared, and
+        because it is stateless by design: it is started on a cluster, reads what is declared, and
         says what it sees. A restarted process resumes the session it checkpointed and numbers its
         own stream from one again, which under a remembered expectation is silently below it, and
         every observation it pushes is dropped as a duplicate. So the first sequenced frame of a
@@ -193,7 +193,7 @@ class SessionRegistry:
     def connected(self, session_id: str) -> None:
         """A connection attached to `session_id`. Cancels any idle countdown.
 
-        `connection_count` is cumulative — the total number of connections this session has
+        `connection_count` is cumulative: the total number of connections this session has
         ever had. How many are open now is `attached`, and liveness for the reaper is
         `idle_since`, which only the last of them to detach starts.
         """
@@ -222,7 +222,7 @@ class SessionRegistry:
         """Drops every session idle for at least `ttl` seconds. Never one with a live connection.
 
         A session is a reap candidate only once `idle_since` is set, which `connected()`
-        clears and `disconnected()` sets only when no connection is left attached — so a
+        clears and `disconnected()` sets only when no connection is left attached, so a
         session mid-reconnect, or one a second connection resumed before the first had
         finished closing, cannot be dropped out from under it.
         """
@@ -249,7 +249,7 @@ async def reaper_loop(registry: SessionRegistry, ttl: float, interval: float) ->
     Runs for the life of the process (see `app.hub.server.serve_forever`), so a
     cluster that disconnects and never reconnects stops holding a replay buffer of
     up to `replay_capacity` frames once the fleet's reprovisioning lifetime has
-    genuinely moved past it — see ADR 0005.
+    genuinely moved past it; see ADR 0005.
     """
     while True:
         await asyncio.sleep(interval)

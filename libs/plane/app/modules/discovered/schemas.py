@@ -6,7 +6,7 @@ from app.core.schemas import Struct
 class DiscoveredWorkloadSchema(Struct):
     """One workload found running in a cluster we never declared it in.
 
-    `status` is derived from the adoption row rather than stored on the sighting:
+    `status` is derived from the adoption row, not stored on the sighting:
     the sighting is observed and has one writer, the decision is ours and has
     another, so the two are joined on read instead of sharing a column.
     """
@@ -41,7 +41,7 @@ class DecisionRequest(Struct):
 
     There is no field here that could reach a cluster. Tracking a workload adds
     it to the inventory and assigns it an owner; it does not declare it, does not
-    render anything against it, and does not emit `deployment.desired` — so an
+    render anything against it, and does not emit `deployment.desired`, so an
     adopted model keeps the weights it already has resident.
     """
 
@@ -54,7 +54,7 @@ class PromoteRequest(Struct):
 
     `fingerprint` is required and is the whole safety of this call. The caller
     passes the digest they were shown; if the workload's pod template has changed
-    since, the promotion is refused rather than pinned to a spec nobody looked at.
+    since, the promotion is refused, not pinned to a spec nobody looked at.
     It is `If-Match` for a thing the plane does not own.
 
     Scale is not a parameter. The bounds are taken from what the workload is
@@ -63,7 +63,7 @@ class PromoteRequest(Struct):
 
     `artifact` is the only part of the serving configuration a caller states, because
     it is the only part the cluster cannot tell us. Everything else is read off the
-    sighting — the same reading `GET /serving-draft` returns — so that what is
+    sighting, the same reading `GET /serving-draft` returns, so that what is
     declared is what is running. A caller who submitted their own serving block would
     be declaring a configuration for a process that is already up, and the first
     reconcile would either refuse it or restart the model, which is the one outcome

@@ -103,14 +103,14 @@ class ArtifactRoutes(Controller):
     ) -> Response[ArtifactFitmentSchema]:
         """The device classes this artifact could be served on, ranked, derived at read time.
 
-        A `GET` with query parameters rather than a posted body: nothing is created,
+        A `GET` with query parameters instead of a posted body: nothing is created,
         the same question always returns the same answer, and a link to one matrix is
         a thing a person can send to another person.
 
         The `scope` query parameter binds to `fit_scope` because `scope` is the name
         Litestar reserves for the ASGI scope, and a handler argument called that
-        receives the connection instead of the query string — silently, and as a value
-        that fails validation rather than one that fails to parse.
+        receives the connection instead of the query string: silently, and as a value
+        that fails validation instead of one that fails to parse.
         """
         return Response(
             await svc.fitment(

@@ -3,7 +3,7 @@
 The merge is the whole of the module's logic and it is pure, so it is tested
 without a database. What needs a database is the aggregate behind it, and that
 is asserted as a compiled statement here for the same reason every other module
-suite does — the shape of the query, not the numbers it returns.
+suite does: the shape of the query, not the numbers it returns.
 """
 
 import pytest
@@ -145,7 +145,7 @@ class TestInventoryAgainstPostgres:
     """The aggregate, executed.
 
     `array_agg(distinct ...)` beside `count(case ...)` compiles on any dialect
-    and is not portable in the way that suggests — and a grouped query that
+    and is not portable in the way that suggests, and a grouped query that
     returns the wrong shape is invisible until something reads row[4]. So the
     numbers here come out of a real database.
     """

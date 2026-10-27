@@ -106,7 +106,7 @@ def test_every_image_setting_is_a_plane_setting():
 
 
 def test_harness_images_have_no_default():
-    # No published image backs either harness yet, so an unset plane refuses rather than pulls.
+    # No published image backs either harness yet, so an unset plane refuses, not pulls.
     assert Settings().BENCHMARK_CONFORMANCE_IMAGE == ""
     assert Settings().BENCHMARK_EVALSCOPE_IMAGE == ""
 
@@ -209,7 +209,7 @@ def test_evalscope_endpoint_model_is_omitted_when_identical():
 
 
 def test_the_run_is_carried_by_a_registered_operation_type():
-    """A benchmark reuses the operation machinery rather than growing a second lifecycle."""
+    """A benchmark reuses the operation machinery instead of growing a second lifecycle."""
     assert OPERATION_TYPE in OPERATION_TYPES
     prefix, wire_kind = OPERATION_TYPES[OPERATION_TYPE]
     assert prefix == DEPLOYMENT
@@ -317,7 +317,7 @@ def test_provenance_is_snapshotted_onto_the_run():
 
     The serving configuration is named by the digest the run snapshotted, which
     is the one field here that cannot go stale: it is the content of the
-    configuration rather than a handle on it, where the id and version it
+    configuration instead of a handle on it, where the id and version it
     replaces named a row that could be edited under the run.
     """
     fields = {field.name: field.type for field in msgspec.structs.fields(BenchmarkRunSchema)}
@@ -333,7 +333,7 @@ def test_a_terminal_operation_only_touches_a_run_that_is_still_open():
     """A run that already reported was written by the thing that did the work.
 
     Its answer has to survive an operation frame arriving after it, which is why
-    the update is guarded on the open phases rather than on the phase differing.
+    the update is guarded on the open phases, not on the phase differing.
     """
     query = str(follows_operation("opr_x", "failed"))
     assert "ops_benchmark_run.phase IN" in query

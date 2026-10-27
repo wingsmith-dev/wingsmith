@@ -2,8 +2,8 @@
 
 The enrolment token is checked once, when the socket opens. Everything after
 that used to run on the strength of that one check: a cluster disabled in the
-registry, or one whose token was rotated because it leaked, kept its session —
-and kept writing observed state — until the operator happened to reconnect.
+registry, or one whose token was rotated because it leaked, kept its session,
+and kept writing observed state, until the operator happened to reconnect.
 
 So the question is asked twice. At `hello`, before anything is claimed or
 streamed, and then on every ownership poll for as long as the session lives.
@@ -41,7 +41,7 @@ def judge(phase: str | None, token_hash: str | None, credential: str | None) -> 
     """The decision, apart from the lookup. `phase` is `None` when the cluster has no row.
 
     `credential` is the digest of the token the session opened with. A session
-    with none — a test, or a caller that never had one — is judged on the cluster
+    with none (a test, or a caller that never had one) is judged on the cluster
     alone.
     """
     if phase is None:

@@ -461,7 +461,7 @@ def test_replicas_multiply_the_device_count_but_not_the_domain_requirement():
     """A deployment is placed whole; a replica's collective is not the deployment.
 
     Three replicas of a four-device workload need twelve devices in the cluster, but
-    only each four have to share an NVLink domain — the replicas do not talk to
+    only each four have to share an NVLink domain: the replicas do not talk to
     each other over it.
     """
     request = PlacementService(db=None).request(
@@ -901,7 +901,7 @@ def test_a_pending_gang_takes_the_fabric_it_will_land_in_out_of_reach():
 
     That fabric is already promised to a gang the cluster has not bound yet, so the
     cluster has the aggregate room and nowhere contiguous to put this one. Burning
-    the largest fabric first is what makes the rejection the honest `topology` and
+    the largest fabric first is what makes the rejection the accurate `topology` and
     not a `capacity` the totals would have waved through.
     """
     doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"), nvlink("dom-c", "nvl-c"))

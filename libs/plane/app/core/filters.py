@@ -20,7 +20,7 @@ def ref_ids(model, ref: str, name_column: str = "name") -> Select:
     """The set of primary keys a path- or filter-level reference names.
 
     A reference is either an id or a name, per `libs/packages/contract/API.md` §3, and this is
-    the only place that distinction is made. Expressed as a subquery rather than
+    the only place that distinction is made. Expressed as a subquery instead of
     a lookup so that filtering by a related object stays one round trip.
     """
     column = model.uid if is_uid(ref) else getattr(model, name_column)

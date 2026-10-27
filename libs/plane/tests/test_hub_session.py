@@ -1,7 +1,7 @@
 """Drives `OperatorSession` over an in-memory connection pair.
 
-The point of these tests is the four things ADR 0001 gave up codegen for — framing, correlation,
-resume and backpressure — so they exercise the protocol rather than the Structs. No database, no
+The point of these tests is the four things ADR 0001 gave up codegen for, framing, correlation,
+resume and backpressure, so they exercise the protocol instead of the Structs. No database, no
 socket: the `Sink` seam is what makes that possible.
 """
 
@@ -889,7 +889,7 @@ async def test_a_live_session_restreams_its_declared_state_on_an_interval() -> N
 
 
 async def test_a_second_session_for_one_cluster_displaces_the_first() -> None:
-    """Two live sessions for one `cluster_id` — the pre-ADR-0005 race across pods, modeled
+    """Two live sessions for one `cluster_id`: the pre-ADR-0005 race across pods, modeled
     here with two `Harness`es sharing a claim store but not a registry, the way two pods
     would share Postgres but not memory.
     """
@@ -915,7 +915,7 @@ async def test_a_second_session_for_one_cluster_displaces_the_first() -> None:
 
 
 async def test_claim_is_atomic_under_concurrent_claims() -> None:
-    """`ClusterClaimRepository.upsert` is one statement — racing callers land in some
+    """`ClusterClaimRepository.upsert` is one statement: racing callers land in some
     order, never in a state where the row disagrees with itself.
     """
     claims = MemoryClaimStore()
@@ -927,8 +927,8 @@ async def test_claim_is_atomic_under_concurrent_claims() -> None:
 
 
 async def test_a_session_that_lost_its_claim_stops_writing() -> None:
-    """Once displaced, the session must not go on treating frames as applied — it should
-    raise and close rather than silently keep acking on behalf of a claim it no longer holds.
+    """Once displaced, the session must not go on treating frames as applied: it should
+    raise and close, not silently keep acking on behalf of a claim it no longer holds.
     """
     claims = MemoryClaimStore()
     config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
@@ -1223,7 +1223,7 @@ def test_a_restarted_operator_is_not_read_as_a_duplicate() -> None:
     """The operator holds no durable counter, so a restart numbers its stream from one again.
 
     Judged against the expectation the hub remembers, every frame it pushes is below the cursor
-    and silently dropped — which is how a deployment could report `WeightsNotResident` every
+    and silently dropped, which is how a deployment could report `WeightsNotResident` every
     fifteen seconds while the console showed nothing at all.
     """
     state = SessionState("ses_1", "clu_1", replay_capacity=16)

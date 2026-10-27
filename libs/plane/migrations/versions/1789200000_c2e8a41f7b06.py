@@ -4,7 +4,7 @@ Revision ID: c2e8a41f7b06
 Revises: a4f5b1c72d99
 Create Date: 2026-09-07 12:00:00.000000
 
-Until now the plane had exactly one human credential — a shared admin password that resolves to
+Until now the plane had exactly one human credential: a shared admin password that resolves to
 a principal holding `*`. That is the right shape for the people who operate the fleet and the
 wrong shape for the people we serve, who need to see one tenant's endpoints and must not be able
 to see a cluster.
@@ -12,7 +12,7 @@ to see a cluster.
 `bind_tenant_token` is that second credential. It is a console credential and never an inference
 key: the gateway authenticates the system in front of it, and a token that named a tenant there
 would make that hop a credential store. The refresh token gains the credential it was opened
-with, so revoking a tenant's token ends the sessions it opened rather than only refusing the
+with, so revoking a tenant's token ends the sessions it opened, not only refusing the
 next sign-in.
 """
 

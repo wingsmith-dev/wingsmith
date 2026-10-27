@@ -6,15 +6,15 @@ Two things here are worth knowing about.
 into its own complete, already-aggregated expression and the results are unioned.
 Verified against the fleet's store: an absent series alone returns no series,
 `absent or present` returns the present one, and both-absent returns a clean
-empty rather than an error — which `services` maps to `None` and the console
+empty instead of an error, which `services` maps to `None` and the console
 renders as an em dash.
 
 **A sum never unions.** `or` is a set union, so if two candidates were ever
-populated at once — an upgrade window where an engine emits both the old and the
-new name — a union under a `sum` would add the same tokens twice. A silently
+populated at once, an upgrade window where an engine emits both the old and the
+new name, a union under a `sum` would add the same tokens twice. A silently
 doubled token rate is the worst failure this module can have, so a summed metric
 with more than one candidate probes them in order and uses the first that has
-any series at all, rather than trusting the shape of the union. Averages and
+any series at all, instead of trusting the shape of the union. Averages and
 maxima are idempotent under the union and take the cheaper path.
 """
 
@@ -48,8 +48,8 @@ class PrometheusBackend:
     async def _series_names(self, metric: Metric, where: str) -> tuple[str, ...]:
         """The candidates to render, after ruling out a double count.
 
-        A summed metric collapses to exactly one candidate — the first with any
-        series under this selector — so the union can never add two spellings of
+        A summed metric collapses to exactly one candidate, the first with any
+        series under this selector, so the union can never add two spellings of
         the same measurement together. When none of them are populated the last
         is used, so the query is well-formed and simply returns nothing.
         """
@@ -128,7 +128,7 @@ class PrometheusBackend:
 
 
 def _value(entry: dict) -> float | None:
-    """One sample as a number, or `None` — which means no series, never zero.
+    """One sample as a number, or `None`, which means no series, never zero.
 
     Prometheus answers a quantile over an empty histogram with `NaN`, and a NaN
     drawn as 0% reads as an idle GPU, which is the one wrong answer that looks

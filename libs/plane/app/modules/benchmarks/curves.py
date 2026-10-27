@@ -6,9 +6,9 @@ band each run landed in, because the standard sets a target per band; this
 module orders a ramp by the load each run applied, because the question a ramp
 is asked is where latency stops being bought by throughput.
 
-Pure functions and nothing else — no session, no ORM, no I/O. A curve and its
+Pure functions and nothing else: no session, no ORM, no I/O. A curve and its
 knee are `f(runs, criteria)` by construction, which is what makes them
-derivable at read against the pinned criteria version rather than stored beside
+derivable at read against the pinned criteria version, not stored beside
 the runs. Nothing here is written anywhere: there is no curve table, no knee
 column and no migration, for `verdicts.py`'s reason. A knee is a judgement about
 a set of runs, not a phase of one.
@@ -21,7 +21,7 @@ what it was asked for; the knee is read along ascending load, because a curve
 walked in creation order puts the elbow in the wrong place.
 
 The chart's second axis is the aggregate output rate, which is a number no
-verdict may read — it lives in `summaries.Adapter.display` and is reached
+verdict may read: it lives in `summaries.Adapter.display` and is reached
 through `summaries.show`. A curve is a picture, not a claim about acceptance.
 """
 
@@ -40,7 +40,7 @@ INPUT_TOKENS_MEAN = "input_tokens_mean"
 STEP_FIELDS: dict[str, str] = {"ramp": CONCURRENCY, "sweep": INPUT_TOKENS_MEAN}
 """Which declared parameter a stepped mode walks, duplicated from the expansion.
 
-Two copies on purpose and for `buckets.py`'s reason: the expansion's table says
+Two copies and for `buckets.py`'s reason: the expansion's table says
 what a request was created against, and a read sharing the constant would follow
 it silently if somebody added a mode. A test holds the two equal.
 """
@@ -59,7 +59,7 @@ and the answer says which it was.
 KNEE_METRIC = "ttft_p90_ms"
 """The reading the knee is read off, and it is the one the standard anchors.
 
-P90 rather than the P95 a chart might prefer: the threshold has to come from the
+P90 instead of the P95 a chart might prefer: the threshold has to come from the
 pinned criteria version and `Criteria.ttft` sets a P90, a P50 and an average
 ceiling per band. A knee read against a threshold this plane invented would be a
 number with no standard behind it.
@@ -107,8 +107,8 @@ class Value(NamedTuple):
 class Point(NamedTuple):
     """One run of a request, reduced to what a curve needs of it.
 
-    A discarded run stays on the curve rather than being dropped — a warm-up is
-    part of what was run and the console says so — and is excluded from the
+    A discarded run stays on the curve instead of being dropped, a warm-up is
+    part of what was run and the console says so, and is excluded from the
     knee. An open run is here too, with every reading null, so a curve can be
     drawn while the ramp is still climbing.
 
@@ -165,7 +165,7 @@ def points(runs: Sequence[Any], step_field: str) -> list[Point]:
 def knee(curve: Sequence[Point], criteria: verdicts.Criteria, step_field: str = CONCURRENCY) -> Knee:
     """The first step at which the anchored metric crossed its band's ceiling.
 
-    Read along ascending load rather than ascending step index, because a
+    Read along ascending load instead of ascending step index, because a
     request may declare its steps in any order and the elbow is a property of
     the load. Discarded and unsucceeded runs are excluded outright: a knee is a
     statement about measurements, and neither of those is one.

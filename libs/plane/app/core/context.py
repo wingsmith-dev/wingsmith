@@ -55,24 +55,24 @@ Outside it live `/health`, the OpenAPI schema and the console's static files."""
 
 PUBLIC_ROUTES = frozenset({"/v1/auth/login", "/v1/auth/refresh", "/v1/auth/logout"})
 """The API routes an anonymous caller may reach. Each one checks the credential it
-is handed itself — a password, a tenant token, a refresh token — because a
+is handed itself (a password, a tenant token, a refresh token) because a
 session has to come from somewhere."""
 
 TENANT_SURFACE = "/v1/serving"
 """The only path prefix a tenant principal may reach, and it is read-only.
 
-An allowlist of one, enforced here rather than as a filter inside each module,
+An allowlist of one, enforced here, not as a filter inside each module,
 because those are two different promises. A per-module filter says every module
 remembered to scope its query; this says a tenant principal never reaches a
-module that was not written for it — including the next one somebody adds. The
+module that was not written for it, including the next one somebody adds. The
 cost is that widening the tenant surface is a deliberate edit to this constant,
 which is the point.
 
 The prefix is matched at a segment boundary, not as a string. `/v1/serving-quotas`
-begins with `/v1/serving` and is a different surface entirely — the commercial
+begins with `/v1/serving` and is a different surface entirely: the commercial
 terms of every endpoint on the fleet.
 
-Read-only is enforced by the method rather than by the routes behind it. Every
+Read-only is enforced by the method, not by the routes behind it. Every
 handler under the prefix is a `GET` today, and stating it here means a write
 added there later is refused until somebody decides it should not be.
 """
@@ -213,7 +213,7 @@ async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
 
     A session token is also checked against its session, one indexed read, so a
     logout, a revoked tenant token or a disabled tenant takes effect on the next
-    request rather than when the access token expires. A service credential and
+    request, not when the access token expires. A service credential and
     the local admin bypass carry no session and need no read.
 
     The principal is left on `connection.state` for `request_context` to hand to

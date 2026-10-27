@@ -6,9 +6,9 @@ way to tell. That failure is silent on both sides of the wire, which makes it
 the worst kind: the response looks exactly like a correct one. This turns it
 into a `400` before the handler runs.
 
-The accepted set is derived from the handler's own signature at request time —
+The accepted set is derived from the handler's own signature at request time,
 Litestar builds a `KwargsModel` that already knows which fields resolve from the
-query string, including aliases and sequence params — so there is no list to
+query string, including aliases and sequence params, so there is no list to
 keep in step with the routes.
 """
 

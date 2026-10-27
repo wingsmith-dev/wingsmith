@@ -1,6 +1,6 @@
 """The `revision` every declared resource carries, and the `If-Match` check against it.
 
-A revision is the row's last write in microseconds, derived from `updated_at` rather than stored,
+A revision is the row's last write in microseconds, derived from `updated_at`, not stored,
 so it cannot disagree with the row.
 """
 

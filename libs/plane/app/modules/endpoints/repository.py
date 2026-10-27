@@ -30,7 +30,7 @@ class EndpointRepository:
     """Reads endpoints and the deployments behind them. No cluster ever appears.
 
     The only join out of this module goes through `EndpointTarget` to a
-    deployment, and it exists to answer "which endpoints serve these weights" —
+    deployment, and it exists to answer "which endpoints serve these weights",
     not to give the endpoint a location.
     """
 
@@ -52,8 +52,8 @@ class EndpointRepository:
     def serving_artifact_query(self, artifact: str) -> Select:
         """The endpoints whose targets serve one artifact.
 
-        Two hops — target to deployment to workload — expressed as a subquery so
-        that filtering by model stays one round trip rather than a fan-out over
+        Two hops, target to deployment to workload, expressed as a subquery so
+        that filtering by model stays one round trip instead of a fan-out over
         every endpoint's target list. The artifact is the workload's: a
         deployment is that workload on one cluster and names no artifact of its
         own.
@@ -71,7 +71,7 @@ class EndpointRepository:
         The reverse of "which deployments does this endpoint route to": one hop
         from target to deployment, filtered to the deployments of the named
         workload, expressed as a subquery so the reverse index stays one round
-        trip rather than a fan-out over every endpoint's target list.
+        trip instead of a fan-out over every endpoint's target list.
         """
         return (
             select(EndpointTarget.endpoint_id)
@@ -110,31 +110,31 @@ class EndpointRepository:
     def resolved_query(self, ref: str | None = None) -> Select:
         """Endpoints joined out to the addresses their targets sit behind.
 
-        An outer join all the way down, deliberately: a target whose cluster has
+        An outer join all the way down: a target whose cluster has
         declared no serving address still has to come back, because the caller
         has to be able to tell a misconfigured endpoint from an absent one.
         Filtering happens above, where it can say why.
 
         The serving quota is the sixth entity and joins 1:1 on its unique
         endpoint FK, so it multiplies no rows and the per-endpoint grouping above
-        is unaffected. It is here rather than on a surface of its own because the
+        is unaffected. It is here, not on a surface of its own because the
         gateway already polls this table, so it is where enforcement will read it.
         The gateway does not enforce serving quotas yet.
 
         The workload and artifact come along for one reason: the name the engine
         answers to. A client calls an endpoint by its public name, and the
-        frontend behind it serves under whatever the workload declares — or,
+        frontend behind it serves under whatever the workload declares, or,
         when it declares nothing, under the artifact's Hugging Face slug. The
         gateway rewrites one to the other, so the table has to carry both. Both
         hops are NOT NULL FKs and 1:1, so they multiply no rows; they are outer
         joins only because everything below `EndpointTarget` already is.
 
         The workload also carries `serving_digest`, which is what the resolution's
-        revision is versioned by — see `_revision_of`.
+        revision is versioned by; see `_revision_of`.
 
         `Project` and `Tenant` are the last two entities, joined inward rather
         than out: `Endpoint.project_id` and `Project.tenant_id` are both NOT
-        NULL and 1:1, so — like the workload and artifact hops — they multiply
+        NULL and 1:1, so, like the workload and artifact hops, they multiply
         no rows. They carry `tenant_id` onto the resolved endpoint, which is
         what lets the gateway answer only for the tenant a request belongs to
         (docs/decisions/0016); `Project`'s own stamp goes into the revision so a
@@ -209,8 +209,8 @@ class EndpointRepository:
         """Every deployment each target reference could mean, inside one tenant, in one query.
 
         Scoped to the tenant that owns the endpoint: an endpoint routes to deployments
-        of its own tenant's workloads, so a reference to anyone else's is not found
-        rather than quietly routed to. A deployment name is unique only within a
+        of its own tenant's workloads, so a reference to anyone else's is not found,
+        not quietly routed to. A deployment name is unique only within a
         cluster, so a bare name can still match several rows here; the caller refuses
         that instead of choosing one.
         """
@@ -265,7 +265,7 @@ class EndpointRepository:
         """Which endpoint already answers to this alias, if any.
 
         The unique index makes at most one, and a `None` here is the only reason the service is
-        allowed to write the row — the constraint is the backstop, not the check, because the
+        allowed to write the row: the constraint is the backstop, not the check, because the
         message a caller needs names the endpoint that holds it.
         """
         result = await self.db.execute(self.alias_owner_query(alias).limit(1))
@@ -275,7 +275,7 @@ class EndpointRepository:
         """Whether any other endpoint is already published under this public id.
 
         The other half of the one namespace aliases and slugs share. No constraint spans the two
-        tables, so an alias shadowing somebody's slug — or a slug moved onto somebody's alias —
+        tables, so an alias shadowing somebody's slug, or a slug moved onto somebody's alias,
         would otherwise be accepted and then resolved by whichever the gateway indexed first.
         """
         query = self.slug_owner_query(slug)
@@ -290,8 +290,8 @@ class EndpointRepository:
         A full replace and never a merge: an alias has no identity beyond its own string, so there
         is nothing to match a patch against and a merge could only ever add.
 
-        Through the relationship rather than with a `delete()` statement, and emptied with a flush
-        of its own before the new rows are attached — the same two steps, for the same two reasons,
+        Through the relationship, not with a `delete()` statement, and emptied with a flush
+        of its own before the new rows are attached: the same two steps, for the same two reasons,
         that `EndpointService.update` uses on `targets`. `alias` is globally unique, so a single
         flush could order an insert before the delete of the row it replaces; and a Core statement
         writes past the identity map, which leaves the session holding the collection it loaded

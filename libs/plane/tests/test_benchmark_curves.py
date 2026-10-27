@@ -6,7 +6,7 @@ has stopped being derivable at read.
 
 The last group here is the one that matters most and looks least like it: the
 display half of the field map exists so that a number a chart must draw cannot
-reach a verdict, and the guard is structural rather than remembered.
+reach a verdict, and the guard is structural, not remembered.
 """
 
 from types import SimpleNamespace
@@ -70,7 +70,7 @@ def ramp(*pairs, **kwargs):
 
 
 def test_the_step_field_a_mode_walks_is_the_one_the_expansion_created():
-    """Two copies of the table on purpose; a shared constant would follow an edit silently."""
+    """Two copies of the table; a shared constant would follow an edit silently."""
     assert curves.STEP_FIELDS == STEPPED
 
 

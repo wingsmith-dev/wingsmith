@@ -81,11 +81,11 @@ class TargetRef(NamedTuple):
 def parse_target(ref: str) -> TargetRef:
     """Reads a target reference as either a prefixed id or a `kind:name` pair.
 
-    The kind has to be answerable at creation rather than three hops downstream
+    The kind has to be answerable at creation instead of three hops downstream
     in the operator, which is what a `node.drain` pointed at a `dev_...` is
     caught by. An id carries its kind in the prefix; a human types a name, which
-    carries nothing, so the kind is written beside it — `node:gpu-node-04`. A
-    bare name is refused rather than guessed at, because guessing is how a
+    carries nothing, so the kind is written beside it: `node:gpu-node-04`. A
+    bare name is refused, not guessed at, because guessing is how a
     device and a deployment that happen to share a name become the same request.
     """
     kind, sep, name = ref.partition(":")
@@ -129,7 +129,7 @@ def target_kind(ref: str) -> str:
 def target_subquery(ref: str) -> Select:
     """The row ids `Operation.target_id` may hold for a target reference.
 
-    A set rather than a single id: a name is unique per cluster and not beyond
+    A set instead of a single id: a name is unique per cluster and not beyond
     it, and a filter that matches every node called `gpu-node-04` is a filter
     doing what it says. Creation is the path that refuses an ambiguous name.
     """
@@ -150,8 +150,8 @@ class OperationRepository:
         """Operations are addressed by id only.
 
         `libs/packages/contract/API.md` §3 lets a path segment be an id *or* a name where the
-        object has a unique name. An operation has none — "the drain" is not a
-        thing anybody can name twice — so there is nothing here to resolve
+        object has a unique name. An operation has none, "the drain" is not a
+        thing anybody can name twice, so there is nothing here to resolve
         against and the id is the only reference.
         """
         return self._base().where(Operation.uid == ref)
@@ -194,7 +194,7 @@ class OperationRepository:
         `idempotency_key` is a column with a partial unique index behind it, so
         this lookup is the fast path and the index is the correctness: two
         retries arriving at once can both miss here, and the second one loses at
-        insert rather than becoming a second drain.
+        insert instead of becoming a second drain.
         """
         return self._base().where(Operation.idempotency_key == key)
 
@@ -215,7 +215,7 @@ class OperationRepository:
     def target_query(self, ref: str) -> Select:
         """Loads the target row and, where it has one, the cluster it belongs to.
 
-        A cluster is its own cluster and an artifact belongs to none — artifacts
+        A cluster is its own cluster and an artifact belongs to none: artifacts
         are global, so an operation on one has to be told which cluster it is for.
         """
         parsed = parse_target(ref)
@@ -259,7 +259,7 @@ class OperationRepository:
     def phase_counts_query(self, cluster: str | None = None) -> Select:
         """Every phase present in the collection and how many rows hold it.
 
-        One grouped aggregate rather than a count per phase: the set of phases is
+        One grouped aggregate instead of a count per phase: the set of phases is
         read off the data, so a phase nobody is in simply does not appear and the
         caller fills the rest.
         """

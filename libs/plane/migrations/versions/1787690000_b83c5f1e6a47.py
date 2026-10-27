@@ -6,9 +6,9 @@ Create Date: 2026-08-25 16:40:00.000000
 
 Four tables and eight columns, all of them declared state.
 
-`ops_benchmark_run` is the only table here that changes shape rather than appearing. It gains a
+`ops_benchmark_run` is the only table here that changes shape instead of appearing. It gains a
 parent, and `deployment_id` and `cluster_id` become nullable so that a run against an endpoint
-can exist at all — an endpoint-level measurement has no single deployment and no single cluster
+can exist at all: an endpoint-level measurement has no single deployment and no single cluster
 by construction. Existing rows keep both, so the widening rewrites nothing and the new check
 constraint holds for every row already present.
 

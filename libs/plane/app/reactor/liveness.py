@@ -1,7 +1,7 @@
 """What a hub cannot say about itself once it is gone: stale claims and stale reachability.
 
 A hub session says when its cluster connects and when it leaves. A hub process that
-dies without closing — killed, partitioned, out of memory — says neither, and two
+dies without closing (killed, partitioned, out of memory) says neither, and two
 rows go on asserting things that stopped being true: the claim naming a session
 nobody is running, and `reachable` on a cluster nobody is talking to. Placement
 reads the second.

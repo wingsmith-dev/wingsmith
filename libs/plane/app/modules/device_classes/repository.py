@@ -18,7 +18,7 @@ class DeviceClassRepository:
 
     The catalog itself is a file, so there is no table behind this module and
     nothing here writes. What it does read is the fleet's inventory of each
-    class, as one grouped query rather than one query per class — the table is
+    class, as one grouped query instead of one query per class: the table is
     small today and would still be N round trips.
     """
 

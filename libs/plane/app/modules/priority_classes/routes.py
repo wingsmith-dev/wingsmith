@@ -3,7 +3,7 @@
 The route path is `/v1/priority-classes` per `libs/packages/contract/API.md` §6; the Python
 package is underscored because a hyphen is not an identifier. Ids are `prc_`:
 `pol_` was already spent on pools, so policy and priority class took `plc_` and
-`prc_` rather than crowding a prefix that was taken.
+`prc_` instead of crowding a prefix that was taken.
 """
 
 from litestar import Response

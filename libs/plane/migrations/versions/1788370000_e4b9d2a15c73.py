@@ -42,7 +42,7 @@ depends_on: Union[str, Sequence[str], None] = None
 # The preferred location, else the oldest, reduced to `org/model`.
 #
 # `split_part(uri, '://', 2)` takes what follows the scheme, and the `@revision` suffix is trimmed
-# because a pinned commit is which bytes, not what the model is called — two revisions of one
+# because a pinned commit is which bytes, not what the model is called: two revisions of one
 # repository are the same model id and must resolve to one endpoint.
 ARTIFACT_SLUG_FROM_LOCATION = """
     SELECT lower(regexp_replace(

@@ -1,6 +1,6 @@
 """The reactor's judgement, exercised with no database.
 
-Everything here is a pure function by design — `app.reactor.rules` decides what is
+Everything here is a pure function by design: `app.reactor.rules` decides what is
 worth alerting on and `app.reactor.notify` decides what that looks like in Slack,
 and neither needs a session to be wrong in an interesting way.
 """
@@ -18,7 +18,7 @@ from app.reactor.conditions import overdue
 
 
 class FakeAlert:
-    """Enough of an `Alert` for the pure helpers. Deliberately not the model."""
+    """Enough of an `Alert` for the pure helpers. Not the model."""
 
     def __init__(self, state: str, notified_state: str | None, severity: str = "error") -> None:
         self.state = state
@@ -34,7 +34,7 @@ def test_severity_floor_orders_and_defaults():
 
 
 def test_named_event_alerts_regardless_of_the_severity_it_arrived_with():
-    """`node.left` at `warning` still opens an alert — that override is the point of the table."""
+    """`node.left` at `warning` still opens an alert: that override is the point of the table."""
     intent = rules.event_intent(
         event_type="node.left",
         severity=rules.WARNING,

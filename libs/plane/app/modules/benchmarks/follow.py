@@ -9,7 +9,7 @@ a run `pending` for ever with nothing on the row saying why, which is the exact
 failure operations exist to make impossible.
 
 So a terminal operation carries its phase across. The guard is that the run must
-still be open — a run that has already reported is the more authoritative of the
+still be open: a run that has already reported is the more authoritative of the
 two, because it was written by the thing that actually did the work, and its
 answer must survive an operation frame arriving after it.
 
@@ -29,7 +29,7 @@ from app.db.models import BenchmarkRun
 
 
 OPEN_PHASES = frozenset({"pending", "running"})
-"""Restated here rather than imported, to keep this module free of its callers.
+"""Restated here, not imported, to keep this module free of its callers.
 
 Three words in two places is the cheaper of the two costs; the other is a cycle
 between `operations` and `benchmarks`.
@@ -44,7 +44,7 @@ DEFAULT_MESSAGES = {
 """Why a run ended, when the only thing that knows is the operation.
 
 `succeeded` is listed because an operation that succeeded while its run never reported
-means the executor finished and sent nothing; the run fails rather than claiming a
+means the executor finished and sent nothing; the run fails instead of claiming a
 measurement of nothing.
 """
 
@@ -52,9 +52,9 @@ measurement of nothing.
 def follows_operation(operation_uid: str, phase: str, error: str | None = None) -> Update:
     """Carries an operation's terminal phase onto the run it was carrying out.
 
-    Matched through `operation_id` rather than by passing the run down, because
-    the caller that cancels an operation has no reason to know a run exists —
-    most operations have none — and the caller in ingestion is holding a wire
+    Matched through `operation_id`, not by passing the run down, because
+    the caller that cancels an operation has no reason to know a run exists,
+    most operations have none, and the caller in ingestion is holding a wire
     payload that names only the operation.
     """
     message = error or DEFAULT_MESSAGES.get(phase)

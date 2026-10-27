@@ -33,7 +33,7 @@ EMPTY = PoolMembershipSchema(
 def _revision(pool: Pool) -> str:
     """The value `If-Match` is checked against.
 
-    Derived from the last write rather than stored, for the same reason it is on
+    Derived from the last write, not stored, for the same reason it is on
     a cluster: `updated_at` already moves on every update, and a second column
     tracking the same fact is a second column that can disagree with it.
     """
@@ -57,7 +57,7 @@ def _membership(row: dict | None) -> PoolMembershipSchema:
 def within_bounds(nodes: int, min_nodes: int, max_nodes: int) -> bool:
     """Whether observed membership sits inside the declared node bounds.
 
-    `max_nodes` of zero means unbounded rather than "no nodes allowed": the
+    `max_nodes` of zero means unbounded instead of "no nodes allowed": the
     column defaults to zero, and reading the default as a hard ceiling would put
     every freshly created pool permanently out of bounds.
     """

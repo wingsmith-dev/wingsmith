@@ -22,7 +22,7 @@ WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".gguf")
 """Extensions whose bytes are the model.
 
 The digest covers these and nothing else: `config.json`, tokenizer files and the
-README are edited routinely — a typo fix in the card would otherwise mint a new
+README are edited routinely: a typo fix in the card would otherwise mint a new
 artifact identity for weights that never changed.
 """
 
@@ -37,18 +37,18 @@ _FORMAT_BY_SUFFIX = {
 class HuggingFaceError(Exception):
     """Base for every failure this module reports.
 
-    Typed rather than letting `httpx.HTTPStatusError` escape: the caller turns
+    Typed instead of letting `httpx.HTTPStatusError` escape: the caller turns
     these into API errors, and a transport exception carries a request URL and a
     bearer header into a response body that should only say what went wrong.
     """
 
 
 class HuggingFaceNotFound(HuggingFaceError):
-    """No such model on the Hub — a 404. Distinct from gated, which also hides repos."""
+    """No such model on the Hub: a 404. Distinct from gated, which also hides repos."""
 
 
 class HuggingFaceGated(HuggingFaceError):
-    """The repo exists but this token cannot read it — 401 or 403.
+    """The repo exists but this token cannot read it: 401 or 403.
 
     Separate from `HuggingFaceNotFound` because the remedy is different: one is a
     typo in the slug, the other is a licence to accept or a token to configure.
@@ -56,14 +56,14 @@ class HuggingFaceGated(HuggingFaceError):
 
 
 class HuggingFaceUnavailable(HuggingFaceError):
-    """The Hub failed or did not answer — 5xx, timeout, connection error. Retryable."""
+    """The Hub failed or did not answer: 5xx, timeout, connection error. Retryable."""
 
 
 @dataclass(frozen=True)
 class HuggingFaceWeightFile:
     """One weight file in the resolved tree.
 
-    `oid` is `None` when the file is committed to git rather than LFS-tracked, in
+    `oid` is `None` when the file is committed to git, not LFS-tracked, in
     which case the Hub exposes no content hash for it at all and the tree alone
     cannot address the bytes.
     """
@@ -77,10 +77,10 @@ class HuggingFaceWeightFile:
 class HuggingFaceModel:
     """Everything the plane needs to mint an artifact from a Hub slug.
 
-    `digest` is derived here rather than asserted by the client, so two callers
+    `digest` is derived here, not asserted by the client, so two callers
     registering the same weights land on the same identity. When
     `content_addressable` is false the Hub gave no oid for some weight file and
-    `digest` is a name of the form `hf:SLUG@SHA` — the caller must record it with
+    `digest` is a name of the form `hf:SLUG@SHA`; the caller must record it with
     `verified` false, because nothing has hashed any bytes.
     """
 
@@ -111,7 +111,7 @@ class HuggingFaceModel:
 class HuggingFaceClient:
     """Async wrapper around the public HuggingFace Hub API.
 
-    Every call after the first pins the resolved commit sha rather than `main`:
+    Every call after the first pins the resolved commit sha instead of `main`:
     a slug inspected twice seconds apart must not disagree because a push landed
     between the tree read and the config read.
     """
@@ -125,7 +125,7 @@ class HuggingFaceClient:
         """`token` falls back to `HF_TOKEN` in settings.
 
         TODO: gated repos (Llama and friends) need a decision about whose token is
-        used — a single fleet-wide plane token accepts the licence on behalf of
+        used: a single fleet-wide plane token accepts the licence on behalf of
         every tenant, which is a legal position and not just a config choice.
         """
         self._token = token if token is not None else (settings.HF_TOKEN or None)
@@ -192,7 +192,7 @@ class HuggingFaceClient:
 
         Absence is an answer here and not an error. A repo with no
         `tokenizer_config.json` is a repo no frontend can build a prompt
-        formatter from, which is a note on the draft rather than a failure to
+        formatter from, which is a note on the draft instead of a failure to
         register -- the artifact may never be served as a chat model at all.
         """
         try:
@@ -300,13 +300,13 @@ def _served_weights(
 
     `openai/gpt-oss-20b` carries its served safetensors shards at the root and two more
     full copies of the same parameters under `original/` and `metal/`. Counting all three
-    trebles `size_bytes`, and — the reason this is not merely cosmetic — puts them in the
+    trebles `size_bytes`, and, the reason this is not merely cosmetic, puts them in the
     digest, so re-uploading the Metal build would change the identity of weights that did
     not change. Sidecars are a packaging detail of the repository, not of the model.
 
     Root-level files win when there are any, because that is where a transformers-style
-    repo puts what it serves. A repo that keeps its only weights in a subdirectory — a
-    GGUF conversion, most often — has no root-level files to prefer, so everything counts
+    repo puts what it serves. A repo that keeps its only weights in a subdirectory, a
+    GGUF conversion, most often, has no root-level files to prefer, so everything counts
     and nothing is dropped.
     """
     weights.sort(key=lambda w: w.path)

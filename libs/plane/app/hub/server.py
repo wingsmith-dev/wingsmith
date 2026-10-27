@@ -46,7 +46,7 @@ DESIRED = DatabaseDesiredSource()
 
 CLAIMS = DatabaseClaimStore()
 """Durable single-writer ownership per `cluster_id` (ADR 0005). Shared across pods via Postgres,
-unlike `REGISTRY`, which is deliberately not shared.
+unlike `REGISTRY`, which is not shared.
 """
 
 STANDING = DatabaseStanding()
@@ -55,19 +55,19 @@ STANDING = DatabaseStanding()
 LIVE = LiveSessions()
 """Connections this process can push declared state to right now, keyed by cluster.
 
-Separate from `REGISTRY` on purpose: that one holds sessions that outlive their
+Separate from `REGISTRY`: that one holds sessions that outlive their
 connection, this one holds the objects that have one. See `app.hub.dispatch`.
 """
 
 INSTANCE = instance_id()
-"""This process's identity in the claim table — the pod name under Kubernetes, or a random id."""
+"""This process's identity in the claim table: the pod name under Kubernetes, or a random id."""
 
 
 def _process_request(connection: ServerConnection, request: Request) -> Response | None:
     """Answers plain HTTP on /health and rejects the upgrade before it completes.
 
     The hub's credential check has no disable switch, unlike the API's admin
-    auth — a port-forward perimeter does not protect a socket that many cluster
+    auth: a port-forward perimeter does not protect a socket that many cluster
     agents dial in over the network.
 
     This is the cheap gate: anything that is not shaped like a per-cluster
@@ -137,9 +137,9 @@ async def _handler(connection: ServerConnection) -> None:
 async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
     """Runs the hub until `stop` resolves, then closes every session and the pool.
 
-    The reactor is started here as a co-tenant rather than as a process of its own.
+    The reactor is started here as a co-tenant, not as a process of its own.
     Its lease already allows exactly one worker fleet-wide, so every replica may
-    start one and only the holder does any work — which makes a separate Deployment
+    start one and only the holder does any work, which makes a separate Deployment
     for a loop that ticks once a minute infrastructure nobody asked for.
     `python -m app.reactor` and `HANGAR_REACTOR_ENABLED=false` are the escape hatch.
     """

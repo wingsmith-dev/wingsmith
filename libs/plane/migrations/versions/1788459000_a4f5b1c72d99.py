@@ -4,7 +4,7 @@ Revision ID: a4f5b1c72d99
 Revises: f1a7c94e2b68
 Create Date: 2026-09-03 17:10:00.000000
 
-`BenchmarkRun` carries its harness's summary and nothing else from the pod that produced it —
+`BenchmarkRun` carries its harness's summary and nothing else from the pod that produced it:
 enough when the summary arrived whole, and opaque when it did not. The sentinel-framed JSON was
 the only channel, so a run whose evalscope crashed before writing its report was a `succeeded`
 phase with no number beside it, or a `failed` phase with only the operator's interpretation of

@@ -1,7 +1,7 @@
 """Devices: observed, read-only.
 
-`GET` list and `GET` one. There is no `POST /v1/devices` — a device is
-discovered, not created, and writing to it is a category error rather than a
+`GET` list and `GET` one. There is no `POST /v1/devices`: a device is
+discovered, not created, and writing to it is a category error instead of a
 validation failure. No operation acts on a single device yet.
 
 The `class` filter is spelled `class` on the wire and `device_class` in Python,

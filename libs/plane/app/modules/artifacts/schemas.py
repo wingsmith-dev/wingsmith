@@ -8,7 +8,7 @@ from app.core.schemas import UnsetType
 class ArtifactLocationSchema(Struct):
     """One place an artifact's bytes can be fetched from.
 
-    A child collection rather than a column, because locations are mutable and
+    A child collection instead of a column, because locations are mutable and
     plural while the artifact they belong to is neither. There is no `id`: the
     table carries no prefixed identifier, and `uri` is unique within the
     artifact, so the uri is the handle.
@@ -25,14 +25,14 @@ class ArtifactUpstreamSchema(Struct):
 
     `metadata`'s opposite in the way `imported_args` is `engine_args`: a claim
     somebody signed, against a scratchpad. Nothing here reaches a cluster and
-    nothing here is checked — a wrong value changes only what we told somebody.
+    nothing here is checked: a wrong value changes only what we told somebody.
 
-    `reasoning` and `tool_calling` are tri-state on purpose. Null is "the
+    `reasoning` and `tool_calling` are tri-state. Null is "the
     publisher did not say", which is not `false`: a workload may still claim the
     capability on the strength of an engine recipe that names a parser for it,
     and collapsing the two would turn silence into a denial that blocks it.
 
-    The provenance triple — `recorded_by`, `recorded_at`, `source_uri` — is what
+    The provenance triple (`recorded_by`, `recorded_at`, `source_uri`) is what
     separates this from a guess. A resolve fills it with the Hub; a person
     editing the block replaces it with themselves.
     """
@@ -65,7 +65,7 @@ class ArtifactSchema(Struct):
     """Immutable, content-addressed bytes. Identity is the digest.
 
     A fine-tune output, a private checkpoint, a quantized derivative, and a LoRA
-    adapter are all artifacts, which is why `kind` is a field here rather than
+    adapter are all artifacts, which is why `kind` is a field here instead of
     the difference between this object and a catalog entry.
     """
 
@@ -99,7 +99,7 @@ class ResolveNote(Struct):
     A draft produces two kinds of remark and a flat list of strings makes them
     look alike: that a repo ships a second copy of its weights under `original/`
     is a packaging fact we handled, while weights the Hub cannot address mean the
-    digest is a name rather than a hash. Rendering the first as a warning trains
+    digest is a name instead of a hash. Rendering the first as a warning trains
     people to ignore the second.
     """
 
@@ -115,7 +115,7 @@ class ArtifactRefreshSchema(Struct):
     recorded, which is a successful refresh and not a failure.
 
     `notes` is the draft's own remarks, unfiltered, because they are about the source
-    and not about the diff — a repo that has since become gated says so here.
+    and not about the diff: a repo that has since become gated says so here.
     """
 
     artifact: ArtifactSchema
@@ -131,10 +131,10 @@ class ArtifactUsageSchema(Struct):
     weights they serve (`Workload.artifact_id`) or through their adapter set
     (`Workload.adapter_artifact_ids`). There is no second count beside it any more:
     a recipe used to stand between the two, and with the serving configuration on
-    the workload there is one kind of dependant rather than two.
+    the workload there is one kind of dependant instead of two.
 
-    `downstream_count` is the artifacts derived from this one (`base_artifact_id`)
-    — the quantizations and fine-tunes that name it as their base.
+    `downstream_count` is the artifacts derived from this one (`base_artifact_id`):
+    the quantizations and fine-tunes that name it as their base.
     """
 
     artifact_id: str
@@ -147,10 +147,10 @@ CATALOG = "catalog"
 FITMENT_SCOPES = (FLEET, CATALOG)
 """The two questions a fitment matrix can answer, and they are not one question.
 
-`fleet` is *what can I run right now* — every class a cluster has actually reported,
-and a no-fit row there is a dead end. `catalog` is *what hardware would I need* —
+`fleet` is *what can I run right now*: every class a cluster has actually reported,
+and a no-fit row there is a dead end. `catalog` is *what hardware would I need*:
 every class the contract table names as well, where a fit on a class we own none of
-is a procurement answer rather than a deployable one. A single filtered list would
+is a procurement answer instead of a deployable one. A single filtered list would
 make the second look like a bug in the first.
 """
 
@@ -158,9 +158,9 @@ make the second look like a bug in the first.
 class ArtifactFitLayoutSchema(Struct):
     """One way to lay this artifact out on one class of card, of the several that work.
 
-    A row's own fields are the recommendation — the fewest cards carrying the full
+    A row's own fields are the recommendation: the fewest cards carrying the full
     window. These are the rest of the choices on the same class, ascending, and they are
-    a real choice rather than a rounding: four H200 at 32k and eight at 131k are both
+    a real choice instead of a rounding: four H200 at 32k and eight at 131k are both
     deployable, and which one is right depends on whether the window or the free half of
     the node is worth more today.
 
@@ -171,7 +171,7 @@ class ArtifactFitLayoutSchema(Struct):
     `reduced` is what the trade costs: true means this count buys its cards back by
     serving a shorter window than the one asked for, and `context_length` says which.
     `supply_short` is the fleet saying it holds fewer devices of the class than this
-    layout needs — a shape that is arithmetically fine and cannot be placed today.
+    layout needs: a shape that is arithmetically fine and cannot be placed today.
 
     `weights_gb` and `kv_counted` are absent because they belong to the artifact and not
     to the layout; they are on the row and are the same for every entry here.
@@ -194,7 +194,7 @@ class ArtifactFitSchema(Struct):
 
     The fit half is durable: it changes when the weights or the asked-for context
     change, and not otherwise. The three counts are the fleet half and move whenever
-    a cluster reports. They are returned side by side rather than merged, because
+    a cluster reports. They are returned side by side, not merged, because
     `fits` with `devices_allocatable` at zero is a capacity problem and `fits` false
     is a physics problem, and one is fixed by waiting.
 
@@ -204,12 +204,12 @@ class ArtifactFitSchema(Struct):
     `POST /placement/preview` is what answers it.
 
     `node_count` is the unit to act on: "four nodes of B300" is an order, "32 devices" is
-    a number to divide. `devices_per_node` is how big a node was taken to be — read from
+    a number to divide. `devices_per_node` is how big a node was taken to be: read from
     `supply_topology_domain.device_count` for a class the fleet runs, the caller's figure
     or the default otherwise. It is eight on an HGX board and seventy-two on a GB300
     NVL72, because the interconnect is what makes a node a node and the rack has one.
 
-    Nodes carrying one replica sit on the same backend fabric — one connected unit for
+    Nodes carrying one replica sit on the same backend fabric: one connected unit for
     placement to find, not a set of islands. `tensor_parallel` is bounded by the node
     because a tensor group over the fabric is the one split that does not work;
     `pipeline_parallel` crosses freely, which is why a multi-node replica is normal.
@@ -220,29 +220,29 @@ class ArtifactFitSchema(Struct):
     `required_gb` against the nameplate would over-promise by about fifteen percent.
 
     `supply_short` is the fleet half saying no. It is true when the artifact fits on
-    this class and the fleet holds some of it but fewer devices than one replica needs
-    — a fit nobody can run today. It is deliberately not the same as `devices_total` at
-    zero, which is a class we own none of and the honest procurement answer, and not the
+    this class and the fleet holds some of it but fewer devices than one replica needs:
+    a fit nobody can run today. It is not the same as `devices_total` at
+    zero, which is a class we own none of and the accurate procurement answer, and not the
     same as `devices_allocatable` being low, which waiting fixes. This one is fixed by
     buying cards.
 
-    `layouts` is the rest of the answer. The fields above are the recommendation — the
-    fewest cards carrying the full window — and `layouts` carries every count on this
+    `layouts` is the rest of the answer. The fields above are the recommendation, the
+    fewest cards carrying the full window, and `layouts` carries every count on this
     class that serves, so a caller can trade context for cards without asking a second
     question. The recommended count is one of them.
 
     `possible` is the half of `fits` a caller may refuse over, and the split matters
     because the two halves have opposite failure costs. `possible` false is arithmetic:
     the weights do not sit on the cards, or the attention heads do not divide across the
-    tensor group. `fits` false with `possible` true is the estimate speaking — the window
-    and the batch, sized against a flat envelope — and that is advice. A console that
+    tensor group. `fits` false with `possible` true is the estimate speaking, the window
+    and the batch, sized against a flat envelope, and that is advice. A console that
     refused over it would eventually refuse a shape that serves, which is a model nobody
     can deploy and nothing to argue against; being wrong the other way is a worker that
     fails to start and says why.
 
     `kv_counted` false means the artifact published no attention shape, so
     `required_gb` is the weights and nothing else and `context_length` is zero. That
-    row is a floor — the true requirement is strictly larger — and rendering it as a
+    row is a floor, the true requirement is strictly larger, and rendering it as a
     full sizing would promise a window nobody costed.
     """
 
@@ -274,7 +274,7 @@ class ArtifactFitSchema(Struct):
 class ArtifactFitmentSchema(Struct):
     """The device classes an artifact could be served on, ranked, and the terms asked.
 
-    Every input is echoed because a fit is meaningless without them — the same
+    Every input is echoed because a fit is meaningless without them: the same
     artifact fits on very different hardware at 8k and at 131k, and a matrix that
     did not say which would be read as a property of the weights.
 
@@ -301,7 +301,7 @@ class ArtifactFitmentSchema(Struct):
 class ArtifactFitmentRequest(Struct):
     """What to fit, and against what. Every default is defensible on its own.
 
-    `context_length` defaults to the artifact's own declared window rather than to a
+    `context_length` defaults to the artifact's own declared window, not to a
     number chosen here. An artifact that publishes 131k is fitted at 131k, and
     quietly trimming it to make more cards look workable is the inversion
     `resolve.suggest_serving` already refuses to make.
@@ -310,7 +310,7 @@ class ArtifactFitmentRequest(Struct):
     question "what if we quantized this" gets asked without registering anything.
 
     `devices_per_node` states how many devices share one node, and applies only
-    to classes the fleet has never reported — those come with an observed figure that a
+    to classes the fleet has never reported: those come with an observed figure that a
     guess should not override. Stating it is how "what would an NVL72 rack of these do"
     gets asked about hardware nobody has racked.
     """
@@ -327,11 +327,11 @@ class ArtifactFitmentRequest(Struct):
 class ArtifactBaselineSchema(Struct):
     """One declared quality floor, per dataset and metric.
 
-    A sub-resource rather than a field on the artifact: the set is genuinely
+    A sub-resource instead of a field on the artifact: the set is genuinely
     plural, each row carries its own tolerance and its own provenance, and
     editing one is not a rewrite of the rest.
 
-    `tolerance_pct` is the recorder's own slack and is not the acceptance floor —
+    `tolerance_pct` is the recorder's own slack and is not the acceptance floor:
     that belongs to the criteria version and is resolved when a verdict is
     derived (`app/modules/benchmarks/verdicts.py`). `value` and `tolerance_pct`
     are `Numeric` on the row and floats here, converted once at this seam so no
@@ -359,7 +359,7 @@ class ArtifactBaselineCreateRequest(Struct):
     `recorded_by` and `recorded_at` are declared here only so that a body still
     carrying them is accepted and discarded. Who asserted a floor is the
     authenticated principal and when is the write, and a caller that could type
-    either could sign the assertion in somebody else's name — which is the one
+    either could sign the assertion in somebody else's name, which is the one
     thing an acceptance argument rests on.
     """
 
@@ -405,7 +405,7 @@ class ArtifactCreateRequest(Struct):
     is the only way two callers registering the same weights land on one artifact.
     Everything else the caller passes explicitly still wins over what was resolved.
 
-    It is false only for weights adopted by reference — a `--model` read off a
+    It is false only for weights adopted by reference: a `--model` read off a
     workload that was already running, where the digest is a name and nothing has
     hashed anything. There is no update field for it: verification is resolving
     the bytes, which is an operation, not an edit.
@@ -418,7 +418,7 @@ class ArtifactCreateRequest(Struct):
     """The model id this artifact answers to. Empty derives it from the preferred location.
 
     Deriving is the normal case and declaring one is for weights whose location does not name
-    them — a checkpoint in a bucket, a fine-tune whose path is a build id. It is lowercased on the
+    them: a checkpoint in a bucket, a fine-tune whose path is a build id. It is lowercased on the
     way in, because a slug that differs from another only by case is two names for one model.
     """
     kind: str = "weights"
@@ -438,8 +438,8 @@ class ArtifactUpdateRequest(Struct):
     """A partial update. An absent field is untouched; an explicit null clears.
 
     `digest` is absent by design: the digest is the artifact's identity, and
-    different bytes are a different artifact rather than an edit to this one.
-    Supplying `locations` replaces the whole set — a child collection patched
+    different bytes are a different artifact instead of an edit to this one.
+    Supplying `locations` replaces the whole set: a child collection patched
     element-wise needs identifiers the table does not have.
     """
 

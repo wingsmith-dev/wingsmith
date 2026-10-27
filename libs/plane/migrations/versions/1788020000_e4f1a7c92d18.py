@@ -5,7 +5,7 @@ Revises: d1c8b3a95e42
 Create Date: 2026-08-31 23:55:00.000000
 
 Whether a cluster can run a replica whose devices do not fit on one machine. It
-needs a leader-worker backend — Grove or LeaderWorkerSet — and without one Dynamo
+needs a leader-worker backend, Grove or LeaderWorkerSet, and without one Dynamo
 renders a multi-node replica as a single pod holding a fraction of the devices the
 engine was told to expect: it starts, then hangs in collective initialisation with
 nothing saying why.
@@ -19,7 +19,7 @@ is observed.
 Unlike `read_only` this one is not inert: placement must not send a spanning
 replica to a cluster that cannot run one. Defaults false, which is the right
 answer for every existing row and the right reading of an operator too old to
-send it — such an operator could not have detected a backend either.
+send it: such an operator could not have detected a backend either.
 
 """
 

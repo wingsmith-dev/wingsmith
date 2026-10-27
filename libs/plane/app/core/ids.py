@@ -90,7 +90,7 @@ def new_uid(prefix: str) -> str:
     timestamp then 80 bits of randomness. Sortable because a list ordered by id
     and a list ordered by creation are then the same list, which removes a whole
     class of pagination bug. Two ids minted inside one millisecond would break
-    that, so within a millisecond the random half is incremented rather than
+    that, so within a millisecond the random half is incremented, not
     redrawn.
     """
     if prefix not in PREFIXES:
@@ -112,7 +112,7 @@ def new_uid(prefix: str) -> str:
 
 
 def is_uid(value: str) -> bool:
-    """Whether a path segment is an identifier rather than a name.
+    """Whether a path segment is an identifier instead of a name.
 
     Names are free text and could in principle start with anything, so this
     checks the prefix and the shape of the body, not the prefix alone.

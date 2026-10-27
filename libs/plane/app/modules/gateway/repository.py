@@ -7,7 +7,7 @@ from app.db.models import Tenant
 
 
 class GatewayRepository:
-    """Reads what the gateway needs to trust a tenant. Nothing here writes —
+    """Reads what the gateway needs to trust a tenant. Nothing here writes:
     this surface is a projection of `tenants`, not a second copy of it."""
 
     def __init__(self, db: AsyncSession) -> None:
@@ -16,9 +16,9 @@ class GatewayRepository:
     def tenants_query(self) -> Select:
         """Every tenant with its keys eager-loaded, one round trip.
 
-        `selectinload` rather than a join: `Tenant.api_keys` is one-to-many, and
+        `selectinload` instead of a join: `Tenant.api_keys` is one-to-many, and
         a join here would multiply every tenant row by its key count for no
-        reason — the resolution below reads each tenant once and its keys as a
+        reason: the resolution below reads each tenant once and its keys as a
         list beside it.
         """
         return select(Tenant).options(selectinload(Tenant.api_keys)).order_by(Tenant.seq.asc())

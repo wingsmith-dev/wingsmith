@@ -31,7 +31,7 @@ class BenchmarkRepository:
 
     The joins are for public ids only. Everything a run says about what it
     measured is on its own row, snapshotted at creation, so nothing here reaches
-    for the workload to describe the run — only to name it.
+    for the workload to describe the run, only to name it.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -40,8 +40,8 @@ class BenchmarkRepository:
     def _base(self) -> Select:
         """Every join is outer, because an endpoint-level run has neither of the two that were not.
 
-        A run against a public name has no deployment and no cluster — that is
-        the point of the level — so an inner join on either would make those
+        A run against a public name has no deployment and no cluster, that is
+        the point of the level, so an inner join on either would make those
         runs invisible to the list they belong in.
         """
         return (
@@ -117,7 +117,7 @@ class BenchmarkRepository:
         Plural because a deployment name is unique per cluster and not above it,
         the same way an operation target is. The workload and artifact come along
         because the served model name is derived from both, and deriving it at
-        creation is what lets the run record what it pointed at rather than
+        creation is what lets the run record what it pointed at instead of
         leaving the operator to guess. The artifact's locations come with it
         because one of them is the `hf://` source the engine resolved `--model`
         against, which is the only place the model's repository survives for an
@@ -141,7 +141,7 @@ class BenchmarkRepository:
 
         A workload-level run is one run per placed deployment, and each of them
         snapshots its own deployment's provenance. The serving configuration is
-        the workload's and is therefore the same across all of them — which is
+        the workload's and is therefore the same across all of them, which is
         the reason accuracy is a workload-level claim in the first place.
         """
         column = Workload.uid if is_uid(ref) else Workload.name
@@ -166,9 +166,9 @@ class BenchmarkRepository:
         """The endpoint a reference names, and everything currently enabled behind it.
 
         Plural rows for one endpoint: the endpoint repeats and each row carries
-        one upstream. The run itself is singular — a request to the public name
-        is routed by weight and measures whatever the gateway chose — so these
-        rows become the request's coverage snapshot rather than N runs.
+        one upstream. The run itself is singular, a request to the public name
+        is routed by weight and measures whatever the gateway chose, so these
+        rows become the request's coverage snapshot, not N runs.
         """
         column = Endpoint.uid if is_uid(ref) else Endpoint.name
         query = (
@@ -285,7 +285,7 @@ class BenchmarkRepository:
     def serving_runs_query(self, digest: str) -> Select:
         """The graded, non-discarded runs recorded against one serving configuration.
 
-        Only the columns a throughput rollup needs — `summary` is offline
+        Only the columns a throughput rollup needs: `summary` is offline
         measurement held in-plane, read through the harness-and-version adapter,
         and a discarded run is a warm-up that must not colour the peak.
 

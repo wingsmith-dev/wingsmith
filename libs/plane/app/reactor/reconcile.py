@@ -7,8 +7,8 @@ operation whose cluster never answered stayed `running` for ever. Nothing on a
 timer looked at either.
 
 This pass is that timer. It writes no intent of its own: a short workload is
-re-expanded through `WorkloadService.rescale` with its own totals — exactly what
-a person re-submitting the same scale would do — and only when placement says the
+re-expanded through `WorkloadService.rescale` with its own totals, exactly what
+a person re-submitting the same scale would do, and only when placement says the
 answer would now be larger. An operation past its `deadline_at` is closed as
 `timed_out`, which is the phase the contract already reserves for it.
 
@@ -70,7 +70,7 @@ CADENCE = Cadence()
 def short_workloads():
     """Workloads the plane manages that hold fewer replicas across their deployments than they ask for.
 
-    Paused workloads are left alone — their shortfall is the point — and so is any
+    Paused workloads are left alone, their shortfall is the point, and so is any
     workload with a deployment the plane did not create, because an adopted one's
     shape is the cluster's and re-expanding it would re-place something already
     running.

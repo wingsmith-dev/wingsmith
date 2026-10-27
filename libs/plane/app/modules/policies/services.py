@@ -36,9 +36,9 @@ def _revision(policy: Policy) -> str:
 def check_cluster_lists(allowed: list[str], denied: list[str]) -> None:
     """A cluster on both lists is a policy that cannot be evaluated.
 
-    Allow and deny are not opposite ends of one axis — an empty allow-list means
-    "no opinion" — so the only genuinely contradictory input is naming the same
-    cluster twice, and it has to be refused rather than resolved by precedence
+    Allow and deny are not opposite ends of one axis, an empty allow-list means
+    "no opinion", so the only genuinely contradictory input is naming the same
+    cluster twice, and it has to be refused, not resolved by precedence
     nobody wrote down.
     """
     overlap = sorted(set(allowed) & set(denied))
@@ -84,7 +84,7 @@ class PolicyService:
 
         `subject_id` has no foreign key; a trigger per subject table deletes an
         attachment with its subject. A row that still resolves to nothing
-        serialises with a null reference rather than being dropped.
+        serialises with a null reference instead of being dropped.
         """
         by_type: dict[str, list] = {}
         for row in rows:

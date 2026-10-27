@@ -10,8 +10,8 @@ class PoolMembershipSchema(Struct):
 
     Membership is a rollup, not a list. A pool with three hundred nodes still
     answers this question in one row, and a client that wants the nodes asks
-    `GET /v1/nodes?pool=...` — the same reason sub-resources are addressed by
-    filter rather than by nesting.
+    `GET /v1/nodes?pool=...`: the same reason sub-resources are addressed by
+    filter, not by nesting.
     """
 
     nodes_total: int
@@ -25,13 +25,13 @@ class PoolMembershipSchema(Struct):
 class PoolSchema(Struct):
     """Declared spec and observed membership side by side, never merged.
 
-    The declared half is the provisioning intent — device class, shape, and the
+    The declared half is the provisioning intent: device class, shape, and the
     node bounds. The observed half is `membership`.
 
     `min_nodes` and `max_nodes` are informational. Nothing in Hangar adds or removes
     nodes to meet them; they are compared against membership to answer
     `within_declared_bounds`, and node autoscaling is on the roadmap.
-    `within_declared_bounds` is computed here rather than left to each client,
+    `within_declared_bounds` is computed here, not left to each client,
     because both the console and `hgr` need the same answer to "is this pool
     outside what we asked for" and two clients deriving it independently is two
     chances to derive it differently.

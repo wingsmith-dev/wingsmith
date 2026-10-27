@@ -8,7 +8,7 @@ class DeviceTopologySchema(Struct):
 
     Topology is reachable two ways and both are correct: embedded here as a
     summary, and standalone at `/v1/topology-domains` for browsing and for the
-    nesting. This form is a summary and never the authority — it carries no
+    nesting. This form is a summary and never the authority: it carries no
     parent, no membership and no counts, so anything that needs the domain
     itself must read the collection.
     """

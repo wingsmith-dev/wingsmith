@@ -1,7 +1,7 @@
 """The hub half of the plane <-> operator session protocol.
 
 Implements `libs/packages/contract/PROTOCOL.md`: handshake (§1), envelope and dispatch (§2), correlation (§3),
-sequencing and resume (§4), liveness (§5) and backpressure (§6). Nothing here touches storage —
+sequencing and resume (§4), liveness (§5) and backpressure (§6). Nothing here touches storage:
 inbound frames go to a `Sink`, declared state comes from a `DesiredSource`.
 
 The four things this file owns are the four that ADR 0001 gave up codegen for. They are written
@@ -140,11 +140,11 @@ class Backpressure(ProtocolViolation):
 
 
 class Displaced(ProtocolViolation):
-    """This session lost its claim on `cluster_id` — a newer `hello` won it elsewhere (ADR 0005).
+    """This session lost its claim on `cluster_id`: a newer `hello` won it elsewhere (ADR 0005).
 
     Not a protocol error in the operator's sense: the fix is a plain reconnect, most
     likely to a different pod, which is why this carries the same "try again" close code
-    as `Backpressure` rather than the generic protocol-error one.
+    as `Backpressure` instead of the generic protocol-error one.
     """
 
     def __init__(self, cluster_id: str) -> None:
@@ -260,7 +260,7 @@ class OperatorSession:
         until the live sends held during it have gone out. A session that ends
         while it is False is not resumable: a resume replays only what was sent, so
         a snapshot cut off half way would resume as a silently shorter one, and the
-        held sends, which live on this connection rather than in the session, would
+        held sends, which live on this connection, not in the session, would
         be lost. The next hello gets a full resync instead, which carries both.
         """
         self._deferred: list[tuple[str, Struct, str | None]] | None = []
@@ -431,7 +431,7 @@ class OperatorSession:
 
         Only a per-cluster principal opens a session. The shared fleet token named no
         cluster, so a session opened with it believed whichever one `hello` claimed to
-        be — any holder could write any cluster's observed state. The server no longer
+        be: any holder could write any cluster's observed state. The server no longer
         resolves that token at all; this is the same rule held where it matters, so a
         caller that builds a session some other way cannot reintroduce it.
 
@@ -473,7 +473,7 @@ class OperatorSession:
     def _resolve_session(self, cluster_uid: str, hello: Hello) -> tuple[SessionState, bool]:
         """Decides whether the requested resume point can be honoured (PROTOCOL §4).
 
-        A fresh session is issued — and `full_resync` set — when the operator declares itself
+        A fresh session is issued, and `full_resync` set, when the operator declares itself
         lossy, when the named session is unknown, or when the requested cursor has already fallen
         out of the replay buffer. Pretending to resume any of those loses frames silently.
         """
@@ -496,7 +496,7 @@ class OperatorSession:
     async def _sync_loop(self) -> None:
         """Brings the operator up to date, opens live dispatch, then keeps it up to date.
 
-        A task beside the reader and the writer rather than a step of the handshake. A
+        A task beside the reader and the writer instead of a step of the handshake. A
         snapshot is as large as the cluster's declared state, and every frame of it
         enters the outbound queue and the replay buffer; streamed before the writer
         existed, a snapshot past the queue's size could only fail, and every
@@ -557,7 +557,7 @@ class OperatorSession:
     async def _replay_open_operations(self) -> None:
         """Re-sends every operation this cluster has not finished, on session start and on every resync.
 
-        Outside the resync stream on purpose, and not counted in its `stream.end`:
+        Outside the resync stream, and not counted in its `stream.end`:
         a snapshot is authoritative over what it omits, so an operation inside one
         would become prunable, and pruning a drain that is already evicting pods
         would cancel work half done. The frames go down as ordinary
@@ -568,7 +568,7 @@ class OperatorSession:
         acknowledged; it says nothing about an operation created while nothing was
         connected, or whose notification was lost while the session was up. This
         is what closes that gap. Re-sending one the operator is already running is
-        safe — it drops a redelivery of an operation in flight — and is the
+        safe, it drops a redelivery of an operation in flight, and is the
         intended recovery path.
 
         A source that cannot answer must not cost the connection: the operator is
@@ -609,9 +609,9 @@ class OperatorSession:
 
         An unknown `type` is never fatal, which is only true if the frame still counts: the
         envelope decoded, so its `seq` is meaningful, and skipping the accounting would leave the
-        peer's next frame arriving as a gap — closing the connection over exactly the frame the
+        peer's next frame arriving as a gap: closing the connection over exactly the frame the
         contract says to drop. Answering also finishes the frame: it will never be applied, so the
-        ack is owed now rather than withheld forever.
+        ack is owed now, not withheld forever.
         """
         if not self._accept(envelope):
             return
@@ -672,7 +672,7 @@ class OperatorSession:
 
         A frame that cannot be applied cannot be skipped either. Its seq is already
         accepted, so the frames behind it would apply while the acknowledgement stays
-        stuck at the hole until something reconnected — and nothing would. Closing is
+        stuck at the hole until something reconnected, and nothing would. Closing is
         that something: the operator resumes from the last acknowledged seq and sends
         this frame again. A sink is expected to accept and discard a frame that could
         never apply (PROTOCOL 6b), so what reaches here is worth another attempt.
@@ -781,12 +781,12 @@ class OperatorSession:
     async def _ownership_loop(self) -> None:
         """Polls this session's own claim row and self-evicts the moment it no longer wins.
 
-        Nothing pushes a displaced session a notification — it may be mid-stream on a
-        different pod than the one that displaced it — so it has to ask (ADR 0005).
+        Nothing pushes a displaced session a notification, it may be mid-stream on a
+        different pod than the one that displaced it, so it has to ask (ADR 0005).
 
         The same poll asks whether the cluster may still hold a session at all. A
         cluster disabled in the registry, or one whose enrolment token was rotated
-        out from under this connection, is cut here within one interval rather than
+        out from under this connection, is cut here within one interval, not
         on whatever reconnect the operator happens to make next.
         """
         failures = 0
@@ -861,7 +861,7 @@ class OperatorSession:
         await self._enqueue(frame)
 
     async def _send_flow(self, type_name: str, payload: Struct, reply_to: str | None = None) -> str:
-        """Sends one frame of a stream, waiting for room rather than failing for want of it.
+        """Sends one frame of a stream, waiting for room instead of failing for want of it.
 
         A stream is something this side chose to send all at once, so it yields to the
         rest of the session: it keeps half the outbound queue and a quarter of the
@@ -900,7 +900,7 @@ class OperatorSession:
         return msgjson.decode(frame, type=RawEnvelope).id
 
     async def _enqueue(self, frame: bytes) -> None:
-        """Queues one encoded frame, closing the connection rather than dropping it (§6)."""
+        """Queues one encoded frame, closing the connection instead of dropping it (§6)."""
         try:
             self._outbound.put_nowait(frame)
         except asyncio.QueueFull:

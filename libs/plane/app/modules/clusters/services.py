@@ -61,7 +61,7 @@ class KeyedFailureBudget:
     """One `FailureBudget` per key, so one source's failures spend only its own.
 
     Bounded: past `max_keys` the least recently charged key is forgotten, which
-    errs towards answering rather than towards holding memory for every address
+    errs towards answering, not towards holding memory for every address
     that ever sent a bad token.
     """
 
@@ -96,8 +96,8 @@ an exhausted budget used to answer with a bare 429 that a gateway could not
 tell from an outage, so a token that had just been rotated out kept working
 for as long as the gateway's cache grace lasted.
 
-Twenty is well above what a healthy agent produces — verification happens once
-per tunnel, at connection setup — and far below what guessing a 256-bit token
+Twenty is well above what a healthy agent produces, verification happens once
+per tunnel, at connection setup, and far below what guessing a 256-bit token
 needs. Spent only by failures and consulted only on the failure path, after the
 lookup, so a valid token is never refused by it, and a refusal that is
 throttled still carries the verdict (`unknown_token`) in its detail.
@@ -107,7 +107,7 @@ throttled still carries the verdict (`unknown_token`) in its detail.
 def _revision(cluster: Cluster) -> str:
     """The value `If-Match` is checked against.
 
-    Derived from the last write rather than stored, because `updated_at` already
+    Derived from the last write, not stored, because `updated_at` already
     moves on every update and a second column tracking the same fact is a second
     column that can disagree with it.
     """
@@ -117,7 +117,7 @@ def _revision(cluster: Cluster) -> str:
 
 STALE_AFTER = dt.timedelta(minutes=40)
 """How long a connected cluster may go without sending anything before its link
-is reported `stale` rather than `connected`.
+is reported `stale` instead of `connected`.
 
 The failure this exists for is an operator whose observation loop stopped while
 its socket stayed up: `reachable` is true, because the socket is the only thing
@@ -126,13 +126,13 @@ with nothing saying so.
 
 The threshold is tied to the operator's resync interval and must stay above it.
 `last_sync_at` moves only when a frame is *ingested*, and the observation loop
-deliberately sends nothing when nothing has changed — so on a quiet cluster the
+sends nothing when nothing has changed, so on a quiet cluster the
 only thing that reliably bumps it is the periodic resync, currently 15 minutes
 (`HANGAR_RESYNC_INTERVAL`). Forty minutes is two missed resyncs plus room for a
 slow one. A threshold below the resync interval would mark every healthy idle
 cluster stale, which is worse than the silence it is meant to catch: an
 indicator that cries wolf on a working fleet is one nobody reads when it is
-right. Heartbeats are deliberately not counted — `last_seen_at` tracks those,
+right. Heartbeats are not counted: `last_seen_at` tracks those,
 and a live socket carrying no observations is precisely the state this reports."""
 
 
@@ -222,7 +222,7 @@ def _hub_url() -> str:
     setting instead of a guess, and the refusal comes before anything is minted.
 
     `APP_ENV=local` is the exception: unset there means the compose hub on this
-    machine, built from settings rather than the request, so `just dev` and
+    machine, built from settings instead of the request, so `just dev` and
     `just fleet` work without extra configuration.
     """
     url = settings.HUB_PUBLIC_URL.strip()
@@ -264,7 +264,7 @@ def values_filename(cluster_name: str) -> str:
 class SetupValues(Struct):
     """Everything the plane fills into a cluster's values file.
 
-    A struct rather than a dozen positional arguments, and the fields are exactly
+    A struct instead of a dozen positional arguments, and the fields are exactly
     the plane's half of the contract with the chart. Notably absent: any
     credential for the metrics write ingress. The chart derives the basicAuth
     password from the enrolment-token Secret it already creates, so username and
@@ -306,23 +306,23 @@ def _image(reference: str) -> dict | None:
 def _setup_values(values: SetupValues) -> str:
     """The full editable values file for the chart, as YAML text.
 
-    The top block is filled by the plane — cluster identity, `region`, `readOnly`,
+    The top block is filled by the plane: cluster identity, `region`, `readOnly`,
     and (at mint only) the enrolment token. The pinned operator image goes in the
     one `operator:` block below the divider, beside the image allowlists the
     cluster owner fills in, because a second `operator:` mapping would shadow the first. `region` and
-    `readOnly` sit there rather than below the divider because they must share the
+    `readOnly` sit there, not below the divider because they must share the
     one `cluster:` key; a second mapping would silently shadow the identity it
     carries. Below a divider is the cluster's own infra facts left blank with a
     comment each: pool labels, the RWX storage class, the HF token, serving, and
     the registry token when the images are private. The operator downloads this
     one file, edits the blanks, and runs helm against it. The chart refuses an
     install with any of those blanks still empty, so a half-edited file fails at
-    `helm upgrade` rather than at the pod.
+    `helm upgrade`, not at the pod.
 
     Each block is a dict passed through `yaml.safe_dump`; only the comments
     between blocks are literal text.
 
-    The HF token is the one blank that is opt-in rather than required: whether a
+    The HF token is the one blank that is opt-in, not required: whether a
     cluster needs one depends on which models land there, and the operator mounts
     `hf-token-secret` with `Optional: true` in all three of its renders. So
     `create` is emitted false.
@@ -339,7 +339,7 @@ def _setup_values(values: SetupValues) -> str:
     not about the cluster. One address and not a list of replicas, so that
     scaling the gateway never reaches this file. It is still emitted off, because
     the chart refuses an agent with no frontend to forward to, and the frontend
-    cannot go on in a first install — its CRD is applied at runtime by the Dynamo
+    cannot go on in a first install: its CRD is applied at runtime by the Dynamo
     operator. With none configured it falls below the divider as a blank.
 
     The monitoring block is `enabled` plus the fleet's one write endpoint, and
@@ -506,7 +506,7 @@ def _setup_values(values: SetupValues) -> str:
             "# gateway and nothing dials in, so there is nothing to open here, but a",
             "# cluster with no agent serves nothing. This plane has no gateway address",
             "# configured (HANGAR_TUNNEL_GATEWAY), so fill it in by hand as host:port,",
-            "# e.g. hangar.example.com:443; ask for it rather than guessing, because a",
+            "# e.g. hangar.example.com:443; ask for it instead of guessing, because a",
             "# wrong one is a tunnel that never establishes.",
             "#",
             "# Enable it together with `frontend.mode` on a later upgrade: the chart",
@@ -569,15 +569,15 @@ class ClusterService:
     def _render_setup(self, cluster: Cluster, hub_url: str, enrolment_token: str | None) -> ClusterSetupSchema:
         """Builds the setup payload for a cluster, with or without a fresh token.
 
-        The values file carries the plane-filled identity — cluster id, hub URL,
-        region, operator image, and the fleet's one metrics write endpoint — plus
+        The values file carries the plane-filled identity, cluster id, hub URL,
+        region, operator image, and the fleet's one metrics write endpoint, plus
         a commented skeleton of the cluster's own infra facts (pool labels,
         storage class, HF token, registry token, serving) for the operator to
         edit in place. It is one downloadable file, not a merge. Helm pulls the
         chart from its own registry, so the instructions work even where the
         plane's ingress is not reachable from the operator's laptop.
 
-        The command names `--kube-context` after the cluster rather than leaving
+        The command names `--kube-context` after the cluster instead of leaving
         the target implicit. Omitted, helm installs CRDs, webhooks and a
         privileged DaemonSet into whatever `kubectl` last pointed at. The
         cluster's name is a guess at the local context alias, but a wrong guess
@@ -654,7 +654,7 @@ class ClusterService:
         """The chart install a person runs to make `ref` hangar-ready (no token).
 
         The enrolment token is minted separately (`issue_enrolment_token`) and
-        shown once; a plain read never carries it — `enrolment_token_set` tells
+        shown once; a plain read never carries it: `enrolment_token_set` tells
         the screen whether to offer "generate" or "rotate".
         """
         cluster = await self.repo.get(ref)
@@ -680,7 +680,7 @@ class ClusterService:
         (ADR 0012). Both are written here so rotation stays a single act.
 
         The hub URL is resolved before anything is written: a plane with no
-        `HUB_PUBLIC_URL` refuses here rather than rotating a working cluster's
+        `HUB_PUBLIC_URL` refuses here instead of rotating a working cluster's
         token and then failing to say where to use the new one.
         """
         cluster = await self.repo.get(ref)
@@ -709,11 +709,11 @@ class ClusterService:
     def _spend_tunnel_guess(self, source: str, message: str) -> NoReturn:
         """Charges one failed verification to `source`'s budget and refuses.
 
-        Only failures reach here, which is the whole point: the budget is read on
+        Only failures reach here, which is the point: the budget is read on
         the way to a refusal and never on the way to an identity, so a cluster
         presenting a good token is never rate-limited by somebody else's bad one.
 
-        A spent budget answers `429 rate_limited` rather than `401`, so a caller
+        A spent budget answers `429 rate_limited` instead of `401`, so a caller
         can slow down, but the detail still says `verdict: unknown_token`: the
         lookup has already happened, and a gateway must be able to drop a cached
         identity for a rotated token whether or not this source is throttled.
@@ -732,7 +732,7 @@ class ClusterService:
         A third verifier over the same credential the hub and the metrics write
         ingress already check (`issue_enrolment_token`), for the third thing a
         cluster dials out to: the gateway's tunnel listener. It
-        deliberately mints nothing and stores nothing — the gateway asks who just
+        mints nothing and stores nothing: the gateway asks who just
         connected, gets an identity or a refusal, and never holds a cluster's
         token material or a hash of it.
 

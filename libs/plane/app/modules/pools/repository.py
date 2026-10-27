@@ -21,7 +21,7 @@ def _cluster_column(ref: str):
 class PoolRepository:
     """Reads pools and rolls their membership up in aggregate.
 
-    Membership is counted in the database rather than by walking
+    Membership is counted in the database, not by walking
     `Pool.nodes` and `Node.devices`: those relationships are `lazy="noload"`, and
     even if they were not, a pool of three hundred eight-GPU nodes would mean
     loading two and a half thousand rows to answer a question that is six
@@ -97,7 +97,7 @@ class PoolRepository:
 
         A pool name is unique only within its cluster, so a bare name is ambiguous
         across clusters; `cluster` narrows it, and a name that still matches two pools
-        is refused rather than resolved to either.
+        is refused, not resolved to either.
         """
         query = self.get_query(ref, cluster).limit(2)
         if lock:

@@ -22,7 +22,7 @@ from .services import DiscoveredWorkloadService
 class DiscoveredWorkloadRoutes(Controller):
     """What the clusters were already running when we got there.
 
-    `track` and `ignore` are POSTs rather than a PATCH on the workload because
+    `track` and `ignore` are POSTs instead of a PATCH on the workload because
     the object they write is not the workload: the sighting is observed and has
     exactly one writer, and these record a decision beside it. Neither verb sends
     anything to a cluster.
@@ -102,7 +102,7 @@ class DiscoveredWorkloadRoutes(Controller):
 
         A DELETE even though nothing observed is deleted, because what a caller is
         removing is the entry in front of them and the sighting underneath it is
-        not theirs to remove — ingestion owns it and would write it back within an
+        not theirs to remove: ingestion owns it and would write it back within an
         observation interval anyway. The decision is recorded, the list honours it,
         and `POST /restore` undoes it. Nothing here reaches a cluster: the workload
         goes on running exactly as it was.

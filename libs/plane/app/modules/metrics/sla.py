@@ -7,7 +7,7 @@ is the part that fetches.
 
 **The period.** A calendar month in UTC by default, because that is the unit an
 SLA credit is written in; `from`/`to` for anything else. A period still running is
-measured up to now and says so with `partial`, rather than being refused or being
+measured up to now and says so with `partial`, instead of being refused or being
 extrapolated to its end. A period is measured as one lookback of its own length
 taken at its end, so the figures are over exactly that span.
 
@@ -76,7 +76,7 @@ def resolve_period(query: PeriodQuery, now: dt.datetime) -> Period:
     """The period a report is about, clamped to now.
 
     A month and an explicit range are two ways of saying the same thing and are
-    refused together rather than one silently winning. With neither, the current
+    refused together instead of one silently winning. With neither, the current
     calendar month.
     """
     now = _utc(now)

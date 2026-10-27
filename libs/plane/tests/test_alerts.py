@@ -1,4 +1,4 @@
-"""The alerts and notification-channels modules, compiled rather than executed.
+"""The alerts and notification-channels modules, compiled, not executed.
 
 Query shape and schema surface only; the lifecycle lives in `test_reactor_db.py`,
 where it needs a database to mean anything.

@@ -7,14 +7,14 @@ Create Date: 2026-08-21 14:30:00.000000
 `reason` and `message` on `demand_deployment_status` are what the cluster says it
 is doing within a phase: the recipe has not arrived, the weights are still
 downloading, no node advertises enough accelerators. The operator has always known
-these and had nowhere to put them — they went to a log line in another cluster and
+these and had nowhere to put them: they went to a log line in another cluster and
 the plane showed `pending` with no explanation for as long as it lasted.
 
-Deliberately not `last_error`. Waiting for a download is not an error, and a column
+Not `last_error`. Waiting for a download is not an error, and a column
 whose name says otherwise turns every ordinary wait into something a reader has to
 decide is fine. `reason` is a closed set the operator owns (MESSAGES.md); this
 column does not constrain it, so a value the plane has never heard of is stored and
-displayed rather than rejected.
+displayed, not rejected.
 
 Both are null on existing rows and stay null until the cluster reports again, which
 is correct: nothing here knows what those deployments were waiting for.

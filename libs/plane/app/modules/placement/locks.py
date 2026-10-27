@@ -2,11 +2,11 @@
 
 Placement reads a snapshot and the caller writes deployments from it. Two callers
 doing that at once both see the same free devices and the same quota headroom, and
-both write — the over-commit a snapshot cannot see. The lock is per device class,
+both write: the over-commit a snapshot cannot see. The lock is per device class,
 because capacity is shared across projects within a class and a quota is scoped to
 one class: holding it covers both the cluster's devices and the project's ceiling.
 
-A transaction-scoped advisory lock rather than a row lock because the thing being
+A transaction-scoped advisory lock instead of a row lock because the thing being
 protected is an aggregate with no row of its own. It is released at commit or
 rollback, so there is nothing to forget to unlock.
 """

@@ -8,7 +8,7 @@ transaction, so two writers cannot both spend the devices or quota one snapshot
 showed free. A caller that only reads a decision, as the preview routes and the
 reactor's would-it-place-more check do, needs no lock.
 
-Responses are the decision structs from `decision.py` rather than copies of them.
+Responses are the decision structs from `decision.py`, not copies of them.
 They were designed as the explanation an operator reads, and mirroring them into
 near-identical schemas would give a new rejection code two places to be added and
 one place to be forgotten.
@@ -43,8 +43,8 @@ from .repository import PlacementRepository
 PREVIEW_UID = "wkl_preview"
 """The identifier a preview of an uncreated shape is answered under.
 
-Deliberately not a mintable uid. A preview writes nothing and reaches no cluster,
-so the name only has to be stable and obviously not a row — inventing a plausible
+Not a mintable uid. A preview writes nothing and reaches no cluster,
+so the name only has to be stable and obviously not a row: inventing a plausible
 `wkl_01m0...` would put a reference in a decision that resolves to nothing, and
 the first person to paste it into a lookup would get a 404 and a wasted hour.
 """
@@ -60,10 +60,10 @@ def _single[T](found: list[T], kind: str, ref: str) -> T:
 class ShapeSource(Protocol):
     """Anything that can state a device shape: a `Workload`, or a bare preview request.
 
-    A structural type rather than a union because the two share nothing else and
-    have no common base worth inventing. They agree on these six names — the
+    A structural type instead of a union because the two share nothing else and
+    have no common base worth inventing. They agree on these six names, the
     preview request is spelled with the workload's column names precisely so that
-    one builder reads either without translating — and that agreement is the whole
+    one builder reads either without translating, and that agreement is the whole
     contract.
     """
 
@@ -105,20 +105,20 @@ class PlacementService:
         can hold a quarter of it.
 
         The single-domain requirement, though, does not multiply. It is a property
-        of one replica's collective — the replicas do not talk to each other over
-        NVLink — so requiring all thirty-two in one NVLink domain would reject
+        of one replica's collective, the replicas do not talk to each other over
+        NVLink, so requiring all thirty-two in one NVLink domain would reject
         clusters that can run the deployment perfectly well.
 
-        `atomic` is set because this call places one indivisible unit — one share,
-        already sized by the expansion — and a share lands in one cluster whole or
+        `atomic` is set because this call places one indivisible unit, one share,
+        already sized by the expansion, and a share lands in one cluster whole or
         not at all. Splitting is a decision taken above this, in `expand()`.
 
         The topology requirement is the shape's unless the caller states its own.
         The columns describe one replica of one engine; a gang deployment is a
         shape they cannot know about, so a value given here wins and a null one
-        falls through rather than clearing what was declared.
+        falls through instead of clearing what was declared.
 
-        `workload_row` is a `ShapeSource` rather than a `Workload` so that a
+        `workload_row` is a `ShapeSource` instead of a `Workload` so that a
         preview of something not yet created reaches the same builder. Both carry
         the same six field names, which is why no translation happens here.
         """
@@ -147,12 +147,12 @@ class PlacementService:
 
         This is the call that turns "run gpt-20b on asia and europe" into shares.
         It resolves the workload's project and priority, reads capacity once, and
-        hands both to the pure expansion; persisting the shares — creating,
-        resizing and removing the per-cluster deployments — belongs to whoever
+        hands both to the pure expansion; persisting the shares, creating,
+        resizing and removing the per-cluster deployments, belongs to whoever
         asked, inside its own write, exactly as `decide()` does.
 
         A gang that fits in no single cluster raises. Its ranks are co-scheduled, so
-        a split gang is broken rather than degraded and there is no partial answer
+        a split gang is broken, not degraded and there is no partial answer
         worth returning; the engine stays total and the rejection is raised here.
         """
         demand = await self.demand(workload)
@@ -241,13 +241,13 @@ class PlacementService:
 
         Two forms, one answer. `workload` asks about a shape that exists and hands
         the engine that workload's own uid. `shape` asks about one that does not
-        exist yet — the create-form question — and hands the engine `PREVIEW_UID`,
+        exist yet, the create-form question, and hands the engine `PREVIEW_UID`,
         because nothing is being created and inventing a plausible `wkl_...` would
         put a reference in a decision that resolves to nothing.
 
         Project, priority and replica count are taken from the request in both
-        forms rather than off any row. That is what makes this a question — what
-        would this shape cost for that project, at that priority, at that scale —
+        forms, not off any row. That is what makes this a question, what
+        would this shape cost for that project, at that priority, at that scale,
         as against a report of what a workload already has.
         """
         if (data.workload is None) == (data.shape is None):

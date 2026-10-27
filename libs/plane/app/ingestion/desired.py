@@ -5,7 +5,7 @@ this reads what the plane declared for it, and the hub streams it down on
 connect or resync. It is read-only by construction: nothing in this module
 opens a transaction or writes a row.
 
-A generator rather than a list. A full resync of a large cluster is thousands of
+A generator instead of a list. A full resync of a large cluster is thousands of
 objects and the session emits them one at a time under backpressure, so
 materialising the snapshot first would cost the memory and buy nothing.
 """
@@ -111,14 +111,14 @@ async def desired_object(
     the two must never disagree: a deployment that reaches a cluster one way on
     connect and a different way on a write is a divergence that only shows up
     once something is already serving the wrong thing. So this narrows the same
-    query the snapshot runs rather than standing a second renderer beside it.
+    query the snapshot runs instead of standing a second renderer beside it.
 
-    Absence is an answer, not a failure. A deployment that is gone — deleted, or
-    disabled, or moved to another cluster — renders as `deployment.deleted`,
+    Absence is an answer, not a failure. A deployment that is gone, deleted, or
+    disabled, or moved to another cluster, renders as `deployment.deleted`,
     because from the cluster's side those are one fact: stop running this. The
     generation is the caller's, since there is no row left to read it from.
 
-    Returns `None` only when there is nothing this seam can say — an unknown
+    Returns `None` only when there is nothing this seam can say: an unknown
     cluster, or a kind live dispatch does not carry yet.
 
     This renders the changed object alone. `desired_frames` is what dispatch
@@ -157,8 +157,8 @@ async def desired_frames(
 
     So a hint about a deployment resolves to its dependency chain, in the same
     order and from the same queries the snapshot uses. Re-sending an object the
-    cluster already has is free — the stream is full-object and idempotent by
-    construction (PROTOCOL §6) — and is the cheap side of the trade against a
+    cluster already has is free, the stream is full-object and idempotent by
+    construction (PROTOCOL §6), and is the cheap side of the trade against a
     deployment stranded until the next reconnect.
 
     The chain is one hop shorter than it was. A deployment used to name a recipe
@@ -169,7 +169,7 @@ async def desired_frames(
     there is nothing left to arrive out of order.
 
     A `deployment.deleted` carries the warm set after it, and only the warm set.
-    The artifact frame is deliberately not withdrawn — an artifact is a
+    The artifact frame is not withdrawn: an artifact is a
     description of some weights and describing them costs a cluster nothing, so
     there is no frame that unsays one and no reason to want one. The warm set is
     different: it is the statement that this cluster *must hold* those weights,
@@ -180,7 +180,7 @@ async def desired_frames(
     what the cluster needed to hear. It was not. Deleting a workload removed the
     deployment and left the prefetch job pulling weights for it, visible in
     `kubectl get pods` under the name of a model nothing had asked for since,
-    until the next reconnect happened to resend a warm set — which for the last
+    until the next reconnect happened to resend a warm set, which for the last
     workload on a cluster resent nothing at all.
     """
     cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
@@ -293,16 +293,16 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
 def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole] = ()) -> ServingSpec:
     """The engine configuration as the cluster is told it, read off the workload.
 
-    Inlined on the deployment rather than sent as an object of its own; the
+    Inlined on the deployment, not sent as an object of its own; the
     reasoning lives on `ServingSpec` in `app.hub.messages`.
 
-    The device shape is deliberately not here. It reaches the cluster on the
+    The device shape is not here. It reaches the cluster on the
     deployment's `placement`, derived from these same columns, and putting it in
     both places would be two copies of one fact on one wire.
 
     `frontend_image` has an order too, and it is one step long: the workload's own
     declaration when it has one, otherwise empty. Empty means the cluster
-    decides, and it does not mean the engine image — a frontend and a worker are
+    decides, and it does not mean the engine image: a frontend and a worker are
     separately versioned binaries, which is the entire reason the field exists, so
     falling back to `engine_runtime_image` here would hand every model the one image a
     separate frontend build exists to avoid. The default belongs to the operator because only
@@ -377,7 +377,7 @@ def _diffusion(workload: Workload) -> DiffusionSpec | None:
 def _router(workload: Workload) -> RouterSpec | None:
     """The frontend router settings as the cluster is told them, or None when none are declared.
 
-    None rather than an empty block, so a workload that declares nothing sends what it sent before
+    None instead of an empty block, so a workload that declares nothing sends what it sent before
     the block existed and "declared nothing" has one spelling on the wire.
     """
     declared = declared_router(workload.router)
@@ -390,8 +390,8 @@ def _role_replicas(deployment: Deployment, roles: Sequence[WorkloadRole]) -> dic
     **The plane multiplies and the operator never does.** Under a disaggregated topology
     `min_replicas` counts groups, and a group is the per-role weights taken together, so a role's
     worker count is `min_replicas x weight`. The operator is forbidden this arithmetic by its own
-    contract — `Replicas()` says it "renders exactly the number it is sent, and must never sum,
-    scale, or re-derive it against anything else" — and that invariant is currently absolute and
+    contract, `Replicas()` says it "renders exactly the number it is sent, and must never sum,
+    scale, or re-derive it against anything else", and that invariant is currently absolute and
     cheap to check. Spending it to save one map on a frame the plane already sends would be a bad
     trade, and it is the kind of exception that is never the last one.
 
@@ -430,7 +430,7 @@ async def _deployments(
 
     Serving configuration, adapters, lifecycle, project and priority are facts
     about what was asked for and live on the parent `Workload`, so every one of
-    them is a join away rather than a column here.
+    them is a join away instead of a column here.
 
     `min_replicas` and `max_replicas` are read straight off the deployment and
     are THIS CLUSTER'S SHARE of the workload's total. The total is never on the
@@ -463,7 +463,7 @@ async def _deployments(
 
     # One query for the page, not one per deployment. Ordered by role so two builds of the same
     # frame agree: the operator renders the components in the order they arrive, and Dynamo hashes
-    # the components together — a re-ordering here would rename every worker without anything
+    # the components together: a re-ordering here would rename every worker without anything
     # having changed.
     role_rows = (
         await db.execute(
@@ -524,14 +524,14 @@ def _adopt(deployment: Deployment) -> Adopt | None:
     the moment a cluster stops mentioning it, so any frame rendered inside that
     window carried no `adopt` block at all. An operator receiving one stops
     recognising the deployment as adopted, takes the `NoClusterWork` branch, and
-    never reads a rollout for it again — which reads in the console as a serving
+    never reads a rollout for it again, which reads in the console as a serving
     workload stuck at `placed · 0/1` forever, because nothing re-dispatches the
     deployment when the sighting comes back.
 
     Absence now means one thing only: this deployment was never promoted. A row
     that carries `adopted_workload_uid` and nothing to name it with is a promotion
-    that predates those columns and could not be backfilled, and it is logged
-    rather than silently rendered as an ordinary deployment — silence is what let
+    that predates those columns and could not be backfilled, and it is logged,
+    not silently rendered as an ordinary deployment: silence is what let
     the failure above run for hours without a line anywhere saying so.
     """
     if not deployment.adopted_workload_uid:
@@ -555,7 +555,7 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     """What this cluster must have on disk: its warm set, plus what its deployments serve.
 
     The union is the same one `_artifact_ids_query` applies, and for the same
-    reason. Deploying a model is a statement that its weights must be resident —
+    reason. Deploying a model is a statement that its weights must be resident:
     the operator will not start a replica against a cold cache, and it has no
     other way to be told to fetch them. A warm set that was the only source made
     residency a second thing somebody had to declare by hand, in a table with no
@@ -565,12 +565,12 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     A derived entry is unpinned and at priority zero: it is warm because
     something deploys it, so it should stop being warm when nothing does. A warm
     set row for the same artifact wins, which is what makes the warm set still
-    worth having — it is how weights are pre-fetched before a deployment exists
+    worth having: it is how weights are pre-fetched before a deployment exists
     and how a model is pinned against eviction once it is.
 
     Only `managed` deployments derive one. An `observed` deployment is one the
     plane has explicitly said it does not run, so declaring what its weights
-    should do is the plane acting on a workload it does not own — and pointless
+    should do is the plane acting on a workload it does not own, and pointless
     besides, because something is already serving those weights and they are
     already on the node. The first version of this union left authority out and
     put three adopted models into a cluster's warm set, which downloaded a second
@@ -609,7 +609,7 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
 
     # An empty warm set is a statement and not a silence. Returning nothing here read
     # as "no opinion", so the last workload on a cluster was deleted, the derived entry
-    # disappeared, and no frame went out to say so — leaving the operator converging on
+    # disappeared, and no frame went out to say so: leaving the operator converging on
     # the warm set it was last told about, for ever. "Hold nothing" is the answer, and
     # it has to be said out loud for anything to act on it.
     policy: Any = rows[0][0].eviction_policy if rows else "lru"

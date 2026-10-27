@@ -1,7 +1,7 @@
 """Domain modules.
 
-One package per object in the model. Everything that is not a domain object —
-the database, configuration, logging, the HTTP application, the hub — lives
+One package per object in the model. Everything that is not a domain object,
+the database, configuration, logging, the HTTP application, the hub, lives
 outside this package, because those are machinery and these are the product.
 
 Most modules have the same five files:

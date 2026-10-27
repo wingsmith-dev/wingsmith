@@ -1,8 +1,8 @@
 """The HuggingFace client, with every response mocked.
 
 No test here touches the network: the digest is the artifact's identity, so the
-rule it has to obey — same files, same digest, regardless of what the Hub happened
-to return first — is a property of our code and must be provable offline.
+rule it has to obey, same files, same digest, regardless of what the Hub happened
+to return first, is a property of our code and must be provable offline.
 """
 
 import json

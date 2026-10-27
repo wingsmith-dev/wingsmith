@@ -54,13 +54,13 @@ def check_quantization(value: str | None) -> None:
     The two are one keystroke apart in a form and mean opposite things: dtype is
     the precision weights are already in, quantization is a scheme for making them
     smaller than that. An engine takes only real methods on `--quantization`, so a
-    dtype there is not a degraded serve — it is a worker that exits before it binds
+    dtype there is not a degraded serve: it is a worker that exits before it binds
     a port, and the cluster reports it as a crash loop with no mention of this
     field. Cheap to catch when someone writes it, expensive to diagnose an hour
     later from the other side of the wire.
 
     Unquantized weights declare nothing here. Empty is the correct answer for the
-    majority of repos, which is why this rejects rather than translates: silently
+    majority of repos, which is why this rejects, not translates: silently
     moving the value to `dtype` would guess at an intent the caller did not state.
     """
     if value is not None and value.strip().lower() in DTYPE_VALUES:
@@ -74,8 +74,8 @@ def check_quantization(value: str | None) -> None:
 def check_footprint(**fields: int | None) -> None:
     """Rejects a negative resource request.
 
-    Separate from the shape check because these are per-replica sizing hints
-    rather than placement constraints: none of them decide which devices a workload
+    Separate from the shape check because these are per-replica sizing hints,
+    not placement constraints: none of them decide which devices a workload
     can run on, and none of them can be below zero either.
     """
     for name, value in fields.items():
@@ -86,8 +86,8 @@ def check_footprint(**fields: int | None) -> None:
 def check_floor(device_class: str, device_memory_mib_min: int) -> None:
     """Rejects a per-device memory floor the declared device class cannot meet.
 
-    A device class *is* a memory figure — `h100-80gb-sxm` and `h100-80gb-pcie` are
-    separate entries of the table for exactly this reason — so a class and a floor
+    A device class *is* a memory figure, `h100-80gb-sxm` and `h100-80gb-pcie` are
+    separate entries of the table for exactly this reason, so a class and a floor
     are two statements about the same quantity and they can contradict each other.
     When they do, placement filters every device of that class out before it looks
     at whether any are free, reports `no_such_device_class`, and the workload
@@ -129,12 +129,12 @@ def check_shape(
 ) -> None:
     """Rejects a shape that cannot be placed.
 
-    `context_length` is None where the engine has no such thing — a diffusion model on omni —
+    `context_length` is None where the engine has no such thing, a diffusion model on omni,
     and is then not checked.
 
-    Two rules, both from heterogeneity being a scheduling constraint rather than
-    an enrolment detail. A shape without a device class is not a shape — you
-    cannot tensor-parallel across an A100 and an H100 — and a device count that
+    Two rules, both from heterogeneity being a scheduling constraint instead of
+    an enrolment detail. A shape without a device class is not a shape, you
+    cannot tensor-parallel across an A100 and an H100, and a device count that
     is not a whole multiple of tensor × pipeline parallelism describes a layout
     no scheduler can lay down.
     """
@@ -169,7 +169,7 @@ def sizing_for(artifact: Artifact, quantization: str | None) -> Sizing | None:
 
     The workload's quantization wins wherever it declares one. Serving fp16 weights
     at fp8 halves what has to be resident, so sizing against the repo's native
-    precision would refuse shapes that work — the workload is the thing that decides
+    precision would refuse shapes that work: the workload is the thing that decides
     how the weights are loaded, and the artifact only says how they ship.
     """
     sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
@@ -190,7 +190,7 @@ def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, 
 
     Silent about anything it cannot measure. An artifact whose repo published no
     attention shape or parameter count, and a device class the catalogue does not
-    name, both pass — the plane does not refuse what it has no number for.
+    name, both pass: the plane does not refuse what it has no number for.
 
     `tensor_parallel` is the workload's own, not the device count. A replica of sixteen
     devices at tensor-eight by pipeline-two divides its heads by eight, and checking
@@ -217,13 +217,13 @@ def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, 
 DISAGGREGATION_INCAPABLE_ENGINES: frozenset[str] = OMNI_ENGINES
 """Engines the plane knows have no prefill/decode split, and refuses one for.
 
-A deny list rather than an allow list because this module refuses only what it can prove:
-`check_capacity` states the governing habit — "the plane does not refuse what it has no number
-for" — and `resolve_engine_runtime_image` returns `None` rather than inventing an address for an
+A deny list instead of an allow list because this module refuses only what it can prove:
+`check_capacity` states the governing habit, "the plane does not refuse what it has no number
+for", and `resolve_engine_runtime_image` returns `None` instead of inventing an address for an
 engine nobody configured. An allow list would refuse every engine added after this line was
 written, which is the failure mode of a closed set that is not actually closed.
 
-The omni engine is the member: its pipeline has stages rather than a prefill/decode pair,
+The omni engine is the member: its pipeline has stages instead of a prefill/decode pair,
 and the operator renders it as one aggregated `worker`.
 """
 
@@ -235,22 +235,22 @@ def check_topology(serving_topology: str, roles: Sequence[WorkloadRole], engine:
     can still fix it. A topology mistake that surfaces as a failed reconcile is a mistake
     discovered by a model that did not start, twenty minutes of weight loading later.
 
-    What is deliberately **not** refused is as load-bearing as what is.
+    What is **not** refused is as essential as what is.
 
     Weights are free positive integers, not coprime. Coprimality was proposed so that each ratio
     would have exactly one spelling, but the argument rested on the weights being part of the
-    configuration's identity and they are not — `serving_digest` excludes them. What it costs is
+    configuration's identity and they are not: `serving_digest` excludes them. What it costs is
     real: it makes "two of each" inexpressible as `2:2`, forcing it to be written `1:1` at two
     groups, which reinterprets a live scale number to say the same thing.
 
     Per-role capacity is not checked separately, because there is nothing separate to check. The
-    two roles share `device_class`, `device_count` and `tensor_parallel` — the recipe's whole
-    delta is six arguments — so `check_capacity` on the workload already answers for both. A
+    two roles share `device_class`, `device_count` and `tensor_parallel`, the recipe's whole
+    delta is six arguments, so `check_capacity` on the workload already answers for both. A
     second call with identical inputs would be a check that cannot fail differently.
 
     Whether a group is expressible in whole nodes is not checked either. It cannot be:
     `devices.table()` carries per-device memory and not node shape, so devices-per-node is a fact
-    about a cluster rather than about a device class. `_tensor_group_too_wide` already asks it at
+    about a cluster, not about a device class. `_tensor_group_too_wide` already asks it at
     placement, where the cluster is in hand, and a weaker copy here would refuse workloads that
     some cluster in the fleet can serve.
     """
@@ -323,7 +323,7 @@ def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
 
 
 def _reasoning_declared(reasoning: ReasoningSchema) -> bool:
-    """Whether anything about reasoning was declared rather than left at its default."""
+    """Whether anything about reasoning was declared, not left at its default."""
     return bool(
         reasoning.default_on
         or reasoning.parser
@@ -359,10 +359,10 @@ def check_router(router: RouterSchema) -> None:
 
     The ranges are Dynamo's own: `kv-router` validates `router_queue_threshold` as `>= 0` and
     `overlap_score_credit` as finite and non-negative, and the frontend fails at startup on
-    anything else — a crash-looping frontend rather than an error on the declaration.
+    anything else: a crash-looping frontend instead of an error on the declaration.
 
     The two consistency rules are this plane's, and they are the `structured_output_backend` rule
-    again: a setting that cannot take effect is refused rather than stored, because storing it lets
+    again: a setting that cannot take effect is refused, not stored, because storing it lets
     somebody believe they asked for something. The router only queues once a threshold is set, so a
     policy without one orders an empty queue; and a KV setting beside another mode is never read.
     """
@@ -400,8 +400,8 @@ def check_serving(
 ) -> None:
     """Rejects a serving configuration that contradicts itself.
 
-    Every rule here is a consistency check between two things the workload declares
-    — never a check that a capability claim is true. The plane holds no table of
+    Every rule here is a consistency check between two things the workload declares,
+    never a check that a capability claim is true. The plane holds no table of
     what an engine can do and is not being given one: a block that is internally
     consistent and entirely false is accepted, and a conformance run is the only
     thing that can falsify it.
@@ -515,7 +515,7 @@ def check_output(engine: str, serving: ServingSchema) -> None:
     The one place the plane knows something about an engine, and it knows it because the
     command line differs: only `dynamo.vllm.omni` takes `--output-modalities` and a stage-config
     file, and omni exits without the former. So an omni workload must say `image` or `video`, and
-    every other engine emits text and may not claim otherwise — a chat worker handed an image
+    every other engine emits text and may not claim otherwise: a chat worker handed an image
     modality would either crash on the flag or come up healthy answering the wrong API.
     """
     modality = serving.output_modality
@@ -553,9 +553,9 @@ def check_host_architecture(engine: str, device_class: str) -> None:
     """Rejects an engine on a device class whose host CPU it has no build for.
 
     Placement matches a workload's device class exactly, so refusing the pair here keeps it off
-    every cluster — named ones included — before anything is admitted. The alternative is a
+    every cluster, named ones included, before anything is admitted. The alternative is a
     workload placed on a GB200 and an amd64 image pulled onto an arm64 node, which fails in a
-    pod log rather than on the declaration. A class the table does not carry is not refused:
+    pod log, not on the declaration. A class the table does not carry is not refused:
     the plane does not refuse what it has no fact for.
     """
     if (engine or "").strip().lower() not in AMD64_ONLY_ENGINES:
@@ -615,8 +615,8 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
 def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, gang_size: int) -> None:
     """Rejects totals that contradict each other, or a gang that pretends to a range.
 
-    Zero is a legitimate floor — a workload scaled to nothing is parked, not
-    deleted — so for a splittable kind the only rules are non-negativity and the
+    Zero is a legitimate floor, a workload scaled to nothing is parked, not
+    deleted, so for a splittable kind the only rules are non-negativity and the
     ordering of the three numbers.
 
     A gang is different in kind and not just in degree: its ranks are co-scheduled,

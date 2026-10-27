@@ -4,7 +4,7 @@ from app.core.schemas import Struct
 
 
 class BenchmarkProvenanceSchema(Struct):
-    """What was running when the run was taken, snapshotted rather than joined.
+    """What was running when the run was taken, snapshotted, not joined.
 
     A workload is mutable and a deployment is disposable, so a run that resolved
     these by join would start describing something else the moment either moved
@@ -13,13 +13,13 @@ class BenchmarkProvenanceSchema(Struct):
 
     `serving_digest` is what the run is about, and it is the one field here that
     cannot go stale by construction: it is the content of the configuration
-    rather than a handle on it. The pair it replaced — a recipe id and a version
-    — named a row that could be edited under the run.
+    instead of a handle on it. The pair it replaced, a recipe id and a version,
+    named a row that could be edited under the run.
 
     Every field is nullable-or-empty because an endpoint-level run has none of
     them. A request to a public name is routed by weight across every enabled
     upstream, so a run dispatched "for" one deployment measures whatever the
-    gateway chose — usually not that one. An honest empty snapshot beats a
+    gateway chose, usually not that one. An accurate empty snapshot beats a
     confident wrong attribution, and `level` on the request records why it is
     empty.
 
@@ -49,7 +49,7 @@ class BenchmarkParameterSchema(Struct):
 class BenchmarkHarnessSchema(Struct):
     """A harness this plane can point at a serving surface, and where it may be pointed.
 
-    `levels` is served rather than assumed by the console for the same reason the
+    `levels` is served, not assumed by the console for the same reason the
     parameter table is: a second copy of it is a second answer to what a probe
     suite may be run against. It lists only the levels something executes today
     (`harnesses.RUNNABLE_LEVELS`), so `endpoint` is absent until its executor exists.
@@ -82,7 +82,7 @@ class BenchmarkCheckSchema(Struct):
 class BenchmarkVerdictSchema(Struct):
     """Whether a run met the standard, derived at read against a pinned criteria version.
 
-    Never stored. `criteria_version` is what makes deriving it honest: a verdict
+    Never stored. `criteria_version` is what makes deriving it accurate: a verdict
     computed fresh against a table somebody may edit is a verdict that silently
     changes meaning, which is worse than a stored one because a stored one at
     least does not lie about the past.
@@ -118,7 +118,7 @@ class BenchmarkReadingSchema(Struct):
     """One number of one run, with the path it was read from and the unit it is in.
 
     A reading that did not resolve is a null value beside the path that was
-    looked for — a named miss, never a silent zero. A curve with a zero at one
+    looked for: a named miss, never a silent zero. A curve with a zero at one
     step draws a cliff the machine did not have, and a client cannot tell that
     zero from a measured one.
     """
@@ -137,8 +137,8 @@ class BenchmarkCurvePointSchema(Struct):
     aggregate rate clears a per-stream floor under every possible condition and
     a check that could reach it would be a check that can never fail.
 
-    A discarded run is still a point, flagged rather than dropped — a warm-up is
-    part of what was run — and it is excluded from the knee. A run still open is
+    A discarded run is still a point, flagged, not dropped, a warm-up is
+    part of what was run, and it is excluded from the knee. A run still open is
     a point too, with null readings, so the console can draw a partial curve
     while the ramp is still climbing.
     """
@@ -181,7 +181,7 @@ class BenchmarkCurveSchema(Struct):
     Nothing here is stored. The curve and the knee are derived at read against
     the criteria version the request was created under, exactly as the verdict
     is, because a stored knee cannot answer the question a criteria revision
-    immediately raises — where would the elbow have been under the new rules.
+    immediately raises, where would the elbow have been under the new rules.
 
     `serving_digest` is the configuration the curve is about, and it is null
     when the request's runs did not all measure the same one: a curve drawn
@@ -260,7 +260,7 @@ class BenchmarkRequestSchema(Struct):
 
     Carries no phase, no summary and no verdict of its own. Its phase is derived
     from its runs and so is its verdict, because a request that stored either
-    would be an operation modelled as a status field — and because a stored
+    would be an operation modelled as a status field, and because a stored
     verdict cannot answer "would this have passed under the new rules", which is
     the question a criteria revision immediately raises.
     """
@@ -287,7 +287,7 @@ class BenchmarkRequestSchema(Struct):
 class BenchmarkRunCreateRequest(Struct):
     """`POST /v1/benchmarks` with the deployment named in the body.
 
-    The deployment is a field rather than a path segment for the same reason an
+    The deployment is a field instead of a path segment for the same reason an
     operation's target is: the run is the object being created, and hanging a
     creation off `/deployments/{id}/benchmarks` would make the collection a
     sub-resource of one of the several things it can be filtered by.
@@ -297,7 +297,7 @@ class BenchmarkRunCreateRequest(Struct):
     than a job that fails in a cluster ten minutes from now.
 
     `image` overrides the pinned harness image for this run alone. Omitted, the
-    run takes the harness default, which is what almost every run should do —
+    run takes the harness default, which is what almost every run should do:
     a table of runs is comparable because the tool that produced them did not
     move. Set it to reach a newer release without waiting on a plane deploy, and
     accept that a run pinned elsewhere is its own comparison group.
@@ -318,7 +318,7 @@ class BenchmarkRunCreateRequest(Struct):
 
 
 class BenchmarkRequestCreateRequest(Struct):
-    """`POST /v1/benchmarks/requests` — what to measure, and at which level.
+    """`POST /v1/benchmarks/requests`: what to measure, and at which level.
 
     `target` is a deployment, a workload or an endpoint, and `level` says which,
     because the three are different claims that must not be averaged: a
@@ -336,7 +336,7 @@ class BenchmarkRequestCreateRequest(Struct):
     than the lenient branch.
 
     `mode` is the shape of the runs, and `steps` are the load points a stepped
-    one walks — concurrencies for a `ramp`, prompt lengths for a `sweep`. A
+    one walks: concurrencies for a `ramp`, prompt lengths for a `sweep`. A
     sweep is what makes a per-band time-to-first-token claim evidenceable: one
     invocation measures one load point, and the standard sets a target for each
     of six input-length bands.
@@ -358,13 +358,13 @@ class BenchmarkRequestCreateRequest(Struct):
 class ServingBenchmarkSummarySchema(Struct):
     """Offline benchmark measurement rolled up per `serving_digest`, computed at read time.
 
-    Keyed on the digest rather than on a workload, because the digest is what a
+    Keyed on the digest, not on a workload, because the digest is what a
     measurement is actually about. Two workloads that declare the same engine,
     the same parallelism and the same cache settings against the same artifact
     produce the same running process, so a number taken against one of them is a
     number about the other; rolling up per workload would split one population in
     two and report each half as the peak. It also survives what a workload does
-    not — renaming, rescaling, deletion — because the digest is content rather
+    not (renaming, rescaling, deletion) because the digest is content rather
     than identity, and a run keeps naming the configuration it measured after the
     row that asked for it has gone. This is what the recipe rollup was reaching
     for when it keyed on a mutable recipe id and version.
@@ -373,7 +373,7 @@ class ServingBenchmarkSummarySchema(Struct):
     throughput any graded run of this configuration reported, read through the
     same harness-and-version adapter the verdicts use and never through a
     normalised metric schema. It is `None` when no run carried a reading this
-    plane knows how to find — a named absence, not a zero. This is held-in-plane
+    plane knows how to find: a named absence, not a zero. This is held-in-plane
     offline measurement, never live serving telemetry.
     """
 

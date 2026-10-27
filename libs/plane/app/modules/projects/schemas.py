@@ -16,10 +16,10 @@ Ref = Annotated[str, Meta(min_length=1, max_length=64)]
 
 
 class ProjectTenantSchema(Struct):
-    """The tenant a project belongs to, embedded rather than linked.
+    """The tenant a project belongs to, embedded, not linked.
 
     Embedded so that no reader of a project has to join for the two facts it always
-    needs — which tenant, and whether that tenant is switched on. `/v1/tenants` is
+    needs, which tenant, and whether that tenant is switched on. `/v1/tenants` is
     the collection; this is the copy that travels with the project.
     """
 

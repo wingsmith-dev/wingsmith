@@ -50,9 +50,9 @@ ROLES = frozenset({"primary", "canary", "fallback"})
 SERVING_PHASES = frozenset({"active"})
 """The cluster phases that may carry inference traffic.
 
-`pending` has never been enrolled, `draining` is being emptied on purpose and
-`disabled` is out of service — sending requests to any of them is the plane
-contradicting the intent somebody declared. Stated here rather than imported from
+`pending` has never been enrolled, `draining` is being emptied and
+`disabled` is out of service: sending requests to any of them is the plane
+contradicting the intent somebody declared. Stated here, not imported from
 the clusters module for the same reason `PLACEABLE_PHASES` is stated in
 `placement`: which phases serve is this reader's rule, not the vocabulary's."""
 
@@ -60,10 +60,10 @@ the clusters module for the same reason `PLACEABLE_PHASES` is stated in
 def check_targets(targets: list[EndpointTargetRequest]) -> None:
     """Rejects a target set that could not route.
 
-    Two deployments cannot appear twice — the table's unique constraint says so
-    and an integrity error at commit time names neither of them — and a set of
+    Two deployments cannot appear twice, the table's unique constraint says so
+    and an integrity error at commit time names neither of them, and a set of
     enabled targets whose weights sum to zero is an endpoint that accepts traffic
-    and sends it nowhere, which reads as an outage rather than as configuration.
+    and sends it nowhere, which reads as an outage, not as configuration.
     """
     seen: set[str] = set()
     live = 0
@@ -84,7 +84,7 @@ def check_targets(targets: list[EndpointTargetRequest]) -> None:
 def public_model(endpoint: Endpoint) -> str:
     """The model id clients send for this endpoint.
 
-    A read of one column now. It used to be a rule — the slug, else the name — with a
+    A read of one column now. It used to be a rule (the slug, else the name) with a
     `resolved_model_slug` computed on the way out so that an operator could see which of the two
     had won. That is what a nullable public identifier costs: a second field to report the answer,
     and two call sites that have to agree or the console documents a model id that does not route.
@@ -99,8 +99,8 @@ def public_model(endpoint: Endpoint) -> str:
 def alias_names(endpoint: Endpoint) -> list[str]:
     """The other public ids this endpoint answers to, sorted.
 
-    Sorted rather than left in insertion order because the set is what matters and the order is
-    not a fact anybody declared — it also goes into the resolved table's revision, which must not
+    Sorted, not left in insertion order because the set is what matters and the order is
+    not a fact anybody declared: it also goes into the resolved table's revision, which must not
     move because two rows came back the other way round.
     """
     return sorted(alias.alias for alias in endpoint.aliases)
@@ -110,7 +110,7 @@ def normalise_aliases(values: list[str]) -> list[str]:
     """Trims, lowercases and deduplicates a declared alias set.
 
     Lowercased here and matched case-insensitively at the gateway, so `Kimi-K3` and `kimi-k3` are
-    one route rather than two somebody has to keep in step. An empty string is refused rather than
+    one route instead of two somebody has to keep in step. An empty string is refused, not
     dropped: it is a route on the empty string, and a caller who typed one meant something.
 
     Deduplication is not a collision. Two spellings of one alias in one request say the same thing
@@ -143,7 +143,7 @@ def endpoint_policy(surface: dict | None) -> PolicySchema | None:
     Read on every table build and validated on every write, both through this one
     function, so a policy that would not survive the gateway cannot be stored.
 
-    A policy stored in the v1 shape is converted here rather than rewritten in
+    A policy stored in the v1 shape is converted here, not rewritten in
     the database. Converting on read is what makes this a migration nobody has to
     schedule: there is no batch job to run, no window where half the rows are in
     one language, and no way for a policy written before this change to reach a
@@ -172,9 +172,9 @@ def _as(raw: dict, schema):
 def _is_legacy(raw: dict) -> bool:
     """Which of the two languages this policy is written in.
 
-    Decided on the keys rather than on `version` alone, because `version` is
+    Decided on the keys, not on `version` alone, because `version` is
     absent far more often than it is wrong and the two shapes have no key in
-    common — `forbid_unknown_fields` then catches every mixture of them, which is
+    common: `forbid_unknown_fields` then catches every mixture of them, which is
     what turns a typo into a 400 instead of a rule that silently enforces nothing.
     """
     if "rules" in raw:
@@ -188,7 +188,7 @@ def _migrate(legacy: ParameterPolicySchema) -> PolicySchema:
     Every rule comes out unscoped, which is what it meant: v1 had no route, so a
     stored parameter pin applied to every path the endpoint answers on and it
     still does. Narrowing them to `/v1/chat/completions` here would be the right
-    guess for every policy in the fleet today and still the wrong thing to do — a
+    guess for every policy in the fleet today and still the wrong thing to do: a
     migration that quietly stops enforcing a sold term on two protocols is the
     failure this whole object exists to prevent, and the operator who wrote the
     term is the one who gets to say where it applies. Scoping is an edit somebody
@@ -198,10 +198,10 @@ def _migrate(legacy: ParameterPolicySchema) -> PolicySchema:
     bytes every time it is read, and the gateway's `If-None-Match` still answers
     304 on a table nothing has moved in.
 
-    One edge is accepted rather than handled: a v1 parameter name containing a
+    One edge is accepted, not handled: a v1 parameter name containing a
     dot was a top-level key spelled with a dot in it, and it converts into a
     two-segment path. No field on any wire this gateway fronts is spelled that
-    way, so the case is theoretical — it is written down here rather than guarded
+    way, so the case is theoretical: it is written down here, not guarded
     against, because a guard would be a branch nothing ever takes.
     """
     rules = [
@@ -234,7 +234,7 @@ def endpoint_surface(surface: dict | None) -> EndpointSurfaceSchema:
     """The stored surface, read back in the shape the console and the CLI draw.
 
     Only the declared fields are carried. The surface is validated key by key on
-    write, so anything else in the column is a key nothing reads — and reporting
+    write, so anything else in the column is a key nothing reads, and reporting
     one would give an operator a term to repeat that no reader honours.
     """
     raw = surface or {}
@@ -291,7 +291,7 @@ def check_policy(policy: PolicySchema | None) -> None:
     """Refuse a policy that would not mean, at the gateway, what its author meant.
 
     Every check here exists because the alternative is a policy that looks like a
-    working configuration and enforces nothing — silently not conforming, which
+    working configuration and enforces nothing: silently not conforming, which
     is the one failure mode a consistency term must not have. A rule that
     constrains nothing, a route that is not a path, a key with an empty segment:
     each of them is a term somebody sold and nobody applies, and none of them
@@ -317,25 +317,25 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
     """Refuse one rule that does not say something the gateway can act on.
 
     The subject is named beside the index, because a policy stored in the v1
-    shape is converted before it gets here and its author never wrote an index —
+    shape is converted before it gets here and its author never wrote an index:
     they wrote a parameter name, and that is what has to appear in the error.
     """
     subject = f"key {rule.key!r}" if rule.key else f"predicate {rule.predicate!r}"
     if bool(rule.key) == bool(rule.predicate):
         raise Invalid(
-            f"{where} must name exactly one of key and predicate — a key is a path into the "
+            f"{where} must name exactly one of key and predicate: a key is a path into the "
             f"request body, a predicate is a rule the gateway implements",
             {"field": where},
         )
     if rule.route and not rule.route.startswith("/"):
         raise Invalid(
-            f"{where}.route {rule.route!r} is not a request path — it must start with '/'",
+            f"{where}.route {rule.route!r} is not a request path: it must start with '/'",
             {"field": f"{where}.route"},
         )
     for field, path in (("key", rule.key), ("when_present", rule.when_present), ("value_from", rule.value_from)):
         if path and not all(segment for segment in path.split(".")):
             raise Invalid(
-                f"{where}.{field} {path!r} is not a JSON path — every segment between the dots must be a name",
+                f"{where}.{field} {path!r} is not a JSON path: every segment between the dots must be a name",
                 {"field": f"{where}.{field}"},
             )
     if rule.when_present and rule.when_present == rule.key:
@@ -379,7 +379,7 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
             )
         if not rule.deny:
             raise Invalid(
-                f"{where} names {subject} but does not deny it — it constrains nothing",
+                f"{where} names {subject} but does not deny it: it constrains nothing",
                 {"field": where},
             )
         return
@@ -388,19 +388,19 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
         # One answers 400 and the other answers 200 with the field taken out.
         # There is no request for which both are what the author meant.
         raise Invalid(
-            f"{where} both denies and drops {subject} — a refusal and a silent removal are different answers",
+            f"{where} both denies and drops {subject}: a refusal and a silent removal are different answers",
             {"field": where},
         )
     if rule.value_from and (rule.deny or rule.drop):
         # A copy writes the key, a deny refuses it and a drop takes it away.
         # Whichever the author meant, the other two are not it.
         raise Invalid(
-            f"{where} both copies into and denies or drops {subject} — a write and a removal are different answers",
+            f"{where} both copies into and denies or drops {subject}: a write and a removal are different answers",
             {"field": where},
         )
     if (rule.deny or rule.drop) and values:
         # Deny refuses the key whenever it is sent and drop removes it, so
-        # nothing else on the rule can ever be reached — including a default,
+        # nothing else on the rule can ever be reached, including a default,
         # which would be filling in a field the same rule takes away.
         raise Invalid(
             f"{where} denies or drops {subject}, so enum, min, max and default on it are unreachable",
@@ -416,7 +416,7 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
         )
     if not rule.deny and not rule.drop and not rule.value_from and not values:
         raise Invalid(
-            f"{where} ({subject}) constrains nothing — give enum, min, max, deny, drop, default or value_from",
+            f"{where} ({subject}) constrains nothing: give enum, min, max, deny, drop, default or value_from",
             {"field": where},
         )
     if rule.min is not None and rule.max is not None and rule.min > rule.max:
@@ -428,7 +428,7 @@ def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
 
     Resolved here so the gateway never has to. A write happens to a request in
     flight and there is no good answer to "which of these two values" at that
-    point — picking one by array order would make the order semantic, and picking
+    point: picking one by array order would make the order semantic, and picking
     the most specific scope would make a policy mean something different from
     what each of its rules says. So the conflict is refused where somebody is
     writing it down and can say which they meant.
@@ -437,7 +437,7 @@ def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
     order, and two conditions for removing the same field is an ordinary thing to
     want. A default against a default, or a default against a drop, is one. So is
     anything against a `value_from`: a copy replaces the key outright, so a second
-    writer beside it — another copy, a default, or a drop — is two answers to
+    writer beside it (another copy, a default, or a drop) is two answers to
     "what does this key become", which is the question this refuses to leave to
     the request path.
     """
@@ -456,9 +456,9 @@ def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
 def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
     """Whether one request could match both scopes. An omitted term matches everything.
 
-    `when_present` is deliberately not read here. Two rules guarded on different
+    `when_present` is not read here. Two rules guarded on different
     paths still both fire on a request that carries both of them, so a differing
-    condition narrows nothing for this question — treating it as though it did
+    condition narrows nothing for this question: treating it as though it did
     would let exactly the conflict this function exists to refuse through.
     """
     routes = not left.route or not right.route or left.route == right.route
@@ -483,8 +483,8 @@ def _alias_term(alias: str) -> str:
     """One alias, as it enters the revision's content hash.
 
     Prefixed, because `_served` hashes a *set* and an alias is very often a string already in it.
-    Renaming an endpoint means publishing the engine's own name as the alias — `moonshotai/kimi-k3`
-    aliased onto `kimi-k3`, where that is exactly what the artifact's slug already resolves to — so
+    Renaming an endpoint means publishing the engine's own name as the alias, `moonshotai/kimi-k3`
+    aliased onto `kimi-k3`, where that is exactly what the artifact's slug already resolves to, so
     folding the bare string in makes the one change that matters invisible. Nothing else moves on
     an alias-only update, so the gateway keeps its `If-None-Match`, gets a `304`, and 404s the name
     a client was just told to use.
@@ -496,7 +496,7 @@ def _served(values: list[str]) -> str:
     """The third revision term: what the engines behind this table answer to.
 
     A short hash over the serving digests and resolved model names a resolution
-    was built from. It is content rather than a timestamp, and that is the whole
+    was built from. It is content instead of a timestamp, and that is the whole
     reason it exists: it moves when, and only when, what the gateway has to
     rewrite an inbound `model` to has actually changed.
 
@@ -522,7 +522,7 @@ def _revision_of(stamps: list[dt.datetime | None], served: list[str]) -> str:
     """The newest stamp a resolution was built from, how many there were, and what they serve.
 
     An empty table still needs a value a caller can send back as `If-None-Match`,
-    and it needs the value to change the moment the table stops being empty —
+    and it needs the value to change the moment the table stops being empty,
     which it does, because the first row that appears carries a stamp.
 
     The second term is what makes the value sensitive to a *deletion*. A create
@@ -530,12 +530,12 @@ def _revision_of(stamps: list[dt.datetime | None], served: list[str]) -> str:
     forward; a delete only removes a stamp, and unless that stamp happened to be
     the maximum across the whole fleet the value does not move. The gateway would
     then sit behind a `304` holding a route, or a rate limit, that no longer
-    exists — and the asymmetry is what makes it dangerous, because create and
+    exists, and the asymmetry is what makes it dangerous, because create and
     update work and only delete silently does not. The count moves on any
     disappearance; the maximum still catches a simultaneous add and delete,
     because the added row is freshly stamped.
 
-    The third term is `_served`, and it is content rather than time. The value
+    The third term is `_served`, and it is content, not time. The value
     stays opaque to its readers, which compare it as a string.
     """
     live = [stamp for stamp in stamps if stamp is not None]
@@ -630,10 +630,10 @@ class EndpointService:
         """Turns target and failover references into rows and an ordered id array.
 
         Targets resolve inside the endpoint's tenant, and a bare deployment name that
-        matches deployments in more than one cluster is refused with the candidates
-        rather than resolved to the oldest of them.
+        matches deployments in more than one cluster is refused with the candidates,
+        not resolved to the oldest of them.
 
-        The failover order is resolved against the target set rather than against
+        The failover order is resolved against the target set, not against
         every deployment there is: an endpoint that fails over to something it
         does not route to is a routing table with a hole in it.
         """
@@ -679,13 +679,13 @@ class EndpointService:
 
         Aliases and canonical slugs are one namespace, and no database constraint can say so: the
         unique index on `alias` stops two endpoints claiming one alias and nothing else. The four
-        refusals here are the rest of it — an alias equal to this endpoint's own slug, an alias
+        refusals here are the rest of it: an alias equal to this endpoint's own slug, an alias
         equal to any other endpoint's slug, an alias another endpoint already holds, and the
         symmetric case of a slug moved onto somebody else's alias.
 
         It has to be a refusal and not a preference, because the gateway resolves a duplicate key
-        by keeping whichever binding it indexed first. That is the right behaviour there — order-
-        dependent routing is worse than a loud misconfiguration — but it means the plane is the
+        by keeping whichever binding it indexed first. That is the right behaviour there, order-
+        dependent routing is worse than a loud misconfiguration, but it means the plane is the
         only place the ambiguity can actually be prevented.
         """
         owner = await self.repo.get_alias_owner(slug)
@@ -710,9 +710,9 @@ class EndpointService:
 
         # Defaulted from the weights behind the first target, then from the endpoint's own name.
         #
-        # The default is the point of the field rather than a convenience. An endpoint in front of
+        # The default is the point of the field instead of a convenience. An endpoint in front of
         # one model answers to that model's name, and requiring a caller to type it is how the
-        # public id and the id the engine registered come to differ — which is not a visible
+        # public id and the id the engine registered come to differ, which is not a visible
         # failure but a 404 from inside the cluster, with the deployment healthy and the tunnel
         # open. Declaring one is then unambiguously a request for an alias.
         slug = (data.slug or "").strip().lower()
@@ -780,8 +780,8 @@ class EndpointService:
 
         if "slug" in fields:
             # Lowercased and never emptied. This is the public model id, so a caller who clears it
-            # has said nothing about what clients should send, and the honest reading of that is
-            # "leave it" rather than "serve under the empty string".
+            # has said nothing about what clients should send, and the accurate reading of that is
+            # "leave it" instead of "serve under the empty string".
             slug = str(fields.pop("slug")).strip().lower()
             if slug:
                 endpoint.slug = slug
@@ -826,7 +826,7 @@ class EndpointService:
 
         A target is dropped when it is disabled, when its deployment is disabled,
         when the cluster it sits on is not in a serving phase, or when that
-        cluster has declared a serving address and then turned it off — each of
+        cluster has declared a serving address and then turned it off: each of
         those is somebody saying "not this one", and the endpoint survives all of
         them with fewer upstreams.
 
@@ -834,15 +834,15 @@ class EndpointService:
         is the normal case: inference reaches a cluster over the tunnel its
         serving agent dialled out, so there is no address to publish and
         nothing declares one. Such a target resolves with an empty `url`, and the
-        `cluster_id` beside it is the whole of the routing key — the gateway keys
+        `cluster_id` beside it is the whole of the routing key: the gateway keys
         its tunnel pool by exactly that and dials the published address only when
         there is one. Dropping these rows would make the table empty on every
-        cluster we run, which reads as "no model is serving" rather than as
+        cluster we run, which reads as "no model is serving", not as
         "nobody publishes an ingress any more".
 
-        Every one of those is decided here rather than in the query, because the
+        Every one of those is decided here, not in the query, because the
         query is an outer join the whole way down and a `WHERE` on the cluster
-        would drop the endpoint's last row along with its last upstream — turning
+        would drop the endpoint's last row along with its last upstream: turning
         "this model has nowhere to go" into "no such model". The cluster's stamp
         goes into the revision for the same reason the others do: marking a
         cluster `draining` changes this table, and a gateway sitting behind a
@@ -855,18 +855,18 @@ class EndpointService:
         A client calling the endpoint by its public name would be asking the
         frontend for a model it does not have, so the gateway rewrites it.
 
-        That resolution goes into the revision as content — the workload's
-        `serving_digest` and the resolved name itself — rather than as a stamp
+        That resolution goes into the revision as content, the workload's
+        `serving_digest` and the resolved name itself, not as a stamp
         taken off the row it was read from. It used to be the recipe's
         `updated_at`, and a stamp is a proxy for the question that is wrong in
         both directions: it moved when a recipe was renamed or when a field that
         never reaches an engine was edited, making every gateway re-fetch an
         unchanged table, and it said nothing at all about the workload's own
-        `served_model_name`, which was never stamped — so declaring one left the
+        `served_model_name`, which was never stamped, so declaring one left the
         gateway behind a `304`, rewriting to the name it had before. A digest
         moves on a real configuration change and on nothing else.
 
-        The serving quota is one row per endpoint rather than one per target, so
+        The serving quota is one row per endpoint instead of one per target, so
         its stamp goes into `own` beside the endpoint's and not into the row loop.
         Its limits are passed through undivided: how many gateway replicas are
         running is a fact of the process reading this, not of the plane writing

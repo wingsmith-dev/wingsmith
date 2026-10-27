@@ -15,7 +15,7 @@ from .repository import DeviceRepository
 
 
 class DeviceService:
-    """Read-only, by construction rather than by refusal.
+    """Read-only, by construction, not by refusal.
 
     Devices are observed: ingestion is their only writer, so no create, update
     or delete method exists on this class. Reset and drain are Operations with

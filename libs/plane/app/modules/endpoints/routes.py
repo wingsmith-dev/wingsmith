@@ -65,7 +65,7 @@ class EndpointRoutes(Controller):
     ) -> Response[ResolvedTableSchema | None]:
         """The whole routing table, for something that holds it in memory.
 
-        Unpaginated on purpose: a caller that assembled half a routing table
+        Unpaginated: a caller that assembled half a routing table
         would route half its traffic into a hole, and the table is one row per
         endpoint. `If-None-Match` makes the steady state a `304`, which is what
         polling this every few seconds should cost.

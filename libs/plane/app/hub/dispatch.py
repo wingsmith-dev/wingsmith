@@ -2,11 +2,11 @@
 
 Every hub process listens, and every hub process sees every notification. One of
 them holds the claim on the named cluster (ADR 0005) and therefore has a live
-session to push down — two, for at most one ownership poll after a displacement,
-and the displaced one's writes are refused — and the rest look the cluster up in
+session to push down, two, for at most one ownership poll after a displacement,
+and the displaced one's writes are refused, and the rest look the cluster up in
 their own in-process index, find nothing, and drop the hint on the floor. That is the whole of the
-fan-out design — no routing table, no directory, no second consensus problem
-beside the claim table — and it works because a notification is a wakeup rather
+fan-out design, no routing table, no directory, no second consensus problem
+beside the claim table, and it works because a notification is a wakeup rather
 than a message, so ignoring one costs nothing.
 
 What gets sent is never the notification's content. The hint names an object; the
@@ -56,9 +56,9 @@ class Dispatchable(Protocol):
 class LiveSessions:
     """The sessions this process can actually push to right now, keyed by `cluster_id`.
 
-    Deliberately a second index rather than a field on `SessionRegistry`. The
-    registry holds `SessionState` — cursors and a replay buffer keyed by
-    `session_id` — and its whole reason to exist is that it *outlives* the
+    A second index instead of a field on `SessionRegistry`. The
+    registry holds `SessionState`, cursors and a replay buffer keyed by
+    `session_id`, and its whole reason to exist is that it *outlives* the
     connection, so a resumable session sits in it with no socket attached. Live
     dispatch wants the opposite set: the connections that exist this instant, and
     the object that can write to one. Merging them would put a live object with a
@@ -100,7 +100,7 @@ class LiveSessions:
     def unregister(self, cluster_id: str, session: Dispatchable) -> None:
         """Drops every identity this session is reachable under.
 
-        Identity-checked per key rather than per call: a session that was
+        Identity-checked per key, not per call: a session that was
         displaced between its own registration and its close must take its own
         keys with it and none of its successor's.
         """
@@ -129,8 +129,8 @@ class DatabaseRenderer:
     """Reads the current declared state for one object, in a session of its own.
 
     Read-only and short-lived: it opens a session per notification, which is the
-    right shape for something that fires on writes rather than continuously, and
-    keeps the listener's connection — which is doing nothing but `LISTEN` — out of
+    right shape for something that fires on writes, not continuously, and
+    keeps the listener's connection, which is doing nothing but `LISTEN`, out of
     the query path entirely.
     """
 
@@ -163,7 +163,7 @@ class DatabaseRecorder:
     """Writes a dispatch to the event log, in a session of its own.
 
     Only deployments. Every kind travels this path, but an artifact or an
-    operation reaching a cluster is not a thing anybody is waiting on — a deployment is,
+    operation reaching a cluster is not a thing anybody is waiting on: a deployment is,
     and "the plane sent it and the cluster has not answered" is the one state
     that used to be indistinguishable from "the plane never sent it".
 
@@ -219,7 +219,7 @@ class Dispatcher:
     """Runs dispatch for many clusters at once, one cluster at a time each.
 
     The listener used to render and send every hint inline, so one cluster whose
-    session was slow to drain — or whose render was slow to read — held up every
+    session was slow to drain, or whose render was slow to read, held up every
     other cluster's changes behind it. Each cluster now has a worker of its own,
     started when a hint arrives and gone when its queue is empty, so a cluster's
     hints stay in order and no cluster waits on another's.
@@ -323,8 +323,8 @@ async def listen_loop(
     would be a session nothing else can use, checked out forever.
 
     Reconnects are unremarkable for the same reason a dropped notification is.
-    Notifications that arrive while this loop is between connections are gone —
-    Postgres has nobody to hand them to — and the clusters they concerned keep
+    Notifications that arrive while this loop is between connections are gone,
+    Postgres has nobody to hand them to, and the clusters they concerned keep
     running what they last knew until the next resync corrects them. That is why
     the loop simply waits and reconnects instead of trying to replay the window it
     missed: there is nothing to replay from, and nothing that needs it.

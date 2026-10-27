@@ -16,12 +16,12 @@ from .repository import NodeRepository
 
 
 class NodeService:
-    """Read-only, by construction rather than by refusal.
+    """Read-only, by construction, not by refusal.
 
     Nodes are observed: they are written by ingestion and discovered by the
     operator, so there is no create, update or delete here at all. Methods that
     exist only to raise would still be an API surface, and `POST /v1/nodes` is a
-    category error rather than a permission failure.
+    category error instead of a permission failure.
     """
 
     def __init__(self, db: AsyncSession) -> None:

@@ -7,7 +7,7 @@ def parse_ts(value: str | None) -> dt.datetime | None:
     The wire form is RFC 3339 with milliseconds (`libs/packages/contract/PROTOCOL.md`), but a
     peer that sends microseconds or an offset is not worth rejecting a frame
     over, so `fromisoformat` is the fallback. An unparseable value becomes
-    `None` rather than raising: a bad timestamp is not a reason to withhold an
+    `None` instead of raising: a bad timestamp is not a reason to withhold an
     acknowledgement for a frame whose state is otherwise applicable.
     """
     if not value:

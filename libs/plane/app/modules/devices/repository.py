@@ -53,7 +53,7 @@ class DeviceRepository:
 
         `cluster`, `device_class` and `health` are applied as equalities on
         `Device` itself so the predicate matches the leading columns of
-        `ix_supply_device_class_health` — the composite index is the reason the
+        `ix_supply_device_class_health`: the composite index is the reason the
         cluster filter is not expressed as a join condition on `Cluster`.
         """
         query = self._base().order_by(Device.seq.asc()).limit(limit + 1)

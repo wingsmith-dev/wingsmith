@@ -2,12 +2,12 @@
 
 Two unrelated objects live here and the names are close enough to be dangerous.
 A `Quota` is devices, checked once by placement when a workload is admitted. A
-`ServingQuota` is traffic — RPM, TPM, concurrency — declared for an endpoint and
+`ServingQuota` is traffic (RPM, TPM, concurrency) declared for an endpoint and
 not enforced yet: the gateway does not read serving quotas, so every limit here
 is advisory until it does. Different table, different consumer, and no field in
 common.
 
-Declared limits and observed usage arrive together and stay apart — `usage` is
+Declared limits and observed usage arrive together and stay apart: `usage` is
 counted over live allocations at read time and never folded into the declared
 numbers beside it. There is no `label` filter: quotas carry no labels, and a
 selector that is silently ignored returns the unfiltered set to a caller who
@@ -97,7 +97,7 @@ class ServingQuotaRoutes(Controller):
 
     Declared here and not enforced anywhere yet: the gateway does not read these,
     so `enforced` records what the operator wants once it does, and every limit is
-    advisory today. No handler reads a counter, calls the metrics backend or reports a rate — the
+    advisory today. No handler reads a counter, calls the metrics backend or reports a rate: the
     observed half of these numbers is on the metrics surface, and folding it in
     here would put the data plane's measurements on the control plane's read path.
     """
@@ -151,9 +151,9 @@ class ServingQuotaRoutes(Controller):
 
         Unpaginated, like the routing table: a caller that assembled half of it
         would enforce half its commitments. `replicas` and `replica_index` are the
-        fleet the shares are taken against — the plane cannot discover them
+        fleet the shares are taken against: the plane cannot discover them
         without putting a Kubernetes client on the inference path, so the caller
-        states them and the arithmetic happens once, here, rather than once per
+        states them and the arithmetic happens once, here, not once per
         client. They default to a fleet of one, where every mode agrees.
 
         `endpoint` and `workload` narrow the table. A workload is a lookup and

@@ -435,9 +435,9 @@ async def test_the_suggested_context_is_the_declared_one_and_devices_follow_from
 async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
     """Five devices is arithmetically right and cannot be tensor-parallelised.
 
-    The parameter count is derived from the biggest card the contract table names
-    rather than written down. The suggestion divides by that card, so a literal here
-    would stop testing sharding the week a bigger one is added to the table — it
+    The parameter count is derived from the biggest card the contract table names,
+    not written down. The suggestion divides by that card, so a literal here
+    would stop testing sharding the week a bigger one is added to the table: it
     would still pass, for the wrong reason, having stopped needing to shard at all.
     """
     largest = devices.table().largest()
@@ -457,7 +457,7 @@ async def test_the_suggestion_is_sized_against_the_cards_the_fleet_owns():
     """The failure this exists for, in the shape it actually happened.
 
     GLM-5.3-Flash needed about 383 GB. Divided by the biggest card the contract table
-    names — a 288 GB B300 — that is two devices at a 192 GiB floor. The fleet holds
+    names, a 288 GB B300, that is two devices at a 192 GiB floor. The fleet holds
     H200s at 141 GB, so every one of them failed the floor, placement reported each
     cluster as owning no such device, and the workload was placed nowhere. Divided by
     a card we actually have, the same model spreads over four and asks for a floor
@@ -501,7 +501,7 @@ async def test_unquantized_weights_suggest_no_quantization_but_still_size_as_fp1
     """A repo that declares no quantization must not be offered one.
 
     The suggestion becomes the workload's `--quantization`, and an engine takes only
-    real quantization methods there — `fp16` is a dtype and is rejected before the
+    real quantization methods there: `fp16` is a dtype and is rejected before the
     worker binds a port. Sizing still needs a bytes-per-param bucket, and fp16 is
     the right one for unquantized weights, so the two answers differ here.
     """
@@ -1010,7 +1010,7 @@ async def test_numeric_columns_are_floats_by_the_time_they_reach_the_wire():
 async def test_a_baseline_of_another_artifact_is_not_found_under_this_one():
     """The uid is global but the sub-resource is not, and a floor read off the wrong artifact grades the wrong weights.
 
-    The row has to exist and belong to somebody else for this to mean anything —
+    The row has to exist and belong to somebody else for this to mean anything:
     looking up a uid nothing owns passes whether or not the read is scoped at all.
     """
     svc = baseline_service()
@@ -1216,7 +1216,7 @@ async def test_a_shapeless_artifact_gets_a_matrix_of_floors_not_a_blank_panel():
 
 
 async def test_an_artifact_with_no_parameter_count_is_reported_rather_than_refused():
-    """Nothing at all can be sized from it, and that is a note rather than an error."""
+    """Nothing at all can be sized from it, and that is a note instead of an error."""
     artifact = sized_artifact(parameter_count=None)
     result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
     assert not result.sizable
@@ -1453,7 +1453,7 @@ def test_a_repo_with_no_chat_template_is_flagged_at_registration():
 
 
 def test_a_chat_template_inside_the_tokenizer_config_counts():
-    """Older repos carry the template as a key rather than a file, and the frontend reads both."""
+    """Older repos carry the template as a key instead of a file, and the frontend reads both."""
     files = tuple(name for name in SERVEABLE_FILES if name != "chat_template.jinja")
     messages = _messages(hf_model(files=files, tokenizer_config={"chat_template": "{% for m in messages %}"}))
 
@@ -1470,7 +1470,7 @@ def test_a_repo_with_no_tokenizer_config_says_so_and_stops():
 
 
 def test_a_tokenizer_a_frontend_cannot_read_is_flagged():
-    """Kimi K3 ships `tiktoken.model` and custom code rather than `tokenizer.json`.
+    """Kimi K3 ships `tiktoken.model` and custom code instead of `tokenizer.json`.
 
     That is legal and it serves, but only on a runtime carrying the tokenizer
     itself -- which is a fact worth having before the deployment, not after.

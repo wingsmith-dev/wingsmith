@@ -92,7 +92,7 @@ class TenantAPIKeySchema(Struct):
     """An inference credential for one tenant, as it reads back after minting.
 
     `key` carries the plaintext exactly once, on the response to the mint, and
-    is null on every later read — same shape as `TenantTokenSchema.token`, and
+    is null on every later read; same shape as `TenantTokenSchema.token`, and
     for the same reason: only the sha256 is ever stored.
     """
 
@@ -115,8 +115,8 @@ class TenantTokenSchema(Struct):
     """A console credential for one tenant, as it reads back after minting.
 
     `token` carries the plaintext exactly once, on the response to the mint, and
-    is null on every later read. There is nowhere it could come from afterwards —
-    only the sha256 is stored — and a field that is sometimes the secret is
+    is null on every later read. There is nowhere it could come from afterwards,
+    only the sha256 is stored, and a field that is sometimes the secret is
     clearer than two shapes for one object.
     """
 

@@ -1,6 +1,6 @@
 """Resolving a reference that may be a scoped name.
 
-Many names are unique only inside a scope — a workload per project, a deployment or a
+Many names are unique only inside a scope: a workload per project, a deployment or a
 pool per cluster, a project per tenant, an artifact not at all. A bare name can then
 match several rows, and picking the first or oldest of them is how a PATCH or a DELETE
 lands on somebody else's object. Every lookup by name reads at most two rows and hands

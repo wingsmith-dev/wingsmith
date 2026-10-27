@@ -33,7 +33,7 @@ from .repository import AlertThresholdRepository
 
 
 class AlertService:
-    """Read, acknowledge, resolve. Deliberately no create and no delete.
+    """Read, acknowledge, resolve. No create and no delete.
 
     Alerts are derived by the reactor, so nothing declares one; acknowledgement is the one
     human input. Resolving is how an alert ends, and there is no delete, so the record of an
@@ -127,7 +127,7 @@ class AlertService:
     async def resolve(self, ref: str) -> AlertSchema:
         """Closes an alert by hand.
 
-        The honest path for an event-sourced alert, which has no level to fall back
+        The accurate path for an event-sourced alert, which has no level to fall back
         to and would otherwise stay open forever. Allowed on a condition-sourced one
         too, and worth knowing what that means: the evaluator recomputes from scratch
         every tick, so if the condition is still true the alert reopens on the next
@@ -194,7 +194,7 @@ def _severity(value: str) -> str:
 def _dimensions(value: dict) -> dict:
     """Narrowing labels, flat and stringly typed.
 
-    Rejected rather than coerced, because `dimensions` is part of the row's
+    Rejected, not coerced, because `dimensions` is part of the row's
     identity under `uq_ops_alert_threshold_scope` and `1` and `"1"` are two rows
     to Postgres and one commitment to the person who wrote them.
     """
@@ -213,9 +213,9 @@ def _for_seconds(value: int) -> int:
 
 
 class AlertThresholdService:
-    """Declared state, fully writable — the half of alerting a person owns.
+    """Declared state, fully writable: the half of alerting a person owns.
 
-    The opposite of `AlertService` next door, and deliberately so: an alert is
+    The opposite of `AlertService` next door, and so: an alert is
     derived and cannot be created, a threshold is a commitment and cannot be
     anything else. The number, the window and the scope are declared here; the
     predicate that watches them is compiled into `app/reactor/rules.py` and is
@@ -279,15 +279,15 @@ class AlertThresholdService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: AlertThresholdCreateRequest) -> AlertThresholdSchema:
-        """Writes one commitment, with the rule checked at write time rather than at evaluation.
+        """Writes one commitment, with the rule checked at write time, not at evaluation.
 
         A row naming a rule nothing evaluates is not a harmless row: it reads as a
         promise being watched, and the first anyone learns otherwise is that the
         alert never came.
 
         `subject_type` may be omitted, because a rule already knows what kind of
-        thing it is about. Supplying one that disagrees is refused rather than
-        silently corrected — the disagreement means the writer believed something
+        thing it is about. Supplying one that disagrees is refused, not
+        silently corrected: the disagreement means the writer believed something
         false about the rule.
         """
         definition = _definition(data.rule)

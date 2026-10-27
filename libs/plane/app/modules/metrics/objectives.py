@@ -1,10 +1,10 @@
 """The frozen table of availability objectives: which outcomes count against an endpoint.
 
 An availability number is a ratio, and which gateway outcomes sit in its numerator
-and its denominator is a commercial definition rather than a query detail. A
+and its denominator is a commercial definition instead of a query detail. A
 `ServingQuota` names one of these entries by version; this table is the only place
 the definition lives, and `promql.DIALECT` renders its failure and availability
-expressions from it rather than carrying a second copy of the outcome sets.
+expressions from it instead of carrying a second copy of the outcome sets.
 
 Entries are superseded, never edited. A number recomputed under a redefined
 objective is a number nobody can audit, so a change to either set is a new
@@ -87,8 +87,8 @@ AVAILABILITY_2026_1 = Objective(
 """The definition every quota has carried since quotas existed.
 
 `rate_limited` is not a failure because a 429 issued to an identified caller over
-its own declared limit is the standard's carve-out, while `shed` — the same status,
-issued by the gateway to protect itself — is. `canceled` is out of both sets: a
+its own declared limit is the standard's carve-out, while `shed`, the same status,
+issued by the gateway to protect itself, is. `canceled` is out of both sets: a
 caller that hung up took its own request away.
 """
 

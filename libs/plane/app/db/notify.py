@@ -3,13 +3,13 @@
 `hangar-api` and `hangar-hub` are two processes that share nothing but Postgres,
 so a write to declared state has no way of reaching the cluster it concerns until
 the operator next reconnects and is streamed a full resync. This is the wakeup
-that closes that gap, and it lives here — beside the engine rather than in either
-process — because the writer and the listener are in different binaries and
+that closes that gap, and it lives here, beside the engine, not in either
+process, because the writer and the listener are in different binaries and
 neither may import the other. The listening half is
 `app.hub.dispatch`.
 
-What travels is a **hint**: the cluster, the kind, and the uid of what changed —
-never the object. Carrying only a hint is what makes this safe rather than
+What travels is a **hint**: the cluster, the kind, and the uid of what changed,
+never the object. Carrying only a hint is what makes this safe, not
 clever. The receiver re-reads the current row and sends what the database says
 now, so Postgres stays the single source of truth and two hints that arrive out
 of order cannot deliver stale state between them.
@@ -40,7 +40,7 @@ logger = getLogger(__name__)
 
 
 CHANNEL = "hangar_declared"
-"""The one channel. Kinds are a field in the payload rather than a channel each.
+"""The one channel. Kinds are a field in the payload instead of a channel each.
 
 A channel per kind would mean every hub issuing a `LISTEN` per kind and another
 one every time the object model grows, for no gain: a listener discards by
@@ -53,9 +53,9 @@ OPERATION = "operation"
 """An operation is not declared state, and it still travels on this channel.
 
 The channel is the only path from the API process to the hub holding a cluster's
-session, and a hint is a wakeup rather than a message — nothing in it asserts
+session, and a hint is a wakeup instead of a message: nothing in it asserts
 that what changed is intent. What the kind buys the listener is which renderer to
-answer with, and an operation's renderer is deliberately not the snapshot's
+answer with, and an operation's renderer is not the snapshot's
 (`app.ingestion.operations`).
 """
 
@@ -100,13 +100,13 @@ class Notifier(Protocol):
 class DatabaseNotifier:
     """Emits the hint on `CHANNEL`, in a transaction of its own after the writer's.
 
-    The ordering is the whole point and it is deliberate. Postgres queues a
+    The ordering is the point and it is deliberate. Postgres queues a
     `pg_notify` until the transaction that issued it commits, so emitting inside
-    the write's transaction would be correct too — but only for as long as every
+    the write's transaction would be correct too, but only for as long as every
     caller keeps it there, and the first one that does not hands the listener a
     wakeup for a row it cannot see yet, which it answers by dispatching the state
     the write was replacing. Calling this *after* `commit()` makes the ordering
-    something visible at the call site rather than something you have to know. The
+    something visible at the call site instead of something you have to know. The
     cost is one extra round trip on a write path that already did several.
 
     A failure to notify is logged and swallowed. The write is committed and

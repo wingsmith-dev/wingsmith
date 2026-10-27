@@ -28,16 +28,16 @@ from .services import catalogue
 class AlertRoutes(Controller):
     """Derived state: listable, acknowledgeable, resolvable, and not creatable.
 
-    Acknowledge and resolve are `POST` to a sub-path rather than a `PATCH` of
+    Acknowledge and resolve are `POST` to a sub-path instead of a `PATCH` of
     `state`, because they are transitions with side effects and preconditions, not
-    field assignments — the same reason `libs/packages/contract/API.md` §7 keeps operations off the
+    field assignments: the same reason `libs/packages/contract/API.md` §7 keeps operations off the
     resource they act on. There is no `If-Match`: the reactor writes this row on
     every tick, so a revision check would fail constantly and protect nothing an
     acknowledgement can actually clobber.
 
     `state` is spelled `alert_state` in the handler signature and aliased back onto
     the wire. `state` is reserved by Litestar for the application `State` object, so
-    a handler parameter of that name is rejected at registration — and the filter is
+    a handler parameter of that name is rejected at registration, and the filter is
     still called `state` in `libs/packages/contract/API.md`, which is the name that has to win.
     """
 
@@ -89,14 +89,14 @@ class AlertRoutes(Controller):
 class AlertThresholdRoutes(Controller):
     """The declared half of alerting: the numbers, not the alerts they produce.
 
-    A separate resource from `/v1/alerts` rather than a sub-path of it, because a
-    threshold is not a property of any alert — it exists before there is one, it
+    A separate resource from `/v1/alerts` instead of a sub-path of it, because a
+    threshold is not a property of any alert: it exists before there is one, it
     outlives the object it was written about, and most of them will never produce
     an alert at all. Fully writable, unlike its neighbour.
 
     No `If-Match`. Nothing but a person writes this row, so the concurrent writer
     a revision check protects against is another human editing the same commitment
-    in another tab — worth having eventually, and not worth pretending to have now
+    in another tab: worth having eventually, and not worth pretending to have now
     on a resource whose `updated_at` is the only revision there is.
     """
 
@@ -154,7 +154,7 @@ class AlertThresholdRoutes(Controller):
 class AlertRuleRoutes(Controller):
     """The catalogue of rules a threshold may name. Read-only, and not a database table.
 
-    Its own resource rather than `/v1/alert-thresholds/rules`, so that no literal
+    Its own resource instead of `/v1/alert-thresholds/rules`, so that no literal
     path segment has to win a race against `/{ref}` for a client to discover the
     vocabulary. Which is also why it exists: a console that cannot list the rules
     has to hardcode them, and a hardcoded list is how a metric name becomes a

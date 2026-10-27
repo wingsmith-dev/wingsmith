@@ -3,10 +3,10 @@
 Estimation of how much GPU memory a model needs to serve, broken into the four
 buckets that actually drive the number: weights, KV cache, a flat runtime
 overhead, and the framework's pre-allocation headroom. On top of that, :func:`fit`
-answers the question a person actually asks — *can this run on an H100, and how
-many* — and :func:`fitment` answers it for every card we know about at once.
+answers the question a person actually asks, *can this run on an H100, and how
+many*, and :func:`fitment` answers it for every card we know about at once.
 
-This lives in ``core`` rather than in ``modules/workloads`` because it is not about
+This lives in ``core``, not in ``modules/workloads`` because it is not about
 workloads. A workload is one caller: it declares a device shape and this module says
 whether that shape can hold the weights. Registering an artifact is another, and
 so is the fitment matrix, which has no workload in it at all. Nothing here touches
@@ -16,11 +16,11 @@ because a fit is meaningless without knowing how big the card is.
 This module is also the single source of truth for interpreting a HuggingFace
 ``config.json``, which varies sharply across model families: multimodal models
 nest the language config under ``text_config``; DeepSeek/GLM/Kimi use MLA
-(latent attention) where the KV cache is a compressed latent vector rather than
+(latent attention) where the KV cache is a compressed latent vector instead of
 ``num_key_value_heads x head_dim``, and write that latent under two different
 names; many modern repos ship natively quantized (``quantization_config``), so
 fp16 weight sizing overcounts by up to 4x; and the largest are often not
-quantized uniformly at all — an ``expert_dtype`` holds the routed experts at a
+quantized uniformly at all: an ``expert_dtype`` holds the routed experts at a
 narrower precision than the headline one, and on a large MoE the experts are the
 checkpoint.
 """
@@ -54,8 +54,8 @@ _KV_BYTES = 2.0
 _DEFAULT_GPU_MEMORY_UTILIZATION = 0.9
 """vLLM's default ``--gpu-memory-utilization``: only ~90% of a card is usable.
 
-The single envelope. Everything a serving process holds — weights, KV cache, activation
-peak, CUDA context — comes out from under this, which is why nothing here is grossed up
+The single envelope. Everything a serving process holds, weights, KV cache, activation
+peak, CUDA context, comes out from under this, which is why nothing here is grossed up
 by a second overhead factor on top of it. Doing both was worth about twenty percent, and
 twenty percent is a card count.
 """
@@ -63,22 +63,22 @@ twenty percent is a card count.
 _FIXED_PER_DEVICE_GB = 1.0
 """CUDA context, captured graphs and allocator slack, per device.
 
-Charged per device rather than as a fraction of the weights: the cost is roughly constant
+Charged per device, not as a fraction of the weights: the cost is roughly constant
 per GPU and grows with how many GPUs a replica uses, independent of model size.
 """
 
 _ACTIVATION_TENSORS = 4
 """Simultaneously-live intermediates of one batch, as a coarse multiplier.
 
-Deliberately a round number and not a derivation. vLLM sizes the real peak by running a
-profiling forward pass, and nothing analytic is going to match that — large-vocabulary
+A round number and not a derivation. vLLM sizes the real peak by running a
+profiling forward pass, and nothing analytic is going to match that: large-vocabulary
 logits during chunked prefill can spike well past this. The goal is to stop being wrong
 by a card count, not to reimplement an engine's memory planner, and the first deployment
 that fails to start is a better source for this number than any arithmetic here.
 """
 
 DEFAULT_BATCH_TOKENS = 8192
-"""Tokens in flight at once when a caller states none — vLLM's own default ballpark.
+"""Tokens in flight at once when a caller states none: vLLM's own default ballpark.
 
 Sizes the activation peak, and is a different knob from ``concurrency``: concurrency is
 how many full-context sequences must be *resident*, this is how many tokens are being
@@ -100,9 +100,9 @@ class VramEstimate:
 
     ``total_gb`` is what the process holds: weights, KV cache and the activation peak.
     ``required_gb`` grosses that up by the utilization envelope to say how much raw card
-    it needs — it does not include the per-device fixed reserve, because that depends on
+    it needs: it does not include the per-device fixed reserve, because that depends on
     how many devices the total is spread across and this struct describes one
-    configuration rather than one layout. :func:`usable_gb` is the other half.
+    configuration instead of one layout. :func:`usable_gb` is the other half.
     """
 
     weights_gb: float
@@ -120,11 +120,11 @@ class ModelShape:
     head_dim``. For MLA models, ``kv_lora_rank`` is set and the KV cache is the
     compressed latent (``kv_lora_rank + qk_rope_head_dim``) per layer instead.
 
-    ``num_attention_heads`` is carried for sharding rather than for sizing: it is
+    ``num_attention_heads`` is carried for sharding, not for sizing: it is
     the number tensor parallelism has to divide evenly, and a shape that cannot be
     divided is impossible however much memory the cards have.
 
-    ``hidden_size`` sizes the activation peak. It is stored rather than derived from
+    ``hidden_size`` sizes the activation peak. It is stored, not derived from
     heads times head dimension because that identity does not hold for MLA models, where
     ``head_dim`` is absent entirely.
 
@@ -236,23 +236,23 @@ def native_quant_method(config: dict | None, huggingface_id: str | None = None) 
     A model that is already quantized must not be sized at fp16, which
     overcounts. Resolution order, most authoritative first:
 
-    1. The repo name suffix (e.g. ``GLM-4.6-FP8``) — vendors name by quant.
+    1. The repo name suffix (e.g. ``GLM-4.6-FP8``): vendors name by quant.
     2. The declared ``quantization_config`` method, normalized to a bucket.
     3. The declared ``quantization_config`` ``format``.
     4. The ``compressed-tensors`` per-group weight ``num_bits``.
 
     The config is flattened through :func:`effective_config` first, because a
-    multimodal repo nests its language model — and with it its
-    ``quantization_config`` — under ``text_config``. Reading only the top level
+    multimodal repo nests its language model, and with it its
+    ``quantization_config``, under ``text_config``. Reading only the top level
     saw nothing there and sized a 4-bit model at fp16, a fourfold overcount that
-    is a card count rather than a rounding error.
+    is a card count instead of a rounding error.
 
     ``format`` is consulted before the compressed-tensors bit width because
     compressed-tensors names its scheme generically: ``quant_method`` is the
     literal string ``compressed-tensors`` for every bucket it can hold, while
     ``format`` carries the actual one (``mxfp4-pack-quantized``). The bit width is
     the fallback under both, and answers ``fp4`` where ``format`` answers
-    ``mxfp4`` — the same bytes per parameter, but only one of them is a string an
+    ``mxfp4``: the same bytes per parameter, but only one of them is a string an
     engine accepts as ``--quantization``.
 
     The returned bucket keys into :data:`BYTES_PER_PARAM`.
@@ -289,12 +289,12 @@ def expert_params(config: dict | None) -> int | None:
     """Parameters held by the routed experts, or ``None`` when the MoE shape is absent.
 
     Every routed expert of every layer, which is the opposite selection to
-    :func:`derive_active_params` — that one asks what a *token* touches, this one asks
+    :func:`derive_active_params`; that one asks what a *token* touches, this one asks
     what has to be *resident*. On a large MoE they are almost the whole checkpoint:
     DeepSeek-V4-Pro's 384 experts across 61 layers are 1.55 T of its 1.65 T parameters,
     so anything true only of the experts is true of the model.
 
-    Counted from the shape rather than read from a field because no repo publishes it.
+    Counted from the shape, not read from a field because no repo publishes it.
     Three matrices per expert (gate, up, down) at ``hidden_size × moe_intermediate_size``,
     which is the same identity :func:`derive_active_params` already uses.
     """
@@ -339,7 +339,7 @@ def _sliding(eff: dict, num_hidden_layers: int) -> tuple[int | None, int]:
 
     Interleaved attention is not a detail. Gemma alternates five local layers to one
     global and Gemma 3's window is 1024 tokens, so at a declared 131k window the local
-    layers hold about a hundredth of what a full-attention sizing charges them — and
+    layers hold about a hundredth of what a full-attention sizing charges them, and
     charging them anyway is what put gemma-4-26b at 122 GiB, spread it over two cards
     it does not need, and then refused the one card it does. gpt-oss, Ministral and
     Qwen's hybrids are all the same shape of wrong.
@@ -374,8 +374,8 @@ def _latent_rank(eff: dict) -> int | None:
     """The compressed KV latent width, under either spelling a repo uses for it.
 
     ``kv_lora_rank`` is DeepSeek's own name and is what V3, R1 and GLM publish.
-    Transformers 4.57 writes the same tensor as ordinary attention fields instead —
-    a single KV head whose ``head_dim`` *is* the whole latent — and emits no
+    Transformers 4.57 writes the same tensor as ordinary attention fields instead,
+    a single KV head whose ``head_dim`` *is* the whole latent, and emits no
     ``kv_lora_rank`` at all. DeepSeek-V4-Pro is written that second way.
 
     Reading only the first name dropped V4-Pro into the standard branch and sized its
@@ -406,8 +406,8 @@ def extract_shape(config: dict | None) -> ModelShape | None:
     back to a static floor.
 
     A latent-attention model is sized at full attention and never reads
-    ``sliding_window``, which is deliberate rather than an omission. DeepSeek-V4-Pro
-    declares ``sliding_window: 128`` next to an ``index_topk`` — that pair is sparse
+    ``sliding_window``, which is deliberate instead of an omission. DeepSeek-V4-Pro
+    declares ``sliding_window: 128`` next to an ``index_topk``; that pair is sparse
     *selection*, not a smaller cache: the whole latent stays resident and the indexer
     picks which of it to attend to. Read as an interleaved window with no
     ``layer_types`` to contradict it, the standard branch charged all 61 layers 128
@@ -472,7 +472,7 @@ def kv_bytes_per_token(shape: ModelShape) -> float:
 
     Full attention, which is what every layer of most models does. A model with
     interleaved local layers holds less than this and :func:`kv_cache_bytes` is what
-    knows so — this is the per-layer rate that one multiplies, kept as its own function
+    knows so: this is the per-layer rate that one multiplies, kept as its own function
     because it is the figure that does not depend on how long the sequence is.
     """
     if shape.kv_lora_rank:
@@ -487,11 +487,11 @@ def kv_cache_bytes(shape: ModelShape, context_length: int) -> float:
     Not ``kv_bytes_per_token × context_length``, because that identity only holds when
     every layer attends to the whole sequence. A layer with a sliding window holds the
     window, so its cost stops growing at the window and the model's total is two terms
-    rather than one product.
+    instead of one product.
 
     The difference is not a refinement. Gemma runs five local layers of 1024 tokens to
     every global one; sized as if all sixty-two were global, gemma-4-26b came out at
-    122 GiB for a declared 131k window — which spread it across two cards, then produced
+    122 GiB for a declared 131k window, which spread it across two cards, then produced
     a per-device floor larger than the single 96 GiB card it actually serves on, and the
     plane refused to place a workload that would have run.
 
@@ -546,7 +546,7 @@ def hidden_size_of(shape: ModelShape) -> int:
 def activation_bytes(shape: ModelShape, batch_tokens: int) -> float:
     """The activation peak of one forward step, coarsely.
 
-    Scales with tokens in flight and the hidden dimension, and with nothing else — in
+    Scales with tokens in flight and the hidden dimension, and with nothing else: in
     particular not with the parameter count, which is what the flat overhead fraction
     this replaced got wrong. A 2.8T model and a 27B model running the same batch hold
     activation tensors of the same shape; only their weights differ.
@@ -564,7 +564,7 @@ def usable_gb(
     """What a set of devices actually offers a serving process, in GiB.
 
     The capacity half, kept apart from :func:`estimate_vram`'s demand half because the
-    per-device reserve depends on the layout rather than on the model. Floored at zero so
+    per-device reserve depends on the layout, not on the model. Floored at zero so
     a card smaller than the fixed reserve reads as offering nothing instead of as owing
     memory.
     """
@@ -589,11 +589,11 @@ def estimate_vram(
 
     Three buckets, each with its own shape: weights scale with parameters, the KV cache
     with resident tokens, activations with tokens in flight. They are not grossed up by
-    an overhead fraction — the utilization envelope is the only discount, and applying
+    an overhead fraction: the utilization envelope is the only discount, and applying
     both double-counted the same headroom twice.
 
     Args:
-        total_params: Total parameter count (use total, not active — even MoE
+        total_params: Total parameter count (use total, not active, even MoE
             keeps every expert resident in VRAM).
         shape: Attention shape from :func:`extract_shape` (KV-cache sizing).
         quantization: Weight quantization scheme; see :data:`BYTES_PER_PARAM`.
@@ -606,7 +606,7 @@ def estimate_vram(
 
     Returns:
         A :class:`VramEstimate` with each bucket and the total in GiB, plus
-        ``required_gb`` — the total grossed up by the envelope, which is the raw card
+        ``required_gb``: the total grossed up by the envelope, which is the raw card
         capacity needed before the per-device reserve in :func:`usable_gb`.
     """
     weights = _weight_bytes(total_params, quantization, expert_params, expert_quantization)
@@ -650,7 +650,7 @@ def baseline_min_gpu_memory_gb(
 
 
 MIN_CONTEXT_LENGTH = 4096
-"""Floor for a fitted context window — below this, serving is not useful."""
+"""Floor for a fitted context window: below this, serving is not useful."""
 
 
 @dataclass(frozen=True)
@@ -688,7 +688,7 @@ def fit_context_length(
     """Pick the largest context window that fits, halving down from the declared max.
 
     Both suggesting a configuration and validating a submitted one size the window this
-    way, so the loop lives here next to the estimator rather than being written
+    way, so the loop lives here next to the estimator instead of being written
     twice with two sets of rounding.
 
     When nothing fits even at :data:`MIN_CONTEXT_LENGTH`, the floor is returned
@@ -755,11 +755,11 @@ def fit_context_length(
 
 
 DEFAULT_DEVICES_PER_NODE = 8
-"""Devices in one node when nothing has said otherwise — an HGX chassis.
+"""Devices in one node when nothing has said otherwise: an HGX chassis.
 
 "Node" here means a set of devices sharing a coherent interconnect, which is what makes
 it the unit a replica is laid out in. On an HGX board that is the chassis and the number
-is eight. On a GB300 NVL72 it is the whole rack and the number is seventy-two — the rack
+is eight. On a GB300 NVL72 it is the whole rack and the number is seventy-two: the rack
 is many chassis of silicon and exactly one node to anything scheduling on it, which is
 the point of the interconnect.
 
@@ -769,10 +769,10 @@ ceiling: a replica spans nodes over the backend fabric whenever it needs to.
 """
 
 MAX_DEVICES = 512
-"""A runaway bound on a fit, deliberately far above any layout worth proposing.
+"""A runaway bound on a fit, far above any layout worth proposing.
 
 Not a claim that 512 devices is servable. It exists so a fit against an absurd
-artifact terminates rather than walking powers of two forever, and it is set where it
+artifact terminates instead of walking powers of two forever, and it is set where it
 cannot be mistaken for a policy about how wide a replica should be.
 """
 
@@ -784,9 +784,9 @@ class Layout:
     The two axes are different hardware. Tensor parallelism is bandwidth-hungry and
     latency-critical, so it stays inside one node, where every device shares a coherent
     interconnect. Pipeline parallelism passes activations between stages, which the
-    backend fabric carries perfectly well — so spanning nodes is a normal thing to
-    propose rather than a last resort, and the nodes a replica spans are one
-    fabric-connected unit rather than a set of islands.
+    backend fabric carries perfectly well, so spanning nodes is a normal thing to
+    propose instead of a last resort, and the nodes a replica spans are one
+    fabric-connected unit instead of a set of islands.
 
     So a fit may span nodes; capping it at one would report every model larger than a
     single chassis of VRAM as unplaceable.
@@ -810,8 +810,8 @@ def layout_for(device_count: int, devices_per_node: int = DEFAULT_DEVICES_PER_NO
     that is what the engines accept, and capped at the node because a tensor group
     reaching over the backend fabric is the one layout that genuinely does not work.
 
-    A node size that is not a power of two — seventy-two, say — is handled by the cap
-    rather than by arithmetic on it: sixteen devices inside an NVL72 are one node and
+    A node size that is not a power of two (seventy-two, say) is handled by the cap,
+    not by arithmetic on it: sixteen devices inside an NVL72 are one node and
     tensor-parallel sixteen, which is the answer somebody with that rack wants.
     """
     ceiling = max(1, min(device_count, devices_per_node))
@@ -845,13 +845,13 @@ class Sizing:
     """What an artifact contributes to a fit: how big it is, and at what precision.
 
     Kept apart from :class:`ModelShape` because those three facts arrive from three
-    places — the parameter count from the Hub's model index, the attention shape
+    places: the parameter count from the Hub's model index, the attention shape
     from ``config.json``, and the quantization from whoever is serving it, who is
     entitled to differ from the repo. Bundling them is what lets a fit be computed
     from a stored artifact without reaching back to HuggingFace for anything.
 
     ``shape`` is optional, and that is the difference between a partial answer and no
-    answer. The attention shape is needed for one thing — sizing the KV cache — and
+    answer. The attention shape is needed for one thing, sizing the KV cache, and
     the parameter count alone still settles how much has to be resident, which is the
     half with no fudge factor in it. An artifact that publishes a size but no config
     can still be told which cards are too small; refusing to fit it at all would be
@@ -866,7 +866,7 @@ class Sizing:
     """How much of the checkpoint is held at a second precision, and which.
 
     Both unset is the ordinary case and sizes exactly as one precision always did.
-    Both set says the routed experts are stored differently from the rest — see
+    Both set says the routed experts are stored differently from the rest; see
     :func:`expert_quant_method` for why a repo does that and what it cost to ignore.
     They trail the other fields with defaults because callers construct this
     positionally.
@@ -900,25 +900,25 @@ class Fit:
     fit" is not. ``reason`` is a sentence for a person, always populated.
 
     ``reduced`` marks a fit that had to cut the context window below what was
-    asked. It is deliberately not folded into ``fits``: serving a 131k model at 32k
+    asked. It is not folded into ``fits``: serving a 131k model at 32k
     is a real option someone may take knowingly, and a view that showed it as a
     failure would hide the cheapest card that works.
 
     ``kv_counted`` is false when the artifact published no attention shape, so
     ``required_gb`` is the weights and nothing else. Such a fit is a floor rather
-    than an estimate — the real figure is strictly larger — and a caller that
+    than an estimate, the real figure is strictly larger, and a caller that
     presented it as a full sizing would be promising a window nobody costed.
     ``context_length`` is zero on those, because no window was priced.
 
     ``possible`` is the certain half of ``fits``, and the two are different questions
-    with different consequences. ``possible`` is arithmetic — the weights sit on the
-    cards, the heads divide across the tensor group — and a caller may refuse over it.
+    with different consequences. ``possible`` is arithmetic, the weights sit on the
+    cards, the heads divide across the tensor group, and a caller may refuse over it.
     ``fits`` adds the estimated half, the window and the batch, and a caller that
     refuses over *that* eventually refuses a configuration that serves: a row can be
     ``possible`` and not ``fits``, and it is the one somebody with an argument should
     still be able to choose.
 
-    ``node_count`` is the answer people actually act on — "four nodes of B300" is an
+    ``node_count`` is the answer people actually act on: "four nodes of B300" is an
     order, "thirty-two devices" is a number to divide. Reporting only the total made
     every reader do that division, and getting it wrong is how somebody buys one chassis
     for a model that needs four.
@@ -997,9 +997,9 @@ def weights_gb(sizing: Sizing) -> float:
 
     Every other number this module produces has a fudge factor in it. This one
     does not: the weights are on the cards before a single token is served, so a
-    shape that cannot hold them is impossible rather than optimistic. That makes
-    it the only VRAM fact worth refusing somebody's configuration over — and the
-    reason a mixed-precision checkpoint has to be summed per precision rather than
+    shape that cannot hold them is impossible, not optimistic. That makes
+    it the only VRAM fact worth refusing somebody's configuration over, and the
+    reason a mixed-precision checkpoint has to be summed per precision, not
     charged at whichever one the repo put in its headline.
     """
     return sum(term.gb for term in weight_terms(sizing))
@@ -1031,7 +1031,7 @@ def _shardable_heads(shape: ModelShape | None, device_count: int) -> bool:
 
     A fit assumes pure tensor parallelism within a node, so the device count *is*
     the TP degree. Every engine we run splits attention heads across that degree
-    and wants the split to come out whole — 28 heads over 8 devices is a layout no
+    and wants the split to come out whole: 28 heads over 8 devices is a layout no
     amount of memory makes possible. A config that does not publish a head count
     is not contradicted, only unchecked, and neither is an artifact with no shape
     at all.
@@ -1055,17 +1055,17 @@ def impossible(
     without refusing it over an estimate. Two rules, both arithmetic: tensor
     parallelism has to divide the attention heads evenly, and the weights have to
     be resident before an engine serves a token. Neither has a fudge factor in it,
-    so failing either is impossible rather than merely unlikely.
+    so failing either is impossible, not merely unlikely.
 
-    Everything a fit knows beyond this — context window, batch, KV cache — rests on
+    Everything a fit knows beyond this (context window, batch, KV cache) rests on
     a flat 15% overhead guess. That is advice, and callers that enforce it will
     eventually refuse a configuration that works.
 
     A class the catalogue carries no memory figure for is not contradicted: an
-    unmeasured card returns ``None`` rather than a refusal nobody can act on.
+    unmeasured card returns ``None`` instead of a refusal nobody can act on.
 
     ``tensor_parallel`` is what the heads have to divide across, and it is not the
-    device count once a replica spans nodes — sixteen devices as tensor-eight by
+    device count once a replica spans nodes: sixteen devices as tensor-eight by
     pipeline-two asks the heads to divide by eight. Defaulting it to the count is right
     only for a single-node layout, so callers with a layout pass theirs.
     """
@@ -1124,11 +1124,11 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
     about how much context the remaining memory buys.
 
     A class the catalogue carries no memory figure for cannot be fitted against and
-    comes back as a no-fit saying so, rather than as a division by an unknown.
+    comes back as a no-fit saying so, not as a division by an unknown.
 
     With no attention shape there is no second gate: the weights either sit on the
     cards or they do not, and the answer comes back with ``kv_counted`` false to say
-    the number is a floor rather than an estimate.
+    the number is a floor instead of an estimate.
 
     The count is laid out across nodes before anything is checked, because the tensor
     degree that the attention heads have to divide across is a property of the layout
@@ -1142,7 +1142,7 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
     layout = layout_for(device_count, intent.devices_per_node)
     counted = sizing.shape is not None
     """Whether any verdict off this sizing can have priced a window. A property of the
-    artifact rather than of the branch that returns — a shapeless no-fit is as
+    artifact, not of the branch that returns: a shapeless no-fit is as
     weights-only as a shapeless fit, and defaulting it to true made the refusals lie."""
 
     def verdict(
@@ -1239,7 +1239,7 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
             ),
         )
     window = (
-        f"at {fitted.context_length:,} tokens rather than the {intent.context_length:,} asked for"
+        f"at {fitted.context_length:,} tokens instead of the {intent.context_length:,} asked for"
         if fitted.reduced
         else f"at the full {fitted.context_length:,} tokens"
     )
@@ -1257,7 +1257,7 @@ def fit(sizing: Sizing, device: DeviceClass, intent: Intent) -> Fit:
 
     Preference order is deliberate. The smallest count carrying the full asked-for
     context wins; failing that, the smallest count carrying any usable context, so
-    a truncated window is offered rather than hidden; failing that, the largest
+    a truncated window is offered, not hidden; failing that, the largest
     attempt is returned as the no-fit, because how far off it was is the useful
     part of a refusal.
 
@@ -1287,14 +1287,14 @@ def ladder(sizing: Sizing, device: DeviceClass, intent: Intent) -> list[Fit]:
     concurrency. Returning only the recommendation made the second half of that choice
     invisible, and the console then had nothing to offer but the whole node.
 
-    Counts below the recommendation are here because they are the interesting ones — the
+    Counts below the recommendation are here because they are the interesting ones: the
     recommendation is the smallest count at the *full* window, so anything smaller that
     still serves is a deliberate trade of context for cards. Counts above it stop at one
     node, or at the recommendation when that already spans several: widening a replica
     past the fabric to buy KV cache is a throughput decision nothing here can price, and
     it is not a menu item.
 
-    No-fits are dropped rather than listed. This is a set of choices, and a count that
+    No-fits are dropped, not listed. This is a set of choices, and a count that
     cannot hold the weights is not one; :func:`fit` still explains a class that fits
     nowhere, and it is the row's own verdict that says so.
     """
@@ -1312,7 +1312,7 @@ def fitment(sizing: Sizing, devices: Sequence[DeviceClass], intent: Intent) -> l
     The ordering is the answer to "what should I ask for": fits before no-fits,
     full context before truncated, then fewest devices, then least aggregate
     memory. A class that works on four cards ranks above one that works on eight,
-    and among equals the smaller card wins — the larger one is capacity somebody
+    and among equals the smaller card wins: the larger one is capacity somebody
     else could have had.
     """
     results = [fit(sizing, device, intent) for device in devices]
@@ -1340,8 +1340,8 @@ def shape_metadata(shape: ModelShape) -> dict:
     """The attention shape as it is persisted on an artifact.
 
     Sizing an artifact after registration has to work without the network. The
-    derived scalars an artifact already carries — context length, quantization,
-    parameter count — are not enough to size a KV cache, so the shape itself is
+    derived scalars an artifact already carries, context length, quantization,
+    parameter count, are not enough to size a KV cache, so the shape itself is
     written down at resolve time and read back by :func:`sizing_of`.
     """
     return {name: getattr(shape, name) for name in SHAPE_FIELDS}
@@ -1352,7 +1352,7 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
 
     The parameter count is the only hard requirement. Without it there is no sizing
     of any kind and this returns ``None``; with it and nothing else, the result
-    carries no shape and fits on weights alone — a floor, which is a poorer answer
+    carries no shape and fits on weights alone: a floor, which is a poorer answer
     than a full estimate and a far better one than a blank panel.
 
     That distinction matters because the missing-shape case is not rare. Every
@@ -1360,8 +1360,8 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
     artifact adopted by watching a cluster serve weights nobody resolved.
 
     A stored shape from before the sliding-window fields existed reads back as full
-    attention, which is the safe direction — it over-states the cache rather than
-    under-stating it — but for an interleaved model it over-states it by a lot, and
+    attention, which is the safe direction, it over-states the cache instead of
+    under-stating it, but for an interleaved model it over-states it by a lot, and
     re-reading the source is what corrects the record.
     """
     if not parameter_count:

@@ -6,7 +6,7 @@ from app.core.schemas import Struct
 class NodeConditionSchema(Struct):
     """One observed node condition as the cluster reported it.
 
-    Generic health signals — memory or disk pressure, network availability — kept in full rather
+    Generic health signals (memory or disk pressure, network availability) kept in full rather
     than reduced to the single `condition` summary. The plane does not interpret `type`; it is
     whatever the cluster named the signal.
     """
@@ -22,11 +22,11 @@ class NodeDeviceRollupSchema(Struct):
     """How many devices this node has, and how they are split by health.
 
     Carried on the list payload so that "which nodes have unhealthy devices" is
-    one aggregate query rather than a device fetch per row. It is a rollup of
-    state only — no utilization, no temperature, no power.
+    one aggregate query instead of a device fetch per row. It is a rollup of
+    state only: no utilization, no temperature, no power.
 
     `device_class` is the dominant GPU model on the node, derived at read time
-    from the node's devices rather than stored, and `None` when the node carries
+    from the node's devices, not stored, and `None` when the node carries
     no devices. `allocated` is how many of `total` are committed to a live
     allocation right now.
     """
@@ -40,7 +40,7 @@ class NodeDeviceRollupSchema(Struct):
 class NodesSummarySchema(Struct):
     """Fleet-wide node rollup, computed server-side across every node.
 
-    A single figure for the list page header rather than a count derived from a
+    A single figure for the list page header instead of a count derived from a
     page. `faulted_devices` counts accelerators whose observed health is not
     `healthy`, across all nodes; it is a health rollup, never telemetry.
     """
@@ -56,11 +56,11 @@ class NodeSchema(Struct):
 
     Declared and observed are not merged, and there is nothing declared here at
     all: a node is discovered, so every field is observed. `cordoned` is its own
-    boolean rather than a value of `condition`, because cordon is the state an
+    boolean instead of a value of `condition`, because cordon is the state an
     Operation leaves behind and "cordoned" and "not ready" are different facts
     that need different responses.
 
-    Deliberately free of orchestrator-specific fields: os image, kernel, driver
+    Free of orchestrator-specific fields: os image, kernel, driver
     and agent version are generic observed attributes, and no kubelet version or
     manifest fragment appears here.
     """

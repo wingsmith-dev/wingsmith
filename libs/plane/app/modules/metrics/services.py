@@ -6,24 +6,24 @@ join is, and never renders a query. Which store, and in which dialect, is
 
 The three scoping joins, and how much each can be trusted:
 
-* **node** — the exporter labels every series with the machine's `hostname`, and
+* **node**: the exporter labels every series with the machine's `hostname`, and
   the plane stores `Node.name`. On Kubernetes these are the same string. Solid.
-* **device** — labelled with `UUID`, against `Device.device_uuid`. This is an
+* **device**: labelled with `UUID`, against `Device.device_uuid`. This is an
   identity the hardware itself issues, so it is the strongest join in the module
   and the reason per-card panels are trustworthy.
-* **deployment** — two joins, strongest first.
+* **deployment**: two joins, strongest first.
 
   Dynamo stamps every vLLM series with `dynamo_namespace`, which identifies the
-  serving process rather than the model it serves, and the labels it is composed
+  serving process instead of the model it serves, and the labels it is composed
   from ride along on the deployment. When they are there the join is exact, and
   two deployments of one model no longer read as one.
 
-  When they are not — a deployment the plane declared, whose worker hash Dynamo
-  has not minted yet — it falls back to `model_name`, which is the served model
+  When they are not, a deployment the plane declared, whose worker hash Dynamo
+  has not minted yet, it falls back to `model_name`, which is the served model
   and not the deployment. `Workload.engine_args["served-model-name"]` names it
   first, and then the artifact's stored slug, which is the repository a model is
-  fetched from — `google/gemma-4-31B-it` against a `model_name` of
-  `gemma-4-31b-it` — and so selects nothing on its own.
+  fetched from, `google/gemma-4-31B-it` against a `model_name` of
+  `gemma-4-31b-it`, and so selects nothing on its own.
 
   Both are reported to the client as scope `deployment`; which one answered is
   visible in the selector, not the schema.
@@ -34,18 +34,18 @@ and an unscoped query would answer for all of them at once.
 A workload is the one object that spans clusters, and it is not a fourth join: it
 is the device join and the deployment join, run once per cluster it landed in and
 merged afterwards. What can be merged is what `Metric.aggregate` says adds; a
-percentile is not, and is left out of the merged figure rather than averaged into
-one — see `_merge`.
+percentile is not, and is left out of the merged figure, not averaged into
+one; see `_merge`.
 
 The fleet is the same widening in the other direction: every cluster one store
 holds, in one `cluster` matcher the store aggregates over itself. It is not a
 fan-out that this process merges, because merging is where percentiles stop being
-measurements — see `fleet`, which refuses rather than approximates.
+measurements; see `fleet`, which refuses, not approximates.
 
 An endpoint is the one object no cluster can be asked about. It never syncs to
 one, and the requests that make its availability number interesting are the ones
 that never reached a cluster at all, so it is answered from the gateway's own
-series — a fifth join, on `hangar_endpoint`, against a store that has no cluster
+series: a fifth join, on `hangar_endpoint`, against a store that has no cluster
 label to narrow by.
 """
 
@@ -211,7 +211,7 @@ class MetricsService:
         """Every cluster that can be measured at all, and the store that answers for it.
 
         Most clusters are answered by the shared store narrowed to their own
-        `metrics_label`, so this has to walk the registry rather than read the
+        `metrics_label`, so this has to walk the registry, not read the
         environment. Env entries that match no cluster are listed after the rows:
         a typo in one is exactly the thing this endpoint is checked for.
         """
@@ -279,7 +279,7 @@ class MetricsService:
         """One answer from one store, for a scope that may belong to no cluster.
 
         A workload spans clusters, a fleet answer spans all of them and an
-        endpoint is served by the gateway rather than by any cluster, so the
+        endpoint is served by the gateway, not by any cluster, so the
         store and the cluster the answer is stamped with are two separate
         arguments here. `no_source` is the caller's own reason, because why a
         store is missing depends on what was being asked for.
@@ -558,9 +558,9 @@ class MetricsService:
     async def _held_devices(self, workload_id: UUID) -> dict[UUID, tuple[str, ...]]:
         """The device UUIDs a workload holds right now, per cluster.
 
-        Live on both halves — the allocation and the membership — because this is
+        Live on both halves, the allocation and the membership, because this is
         what the workload occupies now, not what it has occupied. A cluster with
-        nothing live is absent from the mapping rather than present with an empty
+        nothing live is absent from the mapping, not present with an empty
         tuple: an empty device matcher selects the whole fleet.
         """
         rows = (
@@ -599,7 +599,7 @@ class MetricsService:
         join differently: the cards are selected by the UUIDs the workload's live
         allocations hold, and the serving process by the same worker-then-model
         rule `deployment` uses. Every cluster's own numbers survive in the
-        breakdown, so a merge that cannot be made honestly costs nothing.
+        breakdown, so a merge that cannot be made accurately costs nothing.
 
         `source` names the store that answered first, because a workload whose
         clusters sit in different stores has no one store either; which cluster
@@ -699,7 +699,7 @@ class MetricsService:
     ) -> MetricsSchema:
         """Every measurable cluster at once, as one query the store answers itself.
 
-        The clusters are widened into a single `cluster=~"a|b"` matcher rather than
+        The clusters are widened into a single `cluster=~"a|b"` matcher, not
         asked one at a time and added up here. The plane is not the aggregation
         layer, and the arithmetic is the reason: a rate and a histogram's buckets
         add inside one store, and two p95s from two stores have no mean at all, so
@@ -708,7 +708,7 @@ class MetricsService:
         That only holds while one store holds them all, so the refusals are the
         substance of this method. Sources are grouped by the endpoint they point
         at, and anything other than one group of labelled clusters answers with a
-        reason and no samples — a store nothing narrows would blend the fleet with
+        reason and no samples: a store nothing narrows would blend the fleet with
         the clusters beside it, and two stores are two questions.
         """
         rows = (await self.db.execute(select(Cluster).order_by(Cluster.seq.asc()))).scalars().all()
@@ -755,7 +755,7 @@ class MetricsService:
 
         The gateway belongs to no cluster, so this does not go through `resolve`
         and it is never narrowed by a cluster label. `cluster` on a
-        `hangar_gateway_*` series names the cluster a request was *sent to* — the
+        `hangar_gateway_*` series names the cluster a request was *sent to*: the
         one thing it cannot name is which gateway emitted it, and it is the empty
         string for exactly the requests that matter most, the ones no cluster ever
         saw. Narrowing by it would drop those and count one front door's traffic
@@ -774,14 +774,14 @@ class MetricsService:
     ) -> MetricsSchema:
         """One endpoint as the front door saw it, which is the only place it is visible.
 
-        An endpoint is a plane-only object — it never reaches a cluster — so no
+        An endpoint is a plane-only object, it never reaches a cluster, so no
         cluster can be asked about one, and the answer carries `cluster: null`.
         The join is exact: `hangar_endpoint` is the uid, stamped by the hop that
         resolved it.
 
         A configured store that nobody has pointed at the gateway's metrics port
         answers every one of these with no series, which arrives as an absent
-        sample rather than a zero. An endpoint nobody has called is not 100%
+        sample instead of a zero. An endpoint nobody has called is not 100%
         available and is not 0% available either.
         """
         query = select(Endpoint).where(Endpoint.uid == ref if is_uid(ref) else Endpoint.name == ref)
@@ -824,7 +824,7 @@ class MetricsService:
         The quota is one indexed read in this database, joined onto a measurement
         response, which is the direction ADR 0003 permits: it cannot fail on its
         own, and the response it joins is already one whose failure is a reason
-        rather than an error. The period is resolved before anything is fetched so
+        instead of an error. The period is resolved before anything is fetched so
         a malformed one is refused without touching the store.
         """
         period = resolve_period(query, now or dt.datetime.now(dt.UTC))
@@ -850,7 +850,7 @@ class MetricsService:
         """The report for a resolved endpoint, quota and period. Touches the store and not the session.
 
         The definition is the one the quota names, resolved through the frozen
-        table, and the default for an endpoint with no quota — every endpoint's
+        table, and the default for an endpoint with no quota: every endpoint's
         availability is computed under some definition, and the report says which.
         """
         definition = objective(quota.availability_objective if quota else DEFAULT_AVAILABILITY_OBJECTIVE)
@@ -931,8 +931,8 @@ class MetricsService:
     ) -> MetricsSchema:
         """One tenant's traffic at the front door, summed over the endpoints it owns.
 
-        The gateway's series carry no tenant label — `hangar_endpoint` is the
-        finest identity on them — so a tenant is not a dimension of the
+        The gateway's series carry no tenant label, `hangar_endpoint` is the
+        finest identity on them, so a tenant is not a dimension of the
         measurement here. It is a set of endpoint uids resolved in the plane,
         matched in one selector, which is why this is a read of its own rather
         than a filter a client could apply to `serving`.
@@ -985,14 +985,14 @@ class MetricsService:
     ) -> MetricsSchema:
         """Every request the front door answered, with one breakdown row per endpoint.
 
-        Narrowed by nothing, deliberately: a total assembled by adding up a page
+        Narrowed by nothing: a total assembled by adding up a page
         of endpoints is a total of that page, and it moves when somebody pages.
         The breakdown keeps every endpoint's own figure beside it.
 
-        The gateway's two reserved keys are labelled rather than dropped.
+        The gateway's two reserved keys are labelled, not dropped.
         `_catalog` is `GET /v1/models`, answered from the routing table by no
         endpoint at all, and `_unknown` is a caller naming a model we do not
-        serve — which is the traffic worth seeing when a rename has gone wrong.
+        serve, which is the traffic worth seeing when a rename has gone wrong.
         """
         source = self._gateway()
         labels = dict(RESERVED_ENDPOINTS)
@@ -1019,9 +1019,9 @@ def _merge(metrics: tuple[Metric, ...], per_cluster: list[dict[str, float | None
 
     Only two of the three aggregations survive the crossing. A throughput or a
     count adds, and a temperature takes the worst card, because both are true of
-    the union of what was measured. The other two are dropped rather than merged:
+    the union of what was measured. The other two are dropped, not merged:
     two p95s have no mean, and a mean of two means is not a mean unless the
-    clusters were the same size — a workload holding eight devices at 90% in one
+    clusters were the same size: a workload holding eight devices at 90% in one
     cluster and one device at 10% in another averages to 50%, which is true of no
     device it owns. Each store's real figure is in the breakdown, where it is
     true of that store, and the merged tile reads "not measured", which is also

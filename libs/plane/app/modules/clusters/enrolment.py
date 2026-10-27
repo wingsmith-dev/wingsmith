@@ -2,8 +2,8 @@
 
 Registration writes a cluster in `pending`. The first time its operator dials
 the hub and completes the handshake, intent should move past bootstrap to
-`active` — a declared write, made here by the clusters module, which owns the
-declared half. It is deliberately *not* done by ingestion: observed state
+`active`: a declared write, made here by the clusters module, which owns the
+declared half. It is *not* done by ingestion: observed state
 (`reachable`, `sync`) has exactly one writer, and `phase` is not it (see
 `DatabaseSink.mark_connected`, which will not touch phase). The hub session
 calls this after a successful `welcome`.
@@ -40,7 +40,7 @@ def schedule_promote_on_enrolment(cluster_uid: str) -> None:
 
     The promotion touches the database. Awaiting it inline on the hub's
     handshake path would put a round trip between `welcome` and the first
-    streamed frame — and enrolment intent is not something the operator's stream
+    streamed frame, and enrolment intent is not something the operator's stream
     should wait on. Scheduling a task does not yield the loop, so it cannot
     reorder frames the caller goes on to send; failures are logged, never raised
     back into the handshake.
@@ -55,10 +55,10 @@ async def promote_on_enrolment(cluster_uid: str) -> None:
     """Flip `pending → active` and stamp `enrolled_at`, once, for `cluster_uid`.
 
     Idempotent and cheap: a no-op unless the cluster is still `pending`, so it
-    can run on every handshake — including a resume — without fighting an
+    can run on every handshake, including a resume, without fighting an
     operator who has since moved the cluster to `draining` or `disabled`. Runs
     in its own transaction because the caller (the hub session) holds no request
-    database session, and swallows nothing — a failure here must not sink the
+    database session, and swallows nothing: a failure here must not sink the
     handshake, so the caller logs and carries on.
     """
     async with session_factory()() as db:
