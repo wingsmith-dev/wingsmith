@@ -13,7 +13,7 @@ not be used for a deployment.
 | Process | Image | Command | Listens on | Replicas |
 |---|---|---|---|---|
 | migrate | `plane` | `migrate upgrade head` | nothing; runs to completion | one, before each rollout |
-| api | `plane` | `api` | `:8000` HTTP: the API, `/health`, and the console bundle at `/` | one or more |
+| api | `plane` | `api` | `:8000` HTTP: the API, `/health`, `/metrics`, and the console bundle at `/` | one or more |
 | hub | `plane` | `hub` | `:8001` WebSocket at `/v1/hub/sync`, `/health` | one or more |
 | reactor | `plane` | `python -m app.reactor` | nothing | optional, see below |
 | gateway | `gateway` | (default) | `:8080` internal, `:8443` tunnel, `:9090` metrics, optional public | one or more |
@@ -105,6 +105,7 @@ Human access is a single admin role; see [SECURITY.md](../../SECURITY.md) for th
 | Path | Who connects | How to expose it |
 |---|---|---|
 | plane HTTP (`api`, `:8000`) | the console in a browser, `hgr` | HTTPS ingress. Or keep it private and use `kubectl port-forward` |
+| plane metrics (`api`, `:8000`, `/metrics`) | your Prometheus | Scrape each api pod on the cluster network. `/metrics` needs no credential, so refuse it at the ingress that serves the plane HTTP path |
 | hub (`:8001`, `/v1/hub/sync`) | every cluster's operator | HTTPS ingress that supports WebSocket upgrades and long-lived connections; raise idle timeouts well above a minute |
 | gateway tunnel (`:8443`) | every cluster's agent | TCP passthrough (an L4 load balancer or an ingress TCP route), with TLS terminated by the gateway itself via `HANGAR_GATEWAY_TUNNEL_TLS_CERT`/`_KEY`. The tunnel is HTTP/2 after a custom handshake, so an HTTP ingress cannot proxy it |
 | gateway internal (`:8080`) | your own services that call models | ClusterIP only. It has no authentication and reaches every enabled tenant's models, so restrict it with a NetworkPolicy and never give it an ingress |
@@ -133,6 +134,11 @@ deployment. Plan for both facts:
   on the [roadmap](../roadmap.md).
 
 ## Metrics (optional)
+
+The api process serves its own request metrics at `/metrics`, unauthenticated, on the same port as
+the API. Keep that path off the public listener, as in the networking table above.
+[METRICS.md](../../libs/plane/METRICS.md) lists the series. The rest of this section is about the
+fleet's metrics.
 
 Set `HANGAR_METRICS_REMOTE_WRITE_URL` to your store's `remote_write` endpoint, and the cluster setup
 values will turn on each cluster's metrics agent pointed at it. Set `HANGAR_METRICS_SOURCES` to
