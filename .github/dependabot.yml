@@ -52,6 +52,7 @@ updates:
       - /libs/plane
       - /libs/benchmarking/images/evalscope
       - /libs/benchmarking/images/vllm-bench
+      - /libs/conformance
     schedule:
       interval: weekly
     groups:
