@@ -1,11 +1,7 @@
 import { POLL } from "@/lib/poll"
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useMemo } from "react"
+import { api } from "@/lib/api"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   annotateWorkloadRevision,
@@ -98,24 +94,37 @@ export function useArtifactFitment(ref: string, params: FitmentParams = {}) {
   })
 }
 
+/** The plane answers at most this many artifacts per batched usage read. */
+const USAGE_BATCH = 200
+
 /**
- * Usage for a set of artifacts, one read each. The list surfaces a reference
- * count per row and an in-use total, and the plane counts usage per artifact —
- * there is no batched rollup, so this fans out and reads back a map by id.
+ * Usage for a set of artifacts, read back as a map by id. One request per 200
+ * artifacts through `GET /artifacts/usage?id=...`, not one per row, so
+ * a list page costs the same however many rows it shows. An id the plane does
+ * not know is simply absent from the map.
  */
 export function useArtifactUsages(ids: string[]) {
-  const results = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["artifacts", "usage", id],
-      queryFn: () => fetchArtifactUsage(id),
-      enabled: !!id,
-    })),
+  const unique = useMemo(() => [...new Set(ids.filter(Boolean))].sort(), [ids])
+  const query = useQuery({
+    queryKey: ["artifacts", "usage", "batch", unique],
+    queryFn: async () => {
+      const batches: string[][] = []
+      for (let i = 0; i < unique.length; i += USAGE_BATCH)
+        batches.push(unique.slice(i, i + USAGE_BATCH))
+      const pages = await Promise.all(
+        batches.map((id) => api.list<ArtifactUsage>("/artifacts/usage", { id }))
+      )
+      return pages.flatMap((page) => page.items)
+    },
+    enabled: unique.length > 0,
   })
-  const byId = new Map<string, ArtifactUsage>()
-  results.forEach((result, index) => {
-    if (result.data) byId.set(ids[index], result.data)
-  })
-  return byId
+  return useMemo(
+    () =>
+      new Map<string, ArtifactUsage>(
+        (query.data ?? []).map((usage) => [usage.artifact_id, usage])
+      ),
+    [query.data]
+  )
 }
 
 /** Artifacts derived from this one — the quantizations and fine-tunes that name it as base. */
