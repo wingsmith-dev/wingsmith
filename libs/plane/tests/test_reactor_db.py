@@ -566,6 +566,32 @@ async def test_an_operation_past_its_deadline_is_timed_out_and_stays_that_way(se
     assert rows == [("timed_out",)], "a late report does not reopen an operation that ended"
 
 
+async def test_a_short_workload_is_placed_again_once_capacity_arrives(sessions):
+    """Placed one of two for want of devices; the repair pass takes the second once a cluster can."""
+    from app.reactor.reconcile import replace_short_workloads
+    from app.modules.workloads.services import WorkloadService
+
+    from tests.test_placement_db import scale
+    from tests.test_placement_db import create
+    from tests.test_placement_db import seed_demand
+    from tests.test_placement_db import seed_supply
+
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=4)
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(2)))
+    assert workload.scale.placed == 1
+
+    await seed_supply(sessions, "second", devices=4)
+    async with sessions() as db:
+        assert await replace_short_workloads(db) == [workload.id]
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert sum(d.desired_replicas for d in after.deployments) == 2
+    assert len(after.deployments) == 2
+
+
 def cluster_uid() -> str:
     from tests.conftest import CLUSTER
 

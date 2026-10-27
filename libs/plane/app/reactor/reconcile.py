@@ -31,6 +31,7 @@ from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.modules.benchmarks.follow import follows_operation
+from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.placement.services import PlacementService
 from app.modules.workloads.services import WorkloadService
 
@@ -145,7 +146,7 @@ async def replace_short_workloads(db: AsyncSession, limit: int = 50) -> list[str
             if not await _would_place_more(db, workload_id, placed):
                 await db.rollback()
                 continue
-            await WorkloadService(db).rescale(uid, {})
+            await WorkloadService(db).rescale(uid, WorkloadScaleParameters())
             replaced.append(uid)
         except Exception as exc:  # noqa: BLE001 - one workload's refusal must not stop the sweep
             await db.rollback()
