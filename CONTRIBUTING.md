@@ -40,7 +40,9 @@ Run `just check` before you open a pull request. CI runs the same checks on ever
 (`.github/workflows/ci.yml`), including the database suite against a Postgres service, so if you
 cannot run that suite locally, say so in the pull request and rely on CI for it. `just chart-lint` covers the Helm chart, and `just e2e`
 runs the reconciler against a real API server; point it at a local kind cluster, never at one
-serving traffic.
+serving traffic. `just check-docs` fails on a dead relative link, anchor or backticked path in the
+Markdown, and `just conformance-gateway` runs the conformance probes through a locally built
+gateway; CI runs both.
 
 ## Sign your commits (DCO)
 

@@ -325,6 +325,10 @@ e2e *args:
 
 # ── Gate ──────────────────────────────────────────────────────────────────────
 
+# Every relative link, anchor and backticked repository path in the tracked Markdown resolves
+check-docs:
+    scripts/check-docs.sh
+
 # Everything a change has to pass: format, lint, every suite, the chart, and the interop gate
 check:
     #!/usr/bin/env bash
