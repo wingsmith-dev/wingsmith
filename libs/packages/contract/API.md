@@ -101,7 +101,7 @@ process-wide ceiling backs it for a caller spread across many addresses.
 verifies agent tunnels, and an admin session is refused on all three of its routes: the tenant
 feed carries every tenant's live key hashes, which must never reach a console response, and
 tunnel verification turns an enrolment token into a cluster identity, which a human credential has
-no reason to do. Under `APP_ENV=local` with no token configured the plane accepts a fixed local
+no reason to do. Under `HANGAR_APP_ENV=local` with no token configured the plane accepts a fixed local
 token so a fresh checkout's gateway can start; outside `local` an unset token means no gateway
 principal resolves at all.
 
@@ -113,13 +113,13 @@ writes observed state for that cluster only. The one HTTP route that handles an 
 takes it in a request body, from the gateway, and answers with a cluster identity rather than with
 a session (§6).
 
-**`ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
+**`HANGAR_ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
 request without a credential then resolves to the admin principal. The plane refuses to start with
-it outside `APP_ENV=local`, logs a warning naming the exposure on every startup while it is active,
+it outside `HANGAR_APP_ENV=local`, logs a warning naming the exposure on every startup while it is active,
 and it never affects the gateway, tenant or enrolment-token checks.
 
 **A browser write must come from an allowed origin and carry JSON.** A `POST`, `PUT`, `PATCH` or
-`DELETE` whose `Origin` names neither an origin in `ALLOWED_ORIGINS` nor the plane's own host is
+`DELETE` whose `Origin` names neither an origin in `HANGAR_ALLOWED_ORIGINS` nor the plane's own host is
 `403 forbidden`, and any request body that is not `application/json` is `415
 unsupported_media_type`. A caller that is not a browser sends no `Origin` and is unaffected.
 
@@ -244,7 +244,7 @@ ref/version the register-cluster screen hands out.
 by hand in the response schema, so a credential added to the plane's settings is absent from this
 endpoint until somebody decides otherwise; a rule that skipped suspicious names would publish the
 next one by default. Three consequences are binding on any implementation: a credential is
-reported only as a boolean — never a value, a prefix, a length or a digest; `DATABASE_URL` is
+reported only as a boolean, never as a value, a prefix, a length or a digest; `HANGAR_DATABASE_URL` is
 reported in parts and never as a string, so userinfo cannot travel; and the per-source `|token=`
 never appears, because a metrics source is public as endpoint, kind and label only. Admin
 principals only — the gateway's service token or a tenant session is `403 forbidden`, since neither
