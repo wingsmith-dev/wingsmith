@@ -3,6 +3,8 @@
 They need `HANGAR_TEST_DATABASE_URL`, a Postgres URL with rights to create databases; `just
 test-db` sets it. Nothing here touches the database that URL names: the schema is migrated once
 into `hangar_test_template`, and each test module gets its own copy, dropped when it finishes.
+`HANGAR_TEST_DATABASE_SUFFIX` goes after `hangar_test_` in every one of those names, so two runs
+can share a server.
 Without the variable, or with no server behind it, a database test fails instead of skipping.
 """
 
@@ -33,7 +35,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 ROOT = Path(__file__).resolve().parents[1]
 
 DATABASE_URL_VAR = "HANGAR_TEST_DATABASE_URL"
-DATABASE_PREFIX = "hangar_test_"
+SCRATCH_PREFIX = "hangar_test_"
+# Two checkouts running the suite against one server would drop each other's databases; a
+# suffix keeps each run's scratch names apart. They all still start with SCRATCH_PREFIX.
+DATABASE_PREFIX = SCRATCH_PREFIX + re.sub(r"[^a-z0-9_]", "_", os.environ.get("HANGAR_TEST_DATABASE_SUFFIX", "").lower())
 TEMPLATE_DATABASE = DATABASE_PREFIX + "template"
 
 CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
@@ -66,7 +71,7 @@ def scratch_name(admin: URL, suffix: str) -> str:
 
 def recreate(admin: URL, name: str, template: str | None = None) -> str:
     """Drops and creates one scratch database and returns its URL."""
-    assert name.startswith(DATABASE_PREFIX)
+    assert name.startswith(SCRATCH_PREFIX)
     with admin_connection(admin) as connection:
         connection.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         source = f' TEMPLATE "{template}"' if template else ""
@@ -75,7 +80,7 @@ def recreate(admin: URL, name: str, template: str | None = None) -> str:
 
 
 def drop(admin: URL, name: str) -> None:
-    assert name.startswith(DATABASE_PREFIX)
+    assert name.startswith(SCRATCH_PREFIX)
     with admin_connection(admin) as connection:
         connection.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
