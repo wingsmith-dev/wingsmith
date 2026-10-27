@@ -3,6 +3,8 @@ package tunnel
 import (
 	"context"
 	"errors"
+	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -91,5 +93,71 @@ func TestATunnelAdoptedDuringShutdownIsClosedNotLeaked(t *testing.T) {
 	}
 	if live := pool.Live("cluster-a"); live != 0 {
 		t.Errorf("the pool holds %d tunnels after Shutdown, want 0", live)
+	}
+}
+
+// gaugeObserver keeps the last count it was given per cluster, the way a
+// Prometheus gauge that is Set on every report does.
+type gaugeObserver struct {
+	mu   sync.Mutex
+	last map[string]int
+}
+
+func (o *gaugeObserver) set(clusterID string, live int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.last[clusterID] = live
+}
+
+func (o *gaugeObserver) get(clusterID string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.last[clusterID]
+}
+
+func (o *gaugeObserver) TunnelOpened(clusterID string, live int) { o.set(clusterID, live) }
+func (o *gaugeObserver) TunnelClosed(clusterID string, live int) { o.set(clusterID, live) }
+
+// TestTheLastCoverageReportCountsEveryTunnel adopts tunnels to one cluster at
+// the same moment. Each report used to carry a count taken before it was sent,
+// so two of them could arrive in the opposite order and leave the gauge at one
+// less than the pool held until the next open or close.
+func TestTheLastCoverageReportCountsEveryTunnel(t *testing.T) {
+	t.Parallel()
+
+	const tunnels = 8
+	for round := range 20 {
+		observer := &gaugeObserver{last: make(map[string]int)}
+		pool := newPool(t, PoolConfig{Observer: observer})
+
+		// The sockets and connectors are set up first, on the test goroutine,
+		// so the adopts are what runs concurrently.
+		gatewaySides := make([]net.Conn, tunnels)
+		for i := range tunnels {
+			gatewaySide, connectorSide := socketPair(t)
+			connector := newConnector(t, echoHandler("a"), Limits{})
+			go func() { _ = connector.Serve(connectorSide) }()
+			gatewaySides[i] = gatewaySide
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var wg sync.WaitGroup
+		for _, gatewaySide := range gatewaySides {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := pool.Adopt(ctx, "cluster-a", gatewaySide); err != nil {
+					t.Errorf("adopt: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+		cancel()
+
+		if live := pool.Live("cluster-a"); live != tunnels {
+			t.Fatalf("round %d: the pool holds %d live tunnels, want %d", round, live, tunnels)
+		}
+		if got := observer.get("cluster-a"); got != tunnels {
+			t.Fatalf("round %d: the last report said %d tunnels, the pool holds %d", round, got, tunnels)
+		}
 	}
 }

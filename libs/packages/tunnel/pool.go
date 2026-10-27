@@ -231,6 +231,9 @@ type Pool struct {
 	byConn   map[*http2.ClientConn]*Conn
 	cursor   map[string]uint64
 	closed   bool
+
+	// reportMu orders coverage reports to the Observer. See report.
+	reportMu sync.Mutex
 }
 
 type clusterKey struct{}
@@ -373,18 +376,14 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 	}
 	p.clusters[clusterID] = append(p.clusters[clusterID], conn)
 	p.byConn[cc] = conn
-	siblings := p.snapshotLocked(clusterID)
 	p.mu.Unlock()
-	live := countLive(siblings)
 
 	go conn.watch(p.cfg.HealthInterval)
 	go func() {
 		<-conn.Done()
 		p.forget(conn)
 	}()
-	if p.cfg.Observer != nil {
-		p.cfg.Observer.TunnelOpened(clusterID, live)
-	}
+	p.report(clusterID, true)
 	return conn, nil
 }
 
@@ -438,12 +437,34 @@ func (p *Pool) forget(conn *Conn) {
 		p.clusters[conn.ClusterID] = kept
 	}
 	delete(p.byConn, conn.cc)
-	siblings := p.snapshotLocked(conn.ClusterID)
 	p.mu.Unlock()
-	live := countLive(siblings)
 
-	if found && p.cfg.Observer != nil {
-		p.cfg.Observer.TunnelClosed(conn.ClusterID, live)
+	if found {
+		p.report(conn.ClusterID, false)
+	}
+}
+
+// report tells the Observer that a cluster's coverage changed.
+//
+// The count is taken inside reportMu, after the change, and not by the
+// caller. Two adopts that each counted on their own and then reported could
+// reach the Observer in the opposite order, leaving a gauge that is Set to 1
+// while the pool holds 2 until the next change. Serialised like this, the last
+// report always counts every change before it.
+//
+// Not under p.mu: counting asks each tunnel's ClientConn for its state, which
+// can wait on a stalled socket write (see snapshotLocked).
+func (p *Pool) report(clusterID string, opened bool) {
+	if p.cfg.Observer == nil {
+		return
+	}
+	p.reportMu.Lock()
+	defer p.reportMu.Unlock()
+	live := p.Live(clusterID)
+	if opened {
+		p.cfg.Observer.TunnelOpened(clusterID, live)
+	} else {
+		p.cfg.Observer.TunnelClosed(clusterID, live)
 	}
 }
 
