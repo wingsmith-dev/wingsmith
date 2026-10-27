@@ -157,7 +157,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 				}
 			}
 			if !strings.Contains(got.Message, redacted) {
-				t.Fatalf("message = %q, want the address replaced rather than the message dropped", got.Message)
+				t.Fatalf("message = %q, want the address replaced instead of the message dropped", got.Message)
 			}
 		})
 	}

@@ -10,7 +10,7 @@ import (
 // usageTailBytes is how much of a response is kept to find its usage object.
 //
 // A fixed window, over bytes that have already been forwarded, is the whole of
-// the token accounting here. The alternative — buffering the response — would
+// the token accounting here. The alternative, buffering the response, would
 // defeat streaming outright, which is the one thing this hop must not do: a
 // completion with "stream": true is SSE, and a buffered SSE stream is one long
 // pause followed by the entire answer.
@@ -20,7 +20,7 @@ const usageTailBytes = 64 << 10
 //
 // It is observability and not an invoice. Whoever fronts this gateway meters
 // its own users; two systems counting tokens is two systems disagreeing about
-// what a customer owes, and this one is deliberately the one without an
+// what a customer owes, and this one is the one without an
 // opinion.
 type usageCounts struct {
 	input       int64
@@ -123,10 +123,10 @@ type usagePayload struct {
 
 // parseUsage finds the last usage object in a response tail.
 //
-// The tail rather than the whole body, so the scan is bounded and a long
-// generation costs the same as a short one. A body this cannot read — one that
-// arrived compressed, or whose usage object is larger than the window — yields
-// no counts, and no counts means an absent series rather than a zero one.
+// The tail instead of the whole body, so the scan is bounded and a long
+// generation costs the same as a short one. A body this cannot read, one that
+// arrived compressed, or whose usage object is larger than the window, yields
+// no counts, and no counts means an absent series instead of a zero one.
 func parseUsage(tail []byte) (usageCounts, bool) {
 	needle := []byte(`"usage"`)
 	for at := bytes.LastIndex(tail, needle); at >= 0; at = bytes.LastIndex(tail[:at], needle) {
@@ -158,7 +158,7 @@ func parseUsage(tail []byte) (usageCounts, bool) {
 
 // objectAfter returns the JSON object following a key's colon, by matching
 // braces. json.Decoder cannot be used here: the window starts mid-document, so
-// there is no valid document to decode — only a well-formed object inside one.
+// there is no valid document to decode, only a well-formed object inside one.
 func objectAfter(b []byte) ([]byte, bool) {
 	i := 0
 	for i < len(b) && (b[i] == ' ' || b[i] == '\t' || b[i] == '\n' || b[i] == '\r' || b[i] == ':') {
@@ -196,7 +196,7 @@ func objectAfter(b []byte) ([]byte, bool) {
 // observeUsage wraps a response body so its tail is read for token counts.
 //
 // It hangs off the proxy's ModifyResponse, which runs once per response and is
-// handed the outbound request — which is a clone of the inbound one and carries
+// handed the outbound request, which is a clone of the inbound one and carries
 // its context, and therefore its observation.
 func observeUsage(resp *http.Response) error {
 	if resp.Request == nil || resp.Body == nil {

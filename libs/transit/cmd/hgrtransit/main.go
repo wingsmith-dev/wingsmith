@@ -1,15 +1,15 @@
 // Command hgrtransit measures hangar's inference request path.
 //
-// One tool, three environments. `synthetic` builds the path on this host — the
+// One tool, three environments. `synthetic` builds the path on this host, the
 // real gateway and the real agent over the real tunnel, with a fake control
-// plane beside it and a scheduled frontend at the end of it — and is what a
+// plane beside it and a scheduled frontend at the end of it, and is what a
 // laptop and CI run. `live` points the same generator and the same report at a
 // gateway somebody has deployed. `path` holds the built gateway and agent open
 // in front of a frontend somebody else runs, for a client-side check such as
 // hgrconform. `upstream` and `plane` expose the two fakes on their own, for a
 // caller assembling something this tool does not.
 //
-// The report is the same shape in every mode on purpose: a number from a laptop
+// The report is the same shape in every mode: a number from a laptop
 // and a number from production are only worth having together if they are the
 // same measurement.
 package main
@@ -66,7 +66,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `hgrtransit — measure the gateway → tunnel → agent → frontend path
+	fmt.Fprint(os.Stderr, `hgrtransit: measure the gateway → tunnel → agent → frontend path
 
   synthetic   build the path on this host and ramp through it
   live        ramp against a deployed gateway
@@ -148,7 +148,7 @@ func synthetic(ctx context.Context, args []string) error {
 //
 // The concurrency guard is the one piece of policy in this tool. A ramp that is
 // harmless on a loopback is a shared production path here, and the default is
-// deliberately small enough to be a probe rather than a load test; going past it
+// small enough to be a probe instead of a load test; going past it
 // is a decision somebody makes on the command line with the word out loud.
 func live(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("live", flag.ExitOnError)
@@ -179,7 +179,7 @@ func live(ctx context.Context, args []string) error {
 	}
 	for _, stage := range stages {
 		if stage.Concurrency > *ceiling {
-			return fmt.Errorf("stage of %d is above -max-concurrency %d; raise it deliberately if this target can take it",
+			return fmt.Errorf("stage of %d is above -max-concurrency %d; raise it if this target can take it",
 				stage.Concurrency, *ceiling)
 		}
 	}

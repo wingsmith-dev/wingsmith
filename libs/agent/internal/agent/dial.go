@@ -15,10 +15,10 @@ import (
 
 // Dialler opens an authenticated tunnel to one gateway replica.
 //
-// It is a struct rather than a closure so that the TLS material is read once, at startup: a missing
+// It is a struct instead of a closure so that the TLS material is read once, at startup: a missing
 // CA file should fail the process, not every dial forever.
 //
-// The handshake itself is tunnel.Handshake — the wire is defined once, in the package both ends
+// The handshake itself is tunnel.Handshake: the wire is defined once, in the package both ends
 // import, and this half only supplies the identity and the deadline.
 type Dialler struct {
 	clusterID string
@@ -72,7 +72,7 @@ func NewDialler(cfg *Config) (*Dialler, error) {
 // Dial connects to the gateway, presents the enrolment token, and hands back a connection positioned
 // at the first HTTP/2 byte along with which replica answered.
 //
-// Which replica that is, is not this function's choice — the address is one load-balanced name and
+// Which replica that is, is not this function's choice: the address is one load-balanced name and
 // whatever is in front of it decides. The Peer is how the caller finds out, and the whole of the
 // supervisor's coverage logic is built on redialling the same name until every replica has answered
 // once.
@@ -116,7 +116,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 	// the only safe move: carrying on would serve that cluster's traffic from this one's GPUs.
 	//
 	// Either name in the answer counts as agreement. HANGAR_CLUSTER_ID is normally the cluster's
-	// name — the chart writes it from what the plane rendered — while the accept's ClusterID is the
+	// name, the chart writes it from what the plane rendered, while the accept's ClusterID is the
 	// plane's uid, so comparing against that alone refuses every ordinary install. It refuses none
 	// of the dangerous ones: another cluster's credential resolves to a uid *and* a name that are
 	// both somebody else's.
@@ -131,7 +131,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 
 // Peer is which gateway replica a dial landed on, and how many the gateway says it is running.
 //
-// It is a type of this package rather than tunnel.Accept so that the supervisor's coverage logic can
+// It is a type of this package, not tunnel.Accept so that the supervisor's coverage logic can
 // be tested without building wire frames, and so that the fallbacks for a gateway that did not say
 // live in exactly one place.
 type Peer struct {

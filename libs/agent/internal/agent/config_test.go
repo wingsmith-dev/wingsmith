@@ -92,7 +92,7 @@ func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
 }
 
 // A cluster is configured with one address and never with a list of replicas. The chart used to
-// render a comma-separated list here, so a value that still carries one must fail loudly rather than
+// render a comma-separated list here, so a value that still carries one must fail loudly, not
 // be read as a hostname with commas in it.
 func TestLoadRefusesAListOfGateways(t *testing.T) {
 	env := minimal()
@@ -163,7 +163,7 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 		DrainTimeout:     time.Second,
 		HealthAddr:       ":8081",
 		LogFormat:        "json",
-		// The bound Load would have filled in. It is required rather than
+		// The bound Load would have filled in. It is required, not
 		// zero-means-default so that a hand-built Config cannot arrive at the
 		// innermost hop with a smaller bound than the gateway's.
 		ResponseHeaderTimeout: tunnel.DefaultResponseHeaderTimeout,
@@ -184,7 +184,7 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 // The agent is the innermost of three hops arming a response-header timer, and
 // only the smallest of the three is ever observed. So it reads the same variable
 // name the gateway does, defaults to the same number, and refuses anything below
-// it — a smaller value here would fire first and hand every long non-streamed
+// it: a smaller value here would fire first and hand every long non-streamed
 // completion back as a 502 at a wall nothing in the gateway names.
 func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
 	for _, tc := range []struct {
@@ -197,7 +197,7 @@ func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
 		{name: "a raised value is kept", value: "90m", want: 90 * time.Minute},
 		{name: "the default itself is accepted", value: tunnel.DefaultResponseHeaderTimeout.String(), want: tunnel.DefaultResponseHeaderTimeout},
 		{name: "below the gateway's default is refused", value: "5m", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
-		{name: "zero is refused rather than read as no bound", value: "0s", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
+		{name: "zero is refused, not read as no bound", value: "0s", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := minimal()

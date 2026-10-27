@@ -41,7 +41,7 @@ func main() {
 	// binary does not know makes flag.Parse exit 2, a crashloop of the data
 	// plane. An unknown environment variable is inert; an unknown flag is not.
 	metricsAddr := flag.String("metrics-listen", "", "address for the Prometheus /metrics listener, empty for the default (HANGAR_GATEWAY_METRICS_LISTEN env fallback, \"off\" to disable)")
-	probeToken := flag.String("probe-token", "", "token the conformance runner presents to mark its traffic as probe rather than live; accepts a comma-separated pair while rotating (HANGAR_GATEWAY_PROBE_TOKEN env fallback)")
+	probeToken := flag.String("probe-token", "", "token the conformance runner presents to mark its traffic as probe, not live; accepts a comma-separated pair while rotating (HANGAR_GATEWAY_PROBE_TOKEN env fallback)")
 	tunnelAddr := flag.String("tunnel-listen", "", "address the cluster agents dial, empty for the default (HANGAR_GATEWAY_TUNNEL_LISTEN env fallback, \"off\" to disable)")
 	tunnelCert := flag.String("tunnel-cert", "", "PEM certificate for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_CERT env fallback); without it the listener is plaintext and TLS must be terminated in front of it")
 	tunnelKey := flag.String("tunnel-key", "", "PEM private key for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_KEY env fallback)")
@@ -84,7 +84,7 @@ func main() {
 	if *gatewayID == "" {
 		// The pod name, which in a StatefulSet is the replica's identity and is
 		// stable across restarts. A host that will not name itself leaves this
-		// empty, and an agent then treats the gateway as a single replica — a
+		// empty, and an agent then treats the gateway as a single replica: a
 		// degradation and not a failure, which is the right trade for a name
 		// whose only job is to tell replicas apart.
 		if name, err := os.Hostname(); err == nil {
@@ -103,7 +103,7 @@ func main() {
 	// The same variable name the agent reads, and it has to stay that way. Both
 	// ends of the tunnel arm a response-header timer from this number and only
 	// the smaller of the two is ever observed, so raising it here alone buys the
-	// caller nothing — see tunnel.InnerHopTimeout. Setting it in one place and
+	// caller nothing; see tunnel.InnerHopTimeout. Setting it in one place and
 	// not the other is the one way left to get this wrong, which is why the
 	// value is logged at startup on both ends.
 	if *headerTimeout == 0 {
@@ -124,8 +124,8 @@ func main() {
 	// routes this process reads and nowhere else, so it carries no admin or
 	// operator rights on the plane API.
 	planeToken := os.Getenv("HANGAR_GATEWAY_SERVICE_TOKEN")
-	// HANGAR_GATEWAY_PUBLIC_LISTEN is deliberately read only from the
-	// environment, never a flag — the reason is the same one metricsAddr and
+	// HANGAR_GATEWAY_PUBLIC_LISTEN is read only from the
+	// environment, never a flag; the reason is the same one metricsAddr and
 	// tunnelAddr are read from both: a manifest naming a flag this binary
 	// does not know reaches flag.Parse before main runs and exits 2, which is
 	// a crashloop of the data plane. An unset variable is inert, which is
@@ -156,8 +156,8 @@ func main() {
 	planeClient := plane.New(*planeURL, planeToken, 5*time.Second)
 
 	// The tunnel pool and its listener, or neither. Assigned through an
-	// interface variable rather than passed directly, because a (*tunnel.Pool)(nil)
-	// stored in an interface is not a nil interface — a gateway with tunnels
+	// interface variable, not passed directly, because a (*tunnel.Pool)(nil)
+	// stored in an interface is not a nil interface: a gateway with tunnels
 	// disabled would then ask a nil pool for coverage on every request.
 	var tunnels serving.Tunnels
 	var reach routing.Reachability
@@ -199,7 +199,7 @@ func main() {
 
 	// The first load must succeed. Coming up with an empty table would answer
 	// every request with "model not found", which reads as an outage of the
-	// models rather than as the misconfiguration it is.
+	// models, not as the misconfiguration it is.
 	if err := router.Load(ctx); err != nil {
 		slog.Error("gateway: could not load the routing table", "err", err)
 		os.Exit(1)
@@ -227,7 +227,7 @@ func main() {
 	// A third listener, and the one that must not be gated on readiness: a
 	// replica is ready because it holds a tunnel, so an agent that could only
 	// dial a ready replica could never make one ready. It is on its own port,
-	// started before the request path, and nothing in it consults readiness — the
+	// started before the request path, and nothing in it consults readiness: the
 	// Service in front of it is a headless one publishing not-ready addresses.
 	if listener != nil {
 		serveTunnels(ctx, listener, *tunnelAddr, *tunnelCert, *tunnelKey, recorder, stop)
@@ -293,7 +293,7 @@ func main() {
 
 	// The public listener, off unless HANGAR_GATEWAY_PUBLIC_LISTEN names an
 	// address. A caller here identifies itself by the `Host` it dials rather
-	// than by which port it reached — the internal listener's own proof — so
+	// than by which port it reached, the internal listener's own proof, so
 	// every request run through it takes the tenant and key stages the
 	// internal listener's Zone skips (docs/decisions/0016).
 	var publicSrv *http.Server
@@ -397,8 +397,8 @@ const defaultTunnelAddr = ":8443"
 // tunnelCertReloadEvery is how often the tunnel certificate is re-read from disk.
 //
 // Ten minutes against a renewal window of 30 days. There is no benefit to being
-// quicker — the old certificate stays valid for the whole window — and a slow
-// poll keeps a mid-swap read rare rather than merely survivable.
+// quicker, the old certificate stays valid for the whole window, and a slow
+// poll keeps a mid-swap read rare, not merely survivable.
 const tunnelCertReloadEvery = 10 * time.Minute
 
 // newTunnels builds the pool and the listener, or nothing when tunnels are
@@ -406,12 +406,12 @@ const tunnelCertReloadEvery = 10 * time.Minute
 //
 // The verifier is the plane client, and it is asked once per connection. That is
 // the property to keep: a plane that is down means existing tunnels go on
-// serving, and only a new dial fails — and even a new dial succeeds while the
+// serving, and only a new dial fails, and even a new dial succeeds while the
 // listener's cache still holds an answer for its token.
 //
 // The replica count reported to agents is a number this process is told, not one
 // it discovers. Discovering it would mean a Kubernetes client, and the gateway
-// not having one is a property worth more than the convenience — so scaling the
+// not having one is a property worth more than the convenience, so scaling the
 // gateway is two numbers that must move together in its manifest, the
 // StatefulSet's `replicas` and HANGAR_GATEWAY_REPLICAS, and changing either
 // restarts the pods, which is what makes every agent redial and read the new
@@ -582,7 +582,7 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		// within about a minute, so the poll only has to be far shorter than
 		// the window, not prompt.
 		go keypair.Watch(ctx, tunnelCertReloadEvery, recorder.TunnelCertificateExpiry)
-		// NextProtos is deliberately absent. The agent negotiates nothing:
+		// NextProtos is absent. The agent negotiates nothing:
 		// the handshake on this connection is hangar's own and HTTP/2 starts
 		// after it, so advertising h2 here would invite a TLS stack to hand the
 		// socket to an HTTP/2 client that expects to be the one dialling.

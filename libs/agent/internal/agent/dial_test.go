@@ -288,7 +288,7 @@ func TestAnUnreachablePlaneIsRefusedNotUnauthorized(t *testing.T) {
 }
 
 // The covered list rides on the hello, and a replica that is on it answers with its identity and
-// the replica count rather than a tunnel.
+// the replica count instead of a tunnel.
 func TestADialToACoveredReplicaReturnsItsPeer(t *testing.T) {
 	tr := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 3, accepted: func(net.Conn) {}})
 

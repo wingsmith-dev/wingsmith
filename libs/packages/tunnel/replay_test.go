@@ -14,7 +14,7 @@ import (
 //
 // The gateway has already buffered the body to read its `model`, so it can hand
 // that buffer over instead of making the pool read the request a second time.
-// This checks the shortcut actually produces a replayable request — and that
+// This checks the shortcut actually produces a replayable request, and that
 // makeReplayable then leaves it alone, which is what makes the shortcut a
 // shortcut.
 func TestReplayableUsesTheBodyTheCallerAlreadyHolds(t *testing.T) {
@@ -59,7 +59,7 @@ func TestReplayableUsesTheBodyTheCallerAlreadyHolds(t *testing.T) {
 // bytes and quietly dropping the rest. A truncated prompt is not a failed
 // request: it is a different question, answered confidently, and charged for. It
 // is unreachable from the gateway today because the gateway caps requests at the
-// same size — which is exactly the kind of reasoning that stops being true.
+// same size, which is exactly the kind of reasoning that stops being true.
 func TestAnOversizedBodyIsRefusedNotTruncated(t *testing.T) {
 	t.Parallel()
 

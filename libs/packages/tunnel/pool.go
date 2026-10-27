@@ -27,7 +27,7 @@ var ErrNoTunnel = errors.New("tunnel: no live tunnel to cluster")
 //
 // It exists because the alternative is silence. x/net blocks a request in
 // awaitOpenSlotForStreamLocked until a slot frees, so without this the shape of
-// overload is a latency graph with no errors on it — and a caller waiting an
+// overload is a latency graph with no errors on it, and a caller waiting an
 // unbounded time for a stream slot would rather be told there is no capacity.
 var ErrSaturated = errors.New("tunnel: all tunnels to cluster are at their stream limit")
 
@@ -38,7 +38,7 @@ var ErrNoCluster = errors.New("tunnel: request carries no cluster")
 // ErrBodyTooLarge means a request body is past what the pool will hold in
 // memory to keep the request replayable.
 //
-// It refuses rather than truncating. A silently shortened body is a request the
+// It refuses instead of truncating. A silently shortened body is a request the
 // cluster answers wrongly, which is worse than a request that fails, and the
 // caller's own cap means it should never be reachable from the gateway.
 var ErrBodyTooLarge = errors.New("tunnel: request body too large to keep replayable")
@@ -56,7 +56,7 @@ var ErrBodyIdle = errors.New("tunnel: response body unread past the idle timeout
 // window is shared by every stream on the tunnel: a caller that stops reading,
 // and a gateway write to it that blocks, would otherwise freeze generation for
 // every other request to the cluster on that tunnel. A Read waiting for the
-// cluster's next token does not count as idle — only time between Reads does.
+// cluster's next token does not count as idle, only time between Reads does.
 const DefaultBodyIdleTimeout = 2 * time.Minute
 
 // ErrPoolClosed means the pool has been shut down or closed and adopts nothing
@@ -73,14 +73,14 @@ var ErrTunnelLimit = errors.New("tunnel: tunnel limit reached")
 
 // DefaultMaxTunnelsPerCluster is how many tunnels one cluster may hold on one
 // gateway replica. An agent holds a couple per replica and a cluster runs a
-// handful of agents, so this is far above any honest install.
+// handful of agents, so this is far above any accurate install.
 const DefaultMaxTunnelsPerCluster = 64
 
 // DefaultMaxTunnels is how many tunnels one gateway replica holds in total.
 const DefaultMaxTunnels = 4096
 
 // maxReplayBytes caps the body the pool will hold in order to keep a request
-// replayable. Matched to the gateway's own request cap — move them together.
+// replayable. Matched to the gateway's own request cap: move them together.
 //
 // This guards the path that arrives without a buffer already read. The gateway
 // does not take it: it has the body from routing and passes it to `Replayable`,
@@ -99,7 +99,7 @@ const maxTunnelAttempts = 3
 // authoritySuffix is the synthetic name a tunnelled request is addressed to.
 //
 // http2's RoundTrip rejects any scheme but http and https and needs an
-// authority to build :authority from, and a tunnel has no address — the
+// authority to build :authority from, and a tunnel has no address; the
 // connection is the address. So the URL is a placeholder and the cluster
 // travels on the request context, where nothing can confuse it with a
 // resolvable name.
@@ -181,7 +181,7 @@ type PoolConfig struct {
 // It is still a bound and not the absence of one. A request waiting here holds
 // one of the agent's concurrent stream slots for the whole wait, so a frontend
 // that accepted a stream and has said nothing for three quarters of an hour is
-// wedged, not thinking — and the number is small enough that one on-call shift
+// wedged, not thinking, and the number is small enough that one on-call shift
 // catches it.
 const DefaultResponseHeaderTimeout = 45 * time.Minute
 
@@ -192,15 +192,15 @@ const InnerHopMargin = time.Minute
 // InnerHopTimeout is the response-header bound for a hop closer to the serving
 // runtime than the one holding budget.
 //
-// The inference path arms this timer three times — the gateway's upstream
-// transport, the tunnel, and the agent's proxy to the local frontend — and only
+// The inference path arms this timer three times, the gateway's upstream
+// transport, the tunnel, and the agent's proxy to the local frontend, and only
 // the smallest of the three is ever observed. That is the whole failure this
 // function exists to prevent: raising one hop and not the others changes nothing
 // a caller can see, because the innermost still fires first and the gateway
 // still answers upstream_unavailable at the old wall. So every hop derives from
-// one number, and the inner hops add this margin rather than matching exactly,
-// so that when something really is wedged it is the outermost hop — the only one
-// holding the caller's connection — that gives up first and says so.
+// one number, and the inner hops add this margin instead of matching exactly,
+// so that when something really is wedged it is the outermost hop, the only one
+// holding the caller's connection, that gives up first and says so.
 func InnerHopTimeout(budget time.Duration) time.Duration {
 	if budget <= 0 {
 		budget = DefaultResponseHeaderTimeout
@@ -217,7 +217,7 @@ const DefaultHealthInterval = time.Second
 // retry: http2.Transport.RoundTrip asks the pool for a connection, and asks
 // again after a failure that shouldRetryRequest says is replayable. So a
 // request the dying agent never processed is retried down a sibling tunnel
-// without this package reimplementing — or mis-reimplementing — the sentinel
+// without this package reimplementing, or mis-reimplementing, the sentinel
 // checks that decide which failures those are.
 type Pool struct {
 	// t2 keeps the net/http Transport it was configured from alive internally,
@@ -273,11 +273,11 @@ type clusterKey struct{}
 
 // NewPool builds the gateway end.
 //
-// It goes through http2.ConfigureTransports rather than constructing an
+// It goes through http2.ConfigureTransports instead of constructing an
 // http2.Transport, for two things that are only reachable that way:
 // ClientConn.responseHeaderTimeout reads net/http's Transport field, and the
 // flow-control windows are read off net/http's HTTP2Config. Hand-building an
-// http2.Transport silently gives up both — the timeout becomes zero, meaning no
+// http2.Transport silently gives up both: the timeout becomes zero, meaning no
 // timeout at all, and the windows become whatever the x/net in go.mod defaults
 // to this month.
 func NewPool(cfg PoolConfig) (*Pool, error) {
@@ -298,7 +298,7 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 		cfg.BodyIdleTimeout = DefaultBodyIdleTimeout
 	}
 
-	// MaxConcurrentStreams is deliberately absent. It is a server setting: x/net's
+	// MaxConcurrentStreams is absent. It is a server setting: x/net's
 	// client advertises ENABLE_PUSH, INITIAL_WINDOW_SIZE, MAX_FRAME_SIZE and
 	// MAX_HEADER_LIST_SIZE and nothing else, and configFromTransport never reads
 	// the value, so setting it here would look like a per-tunnel stream cap and be
@@ -365,10 +365,10 @@ func dnsLabel(id string) string {
 // to clusterID over it.
 //
 // The tunnel is verified before it is offered to traffic: one PING, answered.
-// That proves the far end is really speaking HTTP/2 and — because a conforming
-// peer sends SETTINGS before anything else — that its advertised stream limit
+// That proves the far end is really speaking HTTP/2 and, because a conforming
+// peer sends SETTINGS before anything else, that its advertised stream limit
 // has arrived. Admitting requests before then would admit them against x/net's
-// assumed 100 streams rather than the agent's real limit.
+// assumed 100 streams instead of the agent's real limit.
 //
 // The pool's state is checked twice: before the handshake, so a dial that
 // cannot be kept costs nothing, and again under the lock that adds it, because
@@ -424,7 +424,7 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 
 // Admit reports whether the pool would adopt one more tunnel to clusterID right
 // now. The listener asks before it accepts a dial, so an agent past the cap is
-// told why rather than handed a connection that is closed under it. Adopt asks
+// told why, not handed a connection that is closed under it. Adopt asks
 // again, so the answer is advice and not a reservation.
 func (p *Pool) Admit(clusterID string) error {
 	p.mu.Lock()
@@ -621,7 +621,7 @@ func (p *Pool) Clusters() []string {
 //
 // It is an ordinary http.RoundTripper, which is the entire point: a caller
 // hands it to httputil.ReverseProxy and every behaviour the proxy already
-// relies on — FlushInterval, ModifyResponse, ErrorHandler — works unchanged.
+// relies on (FlushInterval, ModifyResponse, ErrorHandler) works unchanged.
 func (p *Pool) RoundTripper(clusterID string) http.RoundTripper {
 	return &clusterTransport{pool: p, clusterID: clusterID}
 }
@@ -633,7 +633,7 @@ type clusterTransport struct {
 
 // RoundTrip addresses a request at a cluster and hands it to HTTP/2.
 //
-// The request is cloned rather than edited: a RoundTripper may not modify what
+// The request is cloned, not edited: a RoundTripper may not modify what
 // it was given, and the proxy above this one reuses the inbound request.
 //
 // The loop is not a second implementation of HTTP/2's retry, which still runs
@@ -717,13 +717,13 @@ func worseOf(first, last error) error {
 // tunnel.
 //
 // It only ever runs on the error return of RoundTrip, so no byte of this answer
-// has reached a caller. A request whose response headers arrived is not here —
+// has reached a caller. A request whose response headers arrived is not here:
 // its body errors belong to whoever is reading the body, and replaying then
 // would splice two generations into one answer.
 //
 // No response is not the same as not processed. Once the request headers have
 // been written the agent may have read them and forwarded the request to the
-// serving runtime, which may be generating — and billing — right now. A tunnel
+// serving runtime, which may be generating, and billing, right now. A tunnel
 // that dies without a GOAWAY says nothing about which of those happened, so a
 // non-idempotent request is retried only when it provably never left: headers
 // not yet written. Idempotent methods, and requests that carry an
@@ -776,7 +776,7 @@ func rewind(r *http.Request) (*http.Request, bool) {
 // makeReplayable gives a request a GetBody so HTTP/2 may replay it.
 //
 // Without one, shouldRetryRequest refuses to retry anything with a body after a
-// GOAWAY — which is every completion request there is. The gateway has already
+// GOAWAY, which is every completion request there is. The gateway has already
 // buffered the body to read its `model`, so the bytes are in memory either way;
 // a caller that still holds that buffer should use Replayable and skip the
 // second copy.
@@ -789,7 +789,7 @@ func makeReplayable(r *http.Request) error {
 //
 // A body past the cap is refused. Truncating it instead would send the cluster a
 // prompt that is not the one the caller wrote and get back a plausible answer to
-// it, which is the worst available outcome — and ContentLength is checked before
+// it, which is the worst available outcome, and ContentLength is checked before
 // the read so an oversized declared length costs nothing.
 func replayableWithin(r *http.Request, limit int64) error {
 	if r.Body == nil || r.Body == http.NoBody || r.GetBody != nil {
@@ -815,7 +815,7 @@ func replayableWithin(r *http.Request, limit int64) error {
 //
 // A request without this is not retried after an agent sends GOAWAY, so an
 // agent rollout becomes 502s for exactly the requests that were never
-// processed — the ones it is cheapest to get right.
+// processed: the ones it is cheapest to get right.
 func Replayable(r *http.Request, body []byte) *http.Request {
 	setReplayBody(r, body)
 	return r
@@ -854,7 +854,7 @@ func (p *Pool) GetClientConn(r *http.Request, _ string) (*http2.ClientConn, erro
 		return nil, fmt.Errorf("%w %s", ErrNoTunnel, clusterID)
 	}
 
-	// Least-loaded, breaking ties by a rotating cursor. Least-loaded rather than
+	// Least-loaded, breaking ties by a rotating cursor. Least-loaded, not
 	// round-robin because streams on a tunnel are long: a completion holds its
 	// stream for the length of the generation, so "how many are on there now"
 	// is the only load signal that means anything.
@@ -867,7 +867,7 @@ func (p *Pool) GetClientConn(r *http.Request, _ string) (*http2.ClientConn, erro
 	// it. A tunnel already tried is only picked again when it is the only one left.
 	//
 	// Exactly one reservation is ever taken, because there is no exported way to
-	// give one back — a speculative reserve on a candidate that then loses the
+	// give one back: a speculative reserve on a candidate that then loses the
 	// comparison would burn a stream slot until the tunnel closed.
 	history := attemptsOf(r)
 	tried := history.tunnels()
@@ -916,7 +916,7 @@ type attemptKey struct{}
 //
 // It lives on the request context because the choice is GetClientConn's and
 // nothing hands it back: x/net asks the pool for a connection and returns only
-// what happened. Both retries read it — HTTP/2's own and the pool's.
+// what happened. Both retries read it: HTTP/2's own and the pool's.
 type attempts struct {
 	mu    sync.Mutex
 	tried []*Conn

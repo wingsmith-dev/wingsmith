@@ -201,8 +201,8 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 
 // TestNoUpstreamErrorBodyReachesTheCallerAsItArrived is the whole of the passthrough rule.
 //
-// Every shape an engine can answer with — a bare object, the OpenAI envelope
-// already built, prose, a body over any cap this hop might read under — arrives
+// Every shape an engine can answer with, a bare object, the OpenAI envelope
+// already built, prose, a body over any cap this hop might read under, arrives
 // as one of this hop's own objects. A 4xx engine message may be quoted inside
 // it, sanitised; a 5xx never is; the address of what is behind this hop never is.
 func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {
@@ -529,7 +529,7 @@ func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 
 // routeToDeployment is routeTo with the upstream carrying the deployment the
 // plane resolved, which is what a real table always holds and what
-// routing.NewUpstream — built for tests and for anything embedding the router —
+// routing.NewUpstream, built for tests and for anything embedding the router,
 // leaves empty.
 func routeToDeployment(t *testing.T, address, deploymentID string) routing.Route {
 	t.Helper()
@@ -544,8 +544,8 @@ func routeToDeployment(t *testing.T, address, deploymentID string) routing.Route
 // httputil.ReverseProxy copies the inbound headers onto the outbound request
 // verbatim, so anything a caller sends under this name reaches the agent unless
 // this hop overwrites it. The agent hands a request to the frontend the header
-// names, so a caller who could set it would be choosing which model's frontend —
-// which tenant's frontend — answers them, using a string they made up. The Set
+// names, so a caller who could set it would be choosing which model's frontend,
+// which tenant's frontend, answers them, using a string they made up. The Set
 // and the Del between them are what make the caller's value unreachable, and the
 // Del is the case that is easy to leave out because it looks like a no-op.
 func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
@@ -574,7 +574,7 @@ func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
 			want:       "dep_01j9x2",
 		},
 		{
-			name: "an upstream with no deployment deletes the caller's value rather than passing it",
+			name: "an upstream with no deployment deletes the caller's value instead of passing it",
 			sent: "dep_somebody_elses",
 			want: "",
 		},
@@ -605,7 +605,7 @@ func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
 			}
 			if tc.want == "" {
 				if _, present := seen[tunnel.HeaderDeploymentID]; present {
-					t.Fatalf("the header is present as %v, want it absent rather than empty",
+					t.Fatalf("the header is present as %v, want it absent, not empty",
 						seen[tunnel.HeaderDeploymentID])
 				}
 			}
@@ -643,7 +643,7 @@ func TestTheErrorClassFollowsTheStatus(t *testing.T) {
 }
 
 // TestTheGatewaysOwnRefusalsCarryTheRightClass walks the statuses through the
-// real handler rather than the writer, because the classes only matter on the
+// real handler instead of the writer, because the classes only matter on the
 // answers a caller actually receives.
 func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 	tenants := tenantsFor(t, plane.GatewayTenant{

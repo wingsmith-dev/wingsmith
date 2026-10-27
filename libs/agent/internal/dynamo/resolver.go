@@ -31,18 +31,18 @@ const ComponentLabel = "nvidia.com/dynamo-component"
 const componentFrontend = "Frontend"
 
 // DeploymentIDLabel is what tells one deployment's frontend from another's, and
-// it is ours rather than Dynamo's.
+// it is ours, not Dynamo's.
 //
 // The operator stamps it on a component's pod template, and Dynamo copies a
 // component's pod-template labels onto the Service it derives from that
-// component — verified on a live cluster, where the worker Service carries
+// component: verified on a live cluster, where the worker Service carries
 // the deployment id and the project the operator set on the worker's pods. That copy is the whole mechanism: without it there is nothing
 // on a Service to key on, and this hop would be back to asking each frontend
 // what models it serves.
 //
-// A frontend Service with no such label is the cluster's shared frontend — the
+// A frontend Service with no such label is the cluster's shared frontend, the
 // one `cluster-setup` installs, which belongs to the cluster and not to any
-// deployment — and it is the fallback for everything this map cannot answer.
+// deployment, and it is the fallback for everything this map cannot answer.
 const DeploymentIDLabel = "hangar.dev/deployment-id"
 
 // defaultPort is Dynamo's frontend port, used when a Service declares several
@@ -55,7 +55,7 @@ const defaultPort = 8000
 // path.
 const defaultInterval = 30 * time.Second
 
-// ErrNoFrontend means no address is known yet. It is deliberately distinct from
+// ErrNoFrontend means no address is known yet. It is distinct from
 // a failure to talk to the API server: the cluster answered, and the answer was
 // that this cluster is not serving anything.
 var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
@@ -68,7 +68,7 @@ var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
 // has to tell them apart. "This cluster serves nothing" is a cluster that has
 // not come up, and every model on it is affected. "This model's frontend has not
 // come up" is one deployment mid-rollout while everything beside it answers
-// normally — the ordinary shape of the seconds after a deployment is created,
+// normally: the ordinary shape of the seconds after a deployment is created,
 // and the one case where retrying the same request shortly is exactly right.
 var ErrNoDeploymentFrontend = errors.New("no inference frontend for this deployment in this cluster")
 
@@ -107,13 +107,13 @@ type Config struct {
 // `dynamo-frontend`, and that default was wrong on every cluster we run: one
 // names its frontend after the graph it serves, another after the shared graph
 // fronting three models. A name nobody has is worse than no name, because it
-// surfaces as a DNS error deep inside whatever was dialling — which reads like
-// a broken cluster rather than a setting nobody set.
+// surfaces as a DNS error deep inside whatever was dialling, which reads like
+// a broken cluster instead of a setting nobody set.
 //
-// So this asks the cluster. The lookup is by Dynamo's own component label
-// rather than by name, because the name is the part that varies.
+// So this asks the cluster. The lookup is by Dynamo's own component label,
+// not by name, because the name is the part that varies.
 //
-// It holds a set rather than one address. A cluster used to run exactly one
+// It holds a set instead of one address. A cluster used to run exactly one
 // frontend and the binary behind it had to be able to tokenize every model on
 // the cluster, which made a frontier model's runtime a fleet-wide lowest common
 // denominator; the answer is a frontend per model, and from here that is a set
@@ -141,7 +141,7 @@ type Resolver struct {
 // frontend each deployment renders for itself.
 //
 // Kept as one value and replaced wholesale, so a reader never sees half of a
-// refresh — the shared frontend from the new pass beside a deployment map from
+// refresh: the shared frontend from the new pass beside a deployment map from
 // the old one is a state the cluster was never in.
 type frontends struct {
 	// shared is the frontend no deployment owns, or nil when this cluster
@@ -152,7 +152,7 @@ type frontends struct {
 	byDeployment map[string]*url.URL
 	// conflicted is the keys more than one Service claimed in this pass. One
 	// that kept an address from the pass before is in byDeployment as well; one
-	// that did not is refused rather than sent to the shared frontend.
+	// that did not is refused, not sent to the shared frontend.
 	conflicted map[string]bool
 }
 
@@ -172,7 +172,7 @@ func (f frontends) describe() string {
 	return strings.Join(parts, " ")
 }
 
-// New builds a resolver. An override is parsed here rather than on first use,
+// New builds a resolver. An override is parsed here, not on first use,
 // so a typo in it fails at startup instead of on a caller's first request.
 func New(cfg Config) (*Resolver, error) {
 	resolver := &Resolver{
@@ -225,7 +225,7 @@ func parseEndpoint(endpoint string) (*url.URL, error) {
 //
 // That is the cluster's shared frontend and never a per-deployment one. Picking
 // one of those would be guessing which model a request is for, and the frontend
-// is the last hop that could notice it had guessed wrong — it would answer with
+// is the last hop that could notice it had guessed wrong: it would answer with
 // a model-not-found for a model that is running perfectly well two Services
 // away.
 func (r *Resolver) URL() (*url.URL, error) {
@@ -337,7 +337,7 @@ func (r *Resolver) DiscoveryAge() time.Duration {
 }
 
 // Run refreshes until the context ends. It returns as soon as the address is
-// configured rather than discovered, so a caller can start it unconditionally.
+// configured, not discovered, so a caller can start it unconditionally.
 func (r *Resolver) Run(ctx context.Context) {
 	if r.fixed != nil {
 		return
@@ -366,12 +366,12 @@ func (r *Resolver) Run(ctx context.Context) {
 //
 // Plurality is answerable because the operator renders a frontend into the same
 // graph as its worker and the ownership labels ride onto the Service. Two
-// Services claiming the same key — two shared frontends, or two frontends for
-// one deployment — is still not answerable, and picking one would send traffic
+// Services claiming the same key, two shared frontends, or two frontends for
+// one deployment, is still not answerable, and picking one would send traffic
 // somewhere the caller did not ask for. That key is skipped and reported with
 // ErrAmbiguousFrontend; the rest of the pass stands.
 //
-// Finding nothing is still an error rather than an empty set, so that a cluster
+// Finding nothing is still an error instead of an empty set, so that a cluster
 // whose API server has gone quiet keeps forwarding to the frontends it last
 // saw. Refresh is what holds onto them; returning an empty set here would
 // discard them instead.
@@ -431,8 +431,8 @@ func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ 
 // not two guesses: the labels are where Dynamo was observed to copy a
 // component's pod-template labels, and the selector is where the same copy
 // would put them if it were derived from the pod template's selector instead.
-// Either placement means the same thing — this Service fronts that deployment's
-// pods and nothing else's — and reading only one of them and being wrong would
+// Either placement means the same thing, this Service fronts that deployment's
+// pods and nothing else's, and reading only one of them and being wrong would
 // send every request to the shared frontend with nothing anywhere reporting a
 // failure. A Service can carry no other deployment's id in either place, so
 // there is no false answer to reach.

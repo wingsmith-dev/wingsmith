@@ -147,7 +147,7 @@ func TestShutdownDrainsAStreamInFlight(t *testing.T) {
 }
 
 // TestShutdownPastItsDeadlineSevers is the other half: a stream that outlasts the drain timeout is
-// cut, and the agent still exits rather than waiting on it.
+// cut, and the agent still exits instead of waiting on it.
 func TestShutdownPastItsDeadlineSevers(t *testing.T) {
 	started := make(chan struct{})
 	rig := startShutdownRig(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -16,16 +16,16 @@ import (
 // per-cluster enrolment token, and the gateway answers with the cluster that
 // token resolved to.
 //
-// It is length-prefixed rather than line- or HTTP-shaped so that neither end
+// It is length-prefixed, not line- or HTTP-shaped so that neither end
 // needs a buffered reader. A bufio.Reader over the raw connection would happily
 // pull the peer's first HTTP/2 bytes into its buffer along with the handshake,
 // and those bytes are then invisible to the http2 code that is handed the
-// connection — a truncated client preface, at a rate that depends on how the
+// connection: a truncated client preface, at a rate that depends on how the
 // dial happened to be packetised.
 const (
 	// magic identifies the protocol and its version. A version bump is a new
 	// magic, so an agent that speaks the wrong one is rejected before it can
-	// be misread rather than after.
+	// be misread, not after.
 	magic = "HGRTUN01"
 	// maxHandshakeBytes caps the frame, so an unauthenticated dial cannot make
 	// the gateway allocate.
@@ -37,7 +37,7 @@ const (
 //
 // Without it an unauthenticated dial that says nothing holds a goroutine and a
 // file descriptor for as long as it likes, which is the cheapest denial of
-// service there is against a listener that is deliberately reachable from
+// service there is against a listener that is reachable from
 // outside.
 const DefaultHandshakeTimeout = 10 * time.Second
 
@@ -46,10 +46,10 @@ const DefaultHandshakeTimeout = 10 * time.Second
 // intelligible arrived.
 var ErrHandshake = errors.New("tunnel: unreadable handshake")
 
-// ErrRejected means the token was definitively refused — the plane answered,
+// ErrRejected means the token was definitively refused: the plane answered,
 // and the answer was no.
 //
-// The sentinel lives here rather than in the package that talks to the plane
+// The sentinel lives here, not in the package that talks to the plane
 // because the listener is what has to tell a rejection from a plane it could
 // not reach: a rejection closes the dial, and a plane that is down falls back
 // to what it already knows. Conflating them would either lock every cluster out
@@ -82,7 +82,7 @@ type Hello struct {
 	Agent string `json:"agent,omitempty"`
 	// Covered lists the gateway replicas, by GatewayID, this agent already holds
 	// its quota of tunnels to. A replica that finds itself here answers
-	// ReasonDuplicate rather than accepting a tunnel the agent would close at
+	// ReasonDuplicate instead of accepting a tunnel the agent would close at
 	// once, which the gateway would otherwise count as a failed dial.
 	Covered []string `json:"covered,omitempty"`
 }
@@ -99,8 +99,8 @@ type Accept struct {
 	// ClusterName is the same cluster under the name its own configuration uses,
 	// sent so that an agent can recognise the answer as being about itself.
 	//
-	// An agent claims the name — the chart's `cluster.id` is what the plane
-	// rendered, which is the name — while ClusterID above is the uid, because
+	// An agent claims the name, the chart's `cluster.id` is what the plane
+	// rendered, which is the name, while ClusterID above is the uid, because
 	// that is the identifier the pool and every metric label key on. Without
 	// this field the two halves have nothing in common to compare, and the
 	// agent's own safety check (a Secret holding another cluster's credential)
@@ -114,11 +114,11 @@ type Accept struct {
 	// say.
 	GatewayID string `json:"gateway_id,omitempty"`
 	// Gateways is how many replicas the gateway is running, and it is here rather
-	// than in an API call on purpose.
+	// than in an API call.
 	//
-	// An agent has to hold a tunnel to every replica — a replica with no tunnel
+	// An agent has to hold a tunnel to every replica, a replica with no tunnel
 	// to a cluster cannot serve that cluster, and looks healthy from everywhere
-	// else — so it has to know how many there are. Asking the plane for the
+	// else, so it has to know how many there are. Asking the plane for the
 	// number would put the control plane between a cluster and the recovery of
 	// its own data path. Answering it on
 	// the connection the agent has already established costs nothing and cannot
@@ -181,7 +181,7 @@ func refusal(accept Accept) error {
 
 // ReadHello reads an agent's handshake off a raw connection.
 //
-// It takes an io.Reader rather than the net.Conn so that nothing in here can
+// It takes an io.Reader instead of the net.Conn so that nothing in here can
 // touch the deadline or the socket: exactly one frame is read, and positioning
 // the connection for HTTP/2 is the whole contract.
 func ReadHello(r io.Reader) (Hello, error) {

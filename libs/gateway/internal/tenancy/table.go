@@ -3,7 +3,7 @@
 //
 // It refreshes on the same timer as the routing table and takes the same
 // failure posture: the first load must succeed, and every one after that
-// keeps serving the last good copy rather than answering an identified
+// keeps serving the last good copy instead of answering an identified
 // caller with a table that forgot who it was.
 package tenancy
 
@@ -82,11 +82,11 @@ func empty() *Table {
 // build turns the plane's feed into the two indexes Table serves from.
 //
 // A tenant with no host is skipped from byHost and reachable only by the
-// internal listener — an internal tenant needs no host at all, since the
+// internal listener: an internal tenant needs no host at all, since the
 // listener itself is the claim.
 //
 // A disabled tenant the feed still lists is indexed like any other. Refusing it
-// is the serving stages' job, so it gets a 403 that says so rather than reading
+// is the serving stages' job, so it gets a 403 that says so instead of reading
 // as a host or a key nobody has heard of. A plane that leaves disabled tenants
 // out of the feed instead gets the unknown-tenant answers: 404 unknown_host on
 // the public listener, 403 tenant_disabled on the internal one.
@@ -202,7 +202,7 @@ func (s *Store) Load(ctx context.Context) error {
 }
 
 // RunResync refreshes the table until the context is cancelled, keeping the
-// last good copy on any failure — the same posture as routing.Router's own
+// last good copy on any failure; the same posture as routing.Router's own
 // RunResync, and for the same reason: a tenant this hop cannot resolve right
 // now must not become a tenant it has forgotten.
 func (s *Store) RunResync(ctx context.Context, every time.Duration) {

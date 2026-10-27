@@ -43,7 +43,7 @@ func tableWith(revision string) plane.Table {
 // TestTheRouteCarriesTheEndpointUid pins the label a failure rate is joined on.
 // Labelling by the public model name instead would split one endpoint's series
 // in two the first time somebody renamed it, and the break would look like a
-// traffic drop rather than a rename.
+// traffic drop instead of a rename.
 func TestTheRouteCarriesTheEndpointUid(t *testing.T) {
 	router := New(&stubSource{tables: []plane.Table{tableWith("1")}}, factory())
 	if err := router.Load(context.Background()); err != nil {

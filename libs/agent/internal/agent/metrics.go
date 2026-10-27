@@ -16,7 +16,7 @@ import (
 // from every other vantage point, entirely healthy.
 //
 // The dial counters are the exception and carry no replica label, because a dial has no replica until
-// it has been accepted — the agent dials one address and the gateway's answer is what names who took
+// it has been accepted: the agent dials one address and the gateway's answer is what names who took
 // it. A failed dial genuinely belongs to nobody.
 type Metrics struct {
 	registry *prometheus.Registry
@@ -75,7 +75,7 @@ func NewMetrics() *Metrics {
 		Name: "hangar_agent_dial_failures_total",
 		Help: "Outbound tunnel dials that did not produce a tunnel, per reason.",
 	}, []string{"reason"})
-	// Not a failure and deliberately not folded into one. A dial that landed on a replica this
+	// Not a failure and not folded into one. A dial that landed on a replica this
 	// agent already covers is the load balancer choosing without knowing what is held, which is
 	// how coverage is reached at all; a rate that never settles is the signal, and that is only
 	// readable if it is its own series.
@@ -161,9 +161,9 @@ func (m *Metrics) expect(replicas int) {
 }
 
 // track pre-creates every series for a replica the moment it is first reached, so that a replica
-// whose tunnel then drops reads as zero rather than as absent.
+// whose tunnel then drops reads as zero, not as absent.
 //
-// It cannot be done up front any more, because the agent is no longer told which replicas exist —
+// It cannot be done up front any more, because the agent is no longer told which replicas exist:
 // hangar_agent_gateways_expected is what says how many series there should be.
 func (m *Metrics) track(gateway string) {
 	m.tunnels.WithLabelValues(gateway).Set(0)

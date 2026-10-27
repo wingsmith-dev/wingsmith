@@ -9,7 +9,7 @@ a timer. Nothing is joined per request.
 
 It is also the gateway end of the tunnel. There is no separate gateway deployment: one
 StatefulSet, `hangar-gateway`, answers callers on one port and accepts cluster dials on another. A
-cluster runs two hangar processes and neither is this one — the operator, which operates the
+cluster runs two hangar processes and neither is this one: the operator, which operates the
 cluster, and the agent, which dials out to the gateway and carries inference requests in.
 
 ## Layout
@@ -17,7 +17,7 @@ cluster, and the agent, which dials out to the gateway and carries inference req
 | Path | What it owns |
 |---|---|
 | `cmd/gateway/` | the binary: flags, listeners, shutdown |
-| `internal/serving/` | the HTTP entry point — mux, reverse proxy, the tenant and key stages, per-request observation, readiness, usage |
+| `internal/serving/` | the HTTP entry point: mux, reverse proxy, the tenant and key stages, per-request observation, readiness, usage |
 | `internal/routing/` | the model-to-cluster table and upstream selection |
 | `internal/tenancy/` | the host-to-tenant and hash-to-tenant table |
 | `internal/plane/` | client for the plane's HTTP API |
@@ -42,7 +42,7 @@ the tenant; a tenant's own auth for its own users happens in front of this hop.
 
 There is one binary, one routing table, and two listeners over it (docs/decisions/0016). Which one
 accepted a connection is the one fact about a caller nothing it sends can forge, and it is what the
-trust decision rests on — `internal/serving.Zone`. Every listener states its zone; there is no
+trust decision rests on: `internal/serving.Zone`. Every listener states its zone; there is no
 default, so a listener cannot end up unauthenticated by omission.
 
 - **The internal listener** (`-listen`, `:8080`) authenticates nobody. Reaching it is the proof; a
@@ -63,7 +63,7 @@ the ingress controller to the public listener, agents to the tunnel port and mon
 `:9090`, and denies everything else. Adapt its selectors and apply it with the gateway.
 
 **A disabled tenant is refused on both listeners.** The gateway checks the tenant table itself
-rather than trusting the routing table to have dropped the tenant's endpoints, because the two
+instead of trusting the routing table to have dropped the tenant's endpoints, because the two
 refresh separately. What the caller sees depends on how the plane reports the tenant:
 
 - listed in the tenant feed with `enabled: false`: `403 tenant_disabled` on both listeners. On the
@@ -87,7 +87,7 @@ caller on the internet can send an unknown `Host`.
 | `-plane-url` / `HANGAR_PLANE_URL` | the plane's base URL |
 | `HANGAR_GATEWAY_SERVICE_TOKEN` | the gateway's service credential for the plane, required. The plane accepts it on `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` and `POST /v1/clusters/tunnel-auth` only. A 401 or 403 on it is logged as a gateway configuration error and never read as a verdict on an agent's enrolment token |
 | `-resync` | how often to re-read the routing table and the tenant table, default 30s |
-| `HANGAR_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off — env only, never a flag, for the reason below |
+| `HANGAR_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off; env only, never a flag, for the reason below |
 | `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
 | `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
@@ -110,9 +110,9 @@ caller on the internet can send an unknown `Host`.
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 Only the plane URL and the service token are required; nothing else is fatal by its absence. That is
-a deploy constraint rather than a courtesy: a manifest rolled out before the image it names reaches
+a deploy constraint instead of a courtesy: a manifest rolled out before the image it names reaches
 the old binary first, and a flag that binary does not know makes `flag.Parse` exit 2. Prefer the
-environment variable when adding one to a manifest — an unknown variable is inert, an unknown flag
+environment variable when adding one to a manifest: an unknown variable is inert, an unknown flag
 is a crashloop of the data plane. `HANGAR_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
 manifest naming its address is exactly the change that turns direct tenants on.
 
@@ -125,7 +125,7 @@ that redeems it.
 Each replica bounds every tenant it serves: at most `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` requests
 in flight (default 1024), and, when `HANGAR_GATEWAY_TENANT_RPS` is set, a token-bucket request rate.
 A tenant over either gets `429 rate_limited` with `Retry-After`, counted as the `rate_limited`
-outcome rather than as a failure of this hop. On the public listener the tenant is the host's and
+outcome, not as a failure of this hop. On the public listener the tenant is the host's and
 the check runs before the body is read; on the internal listener it is the endpoint's owner, which
 is known only once the body names a model, so there the buffer budget
 (`HANGAR_GATEWAY_MAX_BUFFERED_BYTES`) is what bounds bodies before the tenant check. The limits are
@@ -215,7 +215,7 @@ its own `HANGAR_SHUTDOWN_GRACE`; see its README.
 ## What it never keeps
 
 Request and response content is not retained by this hop, and that is a promise made to buyers, so
-it is held in code rather than in a log pipeline's configuration.
+it is held in code, not in a log pipeline's configuration.
 
 - **The access line** (`gateway: request`) carries the request id, method, path (never the query),
   status, outcome, timings, token counts, the tenant and a 12-character key-hash prefix. Never a
@@ -228,9 +228,9 @@ it is held in code rather than in a log pipeline's configuration.
 - **Engine logging** is the operator's half: `--enable-log-requests`, `--enable-log-outputs`,
   `--log-requests` and `--log-requests-level` are refused by the plane on a workload, a role and an
   overlay, and stripped by the operator's renderer under any spelling. So is any log level at which
-  an engine writes request content — SGLang's `--log-level debug`, `DYN_LOG` with a `debug` or
+  an engine writes request content, SGLang's `--log-level debug`, `DYN_LOG` with a `debug` or
   `trace` directive, `VLLM_LOGGING_LEVEL=DEBUG`, `VLLM_DEBUG_LOG_API_SERVER_RESPONSE` and
-  `DYN_LOGGING_CONFIG_PATH` — refused in the plane and dropped from the rendered graph after the
+  `DYN_LOGGING_CONFIG_PATH`, refused in the plane and dropped from the rendered graph after the
   overlays merge (`libs/operator/internal/render/retention.go`).
 
 ## Prefix-cache isolation
@@ -272,7 +272,7 @@ The decode-side defect is tracked upstream as
 a Dynamo release carrying that fix being deployed, and on the second collision (prompts that differ
 only after the image) being shown gone with it.
 
-The salt is spliced into the bytes that arrived rather than written by re-encoding the body: a text
+The salt is spliced into the bytes that arrived, not written by re-encoding the body: a text
 request's `nvext` is the only part decoded (`splicedCacheSalt`). Re-encoding cost about 31 ms on a
 4 MB prompt and splicing about 5 ms, most of it the media check every request already paid
 (`BenchmarkCacheSaltLargeText`). A request carrying media, or a repeated `nvext`, still takes the
@@ -283,16 +283,16 @@ media-decode strip still re-encode the top level, but only for a request they ac
 
 A request that fails before it reaches a cluster emits nothing a serving runtime can count. A model
 nobody serves, an endpoint with nowhere to route, a credential that has gone stale, a cluster that
-cannot be dialled — those are the requests that dominate an availability incident and none of them
+cannot be dialled: those are the requests that dominate an availability incident and none of them
 are visible from inside a cluster. This hop sees every request, including the ones that never land,
-so it is the only honest source of a failure rate.
+so it is the only accurate source of a failure rate.
 
 `/metrics` is Prometheus text on its own listener, `:9090` by default. It is observability and not a
 ledger: nothing here is metered or billed, and no caller identity, API key, client address or raw
 model string reaches a label. Those are unbounded, and an unbounded label is the same mistake as a
 shared counter in the request path.
 
-Every request is counted under one of ten outcomes, and the set is closed — an operator who can
+Every request is counted under one of ten outcomes, and the set is closed: an operator who can
 redefine failure produces an availability number that is not comparable between two deployments.
 What is declared elsewhere is which outcomes sit in the numerator and the denominator of a named
 objective. The distinction the whole endpoint turns on is that `rate_limited` and `shed` are both
@@ -300,12 +300,12 @@ objective. The distinction the whole endpoint turns on is that `rate_limited` an
 work and is a failure, and keying a failure rate off `status="429"` turns every capacity incident
 into a clean bill of health.
 
-`GET /healthz` is not counted — a kubelet probe is nobody's availability. `GET /v1/models` is
+`GET /healthz` is not counted: a kubelet probe is nobody's availability. `GET /v1/models` is
 counted under the reserved endpoint `_catalog`, and a request naming a model we do not serve under
-`_unknown` rather than under the string it asked for.
+`_unknown`, not under the string it asked for.
 
 `hangar_gateway_routing_table_age_seconds` is seconds since the plane last confirmed the loaded
-table, by sending a new one or by answering `304`. A failed refresh deliberately does not reset it:
+table, by sending a new one or by answering `304`. A failed refresh does not reset it:
 the gateway keeps serving what it has, and that gauge climbing beside
 `hangar_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
 from the data plane.
@@ -325,8 +325,8 @@ to the cluster untouched, so a trace started at the edge continues into the serv
 
 Text usage is the upstream's own `usage` object, read from a 64 KiB tail of the response and
 written as `input_tokens`/`output_tokens` on the `gateway: request` line and
-`hangar_gateway_tokens_total`. Image and video generations have none — Dynamo 1.5.0's image and
-video responses carry no usage the worker could fill — so this hop records raw facts for a
+`hangar_gateway_tokens_total`. Image and video generations have none, Dynamo 1.5.0's image and
+video responses carry no usage the worker could fill, so this hop records raw facts for a
 successful `/v1/images/generations`, `/v1/images/edits`, `/v1/videos`, or `/v1/chat/completions`
 answered by an image model, on the same line and in `hangar_gateway_generated_total{unit}`:
 
@@ -334,7 +334,7 @@ answered by an image model, on the same line and in `hangar_gateway_generated_to
   `data`, or each `"type":"image_url"` part of a chat answer). Nothing is buffered beyond the tail.
 - `size` with `size_source=request|response`: the request's `size`, else the image response's own
   `size` field. No default is assumed, because the engine may apply its own.
-- `video_seconds`, `video_frames`: as the request stated them — `seconds` (string or number), or
+- `video_seconds`, `video_frames`: as the request stated them; `seconds` (string or number), or
   `nvext.num_frames / nvext.fps`, with frames as `seconds * fps` when only those are given.
 - `upstream_ms` (`upstream_seconds` in the series): wall time from the forward to the last response
   byte, the nearest this hop comes to GPU time; `inference_time_s` beside it when the response
@@ -375,7 +375,7 @@ running, so the tunnels already open keep serving.
 - **The plane is down.** The table already loaded keeps serving. What it is built from changes on
   the order of days; a control-plane outage must not stop traffic to models that are running fine.
 - **Boot with no table.** Fatal. Coming up empty would answer everything with `model_not_found`,
-  which reads as an outage of the models rather than the misconfiguration it is.
+  which reads as an outage of the models instead of the misconfiguration it is.
 - **One serving address is unusable.** Skipped, with the rest of the refresh applied. One bad URL
   must not take every other model down with it.
 - **An endpoint with no upstreams.** `503 no_capacity`, never `404`. "No such model" and "this
@@ -398,13 +398,13 @@ running, so the tunnels already open keep serving.
   said. The full body is logged with the request id either way.
 - **An upstream answers `401`, `403` or `404`.** `502`, not the status that arrived. The credential is
   this hop's and the caller has never seen it, and a path that was routed here is not one the engine
-  gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends
+  gets to call missing: both are misconfigurations on our side and telling a caller otherwise sends
   them to rotate a working key. This counts a former `client_error` against `upstream_error`, which
   is the intended reading: it was our fault before and the number said otherwise.
 - **A request header or `nvext` field that steers the serving runtime.** Deleted before the request
   leaves. Dynamo reads a worker pin, a data-parallel rank, a queue priority, a queue class, a request
-  id and a session binding from a caller's headers — every `x-dynamo-*`, the unprefixed worker and
-  rank aliases, and the agent harness session headers — and from `nvext`. Which worker runs a
+  id and a session binding from a caller's headers, every `x-dynamo-*`, the unprefixed worker and
+  rank aliases, and the agent harness session headers, and from `nvext`. Which worker runs a
   request, and ahead of whom, is not a caller's to choose. A request carrying none of them is
   forwarded as the bytes that arrived. The names are in `steering.go`.
 - **A caller's own credentials.** `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`,

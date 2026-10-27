@@ -50,7 +50,7 @@ func WithDialSource(ctx context.Context, source string) context.Context {
 
 // DialSource is the source of the dial a token is being verified for, or empty
 // when the context carries none. A Verifier passes it to the plane, so the
-// plane can key its own failed-guess budget on the agent's address rather than
+// plane can key its own failed-guess budget on the agent's address, not
 // on the gateway's credential, which every dial shares.
 func DialSource(ctx context.Context) string {
 	source, _ := ctx.Value(sourceKey{}).(string)

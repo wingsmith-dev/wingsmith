@@ -16,11 +16,11 @@ import (
 // It exists because cert-manager renews and this process would not notice. The
 // certificate is mounted from a Secret, cert-manager rewrites that Secret 30 days
 // before expiry, and the kubelet puts the new bytes on disk within about a
-// minute — but a `tls.Config` built with `Certificates` holds what it was given
+// minute, but a `tls.Config` built with `Certificates` holds what it was given
 // at startup for the life of the process. So the gateway would serve the old
 // certificate until it expired, and every agent dial would then fail the
 // handshake at once: no tunnels, no reachable upstreams, a 503 on every model in
-// the fleet rather than a degradation.
+// the fleet instead of a degradation.
 //
 // It was also self-healing by accident, which is worse than plainly broken. Any
 // deploy ends in a rollout restart, as does any node drain, so the outage only
@@ -49,8 +49,8 @@ func NewKeypair(certPath, keyPath string) (*Keypair, error) {
 
 // read loads and parses the pair, returning a certificate with Leaf populated.
 //
-// The leaf is parsed here rather than left to the TLS stack because the expiry is
-// what makes a reload legible — both the log line and the metric want it, and a
+// The leaf is parsed here, not left to the TLS stack because the expiry is
+// what makes a reload legible: both the log line and the metric want it, and a
 // certificate whose leaf is nil can only be described as "a new one".
 func (k *Keypair) read() (*tls.Certificate, error) {
 	cert, err := tls.LoadX509KeyPair(k.certPath, k.keyPath)
@@ -83,7 +83,7 @@ func (k *Keypair) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error)
 
 // NotAfter reports when the loaded certificate expires.
 //
-// The loaded one, deliberately, not the one on disk. cert-manager's own metrics
+// The loaded one, not the one on disk. cert-manager's own metrics
 // describe the Secret and would look healthy the day after a renewal this process
 // ignored, so the only reading that can catch that is taken from memory.
 func (k *Keypair) NotAfter() time.Time {
@@ -96,7 +96,7 @@ func (k *Keypair) NotAfter() time.Time {
 // Reload re-reads the pair and swaps it if the certificate differs, reporting
 // whether it changed.
 //
-// Compared on the leaf's DER bytes rather than on the expiry, so a reissue that
+// Compared on the leaf's DER bytes, not on the expiry, so a reissue that
 // happens to carry the same validity window is still picked up.
 func (k *Keypair) Reload() (bool, error) {
 	next, err := k.read()
@@ -116,7 +116,7 @@ func (k *Keypair) Reload() (bool, error) {
 //
 // A timer and not a filesystem watch. Kubernetes replaces a Secret volume by
 // atomically re-pointing a `..data` symlink, which a watcher reports as events on
-// a directory that has ceased to exist — fiddly to get right, and for a window
+// a directory that has ceased to exist: fiddly to get right, and for a window
 // measured in days there is nothing to gain by being prompt.
 //
 // A failed read leaves the working certificate in place and logs. That is the

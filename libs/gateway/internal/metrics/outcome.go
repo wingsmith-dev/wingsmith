@@ -4,7 +4,7 @@ import "strconv"
 
 // Outcome is what happened to one request, from a closed set.
 //
-// The set is closed on purpose. An operator who can add a member, or redefine
+// The set is closed. An operator who can add a member, or redefine
 // one, produces an availability number that is not comparable between two
 // deployments and is therefore unfalsifiable. What an operator declares is
 // which of these sit in the numerator and the denominator of a stated
@@ -93,11 +93,11 @@ func OutcomeFromStatus(status int) Outcome {
 
 // Origin separates real traffic from the conformance suite's probes.
 //
-// The suite sends deliberately malformed requests at a live endpoint and
+// The suite sends malformed requests at a live endpoint and
 // asserts on the error envelopes that come back. Those traverse this hop, and
 // on a low-traffic endpoint one run inside a ten-minute window trivially
-// exceeds a 0.1% budget — so the suite would manufacture the breach it exists
-// to detect. Probe-ness is a second axis rather than an eleventh outcome,
+// exceeds a 0.1% budget, so the suite would manufacture the breach it exists
+// to detect. Probe-ness is a second axis instead of an eleventh outcome,
 // because the probe's own outcome is the entire point of running it.
 type Origin string
 
@@ -132,8 +132,8 @@ const (
 
 // InputBucketUnknown is where a request that never disclosed its prompt length
 // lands. A streaming caller gets a usage object only when it asked for one, and
-// this hop does not rewrite a caller's request to improve its own telemetry —
-// so the coverage gap goes on the panel rather than inside the number.
+// this hop does not rewrite a caller's request to improve its own telemetry,
+// so the coverage gap goes on the panel, not inside the number.
 const InputBucketUnknown = "unknown"
 
 // InputBuckets is the closed set of band labels.

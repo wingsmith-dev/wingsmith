@@ -53,7 +53,7 @@ type SupervisorConfig struct {
 // Coverage has to be complete: the tunnel pool is in-process, so a gateway replica can only serve a
 // cluster it is personally holding a tunnel to, and one that holds none answers nothing for that
 // cluster while looking healthy from every other vantage point. So this cluster needs a tunnel to
-// each replica — but it must not be handed a list of them, because then scaling the gateway would
+// each replica, but it must not be handed a list of them, because then scaling the gateway would
 // mean editing the values of every cluster in the fleet.
 //
 // So it redials the one address until every replica has answered. Each accepted handshake names the
@@ -61,14 +61,14 @@ type SupervisorConfig struct {
 // and one of those that answers says so instead of accepting; that is retried, and is ordinary and
 // not a failure. That is the pattern Konnectivity,
 // Teleport and ngrok each arrived at independently, and the reason it is the handshake that carries
-// the number rather than a call to the plane is that a cluster must be able to recover its own data
+// the number instead of a call to the plane is that a cluster must be able to recover its own data
 // path while the control plane is down.
 //
 // There is no periodic re-probe of the count, and there is a reason it is not needed here.
 // HANGAR_GATEWAY_REPLICAS lives in the gateway's pod spec, so changing it necessarily restarts every
 // replica, which severs every tunnel and makes every agent redial and read the new number. The one
 // way to defeat that is to scale the StatefulSet without editing the env, and the replica that
-// results holds no tunnels — so it reports itself unready, never joins the Service, and stalls a
+// results holds no tunnels, so it reports itself unready, never joins the Service, and stalls a
 // rollout that somebody is watching. Loud, and not silently wrong.
 type Supervisor struct {
 	cfg SupervisorConfig
@@ -148,7 +148,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 
 // spawn starts however many hold loops the current replica count calls for.
 //
-// It only ever adds. Retiring is the workers' own job — see retire — because a worker that is
+// It only ever adds. Retiring is the workers' own job, see retire, because a worker that is
 // mid-tunnel must not be stopped by an arithmetic change, and a slot freed by killing a goroutine
 // that was carrying requests is not a saving.
 func (s *Supervisor) spawn(ctx context.Context, wg *sync.WaitGroup) {
@@ -249,7 +249,7 @@ func (s *Supervisor) hold(ctx context.Context) {
 		// A tunnel that lived a while and then ended is an ordinary rollout of the gateway, and
 		// redialling immediately is what keeps coverage. A tunnel that died at once is a replica
 		// that accepts connections and cannot serve them, and hammering it would make
-		// the accept queue the symptom instead of the cause — so the backoff keeps climbing.
+		// the accept queue the symptom instead of the cause, so the backoff keeps climbing.
 		if lasted >= s.cfg.BackoffMax {
 			attempt = 0
 		} else {
@@ -301,7 +301,7 @@ func (s *Supervisor) retire() bool {
 // maxGatewayReplicas caps the replica count a handshake can ask this agent to cover. Each replica
 // costs ConnsPerGateway goroutines and sockets, and the number arrives from the far end of a network
 // connection; a gateway that reports thousands is misconfigured, and following it would exhaust
-// this pod rather than cover anything.
+// this pod, not cover anything.
 const maxGatewayReplicas = 64
 
 // observe records what a handshake said about the size of the gateway.
@@ -345,7 +345,7 @@ func (s *Supervisor) observe(peer Peer) {
 // Only ones holding no tunnel: a replica still carrying requests is not gone whatever the arithmetic
 // says. It has to run after every change to live and not only after a count changes, because
 // mid-rollout there is a moment when several entries are at zero and only some of them are on the way
-// out — pruning then would pick by map order, and pruning again once the survivors have their tunnels
+// out: pruning then would pick by map order, and pruning again once the survivors have their tunnels
 // back is what makes the choice correctly instead of by luck.
 //
 // The caller holds the lock.
@@ -370,7 +370,7 @@ func (s *Supervisor) claim(id string) (bool, []string) {
 	if s.live[id] >= s.cfg.ConnsPerGateway {
 		return false, nil
 	}
-	// Zero rather than absent from here on, so a replica that has been reached and lost reads as a
+	// Zero, not absent from here on, so a replica that has been reached and lost reads as a
 	// gap and not as one nobody ever heard of.
 	if _, seen := s.live[id]; !seen {
 		s.live[id] = 0
@@ -397,8 +397,8 @@ func (s *Supervisor) forget(ids []string) {
 // been carrying traffic, should not wait.
 //
 // Full jitter and not a fixed schedule, because every agent in the fleet redials at once when the
-// gateway is rolled — that burst is the accepted cost of holding a tunnel to every replica, and
-// jitter is what keeps it a burst rather than a synchronised wave that repeats.
+// gateway is rolled: that burst is the accepted cost of holding a tunnel to every replica, and
+// jitter is what keeps it a burst instead of a synchronised wave that repeats.
 func (s *Supervisor) backoff(attempt int) time.Duration {
 	if attempt <= 0 {
 		return 0
@@ -440,7 +440,7 @@ func (s *Supervisor) opened(id string) int {
 
 // closed releases the slot, and forgets the replica entirely once the gateway has shrunk past it.
 //
-// Forgetting is what keeps a scale-down from leaving a permanent zero behind — both on the
+// Forgetting is what keeps a scale-down from leaving a permanent zero behind: both on the
 // readiness page and, through Metrics.forget, in a series that would otherwise alert forever about a
 // replica that no longer exists.
 func (s *Supervisor) closed(id string, lasted time.Duration) {
@@ -453,7 +453,7 @@ func (s *Supervisor) closed(id string, lasted time.Duration) {
 	s.mu.Unlock()
 
 	// Reported before anything is forgotten, so the last close of a replica on its way out is still
-	// counted rather than written to a series that has just been deleted.
+	// counted, not written to a series that has just been deleted.
 	if s.cfg.Metrics != nil {
 		s.cfg.Metrics.tunnelClosed(id, live, lasted.Seconds())
 	}
@@ -492,7 +492,7 @@ func (s *Supervisor) Tunnels() int {
 
 // Ready reports whether this agent can carry a request.
 //
-// One tunnel is enough, and the bar is deliberately not full coverage. An agent that refused to
+// One tunnel is enough, and the bar is not full coverage. An agent that refused to
 // be ready until every gateway replica had answered would fail its rollout because one replica was
 // restarting, and it can serve traffic perfectly well down the tunnels it does have. The replicas
 // it is missing are visible as metrics, which is the right place for a partial answer.

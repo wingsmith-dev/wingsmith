@@ -30,7 +30,7 @@ type Conn struct {
 
 // Live reports whether this tunnel can take a new request.
 //
-// It is deliberately not "the socket is open". A connection that has sent or
+// It is not "the socket is open". A connection that has sent or
 // received GOAWAY is still readable and still finishing streams, and offering
 // it to a new request is how a rollout produces 502s.
 func (c *Conn) Live() bool {
@@ -81,10 +81,10 @@ func (c *Conn) retire() {
 
 // watch retires the tunnel once x/net has closed it.
 //
-// A poll rather than a callback, because there is no exported signal for it.
+// A poll instead of a callback, because there is no exported signal for it.
 // ClientConnPool.MarkDead covers most endings promptly, but x/net delays
-// MarkDead by up to five seconds for a connection that never carried a request
-// — which is exactly the connection a readiness gate is counting.
+// MarkDead by up to five seconds for a connection that never carried a request,
+// which is exactly the connection a readiness gate is counting.
 func (c *Conn) watch(every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()

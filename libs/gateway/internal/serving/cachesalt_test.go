@@ -108,7 +108,7 @@ func TestATextRequestIsForwardedAsTheBytesThatArrived(t *testing.T) {
 }
 
 // TestACallersConstantSaltCannotReintroduceTheCollision is the reason a caller's
-// own salt is folded in rather than honoured as it stands. A caller sending one
+// own salt is folded in, not honoured as it stands. A caller sending one
 // salt across a corpus would otherwise put every image back on one identity.
 func TestACallersConstantSaltCannotReintroduceTheCollision(t *testing.T) {
 	withSalt := func(pixels string) string {

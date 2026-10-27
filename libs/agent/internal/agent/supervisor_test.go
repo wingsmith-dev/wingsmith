@@ -79,7 +79,7 @@ func TestTunnelCarriesARequestToTheClusterFrontend(t *testing.T) {
 	}
 }
 
-// A gateway that goes away is the ordinary case — it is a StatefulSet that gets rolled — so the
+// A gateway that goes away is the ordinary case, it is a StatefulSet that gets rolled, so the
 // agent has to come back on its own.
 func TestSupervisorReconnectsAfterTheGatewayDrops(t *testing.T) {
 	server := &blockingServer{}
@@ -102,7 +102,7 @@ func TestSupervisorReconnectsAfterTheGatewayDrops(t *testing.T) {
 }
 
 // Readiness is the only thing that says this agent can carry a request, so it has to follow the
-// tunnels rather than the process. Driven through a stub dialler: a real socket cannot be made to
+// tunnels instead of the process. Driven through a stub dialler: a real socket cannot be made to
 // fail and then succeed on cue.
 func TestSupervisorReadinessFollowsTheTunnels(t *testing.T) {
 	var reachable atomic.Bool
@@ -202,7 +202,7 @@ func TestAgentCoversEveryReplicaBehindOneAddress(t *testing.T) {
 }
 
 // A dial that lands somewhere already covered is how coverage is reached at all, so it must not read
-// as a failure — the alert on dial failures would fire on every healthy startup if it did.
+// as a failure: the alert on dial failures would fire on every healthy startup if it did.
 func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 	server := &blockingServer{}
 	// Two replicas, but the load balancer sends the first two dials to the same one. The second is
@@ -228,7 +228,7 @@ func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake, reasonRefused} {
 		if got := counterValue(t, metrics, "hangar_agent_dial_failures_total",
 			map[string]string{"reason": reason}); got != 0 {
-			t.Errorf("dial failures for %s = %v, want 0 — a duplicate is not a failure", reason, got)
+			t.Errorf("dial failures for %s = %v, want 0: a duplicate is not a failure", reason, got)
 		}
 	}
 }

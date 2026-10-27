@@ -1,8 +1,8 @@
 // The serving agent: the cluster end of the inference tunnel.
 //
-// A module of its own rather than a second binary inside libs/gateway. It runs in somebody else's
+// A module of its own instead of a second binary inside libs/gateway. It runs in somebody else's
 // Kubernetes cluster on that cluster's upgrade cadence, while the gateway is a deployment this
-// repository applies — different places, different lifecycles. Separate modules mean the compiler
+// repository applies: different places, different lifecycles. Separate modules mean the compiler
 // enforces the split: this cannot reach the routing table or the plane client, and the gateway
 // cannot reach the Kubernetes client this needs to find Dynamo.
 module github.com/hangar-dev/hangar/libs/agent

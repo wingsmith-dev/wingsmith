@@ -22,8 +22,8 @@ func (s fixedTenantSource) TenantsResolved(_ context.Context, _ string) (plane.T
 	return s.table, nil
 }
 
-// tenantsFor builds a loaded *tenancy.Store the same way production does —
-// through Load against a Source — rather than reaching into the package for
+// tenantsFor builds a loaded *tenancy.Store the same way production does,
+// through Load against a Source, instead of reaching into the package for
 // a shortcut it does not export. A test fixture that skipped Load could drift
 // from what a real refresh actually produces.
 func tenantsFor(t *testing.T, tenants ...plane.GatewayTenant) *tenancy.Store {
@@ -111,7 +111,7 @@ func TestAKeyBelongingToAnotherTenantIsUnauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer other-secret"))
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401 — a key minted for a different tenant must not pass", rec.Code)
+		t.Fatalf("status = %d, want 401: a key minted for a different tenant must not pass", rec.Code)
 	}
 }
 
@@ -138,7 +138,7 @@ func TestAnotherTenantsModelIsNotFoundNotForbidden(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 — a name resolving to another tenant's endpoint must read as absent", rec.Code)
+		t.Fatalf("status = %d, want 404: a name resolving to another tenant's endpoint must read as absent", rec.Code)
 	}
 }
 
@@ -190,7 +190,7 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, requestTo("open.hangar.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s, want 200 — auth: none takes no key at all", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, body = %s, want 200; auth: none takes no key at all", rec.Code, rec.Body.String())
 	}
 
 	// Without the gateway's own opt-in, the tenant row alone does not open an
@@ -218,7 +218,7 @@ func TestTheInternalZoneNeverConsultsTenantsEvenWhenSomeAreConfigured(t *testing
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, requestTo("whatever-acme-sends", `{"model":"chat"}`))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 — the internal zone must not start requiring tenants or keys", rec.Code)
+		t.Fatalf("status = %d, want 200: the internal zone must not start requiring tenants or keys", rec.Code)
 	}
 }
 
@@ -337,7 +337,7 @@ func TestANewTenantsEndpointIsServedBeforeTheTenantTableResyncs(t *testing.T) {
 }
 
 // When the reload itself fails, the owner can be neither confirmed nor ruled
-// out, and the answer is a retryable 503 rather than "disabled".
+// out, and the answer is a retryable 503 instead of "disabled".
 func TestAnUnknownOwnerIsUnavailableWhileThePlaneCannotBeRead(t *testing.T) {
 	server, _ := upstreamServer(t)
 	route := globexRoute(t, server.URL)
@@ -381,7 +381,7 @@ func TestAnEndpointWithNoOwnerIsServedOnTheInternalZone(t *testing.T) {
 
 // TestAPrivateEndpointIsNotServedOnThePublicZone pins what `visibility`
 // means: private, the plane's default, is internal-only, and on the public
-// listener it reads as a model that does not exist rather than a refusal.
+// listener it reads as a model that does not exist instead of a refusal.
 func TestAPrivateEndpointIsNotServedOnThePublicZone(t *testing.T) {
 	server, _ := upstreamServer(t)
 	route := globexRoute(t, server.URL)

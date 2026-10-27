@@ -12,7 +12,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
 )
 
-// Zone says which listener accepted a connection — the one fact about a
+// Zone says which listener accepted a connection: the one fact about a
 // caller that nothing it sends can forge, and what the tenant and auth
 // stages below rest their trust decision on (docs/decisions/0016).
 //
@@ -26,7 +26,7 @@ const (
 	_ Zone = iota
 	// ZoneInternal is the unauthenticated serving port: a ClusterIP with no
 	// ingress, reached only by the operator's own edge. A tenant on this zone
-	// may declare auth: none, because the zone itself is the proof — which
+	// may declare auth: none, because the zone itself is the proof, which
 	// holds only while a NetworkPolicy keeps everything else off the port
 	// (libs/gateway/deploy/networkpolicy.yaml).
 	ZoneInternal
@@ -58,7 +58,7 @@ const (
 
 // Tenants is the tenant lookup the host and key stages need.
 //
-// One method, read on every request, rather than a snapshot handed to
+// One method, read on every request, instead of a snapshot handed to
 // withRouting once at construction: `*tenancy.Store` refreshes on its own
 // timer, and a stage that captured `Store.Current()` up front would keep
 // answering from the table that was loaded when the handler was built,
@@ -69,10 +69,10 @@ type Tenants interface {
 
 // stageZone records which listener this handler was built for.
 //
-// A closure over a fixed zone rather than something read per request: which
+// A closure over a fixed zone instead of something read per request: which
 // socket accepted the connection is a fact about the listener, decided once
-// at construction, and it is deliberately not derived from anything a caller
-// sends — that is the whole reason it is what the trust decision rests on.
+// at construction, and it is not derived from anything a caller
+// sends: that is the whole reason it is what the trust decision rests on.
 func stageZone(zone Zone) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		req.zone = zone
@@ -83,12 +83,12 @@ func stageZone(zone Zone) stage {
 // stageTenantFromHost resolves which tenant a request belongs to, from the
 // `Host` header.
 //
-// Only the public zone resolves a tenant. The internal zone deliberately does
+// Only the public zone resolves a tenant. The internal zone does
 // not, and the consequence is worth stating plainly: an internal caller has no
 // tenant, so it sees every enabled tenant's catalog and stageResolve's
 // cross-tenant check never fires for it. The network boundary is what makes
 // that safe (ADR 0016), not anything in this file, and `auth: none` on an
-// internal tenant describes the zone rather than a decision about that tenant.
+// internal tenant describes the zone instead of a decision about that tenant.
 // The boundary is not optional: without the NetworkPolicy in
 // libs/gateway/deploy/ anything in the cluster can reach that port.
 //
@@ -157,7 +157,7 @@ func stageEndpointTenantEnabled(tenants Tenants) stage {
 		if !ok {
 			if refresher, can := tenants.(missRefresher); can {
 				if err := refresher.RefreshOnMiss(r.Context()); err != nil {
-					// Shed rather than internal_error: the plane is what is
+					// Shed, not internal_error: the plane is what is
 					// missing, and the caller can retry.
 					w.Header().Set("Retry-After", "2")
 					MarkOutcome(r, metrics.OutcomeShed)
@@ -200,7 +200,7 @@ func refuseDisabledTenant(w http.ResponseWriter, r *http.Request) {
 // stageKeyCheck enforces `auth: api_key` on the public zone.
 //
 // The internal zone proves nothing beyond having reached the port, which
-// `auth: none` there already reflects — this stage is a no-op for it. A key
+// `auth: none` there already reflects; this stage is a no-op for it. A key
 // is checked against the tenant `stageTenantFromHost` resolved from the
 // `Host` header, not against any tenant a valid key happens to name: a key
 // stolen from one tenant must not authenticate as another just because it
@@ -229,7 +229,7 @@ func stageKeyCheck(tenants Tenants, allowNoAuth bool) stage {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "This tenant requires a key.")
 			return r, false
 		}
-		// Recorded before the lookup rather than after it, so a rejection is
+		// Recorded before the lookup, not after it, so a rejection is
 		// logged against the key that was tried. A refusal nobody can attribute
 		// is the one an on-call cannot act on: "someone is sending a stale key"
 		// and "this key is stale" are the same line with and without this.
@@ -251,10 +251,10 @@ func bearerToken(r *http.Request) (string, bool) {
 	return strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
-// keyHash is the sha256 hex digest a presented key is looked up by — the
+// keyHash is the sha256 hex digest a presented key is looked up by: the
 // same digest the plane stores, so a key is never compared to anything in
-// its plaintext form on this hop or that one. A digest looked up by map key
-// rather than compared byte-by-byte against a small fixed set, which is why
+// its plaintext form on this hop or that one. A digest looked up by map key,
+// not compared byte-by-byte against a small fixed set, which is why
 // this needs no constant-time comparison the way the retired shared-token
 // guard's did.
 func keyHash(key string) string {

@@ -61,10 +61,10 @@ func TestClassify(t *testing.T) {
 }
 
 // TestTunnelChurnIsInvisibleToTheExistingClassifier is the reason Classify
-// exists, stated as a test rather than as a claim in a doc comment.
+// exists, stated as a test, not as a claim in a doc comment.
 //
-// gateway.markProxyError asks two questions — is this context.Canceled, is this
-// a net.Error that timed out — and calls everything else OutcomeUpstreamError,
+// gateway.markProxyError asks two questions, is this context.Canceled, is this
+// a net.Error that timed out, and calls everything else OutcomeUpstreamError,
 // which counts as FAILED and deflates serving availability. Neither http2 error
 // answers either question, so a connector redeploy reads as the cluster being
 // down. If this test ever fails because x/net made GoAwayError a net.Error, the
@@ -118,7 +118,7 @@ func TestARealClusterFailureIsNotChurn(t *testing.T) {
 	}
 	resp, err := pool.RoundTripper("cluster-ap").RoundTrip(req)
 	if err != nil {
-		t.Fatalf("the tunnel itself failed rather than reporting the upstream: %v (%s)", err, Classify(err))
+		t.Fatalf("the tunnel itself failed instead of reporting the upstream: %v (%s)", err, Classify(err))
 	}
 	defer resp.Body.Close()
 

@@ -474,7 +474,7 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 const chatCompletionsRoute = "/v1/chat/completions"
 
 // mediaDecodeKwargs is the request field that reconfigures the engine's media
-// loader — `--media-io-kwargs` spelled per request.
+// loader: `--media-io-kwargs` spelled per request.
 const mediaDecodeKwargs = "media_io_kwargs"
 
 // withoutMediaDecodeKwargs removes the caller's media decode settings from a
@@ -787,10 +787,10 @@ var mediaSignatures = []struct {
 	offset int
 	magic  string
 }{
-	{4, "ftyp"},             // ISO BMFF — mp4, m4a, mov, 3gp
-	{0, "\x1a\x45\xdf\xa3"}, // EBML — Matroska, WebM
-	{0, "OggS"},             // Ogg — Vorbis, Opus, Theora
-	{0, "RIFF"},             // RIFF — wav, avi
+	{4, "ftyp"},             // ISO BMFF: mp4, m4a, mov, 3gp
+	{0, "\x1a\x45\xdf\xa3"}, // EBML: Matroska, WebM
+	{0, "OggS"},             // Ogg: Vorbis, Opus, Theora
+	{0, "RIFF"},             // RIFF: wav, avi
 	{0, "fLaC"},
 	{0, "FLV\x01"},
 	{0, "ID3"},      // mp3 with a tag
@@ -888,7 +888,7 @@ func mediaBase64(field, payload string) (string, bool) {
 	comma := strings.IndexByte(payload, ',')
 	if comma < 0 {
 		// `data:` with no comma is not a data URL at all. Left to the upstream,
-		// which will say so about the whole part rather than about its bytes.
+		// which will say so about the whole part, not about its bytes.
 		return "", false
 	}
 	if !strings.Contains(payload[:comma], ";base64") {
@@ -914,7 +914,7 @@ func mediaFault(encoded string) string {
 		return "decodes to no bytes"
 	}
 	if len(decoded) < shortestMedia {
-		return fmt.Sprintf("decodes to %d bytes, which is too few to be a media container — the payload looks truncated", len(decoded))
+		return fmt.Sprintf("decodes to %d bytes, which is too few to be a media container: the payload looks truncated", len(decoded))
 	}
 	if !hasMediaSignature(decoded) {
 		return "does not decode to a media container this endpoint recognises"

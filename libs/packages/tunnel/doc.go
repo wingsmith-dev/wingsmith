@@ -6,7 +6,7 @@
 // and hands the caller an http.RoundTripper per cluster. The cluster end is
 // Connector: it serves HTTP/2 on a connection somebody else dialled. Neither
 // binary owns the protocol, so it lives beside the other contracts in
-// libs/packages rather than under one binary's internal/ — which would have
+// libs/packages, not under one binary's internal/, which would have
 // made one end the host and the other an importer of the host's module.
 //
 // The dependency rule follows from that: this module depends on http2 and
@@ -24,7 +24,7 @@
 // The agent is not the operator. A cluster runs both: the operator is a
 // leader-elected singleton on the control path, and the agent scales with
 // traffic on the data path. They share neither a process nor a connection,
-// because the data plane never crosses the control plane — if a
+// because the data plane never crosses the control plane, if a
 // request needed the operator's connection, control-plane uptime would become
 // the inference SLA.
 //
@@ -37,17 +37,17 @@
 //     sentinels are unexported. Pool is an http2.ClientConnPool, so the real
 //     Transport.RoundTrip runs and the retry it owns is kept; the pool's job is
 //     to hand the retry a *different* live tunnel to the same cluster. This is
-//     why a cluster holds more than one. An agent that was killed rather than
+//     why a cluster holds more than one. An agent that was killed, not
 //     drained never sends the GOAWAY, and the ECONNRESET, EPIPE or EOF that
 //     arrives instead says nothing about whether the agent had already
 //     forwarded the request. clusterTransport.RoundTrip resends such a request
 //     only if its headers were never written, or if it is idempotent; a
-//     completion the agent may have forwarded fails as churn rather than
+//     completion the agent may have forwarded fails as churn instead of
 //     running twice.
 //   - ResponseHeaderTimeout. http2.Transport has no such field, but
 //     ClientConn.responseHeaderTimeout reads it off the net/http Transport that
-//     http2.ConfigureTransports attaches — so the pool is built through
-//     ConfigureTransports rather than by hand, and the timer is the upstream
+//     http2.ConfigureTransports attaches, so the pool is built through
+//     ConfigureTransports, not by hand, and the timer is the upstream
 //     one: armed at request write, disarmed at the first response header, and
 //     never rearmed for the rest of a long generation.
 //   - A fast answer when the connection is full. http2 blocks in
@@ -76,7 +76,7 @@
 // dials whose token is not cached, after CacheGrace. That is only safe if an
 // outsider cannot make the plane look unreachable. The verifier is handed the
 // dial's source (DialSource) so the plane can charge failed guesses to the
-// address that made them rather than to the gateway, and a source that keeps
+// address that made them, not to the gateway, and a source that keeps
 // failing is stopped at the listener before it reaches the plane at all.
 //
 // # Per-source limits
@@ -88,6 +88,6 @@
 // should preserve the client address or set both limits negative.
 //
 // Reachability is measured here and nowhere else. Observed state has exactly
-// one writer — ingestion, fed by the operator's sync stream — and the gateway
+// one writer (ingestion, fed by the operator's sync stream) and the gateway
 // must not become a second one.
 package tunnel

@@ -35,8 +35,8 @@ type CoverageObserver interface {
 // A tunnel is dialled to one replica, not to a Service, so coverage is per-pod:
 // a replica holding no tunnel to any cluster in its own routing table can serve
 // nothing, and a load balancer has no way to know that unless it says so. That is
-// what this answers, and it is the reason a gateway replica has a stable identity —
-// coverage has to be a fact rather than a hope about where the last dial landed.
+// what this answers, and it is the reason a gateway replica has a stable identity:
+// coverage has to be a fact instead of a hope about where the last dial landed.
 //
 // The gate does not apply to the tunnel listener. That listener is a separate
 // port and never consults this type, because a replica that could only be dialled
@@ -66,8 +66,8 @@ func (r *Readiness) Drain() { r.draining.Store(true) }
 //
 // An empty table is ready. A gateway that has been given no endpoints yet can
 // answer GET /v1/models and a correct 404 for everything else, and holding it out
-// of its Service would mean a fresh install never joined one — the failure would
-// look like the data plane being broken rather than like there being nothing to
+// of its Service would mean a fresh install never joined one: the failure would
+// look like the data plane being broken, not like there being nothing to
 // serve.
 //
 // A table with clusters in it needs at least one this replica can reach. Not all
@@ -118,7 +118,7 @@ func (r *Readiness) Coverage() []routing.ClusterReach {
 //
 // The readiness probe refreshes the same gauge, and that is not enough on its
 // own: the probe's path is a manifest setting, so a cluster whose readinessProbe
-// still points at /healthz would export no coverage at all — and coverage is the
+// still points at /healthz would export no coverage at all, and coverage is the
 // number that says why requests for a cluster are getting none of this replica.
 // An alert must not depend on how somebody configured a kubelet.
 func (r *Readiness) RunCoverage(ctx context.Context, every time.Duration) {

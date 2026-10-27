@@ -1,8 +1,8 @@
 # Build context is `libs/`, not `libs/gateway/`.
 #
 # The gateway requires libs/packages/tunnel through a `replace` pointing at ../packages/tunnel, and a
-# path outside the context does not exist as far as the builder is concerned — the narrower context
-# fails at `go mod download` with a missing replacement rather than anywhere informative. So the
+# path outside the context does not exist as far as the builder is concerned: the narrower context
+# fails at `go mod download` with a missing replacement, not anywhere informative. So the
 # context is the parent and both module trees are copied in.
 FROM golang:1.25.14-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS build
 WORKDIR /src

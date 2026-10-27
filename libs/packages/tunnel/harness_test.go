@@ -18,8 +18,8 @@ import (
 // socketPair returns the two ends of a loopback TCP connection: the end the
 // gateway accepted, and the end the connector dialled.
 //
-// Loopback TCP rather than net.Pipe on purpose. net.Pipe is synchronous and
-// unbuffered, so a write blocks until the far side reads it — which hides the
+// Loopback TCP, not net.Pipe. net.Pipe is synchronous and
+// unbuffered, so a write blocks until the far side reads it, which hides the
 // behaviour under test here, where fifty streams are interleaved on one
 // connection and one slow reader must not stall the others.
 func socketPair(t *testing.T) (gatewaySide, connectorSide net.Conn) {
@@ -112,10 +112,10 @@ func link(t *testing.T, pool *Pool, clusterID string, connector *Connector) *Con
 //
 // The returned func closes that socket and nothing else: no GOAWAY, no drain, no
 // chance for the connector to say which streams it had not processed. That is a
-// killed process as the gateway sees it — the kernel reaped the fd and the FIN is
+// killed process as the gateway sees it: the kernel reaped the fd and the FIN is
 // all that is left of the far end.
 //
-// It is a FIN rather than an RST on purpose, and the difference matters under
+// It is a FIN instead of an RST, and the difference matters under
 // load: see silentPeer.vanish. An RST outside the peer's receive window is
 // dropped by its TCP, so a reset connector can leave a gateway that is behind on
 // its reads believing the tunnel is healthy. A FIN is retransmitted until it
@@ -148,7 +148,7 @@ func linkKillable(t *testing.T, pool *Pool, clusterID string, connector *Connect
 //
 // It matters that this is not http.NewRequest with a strings.Reader. net/http
 // fills GetBody in for *strings.Reader, *bytes.Reader and *bytes.Buffer, so a
-// request built that way is already replayable before the pool sees it — which is
+// request built that way is already replayable before the pool sees it, which is
 // why every test in this package used to pass with makeReplayable removed.
 func gatewayShapedRequest(t *testing.T, path, body string) *http.Request {
 	t.Helper()
@@ -166,7 +166,7 @@ func gatewayShapedRequest(t *testing.T, path, body string) *http.Request {
 
 // occupy holds stream slots on a tunnel so the pool's least-loaded pick prefers
 // a different one. Reservations are only released by a RoundTrip, so this is
-// permanent for the life of the test — which is what makes the pick
+// permanent for the life of the test, which is what makes the pick
 // deterministic.
 func occupy(conn *Conn, slots int) {
 	for i := 0; i < slots; i++ {
@@ -304,8 +304,8 @@ func eventually(t *testing.T, within time.Duration, what string, cond func() boo
 // one PING, and then does exactly what it is told and nothing else.
 //
 // It exists for the three cases a real connector cannot produce on demand: a
-// GOAWAY whose LastStreamID is below every stream the gateway opened — the
-// "received but never processed" case that must be retried — a peer that stops
+// GOAWAY whose LastStreamID is below every stream the gateway opened, the
+// "received but never processed" case that must be retried, a peer that stops
 // answering without closing the socket, and a peer whose socket is torn down
 // with an RST and no readable GOAWAY at all.
 type silentPeer struct {
@@ -318,7 +318,7 @@ type silentPeer struct {
 	died    chan struct{}
 	done    chan struct{}
 	// headers carries the stream id of every HEADERS frame the peer reads, which
-	// is the only way to know a request was really written rather than merely
+	// is the only way to know a request was really written, not merely
 	// given a stream slot.
 	headers chan uint32
 	// rst chooses between the two abrupt deaths. Written before the channel that
@@ -351,7 +351,7 @@ func newSilentPeer(t *testing.T, conn net.Conn, maxStreams uint32) *silentPeer {
 // run does the handshake and then answers frames until told to go silent or to
 // send GOAWAY.
 //
-// The handshake is in here rather than in the constructor because the gateway
+// The handshake is in here, not in the constructor because the gateway
 // writes the client preface from Adopt, which has not been called yet when the
 // peer is built.
 //
@@ -441,7 +441,7 @@ func (p *silentPeer) run(t *testing.T) {
 // Waiting on Conn.Streams instead is not the same claim and is the flake it
 // replaced: a stream slot is reserved before the request is written, and a
 // request the gateway has not written yet is one x/net may retry without a
-// GetBody — errClientConnUnusable is the one error shouldRetryRequest replays
+// GetBody: errClientConnUnusable is the one error shouldRetryRequest replays
 // bare. Every test that kills a tunnel under a request has to know the request is
 // really on the wire, or it silently tests the easy case instead.
 func (p *silentPeer) awaitRequests(t *testing.T, n int) {
@@ -465,9 +465,9 @@ func (p *silentPeer) goSilent() { close(p.silence) }
 // it processed nothing, and then the socket held open while the streams it did
 // accept finish. It returns once the frame is on the wire.
 //
-// Holding the socket is the whole point of the distinction. Closing a loopback
+// Holding the socket is the point of the distinction. Closing a loopback
 // socket that still has unread inbound data on it sends an RST, and an RST
-// discards the GOAWAY the gateway has not read yet — which turns this case into
+// discards the GOAWAY the gateway has not read yet, which turns this case into
 // dieAbruptly by accident, and is exactly the flake this pair of methods
 // replaced.
 func (p *silentPeer) drainGracefully(t *testing.T) {
@@ -484,7 +484,7 @@ func (p *silentPeer) drainGracefully(t *testing.T) {
 // away, in the flavour where the socket is RESET: no GOAWAY, no FIN, an RST.
 //
 // SetLinger(0) is what makes close send an RST. Use it where the gateway is not
-// behind on its reads — see vanish for why that qualification matters.
+// behind on its reads; see vanish for why that qualification matters.
 func (p *silentPeer) dieAbruptly(t *testing.T) {
 	t.Helper()
 	p.rst = true

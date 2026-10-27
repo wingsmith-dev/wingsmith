@@ -7,8 +7,8 @@
 // are the requests that dominate an availability incident, and this hop is the
 // only place in the system that sees every one of them.
 //
-// It is observability and not a ledger. Nothing here is metered or billed —
-// two systems counting tokens is two systems disagreeing about an invoice — and
+// It is observability and not a ledger. Nothing here is metered or billed,
+// two systems counting tokens is two systems disagreeing about an invoice, and
 // nothing here carries an identity. Caller identity, API keys, client IPs and
 // request ids are forbidden on every series in this package: they are unbounded,
 // and putting one in a time series is the same mistake as putting one in a log
@@ -33,8 +33,8 @@ import (
 // Both are underscore-prefixed and every plane uid carries a letter prefix, so
 // neither can collide with a real one.
 const (
-	// EndpointCatalog is GET /v1/models, which is answered from the table
-	// rather than by any endpoint.
+	// EndpointCatalog is GET /v1/models, which is answered from the table,
+	// not by any endpoint.
 	EndpointCatalog = "_catalog"
 	// EndpointUnknown is a request that named a model we do not serve, or that
 	// never got as far as naming one. It is not given an invented label: a
@@ -94,7 +94,7 @@ type Recorder struct {
 
 	// confirmedAt is when the plane last told us the loaded table is current,
 	// as unix nanoseconds. Read at scrape time by the age gauge, so it is an
-	// atomic rather than a mutex: a refresh must never contend with a scrape.
+	// atomic instead of a mutex: a refresh must never contend with a scrape.
 	confirmedAt atomic.Int64
 }
 
@@ -108,7 +108,7 @@ func WithClock(now func() time.Time) Option {
 
 // New builds a Recorder with its own registry.
 //
-// Its own, rather than the default one: the default registry is global state
+// Its own, instead of the default one: the default registry is global state
 // that any dependency can write to, and the series in here are a contract that
 // a plane query and a frozen acceptance criteria version both read.
 func New(opts ...Option) *Recorder {
@@ -199,7 +199,7 @@ func New(opts ...Option) *Recorder {
 		Help: "Always 1, labelled with the version this binary was built as.",
 	}, []string{"version"})
 
-	// Age is computed at scrape rather than stored, so it is right in the
+	// Age is computed at scrape, not stored, so it is right in the
 	// sample even if the process has been unable to refresh for an hour. It is
 	// the plain reading of the timestamp gauge beside it, kept because it is
 	// what a human curling this port during a plane outage wants to see.
@@ -267,7 +267,7 @@ type Sample struct {
 	HaveTTFT bool
 
 	// Usage is what the upstream reported about itself. Absent when the
-	// response carried none — never zero, because zero is a claim and absent
+	// response carried none, never zero, because zero is a claim and absent
 	// is the truth.
 	InputTokens       int64
 	OutputTokens      int64
@@ -371,7 +371,7 @@ type UpstreamSample struct {
 // TableApplied records a refresh that replaced the table.
 //
 // The upstream gauges are reset first, so an endpoint or a deployment that has
-// left the table stops reporting rather than freezing at its last value — a
+// left the table stops reporting instead of freezing at its last value: a
 // stuck 1 on a deployment that no longer exists is worse than no series.
 func (r *Recorder) TableApplied(endpoints int, upstreams []UpstreamSample) {
 	r.upstreamUp.Reset()
@@ -394,7 +394,7 @@ func (r *Recorder) TableApplied(endpoints int, upstreams []UpstreamSample) {
 //
 // It confirms the table exactly as much as a new one does. Age here is time
 // since the plane last vouched for what we hold, not time since it last
-// changed — a table that has not changed in a week is healthy, and a table
+// changed: a table that has not changed in a week is healthy, and a table
 // nobody has been able to confirm for ten minutes is the thing worth seeing.
 func (r *Recorder) TableUnchanged() {
 	r.tableRefreshes.WithLabelValues("unchanged").Inc()
@@ -403,9 +403,9 @@ func (r *Recorder) TableUnchanged() {
 
 // TableRefreshFailed records a refresh that did not reach the plane.
 //
-// It deliberately does not touch the confirmation time. The gateway keeps
-// serving the table it has — a control-plane outage must not become a data
-// plane outage — and the age gauge going up while this counter goes up is
+// It does not touch the confirmation time. The gateway keeps
+// serving the table it has, a control-plane outage must not become a data
+// plane outage, and the age gauge going up while this counter goes up is
 // exactly the shape of that state.
 func (r *Recorder) TableRefreshFailed() {
 	r.tableRefreshes.WithLabelValues("error").Inc()
@@ -422,7 +422,7 @@ func (r *Recorder) confirm() {
 // TunnelCertificateExpiry records when the loaded tunnel certificate expires.
 //
 // A no-op on a zero time so that a gateway whose tunnel listener is plaintext
-// reports nothing here rather than reporting the epoch, which would read as a
+// reports nothing here instead of reporting the epoch, which would read as a
 // certificate that expired in 1970.
 func (r *Recorder) TunnelCertificateExpiry(at time.Time) {
 	if r == nil || at.IsZero() {

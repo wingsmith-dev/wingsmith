@@ -3,7 +3,7 @@ package tunnel
 // HeaderDeploymentID names the deployment a request was already routed to, and
 // it is the one piece of routing state that crosses this wire.
 //
-// It is declared here rather than in the gateway or in the agent for the same
+// It is declared here, not in the gateway or in the agent for the same
 // reason the module exists: neither end owns the protocol, and a constant that
 // lived in one of them would make the other an importer of its private
 // vocabulary. Both ends read this file, so neither can rename it alone.
@@ -13,7 +13,7 @@ package tunnel
 // has already joined that body's `model` against the routing table and picked
 // one deployment on one cluster. Inside the cluster the same request is bytes
 // aimed at a ClusterIP, and the agent would otherwise have to re-derive what the
-// gateway already knew — by asking each frontend what models it serves, which is
+// gateway already knew, by asking each frontend what models it serves, which is
 // a poll, a cache, and a second answer that can disagree with the first. Naming
 // the deployment on the request costs one header and cannot disagree.
 //
@@ -27,7 +27,7 @@ package tunnel
 // It is the gateway's to write and nobody else's. httputil.ReverseProxy copies
 // the inbound headers onto the outbound request verbatim, so a value a caller
 // sent under this name travels the whole way unless the gateway overwrites or
-// deletes it on every request — which is why the gateway does so
+// deletes it on every request, which is why the gateway does so
 // unconditionally, and why a reader must never trust this header from anywhere
 // but a tunnel.
 const HeaderDeploymentID = "X-Hangar-Deployment-Id"

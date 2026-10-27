@@ -18,7 +18,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-// availability-2026.1, written out here rather than imported, because the whole
+// availability-2026.1, written out here, not imported, because the whole
 // point of the outcome taxonomy is that the gateway observes and the objective
 // interprets. If this ever has to move into the binary to make a test pass, the
 // binary has started deciding what a failure is.
@@ -172,11 +172,11 @@ func TestTheStandardsCarveOutIsInTheLabelsAndNotInTheStatusCode(t *testing.T) {
 		t.Fatalf("shed = %v, want 1", got)
 	}
 
-	// One of the two 429s is in the ratio and one is outside it entirely — not
+	// One of the two 429s is in the ratio and one is outside it entirely, not
 	// in the numerator, and not in the denominator either. Excusing a failure
 	// by leaving it in the denominator would quietly improve the number.
 	if got := failureRatio(t, recorder); got != 1 {
-		t.Fatalf("failure ratio = %v%%, want 1%% — one shed request in a hundred counted ones", got)
+		t.Fatalf("failure ratio = %v%%, want 1%%: one shed request in a hundred counted ones", got)
 	}
 	if got := sumOver(t, recorder, ratioOutcomes, nil); got != 100 {
 		t.Fatalf("denominator = %v, want 100 out of the 101 requests: the rate-limited caller is outside the ratio on both sides", got)
@@ -373,7 +373,7 @@ func TestProbeTrafficNeedsBothTheHeaderAndTheToken(t *testing.T) {
 	post(t, handler, `{"model":"chat"}`)
 
 	if got := requests(t, recorder, map[string]string{"origin": "probe"}); got != 2 {
-		t.Fatalf("probe requests = %v, want 2 — both values of a rotating pair", got)
+		t.Fatalf("probe requests = %v, want 2: both values of a rotating pair", got)
 	}
 	if got := requests(t, recorder, map[string]string{"origin": "live"}); got != 3 {
 		t.Fatalf("live requests = %v, want 3", got)
@@ -501,7 +501,7 @@ func TestTokensComeFromTheResponseTailAndStreamingStaysStreaming(t *testing.T) {
 			rec := post(t, handler, `{"model":"chat","stream":true}`)
 			// The metrics wrapper sits on the write path, and a wrapper that
 			// hides Flush turns a token-by-token stream into one long pause
-			// followed by the whole answer — silently, and only under load.
+			// followed by the whole answer: silently, and only under load.
 			if !rec.Flushed {
 				t.Fatal("the response was never flushed through the recorder")
 			}

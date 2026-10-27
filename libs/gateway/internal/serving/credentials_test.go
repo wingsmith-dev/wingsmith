@@ -20,7 +20,7 @@ func TestCredentialsAreLoadedByReferenceAndMissingOnesAreNotFatal(t *testing.T) 
 		t.Fatal("the mounted header was not loaded")
 	}
 	if credentials.Headers("cred-2") != nil {
-		t.Fatal("an unknown reference must yield nothing rather than invent headers")
+		t.Fatal("an unknown reference must yield nothing, not invent headers")
 	}
 	if credentials.Headers("") != nil {
 		t.Fatal("an address behind nothing needs no headers")

@@ -10,8 +10,8 @@ import (
 )
 
 // FuzzReadHello feeds the internet-facing parser arbitrary bytes. Whatever
-// arrives, it must not panic, must fail as ErrHandshake rather than anything
-// else, and on success must have consumed exactly one frame — the bytes after it
+// arrives, it must not panic, must fail as ErrHandshake instead of anything
+// else, and on success must have consumed exactly one frame: the bytes after it
 // belong to HTTP/2.
 func FuzzReadHello(f *testing.F) {
 	var valid bytes.Buffer

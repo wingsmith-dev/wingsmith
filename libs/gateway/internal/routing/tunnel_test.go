@@ -38,7 +38,7 @@ func tunnelTable(clusters ...string) plane.Table {
 	return plane.Table{Revision: "1", Endpoints: []plane.Endpoint{endpoint}}
 }
 
-// TestAnUpstreamWithNoAddressIsRoutedByClusterId is the whole point of the
+// TestAnUpstreamWithNoAddressIsRoutedByClusterId is the point of the
 // tunnel world: nothing sets a serving URL, so the cluster id is the routing key.
 func TestAnUpstreamWithNoAddressIsRoutedByClusterId(t *testing.T) {
 	var targets []Target
@@ -75,7 +75,7 @@ func TestAnUpstreamWithNoAddressIsRoutedByClusterId(t *testing.T) {
 
 // TestReachabilityDecidesWhichClustersAreCandidates covers the 503-not-502 rule
 // from both sides: a cluster with no tunnel is not a candidate at all, so an
-// endpoint whose only cluster has none reports no capacity rather than handing a
+// endpoint whose only cluster has none reports no capacity instead of handing a
 // request to a proxy with nowhere to send it.
 func TestReachabilityDecidesWhichClustersAreCandidates(t *testing.T) {
 	cases := []struct {

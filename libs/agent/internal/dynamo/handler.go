@@ -24,8 +24,8 @@ type Target interface {
 //
 // Separate from Target, and optional, because the two are different amounts of
 // knowledge and only one of them requires a cluster. The Resolver satisfies it;
-// a caller that was handed a single address — the endpoint override, a test, an
-// embedder — has one frontend by construction and nothing to choose between, so
+// a caller that was handed a single address, the endpoint override, a test, an
+// embedder, has one frontend by construction and nothing to choose between, so
 // requiring this of every Target would be asking for an answer nobody but
 // discovery can give.
 type DeploymentTarget interface {
@@ -35,7 +35,7 @@ type DeploymentTarget interface {
 
 // targetKey carries the address chosen for one request through to Rewrite.
 //
-// The address is read once per request and passed forward rather than read
+// The address is read once per request and passed forward, not read
 // again inside Rewrite, because Rewrite cannot fail: a resolver that went empty
 // between the two reads would leave the proxy with nowhere to send the request
 // and no way to say so.
@@ -48,7 +48,7 @@ type targetKey struct{}
 // there is no round-trip deadline for that reason.
 //
 // That bound is not a constant here, and it is the innermost of three on the
-// inference path — the gateway's transport, the tunnel, then this. Only the
+// inference path: the gateway's transport, the tunnel, then this. Only the
 // smallest of the three is ever observed, so this one has to be the largest or
 // the two outside it mean nothing; the caller passes tunnel.InnerHopTimeout of
 // the fleet-wide budget for exactly that reason.
@@ -61,14 +61,14 @@ const (
 // NewHandler builds the agent's local proxy.
 //
 // headerTimeout bounds how long the frontend may hold a request without sending
-// a response header, and must be at least what the gateway and the tunnel use —
+// a response header, and must be at least what the gateway and the tunnel use:
 // tunnel.InnerHopTimeout of the fleet budget is how the agent binary derives it.
 //
 // Every request that arrived over the tunnel lands here and is forwarded to the
 // frontend serving the deployment the gateway already resolved it to. That is
-// the only routing decision this hop makes, and it makes it from a header
-// rather than from the body: the gateway is the hop that parsed the body, and
-// re-deriving its answer here — by asking each frontend what models it serves —
+// the only routing decision this hop makes, and it makes it from a header,
+// not from the body: the gateway is the hop that parsed the body, and
+// re-deriving its answer here, by asking each frontend what models it serves,
 // would be a second answer that can disagree with the first. Which replica
 // behind the frontend takes the request is the serving runtime's decision and
 // stays there.
@@ -112,7 +112,7 @@ func NewHandler(target Target, headerTimeout time.Duration, opts ...Option) http
 			// facts and only one of them is about the cluster. This one is one
 			// deployment's frontend not being up while everything beside it
 			// answers normally, which is the ordinary shape of the seconds
-			// after a deployment is created — so it is worth retrying, and it
+			// after a deployment is created, so it is worth retrying, and it
 			// is worth being able to tell from a cluster that is serving
 			// nothing at all when reading a log or a dashboard.
 			if errors.Is(err, ErrNoDeploymentFrontend) {
@@ -142,8 +142,8 @@ func NewHandler(target Target, headerTimeout time.Duration, opts ...Option) http
 // frontendFor picks the frontend for one request.
 //
 // An empty id is not an error and never a refusal. It is what a gateway that
-// could not name a deployment sends — an older build, an upstream the plane
-// published without one — and the shared frontend is the right answer to it. A
+// could not name a deployment sends, an older build, an upstream the plane
+// published without one, and the shared frontend is the right answer to it. A
 // Target that cannot answer per deployment is in the same position and gets the
 // same treatment, which is what keeps the endpoint override working: a cluster
 // fronting its models with something Dynamo never labelled has one address and
@@ -161,7 +161,7 @@ func frontendFor(target Target, deploymentID string) (*url.URL, error) {
 // newReverseProxy forwards to whichever address the handler resolved.
 //
 // A non-positive headerTimeout takes tunnel.InnerHopTimeout of the fleet default
-// rather than meaning "no bound", so a caller that forgets the setting still
+// instead of meaning "no bound", so a caller that forgets the setting still
 // lands above the hops outside this one instead of below them.
 func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
 	if headerTimeout <= 0 {
@@ -189,7 +189,7 @@ func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
 			r.SetXForwarded()
 		},
 		// Flush every write. Completions with "stream": true are SSE, and the
-		// default heuristic buffers a body with no known length — which turns a
+		// default heuristic buffers a body with no known length, which turns a
 		// token-by-token stream into one long pause and then the whole answer.
 		// The tunnel on the other side of this handler cannot un-buffer it.
 		FlushInterval: -1,

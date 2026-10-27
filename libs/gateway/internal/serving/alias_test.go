@@ -88,8 +88,8 @@ func TestUsageAndMetricsAreKeyedOnTheCanonicalWhateverTheCallerTyped(t *testing.
 func TestTheResponseEchoesTheStringTheCallerSent(t *testing.T) {
 	// The reported bug: a client that reads `model` off a response and reuses it
 	// got back a name the same endpoint refuses. Nothing rewrites the outbound
-	// body — there is no SSE frame rewriter here and this change does not add
-	// one — so the property is bought by not rewriting the inbound one either
+	// body, there is no SSE frame rewriter here and this change does not add
+	// one, so the property is bought by not rewriting the inbound one either
 	// when the upstream declared no served name of its own.
 	server, _ := upstreamServer(t)
 	route := proxyRoute(t, "ep_1", "reasoning-model", "dep_1", "ap", server.URL)

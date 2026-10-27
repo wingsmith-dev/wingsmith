@@ -87,8 +87,8 @@ func TestAbsentParameterIsNotAViolation(t *testing.T) {
 }
 
 // The matrix measured against the reference provider's hosted API. Exactly
-// one cell is refused, and the two easy over-approximations of it — "an object
-// tool_choice" and "a named function" — both refuse requests the provider
+// one cell is refused, and the two easy over-approximations of it, "an object
+// tool_choice" and "a named function", both refuse requests the provider
 // serves.
 func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 	const (
@@ -258,7 +258,7 @@ func TestPolicyRejectsBeforeReachingUpstream(t *testing.T) {
 // api/checks/dynamic_tools.py byte for byte and keyed by the row each one
 // belongs to.
 //
-// Transcribed rather than paraphrased, because a hand-written approximation of
+// Transcribed, not paraphrased, because a hand-written approximation of
 // a wire format is exactly how a rule passes its own tests and then refuses
 // the provider's traffic. If a row moves, this block is what has to move with
 // it.
@@ -294,8 +294,8 @@ var servedBodies = map[string]string{
 	"dynamic_tools.coexist_with_global":  `{"tools":[{"type":"function","function":{"name":"get_stock_price","description":"Get the stock price of a company.","parameters":{"type":"object","properties":{}}}}],"messages":[{"role":"system","content":"","tools":[{"type":"function","function":{"name":"get_weather","description":"Get the weather of a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]},{"role":"user","content":"what is the weather in beijing?"}],"tool_choice":"required"}`,
 }
 
-// genericRefusal is the sentence `denials` answers with. It is repeated here
-// rather than imported so that the contrast is visible: the whole reason
+// genericRefusal is the sentence `denials` answers with. It is repeated here,
+// not imported so that the contrast is visible: the whole reason
 // `messages.tools` sits in the other registry is that a customer holding a
 // malformed declaration cannot do anything with this sentence.
 const genericRefusal = "The request uses a feature this model does not accept."
@@ -366,7 +366,7 @@ func TestBoardAcceptancesAreServed(t *testing.T) {
 
 // The rule reaches a request only through the name in the policy. An endpoint
 // that sold nothing, and one that sold other terms, both have to keep serving
-// every one of the seventeen exactly as they do today — conforming on one model
+// every one of the seventeen exactly as they do today: conforming on one model
 // must never narrow another.
 func TestMessageToolsIsInertUnlessTheRuleIsNamed(t *testing.T) {
 	for id, body := range refusedBodies {
@@ -432,13 +432,13 @@ func TestMessageToolsLeavesUnreadableShapesToTheUpstream(t *testing.T) {
 }
 
 // Both of the board's wrong-role rows carry non-empty content as well, so
-// neither of them can tell the role rule from the content rule — take the role
+// neither of them can tell the role rule from the content rule: take the role
 // check out and they are still refused, for the wrong reason. These bodies can
 // tell: the misplaced declaration is the only thing wrong with them.
 func TestOnlyASystemMessageMayDeclareTools(t *testing.T) {
 	const tool = `{"type":"function","function":{"name":"get_weather"}}`
 
-	// `developer` is here on a decision rather than a measurement. It was never
+	// `developer` is here on a decision instead of a measurement. It was never
 	// put to the provider, and it is refused because the alternative is a 200
 	// carrying a tool that does not exist, which is the answer this rule was
 	// written to stop giving.
@@ -467,7 +467,7 @@ func TestOnlyASystemMessageMayDeclareTools(t *testing.T) {
 // The name rules, on either side of the line. The board measured four refusals
 // and six accepted names; the rest of this table is the class each measured
 // cell stands for, written down so that the widening is a decision somebody
-// made rather than one that happened.
+// made instead of one that happened.
 func TestToolNameRules(t *testing.T) {
 	for _, tc := range []struct {
 		label   string
@@ -477,7 +477,7 @@ func TestToolNameRules(t *testing.T) {
 		// Measured accepted, as the names of the tools the board calls.
 		{"an ordinary name", "get_weather", false},
 		{"a single letter", "x", false},
-		// Written out rather than taken from the constant. 256 is a fact about
+		// Written out, not taken from the constant. 256 is a fact about
 		// the provider, and a test that read the bound off the code under test
 		// would keep passing while somebody narrowed it to OpenAI's 64.
 		{"exactly the limit", strings.Repeat("a", 256), false},
@@ -496,7 +496,7 @@ func TestToolNameRules(t *testing.T) {
 		{"a letter outside ASCII", "naivé", true},
 
 		// And what stays inside it. A digit is refused first and nowhere else,
-		// and the hyphen is here on the OpenAI charset this endpoint mirrors —
+		// and the hyphen is here on the OpenAI charset this endpoint mirrors:
 		// dropping it would refuse most of the hyphenated names in circulation.
 		{"a hyphen", "get-weather", false},
 		{"a trailing digit", "get_weather2", false},
@@ -561,7 +561,7 @@ func TestDiagnosisNamesTheDeclarationAndTheFault(t *testing.T) {
 
 // End to end, because a registry nothing consults is a registry that does not
 // exist: the refusal has to reach the wire as a 400 in the OpenAI envelope,
-// carry the diagnosis rather than the generic sentence, and leave an endpoint
+// carry the diagnosis instead of the generic sentence, and leave an endpoint
 // that sold no terms serving the same body.
 func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 	server, _ := upstreamServer(t)
@@ -619,7 +619,7 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 }
 
 // This gateway fronts the Anthropic Messages protocol as well as the OpenAI one,
-// and a policy is attached to an endpoint, not to a wire format — so an
+// and a policy is attached to an endpoint, not to a wire format, so an
 // Anthropic body reaches a rule written against OpenAI's shape. It must pass
 // through untouched.
 //
@@ -627,9 +627,9 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 // concept: Anthropic declares tools once at the top level and carries their use
 // as `tool_use` / `tool_result` content blocks, so no message ever holds a
 // `tools` key and the rule never engages. That is a real property of the
-// protocol rather than a lucky accident, but it is worth a test, because the
+// protocol instead of a lucky accident, but it is worth a test, because the
 // cost of being wrong is refusing every agentic coding client's request against this
-// endpoint — and a stripper that assumed one protocol's frame shape took this
+// endpoint, and a stripper that assumed one protocol's frame shape took this
 // service down once already.
 func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{{Predicate: "messages.tools", Deny: true}}}
@@ -660,11 +660,11 @@ func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 }
 
 // `chat_template_kwargs` is a vLLM concept and not a provider one. The provider has
-// no such field, ignores it, and thinks anyway — so honouring it here answered
+// no such field, ignores it, and thinks anyway, so honouring it here answered
 // 200 to a request the provider answers 400 to, and turned thinking off on an
 // endpoint sold as consistent with one that leaves it on.
 //
-// The field is taken out of the body by a `drop` term rather than read here, so
+// The field is taken out of the body by a `drop` term, not read here, so
 // this test is about the reading half: whatever the caller spells there, it does
 // not move this rule.
 func TestTheTemplateThinkingKwargIsNotReadAsThinkingOff(t *testing.T) {
@@ -719,7 +719,7 @@ func TestTheTemplateThinkingKwargIsTakenOutOfTheBody(t *testing.T) {
 // accepted and ignored. `prompt_tokens` is 202 whether it is sent or not, and
 // `{"mode":"required","tools":[get_time]}` on a weather question still calls
 // `get_weather`. So the vendor neither filters the tool list nor forces the
-// subset, and the conforming answer is to take the field out — Dynamo's
+// subset, and the conforming answer is to take the field out: Dynamo's
 // frontend refuses to deserialize it at all, which is a 400 on a request the
 // vendor serves.
 //
@@ -745,7 +745,7 @@ func TestAllowedToolsIsTakenOutOfTheBodyAndNothingElseIs(t *testing.T) {
 			`{"type":"allowed_tools","allowed_tools":{"mode":"auto","tools":[{"type":"function","name":"get_weather"}]}}`, true},
 		// The scalars are served. A rule that reached them would refuse
 		// three modes the vendor answers, which is the whole risk of keying
-		// the drop on a sub-path rather than on the key.
+		// the drop on a sub-path, not on the key.
 		{"auto", `"auto"`, false},
 		{"required", `"required"`, false},
 		{"none", `"none"`, false},
@@ -775,7 +775,7 @@ func TestAllowedToolsIsTakenOutOfTheBodyAndNothingElseIs(t *testing.T) {
 // The provider's temperature pin, both modes, as measured.
 //
 // Two cells are accepted and every other one is a 400, which is why this is a
-// predicate rather than an `enum` on the key: the accepted value depends on
+// predicate instead of an `enum` on the key: the accepted value depends on
 // another field of the same request, and `when_present` cannot ask the question
 // because thinking is on by the *absence* of `thinking`.
 func TestTemperatureIsPinnedPerThinkingMode(t *testing.T) {
@@ -797,7 +797,7 @@ func TestTemperatureIsPinnedPerThinkingMode(t *testing.T) {
 		{"", "0.6", false},
 		{"", "0", false},
 
-		// Thinking off. Only 0.6 is served — and 1.0, which is the accepted
+		// Thinking off. Only 0.6 is served, and 1.0, which is the accepted
 		// value one line up, is refused here. This is the half the report that
 		// prompted the rule called "fine on both".
 		{`,"thinking":{"type":"disabled"}`, "0.6", true},
@@ -812,8 +812,8 @@ func TestTemperatureIsPinnedPerThinkingMode(t *testing.T) {
 	}
 }
 
-// An absent temperature is not a violation — the minimal request every client
-// starts with must still be served — and a malformed one belongs to the
+// An absent temperature is not a violation, the minimal request every client
+// starts with must still be served, and a malformed one belongs to the
 // upstream, which can say what is wrong with it in its own words.
 func TestTheTemperaturePinDemandsNothingAndDiagnosesNothingItCannotRead(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{

@@ -4,11 +4,11 @@
 // The path it builds is the real one: the gateway binary from libs/gateway, the
 // agent binary from libs/agent, the tunnel between them from
 // libs/packages/tunnel, and a reverse proxy at each end exactly as production
-// wires them. Only two things are fakes, and both are outside the path — the
+// wires them. Only two things are fakes, and both are outside the path: the
 // control plane, which the gateway reads two tables from and asks to resolve an
 // enrolment token on each dial, and
 // the serving frontend, which is replaced by a schedule so that the measurement
-// is of the transport rather than of a model.
+// is of the transport, not of a model.
 //
 // What that buys is the answer to "where does it break" without a GPU. What it
 // does not buy is a production number: a loopback interface is not a WAN, and
@@ -42,7 +42,7 @@ type Options struct {
 	// Repo is the checkout the gateway and agent are built from.
 	Repo string
 	// Agents is how many agent processes serve the one cluster. More than one is
-	// the real shape — the agent is a Deployment — and it is the only way to ask
+	// the real shape, the agent is a Deployment, and it is the only way to ask
 	// whether a request lands on a tunnel that has room.
 	Agents int
 	// ConnsPerGateway is how many tunnels each agent holds to each replica.
@@ -59,7 +59,7 @@ type Options struct {
 	// PromptBytes pads the request body.
 	PromptBytes int
 	// Baseline runs one stage straight at the frontend first, so the path's own
-	// cost is a subtraction rather than an assertion.
+	// cost is a subtraction instead of an assertion.
 	Baseline bool
 	// KillAgentEvery, when set, kills an agent process on that interval for the
 	// whole run. It is how the harness asks what a caller sees when a tunnel
@@ -234,11 +234,11 @@ type LiveOptions struct {
 // RunLive ramps against a deployed gateway.
 //
 // The same generator, the same percentiles and the same report shape as the
-// synthetic run, which is the whole point: a laptop, CI and production produce
+// synthetic run, which is the point: a laptop, CI and production produce
 // three reports that can be put beside each other. What it cannot produce is the
-// per-leg split or the per-process cost — the frontend is a real engine and does
-// not stamp its clock, and the gateway is not this process's child — so those
-// columns are empty rather than estimated, and the bottleneck it names is
+// per-leg split or the per-process cost, the frontend is a real engine and does
+// not stamp its clock, and the gateway is not this process's child, so those
+// columns are empty, not estimated, and the bottleneck it names is
 // correspondingly coarser.
 func RunLive(ctx context.Context, opts LiveOptions) (*Report, error) {
 	if opts.Model == "" {
@@ -573,7 +573,7 @@ func serve(handler http.Handler) (*http.Server, string, error) {
 // anything else on the host that binds in the same instant. That is accepted:
 // the alternative is passing a file descriptor into a child process that expects
 // to bind for itself, and the failure mode here is a loud bind error at startup
-// rather than a wrong measurement.
+// instead of a wrong measurement.
 func free() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

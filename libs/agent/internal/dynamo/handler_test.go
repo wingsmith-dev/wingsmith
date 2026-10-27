@@ -262,7 +262,7 @@ func call(t *testing.T, handler http.Handler) string {
 // The Resolver is asserted to answer per deployment at compile time, and that
 // is not decoration. main.go hands the handler a *Resolver as a Target, so a Resolver
 // that stopped satisfying DeploymentTarget would still build, still start, and
-// still serve — every request quietly falling back to the shared frontend, with
+// still serve: every request quietly falling back to the shared frontend, with
 // nothing in a log saying the per-model routing had stopped happening.
 var _ DeploymentTarget = (*Resolver)(nil)
 
@@ -389,7 +389,7 @@ func TestASingleFrontendClusterIgnoresTheHeaderEntirely(t *testing.T) {
 
 // TestANamedDeploymentWithNoFrontendAndNoFallbackIsItsOwn503 pins the second
 // refusal. Both are 503 and both are worth retrying; the code is what tells a
-// caller — and whoever reads the log — that one model is mid-rollout rather than
+// caller, and whoever reads the log, that one model is mid-rollout instead of
 // that the cluster is serving nothing.
 func TestANamedDeploymentWithNoFrontendAndNoFallbackIsItsOwn503(t *testing.T) {
 	handler := NewHandler(setTarget{byDeployment: map[string]*url.URL{}}, 0)
@@ -443,8 +443,8 @@ func namedFrontend(t *testing.T, name string) (*httptest.Server, *http.Header) {
 
 // The agent is the innermost of three hops arming a response-header timer, and
 // only the smallest of the three is ever observed. A caller that passes nothing
-// must therefore land above the hops outside it, not on a bare zero — which
-// net/http reads as no bound at all — and not on some small local constant.
+// must therefore land above the hops outside it, not on a bare zero, which
+// net/http reads as no bound at all, and not on some small local constant.
 func TestAnUnsetBoundLandsAboveTheHopsOutsideThisOne(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -472,7 +472,7 @@ func TestAnUnsetBoundLandsAboveTheHopsOutsideThisOne(t *testing.T) {
 }
 
 // The bound still exists. A frontend that accepted a request and has said
-// nothing is wedged rather than thinking, and the point of making the number
+// nothing is wedged instead of thinking, and the point of making the number
 // configurable was to size it correctly, not to delete it.
 func TestAFrontendThatSaysNothingIsStillGivenUpOn(t *testing.T) {
 	release := make(chan struct{})

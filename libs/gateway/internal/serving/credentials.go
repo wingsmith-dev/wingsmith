@@ -10,15 +10,15 @@ import (
 // Credentials maps a credential id the plane handed out to the headers that
 // redeem it.
 //
-// The plane stores a reference and never the secret — that is the whole point
-// of the reference — so the material is mounted next to the gateway and looked
+// The plane stores a reference and never the secret, that is the point
+// of the reference, so the material is mounted next to the gateway and looked
 // up here. The file is a JSON object of `{"<credential id>": {"<header>":
-// "<value>"}}`, which is deliberately dumb: whatever fronts a cluster's serving
+// "<value>"}}`, which is dumb: whatever fronts a cluster's serving
 // address (an access service token, a signed header, a shared secret) is
 // somebody else's scheme, and hangar does not need to model it to carry it.
 //
 // mTLS is the one thing this shape cannot express, and when that is needed it
-// belongs here as a second kind rather than as a header with a certificate in
+// belongs here as a second kind, not as a header with a certificate in
 // it.
 type Credentials map[string]http.Header
 
@@ -50,7 +50,7 @@ func LoadCredentials(path string) (Credentials, error) {
 }
 
 // Headers returns what to present for a credential reference. An unknown
-// reference yields nothing rather than an error: the address is still dialable
+// reference yields nothing instead of an error: the address is still dialable
 // and the upstream is the authority on whether it will answer.
 func (c Credentials) Headers(credentialID string) http.Header {
 	if credentialID == "" {

@@ -16,7 +16,7 @@ type ProbeConfig struct {
 	// Ready reports whether this agent can carry a request. Nil means always ready.
 	Ready func() error
 	// Coverage, when set, is reported on /readyz so a human reading a failing probe sees which
-	// gateway replicas are missing rather than just that some are.
+	// gateway replicas are missing, not just that some are.
 	Coverage func() map[string]int
 	// Expected, when set, is how many replicas the gateway says it is running. It is printed
 	// alongside the coverage because the two together are the answer: this agent is not told the
@@ -49,8 +49,8 @@ func NewProbeServer(cfg ProbeConfig) *ProbeServer {
 func ProbeHandler(cfg ProbeConfig) http.Handler {
 	mux := http.NewServeMux()
 
-	// Liveness is unconditional. An agent that cannot reach the gateway is not broken — the
-	// gateway may be mid-rollout, or the network between them may be having a bad minute — and
+	// Liveness is unconditional. An agent that cannot reach the gateway is not broken, the
+	// gateway may be mid-rollout, or the network between them may be having a bad minute, and
 	// restarting it would throw away the tunnels it does have. Readiness carries that instead.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

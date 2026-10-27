@@ -85,7 +85,7 @@ func TestDiscovery(t *testing.T) {
 			wantErr: ErrNoFrontend,
 		},
 		{
-			name: "two frontends is an error rather than a guess",
+			name: "two frontends is an error instead of a guess",
 			objects: []runtime.Object{
 				frontendService("one-frontend"),
 				frontendService("two-frontend"),
@@ -142,7 +142,7 @@ func TestDiscovery(t *testing.T) {
 }
 
 // errAmbiguous is a test-only marker for the two-frontends case, which produces
-// a message rather than a sentinel: there is nothing a caller can do with it
+// a message instead of a sentinel: there is nothing a caller can do with it
 // programmatically, and the names are the useful part.
 var errAmbiguous = errors.New("ambiguous")
 
@@ -300,14 +300,14 @@ func TestEachDeploymentsFrontendIsFoundByItsLabel(t *testing.T) {
 // TestTheLabelIsReadWhereverDynamoPutIt covers both placements of the same copy.
 // Reading only one of them and being wrong would send every request to the
 // shared frontend, which is a feature that does nothing with nothing anywhere
-// reporting a failure — the one outcome worth spending a branch to avoid.
+// reporting a failure: the one outcome worth spending a branch to avoid.
 func TestTheLabelIsReadWhereverDynamoPutIt(t *testing.T) {
 	onTheSelector := frontendService("selector-labelled-frontend")
 	onTheSelector.Spec.Selector[DeploymentIDLabel] = "dep_selector"
 
 	// The shared frontend is in the fixture so that a placement this misses
 	// cannot pass by falling back onto an address that happens to be the right
-	// one — which is exactly how a per-deployment lookup fails: quietly, on the
+	// one, which is exactly how a per-deployment lookup fails: quietly, on the
 	// shared frontend, answering.
 	resolver, err := New(Config{Namespace: testNamespace, Services: services(t,
 		frontendService("inference-frontend"),
@@ -337,8 +337,8 @@ func TestTheLabelIsReadWhereverDynamoPutIt(t *testing.T) {
 
 // TestOneSharedFrontendAnswersEveryDeployment is what lets this ship dark. A
 // cluster running exactly what every cluster runs today has one unlabelled
-// frontend, and every question — with a deployment id, without one, with one
-// nobody has heard of — has to produce the address it produced before there was
+// frontend, and every question, with a deployment id, without one, with one
+// nobody has heard of, has to produce the address it produced before there was
 // a set at all.
 func TestOneSharedFrontendAnswersEveryDeployment(t *testing.T) {
 	resolver, err := New(Config{Namespace: testNamespace, Services: services(t,
@@ -410,7 +410,7 @@ func TestADeploymentWithNoFrontendAndNoFallbackIsItsOwnRefusal(t *testing.T) {
 // TestBeforeAnythingIsDiscoveredTheRefusalIsAboutTheCluster is the cold start,
 // and it is the one moment the two refusals are trivial to swap. Nothing has
 // been found yet, so there is no shared frontend to fall back to and no
-// per-deployment one to match — which reads locally like the deployment case and
+// per-deployment one to match, which reads locally like the deployment case and
 // is in fact the cluster case. An agent between starting and its first discovery
 // pass, or one whose first pass met an API server that was down, would otherwise
 // answer every caller for every model with "this model is mid-rollout, retry"
@@ -462,7 +462,7 @@ func TestTwoFrontendsClaimingOneDeploymentIsStillAnErrorRatherThanAGuess(t *test
 		t.Errorf("refresh err = %v, want ErrAmbiguousFrontend", refreshErr)
 	}
 	// The shared frontend in the same pass is still served, and the conflicted
-	// deployment is refused rather than sent to it.
+	// deployment is refused, not sent to it.
 	if got, err := resolver.URL(); err != nil || !strings.Contains(got.Host, "inference-frontend") {
 		t.Fatalf("url = %v, %v, want the shared frontend from the same pass", got, err)
 	}
@@ -514,7 +514,7 @@ func TestOneConflictedDeploymentDoesNotStallTheOthers(t *testing.T) {
 // TestAFailedLookupKeepsThePerDeploymentFrontendsToo extends the reason
 // discovery is off the request path to the set. Keeping only the shared address
 // across an API-server outage would silently move every per-model request onto
-// the shared frontend — which answers, with a model-not-found for a model that
+// the shared frontend, which answers, with a model-not-found for a model that
 // is running perfectly well.
 func TestAFailedLookupKeepsThePerDeploymentFrontendsToo(t *testing.T) {
 	ctx := context.Background()

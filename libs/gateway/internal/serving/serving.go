@@ -5,10 +5,10 @@
 // and readiness. The model-to-cluster table it reads is routing's, and the wire
 // into a cluster is libs/packages/tunnel's.
 //
-// It is deliberately thin. It identifies a caller's tenant (by listener, and on
+// It is thin. It identifies a caller's tenant (by listener, and on
 // the public listener by host and key), refuses a disabled tenant and bounds
 // each tenant's load, and does nothing past that: no user identity below the
-// tenant, no metering, no billing — whoever puts a gateway in front of their
+// tenant, no metering, no billing: whoever puts a gateway in front of their
 // users already has a place where that happens, and doing it twice is how two
 // systems end up disagreeing about what a customer owes. What it does own is
 // the one thing only hangar knows: which clusters are serving a model right
@@ -44,7 +44,7 @@ import (
 // It also caps an upload. At 100 MiB an hour of audio (~50 MiB) fits. The
 // ceiling is memory, not policy: the body stays resident for the whole
 // upstream call so the request remains replayable, one copy per request in
-// flight (`tunnel.Replayable` reuses this buffer rather than taking a second),
+// flight (`tunnel.Replayable` reuses this buffer instead of taking a second),
 // and a rewrite of the body takes another for as long as the request runs.
 // BodyBudget bounds the total across requests.
 //
@@ -68,7 +68,7 @@ type Config struct {
 	// Metrics, when set, receives one observation per request. Nil means the
 	// handler behaves exactly as it did before there was a /metrics endpoint,
 	// which is what keeps every existing caller of New compiling and every
-	// existing test honest.
+	// existing test accurate.
 	Metrics *metrics.Recorder
 	// Probes, when set, recognises the conformance suite's own traffic so it can
 	// be excluded from an availability ratio. Nil means every request is live.
@@ -93,7 +93,7 @@ type Config struct {
 	Limiter *Limiter
 	// AllowUnauthenticatedPublic serves a tenant declaring `auth: none` on the
 	// public zone. Off by default: a public listener that takes requests
-	// without a key is a choice an operator makes on purpose, not one a
+	// without a key is a choice an operator makes, not one a
 	// tenant row makes for them.
 	AllowUnauthenticatedPublic bool
 	// MaxBodyBytes caps one request body. Zero takes DefaultMaxBodyBytes.
@@ -116,11 +116,11 @@ type Config struct {
 
 // New builds the gateway handler.
 //
-// The probes are registered outside everything else on purpose: they are what
+// The probes are registered outside everything else: they are what
 // Kubernetes calls and they must answer without the plane, a table, or a token.
 //
 // They are two probes and not one, because they answer different questions.
-// `/healthz` is liveness and is unconditional — a replica that cannot serve must
+// `/healthz` is liveness and is unconditional: a replica that cannot serve must
 // not be restarted for it, since restarting is exactly what will not fix a
 // missing tunnel. `/readyz` is readiness and reports whether this replica can
 // actually carry a request, which for a tunnelled cluster is a per-pod fact that
@@ -182,11 +182,11 @@ type modelEnvelope struct {
 // withRouting dispatches a request to the cluster serving its `model`, by
 // running it through routingStages (pipeline.go) in order. Split out because
 // this is the hot path for all inference traffic: each stage is a step
-// somebody can read, test and insert beside on its own, rather than a spot in
+// somebody can read, test and insert beside on its own, instead of a spot in
 // one function that keeps growing.
 //
-// `GET /v1/models` is answered from the table, because the gateway — not any
-// one cluster — is what knows the whole set. That is `stageCatalog`, ahead of
+// `GET /v1/models` is answered from the table, because the gateway, not any
+// one cluster, is what knows the whole set. That is `stageCatalog`, ahead of
 // it the tenant stages that scope it (tenant_stages.go).
 func withRouting(cfg Config) http.Handler {
 	stages := routingStages(cfg)
@@ -198,7 +198,7 @@ func withRouting(cfg Config) http.Handler {
 // withModel returns the body with `model` replaced by the name the engine
 // answers to, leaving every other byte exactly as the caller sent it.
 //
-// Spliced rather than re-encoded: the body is scanned once for its top-level
+// Spliced, not re-encoded: the body is scanned once for its top-level
 // keys and the one value is replaced in place, so a long conversation is copied
 // once and never decoded. A body the scan does not take on (`model` repeated,
 // or structure it does not recognise) falls back to decoding one level deep and
@@ -330,7 +330,7 @@ func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.
 			}
 		},
 		// Flush every write. Completions with "stream": true are SSE, and the
-		// default heuristic buffers a body with no known length — which turns a
+		// default heuristic buffers a body with no known length, which turns a
 		// token-by-token stream into one long pause and then the whole answer.
 		FlushInterval: -1,
 		// Read the tail of every response for its usage object, which is where
@@ -362,10 +362,10 @@ func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.
 // statusRecorder captures the status code for the access log, and the moment
 // the first byte reached the caller for the metrics.
 //
-// It is extended rather than wrapped in a second recorder on purpose. The
+// It is extended, not wrapped in a second recorder. The
 // Unwrap below is what keeps http.ResponseController reaching Flush, and
 // FlushInterval: -1 on the proxy is what makes a stream arrive token by token
-// instead of as one long pause — a wrapper that hides Flush destroys that
+// instead of as one long pause: a wrapper that hides Flush destroys that
 // silently and only under load.
 type statusRecorder struct {
 	http.ResponseWriter
@@ -409,7 +409,7 @@ func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter 
 // observed is the outermost wrapper: it carries the per-request observation,
 // writes the access log, and records the request once it is finished.
 //
-// One wrapper rather than two, for the reason stated on statusRecorder.
+// One wrapper instead of two, for the reason stated on statusRecorder.
 //
 // The kubelet's probes are neither logged nor counted. A probe is not a request
 // against anyone's availability, and counting a few thousand of them a day
@@ -438,10 +438,10 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, writeIdle time.Du
 
 		// Deferred, and the panic is recovered, because httputil.ReverseProxy
 		// reports a failure halfway through copying a response body by panicking
-		// http.ErrAbortHandler rather than through ErrorHandler. That panic
+		// http.ErrAbortHandler, not through ErrorHandler. That panic
 		// unwinds straight past a non-deferred observation, so every stream that
-		// was truncated mid-generation — the exact failure a caller notices most
-		// — was recorded as nothing at all.
+		// was truncated mid-generation, the exact failure a caller notices most,
+		// was recorded as nothing at all.
 		//
 		// It is re-raised afterwards. The panic is how a handler tells net/http
 		// to sever the response instead of finishing its framing, and swallowing
@@ -454,7 +454,7 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, writeIdle time.Du
 			if !isProbePath(r.URL.Path) {
 				elapsed := time.Since(start)
 
-				// The sample is taken before the line rather than after it,
+				// The sample is taken before the line, not after it,
 				// because the line carries the same counts. Two reads of the
 				// observation would be two different freezes of it.
 				sample := obs.sample(rec.status, elapsed)

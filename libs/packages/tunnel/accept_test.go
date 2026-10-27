@@ -95,7 +95,7 @@ func (v *blockingVerifier) peak() int {
 }
 
 // TestHandshakesInProgressAreBounded pins MaxHandshakes: dials past the bound
-// wait to be accepted rather than each taking a goroutine at once.
+// wait to be accepted instead of each taking a goroutine at once.
 func TestHandshakesInProgressAreBounded(t *testing.T) {
 	t.Parallel()
 

@@ -13,9 +13,9 @@ import (
 // saltParts are the content parts that carry media, and the field each one
 // carries it in.
 //
-// Deliberately not `mediaParts`, which is the refusal rule's list and excludes
+// Not `mediaParts`, which is the refusal rule's list and excludes
 // `image_url` because the frontend already answers for an image it cannot
-// decode. This list is about identity rather than validity, and an image is the
+// decode. This list is about identity, not validity, and an image is the
 // modality that needs it most.
 var saltParts = map[string]string{
 	"image_url":   "url",
@@ -28,14 +28,14 @@ var saltParts = map[string]string{
 // carries, in the order it carries them, and whether it carried any.
 //
 // Why this exists at all: a disaggregated decode worker is handed its prompt as
-// expanded token ids with no multimodal data attached — see
+// expanded token ids with no multimodal data attached; see
 // `dynamo/vllm/multimodal_utils/request_processor.py`, where the P/D handoff for
 // any model that is not Qwen-VL is `{"expanded_prompt_token_ids": ...}` and the
 // decode branch then sets `has_mm_data = False`. vLLM therefore builds that
 // request with no `mm_features`, `_gen_mm_extra_hash_keys` contributes nothing,
 // and the prefix-cache block hash is token ids alone. Two different images of
 // the same pixel dimensions expand to the same placeholder run, so they hash
-// identically and the second request is served the first one's KV — measured
+// identically and the second request is served the first one's KV: measured
 // on a disaggregated deployment as 0 of 12 correct at concurrency 12, against
 // 12 of 12 with a salt. Tracked upstream as ai-dynamo/dynamo#15343.
 //
@@ -45,8 +45,8 @@ var saltParts = map[string]string{
 // kept; different media means a different salt and the false match is gone.
 //
 // The payload is hashed by value when the request carries bytes and by
-// reference when it carries a URL. A reference is weaker — a URL whose content
-// changes underneath it reuses the wrong blocks — but it is the caller's own
+// reference when it carries a URL. A reference is weaker, a URL whose content
+// changes underneath it reuses the wrong blocks, but it is the caller's own
 // cache coherency, and the alternative is deriving no salt at all and returning
 // silently to the defect this exists to close.
 //
@@ -58,7 +58,7 @@ var saltParts = map[string]string{
 // alone was not enough. Deriving the salt from the media put the image identity
 // back and was verified 24 of 24, but it makes every question about one image
 // share a salt, and a prompt that differs only after the placeholder run still
-// collides in the block hash underneath — measured as one answer served to six
+// collides in the block hash underneath: measured as one answer served to six
 // different questions about one document, and reproduced under a caller's own
 // shared salt,
 // so the collision is the engine's and the salt is only the lever we hold. An
@@ -132,8 +132,8 @@ func promptIdentity(fields map[string]json.RawMessage) (string, bool) {
 // mediaPayloadKey is the bytes a part carries, or the reference it carries.
 //
 // A `data` field is bare base64 and a `url` field is base64 only when the data
-// URL says so; both are decoded so that two spellings of one image — a
-// re-encoding with different padding or case — are one identity. Anything else
+// URL says so; both are decoded so that two spellings of one image, a
+// re-encoding with different padding or case, are one identity. Anything else
 // is a reference and is keyed by the string itself.
 func mediaPayloadKey(field, payload string) string {
 	if field == "data" {
@@ -170,8 +170,8 @@ func writeSegment(digest hash.Hash, value string) {
 //
 // Tenant is the plane's tenant id: the one the public zone resolved from the host,
 // or on the internal zone the tenant that owns the endpoint. Caller is the
-// internal caller's own narrower scope, from `X-Hangar-Cache-Scope` — an internal
-// platform serving many customers through one tenant names the customer there —
+// internal caller's own narrower scope, from `X-Hangar-Cache-Scope`, an internal
+// platform serving many customers through one tenant names the customer there,
 // and is honoured only on the internal zone, whose callers this fleet runs.
 type cacheScope struct {
 	Tenant string
@@ -204,17 +204,17 @@ var cacheSaltPaths = map[string]bool{
 // carries media (see promptIdentity), then any salt the caller sent. A request
 // with neither a scope nor media is returned as the exact bytes that arrived.
 // The `nvext` object is created when absent, which the policy machinery cannot
-// do — `containersTo` reports false when the parent object is missing and `fill`
+// do: `containersTo` reports false when the parent object is missing and `fill`
 // never creates one.
 //
-// A caller's own salt is folded in rather than honoured as it stands. Honoured,
+// A caller's own salt is folded in, not honoured as it stands. Honoured,
 // a caller sending one constant salt across different images would reintroduce
 // the collision the prompt identity closes, and a caller naming another
 // tenant's salt would share that tenant's cache; folded, a caller isolating
 // itself still gets that isolation and can never widen it.
 //
 // It must run after `withoutSteeringHints`, which removes the routing fields a
-// caller put in `nvext`. `cache_salt` is deliberately not one of those.
+// caller put in `nvext`. `cache_salt` is not one of those.
 func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
 	media := hasMediaPart(body)
 	if scope.empty() && !media {
@@ -300,18 +300,18 @@ func saltedHints(hints map[string]json.RawMessage, salt string) ([]byte, error) 
 }
 
 // splicedCacheSalt writes a text request's salt into the bytes that arrived,
-// rather than decoding and re-encoding the whole body.
+// instead of decoding and re-encoding the whole body.
 //
 // A text request carries no media, so the identity needs nothing from the body
-// but its `nvext`, and the prompt — which is nearly all of a long-context body —
+// but its `nvext`, and the prompt, which is nearly all of a long-context body,
 // does not have to be copied into a map and marshalled back out. The body is
 // scanned once for its top-level keys; the `nvext` value, which is small, is the
 // only part decoded, and it is replaced in place, or inserted after the opening
 // brace when there is none. Re-encoding a 4 MB prompt cost about 31 ms a request
 // (BenchmarkCacheSaltLargeText).
 //
-// handled is false for anything this does not take on — a body the scan cannot
-// read, or `nvext` repeated, which the full re-encode collapses to one copy — and
+// handled is false for anything this does not take on, a body the scan cannot
+// read, or `nvext` repeated, which the full re-encode collapses to one copy, and
 // the caller falls back to that re-encode.
 func splicedCacheSalt(body []byte, scope cacheScope) (out []byte, written, handled bool, err error) {
 	open, spans, ok := topLevelValues(body, "nvext")
@@ -357,7 +357,7 @@ type valueSpan struct{ start, end int }
 //
 // The body has already been accepted by json.Unmarshal in stageParseEnvelope, and
 // every later rewrite is json.Marshal output, so this only has to find structure
-// in valid JSON. Anything it does not recognise is reported as !ok rather than
+// in valid JSON. Anything it does not recognise is reported as !ok, not
 // guessed at.
 func topLevelValues(body []byte, key string) (open int, spans []valueSpan, ok bool) {
 	i := skipSpace(body, 0)
@@ -429,7 +429,7 @@ func skipSpace(body []byte, i int) int {
 }
 
 // skipString returns the offset just past the string opening at i. It jumps from
-// quote to quote rather than reading every byte, which is what keeps a prompt of
+// quote to quote instead of reading every byte, which is what keeps a prompt of
 // megabytes cheap: a quote ends the string unless an odd run of backslashes
 // precedes it.
 func skipString(body []byte, i int) (int, bool) {

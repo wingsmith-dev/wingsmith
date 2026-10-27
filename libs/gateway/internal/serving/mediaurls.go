@@ -271,7 +271,7 @@ var promptFields = map[string]bool{"prompt": true, "negative_prompt": true}
 // prompt, that is written as a URL. These requests are small and their schemas
 // differ by engine (`image`, `images[].image_url`, `mask`, `input_reference`
 // and more), so any absolute URL in them is treated as one the engine may
-// fetch rather than trusting a field list to be complete.
+// fetch instead of trusting a field list to be complete.
 func topLevelMediaRefs(fields map[string]json.RawMessage) []string {
 	var refs []string
 	for key, raw := range fields {

@@ -160,7 +160,7 @@ func TestAnAcceptedDialIsToldWhichReplicaAndHowMany(t *testing.T) {
 
 // The shape every chart-installed agent actually dials with, and the one that was refused in
 // production while every test passed. The chart writes `cluster.id` from what the plane rendered,
-// which is the cluster's name — so the agent claims the name while the plane answers with the uid,
+// which is the cluster's name, so the agent claims the name while the plane answers with the uid,
 // and a listener comparing the claim against the uid alone rejects the whole fleet. The e2e missed
 // it by dialling with the uid, which no agent has.
 func TestAnAgentClaimingTheClusterNameIsAcceptedAndKeyedOnTheUid(t *testing.T) {
@@ -189,7 +189,7 @@ func TestAnAgentClaimingTheClusterNameIsAcceptedAndKeyedOnTheUid(t *testing.T) {
 	}
 }
 
-// A gateway that was never told its replica count must say one rather than none. Zero on the wire
+// A gateway that was never told its replica count must say one, not none. Zero on the wire
 // would reach an agent as "hold no tunnels", which is the one answer that is never right.
 func TestAnUnconfiguredReplicaCountIsReportedAsOne(t *testing.T) {
 	verifier := &stubVerifier{clusters: map[string]string{"tok-ap": "clu_ap"}}

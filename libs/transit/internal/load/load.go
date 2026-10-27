@@ -1,9 +1,9 @@
 // Package load drives concurrent OpenAI-compatible completions and reports what
 // the caller experienced.
 //
-// It measures the three things a streaming caller can actually feel — when the
+// It measures the three things a streaming caller can actually feel, when the
 // first token arrived, how evenly the rest arrived, and whether the request
-// finished at all — and, where the far end stamps its own clock, it splits the
+// finished at all, and, where the far end stamps its own clock, it splits the
 // first of those into the leg that went in and the leg that came back. Nothing
 // here knows what it is pointed at: the same generator runs against a fake
 // frontend on a loopback port and against a deployed gateway, which is what
@@ -96,7 +96,7 @@ const DefaultDrain = 30 * time.Second
 //
 // No timeout of any kind. A generation legitimately runs for minutes, and a
 // client-side deadline would record the harness's impatience as the system's
-// failure — which is the single easiest way to publish a wrong capacity number.
+// failure, which is the single easiest way to publish a wrong capacity number.
 func NewClient(concurrency int) *http.Client {
 	if concurrency < 16 {
 		concurrency = 16
@@ -116,8 +116,8 @@ func NewClient(concurrency int) *http.Client {
 //
 // Closed-loop: each worker holds one request open at a time, so concurrency is
 // the number of requests in flight and never a rate. That is the right model for
-// this system — a caller of an inference API waits for its answer — and it is
-// also the only one under which a saturated hop shows up as latency rather than
+// this system, a caller of an inference API waits for its answer, and it is
+// also the only one under which a saturated hop shows up as latency, not
 // as an unbounded queue in the generator.
 //
 // When the stage's duration ends, workers stop starting requests and the ones
@@ -282,7 +282,7 @@ type chunk struct {
 // content reports whether a frame carries anything generated. A frame that
 // only names the role, an empty delta, or the usage chunk is not a token: an
 // engine sends the role chunk before prefill finishes, and timing TTFT from it
-// would measure the engine's eagerness rather than its first token.
+// would measure the engine's eagerness instead of its first token.
 func (c chunk) content() bool {
 	for _, choice := range c.Choices {
 		d := choice.Delta
@@ -298,8 +298,8 @@ func (c chunk) content() bool {
 
 // readStream times each SSE frame that carries content as it arrives.
 //
-// A frame carrying no content — the role chunk, the usage chunk, the
-// terminator — is not a token and must not enter the inter-token distribution,
+// A frame carrying no content, the role chunk, the usage chunk, the
+// terminator, is not a token and must not enter the inter-token distribution,
 // or every stream would show a fictitious final gap of zero.
 func readStream(body io.Reader, start time.Time, out *Outcome) {
 	scanner := bufio.NewScanner(body)
@@ -380,7 +380,7 @@ func prompt(n int) string {
 // fault buckets a transport failure into a label the report can count.
 //
 // The buckets are the ones the tunnel's own classification distinguishes, so a
-// harness run and a gateway's metrics can be read side by side rather than
+// harness run and a gateway's metrics can be read side by side, not
 // translated.
 func fault(err error) string {
 	if err == nil {
@@ -574,7 +574,7 @@ func stddev(values []time.Duration) time.Duration {
 	return time.Duration(math.Sqrt(variance / float64(len(values)-1)))
 }
 
-// ParseStages reads a ramp such as "4,16,64x30s" — a list of concurrencies and
+// ParseStages reads a ramp such as "4,16,64x30s": a list of concurrencies and
 // one duration each stage holds for.
 func ParseStages(spec string, hold time.Duration) ([]Stage, error) {
 	if at := strings.LastIndex(spec, "x"); at >= 0 {

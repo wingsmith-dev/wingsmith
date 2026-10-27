@@ -2,7 +2,7 @@
 // plane.
 //
 // The plane derives the table on every read and versions it with an ETag
-// covering everything it was built from — endpoints, targets, deployments and
+// covering everything it was built from: endpoints, targets, deployments and
 // the serving addresses of the clusters behind them. So the gateway polls with
 // `If-None-Match` and the steady state costs a 304 with no body.
 package plane
@@ -40,15 +40,15 @@ type Upstream struct {
 // A rule has a scope, a subject and its terms. The scope decides whether the
 // rule is looked at for this request at all; the subject is what it is about;
 // the terms are what it says. Every rule whose scope matches applies, and the
-// request must satisfy all of them — there is no precedence between rules and
+// request must satisfy all of them: there is no precedence between rules and
 // the order of the array is never read. Two rules that disagree are two terms
 // that were both sold, which is an authoring mistake and is refused where the
-// policy is written rather than resolved here.
+// policy is written, not resolved here.
 type Rule struct {
-	// Route is the request path this rule is about — "/v1/chat/completions".
+	// Route is the request path this rule is about: "/v1/chat/completions".
 	// Empty matches every path.
 	//
-	// It is the whole reason rules are a list rather than a map: a term
+	// It is the whole reason rules are a list instead of a map: a term
 	// measured against one protocol is not a term about another, and before
 	// this existed a rule written for chat completions was enforced against
 	// /v1/embeddings, /v1/messages and /v1/responses as well.
@@ -58,11 +58,11 @@ type Rule struct {
 	// WhenPresent narrows a rule to requests that carry another JSON path,
 	// dotted like Key. Empty asks nothing of the body.
 	//
-	// It is a scope and not a term, and it sits here rather than beside Drop for
+	// It is a scope and not a term, and it sits here, not beside Drop for
 	// that reason: "does this rule look at this request at all" is one question,
 	// whether what narrows it is the path the request came in on, the transport
 	// mode, or another field in the body. Putting the condition in the scope
-	// block means it composes with every term rather than with one of them — the
+	// block means it composes with every term, not with one of them: the
 	// same field that expresses "drop `reasoning_effort` when `thinking.effort`
 	// is set" would express "`temperature` must be 1 while thinking is on",
 	// without another field and without a second way to say `when`.
@@ -76,7 +76,7 @@ type Rule struct {
 	//
 	// The two are different namespaces and never fall back to one another: a
 	// key is read out of the body, a predicate is looked up in a map. A name
-	// that means nothing to this build is ignored rather than enforced, and
+	// that means nothing to this build is ignored, not enforced, and
 	// reported at refresh time.
 	Predicate string `json:"predicate,omitempty"`
 
@@ -90,14 +90,14 @@ type Rule struct {
 	//
 	// It is the term for a field the provider accepts and ignores. Denying one
 	// of those would 400 a request the vendor serves, and leaving it in place
-	// lets an engine honour a field the provider does not — which is a wrong
-	// answer rather than an error, and the harder of the two to notice.
+	// lets an engine honour a field the provider does not, which is a wrong
+	// answer instead of an error, and the harder of the two to notice.
 	//
 	// The parent object is never removed with the last key out of it: an empty
 	// `thinking` and no `thinking` at all are different requests.
 	Drop bool `json:"drop,omitempty"`
 	// Default is the value to write into an absent key before forwarding. It and
-	// Drop are the terms that write rather than refuse; neither ever fails a
+	// Drop are the terms that write, not refuse; neither ever fails a
 	// request.
 	//
 	// It fills the key only when the key's parent container is already in the
@@ -124,7 +124,7 @@ type Rule struct {
 	// honouring the field the provider ignores.
 	//
 	// Like Default it never creates an intermediate object, for the same reason. A
-	// source path that is not in the request writes nothing at all — which is what
+	// source path that is not in the request writes nothing at all, which is what
 	// makes the rule conditional without needing a WhenPresent beside it.
 	ValueFrom string `json:"value_from,omitempty"`
 }
@@ -134,7 +134,7 @@ type Rule struct {
 // term.
 //
 // Version is the plane's, not ours. A policy naming a version above the one this
-// build understands is still enforced as far as it is understood — dropping
+// build understands is still enforced as far as it is understood: dropping
 // traffic because the plane learned a new rule first would trade a conformance
 // gap for an outage.
 type Policy struct {
@@ -169,7 +169,7 @@ type Table struct {
 
 // GatewayTenant is one tenant, as the gateway needs to trust it (docs/decisions/0016).
 //
-// `KeyHashes` carries only the live ones — a revoked key is dropped from the
+// `KeyHashes` carries only the live ones: a revoked key is dropped from the
 // plane's own feed, and that drop is the whole mechanism a revoke has. Its
 // stamp still moved `TenantTable.Revision`, which is what a poller needs and
 // nothing more: this hop never sees a plaintext key, only the sha256 it
@@ -192,8 +192,8 @@ type TenantTable struct {
 
 // ErrNotModified reports that the caller's revision is still current.
 //
-// A sentinel rather than a nil table, because "nothing changed" and "the table
-// is empty" have to stay distinguishable — one is the steady state and the
+// A sentinel instead of a nil table, because "nothing changed" and "the table
+// is empty" have to stay distinguishable: one is the steady state and the
 // other means every model just went away.
 var ErrNotModified = fmt.Errorf("routing table not modified")
 

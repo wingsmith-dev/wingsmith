@@ -1,8 +1,8 @@
 // Package fakeplane serves what the gateway asks the control plane for, and
 // nothing else.
 //
-// The gateway reads two tables on a timer — the resolved routing table and the
-// tenant table — and resolves an enrolment token once per dial. Those three
+// The gateway reads two tables on a timer, the resolved routing table and the
+// tenant table, and resolves an enrolment token once per dial. Those three
 // routes are the whole of its dependency on the plane, and they are the only
 // three the plane lets the gateway's service principal call, so a harness that
 // answers them can run the real gateway binary with no database, no migrations
@@ -11,7 +11,7 @@
 // are fixtures, and the contract they are fixtures of is libs/packages/contract.
 //
 // The wire types below mirror libs/gateway/internal/plane field for field. They
-// cannot import it — it is internal to another module — so contract_test.go
+// cannot import it, it is internal to another module, so contract_test.go
 // reads the gateway's source and fails when a JSON field exists on one side and
 // not the other.
 package fakeplane
@@ -151,7 +151,7 @@ func New(cfg Config) *Server {
 
 // Counts is how many times the gateway asked, for the report. A verification
 // count far above the number of tunnels is a reconnect storm, and it is the one
-// place a storm is visible as a number rather than as a log.
+// place a storm is visible as a number, not as a log.
 func (s *Server) Counts() (resolved, verified, refused int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

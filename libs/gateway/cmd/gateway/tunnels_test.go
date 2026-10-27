@@ -41,7 +41,7 @@ func TestTunnelSettingsReadTheEnvironment(t *testing.T) {
 	}
 }
 
-// A malformed value keeps the package default rather than stopping the
+// A malformed value keeps the package default instead of stopping the
 // gateway, like every other setting it reads, and a negative one cannot turn
 // re-verification off.
 func TestUnreadableTunnelSettingsKeepTheDefaults(t *testing.T) {

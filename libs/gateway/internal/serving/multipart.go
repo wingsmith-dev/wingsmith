@@ -18,8 +18,8 @@ var errNoBoundary = errors.New("multipart content type has no boundary")
 // not a payload, and this is read before anything about the caller is known.
 const maxModelFieldBytes = 4 << 10
 
-// multipartContentType reports whether a body carries its fields as parts
-// rather than as JSON, and the boundary that separates them.
+// multipartContentType reports whether a body carries its fields as parts,
+// not as JSON, and the boundary that separates them.
 //
 // This is the whole of the content-type decision. Everything else in this hop
 // works on a model string, so the only thing that varies between an
@@ -43,7 +43,7 @@ func multipartContentType(contentType string) (boundary string, ok bool) {
 // body.
 //
 // File parts are skipped without being read. The body is already in memory
-// under the body cap, and an audio upload is most of it — walking to the
+// under the body cap, and an audio upload is most of it: walking to the
 // field that names the model must not cost a second copy of the recording.
 func modelFromMultipart(body []byte, boundary string) (string, error) {
 	if boundary == "" {
@@ -80,8 +80,8 @@ func modelFromMultipart(body []byte, boundary string) (string, error) {
 // content type as well as the returned body.
 //
 // This costs a copy of the upload, and it is only paid when an upstream's
-// served name actually differs from what the caller sent. The alternative —
-// forwarding the body untouched — routes to a name the engine does not know
+// served name actually differs from what the caller sent. The alternative,
+// forwarding the body untouched, routes to a name the engine does not know
 // and turns a served-name mismatch into a 404 from inside the cluster, which
 // is the one failure this hop exists to prevent.
 func withModelMultipart(body []byte, boundary string, model string) (rewritten []byte, contentType string, err error) {

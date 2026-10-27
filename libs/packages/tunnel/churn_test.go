@@ -17,16 +17,16 @@ import (
 )
 
 // TestUnprocessedRequestsAreRetriedOnASiblingTunnel is the hazard this package
-// exists to close, for a connector that was drained rather than killed.
+// exists to close, for a connector that was drained, not killed.
 //
 // shouldRetryRequest lives on http2.Transport.RoundTrip and its sentinels are
 // unexported, so a bare *http2.ClientConn turns every in-flight-but-unprocessed
 // request into a 502 the moment a connector restarts. The peer here announces
-// GOAWAY with LastStreamID 0 — "I processed nothing" — and then holds the socket
+// GOAWAY with LastStreamID 0, "I processed nothing", and then holds the socket
 // open the way a draining pod does, which is precisely the case a real connector
 // produces for streams whose headers it had not read when it was told to stop.
 //
-// The requests are gateway-shaped, which is the load-bearing detail: a body with
+// The requests are gateway-shaped, which is the essential detail: a body with
 // no GetBody on it is one HTTP/2 refuses to replay, so this is also the test that
 // fails if makeReplayable stops working. Build them with http.NewRequest over a
 // strings.Reader instead and net/http fills GetBody in for you, the pool's
@@ -126,7 +126,7 @@ func TestUnprocessedRequestsAreRetriedOnASiblingTunnel(t *testing.T) {
 // It goes to pool.t2 directly, underneath clusterTransport.RoundTrip, so nothing
 // in the pool has touched the request: what it proves is that x/net refuses to
 // replay a body it cannot rewind, which is the reason the pool buffers one. It is
-// not the regression guard for makeReplayable — it cannot be, because it bypasses
+// not the regression guard for makeReplayable: it cannot be, because it bypasses
 // it. That guard is TestUnprocessedRequestsAreRetriedOnASiblingTunnel and its
 // abrupt-death sibling, both of which send gateway-shaped requests through the
 // exported RoundTripper.
@@ -199,8 +199,8 @@ func TestARequestWithoutGetBodyCannotBeRetried(t *testing.T) {
 // forwarded a request it was holding. A completion POST that was forwarded is
 // generating, and billed, on the cluster; sending it again would run it twice.
 // So a non-idempotent request that reached the connector fails as churn and is
-// not resent, while an idempotent one — a safe method, or a POST carrying an
-// Idempotency-Key — is retried down the surviving tunnel exactly once.
+// not resent, while an idempotent one, a safe method, or a POST carrying an
+// Idempotency-Key, is retried down the surviving tunnel exactly once.
 func TestRequestsAConnectorWasKilledHoldingAreNotResent(t *testing.T) {
 	t.Parallel()
 
@@ -433,9 +433,9 @@ func TestAKilledTunnelIsChurnNotAClusterFailure(t *testing.T) {
 // Least-loaded is the right rule for a fresh request and the wrong one for a
 // retry. The moment a connector is killed, every stream on its tunnel fails, so
 // for a few milliseconds the corpse has the fewest streams of any tunnel to the
-// cluster — and a retry that asks for the least-loaded tunnel is handed the thing
+// cluster, and a retry that asks for the least-loaded tunnel is handed the thing
 // that just failed it, until the retry budget runs out. That was a real failure
-// under load about once in thirty runs; asserting it through the pick rather than
+// under load about once in thirty runs; asserting it through the pick, not
 // through a race is what makes it a test.
 func TestARetryPrefersATunnelThisRequestHasNotTried(t *testing.T) {
 	t.Parallel()
@@ -479,10 +479,10 @@ func TestARetryPrefersATunnelThisRequestHasNotTried(t *testing.T) {
 //
 // The retry needs somewhere to go, and when the killed tunnel was the cluster's
 // only one there is nowhere: the second attempt fails with ErrNoTunnel. Returning
-// that would be a lie about which thing broke — ErrNoTunnel means nothing was
+// that would be a lie about which thing broke: ErrNoTunnel means nothing was
 // attempted, and this request had already been written to a socket. It would also
 // be the more flattering lie, since a cluster with no connector attached is
-// capacity rather than a failure.
+// capacity instead of a failure.
 func TestKillingTheOnlyTunnelStillReadsAsChurn(t *testing.T) {
 	t.Parallel()
 
@@ -531,7 +531,7 @@ func TestKillingTheOnlyTunnelStillReadsAsChurn(t *testing.T) {
 // The retry sits on the error return of RoundTrip, which is the pre-header case
 // by construction. Once headers are out the caller holds a *http.Response and
 // bytes have already reached them, and re-sending the request then would splice a
-// second generation onto the end of the first — one answer, two completions, no
+// second generation onto the end of the first: one answer, two completions, no
 // way for the caller to tell. An RST is the tempting case to get wrong, because
 // the pool now knows that error means the tunnel died and could retry it.
 func TestAStreamAlreadyReachingTheCallerIsNotRetriedAfterAnAbruptDeath(t *testing.T) {
@@ -615,7 +615,7 @@ func TestAStreamAlreadyReachingTheCallerIsNotRetriedAfterAnAbruptDeath(t *testin
 //
 // Once response headers are out, RoundTrip has returned and the bytes are on
 // their way to a caller. Replaying the request then would send a second
-// generation down the same response — the caller would see one answer, then
+// generation down the same response: the caller would see one answer, then
 // another, spliced. HTTP/2 will not do that, and this test is what says so.
 func TestAStreamAlreadyReachingTheCallerIsNotRetried(t *testing.T) {
 	t.Parallel()

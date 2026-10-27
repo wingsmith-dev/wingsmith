@@ -3,7 +3,7 @@
 //
 // The plane derives the table; this package is the kube-proxy to its
 // EndpointSlice. It is refreshed on a timer and never joined on the request
-// path — a completion is a long, expensive call and the cheapest thing on it
+// path: a completion is a long, expensive call and the cheapest thing on it
 // should be deciding where to send it.
 //
 // A failed refresh keeps the table that is already loaded. A control-plane
@@ -33,7 +33,7 @@ import (
 // 2 is the scoped-rule shape: a list of rules, each with a route and a stream
 // mode it applies to, a key or a predicate it is about, and its terms. 1 was a
 // map of parameter names to constraints plus a list of denial names, and this
-// build no longer reads it — the plane converts a stored v1 policy on the way
+// build no longer reads it: the plane converts a stored v1 policy on the way
 // out, so nothing on this side has to carry two languages.
 const supportedPolicyVersion = 2
 
@@ -68,11 +68,11 @@ type Upstream struct {
 	// through. Empty means the plane had nothing to say, and then the caller's
 	// own string is forwarded untouched.
 	//
-	// It used to be a fit's name — `llama-3-3-70b-instruct-fp8-tp2-32k` — which
+	// It used to be a fit's name (`llama-3-3-70b-instruct-fp8-tp2-32k`) which
 	// put the hardware footprint on the public API surface, so re-fitting a model
 	// at a different tensor degree renamed the model every client codes against.
 	ServedModelName string
-	// OutputModality is what this upstream's engine emits — `text`, `image` or `video` — and
+	// OutputModality is what this upstream's engine emits (`text`, `image` or `video`) and
 	// empty for text. It decides which paths the upstream answers; see `serving.pathAnswered`.
 	OutputModality string
 
@@ -84,12 +84,12 @@ type Upstream struct {
 
 // Reachable reports whether this upstream can take a request at this instant.
 //
-// It is deliberately not readiness. Readiness is the plane's observation of a
+// It is not readiness. Readiness is the plane's observation of a
 // deployment and lags by a sync interval; this is a local fact about this
-// replica — whether there is a live tunnel to the cluster, or an address to dial
+// replica, whether there is a live tunnel to the cluster, or an address to dial
 // instead. An upstream that is not reachable is not a candidate at all, which is
 // what keeps a cluster with neither a tunnel nor an address answering the
-// no-capacity 503 rather than a 502 from a proxy that had nowhere to go.
+// no-capacity 503 instead of a 502 from a proxy that had nowhere to go.
 func (u Upstream) Reachable() bool {
 	return u.reachable == nil || u.reachable()
 }
@@ -109,18 +109,18 @@ type Route struct {
 	// record is renamed.
 	Name string
 	// Aliases are the other keys this route is indexed under. They are here to
-	// be reported, not to be resolved through — resolution is one map lookup
+	// be reported, not to be resolved through: resolution is one map lookup
 	// over every key alike.
 	Aliases   []string
 	Strategy  string
 	Upstreams []Upstream
 	// Policy is the request terms this endpoint sells, or nil for the ordinary
-	// endpoint that sells none. It rides the table rather than being fetched per
+	// endpoint that sells none. It rides the table instead of being fetched per
 	// request for the same reason everything else here does: the table refreshes
 	// on a timer and is never joined on the request path.
 	Policy *plane.Policy
 	// TenantID is the endpoint's project's tenant (docs/decisions/0016), carried the
-	// same way Policy is — read on every request and refreshed on a timer,
+	// same way Policy is: read on every request and refreshed on a timer,
 	// never fetched per request.
 	TenantID string
 	// Visibility is the endpoint's "public" or "private". Only a public
@@ -134,14 +134,14 @@ type Route struct {
 
 // picker holds a weighted route's rotation state across requests.
 //
-// Shared by pointer so that copying a Route — which happens on every table read —
-// keeps one rotation rather than restarting it, and carried across refreshes for
+// Shared by pointer so that copying a Route, which happens on every table read,
+// keeps one rotation instead of restarting it, and carried across refreshes for
 // the same reason.
 type picker struct {
 	mu sync.Mutex
 	// current is the running credit per upstream, keyed by an identity that
 	// survives a refresh. A key whose upstream is momentarily not a candidate
-	// keeps its credit rather than losing it, so a replica that flaps back into
+	// keeps its credit instead of losing it, so a replica that flaps back into
 	// readiness does not have to earn its place from zero.
 	current map[string]int
 }
@@ -158,8 +158,8 @@ func pickKey(u Upstream) string {
 	return u.ClusterID
 }
 
-// next chooses among candidates by smooth weighted round-robin — nginx's
-// algorithm — and it is chosen over walking a cursor across the cumulative
+// next chooses among candidates by smooth weighted round-robin, nginx's
+// algorithm, and it is chosen over walking a cursor across the cumulative
 // weight range because the two agree on the totals and disagree on the order,
 // which is the part that matters.
 //
@@ -167,8 +167,8 @@ func pickKey(u Upstream) string {
 // contiguous run: two upstreams at the default weight of 100 mean a hundred
 // consecutive requests to the first cluster while the second sits idle, and any
 // burst shorter than the cycle never reaches the second at all. Worse where it
-// was supposed to help most — a canary at 5 against 100 got its five as five
-// consecutive requests rather than as one in every twenty-one, so the ramp
+// was supposed to help most: a canary at 5 against 100 got its five as five
+// consecutive requests, not as one in every twenty-one, so the ramp
 // measured a five-request spike instead of a sampled share of live traffic.
 //
 // Smooth WRR spends the same budget per cycle and spreads it: 100/100
@@ -193,7 +193,7 @@ func (p *picker) next(candidates []Upstream, total int) Upstream {
 // NewUpstream binds an address to the handler that forwards to it.
 //
 // Load builds these from the plane's table; this exists for the cases that
-// build one directly — tests, and anything embedding the router.
+// build one directly: tests, and anything embedding the router.
 func NewUpstream(clusterID string, weight int, ready bool, handler http.Handler) Upstream {
 	return Upstream{ClusterID: clusterID, Weight: weight, Ready: ready, handler: handler}
 }
@@ -209,14 +209,14 @@ func NewRoute(name, strategy string, upstreams ...Upstream) Route {
 
 // Pick chooses one upstream for one request.
 //
-// Ready upstreams are preferred and unready ones are a fallback rather than an
+// Ready upstreams are preferred and unready ones are a fallback instead of an
 // exclusion: readiness is observed, it can lag by a sync interval, and refusing
 // to send traffic to a model that is in fact serving is a worse failure than
 // sending it to one that is not.
 //
-// Weighted picks by round-robin rather than at random, so a weight of 5 out of
-// 100 is honoured exactly rather than on average — which is the whole point when
-// a cluster is being ramped up — and it is spread across the cycle rather than
+// Weighted picks by round-robin, not at random, so a weight of 5 out of
+// 100 is honoured exactly, not on average, which is the point when
+// a cluster is being ramped up, and it is spread across the cycle, not
 // spent in one run, which is the point of `picker.next`. Failover always picks
 // the first live upstream in the declared order.
 func (r Route) Pick() (Upstream, error) {
@@ -249,7 +249,7 @@ func (r Route) Pick() (Upstream, error) {
 
 // filterReachable drops the upstreams that have nowhere to send a request. It
 // runs before the readiness preference, because an unreachable upstream is not a
-// worse candidate — it is not a candidate.
+// worse candidate: it is not a candidate.
 func filterReachable(upstreams []Upstream) []Upstream {
 	reachable := make([]Upstream, 0, len(upstreams))
 	for _, upstream := range upstreams {
@@ -280,7 +280,7 @@ type Source interface {
 // It carries a cluster id as well as an address because the address is usually
 // absent: a cluster is reached over the tunnel it dialled out, and the cluster id
 // is what the tunnel pool is keyed by. The URL path is kept alongside it because
-// ClusterServing still exists and is the fallback — both modes coexist, and a
+// ClusterServing still exists and is the fallback: both modes coexist, and a
 // cluster that publishes a serving address is dialled at it.
 type Target struct {
 	// ClusterID is the cluster this upstream is in. Always set.
@@ -300,14 +300,14 @@ type ProxyFactory func(target Target) http.Handler
 // now. The tunnel pool implements it.
 //
 // It is read on the request path, so it must be cheap and must not block. It is
-// never written to: reachability is a fact about this process, not observed state
-// — that has exactly one writer and it is the plane's ingestion.
+// never written to: reachability is a fact about this process, not observed state:
+// that has exactly one writer and it is the plane's ingestion.
 type Reachability interface {
 	Live(clusterID string) int
 }
 
 // Observer is told what each refresh did, so the health of the table this hop
-// serves from is visible without asking the plane — which is the one thing that
+// serves from is visible without asking the plane, which is the one thing that
 // cannot be asked when the plane is the thing that is down.
 type Observer interface {
 	TableApplied(endpoints int, upstreams []metrics.UpstreamSample)
@@ -339,8 +339,8 @@ type Router struct {
 
 	mu       sync.RWMutex
 	revision string
-	// routes is keyed by every name that reaches a route — the canonical and
-	// each of its aliases, all lowercased — so resolving an alias costs the
+	// routes is keyed by every name that reaches a route, the canonical and
+	// each of its aliases, all lowercased, so resolving an alias costs the
 	// same one lookup as resolving the canonical.
 	routes map[string]Route
 	// canonicals lists the routes' own names, sorted, and is what the catalog
@@ -407,9 +407,9 @@ func (r *Router) Load(ctx context.Context) error {
 			Upstreams:  make([]Upstream, 0, len(endpoint.Upstreams)),
 		}
 
-		// Reported here rather than per request. A policy written against a
+		// Reported here, not per request. A policy written against a
 		// newer plane is enforced as far as this build reads it, and the part it
-		// cannot read is a conformance gap somebody has to see — once a refresh,
+		// cannot read is a conformance gap somebody has to see, once a refresh,
 		// not once a completion.
 		if p := endpoint.Policy; p != nil {
 			switch {
@@ -418,7 +418,7 @@ func (r *Router) Load(ctx context.Context) error {
 					"endpoint", endpoint.Name, "policy_version", p.Version, "supported", supportedPolicyVersion)
 			case len(p.Rules) == 0:
 				// A policy that carries no rules enforces nothing, and an
-				// endpoint that sold nothing sends no policy at all — so this
+				// endpoint that sold nothing sends no policy at all, so this
 				// is either an empty one somebody left behind or a plane still
 				// serving the v1 shape this build stopped reading. Both are a
 				// term that is not being honoured, which is the one thing a
@@ -442,7 +442,7 @@ func (r *Router) Load(ctx context.Context) error {
 			// An address is optional now and usually absent. A cluster is
 			// reached over the tunnel it dialled out; a published serving URL is
 			// the fallback that ClusterServing still provides, and an
-			// unparseable one is treated as absent rather than as a reason to
+			// unparseable one is treated as absent, not as a reason to
 			// drop the cluster.
 			var address *url.URL
 			if upstream.URL != "" {
@@ -459,7 +459,7 @@ func (r *Router) Load(ctx context.Context) error {
 			// Keyed by cluster as well as address and credential. Without the
 			// cluster every tunnelled upstream sharing a credential would
 			// collapse onto one handler, and that handler forwards to exactly one
-			// cluster — so a request for one model would be answered by another
+			// cluster, so a request for one model would be answered by another
 			// cluster's.
 			key := upstream.ClusterID + "\x00" + upstream.URL + "\x00" + upstream.CredentialID
 			handler, ok := pools[key]
@@ -529,8 +529,8 @@ func (r *Router) Load(ctx context.Context) error {
 }
 
 // routeKey is how a public model id is indexed and looked up. Lowercased, so that
-// `Reasoning-Model` and `reasoning-model` are one route rather than two somebody has to keep in
-// step — the plane lowercases what it stores and a caller types what they like.
+// `Reasoning-Model` and `reasoning-model` are one route instead of two somebody has to keep in
+// step: the plane lowercases what it stores and a caller types what they like.
 func routeKey(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 
 // index binds every name that reaches a route into one map, and returns the
@@ -541,7 +541,7 @@ func routeKey(name string) string { return strings.ToLower(strings.TrimSpace(nam
 // each pass the first binding of a key wins and a second is refused with an
 // error in the log: the plane refuses this namespace collision at write time,
 // so one arriving here is a misconfiguration, and picking between two bindings
-// by table order would make routing depend on the order rows came back — worse
+// by table order would make routing depend on the order rows came back: worse
 // than a loud complaint, because it is silent and it moves.
 func index(into map[string]Route, routes []Route) []string {
 	canonicals := make([]string, 0, len(routes))
@@ -577,7 +577,7 @@ func index(into map[string]Route, routes []Route) []string {
 //
 // An upstream with an address is always a candidate: whether the address answers
 // is the proxy's problem and produces a 502, which is the truth. A tunnelled one
-// is a candidate only while this replica holds a tunnel to its cluster — and with
+// is a candidate only while this replica holds a tunnel to its cluster, and with
 // no pool at all it never is, so a gateway built without tunnels behaves exactly
 // as it did when an addressless upstream was skipped outright.
 func (r *Router) reachability(clusterID string, addressed bool) func() bool {
@@ -667,7 +667,7 @@ func (r *Router) Names() []string {
 //
 // A tenant's own catalog, for the public listener (docs/decisions/0016): a caller
 // identified as one tenant sees that tenant's models and no others', the same
-// way a resolve outside it reads as "no such model" rather than "here is what
+// way a resolve outside it reads as "no such model" instead of "here is what
 // you cannot have."
 func (r *Router) NamesForTenant(tenantID string) []string {
 	r.mu.RLock()
@@ -699,7 +699,7 @@ type ClusterReach struct {
 //
 // It is what readiness is computed from. A replica holding no tunnel to any
 // cluster in its own table can serve nothing and must say so, and this is the
-// only place both halves of that sentence — the table and the tunnels — are
+// only place both halves of that sentence, the table and the tunnels, are
 // known together.
 func (r *Router) ClusterReach() []ClusterReach {
 	r.mu.RLock()

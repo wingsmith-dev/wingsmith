@@ -8,7 +8,7 @@
 // internal/dynamo, which finds this cluster's OpenAI-compatible Dynamo frontend
 // Service and forwards to it.
 //
-// It is not the operator, and it is deliberately a different binary. A cluster
+// It is not the operator, and it is a different binary. A cluster
 // runs both: the operator is a leader-elected singleton on the control path, and
 // the agent scales with traffic on the data path. Sharing a process would put
 // control-plane uptime in front of inference.
@@ -22,8 +22,8 @@
 // names the replica that took it and how many replicas there are, so the
 // Supervisor redials the one address until each replica holds its quota of
 // tunnels, and tells the gateway on every dial which replicas are already
-// covered so a landing on one of them is answered rather than adopted. Scaling
+// covered so a landing on one of them is answered, not adopted. Scaling
 // the gateway is then a change to the gateway alone. Coverage per replica is
 // exported, so a replica the load balancer never reaches is visible as a gap in
-// hangar_agent_gateway_up rather than as ErrNoTunnel under traffic.
+// hangar_agent_gateway_up, not as ErrNoTunnel under traffic.
 package agent

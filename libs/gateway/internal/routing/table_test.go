@@ -151,7 +151,7 @@ func TestNotModifiedIsNotAnError(t *testing.T) {
 
 // TestUnusableAddressesFallBackToTheTunnelWithoutFailingTheRefresh pins the
 // coexistence rule. An address that cannot be parsed is not a reason to drop the
-// cluster — it has no address, which is the normal case now — and it must not
+// cluster (it has no address, which is the normal case now) and it must not
 // take the sibling upstream down with it either.
 func TestUnusableAddressesFallBackToTheTunnelWithoutFailingTheRefresh(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
@@ -274,7 +274,7 @@ func TestWeightedPickSpreadsTheShareInsteadOfSpendingItInARun(t *testing.T) {
 
 // TestARampedUpstreamIsSampledAcrossTheCycle: a canary at 5 against 100 is a request
 // in roughly every twenty-one, not five in a row and then nothing for a hundred. The
-// run is what makes a ramp measure a spike rather than a share of live traffic.
+// run is what makes a ramp measure a spike instead of a share of live traffic.
 func TestARampedUpstreamIsSampledAcrossTheCycle(t *testing.T) {
 	route := Route{
 		Upstreams: []Upstream{

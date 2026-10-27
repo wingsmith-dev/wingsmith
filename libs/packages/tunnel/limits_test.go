@@ -18,7 +18,7 @@ import (
 // timeout survives role reversal.
 //
 // http2.Transport has no ResponseHeaderTimeout field, so the obvious way to
-// build this — construct an http2.Transport and call NewClientConn — silently
+// build this, construct an http2.Transport and call NewClientConn, silently
 // gives a serving runtime unlimited time to say nothing. The pool goes through
 // http2.ConfigureTransports precisely so ClientConn.responseHeaderTimeout finds
 // the net/http Transport's value.
@@ -268,13 +268,13 @@ func TestCancellationReachesTheUpstream(t *testing.T) {
 // TestDeadPeerIsDetectedAndRemovedFromService covers a tunnel whose far end
 // vanished without a FIN: a node that lost power, a NAT that forgot the mapping.
 //
-// TCP will not notice for a long time, and neither would the gateway — the
+// TCP will not notice for a long time, and neither would the gateway: the
 // socket stays writable and the pool would keep handing it requests that never
 // come back. The PING is the only thing that knows.
 //
 // The time budget is the assertion, not a safety margin. x/net delays MarkDead
 // for a connection that never carried a request by unusedWaitTime, five seconds,
-// and a readiness gate counting coverage is counting exactly that connection —
+// and a readiness gate counting coverage is counting exactly that connection,
 // which is what Conn.watch exists to defeat. A generous budget passes with the
 // watcher deleted; this one does not.
 func TestDeadPeerIsDetectedAndRemovedFromService(t *testing.T) {
@@ -331,7 +331,7 @@ func TestDeadPeerIsDetectedAndRemovedFromService(t *testing.T) {
 // A tunnel is one socket and either end can be the one that disappears. If the
 // gateway pod is killed while a connector holds a tunnel to it, the
 // connector's socket stays writable, its ServeConn never returns, and it never
-// redials — so the cluster keeps a phantom tunnel and loses coverage the gateway
+// redials, so the cluster keeps a phantom tunnel and loses coverage the gateway
 // cannot get back. The connector has no accept loop and no idle timeout by
 // design; ReadIdleTimeout and PingTimeout are the only things that notice.
 func TestAConnectorNoticesAGatewayThatVanished(t *testing.T) {
@@ -523,8 +523,8 @@ func TestPoolShutdownDrainsEveryTunnel(t *testing.T) {
 // coverage and that a replica holding none can tell.
 //
 // Reachability lives here as a gauge on this process. It does not become a plane
-// object and it is not written into observed state, which has exactly one writer
-// — ingestion, fed by the operator's sync stream.
+// object and it is not written into observed state, which has exactly one writer:
+// ingestion, fed by the operator's sync stream.
 func TestCoverageIsObservedNotWrittenBack(t *testing.T) {
 	t.Parallel()
 
@@ -630,7 +630,7 @@ func TestTheDefaultCoversALongNonStreamedGeneration(t *testing.T) {
 }
 
 // The pool takes the budget it is given and nothing rounds it, because the
-// gateway's two paths into a cluster — the tunnel and a published address — have
+// gateway's two paths into a cluster, the tunnel and a published address, have
 // to present the same wall to a caller.
 func TestThePoolKeepsTheBudgetItIsGiven(t *testing.T) {
 	pool := newPool(t, PoolConfig{ResponseHeaderTimeout: 90 * time.Minute})

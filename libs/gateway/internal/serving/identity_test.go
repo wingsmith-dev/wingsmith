@@ -13,7 +13,7 @@ import (
 )
 
 // accessLines runs a handler with slog captured and returns the access lines it
-// wrote, decoded. Captured through the default logger rather than an injected
+// wrote, decoded. Captured through the default logger instead of an injected
 // one because that is how the access log is written, and a test that injected a
 // logger would not be exercising the same call.
 func accessLines(t *testing.T, serve func()) []map[string]any {
@@ -101,7 +101,7 @@ func TestTheAccessLogNamesTheKeyOnARejectedRequest(t *testing.T) {
 	}
 }
 
-// The internal zone resolves no tenant, so the fields are absent rather than
+// The internal zone resolves no tenant, so the fields are absent, not
 // empty: a line saying tenant="" would aggregate with every other one in a
 // query that grouped by it.
 func TestTheAccessLogCarriesNoIdentityOnTheInternalZone(t *testing.T) {

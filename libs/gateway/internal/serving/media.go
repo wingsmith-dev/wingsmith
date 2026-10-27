@@ -20,7 +20,7 @@ import (
 //
 // Nothing here buffers a response. A generated image or video is a base64 string that can run to
 // hundreds of megabytes, so the count of outputs is taken by scanning the bytes as they pass (see
-// mediaCounter) and the scalar fields — `inference_time_s`, an image response's `size` — are read
+// mediaCounter) and the scalar fields (`inference_time_s`, an image response's `size`) are read
 // from the same 64 KiB tail usage.go already keeps. Both fields are serialised after `data` by
 // Dynamo, which is why the tail holds them.
 
@@ -31,7 +31,7 @@ const (
 
 // Where a size came from. There is no "default": Dynamo documents 832x480 for video and OpenAI
 // 1024x1024 for images, but the engine behind a route may apply its own, so a size nobody stated
-// is recorded as absent rather than guessed.
+// is recorded as absent, not guessed.
 const (
 	sizeFromRequest  = "request"
 	sizeFromResponse = "response"
@@ -102,8 +102,8 @@ type mediaRequest struct {
 	} `json:"nvext"`
 }
 
-// mediaFactsFromRequest reads what a request asked for. A body it cannot read — multipart, as an
-// image edit is — yields the kind alone, and the response scan still counts what came back.
+// mediaFactsFromRequest reads what a request asked for. A body it cannot read, multipart, as an
+// image edit is, yields the kind alone, and the response scan still counts what came back.
 func mediaFactsFromRequest(kind string, body []byte, multipart bool) *mediaFacts {
 	facts := &mediaFacts{kind: kind}
 	if multipart {
@@ -256,7 +256,7 @@ func scalarAfter(window []byte, key string) (string, bool) {
 
 // stageMediaFacts records what an image or video request asked for.
 //
-// After the endpoint's terms are applied, so a size a policy writes is the size recorded — it is
+// After the endpoint's terms are applied, so a size a policy writes is the size recorded: it is
 // what the engine was asked for.
 func stageMediaFacts(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 	kind := mediaKindFor(r.URL.Path, routeModality(req.route))

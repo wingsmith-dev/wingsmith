@@ -100,7 +100,7 @@ func (l *Limiter) admit(tenant string) (release func(), retryAfter time.Duration
 			defer l.mu.Unlock()
 			usage.inFlight--
 			// Forget an idle tenant whose bucket is full again, so the map holds
-			// the tenants that are busy rather than every tenant ever seen.
+			// the tenants that are busy instead of every tenant ever seen.
 			if usage.inFlight == 0 && (l.limits.RPS <= 0 || usage.tokens+l.now().Sub(usage.last).Seconds()*l.limits.RPS >= l.burst) {
 				delete(l.tenants, tenant)
 			}

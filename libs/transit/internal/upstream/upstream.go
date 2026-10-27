@@ -5,7 +5,7 @@
 // from a real generation: a wait for the first token, then a token every so
 // often, then a usage object. Nothing about a response here depends on a GPU,
 // so a measurement taken through it is a measurement of the transport and not
-// of an engine — which is the only kind of measurement this repository can take
+// of an engine, which is the only kind of measurement this repository can take
 // on a laptop.
 package upstream
 
@@ -22,14 +22,14 @@ import (
 // handed the request, and every SSE chunk carries transit_write_ns for the
 // moment it was written.
 //
-// The two stamps are what make a measurement attributable rather than inferred.
+// The two stamps are what make a measurement attributable, not inferred.
 // A caller that knows when it sent, when the frontend received, when the
 // frontend wrote the first token and when that token arrived can split one
-// number into the inbound leg — gateway plus tunnel plus agent — and the return
+// number into the inbound leg, gateway plus tunnel plus agent, and the return
 // leg, without any change to the gateway or the agent. They are only meaningful
 // where both ends share a clock, which is one host, which is exactly the
 // synthetic mode they exist for. Against a real frontend they are absent and
-// the report says so rather than guessing.
+// the report says so instead of guessing.
 //
 // The gateway forwards only an allowlist of response headers, so the header
 // does not survive the path; the same stamp also rides in the body, as
@@ -83,7 +83,7 @@ func New(profile Profile) *Server {
 // request is the OpenAI body, plus the fields that let one caller in a run ask
 // for a different schedule from everyone else.
 //
-// The overrides are named rather than passed as query parameters because the
+// The overrides are named, not passed as query parameters because the
 // gateway routes on the body and rewrites it; a parameter on the URL would
 // prove nothing about the path a real completion takes.
 type request struct {

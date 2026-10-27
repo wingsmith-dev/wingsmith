@@ -11,7 +11,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-// clock is a hand-wound clock, so the age of a table is asserted rather than
+// clock is a hand-wound clock, so the age of a table is asserted, not
 // slept for.
 type clock struct{ at time.Time }
 
@@ -304,7 +304,7 @@ func TestTTFTIsBandedByTheRequestsOwnPromptLength(t *testing.T) {
 		HaveUsage: true, InputTokens: 40000,
 	})
 	// A streaming caller that never asked for usage has no prompt length to
-	// band by, and the gap goes on the panel rather than into a band.
+	// band by, and the gap goes on the panel, not into a band.
 	recorder.Observe(Sample{
 		Endpoint: "ep_1", Status: 200, Outcome: OutcomeOK, Duration: 2 * time.Second,
 		TTFT: 300 * time.Millisecond, HaveTTFT: true,

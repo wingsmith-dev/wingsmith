@@ -115,7 +115,7 @@ func TestAnUnreadableCertificateKeepsTheLoadedOne(t *testing.T) {
 	}
 
 	// A read landing while the kubelet is mid-swap. It must not be able to take
-	// the tunnel port down — the loaded certificate is still perfectly valid.
+	// the tunnel port down: the loaded certificate is still perfectly valid.
 	writeFile(t, certPath, []byte("-----BEGIN CERTIFICATE-----\ntruncated"))
 
 	if _, err := keypair.Reload(); err == nil {
@@ -133,7 +133,7 @@ func TestAnUnreadableCertificateKeepsTheLoadedOne(t *testing.T) {
 func TestAMissingCertificateIsFatalAtStartup(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := NewKeypair(filepath.Join(dir, "absent.crt"), filepath.Join(dir, "absent.key")); err == nil {
-		t.Fatal("startup with no certificate must fail rather than bind without TLS")
+		t.Fatal("startup with no certificate must fail, not bind without TLS")
 	}
 }
 

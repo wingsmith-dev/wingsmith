@@ -67,7 +67,7 @@ func TestOnlyARefusedCredentialReadsAsRejected(t *testing.T) {
 // TestADialToACoveredReplicaIsAnsweredNotAdopted pins the duplicate path. The
 // agent says which replicas it already holds its quota on, so a dial the load
 // balancer sent back to one of them is answered with the replica count and
-// closed, rather than adopted and then dropped by the agent — which the gateway
+// closed, not adopted and then dropped by the agent, which the gateway
 // used to count as a dial that failed to authenticate.
 func TestADialToACoveredReplicaIsAnsweredNotAdopted(t *testing.T) {
 	t.Parallel()

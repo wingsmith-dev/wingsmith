@@ -95,7 +95,7 @@ type Report struct {
 // The bottleneck is named from evidence and not from a guess: whichever process
 // was closest to a core, whether the frontend ever saw the concurrency that was
 // offered, and which direction of the round trip grew. Where the evidence does
-// not separate two candidates it says so rather than choosing.
+// not separate two candidates it says so instead of choosing.
 func (r *Report) Verdict(slo SLO) {
 	r.SLO = fmt.Sprintf("success ≥ %.3f%% and TTFT p99 ≤ %s", slo.SuccessRate*100, slo.TTFTP99)
 	var carried *Stage
@@ -185,7 +185,7 @@ func (r *Report) Err() error {
 
 // WriteText renders the report for a terminal.
 func (r *Report) WriteText(w io.Writer) {
-	fmt.Fprintf(w, "\nhgrtransit — %s mode, %s\n", r.Mode, r.Topology)
+	fmt.Fprintf(w, "\nhgrtransit: %s mode, %s\n", r.Mode, r.Topology)
 	fmt.Fprintf(w, "target %s, started %s\n\n", r.Target, r.Started.Format(time.RFC3339))
 
 	fmt.Fprintf(w, "%5s %7s %6s %9s %9s %9s %9s %9s %8s %8s %9s\n",
@@ -356,7 +356,7 @@ func (s *sampler) poll() {
 }
 
 // drain closes the current interval, returns what was sampled and starts
-// again, so each stage reports its own cost rather than the run's.
+// again, so each stage reports its own cost instead of the run's.
 func (s *sampler) drain() []Usage {
 	s.poll()
 	s.mu.Lock()
@@ -467,7 +467,7 @@ func parseProcStat(stat string) (time.Duration, error) {
 }
 
 // parseCPUTime reads ps's cumulative time column: [dd-][hh:]mm:ss[.cc]. macOS
-// prints minutes past sixty rather than hours, which this reads the same way.
+// prints minutes past sixty, not hours, which this reads the same way.
 func parseCPUTime(text string) (time.Duration, error) {
 	var days int64
 	if day, rest, ok := strings.Cut(text, "-"); ok {

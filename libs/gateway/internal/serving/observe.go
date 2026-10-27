@@ -15,10 +15,10 @@ import (
 
 // observation is what one request turns out to have been.
 //
-// It is assembled as the request travels — the guard knows it was rejected, the
+// It is assembled as the request travels, the guard knows it was rejected, the
 // router knows which endpoint it named and which cluster it went to, the proxy's
-// error handler knows the upstream never answered — and read once at the end.
-// It is reached through the request context rather than passed down, because the
+// error handler knows the upstream never answered, and read once at the end.
+// It is reached through the request context, not passed down, because the
 // proxy handlers are pooled per upstream and shared across every request to it:
 // per-request state on one of those would be per-request state on a shared
 // object.
@@ -63,7 +63,7 @@ func observationFrom(ctx context.Context) *observation {
 // and is excused; a 429 issued because this hop is shedding, or because an
 // upstream refused, is metrics.OutcomeShed and is a failure. They are the same
 // status code and only the code that issued one knows which it was, so it says
-// so here rather than leaving a query to guess from the number.
+// so here instead of leaving a query to guess from the number.
 func MarkOutcome(r *http.Request, outcome metrics.Outcome) {
 	obs := observationFrom(r.Context())
 	if obs == nil {
@@ -116,7 +116,7 @@ func markProxyError(r *http.Request, err error) {
 //
 // This is the only place a mid-stream failure is visible. The response was
 // already 200 by then, so without an outcome of its own a truncated generation
-// counts as a success — which is the one shape of failure a caller cannot fail to
+// counts as a success, which is the one shape of failure a caller cannot fail to
 // notice and the numbers could not see at all.
 //
 // A caller that hung up and an upstream that died produce the same panic, and the
@@ -126,11 +126,11 @@ func markProxyError(r *http.Request, err error) {
 // TODO: read the agent's cause trailer instead of folding churn into
 // upstream_error. An agent going away mid-stream and a serving runtime going
 // away mid-stream arrive here identically, and the additive fix is a trailer the
-// agent sets — see the TODOs in the tunnel package's agent.go and classify.go.
+// agent sets; see the TODOs in the tunnel package's agent.go and classify.go.
 // It has to be read off the *http.Response's Trailer map, which means the reading
-// happens in the proxy's response path rather than in this panic path, and the
+// happens in the proxy's response path, not in this panic path, and the
 // outcome is then handed here through MarkOutcome. Until then an agent rollout
-// counts slightly against serving availability: pessimistic and honest.
+// counts slightly against serving availability: pessimistic but accurate.
 func markAborted(r *http.Request, recovered any) {
 	err, _ := recovered.(error)
 	switch {
@@ -232,7 +232,7 @@ func (o *observation) mediaFields() []any {
 // Two things are required, a header and a token, and the token is why this type
 // exists at all: a header anyone could set is a way for any caller to remove
 // itself from a denominator we quote to a buyer. It answers one boolean and it
-// is not caller identity — it never reaches a label, and a request it does not
+// is not caller identity: it never reaches a label, and a request it does not
 // recognise is simply live.
 type ProbeMarker struct {
 	tokens []string
@@ -240,7 +240,7 @@ type ProbeMarker struct {
 
 // NewProbeMarker accepts a comma-separated pair, so both values are honoured
 // while a rotation is in flight. An empty configuration returns nil, and a nil
-// marker calls everything live — which is the correct behaviour for a gateway
+// marker calls everything live, which is the correct behaviour for a gateway
 // that has no conformance runner pointed at it.
 func NewProbeMarker(tokens string) *ProbeMarker {
 	marker := &ProbeMarker{}

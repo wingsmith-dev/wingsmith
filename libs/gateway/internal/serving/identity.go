@@ -16,12 +16,12 @@ import (
 const keyPrefixLen = 12
 
 // callerIdentity is who the access log says a request was, and it exists
-// separately from `observation` on purpose.
+// separately from `observation`.
 //
 // Identity may not go on `observation` (see observe.go): everything on that
 // struct becomes a metric label, and a key or a tenant on a label is unbounded
-// cardinality. A log line is not a label — it is written once, rotated, and
-// queried by grep rather than by PromQL — so the same fact is safe here and
+// cardinality. A log line is not a label, it is written once, rotated, and
+// queried by grep, not by PromQL, so the same fact is safe here and
 // unsafe there. Keeping them in two types is what stops a later change from
 // quietly promoting one into the other.
 //
@@ -29,7 +29,7 @@ const keyPrefixLen = 12
 // upstream's own usage object and are observability, the same posture the
 // metrics package states: nothing here is metered or billed.
 //
-// A pointer in the context rather than a value, for the reason `observation`
+// A pointer in the context instead of a value, for the reason `observation`
 // is one: the stages that learn a tenant and a key run below the wrapper that
 // writes the line, and a value re-wrapped onto the request there would never
 // be visible to the `r` the wrapper closed over.
@@ -70,7 +70,7 @@ func withTenantIdentity(r *http.Request, id, slug string) *http.Request {
 
 // withKeyIdentity records which key spoke for it.
 //
-// It takes the digest rather than the key, so a plaintext credential never
+// It takes the digest instead of the key, so a plaintext credential never
 // reaches this package's call stack at all.
 func withKeyIdentity(r *http.Request, hash string) *http.Request {
 	if ident := identityFrom(r.Context()); ident != nil {
@@ -86,7 +86,7 @@ func withKeyIdentity(r *http.Request, hash string) *http.Request {
 
 // fields freezes the identity into the attributes the access log carries.
 //
-// Absent rather than empty: a request on the internal zone has no tenant, and a
+// Absent, not empty: a request on the internal zone has no tenant, and a
 // line that said tenant="" would read as a tenant whose name is empty and would
 // aggregate with every other one in a query that groups by it.
 func (i *callerIdentity) fields() []any {

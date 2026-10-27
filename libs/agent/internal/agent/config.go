@@ -25,7 +25,7 @@ type Config struct {
 	//
 	// One address and not a list of replicas, even though a tunnel to every replica is what
 	// coverage requires. How many replicas there are is the gateway's own business and it says so
-	// in the handshake — so scaling the gateway is a change in the plane's repository and not an
+	// in the handshake, so scaling the gateway is a change in the plane's repository and not an
 	// edit to the values of every cluster in the fleet.
 	Gateway string
 
@@ -37,16 +37,16 @@ type Config struct {
 
 	// ConnsPerGateway is how many tunnels to hold to each gateway replica.
 	//
-	// More than one on purpose, for two reasons. HTTP/2 retries a request the far end says it
+	// More than one, for two reasons. HTTP/2 retries a request the far end says it
 	// never processed, and the gateway can only retry it down a *different* tunnel to the same
-	// cluster — so with one tunnel per replica, an agent rollout turns those retries into 502s on
+	// cluster, so with one tunnel per replica, an agent rollout turns those retries into 502s on
 	// the replicas that hold only that one. And a single multiplexed connection carrying every
 	// request to a cluster makes head-of-line blocking in one stream everyone else's problem.
 	ConnsPerGateway int
 
 	// MaxConcurrentStreams is how many requests one tunnel carries at once, advertised to the
 	// gateway in SETTINGS. Zero takes the tunnel package's default. Past it the gateway answers
-	// "no capacity" rather than queueing, so this and ConnsPerGateway together decide when
+	// "no capacity" instead of queueing, so this and ConnsPerGateway together decide when
 	// overload is an error instead of latency.
 	MaxConcurrentStreams int
 
@@ -67,10 +67,10 @@ type Config struct {
 	// DialTimeout bounds the TCP connect and the TLS handshake.
 	DialTimeout time.Duration
 
-	// HandshakeTimeout bounds the tunnel preface — the request that presents the token and the
+	// HandshakeTimeout bounds the tunnel preface: the request that presents the token and the
 	// response that accepts it. It is separate from DialTimeout because a gateway replica that
 	// accepts connections and then never answers is a different failure from one that cannot be
-	// reached, and only a deadline on this one turns it into a redial rather than a wedge.
+	// reached, and only a deadline on this one turns it into a redial instead of a wedge.
 	HandshakeTimeout time.Duration
 
 	// BackoffMin and BackoffMax bound the per-target reconnect backoff.
@@ -117,11 +117,11 @@ type Config struct {
 	// request without sending a response header. It is the gateway's number, not this agent's:
 	// the agent's own proxy to the frontend runs at tunnel.InnerHopTimeout of it.
 	//
-	// The same variable name the gateway reads, deliberately. A non-streamed completion sends no
+	// The same variable name the gateway reads. A non-streamed completion sends no
 	// header until the last token is generated, so on that shape this timer bounds the whole
-	// generation — and because every hop on the path arms one, only the smallest is ever
+	// generation, and because every hop on the path arms one, only the smallest is ever
 	// observed. Raising it at one hop and not the others changes nothing a caller can see, which
-	// is why this is one number carried to both ends rather than a per-hop setting.
+	// is why this is one number carried to both ends instead of a per-hop setting.
 	ResponseHeaderTimeout time.Duration
 
 	// LogLevel is one of debug, info, warn, error.
@@ -247,7 +247,7 @@ func (c *Config) validate() error {
 	if c.DrainTimeout <= 0 {
 		return fmt.Errorf("HANGAR_DRAIN_TIMEOUT must be positive")
 	}
-	// Refused rather than clamped. A value below the default is very likely somebody trying to
+	// Refused, not clamped. A value below the default is very likely somebody trying to
 	// bound generation with the wrong knob, and silently accepting it reintroduces exactly the
 	// bug this setting exists to fix: the innermost hop firing first and every long non-streamed
 	// completion coming back 502 at a wall nothing in the gateway names.

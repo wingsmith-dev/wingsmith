@@ -37,7 +37,7 @@ func (s stubTunnels) RoundTripper(string) http.RoundTripper {
 		}
 		// Which leg served the request travels in the body and not in a
 		// response header, because a response header from behind this hop is
-		// deleted on the way out — see filterResponseHeaders. A test asserting
+		// deleted on the way out; see filterResponseHeaders. A test asserting
 		// through one would be asserting the leak.
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -93,7 +93,7 @@ func TestTheTunnelIsPreferredAndTheAddressIsTheFallback(t *testing.T) {
 					t.Fatalf("body = %q", rec.Body.String())
 				}
 				if envelope.Error.Code != "no_capacity" {
-					t.Fatalf("code = %q, want the no-capacity 503 rather than an upstream error", envelope.Error.Code)
+					t.Fatalf("code = %q, want the no-capacity 503 instead of an upstream error", envelope.Error.Code)
 				}
 				return
 			}
@@ -211,7 +211,7 @@ func TestATunnelledRequestKeepsItsBodyReplayable(t *testing.T) {
 }
 
 // headerTimeoutOf reads the bound a proxy's own transport arms, or zero when the
-// transport is not one of ours — which is the tunnelled case, where the pool
+// transport is not one of ours, which is the tunnelled case, where the pool
 // owns the bound instead.
 func headerTimeoutOf(t *testing.T, proxy *httputil.ReverseProxy) time.Duration {
 	t.Helper()
@@ -225,7 +225,7 @@ func headerTimeoutOf(t *testing.T, proxy *httputil.ReverseProxy) time.Duration {
 // A non-streamed completion sends no response header until its last token, so
 // this bound is the whole generation for that shape. Five minutes cut off the
 // long ones; the bound is configurable now, and an unset one has to land on the
-// fleet-wide default rather than on no bound at all.
+// fleet-wide default, not on no bound at all.
 func TestTheUpstreamBoundIsConfigurableAndDefaultsToTheFleetBudget(t *testing.T) {
 	upstream, err := url.Parse("https://cluster.example")
 	if err != nil {
@@ -273,7 +273,7 @@ func TestBothLegsIntoAClusterCarryTheSameBound(t *testing.T) {
 		t.Fatalf("direct leg bound = %s, want %s", got, budget)
 	}
 	// The tunnelled leg's transport is the pool's, which arms the bound from
-	// PoolConfig rather than from this proxy — so what is asserted here is that
+	// PoolConfig, not from this proxy, so what is asserted here is that
 	// the seam is still one field wide and nothing else was left behind on it.
 	if _, ours := tunnelled.Transport.(*http.Transport); ours {
 		t.Fatal("the tunnelled leg is still on the gateway's own transport, so it never reaches a cluster")

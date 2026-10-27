@@ -50,10 +50,10 @@ func TestVerifyTunnelTokenAsksThePlaneAndAnswersWithTheCluster(t *testing.T) {
 // on: a rejection closes the dial and forgets the token, and anything else is a
 // plane the gateway could not use, which falls back to what it already knows.
 //
-// 404 is deliberately on the unavailable side. A plane that has not shipped the
+// 404 is on the unavailable side. A plane that has not shipped the
 // route answers 404 for the path, and calling that a bad token sends everybody to
 // look at Secrets during what is really a version skew. A 429 is the plane's
-// failed-guess budget, a wait rather than a verdict. And a 401 or 403 on the
+// failed-guess budget, a wait instead of a verdict. And a 401 or 403 on the
 // gateway's own credential is a gateway misconfiguration: forgetting every
 // cached agent token over it would turn a credential typo into an outage.
 func TestOnlyAnAuthFailureIsARejection(t *testing.T) {

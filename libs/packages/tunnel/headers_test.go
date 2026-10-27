@@ -9,7 +9,7 @@ import (
 // the contract. Both ends compile against this constant, but a real gateway and
 // a real agent are two binaries on two release cadences: a rename here is a
 // silent routing change for every pair that is not upgraded together, and it
-// would look like a cluster that had stopped choosing frontends rather than like
+// would look like a cluster that had stopped choosing frontends, not like
 // a header nobody was sending.
 func TestHeaderDeploymentIDIsTheAgreedName(t *testing.T) {
 	if HeaderDeploymentID != "X-Hangar-Deployment-Id" {
@@ -18,8 +18,8 @@ func TestHeaderDeploymentIDIsTheAgreedName(t *testing.T) {
 }
 
 // TestHeaderDeploymentIDIsAlreadyCanonical is not pedantry. Header.Get
-// canonicalises the key it looks up, while a map assignment — which is how the
-// gateway stamps its per-credential headers onto an outbound request — does
+// canonicalises the key it looks up, while a map assignment, which is how the
+// gateway stamps its per-credential headers onto an outbound request, does
 // not. A constant that was not already in canonical form would therefore be
 // written under one key and read under another, and the read would return empty
 // with nothing anywhere reporting a failure.

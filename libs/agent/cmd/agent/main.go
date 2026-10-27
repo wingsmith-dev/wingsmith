@@ -3,10 +3,10 @@
 //
 // It is given one address and redials it until it holds a tunnel to every gateway replica, because
 // the gateway tells it in the handshake how many there are. A cluster is therefore never configured
-// with the shape of the control plane, which is the whole point: the plane can scale its gateway
+// with the shape of the control plane, which is the point: the plane can scale its gateway
 // without an edit reaching a single cluster.
 //
-// It is the data plane's cluster-local half and is deliberately not the operator, the other hangar
+// It is the data plane's cluster-local half and is not the operator, the other hangar
 // process a cluster runs: the operator is a leader-elected singleton on the control path, this
 // scales with traffic, and neither shares a process or a connection with the other.
 package main
@@ -61,7 +61,7 @@ func run() error {
 	metrics := agent.NewMetrics()
 	metrics.WatchDiscovery(resolver.DiscoveryAge)
 
-	// BaseContext is deliberately not ctx. Cancelling it aborts every handler mid-stream, and
+	// BaseContext is not ctx. Cancelling it aborts every handler mid-stream, and
 	// SIGTERM has to drain instead: the server's Shutdown sends GOAWAY and lets the streams
 	// already accepted finish, each of which is a generation somebody is reading.
 	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{
@@ -192,7 +192,7 @@ func newResolver(cfg *agent.Config) (*dynamo.Resolver, error) {
 //
 // In-cluster only, and no kubeconfig fallback: the agent is a Deployment in the cluster it
 // serves, and a process running anywhere else has no business discovering that cluster's frontend by
-// name — it would resolve to a ClusterIP it cannot reach. Running one from a laptop means setting
+// name: it would resolve to a ClusterIP it cannot reach. Running one from a laptop means setting
 // HANGAR_INFERENCE_ENDPOINT, which skips discovery entirely.
 func kubeConfig() (*rest.Config, error) {
 	inCluster, err := rest.InClusterConfig()

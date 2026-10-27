@@ -7,14 +7,14 @@ import "time"
 // Every value is set explicitly, including the ones whose x/net default is
 // already the value we want. A flow-control window that comes from a
 // dependency's default is a capacity decision made by whoever last bumped
-// go.mod, and the symptom of it changing is throughput on a long generation —
+// go.mod, and the symptom of it changing is throughput on a long generation,
 // which is not a symptom anybody traces back to a module upgrade.
 type Limits struct {
 	// MaxConcurrentStreams is how many requests one tunnel carries at once. It
 	// is advertised by the agent and learned by the gateway from SETTINGS.
 	//
 	// It is a per-tunnel admission limit, not a tuning knob: past it the pool
-	// answers ErrSaturated rather than queueing, so this number and the number
+	// answers ErrSaturated instead of queueing, so this number and the number
 	// of tunnels a cluster holds together decide when the gateway says "no
 	// capacity" instead of getting slower.
 	MaxConcurrentStreams uint32
@@ -26,7 +26,7 @@ type Limits struct {
 	MaxReadFrameSize uint32
 	// ReadIdleTimeout is how long a silent connection goes before a PING is
 	// sent. This is the only thing that notices a peer that vanished without a
-	// FIN — a node that lost power, a NAT that dropped the mapping, a security
+	// FIN: a node that lost power, a NAT that dropped the mapping, a security
 	// group that changed under a live connection.
 	ReadIdleTimeout time.Duration
 	// PingTimeout is how long a PING may go unanswered before the connection is

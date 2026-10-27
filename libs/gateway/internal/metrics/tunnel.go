@@ -2,8 +2,8 @@ package metrics
 
 import "github.com/prometheus/client_golang/prometheus"
 
-// The tunnel series are labelled cluster_id rather than cluster, because the
-// tunnel pool is keyed by the plane's cluster uid and a cluster renames freely —
+// The tunnel series are labelled cluster_id, not cluster, because the
+// tunnel pool is keyed by the plane's cluster uid and a cluster renames freely:
 // a name label here would split one cluster's coverage in two the first time
 // somebody renamed it, and the break would look like an agent outage. The
 // human-readable name rides alongside as a second label on the coverage gauge,
@@ -70,7 +70,7 @@ func (r *Recorder) TunnelOpened(clusterID string, live int) {
 
 // TunnelClosed records a tunnel this replica lost.
 //
-// The gauge is set rather than decremented, and the count comes from the pool: a
+// The gauge is set, not decremented, and the count comes from the pool: a
 // decrement that raced a re-dial would drift, and a coverage number that drifts
 // is worse than one that is occasionally stale.
 func (r *Recorder) TunnelClosed(clusterID string, live int) {
@@ -145,7 +145,7 @@ func (r *Recorder) TunnelRetry(clusterID, outcome string) {
 // reach.
 //
 // It is reset first, so a cluster that has left the routing table stops
-// reporting instead of freezing at its last value — a stuck 0 on a cluster
+// reporting instead of freezing at its last value: a stuck 0 on a cluster
 // nobody routes to any more is an alert that cannot be cleared.
 func (r *Recorder) TunnelCoverage(samples []TunnelSample) {
 	r.tunnelCoverage.Reset()

@@ -25,7 +25,7 @@ var errBudgetSpent = errors.New("gateway buffer budget spent")
 //
 // Each request body is buffered whole and kept for the life of the request,
 // and the per-request cap alone does not bound how many of those are resident:
-// a handful of large requests at once is an OOM rather than a refusal. With a
+// a handful of large requests at once is an OOM instead of a refusal. With a
 // budget, a body that would take the total past it is refused with 503
 // no_capacity as it arrives, and its bytes are returned at once.
 //

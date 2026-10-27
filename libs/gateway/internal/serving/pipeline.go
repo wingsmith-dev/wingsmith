@@ -43,8 +43,8 @@ type requestState struct {
 }
 
 // stage is one step of routing a request to an upstream. It returns the
-// request to continue with — a stage may wrap it, as stageParseEnvelope does
-// when it attaches the caller's own bytes for later error rendering — and
+// request to continue with, a stage may wrap it, as stageParseEnvelope does
+// when it attaches the caller's own bytes for later error rendering, and
 // false once it has already written the response, which stops the pipeline.
 type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool)
 
@@ -108,8 +108,8 @@ func runPipeline(stages []stage, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// stageCatalog answers GET /v1/models from the table, because the gateway —
-// not any one cluster — is what knows the whole set. It is the only stage
+// stageCatalog answers GET /v1/models from the table, because the gateway,
+// not any one cluster, is what knows the whole set. It is the only stage
 // that can be the whole of a request; every stage after it assumes a body
 // worth routing.
 //
@@ -189,12 +189,12 @@ func stageReadBody(limits bodyLimits) stage {
 //
 // The choice is made once and used twice: here to read it, and after Pick to
 // write the served name back. A multipart body is not a lesser case of a JSON
-// one — there is no object to unmarshal — so the form travels with the
-// request rather than being re-derived.
+// one, there is no object to unmarshal, so the form travels with the
+// request instead of being re-derived.
 //
 // The caller's own bytes are attached to the request before either rewrite
 // downstream touches them, so that a refusal from an engine can be answered
-// in the caller's own vocabulary rather than the engine's. See
+// in the caller's own vocabulary instead of the engine's. See
 // callerFieldsNamedIn.
 func stageParseEnvelope(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 	boundary, isMultipart := multipartContentType(r.Header.Get("Content-Type"))
@@ -252,9 +252,9 @@ func stageValidateStopSequences(w http.ResponseWriter, r *http.Request, req *req
 // stageResolve turns the request's model into the endpoint serving it.
 //
 // Another tenant's model reads as "no such model" on the public zone, not as
-// a refusal that would confirm the endpoint exists at all (docs/decisions/0016) —
+// a refusal that would confirm the endpoint exists at all (docs/decisions/0016):
 // the same reasoning `ResolvedEndpointSchema`'s own doc comment gives for
-// dropping cross-tenant visibility at the plane rather than only here. A
+// dropping cross-tenant visibility at the plane, not only here. A
 // tenant's own private endpoint reads the same way there, for the same reason.
 func stageResolve(resolver Resolver) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
@@ -307,7 +307,7 @@ func stageStripSteeringHints(w http.ResponseWriter, r *http.Request, req *reques
 // stageCheckPolicy refuses a request the endpoint's own terms do not allow.
 //
 // Before an upstream is chosen. A policy is a property of the name that was
-// sold, so every upstream behind it must answer a request the same way —
+// sold, so every upstream behind it must answer a request the same way:
 // checking after Pick would let the same call be a 400 or a 200 depending on
 // which cluster took it.
 //
@@ -330,7 +330,7 @@ func stageCheckPolicy(w http.ResponseWriter, r *http.Request, req *requestState)
 // engine behind this endpoint reads what the provider's own frontend would
 // have.
 //
-// Beside the check, because those terms are properties of the endpoint too —
+// Beside the check, because those terms are properties of the endpoint too:
 // the served-model rewrite below is the one rewrite that belongs after Pick,
 // because the name it writes is the upstream's and not the endpoint's.
 //
@@ -353,9 +353,9 @@ func stageRewritePolicy(w http.ResponseWriter, r *http.Request, req *requestStat
 // prompt identity the serving runtime drops on the way to a disaggregated decode
 // worker when the request carries media. See `cacheScope` and `promptIdentity`.
 //
-// After the endpoint's terms rather than before them, so a rule that writes a
+// After the endpoint's terms, not before them, so a rule that writes a
 // media part is inside the identity, and before `Pick` because the salt is a
-// property of the request and not of the cluster that takes it — the same
+// property of the request and not of the cluster that takes it: the same
 // body has to hash the same way wherever it lands.
 func stageCacheSalt(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 	scope := requestCacheScope(r, req)
@@ -418,7 +418,7 @@ func stagePickUpstream(w http.ResponseWriter, r *http.Request, req *requestState
 // behind the chosen upstream answers to.
 //
 // After Pick because the served name belongs to the upstream and not to the
-// endpoint — one endpoint can front two clusters running different serving
+// endpoint: one endpoint can front two clusters running different serving
 // configurations, and each wants its own name.
 func stageRewriteServedModel(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 	served := req.upstream.ServedModelName
@@ -468,7 +468,7 @@ func stageStripSteeringHeaders(w http.ResponseWriter, r *http.Request, req *requ
 // nothing to write. That is a security requirement and not tidiness:
 // httputil.ReverseProxy clones the inbound headers verbatim onto the outbound
 // request, so a value a caller sent under this name would ride all the way
-// into the cluster and choose which model's frontend answers them — a caller
+// into the cluster and choose which model's frontend answers them: a caller
 // picking somebody else's deployment, across tenants, using a header they
 // made up. The Set covers the case where the gateway has an answer and the
 // Del covers the case where it does not, and between them the caller's own
@@ -490,9 +490,9 @@ func stageDeploymentHeader(w http.ResponseWriter, r *http.Request, req *requestS
 // last stage: everything before it either refuses the request or narrows
 // what this one needs to know.
 //
-// Replayable, using the buffer that was read to find the model rather than a
+// Replayable, using the buffer that was read to find the model instead of a
 // second copy of it. Without a GetBody, HTTP/2 refuses to retry anything with
-// a body after an agent sends GOAWAY — which is every completion there is,
+// a body after an agent sends GOAWAY, which is every completion there is,
 // and they are the requests it is cheapest to get right because the agent
 // never processed them.
 func stageForward(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {

@@ -30,7 +30,7 @@ func (w wireSettings) get(t *testing.T, id http2.SettingID) uint32 {
 // readHandshake reads frames until it has the peer's SETTINGS and, if one
 // follows, its connection WINDOW_UPDATE.
 //
-// It reads with a deadline rather than a count, because the number of frames in
+// It reads with a deadline instead of a count, because the number of frames in
 // a handshake is x/net's business and not something to pin.
 func readHandshake(t *testing.T, framer *http2.Framer, conn net.Conn) wireSettings {
 	t.Helper()
@@ -70,8 +70,8 @@ func readHandshake(t *testing.T, framer *http2.Framer, conn net.Conn) wireSettin
 // off a raw framer.
 //
 // It exists because every other way of checking this is indirect. A large
-// response completes with x/net's defaults too — the client's default stream
-// window is transportDefaultStreamFlow, 4 MiB, not the spec's 64 KiB — so a test
+// response completes with x/net's defaults too, the client's default stream
+// window is transportDefaultStreamFlow, 4 MiB, not the spec's 64 KiB, so a test
 // that moves 2 MiB through a tunnel proves nothing about whether the configured
 // windows were ever passed on. Deleting the flow-control fields from the pool's
 // http.HTTP2Config is invisible to every other test in this package and visible
@@ -131,9 +131,9 @@ func TestTheGatewayAdvertisesItsFlowControlOnTheWire(t *testing.T) {
 // TestTheConnectorAdvertisesItsFlowControlOnTheWire is the same read from the
 // other end.
 //
-// The connector's SETTINGS are what the gateway's admission control is built on —
-// Conn.Live refuses a tunnel whose MAX_CONCURRENT_STREAMS has not arrived — so
-// they are worth pinning as frames rather than as a struct field.
+// The connector's SETTINGS are what the gateway's admission control is built on,
+// Conn.Live refuses a tunnel whose MAX_CONCURRENT_STREAMS has not arrived, so
+// they are worth pinning as frames, not as a struct field.
 func TestTheConnectorAdvertisesItsFlowControlOnTheWire(t *testing.T) {
 	t.Parallel()
 

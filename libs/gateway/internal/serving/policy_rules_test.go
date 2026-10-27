@@ -12,7 +12,7 @@ import (
 )
 
 // The defect this scope was added for. An endpoint answers on every path the
-// gateway fronts, and a policy is attached to the endpoint — so before a rule
+// gateway fronts, and a policy is attached to the endpoint, so before a rule
 // could name a route, a temperature pin measured against the provider's chat
 // completions was enforced against embeddings, Anthropic messages and the
 // responses API as well, none of which anybody had measured.
@@ -123,7 +123,7 @@ func TestDottedPathResolution(t *testing.T) {
 	}
 
 	// Depth is not limited to two, and the message names the path the author
-	// wrote rather than the leaf.
+	// wrote instead of the leaf.
 	deep := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Key: "a.b.c", Enum: []any{float64(1)}},
 	}}
@@ -139,7 +139,7 @@ func TestDottedPathResolution(t *testing.T) {
 // The concrete conformance failure this language was extended for. The reference provider answers
 // 400 to `{"thinking":{"keep":"all"}}` with "thinking.type must be enabled,
 // disabled, or adaptive", and the provider's contract is that an omitted type means
-// enabled — so the gateway spells it out on the way through.
+// enabled, so the gateway spells it out on the way through.
 func TestDefaultFillsOnlyWhenTheParentIsPresent(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Route: chatRoute, Key: "thinking.type", Default: "enabled"},
@@ -164,7 +164,7 @@ func TestDefaultFillsOnlyWhenTheParentIsPresent(t *testing.T) {
 		// The rule that matters most. Injecting `thinking` into a request that
 		// never mentioned it would turn every plain call on this endpoint into
 		// one that asked for thinking, which is a change to what every caller
-		// gets — made on their behalf, by a rule that was only supposed to write
+		// gets: made on their behalf, by a rule that was only supposed to write
 		// down what they already meant.
 		{
 			"no thinking at all",
@@ -172,7 +172,7 @@ func TestDefaultFillsOnlyWhenTheParentIsPresent(t *testing.T) {
 			`{"model":"m","messages":[]}`,
 		},
 
-		// A caller who wrote something there wrote it on purpose. A default is
+		// A caller who wrote something there wrote it. A default is
 		// for what they left out.
 		{
 			"a type the caller sent",
@@ -246,7 +246,7 @@ func TestADefaultNeverCreatesAnIntermediateObject(t *testing.T) {
 }
 
 // Two defaults under one parent both land, and the second reads the object the
-// first already wrote into rather than the bytes that arrived.
+// first already wrote into instead of the bytes that arrived.
 func TestTwoDefaultsUnderOneParent(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Key: "thinking.type", Default: "enabled"},
@@ -261,7 +261,7 @@ func TestTwoDefaultsUnderOneParent(t *testing.T) {
 }
 
 // The ordinary request is nearly every request, and it must cost nothing. A body
-// with no default to fill is forwarded as the exact bytes that arrived — not
+// with no default to fill is forwarded as the exact bytes that arrived, not
 // re-encoded, which would reorder its keys for no reason at all.
 func TestABodyWithNothingToFillIsNotRewritten(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
@@ -274,7 +274,7 @@ func TestABodyWithNothingToFillIsNotRewritten(t *testing.T) {
 		`{"model":"m","thinking":{"type":"disabled"}}`,
 
 		// Not JSON at all: a multipart upload reaches this line intact, and its
-		// parameters are form fields rather than JSON values.
+		// parameters are form fields, not JSON values.
 		"--boundary\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nm\r\n--boundary--\r\n",
 	} {
 		got, err := rewriteBody(policy, chatRoute, []byte(body))
@@ -358,12 +358,12 @@ func TestTheReportedViolationDoesNotDependOnTheArrayOrder(t *testing.T) {
 }
 
 // A key is a path into the body and a predicate is a name in a Go registry, and
-// the two never fall back to one another. They share a spelling here on purpose:
+// the two never fall back to one another. They share a spelling here:
 // `tool_choice.named_while_thinking` is a registered predicate and is not a path
 // anything sends, and `thinking.type` is a path and is not a registered rule.
 func TestKeyAndPredicateAreDifferentNamespaces(t *testing.T) {
 	// The predicate's name, used as a key. It resolves nothing, because no body
-	// carries a `tool_choice` object with a `named_while_thinking` in it — so
+	// carries a `tool_choice` object with a `named_while_thinking` in it, so
 	// the request the predicate refuses is served.
 	asKey := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Key: "tool_choice.named_while_thinking", Deny: true},
@@ -374,7 +374,7 @@ func TestKeyAndPredicateAreDifferentNamespaces(t *testing.T) {
 	}
 
 	// A path, used as a predicate. It is not in either registry, so it is
-	// ignored — reported at refresh time rather than enforced on a guess.
+	// ignored: reported at refresh time, not enforced on a guess.
 	asPredicate := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Predicate: "thinking.type", Deny: true},
 	}}
@@ -523,7 +523,7 @@ func TestARouteScopedRefusalDoesNotReachAnotherPathOnTheWire(t *testing.T) {
 }
 
 // assertSameJSON compares two bodies as JSON values. A rewritten body is
-// re-encoded from a map, so its key order is Go's and not the caller's — the
+// re-encoded from a map, so its key order is Go's and not the caller's: the
 // bytes differ where the request does not.
 func assertSameJSON(t *testing.T, got []byte, want string) {
 	t.Helper()
@@ -542,14 +542,14 @@ func assertSameJSON(t *testing.T, got []byte, want string) {
 }
 
 // The second conformance failure this language was extended for, and the one
-// that needed a term the shape did not have. The reference provider's contract — its own
-// `test_reasoning_effort_ignored_when_effort_present` — is that a request
+// that needed a term the shape did not have. The reference provider's contract, its own
+// `test_reasoning_effort_ignored_when_effort_present`, is that a request
 // carrying both `thinking.effort` and the OpenAI-style `reasoning_effort`
 // honours the first and silently ignores the second.
 //
 // Measured on our endpoint: `thinking.effort=max` alone produced 884 characters
 // of reasoning trace, and `thinking.effort=low` beside `reasoning_effort=max`
-// produced 889 — so the engine behind this hop was reading `reasoning_effort`
+// produced 889, so the engine behind this hop was reading `reasoning_effort`
 // where the provider ignores it, and the trace that should have been markedly
 // shorter was not.
 //
@@ -573,7 +573,7 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 		},
 
 		// Nothing to defer to, so nothing is taken away. This is the half that
-		// makes it a condition rather than a blanket removal: `reasoning_effort`
+		// makes it a condition instead of a blanket removal: `reasoning_effort`
 		// on its own is a field the provider honours, and dropping it would
 		// silently ignore what the caller asked for.
 		{
@@ -629,19 +629,19 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 // Dropping `reasoning_effort` makes it *ignored*, which is one half of the reference provider's
 // contract. The other half is that `thinking.effort` is *honoured*, and the drop
 // does nothing for it. Measured on a live endpoint, asking the model its
-// own effective effort — the vendor suite's `_ask_effort` probe, which reads the
+// own effective effort, the vendor suite's `_ask_effort` probe, which reads the
 // resolved level off the system prompt instead of inferring it from the length
-// of the trace — answers `max` for `thinking.effort=low` sent alone, with no
+// of the trace, answers `max` for `thinking.effort=low` sent alone, with no
 // `reasoning_effort` in the request for any rule to remove. Nothing behind this
 // hop reads `thinking.effort`, so taking the loser away only leaves the engine on
 // its own default, which is `max`. `effort=low` beside `reasoning_effort=max` and
 // `effort=max` alone then both run at max, and the trace-length comparison that
 // was standing in for the contract is a coin flip between two samples of one
-// distribution — which is how it read as a pass.
+// distribution, which is how it read as a pass.
 //
 // So the term is a copy, not a removal: carry the vendor's field onto the field
-// the engine reads. It subsumes the drop — the caller's `reasoning_effort` is
-// overwritten, so it is ignored — and it closes the half the drop could not.
+// the engine reads. It subsumes the drop, the caller's `reasoning_effort` is
+// overwritten, so it is ignored, and it closes the half the drop could not.
 func TestThinkingEffortIsCarriedOntoTheFieldTheEngineReads(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Route: chatRoute, Key: "reasoning_effort", ValueFrom: "thinking.effort"},
@@ -662,14 +662,14 @@ func TestThinkingEffortIsCarriedOntoTheFieldTheEngineReads(t *testing.T) {
 		// spelling gets the engine's spelling written for them, which is the
 		// only reason the level they asked for is the level that runs.
 		{
-			"thinking.effort alone is installed rather than left unread",
+			"thinking.effort alone is installed, not left unread",
 			`{"model":"m","thinking":{"type":"enabled","keep":"all","effort":"high"}}`,
 			`{"model":"m","thinking":{"type":"enabled","keep":"all","effort":"high"},"reasoning_effort":"high"}`,
 		},
 
 		// Nothing to defer to, so nothing is written. `reasoning_effort` on its
 		// own is a field the provider honours, and overwriting it would silently
-		// ignore what the caller asked for — the same half of the condition the
+		// ignore what the caller asked for: the same half of the condition the
 		// drop got right.
 		{
 			"reasoning_effort alone",
@@ -732,7 +732,7 @@ func TestACarryOfAValueAlreadyThereDoesNotRewriteTheBody(t *testing.T) {
 }
 
 // Every source is read out of the request as it arrived, so a rule that carries a
-// key another rule drops carries the value the caller sent — not whatever the
+// key another rule drops carries the value the caller sent, not whatever the
 // other rule left behind, and not a different answer depending on which of them
 // the evaluation order happened to put first.
 func TestACarryReadsTheBodyAsItArrivedAndNotAsTheRewriteLeftIt(t *testing.T) {
@@ -815,7 +815,7 @@ func TestADropOfAnAbsentKeyDoesNotRewriteTheBody(t *testing.T) {
 
 // `when_present` is a scope and not a term, so it narrows every kind of rule and
 // not only the one it was added for. This is the reason it sits beside `route`
-// and `stream` rather than beside `drop`.
+// and `stream`, not beside `drop`.
 func TestWhenPresentNarrowsEveryKindOfRule(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{WhenPresent: "thinking", Key: "temperature", Enum: []any{float64(1)}},
@@ -856,7 +856,7 @@ func TestWhenPresentNarrowsEveryKindOfRule(t *testing.T) {
 
 // Which rules apply is decided once, against the body as it arrived. Without
 // that, a rule guarded on a key another rule drops would fire or not depending on
-// which of the two ran first — and the order of the list is not part of this
+// which of the two ran first, and the order of the list is not part of this
 // language.
 func TestScopeIsDecidedAgainstTheBodyThatArrived(t *testing.T) {
 	rules := []plane.Rule{
@@ -923,7 +923,7 @@ var mediaPolicy = &plane.Policy{Version: 2, Rules: []plane.Rule{
 }}
 
 // A real MP4 header is eight bytes and this rule reads exactly those, so the
-// fixtures are the signatures themselves rather than files. Base64 of
+// fixtures are the signatures themselves, not files. Base64 of
 // "\0\0\0\x18ftypisom" and of "\x1a\x45\xdf\xa3" plus padding.
 const (
 	mp4Header  = "AAAAGGZ0eXBpc29t"
@@ -1003,7 +1003,7 @@ func TestMediaThisRuleHasNoStandingOverIsForwarded(t *testing.T) {
 			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,` + mp4Header + `"}}`,
 		},
 		{
-			"a WebM, whose magic is at offset zero rather than four",
+			"a WebM, whose magic is at offset zero instead of four",
 			`{"type":"video_url","video_url":{"url":"data:video/webm;base64,` + webmHeader + `"}}`,
 		},
 		{
@@ -1032,7 +1032,7 @@ func TestMediaThisRuleHasNoStandingOverIsForwarded(t *testing.T) {
 			`{"type":"image_url","image_url":{"url":"data:image/png;base64,` + stubBytes + `"}}`,
 		},
 		{
-			"a shape fault rather than an encoding one, which the upstream words better",
+			"a shape fault instead of an encoding one, which the upstream words better",
 			`{"type":"video_url","video_url":{}}`,
 		},
 		{
@@ -1049,7 +1049,7 @@ func TestMediaThisRuleHasNoStandingOverIsForwarded(t *testing.T) {
 }
 
 // A string content carries no media, and an Anthropic body carries its own part
-// names. Neither may be refused by a rule about OpenAI media parts — the cost of
+// names. Neither may be refused by a rule about OpenAI media parts: the cost of
 // being wrong here is every request against the endpoint.
 func TestBodiesWithoutOpenAIMediaPartsAreUntouched(t *testing.T) {
 	for _, body := range []string{

@@ -16,7 +16,7 @@ import (
 // Two methods, and the split between them is the design: Live is asked on the
 // request path and must be cheap, RoundTripper is asked once when the table is
 // loaded and hands back an ordinary http.RoundTripper. Nothing here writes
-// anything back — reachability is measured on this process and never becomes
+// anything back: reachability is measured on this process and never becomes
 // observed state.
 type Tunnels interface {
 	Live(clusterID string) int
@@ -40,8 +40,8 @@ type ClusterConfig struct {
 	// without answering, on whichever of the two paths it is forwarded down.
 	// Zero takes tunnel.DefaultResponseHeaderTimeout.
 	//
-	// One field and not two on purpose. The tunnelled path and the direct path
-	// are alternatives rather than layers — a request takes one or the other —
+	// One field and not two. The tunnelled path and the direct path
+	// are alternatives, not layers, a request takes one or the other,
 	// so a gateway that bounded them differently would give the same caller two
 	// different walls depending on whether the cluster's agent happened to be
 	// connected.
@@ -51,14 +51,14 @@ type ClusterConfig struct {
 // NewClusterHandler forwards to one cluster, over its tunnel when there is one
 // and to its published address when there is not.
 //
-// Both modes coexist on purpose. The tunnel is how a cluster in a network we do
+// Both modes coexist. The tunnel is how a cluster in a network we do
 // not control is reached, and it is preferred whenever one is live; ClusterServing
 // is still there and a cluster that publishes an address is still dialled at it,
 // which is the fallback for a cluster whose agent has not rolled out yet.
 //
 // A cluster with neither answers 503, not 502. Nothing was attempted, so
 // reporting an upstream failure would blame a cluster this replica never spoke
-// to — and it is the routing table's Pick that normally catches this, so reaching
+// to, and it is the routing table's Pick that normally catches this, so reaching
 // the branch below means a tunnel died between the pick and the forward.
 func NewClusterHandler(cfg ClusterConfig) http.Handler {
 	handler := &clusterHandler{clusterID: cfg.ClusterID, tunnels: cfg.Tunnels}
@@ -99,7 +99,7 @@ func (h *clusterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // NewTunnelProxy forwards to a cluster over the connection it dialled out.
 //
 // It is the ordinary reverse proxy with one field replaced. The URL is a
-// placeholder that never resolves — the connection is the address — and the
+// placeholder that never resolves, the connection is the address, and the
 // transport is the pool's, so FlushInterval, ModifyResponse and the usage
 // accounting all behave exactly as they do against a public address. That the
 // seam is one parameter wide is the whole reason the tunnel was built as an
@@ -117,7 +117,7 @@ func NewTunnelProxy(clusterID string, headers http.Header, tunnels Tunnels, head
 //
 // The classification is the point. Without it an agent rollout, a saturated
 // cluster and a cluster that genuinely failed are all one 502 with one outcome,
-// and two of those three are this project's own infrastructure rather than a
+// and two of those three are this project's own infrastructure instead of a
 // model being down. The mapping is the one tunnel.Fault documents.
 func markTunnelError(w http.ResponseWriter, r *http.Request, clusterID string, err error) {
 	fault := tunnel.Classify(err)
@@ -144,8 +144,8 @@ func markTunnelError(w http.ResponseWriter, r *http.Request, clusterID string, e
 		writeError(w, http.StatusBadGateway, "upstream_unavailable",
 			"The cluster serving this model did not respond.")
 	default:
-		// Churn folds into upstream_error deliberately: an agent rollout
-		// counts slightly against serving availability rather than into a
+		// Churn folds into upstream_error: an agent rollout
+		// counts slightly against serving availability, not into a
 		// carve-out nothing can falsify.
 		MarkOutcome(r, metrics.OutcomeUpstreamError)
 		writeError(w, http.StatusBadGateway, "upstream_unavailable",

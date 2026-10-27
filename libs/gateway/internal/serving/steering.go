@@ -10,9 +10,9 @@ import (
 
 // steeringHeaderPrefix is the serving runtime's own header namespace. Dynamo reads a
 // worker pin, a data-parallel rank, a queue priority, a request id, a session binding
-// and free-form router metadata out of it — `x-dynamo-meta-policy-class` chooses a
-// queue class — and adds names to it between releases, so it is matched as a prefix
-// rather than enumerated.
+// and free-form router metadata out of it, `x-dynamo-meta-policy-class` chooses a
+// queue class, and adds names to it between releases, so it is matched as a prefix,
+// not enumerated.
 const steeringHeaderPrefix = "x-dynamo-"
 
 // steeringHeaders are the names outside that prefix which Dynamo 1.5 reads for the
@@ -51,7 +51,7 @@ var steeringHeaders = map[string]bool{
 // latency targets the router scores against.
 //
 // `cache_salt` is not here. It narrows prefix sharing for the request that carries it
-// and nobody else, which is a caller isolating itself rather than steering anyone.
+// and nobody else, which is a caller isolating itself instead of steering anyone.
 var steeringHints = []string{
 	"backend_instance_id",
 	"prefill_worker_id",
@@ -68,13 +68,13 @@ var steeringHints = []string{
 // returns the names it deleted.
 //
 // Where a request runs inside a cluster is the runtime's decision, made on queue depth
-// and cache residency no caller can see, and priority is something that is sold
-// rather than asserted. httputil.ReverseProxy copies inbound headers verbatim, so
+// and cache residency no caller can see, and priority is something that is sold,
+// not asserted. httputil.ReverseProxy copies inbound headers verbatim, so
 // without this any caller could pin a prefill worker or jump the queue ahead of every
 // other tenant with a header they made up.
 //
 // It must run on the inbound headers, before the proxy's Rewrite. Headers this hop
-// stamps itself — the credential map on the outbound leg — are written after it and
+// stamps itself, the credential map on the outbound leg, are written after it and
 // are untouched by it.
 func stripSteeringHeaders(header http.Header) []string {
 	var stripped []string
@@ -114,7 +114,7 @@ func isSteeringHeader(name string) bool {
 // two decoders need not agree on which copy wins, and forwarding both would let the
 // copy this hop checked hide the one the runtime reads.
 //
-// An `nvext` emptied by this is removed rather than sent as `{}`.
+// An `nvext` emptied by this is removed, not sent as `{}`.
 func withoutSteeringHints(body []byte) ([]byte, []string, error) {
 	fields, repeated, ok := topLevelFields(body)
 	if !ok {

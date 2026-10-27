@@ -73,7 +73,7 @@ func TestACallersOwnRequestIdIsHonouredWhenItIsSane(t *testing.T) {
 	}
 }
 
-// TestAnErrorThisHopWritesItselfCarriesTheId covers the answers that never reach a proxy — a
+// TestAnErrorThisHopWritesItselfCarriesTheId covers the answers that never reach a proxy: a
 // refused body, an unknown model, a cluster that never answered.
 func TestAnErrorThisHopWritesItselfCarriesTheId(t *testing.T) {
 	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{

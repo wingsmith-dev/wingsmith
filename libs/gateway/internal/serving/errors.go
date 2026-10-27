@@ -29,7 +29,7 @@ const (
 	maxLoggedRefusalLen = 1 << 10
 	// maxNamedFields bounds how many of the caller's own field names one
 	// refusal may name back at them, and minNamedFieldLen is the shortest name
-	// worth looking for. A one- or two-character name — `n`, `t` — occurs inside
+	// worth looking for. A one- or two-character name (`n`, `t`) occurs inside
 	// ordinary English by accident, so matching one says nothing.
 	maxNamedFields   = 4
 	minNamedFieldLen = 3
@@ -70,7 +70,7 @@ type errorBody struct {
 // errorTypeFor is the error class a status carries, and the only place either
 // this hop or an upstream's replaced error gets one.
 //
-// Derived from the status rather than passed in, because `type` is the field a
+// Derived from the status, not passed in, because `type` is the field a
 // client switches on to decide whether to retry and the two must never disagree.
 // Every error here used to be `invalid_request_error` whatever its status, which
 // told a client that a 503 with capacity behind it was their own bad request and
@@ -133,7 +133,7 @@ func modifyResponse(resp *http.Response) error {
 // upstreamFailure is the answer this hop gives for one upstream status.
 type upstreamFailure struct {
 	// Status is what the caller is told, which is not always what the engine
-	// said — see upstreamFailures. The error class follows from it through
+	// said; see upstreamFailures. The error class follows from it through
 	// errorTypeFor, so there is no second field here that could disagree.
 	Status  int
 	Code    string
@@ -145,7 +145,7 @@ type upstreamFailure struct {
 // objects, and the `type` and `code` a client switches on are always ours.
 //
 // The message is the one field an engine can contribute, and only on an
-// `invalid_request` — a caller's 4xx. There a JSON error message from the engine
+// `invalid_request`: a caller's 4xx. There a JSON error message from the engine
 // is quoted after sanitizeUpstreamMessage strips what names the infrastructure
 // behind this hop, because a caller cannot fix an input nobody names: the
 // vllm-omni layer raises ValueError for a validation failure, which Dynamo's
@@ -212,7 +212,7 @@ var upstreamFailures = map[int]upstreamFailure{
 // upstreamFallback answers a status the table does not name.
 //
 // A 4xx is passed through as the status that arrived, because the class is the
-// one thing an unrecognised status still says reliably — do not retry this — and
+// one thing an unrecognised status still says reliably, do not retry this, and
 // a 5xx becomes 502 because whatever it was happened behind this hop.
 func upstreamFallback(status int) upstreamFailure {
 	if status < http.StatusInternalServerError {
@@ -260,7 +260,7 @@ func knownRefusalIn(detail string) (string, bool) {
 // replaceErrorResponse substitutes this hop's own error object for whatever an
 // upstream sent.
 //
-// It replaces rather than normalises. Wrapping the engine's own object in the
+// It replaces, not normalises. Wrapping the engine's own object in the
 // OpenAI envelope was enough to make the shape right and not enough to make the
 // content ours: the message, the type and the code were still the engine's, an
 // oversized body was streamed through untouched, and a body that already had an
@@ -350,8 +350,8 @@ func readUpstreamError(resp *http.Response) (string, error) {
 // said.
 //
 // The body is not logged by default, because it is not ours to keep. An engine's
-// validation message quotes the input it rejected — a prompt's opening words, a
-// field value, a tool argument — and a 5xx trace can carry the request it was
+// validation message quotes the input it rejected, a prompt's opening words, a
+// field value, a tool argument, and a 5xx trace can carry the request it was
 // handling. A log line has a retention and an audience nobody agreed to for a
 // caller's content, so the line carries a bounded, content-free summary: the
 // status, the engine's own error type and code when the body is JSON that names
@@ -403,8 +403,8 @@ const maxLoggedIdentifierLen = 64
 // Every value is either a number this hop measured or an identifier the engine
 // put in a `type` or `code` field, and an identifier is kept only when it looks
 // like one: short, and made of nothing but letters, digits and `_ . -`. A
-// `type` an engine filled with prose — or with the caller's own text — fails
-// that and is dropped rather than truncated, because a truncated sentence is
+// `type` an engine filled with prose, or with the caller's own text, fails
+// that and is dropped, not truncated, because a truncated sentence is
 // still somebody's sentence.
 func upstreamErrorSummary(detail string, limit int) []any {
 	attrs := []any{"body_bytes", len(detail), "body_truncated", len(detail) >= limit}
@@ -488,7 +488,7 @@ func upstreamBodiesLogged(ctx context.Context) bool {
 }
 
 // callerFieldsNamedIn is the fallback for a 4xx whose body has no JSON message
-// to quote — prose from a framework's default handler, most often.
+// to quote: prose from a framework's default handler, most often.
 //
 // A 4xx is often the only thing telling a caller what they did wrong, so
 // answering every one of them with the same sentence makes the endpoint
@@ -498,15 +498,15 @@ func upstreamBodiesLogged(ctx context.Context) bool {
 // themselves wrote is reported back to them when the upstream's complaint
 // mentions it, and nothing else is. The output alphabet is therefore fixed
 // strings plus tokens the caller sent us in this very request, which makes a
-// string the caller never wrote impossible to emit rather than merely filtered
-// — the eight needles the conformance profiles list are a symptom of that class
+// string the caller never wrote impossible to emit, not merely filtered:
+// the eight needles the conformance profiles list are a symptom of that class
 // and not the definition of it.
 //
 // knownRefusals is the other consultation and has the same shape: a reason the
 // body mentions selects a fixed message from our own table. When one matches,
 // its message is the answer and no field names are appended.
 //
-// The cost is honest and stated: an engine that names only its own type, as
+// The cost is stated: an engine that names only its own type, as
 // serde does for an untagged enum, contributes nothing, and the caller gets the
 // generic sentence. There is nothing in such a message that is ours to say, and
 // it is not kept in the log either (see logUpstreamError).
@@ -539,7 +539,7 @@ func callerFieldsNamedIn(detail string, callerBody []byte) []string {
 // sent them.
 //
 // `model` is the routing key, and it is also an ordinary English word that
-// appears in nearly every engine message — so matching it names a field on
+// appears in nearly every engine message, so matching it names a field on
 // almost every refusal and says nothing. It is the one field this hop rewrites
 // besides, so the string the engine complained about is not always the string
 // the caller wrote, and a caller sent to check it would be sent to check ours.
@@ -576,8 +576,8 @@ func isNameByte(text string, index int) bool {
 // caller. Everything else is deleted.
 //
 // An allowlist and not a denylist, because the set of headers a caller needs is
-// small, closed and ours to state, while the set an engine might add is neither
-// — a framework's `Server`, a tracing header, a debug header somebody turned on
+// small, closed and ours to state, while the set an engine might add is neither:
+// a framework's `Server`, a tracing header, a debug header somebody turned on
 // for an afternoon. A denylist would have to be edited every time one of those
 // appeared, and would be wrong in the window before somebody noticed.
 //
@@ -593,7 +593,7 @@ var forwardedHeaders = map[string]bool{
 	"Content-Disposition": true,
 	// Streaming. Cache-Control: no-cache is part of an SSE response, and
 	// X-Accel-Buffering: no is how an engine tells an nginx in front of it not
-	// to buffer the stream — dropping it would turn a token-by-token answer
+	// to buffer the stream: dropping it would turn a token-by-token answer
 	// into one long pause wherever such a proxy sits between here and a caller.
 	"Cache-Control":     true,
 	"X-Accel-Buffering": true,
@@ -607,14 +607,14 @@ var forwardedHeaders = map[string]bool{
 }
 
 // forwardedHeaderPrefixes are the header families that pass by prefix because
-// their members are named after a quota rather than fixed by a spec.
+// their members are named after a quota, not fixed by a spec.
 var forwardedHeaderPrefixes = []string{"x-ratelimit-", "ratelimit-"}
 
 // filterResponseHeaders deletes every response header that is not forwarded,
 // and reduces the ones that carry a URL to a path.
 //
-// This is the boundary. Everything behind it — the tunnel's synthetic
-// authority, the agent, the frontend's ClusterIP, the engine — is entitled to
+// This is the boundary. Everything behind it, the tunnel's synthetic
+// authority, the agent, the frontend's ClusterIP, the engine, is entitled to
 // describe itself in a header, and none of that is entitled to leave here.
 func filterResponseHeaders(resp *http.Response) {
 	// Trailers as well as headers. Nothing on the OpenAI surface sends one, so
@@ -646,7 +646,7 @@ func filterResponseHeaders(resp *http.Response) {
 //
 // A redirect is where the address of the thing that answered leaks by
 // construction. Neither proxy on this path rewrites Location, and the authority
-// the frontend sees is the one the agent dialled — a ClusterIP name — so a
+// the frontend sees is the one the agent dialled, a ClusterIP name, so a
 // framework that answers `/v1/models/` with a 307 built from its own Host
 // publishes that name to whoever asked. Reducing the value to a path keeps the
 // redirect working and says nothing about who served it.
@@ -681,7 +681,7 @@ type modelObject struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
 	OwnedBy string `json:"owned_by"`
-	// OutputModality is what the model generates — `text`, `image` or `video` — so a client can
+	// OutputModality is what the model generates (`text`, `image` or `video`) so a client can
 	// tell which of /v1/chat/completions, /v1/images/generations and /v1/videos it answers.
 	// Not an OpenAI field; clients that do not know it ignore it.
 	OutputModality string `json:"output_modality,omitempty"`
@@ -694,7 +694,7 @@ type modelList struct {
 
 // modelOwner is what every model in the catalog is owned by.
 //
-// A constant, and deliberately the same one OpenAI returns for its own base
+// A constant, and the same one OpenAI returns for its own base
 // models. It used to name this project, which put the name of the thing serving
 // the request on the one response a caller can read without sending one. What
 // sits in front of this hop owns the catalog a customer sees; this list exists
@@ -704,8 +704,8 @@ const modelOwner = "system"
 
 // writeModelList answers GET /v1/models from the routing table.
 //
-// Deliberately bare: context length, quantization and display names are catalog
-// facts, and hangar serves models rather than describing them. Whatever sits in
+// Bare: context length, quantization and display names are catalog
+// facts, and hangar serves models instead of describing them. Whatever sits in
 // front of this hop owns its own catalog.
 func writeModelList(w http.ResponseWriter, names []string, kinds map[string]string) {
 	sort.Strings(names)

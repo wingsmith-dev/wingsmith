@@ -16,7 +16,7 @@ import (
 // It exists because the gateway's existing classification cannot see any of
 // this. markProxyError distinguishes context.Canceled and net.Error timeouts and
 // calls everything else an upstream error, and neither http2.StreamError nor
-// http2.GoAwayError is either of those — so an agent redeploy, which is a
+// http2.GoAwayError is either of those, so an agent redeploy, which is a
 // routine rollout of a data-plane pod, would be recorded as the cluster failing
 // and would deflate the serving availability that is quoted to a buyer.
 //
@@ -32,9 +32,9 @@ import (
 //
 // Churn folding into OutcomeUpstreamError is a decision, not an oversight. A
 // churn outcome that sat in availability's denominator but never its numerator
-// would inflate the number unfalsifiably, and splitting it honestly means a new
+// would inflate the number unfalsifiably, and splitting it accurately means a new
 // version of the published objectives. So an agent rollout counts slightly against serving availability: pessimistic
-// and honest, in that order. This distinction is still worth drawing here, because
+// and accurate, in that order. This distinction is still worth drawing here, because
 // it is what a fault label on a log line or a gateway-local counter needs.
 type Fault int
 
@@ -47,7 +47,7 @@ const (
 	FaultSaturated
 	// FaultChurn is the tunnel itself ending under a request: GOAWAY, a stream
 	// reset, a connection that went away. Attributable to the agent, which
-	// is data-plane infrastructure this project operates — not to the cluster
+	// is data-plane infrastructure this project operates, not to the cluster
 	// and not to the model.
 	FaultChurn
 	// FaultHeaderTimeout is a stream the cluster accepted and never answered.
@@ -109,13 +109,13 @@ var churnSentinels = []string{
 // forceClosedSentinel is x/net's errClientConnForceClosed, which is what an
 // in-flight request gets when the write half of its connection fails and
 // cleanupWriteRequest tears the connection down under it. Unexported there, and
-// the exact ending of an agent that was killed rather than drained.
+// the exact ending of an agent that was killed, not drained.
 const forceClosedSentinel = "http2: client connection force closed"
 
 // closedConnSentinel is x/net's errClientConnClosed, returned from
 // awaitFlowControl to a request that was mid-write when its connection was found
 // closed. It is the narrow race between the pool picking a live tunnel and the
-// tunnel dying — rare, and reached under load about once in twenty runs before it
+// tunnel dying: rare, and reached under load about once in twenty runs before it
 // was covered.
 const closedConnSentinel = "http2: client conn is closed"
 
@@ -124,12 +124,12 @@ const closedConnSentinel = "http2: client conn is closed"
 const lostConnSentinel = "http2: client connection lost"
 
 // isTunnelDeath reports whether an error is the tunnel socket itself ending
-// rather than the cluster behind it failing.
+// instead of the cluster behind it failing.
 //
 // EPIPE and ECONNRESET are the whole reason this is separate from the sentinel
 // list. They arrive as *net.OpError, they are what a SIGKILLed or OOMKilled
-// agent produces — the process stops existing and its socket is reset with no
-// GOAWAY on it — and taken at face value they read as a network failure, which
+// agent produces, the process stops existing and its socket is reset with no
+// GOAWAY on it, and taken at face value they read as a network failure, which
 // on this connection would mean the cluster. It cannot: the agent proxies to
 // the cluster inside its own process and reports a cluster that will not answer
 // as a 502 status. A syscall error on this socket only ever means the near end of
@@ -137,11 +137,11 @@ const lostConnSentinel = "http2: client connection lost"
 //
 // A killed process does not always reset its sockets: the kernel reaps the fd,
 // and with nothing left unread on it that is an ordinary FIN. The gateway sees
-// that as an unexpected EOF rather than a syscall error, so it belongs here too,
-// and it is the deterministic half of the pair — an RST can be dropped by the
+// that as an unexpected EOF instead of a syscall error, so it belongs here too,
+// and it is the deterministic half of the pair: an RST can be dropped by the
 // peer's TCP if it arrives outside the receive window, a FIN cannot.
 //
-// The named sentinels are here rather than only in churnSentinels because these
+// The named sentinels are here, not only in churnSentinels because these
 // are the endings the pool retries, and canRetryError accepts none of them.
 func isTunnelDeath(err error) bool {
 	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
@@ -161,8 +161,8 @@ func isTunnelDeath(err error) bool {
 
 // Classify says what a failed tunnelled request means.
 //
-// Order matters. A cancelled request often surfaces as a stream error too — the
-// stream is reset because the caller went away — and blaming the tunnel for a
+// Order matters. A cancelled request often surfaces as a stream error too, the
+// stream is reset because the caller went away, and blaming the tunnel for a
 // caller's disconnect would be the same misattribution in the other direction.
 func Classify(err error) Fault {
 	if err == nil {
@@ -191,10 +191,10 @@ func Classify(err error) Fault {
 	// An agent dying and an agent's upstream dying both arrive as
 	// StreamError{INTERNAL_ERROR, received from peer}, so this branch cannot tell
 	// them apart and calls both churn. The additive fix is an HTTP/2 trailer set
-	// by the agent naming the cause — see the matching TODO in agent.go —
+	// by the agent naming the cause, see the matching TODO in agent.go,
 	// read from resp.Trailer on the body-error path, with absence falling back to
 	// exactly what happens here. Until then an agent rollout counts slightly
-	// against serving availability, which is pessimistic and honest.
+	// against serving availability, which is pessimistic but accurate.
 	var stream http2.StreamError
 	if errors.As(err, &stream) {
 		return FaultChurn
@@ -218,7 +218,7 @@ func Classify(err error) Fault {
 }
 
 // isRequestCanceled matches net/http's unexported errRequestCanceled, which
-// x/net copies rather than exports.
+// x/net copies, not exports.
 func isRequestCanceled(err error) bool {
 	return strings.Contains(err.Error(), "net/http: request canceled")
 }

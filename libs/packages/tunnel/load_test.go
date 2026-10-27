@@ -129,7 +129,7 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 }
 
 // TestConnectorFleetKilledUnderLoad is the same rollout with no manners: every
-// connector is SIGKILLed in turn rather than drained.
+// connector is SIGKILLed in turn, not drained.
 //
 // A pod that is deleted gets a TERM and a grace period; a pod that is OOMKilled,
 // evicted, or whose node goes away does not, and that is the case a data-plane
@@ -137,9 +137,9 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 // reset, the GOAWAY that would have said "I processed nothing" is never sent, and
 // x/net's own retry does not recognise the error that arrives instead.
 //
-// What it asserts is narrower than the graceful case, and deliberately so. A
+// What it asserts is narrower than the graceful case, and so. A
 // request the killed connector was holding may already have been forwarded, so
-// it fails as churn rather than being run twice, and a request whose first bytes
+// it fails as churn instead of being run twice, and a request whose first bytes
 // already reached its caller cannot be retried by anyone. Both are counted and
 // tolerated. What must hold is that no request is ever served twice, that every
 // failure is churn, and that the cluster keeps serving through the tunnels that
@@ -228,7 +228,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 	}
 
 	// The replacement comes up before the victim is killed, so the cluster is never
-	// without coverage — the one thing a rollout controls even when the pods it is
+	// without coverage: the one thing a rollout controls even when the pods it is
 	// replacing do not stop politely.
 	for gen := 1; gen <= generations; gen++ {
 		replacement := newConnector(t, handler(fmt.Sprintf("gen%d", gen)), Limits{})
@@ -252,7 +252,7 @@ func TestConnectorFleetKilledUnderLoad(t *testing.T) {
 		// A rollout is paced by the thing being rolled: the next pod is not killed
 		// until the cluster is serving again through the ones that remain. Killing
 		// three connectors inside a few milliseconds is not a rollout, it is a
-		// cluster-wide outage — one request can then meet every tunnel it has as it
+		// cluster-wide outage: one request can then meet every tunnel it has as it
 		// dies, and no retry budget covers that because there is nowhere left to go.
 		serving := ok.Load() + concurrent
 		eventually(t, patience(t), "the cluster to serve again through the surviving tunnels", func() bool {
@@ -333,7 +333,7 @@ func oneCompletion(transport http.RoundTripper, id string) error {
 // patience is how long a load test waits for something it is sure will happen.
 //
 // It is the time left before the test binary's own deadline, less a margin to
-// report in, rather than a fixed wall-clock number. Under -race with every test
+// report in, instead of a fixed wall-clock number. Under -race with every test
 // running in parallel a tunnel takes far longer to notice a dead peer than it
 // does alone, and a fixed bound turned that slowness into a failure.
 func patience(t *testing.T) time.Duration {

@@ -18,8 +18,8 @@ import (
 //
 // Two fields and not one because a cluster is addressable two ways and the two
 // halves of this system reach for different ones. ClusterID is the plane's uid
-// and is what everything downstream keys on — the pool, the routing table, every
-// metric label — because it is the only one that cannot be renamed. ClusterName
+// and is what everything downstream keys on, the pool, the routing table, every
+// metric label, because it is the only one that cannot be renamed. ClusterName
 // is the operator-facing name, and it is what a cluster's own configuration
 // carries: the chart's `cluster.id`, the operator's HANGAR_CLUSTER_ID, the label
 // its metrics are written under. An agent therefore claims the name, and a
@@ -34,7 +34,7 @@ type Identity struct {
 //
 // Either spelling is accepted, for the same reason `GET /v1/clusters/{ref}`
 // takes either: they name one row, and which one a caller holds is an accident
-// of where it read it. Empty claims nothing and is not a match — the caller
+// of where it read it. Empty claims nothing and is not a match: the caller
 // decides whether an unclaimed dial is allowed.
 func (i Identity) claims(claimed string) bool {
 	if claimed == "" {
@@ -64,8 +64,8 @@ type Verifier interface {
 // Separate from Observer because the pool never sees these: a dial that fails
 // the handshake or the token check is not a tunnel that opened and closed, and
 // folding it into the coverage gauge would make a misconfigured agent look
-// like a flapping one. The reason strings are a closed set — see the Reason
-// constants — because this is a metric label.
+// like a flapping one. The reason strings are a closed set, see the Reason
+// constants, because this is a metric label.
 type DialObserver interface {
 	TunnelDialRejected(reason string)
 }
@@ -157,7 +157,7 @@ type ListenerConfig struct {
 	// agent that dials in so it knows how many distinct tunnels to hold. Zero or
 	// one both mean one.
 	//
-	// It is a number this process is told rather than one it discovers. The
+	// It is a number this process is told instead of one it discovers. The
 	// gateway has no Kubernetes client and is not getting one, so the manifest that sets the replica count is
 	// also what sets this, and the two live beside each other in one file.
 	Gateways int
@@ -204,7 +204,7 @@ type ListenerConfig struct {
 // It is a listener of its own, on a port of its own, and that is not tidiness:
 // it must stay reachable while this replica reports itself unready. Readiness
 // here means "holds a tunnel", so a replica that could only be dialled once
-// ready could never become ready — the gate would be the thing keeping it shut.
+// ready could never become ready: the gate would be the thing keeping it shut.
 // Nothing in this file consults readiness, and the Service in front of this port
 // must publish not-ready addresses.
 type Listener struct {
@@ -219,7 +219,7 @@ type Listener struct {
 	// stopped closes when the listener stops accepting. It wakes an accept loop
 	// waiting for a handshake slot and cancels handshakes still in progress.
 	stopped chan struct{}
-	// life ends with the listener rather than with one Serve call, and bounds
+	// life ends with the listener, not with one Serve call, and bounds
 	// the re-verification of open tunnels. A Serve that returns on an accept
 	// error leaves its tunnels open, and they must go on being checked.
 	life    context.Context
@@ -279,8 +279,8 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 // tunnels that are already adopted: cancelling it stops new dials, and Shutdown
 // is what drains the live ones.
 //
-// An Accept error the network marks temporary — out of file descriptors, a
-// connection reset before it was accepted — is waited out with a backoff, as
+// An Accept error the network marks temporary, out of file descriptors, a
+// connection reset before it was accepted, is waited out with a backoff, as
 // net/http does. Returning on one would take down a listener every agent
 // depends on over a condition that clears by itself.
 //
@@ -522,8 +522,8 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	}
 
 	// The claim is checked, not trusted. An agent holding another cluster's
-	// Secret is a copy-paste away, and the failure it produces — one cluster's
-	// traffic served by another's models — is silent at every other layer.
+	// Secret is a copy-paste away, and the failure it produces, one cluster's
+	// traffic served by another's models, is silent at every other layer.
 	//
 	// Checked against either of the cluster's names, because the one an agent
 	// holds is not a choice it makes: the chart writes `cluster.id` from what the
@@ -558,7 +558,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	}
 
 	// The pool key is the uid, never the claim and never the name: everything past
-	// this point — the pool, the routing table lookup, every metric label — keys
+	// this point (the pool, the routing table lookup, every metric label) keys
 	// on the one identifier a rename cannot move. The accept carries both, so the
 	// agent can see its own name in the answer.
 	if err := WriteAccept(conn, l.accept(identity)); err != nil {
@@ -570,7 +570,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 // accept is the answer to a dial that authenticated, carrying this replica's
 // identity and the replica count alongside the cluster.
 //
-// The count is normalised here rather than at the agent so that the wire never
+// The count is normalised here, not at the agent so that the wire never
 // carries a zero that means one: an agent reading Gateways decides how many
 // tunnels to hold, and a gateway that forgot to say is a gateway an agent must
 // not conclude anything from.
@@ -619,7 +619,7 @@ func (l *Listener) resolve(ctx context.Context, token string) (Identity, error) 
 	return Identity{}, err
 }
 
-// reject answers a refused dial, so an agent logs why rather than an EOF.
+// reject answers a refused dial, so an agent logs why instead of an EOF.
 // The caller closes the connection.
 func (l *Listener) reject(conn net.Conn, remote, reason string, err error) {
 	_ = WriteAccept(conn, Accept{Reason: reason, Error: reason})
@@ -685,11 +685,11 @@ func (l *Listener) stopAccepting() {
 
 // tokenCache remembers which cluster a token resolved to.
 //
-// A slice scanned in constant time rather than a map: the fleet is tens of
+// A slice scanned in constant time instead of a map: the fleet is tens of
 // clusters, the scan is per dial and per re-verification and never per request,
 // and it means
 // no comparison in this path can be short-circuited on a secret. The tokens
-// themselves are not kept here — only their digests. The tokens of open tunnels
+// themselves are not kept here, only their digests. The tokens of open tunnels
 // are held by the goroutine re-verifying each one, and no longer than that.
 type tokenCache struct {
 	ttl   time.Duration

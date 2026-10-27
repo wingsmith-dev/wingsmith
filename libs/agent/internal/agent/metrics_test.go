@@ -73,7 +73,7 @@ func TestMetricsForgetARetiredReplica(t *testing.T) {
 	}
 }
 
-// The dial counters have to read zero rather than be absent from the very first scrape: an absent
+// The dial counters have to read zero, not be absent from the very first scrape: an absent
 // counter and a counter that has never moved are the same query result, and one of them is an agent
 // that is not running.
 func TestDialCountersExistBeforeAnyDial(t *testing.T) {
@@ -145,7 +145,7 @@ func seriesValue(t *testing.T, m *Metrics, name string, labels map[string]string
 	return metric.GetCounter().GetValue()
 }
 
-// seriesFor finds one series and reports its absence rather than failing, so a test can assert that
+// seriesFor finds one series and reports its absence instead of failing, so a test can assert that
 // something is *not* exported.
 func seriesFor(m *Metrics, name string, labels map[string]string) (*dto.Metric, error) {
 	families, err := m.Registry().Gather()
