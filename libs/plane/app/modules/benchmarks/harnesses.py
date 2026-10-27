@@ -176,10 +176,10 @@ gateway fault is told from an engine fault, and that is the first question asked
 endpoint probe fails. `failover_probe` is endpoint-only: below the endpoint there is
 nothing to fail over to.
 
-The image is named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE` or the request's `image`. This repository
-builds no image for this harness and the plane composes no command line for it, so the operator
-refuses to render a run until one does; `libs/conformance` (`hgrconform`) runs probes of this kind
-from a workstation today.
+The image is named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE` or the request's `image`. The plane
+composes no command line for this harness yet, so the operator refuses to render a run until it does.
+`libs/conformance` builds `hgrconform`, as a CLI or an image, which runs probes of this kind from a
+workstation today but is not what this harness drives.
 `max_probes` caps the enumerated failure list, so it has a stated ceiling even in a total outage;
 the per-probe record goes to object storage behind `artifacts_uri`, never onto the summary.
 """
