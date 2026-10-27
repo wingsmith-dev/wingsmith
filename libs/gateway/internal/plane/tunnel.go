@@ -15,11 +15,14 @@ import (
 // tunnelAuthPath resolves an enrolment token to the cluster that holds it.
 //
 // The plane serves it to the gateway's service principal, the same credential
-// the routing table is read with: body {"token": "<enrolment token>"},
-// answering 200 {"cluster_id", "cluster_name"} for a token matching a cluster's
-// token_hash, 401 for one that does not or for a cluster that is disabled, and
-// 429 while its failed-guess budget is spent. The token travels in the body
-// because Authorization already carries the gateway's own credential.
+// the routing table is read with: body {"token": "<enrolment token>",
+// "source": "<agent address>"}, answering 200 {"cluster_id", "cluster_name"}
+// for a token matching a cluster's token_hash, 401 for one that does not or for
+// a cluster that is disabled, and 429 while the source's failed-guess budget is
+// spent. A 429 whose detail carries the verdict "unknown_token" is still a
+// rejection: the plane looked the token up first and found no cluster. The
+// token travels in the body because Authorization already carries the gateway's
+// own credential.
 const tunnelAuthPath = "/v1/clusters/tunnel-auth"
 
 type tunnelAuthRequest struct {
