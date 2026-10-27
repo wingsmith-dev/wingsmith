@@ -5,11 +5,11 @@
 ## Context
 
 The console could answer what hardware exists and what is declared onto it, and nothing about how
-any of it is behaving. Every operator question that motivated Hangar, is this cluster busy, is a
-card running hot enough to start an RMA, what is this deployment's time to first token, needed a
-number the API did not have.
+any of it is behaving. Every operator question that motivated Hangar needed a number the API did not
+have: is this cluster busy, is a card running hot enough to start an RMA, what is this deployment's
+time to first token.
 
-`libs/packages/contract/API.md` §5 excludes telemetry: utilization, temperature,
+`libs/packages/contract/API.md` §5 excludes telemetry by design: utilization, temperature,
 throughput, latency and token counts do not traverse the hub, and `MESSAGES.md` puts it as capacity
 being state and occupancy being measurement. That exclusion is right and is not being revisited
 here: measurement has a sampling rate three orders of magnitude off the rate at which inventory

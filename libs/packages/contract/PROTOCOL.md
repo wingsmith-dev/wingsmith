@@ -90,8 +90,8 @@ version skew invisible in exactly the case that matters: a newer sender whose fr
 discarded has no way to find out, and the first symptom is state that never converges. The `error`
 is an ordinary sequenced frame; answering an unknown type therefore consumes a sequence number.
 
-**A dropped frame is still counted.** A receiver that cannot decode a payload, unknown type,
-malformed body, must still advance its arrival expectation for that `seq` and acknowledge it.
+**A dropped frame is still counted.** A receiver that cannot decode a payload (unknown type,
+malformed body) must still advance its arrival expectation for that `seq` and acknowledge it.
 Otherwise §2 and §4 contradict each other: the next frame arrives as a gap and closes the
 connection, which is the failure §2 exists to prevent. Only the envelope is fatal when
 undecodable; the payload is not.
@@ -141,8 +141,8 @@ from the peer's replay buffer. Contiguous is the operative word: a hole is never
 so a frame whose handler failed is simply not acked and will be replayed. **Withholding the ack is
 how a receiver signals "I could not apply this"**: there is no negative acknowledgement.
 
-Reading does not stop at a hole. Frames after a failed one are still delivered and applied, they
-are idempotent and delivery is at-least-once, but the contiguous cursor stays behind the hole, so
+Reading does not stop at a hole. Frames after a failed one are still delivered and applied (they
+are idempotent and delivery is at-least-once), but the contiguous cursor stays behind the hole, so
 nothing past it is acknowledged. This makes the receiver's arrival expectation and its applied
 cursor two different numbers, and conflating them is a live bug: a refused frame would turn the
 peer's next ordinary frame into a gap, so withholding an ack would tear the connection down instead
@@ -173,13 +173,13 @@ descriptions of the same state arriving under two numbering schemes.
 `full_resync` means: the hub streams its complete desired state for that cluster, the operator
 streams its complete observed state back, and both sides then discard anything absent from that
 snapshot. Each side opens its own stream explicitly with `resync.begin` and closes it with
-`stream.end`: the `full_resync` flag announces that this is about to happen, it does not stand in
+`stream.end`: the `full_resync` flag announces that this is about to happen but does not stand in
 for the framing. Without the explicit open, a receiver could not tell a resync snapshot from
 ordinary traffic, and the prune at the end is only safe against a stream it knows the boundaries
 of. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
 control plane takes itself down, so the buffer is sized to cover a rolling restart, not a network
 hiccup. `lossy: true` in `hello` means "I cannot serve as a resume base", and the sender must be given a
-fresh session, not be allowed to pretend it can resume. Replay-buffer overflow is one cause;
+fresh session instead of being allowed to pretend it can resume. Replay-buffer overflow is one cause;
 a durable cursor written mid-resync, describing a local view that was never a coherent point in the
 stream, is another. The flag names the consequence instead of any particular cause, because every
 cause has the same remedy. `session_id` in `hello` names which
@@ -194,18 +194,18 @@ hole.
 restarts during a partition and comes back with an in-memory cursor rewinds its own stream, which
 forfeits the property the whole architecture exists to provide.
 
-**Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session*,
-cursors and replay buffer, lives in one replica's memory, never in Postgres
+**Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session*
+(cursors and replay buffer) lives in one replica's memory, never in Postgres
 ([ADR 0005](../../../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md)). Reconnecting to
-the same pod resumes exactly as described above. Reconnecting to a different pod, which a
-Kubernetes Service makes ordinary, not exceptional, finds a pod with no record of the
+the same pod resumes exactly as described above. Reconnecting to a different pod (which a
+Kubernetes Service makes ordinary, not exceptional) finds a pod with no record of the
 session and therefore `full_resync: true` under the third condition above; this is expensive but
 never wrong, and it is the price of not paying a permanent write cost to avoid it. What *is*
 durable across every pod is ownership: one hub session is the writer for a given `cluster_id`,
 established by an atomic claim in Postgres at `hello`, so two sessions can never both believe they
 hold the same cluster. A hub instance that loses its claim to a newer `hello` elsewhere discovers
-this on its own, nothing pushes it a notice, since the session that displaced it may have no
-channel back to the one it displaced, and closes the connection, which the operator experiences as
+this on its own (nothing pushes it a notice, since the session that displaced it may have no
+channel back to the one it displaced) and closes the connection, which the operator experiences as
 an ordinary drop-and-reconnect.
 
 Because that discovery is by polling, displacement is bounded, not instantaneous: for up to

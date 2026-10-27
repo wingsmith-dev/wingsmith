@@ -32,8 +32,8 @@ It was invisible precisely because adopted recipes are never rendered: a recipe 
 effect cannot be caught being wrong by anything except a person reading it.
 
 **"Adopted" was doing two jobs.** It recorded where an object came from, and it decided what the
-operator was allowed to do. Those change independently. A workload is adopted forever, that is a
-historical fact, but whether we manage it is a decision someone makes on a Tuesday and may reverse.
+operator was allowed to do. Those change independently. A workload is adopted forever (that is a
+historical fact), but whether we manage it is a decision someone makes on a Tuesday and may reverse.
 
 ## Decision
 
@@ -47,7 +47,7 @@ historical fact, but whether we manage it is a decision someone makes on a Tuesd
 - `managed`: the plane renders and converges it, exactly as it does for a deployment it created.
 
 The operator gates on `authority`, not on the presence of `adopt`. `adopt` stays and keeps its
-meaning, the live object's identity and the digest it was pinned to, but it is now provenance and
+meaning (the live object's identity and the digest it was pinned to), but it is now provenance and
 a drift check instead of a prohibition.
 
 **Observation is lossless and does not consult authority.** The full observed `spec` is recorded for
@@ -82,7 +82,7 @@ never needs to touch the cluster.
 **Promotion can be non-restarting, and that is now a property worth defending.** If the declared set
 renders to what is already running, converging is a no-op and taking management costs nothing. That
 only holds because imported and declared are separate: it is checkable, because both halves are
-written down. Where it does not hold, the diff is the accurate price of the change somebody asked for,
+written down. Where it does not hold, the diff is the true price of the change somebody asked for,
 which is the distinction 0006 set out to protect and this ADR keeps.
 
 > **Amended 2026-09-02.** Recipe is deleted (ADR 0014) and its columns sit on the Workload, so
@@ -90,7 +90,7 @@ which is the distinction 0006 set out to protect and this ADR keeps.
 > instead of two fields of a recipe. Nothing this ADR decided moves with them: the split is still
 > provenance, `imported_args` is still never rendered and never enforced, and `derive()` still
 > drafts one from a sighting. The removal only strengthens the line: `serving_digest` is computed
-> over the declared half and excludes `imported_args`, so what was merely observed
+> over the declared half and intentionally excludes `imported_args`, so what was merely observed
 > cannot change the identity of what runs.
 
 **A mis-mapped import is now a bug with consequences instead of a dormant one.** Recipes that can
@@ -99,11 +99,11 @@ where it belongs, and `max_batch_tokens` means `--max-num-batched-tokens` and no
 already drafted before the fix carry the old error and are not migrated silently: a data fix is a
 decision about a serving parameter, not a schema change.
 
-**There is no partial authority.** A deployment where some fields are enforced and
+**There is intentionally no partial authority.** A deployment where some fields are enforced and
 others drift is unanalyzable at exactly the moment somebody needs to reason about it, so the object
 answers "who owns this?" with one word. Per-field ownership is the right representation underneath if
-we ever need it, Kubernetes server-side apply's `managedFields` is the prior art and exists because
-this is genuinely hard, but the object-level answer stays binary.
+we ever need it (Kubernetes server-side apply's `managedFields` is the prior art, and exists because
+this is genuinely hard), but the object-level answer stays binary.
 
 **`observed` remains the default everywhere.** Promotion creates `observed`. An unset authority on an
 old row reads as `observed`. Nothing acquires management by omission, which is the one property 0006

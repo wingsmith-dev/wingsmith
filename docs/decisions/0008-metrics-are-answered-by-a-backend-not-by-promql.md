@@ -12,7 +12,7 @@ assumptions about where metrics live that no longer hold.
 It said there was no shared store: no cluster remote-wrote anywhere and none set `externalLabels`,
 so the only accurate mapping was one Prometheus per cluster, and a query with no cluster in it could
 not be wrong because there was nothing else in the store to blend with. The expected setup is now
-the opposite, clusters remote-write into one central Prometheus which stamps `cluster` and
+the opposite: clusters remote-write into one central Prometheus which stamps `cluster` and
 `region` on every series, and such a store routinely holds clusters that are not inference
 clusters at all, database clusters among them. An unscoped query stopped being harmless and became
 a number that adds inference fleets and database fleets together and looks entirely plausible.
@@ -56,7 +56,7 @@ None of these fail. They all render as an empty panel, which is why they survive
    exist. Renamed series keep both spellings; fields the exporter does not emit yet stay listed and
    begin working when its csv grows, with no code change.
 6. **A summed metric never unions its candidates.** `or` is a set union, so two candidates populated
-   at once, a real upgrade window where an engine emits the old and the new name, would add the
+   at once (a real upgrade window where an engine emits the old and the new name) would add the
    same tokens twice under a `sum`. Summed metrics with more than one candidate probe in order and
    use the first that has any series. A silently doubled token rate is the worst failure available
    to this module, and it is worth one extra query to make it unreachable.
@@ -71,10 +71,10 @@ absent is never zero.
   `cluster=url` form still parses and still means a dedicated store with no cluster matcher, so
   per-cluster Prometheus instances keep working; moving one onto the shared store is adding
   `label=` to its entry.
-- A cluster with no entry still has no source and still says so. It is not pointed at
-  the shared store by default, because a guessed label there returns a clean empty that reads as a
+- A cluster with no entry still has no source and still says so. It is intentionally not pointed
+  at the shared store by default, because a guessed label there returns a clean empty that reads as a
   healthy idle fleet: the failure mode this whole module is arranged against.
-- Cross-cluster rollups are now possible in one query, not by client-side fan-out. Nothing
+- Cross-cluster rollups are now possible in one query instead of by client-side fan-out. Nothing
   uses that yet.
 - The dialect table is the thing to check against a live store when a panel is empty, and it should
   be checked against a live store, which is how all of the above was found.

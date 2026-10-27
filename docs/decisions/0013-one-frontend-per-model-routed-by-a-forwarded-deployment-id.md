@@ -16,8 +16,8 @@ servable by one runtime build.
 That constraint breaks the first time a model needs a frontend fix the shared build does not have.
 Kimi K3 is the case: loaded on a cluster and healthy on every worker, it made the cluster frontend
 fail registration in a loop on an unsupported tiktoken type, and `GET /v1/models` returned an empty
-list. Not just K3's entry: the list. The obvious answer, move the whole cluster's frontend onto a
-K3-specific build, is the same constraint pointed the other way: the next model on that cluster must
+list. Not just K3's entry: the list. The obvious answer (move the whole cluster's frontend onto a
+K3-specific build) is the same constraint pointed the other way: the next model on that cluster must
 now be servable by a build made for K3.
 
 The earlier recommendation rejected a frontend per deployment on the grounds that nothing could
@@ -54,8 +54,8 @@ chosen a **deployment**.
 
 ## Consequences
 
-- **Cluster selection stays global and device selection local.** The global decision, which
-  cluster, which deployment, stays the plane's, and it is not re-decided in the cluster. The
+- **Cluster selection stays global and device selection local.** The global decision (which
+  cluster, which deployment) stays the plane's, and it is not re-decided in the cluster. The
   frontend set is a cluster-local fact resolved cluster-locally. The plane's routing table gains
   nothing and learns nothing about frontends.
 - **The frontend is declared state, not an operation.** It is rendered from a recipe like everything

@@ -10,7 +10,7 @@ register-cluster screen does, connects with it, and reports what it has. Registe
 in the console and it attaches within a couple of seconds. Delete it and the agent goes back
 to waiting.
 
-The session then stays up, which is the point. `reachable` is a column the hub writes on
+The session then stays up, and that is what matters. `reachable` is a column the hub writes on
 connect and clears on disconnect, and placement refuses an unreachable cluster before it looks
 at capacity, so a reporter that hangs up leaves a fleet nothing can ever be placed on.
 
@@ -21,8 +21,8 @@ commits the devices. That is what makes a workload actually go ready locally.
     just fleet                  # all three, waiting
     just fleet eu-west-1a       # just one
 
-It is not the operator and renders nothing. For the reconcile half, whether a Deployment comes
-out right, run the real operator against kind (`just cluster-up`).
+It is not the operator and renders nothing. For the reconcile half (whether a Deployment comes
+out right), run the real operator against kind (`just cluster-up`).
 """
 
 from __future__ import annotations
@@ -146,7 +146,7 @@ FLEET: list[ClusterSpec] = [
             NodeSpec("gpu-h200-b-02", "h200-sxm-8x", "h200-141gb-sxm", "NVIDIA H200 141GB HBM3e", 143771, 8),
         ],
     ),
-    # Two small classes instead of one: "this artifact fits an H100 or an RTX 6000,
+    # Two small classes instead of one, by design: "this artifact fits an H100 or an RTX 6000,
     # at different parallelism" is the question the fit work has to answer, and it is not a
     # question a homogeneous fleet can be asked.
     ClusterSpec(

@@ -1,7 +1,7 @@
 # Contributing to Hangar
 
 Thanks for looking. Hangar is pre-release and maintained by a small team, so the process below is
-light. If something here is unclear or gets in your way, open an issue about that too.
+kept light. If something here is unclear or gets in your way, open an issue about that too.
 
 - **Bugs and feature requests**: open an issue using one of the templates.
 - **Security problems**: do not open an issue. See [SECURITY.md](SECURITY.md).

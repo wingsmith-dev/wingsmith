@@ -14,8 +14,8 @@ The real choice was **protobuf with generated types** against **JSON with hand-w
 
 ## Decision
 
-WebSocket with JSON payloads. Message types are hand-written on both sides, msgspec Structs in
-Python, structs in Go, and kept in step by a shared golden-fixture corpus, not by codegen.
+WebSocket with JSON payloads. Message types are hand-written on both sides (msgspec Structs in
+Python, structs in Go) and kept in step by a shared golden-fixture corpus instead of by codegen.
 
 ## Why
 

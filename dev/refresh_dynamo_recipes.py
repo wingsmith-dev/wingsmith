@@ -150,8 +150,8 @@ def _tokens(container: dict[str, Any]) -> list[str] | None:
 def _expand(value: str, env: dict[str, str]) -> str:
     """`${VAR}` resolved against the pod's environment, or left exactly as written.
 
-    Left as written when nothing defines it: an unresolved placeholder is accurate
-    about being unresolved, where dropping it would make a recipe look as though
+    Left as written when nothing defines it: an unresolved placeholder shows plainly
+    that it is unresolved, where dropping it would make a recipe look as though
     it never set the flag.
     """
     placeholder = _PLACEHOLDER.match(value)

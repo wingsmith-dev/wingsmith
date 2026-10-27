@@ -41,7 +41,7 @@ such as a stale `If-Match` revision or a duplicate name.
 
 **Unknown query parameters are rejected**, `400` with `code: "unknown_parameter"`, and `detail`
 carrying `unknown` (the offending names) and `accepted` (everything that route declares). The
-default web-framework behaviour, ignore what you do not recognise, is the wrong one for a
+default web-framework behaviour (ignore what you do not recognise) is the wrong one for a
 filtered collection: a misspelt, retired, or invented filter answers `200 OK` with the whole set,
 and the response is indistinguishable from a correctly filtered one. A silently ignored filter is
 a lie the caller cannot detect. The accepted set is derived
@@ -81,9 +81,9 @@ is short-lived and signed, and it is prefixed `hgrs1` where a refresh token is p
 the two cannot be confused. `POST /v1/auth/refresh` takes `{"refresh_token": "..."}` and answers
 with the same fields, **rotating the refresh token as it does so**: the one it was given stops
 working, so a stolen refresh token and the real one cannot both stay valid. `POST /v1/auth/logout`
-takes the same body, ends the session, every refresh token rotated from it and every access token
-it issued, and answers `204`. Sending the password itself as a per-request credential is
-not supported: it would end up in proxy logs and could not be rotated independently of
+takes the same body, ends the session along with every refresh token rotated from it and every
+access token it issued, and answers `204`. Sending the password itself as a per-request credential
+is intentionally not supported: it would end up in proxy logs and could not be rotated independently of
 the person who knows it.
 
 **A tenant signs in with its slug and a tenant token** (`hgrt1...`, minted under
@@ -112,8 +112,8 @@ authenticates the cluster's operator to the hub and its serving agent to the gat
 never accepts one in `Authorization`. There is no shared or fleet-wide operator token: the hub
 refuses anything that is not a live enrolment token of an enabled cluster, and the session it opens
 writes observed state for that cluster only. The one HTTP route that handles an enrolment token
-takes it in a request body, from the gateway, and answers with a cluster identity, not with
-a session (§6).
+takes it in a request body, from the gateway, and answers with a cluster identity instead
+of a session (§6).
 
 **`HANGAR_ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
 request without a credential then resolves to the admin principal. The plane refuses to start with
@@ -125,7 +125,7 @@ and it never affects the gateway, tenant or enrolment-token checks.
 `403 forbidden`, and any request body that is not `application/json` is `415
 unsupported_media_type`. A caller that is not a browser sends no `Origin` and is unaffected.
 
-Every handler is authenticated by an app-wide guard, not by naming a dependency, so a route
+Every handler is authenticated by an app-wide guard instead of by naming a dependency, so a route
 written without asking for its caller is still checked, and a future OIDC/SSO integration replaces
 how a `Principal` is produced without touching a route.
 
@@ -188,14 +188,14 @@ state it leaves behind.
 - **No telemetry on an object.** Utilization, temperature, throughput, latency, token counts are
   never fields on a device, a node or a deployment. Health, allocation, membership and residency are
   state and belong here; measurement is written to the observability stack directly and read back
-  from it under `/v1/metrics`, which belongs to no object and is a read-through, not storage;
-  see §6.
+  from it under `/v1/metrics`, which belongs to no object and is a read-through, not storage
+  (see §6).
 - **No failure-rate metric from an engine exporter, and no availability derived from one.** A
-  request that never reached a cluster, refused at the front door, routed nowhere, timed out before
-  an engine saw it, leaves no trace in what that engine reports about itself, and those are the
+  request that never reached a cluster (refused at the front door, routed nowhere, timed out before
+  an engine saw it) leaves no trace in what that engine reports about itself, and those are the
   requests an availability incident is made of. So the vocabulary has no `inference.failure_*`:
   `serving.failure_ratio` and `serving.availability` are gateway measurements or they are absent.
-  Where the threshold that calls a number an outage lives is a separate matter, not here, because a
+  Where the threshold that calls a number an outage lives is a separate matter and not covered here, because a
   threshold is not a measurement.
 
 ## 6. Resources
@@ -235,8 +235,8 @@ not created. Writing to an observed resource has no route and returns `405 metho
 | `/v1/auth` | the session verbs: `login`, `refresh`, `logout`; see §2 |
 
 **`GET /v1/system/config` is the plane telling you what it is running with**, and it is not an
-object in the model: it is the process, so it lives beside `/health` and `POST /v1/auth/login`,
-not under a resource. It answers the question a misconfigured metric store raises: which
+object in the model: it is the process, so it lives beside `/health` and `POST /v1/auth/login`
+instead of under a resource. It answers the question a misconfigured metric store raises: which
 cluster is mapped to which store, under which `cluster` label, and is there a shared endpoint at
 all. Alongside that it carries the resolved app environment, log level and format, the hub's
 host/port/path and public URL, the reactor's switch and intervals, the session TTL and reaper
@@ -282,7 +282,7 @@ omitted: "no such model" and "this model has nowhere to go" are different answer
 
 **Each upstream carries `served_model_name`, and it is usually not the endpoint's name.** A client
 addresses an endpoint by its public name; the engine behind it answers to the model id the plane
-resolved for it, by default the artifact's lowercase Hugging Face slug, `moonshotai/kimi-k3`. The
+resolved for it: by default the artifact's lowercase Hugging Face slug, `moonshotai/kimi-k3`. The
 gateway rewrites the request's `model` to this before forwarding, so the public name never has to
 equal the served one. It rides the upstream instead of the endpoint because one endpoint can front
 two clusters running different serving configurations, and there is no single answer to put one
@@ -308,8 +308,8 @@ host→tenant and hash→key in one unpaginated, `ETag`ged read: the same shape 
 `/v1/endpoints/resolved`, and polled on the same timer. It exists as its own surface because
 `key_hashes` must never reach a console response: a console or CLI read of a tenant never carries
 key material, only `/v1/tenants/{ref}/keys` does, and that route never returns a hash, only the
-plaintext once at mint. A revoked key drops out of `key_hashes`, that is the whole mechanism a
-revoke has, but its stamp still feeds the revision, so revocation is never missed behind a `304`.
+plaintext once at mint. A revoked key drops out of `key_hashes` (that is the whole mechanism a
+revoke has), but its stamp still feeds the revision, so revocation is never missed behind a `304`.
 
 **It is `Artifact.slug`, stored, and nothing else declares it.** The slug is written once on the
 way in, derived from the location that names the weights: `hf://moonshotai/Kimi-K3` becomes
@@ -321,7 +321,7 @@ the plane re-derived at read time from the artifact's `name`. Every rung was wro
 The recipe's name described the fit, `llama-3-3-70b-instruct-fp8-tp2-32k`, and moved whenever the
 fit was redone. The read-time derivation could not produce an organisation at all, because a name
 is `gpt-oss-20b` and the `openai/` only ever existed in the location URI that nothing consulted,
-while the operator started every engine on a `--model` taken from that same location. So the plane
+even though the operator started every engine on a `--model` taken from that same location. So the plane
 published one string and the frontend registered another, and the failure is invisible from both
 ends: the deployment is healthy, the worker is ready, the tunnel is open, and the request comes back
 `model_not_found` from inside the cluster. Storing it once removes the disagreement instead of
@@ -334,7 +334,7 @@ escape hatch that loses to a default is not one.
 
 **`served_model_name` on the endpoint target beats it, and it is now only for adopted deployments.**
 It exists for a process the plane did not render: somebody else's engine, answering to a name we
-can observe and not choose. It was essential while the plane derived the engine's name a second
+can observe and not choose. It mattered while the plane derived the engine's name a second
 time from its own rule, because two derivations of one value drift and these did. With the slug
 stored on the artifact and rendered from the same column, the ordinary case has nothing to correct.
 Null, the ordinary case, means the artifact's slug stands. Setting it costs a gateway poll;
@@ -351,7 +351,7 @@ holding the route behind a `304`.
 
 **`POST /v1/clusters/tunnel-auth` is the gateway asking who just dialled it**, and it is the only
 route in this API that carries a credential in a body. A serving agent inside a GPU cluster opens
-an outbound tunnel to the gateway, nothing dials into a cluster, and identifies itself with the
+an outbound tunnel to the gateway (nothing dials into a cluster) and identifies itself with the
 cluster's enrolment token, the same string the operator authenticates to the hub with and delivered
 by the same chart into the same Secret. The gateway cannot check it alone: only the plane holds the
 hash, and shipping every cluster's token material to the machine that faces the internet is exactly
@@ -374,8 +374,8 @@ either would sever in-flight work or make tunnel setup depend on the order two D
 roll. Failed verifications are budgeted per API replica, twenty in a rolling minute, then
 `429 rate_limited` until the window drains; a *known* token belonging to a disabled cluster spends
 nothing, or one misconfigured cluster's retry loop would deny every other cluster's dials. The budget
-is not sized against guessing, the token is 256 bits of random and the route needs the gateway's own
-credential to reach at all, it is there so a leaked gateway credential or a looping agent costs
+is not sized against guessing (the token is 256 bits of random and the route needs the gateway's own
+credential to reach at all); it is there so a leaked gateway credential or a looping agent costs
 the plane a bounded amount of work and announces itself.
 
 **This is a connection-setup call, not a per-request one.** The gateway verifies once per tunnel and
@@ -393,8 +393,8 @@ Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=
 permissions in one place instead of N.
 
 **`/v1/device-classes` is a dictionary, which is a fourth kind alongside declared, observed and
-derived.** A device class is the identity a GPU model is placed against, `h100-80gb-sxm` on a
-pool, a workload's serving shape, a quota and a device, and it is defined in `devices.json` in this package,
+derived.** A device class is the identity a GPU model is placed against (`h100-80gb-sxm` on a
+pool, a workload's serving shape, a quota and a device), and it is defined in `devices.json` in this package,
 read by the plane and embedded in the operator. Nothing declares one and no cluster reports one, so
 there is no `POST` and no `PATCH`: adding hardware is a change to the contract table and a release
 of both halves. Editing it over the API would leave the plane and the operator resolving vendor
@@ -402,8 +402,8 @@ strings against different dictionaries, which is the one thing a shared table ex
 
 Each entry carries `name` (the identifier, and the only string that travels on the wire) and
 `label`, the only string to put in front of a person. Alongside them is `inventory`: how many
-devices of that class the fleet holds, how many are healthy, how many are allocatable, free, so
-claimable and unclaimed, how many are allocated, and which clusters they are in. Counted from
+devices of that class the fleet holds, how many are healthy, how many are allocatable (free, so
+claimable and unclaimed), how many are allocated, and which clusters they are in. Counted from
 observed state on read, never stored. `allocatable` and `allocated` are separate counts and neither
 is the complement of the other: a device that is unschedulable and unheld is in neither, and a held
 device may be unhealthy.
@@ -461,8 +461,8 @@ configuration is its own and is not shared with anything, so muting one workload
 quietens another. There is no per-cluster override either; muting a workload mutes it in every
 cluster it runs in, which is what a workload-level knob should mean. Cluster conditions read the cluster's labels,
 and a workload nobody has imported yet reads the labels the cluster reports for it, which makes the
-manifest the only place that knob exists before promotion. An unparseable value is ignored rather
-than obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
+manifest the only place that knob exists before promotion. An unparseable value is ignored instead
+of obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
 that is already firing resolves it on the next tick, because absence from the evaluated set is what
 closes a condition.
 
@@ -495,8 +495,8 @@ plane's, and the reason is the useful part.
 **`/v1/metrics` is measurement read back, and it is one answer shape for every scope.** There is no
 `POST` anywhere under it and nothing to write: the plane forwards a question to whichever store
 holds the series and reduces the result. It is not a field on a device or a deployment because the
-two have different failure modes and different freshness, an inventory read must never get slower
-because a Prometheus is unreachable, and it is not the data plane either: the numbers were written
+two have different failure modes and different freshness (an inventory read must never get slower
+because a Prometheus is unreachable), and it is not the data plane either: the numbers were written
 to the store directly and this is only a reader.
 
 Every route answers the same object: `scope` (which question was asked), `ref` (which object, or the
@@ -507,8 +507,8 @@ scope's own word where there is none), `cluster` (null when the answer belongs t
 `unavailable`. **`value: null` means the
 store had no series, which is not zero**: an idle GPU reads 0 and an unmeasured one reads null, and
 rendering the second as the first is how a panel comes to claim a fault that is not there. Same for
-`unavailable`: it is the reason there is nothing, in words, and it is meant to be shown, not
-replaced with a number.
+`unavailable`: it is the reason there is nothing, in words, and it is meant to be shown instead
+of replaced with a number.
 
 `GET /v1/metrics/sources` is the exception and answers its own shape: which clusters can be measured
 at all, which is the first thing to check when a panel is empty. Everything else is one of these:
@@ -547,8 +547,8 @@ defect: the gateway's includes the hop, the queue in front of it and the request
 before an engine saw them.
 
 **A workload is measured once per cluster it landed in and merged afterwards, and a percentile is
-not merged.** The GPU family is selected by the devices its live allocations hold, absent, not
-zero, in a cluster where it holds none, and the inference family by the same worker-then-model rule
+not merged.** The GPU family is selected by the devices its live allocations hold (absent, not
+zero, in a cluster where it holds none), and the inference family by the same worker-then-model rule
 `deployment` follows. `breakdown[]` carries one row per cluster, keyed by cluster uid, each with that
 cluster's own numbers. In the merged `samples[]` sums add, temperatures take the worst card and
 utilizations average, but a metric read out of a histogram quantile is **omitted** when more than one
@@ -556,18 +556,18 @@ cluster answered it: two p95s have no mean, so the merged figure is absent and t
 ones stay in the breakdown.
 
 **`GET /v1/metrics/fleet` is one widened query or a refusal.** The clusters are widened into a single
-`cluster=~"…"` matcher that one store aggregates over itself, not fanned out and added up
-here: the plane is not the aggregation layer, and the arithmetic is the reason. So it answers
-`samples: []`, `breakdown: []` and an `unavailable` string when that cannot be done accurately: when
+`cluster=~"…"` matcher that one store aggregates over itself instead of being fanned out and
+added up here: the plane is not the aggregation layer, and the arithmetic is the reason. So it answers
+`samples: []`, `breakdown: []` and an `unavailable` string when that cannot be done correctly: when
 the fleet's clusters sit in more than one store ("ask each cluster"), when a store answering for a
-cluster carries no cluster label to narrow by, and when no cluster has a store at all. It carries a
-short vocabulary (traffic, its tail, and throughput) because a fleet answer is one
+cluster carries no cluster label to narrow by, and when no cluster has a store at all. It carries an
+intentionally short vocabulary (traffic, its tail, and throughput) because a fleet answer is one
 query per metric over every cluster's series and the whole vocabulary would be a page of them.
 
 **`GET /v1/metrics/serving` and `/v1/metrics/endpoints/{ref}` are read from the gateway and from
-nowhere else**, which is the point of the `serving` family (§5): the requests that make an
-availability number interesting are the ones no cluster ever saw. The join is exact, the endpoint
-uid is a label on the gateway's series, and the total is asked for as a total, not assembled
+nowhere else**, which is the reason for the `serving` family (§5): the requests that make an
+availability number interesting are the ones no cluster ever saw. The join is exact (the endpoint
+uid is a label on the gateway's series), and the total is asked for as a total instead of assembled
 from a page of endpoints, which would move when somebody pages. `breakdown[]` on `/serving` is one
 row per endpoint, and the gateway's two reserved keys are labelled, not hidden: `_catalog` is
 `GET /v1/models`, answered from the routing table by no endpoint at all, and `_unknown` is a caller
@@ -606,8 +606,8 @@ objects share nothing. A quota is a project's device ceiling per device class, c
 placement when a workload is admitted; its `guaranteed_devices` and `over_quota_weight` are recorded
 but not yet enforced, because nothing reserves a floor for one project against another or orders
 projects by weight. A serving quota is one endpoint's committed request
-rate, token rate and concurrency, `committed_rpm`, `committed_tpm`, `max_concurrent_requests`,
-`max_output_tokens`, `burst_rpm`, `ramp_up_seconds`, `on_exceed`, `queue_timeout_ms`, with the
+rate, token rate and concurrency (`committed_rpm`, `committed_tpm`, `max_concurrent_requests`,
+`max_output_tokens`, `burst_rpm`, `ramp_up_seconds`, `on_exceed`, `queue_timeout_ms`), with the
 objective it is sold under: `success_rate_objective`, the frozen `availability_objective`
 definition and `objective_window_seconds`. There is at most one per endpoint, it is never
 auto-created, and `endpoint` cannot be patched. Every field is declared; there is no `usage`,
@@ -630,8 +630,8 @@ one tenant is being served: `GET /v1/serving` is every model with its `state` (`
 /v1/serving/models/{ref}` adds the limits it is served under and the protocols it answers;
 `.../metrics` is that model's traffic at the gateway, in the `/v1/metrics` shape and measured over
 this tenant's own requests; `.../sla` is the service-level report described under `/v1/metrics`
-above. Nothing on it takes a tenant from the caller, the scope comes off the principal, and a
-served model is not the endpoint object: targets, clusters, weights and failover order
+above. Nothing on it takes a tenant from the caller (the scope comes off the principal), and a
+served model is intentionally not the endpoint object: targets, clusters, weights and failover order
 are ours and are not shown. An admin reads the same view for any tenant at
 `/v1/tenants/{tenant}/serving`, with the same three routes beneath it, rendered by the same service
 so the two cannot drift. `GET /v1/metrics/tenants/{ref}` is the admin's measurement of one tenant's
@@ -653,12 +653,12 @@ authority, adoption) lives on the Deployment.
 `/v1/recipes`: the engine, its images, the parallelism, the cache settings and the resource request
 are a nested `serving` object on the workload, sent on `POST /v1/workloads` and returned by
 `GET /v1/workloads` and `GET /v1/workloads/{ref}`. It mirrors `deployment.desired.serving` in
-`MESSAGES.md` field for field, `engine`, `engine_runtime_version`, `engine_runtime_image`, `frontend_image`,
+`MESSAGES.md` field for field (`engine`, `engine_runtime_version`, `engine_runtime_image`, `frontend_image`,
 `engine_args`, `quantization`, `dtype`, `parallelism`, `context_length`, `max_batch_tokens`,
 `kv_cache_dtype`, `kv_cache_fraction`, `prefix_cache_enabled`, `prefix_cache_config`, `resources`,
-`overlay` and `router`, and adds `artifact`, which is the weights this configuration serves and is required,
-plus `capabilities` and `imported_args`. `served_model_name` stays on the workload beside the block,
-not inside it, because it is a public name and not part of the footprint.
+`overlay` and `router`) and adds `artifact`, which is the weights this configuration serves and is required,
+plus `capabilities` and `imported_args`. `served_model_name` stays on the workload beside the block
+instead of inside it, because it is a public name and not part of the footprint.
 
 Reuse is not something a caller arranges. Two workloads declaring the same configuration are not
 made to share a row; they simply have the same digest, and that is the whole mechanism.
@@ -667,7 +667,7 @@ made to share a row; they simply have the same digest, and that is the whole mec
 by a sha256 over the canonical JSON of exactly the fields that reach an engine: the block above,
 with the artifact as its uid. The plane recomputes it on every write and a body carrying one is
 `422 invalid`: it is an answer, not an assertion. `imported_args`, `capabilities`,
-`served_model_name` and `labels` are outside it, as are scale and placement, because the
+`served_model_name` and `labels` are intentionally outside it, as are scale and placement, because the
 question it answers is "would this produce the same running process" and none of those change the
 process.
 
@@ -679,10 +679,10 @@ Each entry carries `number`, `serving_digest`, `artifact`, `reason`, `note`, `cr
 `{"serving": <that>}` and the workload returns to that configuration, validated on the way in by
 exactly the checks that validate a hand-written patch.
 
-There is no rollback verb. A revision that would no longer pass validation, a device
-class the catalogue has dropped, a runtime version the shape can no longer hold, is refused by the
+There is intentionally no rollback verb. A revision that would no longer pass validation (a device
+class the catalogue has dropped, a runtime version the shape can no longer hold) is refused by the
 checks that refuse any other patch, where a restore path of its own would be a second, weaker
-description of a legal configuration. `artifact` sits beside `serving`, not inside it for the
+description of a legal configuration. `artifact` sits beside `serving` instead of inside it for the
 same reason the patch has no `artifact` field: the weights are not patchable, and a revision from
 before a weights swap is a record, not something to reapply blind.
 
@@ -703,7 +703,7 @@ questions.
 
 `number` counts from 1 within the workload and never rewinds: going back to revision 2 appends
 revision 5 carrying revision 2's body. A revision is appended by a create, a serving `PATCH`, a
-`workload.reshape` and a promotion, the writes that move `serving_digest`, and by nothing else. A
+`workload.reshape` and a promotion (the writes that move `serving_digest`) and by nothing else. A
 patch that only moves `labels`, `overrides` or the adapter list files none, because none of those is
 in the body; neither does a patch that arrives at the configuration already in force. `reason` names
 which write it was: `created`, `updated`, `reshaped`, `promoted`, or `imported` for the one entry
@@ -715,8 +715,8 @@ running, recorded from the pre-image of its first serving edit.
 replicas: each deployment carries `live_digests`, a `{serving_digest: ready_replicas}` map read off
 the configuration each ready replica actually came up on. One entry is a settled deployment, two is a
 rollout in progress, and an entry that is not the workload's current digest is a cluster still
-running what it was asked for last time. It is a map and not a field because during every roll, and
-across clusters for as long as an agent stays disconnected, several configurations are live at once,
+running what it was asked for last time. It is a map and not a field because during every roll (and
+across clusters for as long as an agent stays disconnected) several configurations are live at once,
 and there is no scalar that is true of all of them. An empty map is "no ready replica has reported
 one", never "none".
 
@@ -728,8 +728,8 @@ cluster; it is never turned into flags, because reading a flag off a running pod
 asserting it is a separate act. Only `engine_args` is rendered.
 
 **`resolved_engine_args` is derived on read and stored nowhere.** It is the flags the operator would
-render: the ones the plane derives from the block, parallelism, context length, dtype, quantization,
-the KV-cache settings, with `engine_args` laid over the top, so a key the caller declared wins over
+render: the ones the plane derives from the block (parallelism, context length, dtype, quantization,
+the KV-cache settings), with `engine_args` laid over the top, so a key the caller declared wins over
 the derived one under the same spelling. It is on the read shape only, it is never accepted on a
 write, and it is the one place to look before asking why an engine came up with a flag nobody typed.
 
@@ -743,8 +743,8 @@ settings are refused beside any `mode` other than `kv`. A violation is `422 inva
 block replaces whole, like `cache`: send every field you mean to keep, and `{}` clears it. It is part
 of `serving_digest` only while something in it is set, so a workload that never declares a router
 keeps the digest it had. Setting one is a serving change like any other and bumps every deployment's
-generation; on the cluster it rolls the frontend and never a worker. There is no passthrough for any
-other `DYN_*` variable.
+generation; on the cluster it rolls the frontend and never a worker. There is intentionally no passthrough
+for any other `DYN_*` variable.
 
 **Scale is declared as a total and read as a share.** `min`, `max` and `desired` on a workload count
 across every cluster it may use; each deployment's `min_replicas` / `max_replicas` /
@@ -778,7 +778,7 @@ operator, deciding what to render.
 **`/v1/deployments` is read-mostly.** `POST /v1/deployments` and `DELETE /v1/deployments/{ref}` do
 not exist: placement creates a deployment when it expands a workload and removes it when it stops
 placing there. Taking a workload off one cluster is a `workload.drain` operation naming that
-cluster, or a scale change, not a DELETE of the per-cluster row. What remains is `GET` list and
+cluster or a scale change, not a DELETE of the per-cluster row. What remains is `GET` list and
 detail, a `PATCH` narrow enough to hold only per-cluster switches, and the authority verb below.
 Filters: `cluster`, `workload`, `project`, `phase` (which reads the deployment's admission phase).
 
@@ -815,7 +815,7 @@ to the cluster.
 **`POST /v1/deployments/{ref}/authority`** moves it between `observed` and `managed`, and is the only
 thing that decides whether the operator may act (ADR 0009). The two directions are not symmetric.
 Taking management of an adopted workload requires the `fingerprint` the caller was shown, compared
-against the *current* sighting, not against `adopted_fingerprint`: that field records what
+against the *current* sighting instead of `adopted_fingerprint`: that field records what
 was true at promotion, and the question here is whether you are looking at what is running now.
 Releasing back to `observed` needs nothing and is always allowed: the plane letting go never writes
 to a cluster, so there is no gap to fail closed on. A deployment the plane created is `managed` from
@@ -823,7 +823,7 @@ birth, having never been anything else.
 
 **`/v1/tenants` exists because a project cannot be created without one.** A project always carries
 the tenant it hangs off, so no reader has to join, and `POST /v1/projects` resolves `tenant` to an
-existing row. The collection is thin: a
+existing row. The collection is intentionally thin: a
 slug, a name and a switch. `slug` is absent from `PATCH` because it namespaces every project slug
 beneath it, and `DELETE` is refused with `409` while any project still hangs off the tenant: the
 foreign key cascades, and a delete that silently took quotas and allocations with it is not a delete
@@ -834,7 +834,7 @@ refuse over.
 `ingress` is `internal` or `public` and says which gateway listener the tenant's traffic arrives on;
 `auth` is `none` or `api_key` and says whether the gateway checks a key on it; `host` is the single
 name that resolves to the tenant, matched against the request's `Host` header. `public` with `none`
-is accepted, not refused: a tenant that wants unauthenticated public serving is free to
+is accepted instead of refused: a tenant that wants unauthenticated public serving is free to
 declare it, and the gateway does not second-guess the choice. `host` is one column, not a table:
 nothing needs a second name today, and adding one later is an additive migration.
 
@@ -842,12 +842,12 @@ nothing needs a second name today, and adding one later is an additive migration
 distinct from `/v1/tenants/{ref}/tokens`: a token signs in to the console, a key calls the gateway,
 and keeping them in separate tables means revoking one can never touch the other. Only the sha256 of
 a key is stored; the plaintext is on the mint response exactly once and nowhere else, ever. One
-tenant holds many keys, one per caller, so revoking one caller's key never revokes another's.
+tenant holds many keys (one per caller), so revoking one caller's key never revokes another's.
 
 **`GET /v1/discovered/{ref}/serving-draft` reads a sighting as the objects needed to adopt it.** A
 `GET` because it is one: the same sighting derives the same draft every time, and asking changes
-nothing. It returns the proposed `serving` block, engine and version from the image tag, context
-length and parallelism from the container's argv, and, under `artifact`, the weights that block
+nothing. It returns the proposed `serving` block (engine and version from the image tag, context
+length and parallelism from the container's argv) and, under `artifact`, the weights that block
 would point at. The draft's `imported_args` is the whole argv as flag/value pairs, including
 arguments that also populated a first-class field, because a record that keeps only what it has
 columns for cannot be checked against the cluster by the person confirming it. Its `engine_args` is
@@ -869,7 +869,7 @@ name, format, size, licence and parameter count, the source locations, a `servin
 suggested device count and context length that is a suggestion and is never applied by anything, and
 `existing_id` when the catalogue already holds that digest. It is a preview endpoint and not a
 second door into the catalogue: `POST /v1/artifacts` remains the only way to create one, so the
-claim above, one way to create each object instead of two that must agree, still holds. Unknown
+claim above (one way to create each object instead of two that must agree) still holds. Unknown
 slug is `404 not found`; a gated repository is `422 invalid` naming the gate and the token variable
 to set, because the fix is a credential and not a retry; a malformed source is `422 invalid`; the
 Hub being down or refusing is `500`, since the failure is upstream of us and the caller's request
@@ -899,7 +899,7 @@ resolved draft underneath whatever the caller stated: `name`, `kind` and `projec
 `metadata` merges with the caller's keys on top, and `digest` and `verified` always come from the
 draft, because those two are the plane's answer and not the caller's. Sending both `source` and
 `digest` is `422 invalid` instead of a precedence rule: the two disagree or they are redundant, and
-neither is worth guessing at. Sending neither is refused too, an artifact without a digest has no
+neither is worth guessing at. Sending neither is refused too, because an artifact without a digest has no
 identity, as is a request that resolves to no name, since an artifact nobody can name cannot be
 found again.
 
@@ -937,8 +937,8 @@ cannot do it, and that does block one.
 **`POST /v1/artifacts/{ref}/refresh` is that operation.** It re-reads the artifact's own source and
 rewrites only what is derived from it: `format`, `size_bytes`, `licence`, `parameter_count`,
 `verified`, and the derived keys of `metadata`. The case it exists for is the plane learning to read
-something it did not read before, an attention shape, a native quantization, an active parameter
-count, which leaves every artifact registered until then missing it, with no fix but deleting the
+something it did not read before (an attention shape, a native quantization, an active parameter
+count), which leaves every artifact registered until then missing it, with no fix but deleting the
 artifact (breaking every workload that names it) or retyping the metadata by hand. There is no body:
 the source is already on the artifact, and letting a caller name a different one would be a way to
 move an artifact onto weights it was not registered from. A `POST` and not a `PATCH` because it
@@ -949,13 +949,13 @@ moved, dotted for metadata keys (`metadata.shape`); an empty list is a successfu
 the source saying exactly what was already recorded, and no write happens in that case, so nobody's
 `If-Match` goes stale because somebody pressed the button. `notes` is the draft's own `{level,
 message}` remarks, unfiltered: a repository that has since become gated says so here. Metadata is
-overlaid key by key, not replaced, so labels a person put on the artifact survive; the
+overlaid key by key instead of replaced, so labels a person put on the artifact survive; the
 derived keys are rewritten even to null, because a key the repository no longer publishes is a fact
 about the repository.
 
 `upstream` is refreshed differently again: a re-read fills only the claims that are still blank and
 overwrites none of them. The Hub speaking a second time does not get to overwrite what a person
-asserted, including the `false` that a resolve never writes.
+asserted, and that includes the `false` that a resolve never writes.
 
 **A source that now resolves to a different digest is `409 conflict`, never applied.** That is not a
 stale record to be corrected, it is different bytes, and different bytes are a different artifact:
@@ -969,15 +969,15 @@ because there is nowhere to go back and ask.
 time, stored nowhere, and it reserves nothing: a class it calls a fit still has to survive placement.
 Query parameters are `scope` (`fleet` or `catalog`), `context_length`, `concurrency`,
 `quantization`, `devices_per_node`, `max_devices` and `limit`. `fleet` asks *what can I run right
-now*, only classes a cluster has reported, and `catalog` asks *what would I need*, adding every
-class the device table names, so a fit on hardware we own none of is a procurement answer rather
-than a bug in the first. `context_length` defaults to the artifact's own declared window, and
+now* (only classes a cluster has reported) and `catalog` asks *what would I need*, adding every
+class the device table names, so a fit on hardware we own none of is a procurement answer instead
+of a bug in the first. `context_length` defaults to the artifact's own declared window, and
 `quantization` to however the weights ship; overriding either is how "what if we quantized this" is
 asked without registering anything.
 
 Each row carries the layout as well as the verdict: `device_count`, `node_count`,
-`devices_per_node`, `tensor_parallel` and `pipeline_parallel`. Nodes are the unit to act on, "four
-nodes of B300" is an order and "32 devices" is a number to divide, and a node is however many
+`devices_per_node`, `tensor_parallel` and `pipeline_parallel`. Nodes are the unit to act on ("four
+nodes of B300" is an order and "32 devices" is a number to divide), and a node is however many
 devices share a coherent interconnect, eight on an HGX board and seventy-two on a GB300 NVL72.
 `tensor_parallel` is bounded by the node because a tensor group over the backend fabric is the one
 split that does not work; `pipeline_parallel` crosses freely, so a multi-node replica is normal and
@@ -986,20 +986,20 @@ devices *offer*, net of the utilization envelope and the per-device CUDA reserve
 `memory_mib_per_device` by `device_count` for the nameplate, and note that comparing `required_gb`
 against the nameplate over-promises by about fifteen percent.
 
-Those fields are the *recommendation*, the fewest cards carrying the full window, and `layouts`
+Those fields are the *recommendation* (the fewest cards carrying the full window), and `layouts`
 is the rest of the answer: every count on that class that serves, ascending, each with its own
 `device_count`, `node_count`, `tensor_parallel`, `pipeline_parallel`, `aggregate_gb`,
 `required_gb`, `context_length`, `reduced`, `supply_short` and `reason`. The recommended count is
-one of them. Counts below it are the trade of context for cards, four H200 at 32k instead of
-eight at 131k is a shape somebody declares, and it leaves half the node for another
-workload, and counts above it stop at one node, or at the recommendation when a replica already
+one of them. Counts below it are the trade of context for cards: four H200 at 32k instead of
+eight at 131k is a shape somebody chooses to declare, and it leaves half the node for another
+workload. Counts above it stop at one node, or at the recommendation when a replica already
 spans several, because widening past the fabric to buy KV cache is a throughput decision nothing
 here can price. A class that fits nowhere carries no layouts, and a layout the fleet holds too few
 cards for is listed with `supply_short`, not hidden. `weights_gb` and `kv_counted` are not
 repeated per layout: they belong to the artifact and are the same for every entry.
 
-`fits` and `possible` are two verdicts and not one. `possible` is the arithmetic half, the
-weights sit on the cards, the attention heads divide across the tensor group, and it is the half a
+`fits` and `possible` are two verdicts and not one. `possible` is the arithmetic half (the
+weights sit on the cards, the attention heads divide across the tensor group), and it is the half a
 caller may refuse over, because it is what the plane itself refuses over when the workload is
 submitted. `fits` adds the estimated half: the window, the batch and the KV cache, sized against a
 flat envelope. A row that is `possible` and not `fits` is the sizing's opinion, and a caller that
@@ -1027,8 +1027,8 @@ does not fail the read, so a page that raced a delete still renders. The answer 
 `usage` is read by its id.
 
 **`/v1/artifacts/{ref}/baselines` is the declared quality floor, one row per dataset and metric.**
-Full CRUD, `GET` (filters `dataset`, `metric`), `POST`, `PATCH` on
-`/v1/artifacts/{ref}/baselines/{baseline}`, `DELETE`, because a floor is somebody's assertion about
+Full CRUD (`GET` with filters `dataset` and `metric`, `POST`, `PATCH` on
+`/v1/artifacts/{ref}/baselines/{baseline}`, `DELETE`), because a floor is somebody's assertion about
 these weights and not something the plane observed. `dataset` and `metric` identify the row within
 the artifact and are absent from `PATCH`: moving a floor to another eval is a different baseline. A
 second row for a pair already declared is `409 conflict`, since two floors for one eval is two
@@ -1039,12 +1039,12 @@ argues with the signature. `tolerance_pct` is the recorder's own slack and is no
 floor: that belongs to the criteria version and is resolved when a verdict is derived (§7.1). The
 list is an ordinary paged envelope (`limit`, `cursor`) and `{ref}` is a uid or a name as everywhere
 else, while `{baseline}` is the `abl_` uid only. A baseline that belongs to another artifact is `404`
-from under this one, not edited across the boundary: the artifact in the path is part of the
+from under this one instead of being edited across the boundary: the artifact in the path is part of the
 row's identity, not a hint about where to look.
 
 **`cluster` is optional on `POST /v1/workloads`**, and leaving it out is the normal path: the
 plane picks the clusters from the workload's device shape, the project's quota, the policies attached
-to the workload, and what the clusters report free. Naming one is an override, it is checked for
+to the workload, and what the clusters report free. Naming one is an override: it is checked for
 existence and nothing else, because an operator who names a cluster has said something the scheduler
 is not entitled to overrule, and it forces a single deployment. When nothing can hold the workload
 the create is `409 conflict` and the body carries a verdict per cluster, each with the numbers it
@@ -1064,11 +1064,11 @@ sometimes does nothing.
 
 What is created is an ordinary **Policy**, named `<workload>-placement`, attached with
 `subject_type=workload`, and readable at `GET /v1/policies?subject_type=workload&subject={ref}`.
-That is deliberate, not incidental: placement constraints are Policy, and these two fields
+That is deliberate and not incidental: placement constraints are Policy, and these two fields
 are a shortcut past `POST /v1/policies` instead of a second mechanism beside it. The shortcut has
 to exist because placement expands inside the create, so a policy attached after the response has
 already missed the decision it was meant to constrain. Being a real policy is what makes the
-constraint hold afterwards, it is read back through its attachment on every later expansion, so a
+constraint hold afterwards: it is read back through its attachment on every later expansion, so a
 workload scaled past what its region can hold takes a shortfall instead of quietly spilling out of
 it, and editing or deleting that policy is how the constraint is changed or lifted.
 
@@ -1090,10 +1090,10 @@ from its deployments and stored nowhere: `running` when all of them are, `failed
 otherwise the least advanced among them.
 
 `status` is null until a cluster has reported at all, which is every deployment's first seconds and
-the permanent state of one whose cluster cannot reach the hub. Null is therefore an answer, nobody
-has said anything, and is not the same as a deployment that is idle. `reason` is a closed set the
+the permanent state of one whose cluster cannot reach the hub. Null is therefore an answer (nobody
+has said anything) and is not the same as a deployment that is idle. `reason` is a closed set the
 operator owns and this API does not narrow: a cluster runs its own build, and a sub-state this plane
-predates must reach the screen, not be rejected on the way in. The set is in `MESSAGES.md`.
+predates must reach the screen instead of being rejected on the way in. The set is in `MESSAGES.md`.
 
 **`POST /v1/placement/preview`** asks the same question and writes nothing. It returns the decision
 the create would have made, including the shares it would give each cluster. It exists because "why
@@ -1101,8 +1101,8 @@ did it not land in iad-1" is asked before anything is created, and the decision 
 reason per cluster.
 
 It takes **exactly one of `workload` and `shape`**, and `project` is required with either. Naming
-both, or neither, is `422 invalid`, "a preview names exactly one of workload and shape", rather
-than a precedence rule, because the two forms answer for different subjects and guessing which one
+both, or neither, is `422 invalid` ("a preview names exactly one of workload and shape") instead
+of a precedence rule, because the two forms answer for different subjects and guessing which one
 was meant would return a verdict about something the caller did not ask about. `priority_class` and
 `replicas` are optional in both forms and override whatever the subject declares, which is what
 keeps this a hypothetical instead of a report on a placement that already happened.
@@ -1128,7 +1128,7 @@ Only `device_class` is required inside `shape`; the rest default to `1`, `0`, `1
 
 **The shape form exists because the question predates the object.** A create form asks "would this
 fit" before anything is committed, and for a while this endpoint could not answer it: narrowing the
-subject to a workload, on the argument that with recipes gone there was nothing smaller to name,
+subject to a workload (on the argument that with recipes gone there was nothing smaller to name)
 was right about the objects and wrong about the question. A recipe used to be able to answer it only
 because a recipe was declarable before any workload referenced it, and removing the object silently
 removed that property with it. The console found it as a real regression: the verdict panel had
@@ -1139,7 +1139,7 @@ the shape directly, which is what it always wanted. That is strictly better than
 the removal, not merely equal to it: the create form used to get a real verdict only when it reused
 an existing recipe, and none at all when it was declaring a new footprint. Both paths get one now.
 
-**`shape` is spelled with the workload's own column names**: `device_class`,
+**`shape` is spelled with the workload's own column names**, by design: `device_class`,
 `device_count`, `device_memory_mib_min`, `tensor_parallel`, `requires_single_topology_domain` and
 `topology_domain_kind` are the fields the object carries, so a preview cannot describe a shape
 differently from the object it previews. A second vocabulary here would be a second way to say the
@@ -1162,9 +1162,9 @@ type and a target, never `POST /v1/nodes/{id}/drain`.
 { "type": "node.drain", "target": "node:gpu-node-04", "cluster": "iad-1", "reason": "firmware" }
 ```
 
-A target is written one of two ways: a prefixed id, or a kind-qualified name; `node:gpu-node-04`,
+A target is written one of two ways: a prefixed id, or a kind-qualified name such as `node:gpu-node-04`,
 `device:GPU-8f3c...`, `cluster:iad-1`, `workload:llama-70b`, `deployment:llama-70b`,
-`component:operator`, `artifact:llama-3-70b`. The bare name every other path segment accepts is not a form
+`component:operator`, `artifact:llama-3-70b`. The bare name every other path segment accepts is intentionally not a form
 here. Elsewhere the path says what kind of object it is addressing; a target does not, and the kind
 has to be answerable at creation: `node.drain` against a `dev_...` is a category error caught here
 instead of three hops downstream in the operator, so a target reference carries its own kind
@@ -1191,13 +1191,13 @@ makes. `desired` is required in both directions and never inherited: the unit un
 changes with the topology, so a workload at three replicas would silently become three *groups*:
 seventy-two devices at 1:2 and TP8. `min` and `max` are optional and default to `desired` for the
 same reason. A flip that names the topology already in force is refused; a reshape changes which
-processes exist. The result carries the expected unavailability, every worker reloads its weights,
-and the peak device count is the sum of the two footprints while the old generation is still up,
+processes exist. The result carries the expected unavailability (every worker reloads its weights,
+and the peak device count is the sum of the two footprints while the old generation is still up)
 so somebody can decide whether to take it now.
 
 These four are **plane-local**: they change declared state and re-run the expansion, and they are
-never dispatched to a cluster. `cluster` is therefore absent from a workload-targeted operation,
-not required, and what reaches the clusters is ordinary declared state with different
+never dispatched to a cluster. `cluster` is therefore absent from a workload-targeted operation
+instead of required, and what reaches the clusters is ordinary declared state with different
 shares. Every other operation type still needs the cluster its target belongs to.
 
 Returns an Operation with an id and a phase, polled at `GET /v1/operations/{id}`. This follows from
@@ -1228,7 +1228,7 @@ second way to cancel.
 **`image` is the harness image the run actually pulled**, recorded on the run and echoed back on
 reads. It resolves from the named harness's pinned default unless the creation body overrides it,
 which is the escape hatch for reaching a release this plane has not pinned yet. Only the shape of
-the reference is validated here, whether it exists is the registry's answer, and a wrong one
+the reference is validated here (whether it exists is the registry's answer), and a wrong one
 surfaces as a pull failure on the run.
 
 **A run's `summary` is the harness's own output and is not normalised.** Two runs are comparable
@@ -1243,8 +1243,8 @@ measured after both have moved on. The digest is stronger than the id and versio
 because a digest cannot drift: two runs carrying the same `serving_digest` measured the same
 configuration, whatever has since been edited on the workload they came from.
 
-**`GET /v1/benchmarks/serving/{digest}` is the rollup, and it is keyed on the configuration rather
-than on the object that declared it.** It answers `serving_digest`, `run_count`,
+**`GET /v1/benchmarks/serving/{digest}` is the rollup, and it is keyed on the configuration instead
+of the object that declared it.** It answers `serving_digest`, `run_count`,
 `graded_run_count` and `peak_output_tokens_per_second` for one `svg_` digest. A digest is what a
 measurement is actually about: two workloads declaring the same engine, parallelism and cache
 settings over the same artifact run the same process, so keying this per workload would split one
@@ -1278,7 +1278,7 @@ possible condition, so a check that could reach one would be a check that can ne
 
 **`knee` is always an object and `found` is false more often than it is true.** It names the
 `method` (`first-crossing`), the `metric`, and the `threshold` it was measured against, which comes
-from the pinned criteria version through the input-length band the steps landed in, never from a
+from the pinned criteria version through the input-length band the steps landed in, and never from a
 constant in this API. Every false carries its own `reason`: a ramp that never crossed, a ramp that
 started above the ceiling, a ramp too short to have a crossing, and a curve that crossed back under
 are four different answers. `?criteria=` re-reads the curve against another pinned standard, which

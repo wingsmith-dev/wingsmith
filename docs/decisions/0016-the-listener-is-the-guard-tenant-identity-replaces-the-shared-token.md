@@ -6,14 +6,14 @@
 
 The gateway's own README used to say "no authentication, metering, or billing," and `Guard`'s doc
 comment said "this is not user authentication and must not grow into it." Both were written when
-the gateway had exactly one caller, the operator's own inference edge, which authenticates its users
-before calling here, and the only question worth asking was whether a request came from that caller
+the gateway had exactly one caller (the operator's own inference edge, which authenticates its users
+before calling here), and the only question worth asking was whether a request came from that caller
 at all. `HANGAR_GATEWAY_TOKEN` answered it: a shared secret, checked in constant time, with no notion
 of who was on the other end beyond "holds the current token."
 
 A second tenant changes the question. A tenant that calls the gateway directly, not through
 the operator's edge, means the gateway now has to know *which* tenant a request belongs to, not only
-whether it is allowed to ask at all. A shared secret cannot answer that, every holder of
+whether it is allowed to ask at all. A shared secret cannot answer that: every holder of
 `HANGAR_GATEWAY_TOKEN` looks identical to the hop that checks it, and widening `Guard` to carry a
 tenant name per token would have turned the one thing its own doc comment forbade into the thing it
 became: a credential store, and the wrong shape of one, since revoking one caller would mean
@@ -37,7 +37,7 @@ resolution.
    tenant declares `auth: api_key`, a presented key's hash must belong to *that* tenant specifically,
    not to some tenant, which is what would let a key stolen from one tenant authenticate as another.
 3. **`Guard`, `TokenGuard` and `HANGAR_GATEWAY_TOKEN` are deleted, not deprecated.** Their entire
-   job, is this hop being called by the system in front of it, is now answered by the zone. A
+   job (is this hop being called by the system in front of it?) is now answered by the zone. A
    shared secret checked in front of both zones alike would have been a weaker claim sitting beside
    a stronger one for no reason.
 4. **Routing is scoped by tenant on the public zone only, and a stranger's model is `404`.**
@@ -66,8 +66,8 @@ operator's edge already does for its users. `auth: api_key` identifies a *caller
 tenant-scoped credential the operator hands out, not a person.
 
 **Rate limiting is still `ServingQuota`'s job, not this one's.** This decision is a prerequisite for
-it, `ServingQuota` enforcement needs an identified caller and a place in the pipeline to sit, and
-the zone/tenant stages provide both, but no limit is enforced here.
+it: `ServingQuota` enforcement needs an identified caller and a place in the pipeline to sit, and
+the zone/tenant stages provide both. No limit is enforced here.
 
 ## Consequences
 

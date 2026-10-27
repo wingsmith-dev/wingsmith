@@ -31,15 +31,15 @@ already uses:
 - **Id prefix**: `clu_` over `cls_`, arbitrary between the two but picked and applied
   contract-wide as a single spelling, lowercase Crockford body.
 - **`api_endpoint`**: dropped. The CLI never had it; the console exposed it on cluster detail. The
-  plane never dials a cluster, the operator dials out and its identity is its credential, so an
+  plane never dials a cluster: the operator dials out and its identity is its credential, so an
   address on the object would be decoration that looks like configuration.
 - **`kubelet_version`**: dropped. It was on the console's node shape and was already flagged there
   as leaking Kubernetes into the wire format, which contradicts the rule that the operator is the
   only thing that knows Kubernetes exists.
 
 Both clients independently arrived at the same two patterns without coordinating, and both survived
-as written: a declared/observed version pair on components, and a per-device-class rollup rather
-than a single device count.
+as written: a declared/observed version pair on components, and a per-device-class rollup instead
+of a single device count.
 
 ## Consequences
 

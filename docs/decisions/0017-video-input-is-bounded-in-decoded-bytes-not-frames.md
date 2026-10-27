@@ -19,8 +19,8 @@ without it, so the field no longer reaches `VideoMediaIO.merge_kwargs` and canno
 ## Context
 
 A `video_url` request could exhaust a worker's host memory. vLLM's video loader preallocates one
-array for the whole clip at native resolution, `np.empty((frames, h, w, 3))`,
-`vllm/multimodal/video.py:429`, and the runtime image stamped `DYN_MM_VIDEO_NUM_FRAMES=-1`, which
+array for the whole clip at native resolution (`np.empty((frames, h, w, 3))`,
+`vllm/multimodal/video.py:429`), and the runtime image stamped `DYN_MM_VIDEO_NUM_FRAMES=-1`, which
 means every frame. Computed: five minutes of 1080p30 is 52 GiB, twenty minutes 209 GiB, twenty
 minutes of 4K 834 GiB. The recovery and pyav paths build a list and `np.stack`, so those double.
 `VLLM_MEDIA_LOADING_THREAD_COUNT` is 8, so that is the multiplier. The clip arrives as a URL, so the
@@ -36,8 +36,8 @@ Frames are the wrong unit to fix it with. The quantity that exhausts a host is
 still 150 GiB. Nothing in the stack bounds the other factor usefully: `--media-io-kwargs` has no
 resolution key, `max_duration` is dead on this path (`video.py:1010`, "ignored here"; K3 registers no
 video processor so it gets the default `opencv` backend), and no decode backend anywhere downscales
-while decoding. `VLLM_MAX_IMAGE_PIXELS` does guard video frames in this image,
-`_check_frame_pixel_limit`, ahead of upstream main, but it raises, not resizes, and no
+while decoding. `VLLM_MAX_IMAGE_PIXELS` does guard video frames in this image
+(`_check_frame_pixel_limit`, ahead of upstream main), but it raises instead of resizing, and no
 provider rejects a clip for being 4K.
 
 There is no vendor number to match. Moonshot publishes a 100 MiB per-file cap and a 1080p
@@ -82,7 +82,7 @@ with a `SERVING_FLAGS` row.
 
 Bound 1 is free and lossless on its own: the runtime layer downsamples to 8 fps anyway, and
 `_clip_facts` already derives the delivered rate from `frames_indices` for exactly this case. It cuts
-30 fps source by 3.75×. It does **not** make twenty minutes safe, 9,600 frames at native 1080p is
+30 fps source by 3.75×. It does **not** make twenty minutes safe: 9,600 frames at native 1080p is
 still ~60 GiB, so bound 2 is what unlocks the stated length.
 
 Bound 5 is not optional. `media_io_kwargs` is a per-request API field, so without it bound 1 is one
@@ -115,13 +115,13 @@ algebraic peak that assumes an exact resize: `navit_resize` floors in pixels, so
 (57,600) was the twenty-minute clip's cost, not the ceiling; the worst admissible clip is 9,567
 frames of 27x7167 at **227,240 pads**. Bound 4's 100 MiB fetch cap **does not cover `data:` URLs**,
 which are bounded only by the gateway's 32 MiB body cap and only when they cross the gateway. The
-shape of the bound, flat in duration and resolution, is unaffected.
+shape of the bound (flat in duration and resolution) is unaffected.
 
 **The 227,240-pad ceiling describes a single resize.** The runtime once performed two on narrow
-sources, which made the gate conservative by about 1.64x against real requests, not tight;
+sources, which made the gate conservative by about 1.64x against real requests instead of tight;
 with that fixed the figure describes the runtime again, and the declared number never moved. Bound
 3's 1 GiB is also unreachable while bound 2 is in force (the worst admissible decoded clip is
-717.5 MiB), so **nothing on the mp4 path refuses on size**, only malformed input, bound 4 and bound
+717.5 MiB), so **nothing on the mp4 path refuses on size**: only malformed input, bound 4 and bound
 6 refuse. That is the intended shape, not a hole.
 
 **The raised gate costs zero KV, measured.** The 227,240-pad gate and the stock 44,640 allocate the

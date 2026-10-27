@@ -33,7 +33,7 @@ knows it by are the same string because one is derived from the other.
 ## Decision
 
 1. **`Cluster.metrics_label` is declared state on the registry row.** It is the `cluster` label value
-   this cluster's series are stamped with in the shared store, not an endpoint, not a credential,
+   this cluster's series are stamped with in the shared store. It is not an endpoint, not a credential,
    and not something the plane could dial. It is set at registration to the cluster's own name, for
    the reason above: that is the identity the chart is installed with, so asking for it a second time
    would only create a second thing that can disagree.
@@ -59,10 +59,10 @@ knows it by are the same string because one is derived from the other.
   already the one the agent will stamp.
 - The trade this accepts is that a registered cluster which never turns on `monitoring.enabled` now
   renders em-dashes instead of "no metrics source". That is a weaker signal than 0008 had and it is
-  the price of the failure above; it is bounded by 0003 point 6, a missing series is null end to end
-  and draws as `—`, never as 0%, and the label can be cleared to get the explicit message back.
+  the price of the failure above; it is bounded by 0003 point 6 (a missing series is null end to end
+  and draws as `—`, never as 0%), and the label can be cleared to get the explicit message back.
 - Existing rows were **not** backfilled with their own names. A cluster can be left out of the
-  variable, because its series stopped landing, and a blanket backfill would convert that
+  variable intentionally, because its series stopped landing, and a blanket backfill would convert that
   judgement into an empty chart. Only clusters the deployed value already listed were carried over.
   Opting one in is an `UPDATE` or a `PATCH`.
 - `GET /v1/metrics/sources` now walks the registry instead of parsing the variable, because that is

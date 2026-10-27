@@ -15,7 +15,7 @@ The result is that **nothing in the system expresses multi-cluster intent.** Run
 regions is two independent Deployments that share nothing but a recipe id, plus an Endpoint whose
 target weights someone edits by hand to match. There is no object to scale, pause or drain; there is
 no place to say "eight replicas total, anywhere in Europe"; and there is nothing for placement to
-expand, because placement has already been handed the answer, the cluster, before it is asked the
+expand, because placement has already been handed the answer (the cluster) before it is asked the
 question. The founding design says cluster selection is global, and the object model had no global
 object to hang that selection on.
 
@@ -46,8 +46,8 @@ that already existed, which is why the wire barely moves.
 priority, preemptibility, gang size, deadline, the topology requirement, and the *total* scale are
 global and live on Workload. Cluster, admission phase and reason, the queued/admitted/placed
 timestamps, and this cluster's *share* of the scale are per-cluster and live on Deployment. The
-topology pair moves up because its own justification, "the deployment is the only object that knows
-whether this is served or ganged", dissolves the moment `kind` lives on Workload.
+topology pair moves up because its own justification ("the deployment is the only object that knows
+whether this is served or ganged") dissolves the moment `kind` lives on Workload.
 
 **Scale is declared as a total; placement derives the shares.** Workload carries total
 min/max/desired plus optional per-cluster floors and a cap on fan-out. The unit is set by kind:
@@ -105,7 +105,7 @@ The word "pod" is separately unusable in a system that talks to Kubernetes.
 deployments with weights, so the shape looks available. Rejected because Endpoint is the *routing*
 contract and only `service` workloads have one: a task or a gang has no Endpoint and would be left
 with no way to express the same thing. Overloading it would also put scale and placement intent on
-the one object the model keeps stable and public.
+the one object the model keeps stable and public by design.
 
 ## Consequences
 

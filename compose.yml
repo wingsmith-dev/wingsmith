@@ -2,13 +2,13 @@ name: hangar
 
 # The plane, as processes something else supervises.
 #
-# api and hub are the same image with a different argument, and they are here, not
-# backgrounded next to a shell because a process nothing owns outlives the code it was built from:
+# api and hub are the same image with a different argument. They run here instead of in the
+# background of a shell because a process nothing owns outlives the code it was built from:
 # a migration lands, the running process keeps the old models in memory, and the endpoints touching
 # the changed tables 500 while everything beside them stays green. Rebuilding is how you restart,
 # so the two cannot drift apart.
 #
-# The console is absent. It wants a dev server with hot reload against a file tree,
+# The console is left out intentionally. It wants a dev server with hot reload against a file tree,
 # which is a worse thing inside a container than outside one: `just dev` runs it beside this.
 # The image does bake a console bundle (see libs/plane/Dockerfile), but the source mount below
 # shadows the directory it lands in, so the api here serves the API alone and 404s on `/`. That is
@@ -35,7 +35,7 @@ x-plane: &plane
   # is how this trick usually breaks. A dependency change is still a rebuild.
   # The contract table is mounted for the same reason the source is: it is data the plane reads at
   # runtime and the contract is where it is edited. Baked in, a new device class means a rebuild
-  # before the local plane can place against it, and the failure is quiet, because an unknown class
+  # before the local plane can place against it. The failure is quiet: an unknown class
   # slugifies instead of erroring, so the fleet looks fine and the catalog is a generation behind.
   volumes: &plane-source
     - ./libs/plane/app:/app/app:ro
@@ -76,8 +76,8 @@ services:
       retries: 10
       start_period: 10s
 
-  # Runs to completion before either process starts, which is the point of it being a
-  # service instead of a step someone remembers. `service_completed_successfully` means a failed
+  # Runs to completion before either process starts. That is why it is a service and not a
+  # step someone remembers. `service_completed_successfully` means a failed
   # migration stops the stack instead of leaving an api to discover it one query at a time.
   migrate:
     <<: *plane-image
@@ -88,7 +88,7 @@ services:
     # The same mounts as api and hub, and this is the service that most needs them. Without one,
     # migrate only ever sees the revisions baked at image-build time: a migration written since is
     # invisible to it, so the moment the database is stamped at a revision the image has never heard
-    # of, which is what happens the first time anyone runs `alembic upgrade` from the host, this
+    # of (which happens the first time anyone runs `alembic upgrade` from the host), this
     # job fails with `Can't locate revision` and takes api and hub down with it as a dependency.
     volumes: *plane-source
     environment:
@@ -115,8 +115,8 @@ services:
       start_period: 10s
 
   # No --reload: the hub holds long-lived operator sessions and there is nothing to reload into
-  # that would not drop them. `docker compose restart hub` picks up an edit, and dropping a session
-  # is different from a file watcher doing it whenever a file is saved.
+  # that would not drop them. `docker compose restart hub` picks up an edit, and choosing to drop a
+  # session is different from a file watcher doing it whenever a file is saved.
   hub:
     <<: *plane
     command: ["hub"]

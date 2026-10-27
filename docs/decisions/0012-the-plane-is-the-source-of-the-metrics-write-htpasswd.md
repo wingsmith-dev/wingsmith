@@ -23,7 +23,7 @@ cluster's side. An agent with a wrong credential gets a 401 on every send, logs 
 and reports nothing to anyone; the console shows an enrolled, connected, healthy cluster with empty
 charts. The signal is on the wrong side of the fence from the person who would act on it.
 
-The plane already holds both halves of the answer. It mints the credential, the enrolment token,
+The plane already holds both halves of the answer. It mints the credential (the enrolment token)
 and it knows the fleet. The htpasswd file is a pure function of those two facts, which makes it a
 reconciliation the plane can own instead of a document a human maintains.
 
@@ -38,8 +38,8 @@ reconciliation the plane can own instead of a document a human maintains.
 2. **A reactor pass renders the file and patches the Secret.**
    [`libs/plane/app/reactor/remote_write.py`](../../libs/plane/app/reactor/remote_write.py) selects
    every cluster with a hash, renders `<cluster-name>:<bcrypt-hash>` one per line sorted by name, and
-   patches the Secret's `users` key. It reads and compares first, so the unchanged case, which is
-   every tick but the few after a register or a rotate, writes nothing.
+   patches the Secret's `users` key. It reads and compares first, so the unchanged case (every
+   tick but the few after a register or a rotate) writes nothing.
 3. **It lives in the reactor because of the lease.** The reactor already elects one holder
    fleet-wide. This is the only thing in the plane with an external side effect that must have
    exactly one writer, and the machinery for that already existed.
@@ -67,7 +67,7 @@ rule, and the distinction is the whole justification:
   cluster's desired state moves through Kubernetes.
 - It is **one object**, by name, with two verbs. The `Role` uses `resourceNames` to scope to the one
   Secret (`prom-remote-write-auth` by default) and grants `get` and `patch` only. `create` is
-  absent: `resourceNames` cannot scope it, so granting it would mean "create any Secret
+  intentionally absent: `resourceNames` cannot scope it, so granting it would mean "create any Secret
   in this namespace".
 - It is **not a controller**. There is no watch, no informer, no owner reference and no finalizer.
   It is a periodic diff-and-patch of one key.
@@ -76,15 +76,15 @@ The alternative was a separate credential for telemetry with its own lifecycle: 
 mint, store, rotate and revoke, and a second thing that can be out of step with the first. That is
 more surface, not less.
 
-## Limitations, recorded accurately
+## Limitations
 
 **Per-cluster credentials buy revocation granularity, not label integrity.** Traefik authenticates
 the *connection*. It does not inspect the body of a remote-write request and it does not police
 `external_labels`, so nothing stops cluster A from writing series stamped `cluster: B`. What this
 change actually buys is that one cluster's credential can be revoked without touching any other's,
 and that a decommissioned cluster's line disappears from the file when its row does. It does not
-make the `cluster` label trustworthy. Anything that needs that, a per-tenant view, a billing
-number, must not read the label as an authenticated claim. Enforcing it would need a write proxy
+make the `cluster` label trustworthy. Anything that needs that (a per-tenant view, a billing
+number) must not read the label as an authenticated claim. Enforcing it would need a write proxy
 that rewrites labels from the authenticated identity, which is a data-plane component and therefore
 squarely against the rule that the data plane never crosses the control plane.
 
@@ -117,7 +117,7 @@ front of the middleware.
   `RoleBinding` that let the plane patch the Secret are applied once by hand, in the namespace the
   Secret lives in, which is generally not the plane's own, so they cannot ride along with a
   kustomization that pins the plane's namespace.
-- **The hub has its own ServiceAccount now** (`hangar-hub`), instead of `default`, because the
+- **The hub has its own ServiceAccount now** (`hangar-hub`) instead of `default`, because the
   RoleBinding must name something narrower than "every pod in the plane's namespace".
 - **`GET /v1/system/config` reports the write URL and the Secret's coordinates.** Both are
   diagnostic and neither is secret; "the plane is not maintaining that file" is exactly the kind of

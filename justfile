@@ -16,7 +16,7 @@ _conform  := "libs/conformance"
 _libs     := "libs"
 
 _go_mods  := _operator + " " + _cli + " " + _gateway + " " + _agent + " " + _tunnel + " " + _transit
-# libs/benchmarking is absent: it has no dependencies, so it runs through
+# libs/benchmarking is left out because it has no dependencies, so it runs through
 # `uv run --no-project` with nothing to install.
 _py_mods  := _plane + " " + _conform
 _bench_py := "PYTHONPATH=" + _bench + " uv run --no-project --python 3.12"
@@ -353,7 +353,7 @@ transit ramp="8,32,128" *args:
 transit-smoke:
     @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false -json
 
-# Ramp against a deployed gateway. Small by default.
+# Ramp against a deployed gateway. Intentionally small by default.
 transit-live url model *args:
     @cd {{_transit}} && go run ./cmd/hgrtransit live -url {{url}} -model {{model}} {{args}}
 
@@ -461,7 +461,7 @@ conformance-gateway:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
-# Helm's crds/ dir is a plain copy, never templated: kept in step by hand when the CRDs change.
+# Helm's crds/ dir is a plain copy, never templated, so it is synced by hand when the CRDs change.
 # Copy the hangar CRDs into the chart from their source of truth in libs/operator/deploy/crd
 chart-sync-crds:
     #!/usr/bin/env bash
@@ -542,8 +542,8 @@ chart-lint:
     # The exporter must select GPU nodes. Its toleration only permits the GPU pool; with no
     # selector the DaemonSet also lands on CPU nodes, where the exporter has no GPU to read and the
     # operator discovers a target set that does not match the hardware. That reads as missing
-    # devices and phantom fell_off_bus events, so it is asserted, not left to whoever edits
-    # values next. Asserted against values.yaml, not rendered output: the render above drops
+    # devices and phantom fell_off_bus events, so it is asserted instead of left to whoever edits
+    # values next. The assertion reads values.yaml, not the rendered output: the render above drops
     # `dependencies:`, so nothing dcgm-exporter owns ever appears in it.
     "${py[@]}" - {{_chart}}/values.yaml <<'PY'
     import sys, pathlib, yaml

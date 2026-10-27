@@ -42,6 +42,6 @@ Prefix and shape are validated on receipt, and the unique constraint on `uid` is
 - Id shape is contractual, not cosmetic. `libs/packages/contract/MESSAGES.md` states it.
 - A frame carrying a malformed id is a **poison frame**: it can never be applied, so withholding
   the ack would replay it forever. It is accepted, discarded and logged instead, per PROTOCOL §6b.
-- If the plane is ever pointed at an operator it does not ship, a third-party agent reporting into
-  it, this is one of the decisions to revisit, along with `Pool`, which has the same assumption
+- If the plane is ever pointed at an operator it does not ship (a third-party agent reporting into
+  it), this is one of the decisions to revisit, along with `Pool`, which has the same assumption
   baked in.

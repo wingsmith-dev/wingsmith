@@ -3,7 +3,7 @@
 **Status:** accepted · 2026-09-02
 
 **Amends:** the founding object model (now [`docs/architecture`](../architecture/README.md)), which made
-Recipe one of the seven objects of the minimal core, and answers the question it left open, whether a serving configuration is a catalog object or
+Recipe one of the seven objects of the minimal core, and answers the question it left open: whether a serving configuration is a catalog object or
 a deployment-time choice. Also amends
 [ADR 0010](0010-workload-is-the-global-umbrella.md), which moved `recipe_id` up onto the Workload;
 the field it moved is now the fields themselves.
@@ -31,7 +31,7 @@ resume race in which a reconnecting operator was sent a deployment but not the r
 the deployment waited for a frame that was never coming. Three mechanisms to defend one saved frame
 in the canary case.
 
-**And the sharing it did offer was being reconstructed, not used.** The console did not ask
+**And the sharing it did offer was being reconstructed instead of used.** The console did not ask
 which recipe to reuse; `matchExistingRecipe` compared eight fields of a candidate against every
 existing recipe on the artifact to decide whether one of them was the same recipe. Comparing
 contents to find an object is an admission that the contents *are* the object. Once that is said out
@@ -79,13 +79,13 @@ loud, the identity is a hash, not a row.
 - **The open question is answered: deployment-time configuration.** A serving configuration is not a
   sellable thing today, and nothing was willing to pay the ordering rule, the pending reason and the
   resume race for a catalog it did not have. If a named, versioned, sellable configuration is ever
-  wanted, "Llama-70B FP8 32k" with a price, it is a thin catalog object pointing at a
+  wanted ("Llama-70B FP8 32k" with a price), it is a thin catalog object pointing at a
   `serving_digest`, and it is a decision nobody has had to make yet.
-- **The accurate cost: `Recipe.name`, `Recipe.version` and `Recipe.lifecycle` are gone and are not
+- **The real cost: `Recipe.name`, `Recipe.version` and `Recipe.lifecycle` are gone and are not
   replaced.** A workload has a name; a serving configuration no longer has one of its own, so
   "deploy the recipe a colleague published" is unsayable and the draft/published/deprecated gate on a
-  configuration is gone with it. Recipe revisions, `GET /v1/recipes/{ref}/revisions`, which read
-  earlier versions of a name as ordinary rows, go with the uniqueness constraint that made them
+  configuration is gone with it. Recipe revisions (`GET /v1/recipes/{ref}/revisions`, which read
+  earlier versions of a name as ordinary rows) go with the uniqueness constraint that made them
   possible. This is the part to revisit first if the catalog above is ever wanted.
 - **The console loses a fork instead of a feature.** `matchExistingRecipe` and `footprintOfRecipe`
   are deleted outright and the create flow no longer asks "existing recipe or new footprint"; it

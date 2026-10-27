@@ -25,7 +25,7 @@ shipping by accident.
 
 Two coherent positions were available:
 
-1. **Share the session state.** Move `SessionState`, cursors and replay buffer, into Postgres, so
+1. **Share the session state.** Move `SessionState` (cursors and replay buffer) into Postgres, so
    any pod can serve any operator and resume works across replicas.
 2. **Shed the session state.** Keep it in process, accept that a cross-pod reconnect costs a
    `full_resync`, and make the loss safe, not rare.

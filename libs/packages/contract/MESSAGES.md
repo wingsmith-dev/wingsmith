@@ -67,7 +67,7 @@ it. Like `distribution` it is inert: stored and displayed, never branched on. It
 so an operator built before this field reads as a normal one, which is what it is.
 
 **`multinode` is the one observed field on this frame that placement reads.** It says a
-leader-worker backend, Grove or LeaderWorkerSet, is installed, so Dynamo can render a replica
+leader-worker backend (Grove or LeaderWorkerSet) is installed, so Dynamo can render a replica
 whose devices do not fit on one machine. It is discovered from the API groups the cluster serves,
 not declared in the operator's configuration: the CRDs are either present or they are not, and a
 flag asserting otherwise is a second copy of the same truth that can disagree with it. When it
@@ -78,7 +78,7 @@ placed where it cannot run. It defaults false, which reads an operator too old t
 that could not have detected a backend either.
 
 **`distribution` is the one orchestrator name on the wire.** Every other field is
-neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because
+intentionally neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because
 an operator needs to know what they are running and there is no neutral way to say it, and it is
 bounded by being inert: the plane stores it and displays it and nothing branches on it. A plane
 that reads `distribution` to decide what to send has broken rule 2.
@@ -120,13 +120,13 @@ reference appears as `secretRef:<name>`, naming the source without reading it.
 operator may write.** `observed` means record and verify and touch nothing; `managed` means render
 and converge. An absent value reads as `observed`, so a frame from a plane that predates the field
 never acquires management by omission. The two are a state a person moves a deployment between, in
-both directions, and there is no third value: a deployment with some fields enforced
+both directions, and there is intentionally no third value: a deployment with some fields enforced
 and others drifting cannot be reasoned about at the moment somebody needs to.
 
 **`deployment.desired` carries `adopt` when it was promoted from a sighting.** It names an object
-that already exists and is already serving, so a managed deployment takes ownership in place rather
-than applying a rendered spec over it. `spec_fingerprint` digests the pod template: what is
-running, not how much of it, so scaling never reads as redefinition. An operator that
+that already exists and is already serving, so a managed deployment takes ownership in place instead
+of applying a rendered spec over it. `spec_fingerprint` digests the pod template: what is
+running and, by design, not how much of it, so scaling never reads as redefinition. An operator that
 finds the live object digesting to anything else must refuse and report it, never converge; closing
 that gap means restarting a model to match a spec nobody asked to change. `adopt` is provenance and
 a drift check and is **not** itself a prohibition: whether the plane may act is `authority`'s
@@ -148,7 +148,7 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | name, the `serving` block (engine, worker and frontend images, declared args, parallelism, cache settings, topology and per-role configuration, the frontend's router settings) this cluster's scale bounds and per-role worker counts, priority, placement constraints |
+| `deployment.desired` | name, the `serving` block (engine, worker and frontend images, declared args, parallelism, cache settings, topology and per-role configuration, the frontend's router settings), this cluster's scale bounds and per-role worker counts, priority, placement constraints |
 | `deployment.deleted` | id |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
@@ -160,9 +160,10 @@ configuration and `role_replicas` carries each role's absolute worker count. Bot
 aggregated deployment, and empty is the only way to say aggregated: a single-entry `roles` meaning
 "one worker" would make every existing deployment a disaggregated one with a degenerate ratio.
 
-The split between the two is deliberate and essential. `serving.roles` is *configuration*, what
-makes a prefill process different from a decode one, `max-num-batched-tokens` 32768 against 2048,
-and is inside `serving.digest`. `role_replicas` is *scale*, and is outside it: the
+The split between the two is deliberate, and the design depends on it. `serving.roles` is
+*configuration* (what makes a prefill process different from a decode one, such as
+`max-num-batched-tokens` 32768 against 2048) and is inside `serving.digest`. `role_replicas` is
+*scale*, and is intentionally outside it: the
 digest is what links an `ops_benchmark_run` to the configuration it measured, and a count in that
 hash would orphan every benchmark on a model the moment somebody added a prefill worker.
 
@@ -207,8 +208,8 @@ but not the recipe it waited for ever. Inlining removes the frame, the ordering 
 
 The stream still pays an ordering dependency for artifacts, and now only for artifacts:
 `artifact.desired` precedes the deployments that reference it, and a receiver that sees a deployment
-whose artifact has not landed (possible after a resume, not after a resync) waits, not
-renders, because a render against missing weights is a guess.
+whose artifact has not landed (possible after a resume, not after a resync) waits instead
+of rendering, because a render against missing weights is a guess.
 
 `serving.digest` names the configuration by its content, and is the same `serving_digest` the plane
 holds on the workload. It is not a revision counter and nothing orders by it: it is there so two
@@ -223,7 +224,7 @@ name is the floor below it, for an artifact registered before slugs existed or o
 say nothing resolvable. Something always answers, so the field is never empty on the wire and a
 receiver never has to invent a fallback.
 
-The floor is a bad answer and is meant to look like one, it is a workload's name where a model id
+The floor is a bad answer and is meant to look like one: it is a workload's name where a model id
 belongs, because the alternative is rendering `--served-model-name ` with nothing after it and a
 frontend that registers no model at all.
 
@@ -245,7 +246,7 @@ what it resolves, so the same value never travels twice.
 the module inside it the worker launches, `python3 -m dynamo.<engine>`. The engine's own version is
 neither field and is not on this wire at all: which vLLM NVIDIA compiled into `vllm-runtime:1.4.1`
 is a property of that image, unrecorded here and unobserved by the cluster. The two count in
-different sequences, vLLM is on `0.28.0` while the runtime carrying it is on `1.4.1`, so a block
+different sequences (vLLM is on `0.28.0` while the runtime carrying it is on `1.4.1`), so a block
 that spelled the runtime tag `engine_version` invited exactly one mistake, pinning the engine's
 number as the image's, and `vllm-runtime:0.28.0` is an address that has never existed.
 
@@ -268,9 +269,9 @@ repository that is an `ImagePullBackOff` chosen a continent away, and because a 
 invented is indistinguishable on arrival from one somebody pinned.
 
 The cluster resolves it most specific first: this deployment's `serving.frontend_image`, then
-whatever that cluster is configured to serve its frontends through, then, last, and only when
-neither has been said, the same block's `engine_runtime_image`. That last step is not the plane's rule leaking back in. It is
-right often enough to be the accurate default, since the Dynamo runtime image carries the frontend
+whatever that cluster is configured to serve its frontends through, and last, only when
+neither has said anything, the same block's `engine_runtime_image`. That last step is not the plane's rule leaking back in. It is
+right often enough to be the right default, since the Dynamo runtime image carries the frontend
 and the engines together, and it is reached only after the two places that could have said
 something better both declined. An empty string is not an override at any level and is treated as
 absent, per §2.
@@ -279,7 +280,7 @@ absent, per §2.
 `serving.router` carries `mode`, `queue_threshold`, `queue_policy` and `kv_overlap_score_credit`, and
 each renders exactly one `DYN_ROUTER_*` variable on this deployment's own frontend. Every field is
 optional, and the block is absent when a workload declares none. Absent renders what the operator
-rendered before the block existed (`DYN_ROUTER_MODE=kv` and nothing else) so neither a plane nor an
+rendered before the block existed (`DYN_ROUTER_MODE=kv` and nothing else), so neither a plane nor an
 operator learning the field rolls any frontend. A declared field renders even when it restates
 Dynamo's default, because the block records what was asked for.
 
@@ -306,7 +307,7 @@ omni workload without an output modality and a non-omni one with `image` or `vid
 refuses both again at render, and refuses any engine it does not know instead of rendering a chat
 server for it.
 
-The device shape is absent from `serving`, and stays absent now that the block travels
+The device shape is intentionally absent from `serving`, and stays absent now that the block travels
 on the deployment itself. It reaches the cluster on the deployment's `placement`, derived from that
 same configuration. Two copies of one fact on one wire is two things that can disagree, and the
 placement copy is the one placement already reads.
@@ -361,11 +362,11 @@ deployment, omitted when the deployment is aggregated. It is read off the pod la
 itself stamped, never inferred from the pod's name: the name is Dynamo's convention and can change
 under us, where the label is a string both sides agreed on. It is observed state with ingestion as
 its only writer, which is what keeps a worker that can change role at runtime a revision to this
-field's value, not to anything declared.
+field's value instead of to anything declared.
 
 **`deployment.observed` carries `replica_ids`, and it is how the plane forgets a replica while the
-deployment still exists.** A replica that simply stops being reported, a rolled pod, a restarted
-one, a deployment scaled down, has nothing else to remove its row. It stayed in the plane's
+deployment still exists.** A replica that simply stops being reported (a rolled pod, a restarted
+one, a deployment scaled down) has nothing else to remove its row. It stayed in the plane's
 database for ever and kept counting towards the rollup, which is how a deployment of one came to
 read three ready of one. The frame names this deployment's whole replica set on this cluster every
 time it is sent, and the plane deletes the ones it does not name; the allocations those replicas
@@ -395,7 +396,7 @@ ones whose absence would otherwise be read as "gone". An incomplete snapshot cos
 until the next resync; a wrongly complete one deletes a running replica's allocation and offers its
 accelerators to somebody else.
 
-The two mechanisms overlap. `replica_ids` is cheap and immediate and keeps a serving
+The two mechanisms overlap by design. `replica_ids` is cheap and immediate and keeps a serving
 deployment's rollup accurate between snapshots; the snapshot is the one that can shrink the plane's
 picture, and is the only one that converges from an arbitrary starting state.
 
@@ -492,13 +493,13 @@ unschedulable is the reason this summary exists.
 pod, and draw no complaint from any controller: nothing is wrong anywhere, and nothing is running.
 Reported as `placed` that is indistinguishable from starting up, and it stayed that way for as long
 as the deployment existed. Past a grace window measured from the rendered object's creation, the
-silence is itself reported as the failure. It is last: every diagnosis with a name of
+silence is itself reported as the failure. It is intentionally last: every diagnosis with a name of
 its own is reported the moment it is seen, and this catches only what none of them explain.
 
 **`Applied`, `Progressing` and `Serving` are three answers, not one.** `Applied` is a statement
 about a write to the cluster's API and says nothing about whether a worker ever started; the other
-two are read back off the running replicas. Collapsing them, reporting `Applied` for everything
-after the apply, leaves a deployment that is serving indistinguishable from one that was written
+two are read back off the running replicas. Collapsing them (reporting `Applied` for everything
+after the apply) leaves a deployment that is serving indistinguishable from one that was written
 and never came up.
 
 A `reason` the plane does not recognise is displayed, never rejected: the operator rolls
@@ -511,8 +512,8 @@ every fifteen seconds, and sending each pass would spend the stream on a fact th
 The operator holds the last `(phase, reason, message)` it sent per deployment and sends only on
 difference, which is the same rule the supply loop already applies to nodes.
 
-**`replica.observed` carries the replica's `name`.** The cluster-local name, the pod name under
-Kubernetes, alongside the `rep_` identifier. They are not redundant: the identifier is what other
+**`replica.observed` carries the replica's `name`.** It carries the cluster-local name (the pod name under
+Kubernetes) alongside the `rep_` identifier. They are not redundant: the identifier is what other
 frames cross-reference, the name is what an operator types into `kubectl` when a replica is wedged,
 and neither is derivable from the other.
 
@@ -526,7 +527,7 @@ replaces `recipe_id`, which named an object that no longer exists and was mutabl
 The plane stores it on the replica, and that column is the whole of its answer to "which version is
 live". Declared state says what was asked for; counting these says what is running, and during a
 roll the two differ by construction. An empty string is a cluster that has not got one to report and
-is stored as null, not known, never "the declared one".
+is stored as null (not known), never "the declared one".
 
 **`replica.observed` carries `observed_generation`.** A replica's phase says whether it is up; the
 generation says which version of the deployment it is up *at*. A rollout is exactly the interval in
@@ -598,7 +599,7 @@ to `"true"`; there is no separate `uncordon` kind, because one wire kind and a b
 thing as two kinds without doubling the vocabulary. `drain` cordons first as its own first step, so
 the two compose instead of overlapping.
 
-**`drain` evicts, not deletes, and only what holds accelerators.** Eviction is the request
+**`drain` evicts instead of deleting, and only what holds accelerators.** Eviction is the request
 the API server can refuse, so a pod covered by a disruption budget already at its floor stays put
 and the drain reports what it could not move. Deleting would succeed every time and cause the
 outage the operation exists to avoid. Pods that hold no accelerators are left alone: the agents,
@@ -606,8 +607,8 @@ exporters and CSI drivers on a node are what make it reportable, and taking them
 the plane to the drain it just requested.
 
 **`benchmark` measures a deployment and reports its result somewhere else.** The operation is how
-the run is carried out, it has the phases, the deadline, the cancellation and the replay every
-other operation has, but its outcome does not fit `operation.observed.result`, which is a flat
+the run is carried out (it has the phases, the deadline, the cancellation and the replay every
+other operation has), but its outcome does not fit `operation.observed.result`, which is a flat
 `map[string]string`. A load generator emits nested JSON, so the numbers travel on
 `benchmark.observed` and the operation reports only that the errand finished. The parameters name
 the run (`benchmark_id`), the harness (`harness`, `image`), the model to ask for (`model`) and
@@ -624,10 +625,10 @@ endpoint and never dials out.
 percentile and what vLLM's `benchmark_serving.py` calls one are not the same field, and a schema
 here asserting they are would be this protocol designing a normalisation before either format has
 been read against a real deployment. Two runs are comparable when `harness` and `harness_version`
-agree; that is the whole guarantee, and it is not more.
+agree; that is the whole guarantee, and it is intentionally no more.
 
-**Per-request records do not travel this stream.** A run's raw output, one row per request, full
-latency distributions, is telemetry: high volume, append-only, never joined. It goes from the
+**Per-request records do not travel this stream.** A run's raw output (one row per request, full
+latency distributions) is telemetry: high volume, append-only, never joined. It goes from the
 cluster to object storage directly and `artifacts_uri` is the only part of it that comes here.
 
 **What the fixture holds is AIPerf's shape, described and not asserted.** The corpus needs one
@@ -636,12 +637,12 @@ writes to `profile_export_aiperf.json`, the file the operator lifts out of the j
 own sentinels (the plane's tests pin a recorded export as well). AIPerf reports each distributional metric as an object of its own, keyed
 `time_to_first_token`, `time_to_second_token`, `inter_token_latency`, `request_latency`,
 `input_sequence_length` and `output_sequence_length`, each carrying a `unit` and `avg`, `min`,
-`max`, `p50`, `p90`, `p95`, `p99` and `std`. The rates, `output_token_throughput`,
-`output_token_throughput_per_user`, `request_throughput`, carry a `unit` and at least an `avg`,
+`max`, `p50`, `p90`, `p95`, `p99` and `std`. The rates (`output_token_throughput`,
+`output_token_throughput_per_user`, `request_throughput`) carry a `unit` and at least an `avg`,
 and so do the counters `request_count` and `error_request_count`, the latter `null` on a run with
 no failed requests. None of that is a schema this protocol imposes: a receiver validating a
 `summary` against it would be asserting the union the paragraph above refuses. It is one producer's format, written down so a reader can be built against
-something real, not against an invention.
+something real instead of an invention.
 
 A `summary` is a whole export, and a metric it could not compute is `null` or absent, not
 zero. A reader that cannot resolve a path names the miss; it never reads an absence as a number.
@@ -651,8 +652,8 @@ target, each its own `benchmark_id` and its own frame, and the ordering is the p
 carry no step index because the run rows already hold one.
 [`fixtures/samples/benchmark.ramp.json`](fixtures/samples/benchmark.ramp.json) is one such
 expansion end to end: seven frames over concurrency 1 to 64, with the step at 32 missing two
-metrics so a reader is exercised against a real absence. It sits under `samples/`, not
-beside the corpus because the corpus is one frame per registered type and this is a sequence of
+metrics so a reader is exercised against a real absence. It sits under `samples/` and not
+beside the corpus, because the corpus is one frame per registered type and this is a sequence of
 frames of a type that already has its fixture.
 
 ## Resync

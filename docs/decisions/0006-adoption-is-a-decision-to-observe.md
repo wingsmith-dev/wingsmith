@@ -41,7 +41,7 @@ the plane, because the plane has declared nothing to change. That is the correct
 seeing what is running across every cluster is the immediate need, and it is worth having without
 risking a single restart to get it.
 
-Promotion, letting the plane manage a workload it adopted, is a separate, explicit act, and it is
+Promotion (letting the plane manage a workload it adopted) is a separate, explicit act, and it is
 built. See the amendment below.
 
 The prune interacts with the decision, so adoptions are keyed by the cluster's stable workload uid
@@ -51,8 +51,8 @@ cluster from namespace, kind and name (ADR 0002), so they are the same across op
 across replicas.
 
 `kind` is open text on the wire where every other enum is closed. A cluster may run models under a
-CRD we have never heard of, and a closed set would make that workload undecodable: dropped rather
-than reported, which is the one outcome an inventory must not have.
+CRD we have never heard of, and a closed set would make that workload undecodable: dropped instead
+of reported, which is the one outcome an inventory must not have.
 
 ## Amendment: promotion, and why it is not an operation
 
@@ -62,7 +62,7 @@ and the reason is worth writing down: the check the operation existed to perform
 by data the cluster publishes continuously.
 
 Every `workload.discovered` carries `spec_fingerprint`, a digest of the pod template: what the
-workload is running, not how much of it, so scaling never looks like redefinition.
+workload is running and, by design, not how much of it, so scaling never looks like redefinition.
 `POST /v1/discovered/{ref}/promote` requires the caller to send back the digest they were shown and
 refuses if the sighting has moved since. The deployment it creates records that digest in
 `adopted_fingerprint`, and every `deployment.desired` for it carries an `adopt` block naming the
@@ -89,7 +89,7 @@ the generation and rolls it, which is correct: that is a change somebody asked f
 it is the point. The distinction this ADR defends is only ever between a cost you chose and a cost
 you incurred by looking.
 
-One thing promotion could not do when this was written, and this was the accurate limit: there was no
+One thing promotion could not do when this was written, and this was the real limit: there was no
 reconciler, so a promoted deployment was declared, streamed and verified, but no Kubernetes object
 was written from it. `adopt` is a contract the reconciler was born holding instead of a behaviour
 bolted on after it exists.

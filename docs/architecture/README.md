@@ -38,7 +38,7 @@ platform, which the `cluster-setup` chart installs.
 party, no air-gapped installs. This simplifies exactly one object (Pool, §5.1) and it is easy to
 read too much into it (§2.2).
 
-What it is not:
+What it is not, by design:
 
 - **Not a device scheduler.** The scheduler inside each cluster picks cards. Hangar picks clusters.
 - **Not a Kubernetes dashboard.** Showing an operator CRD trees and asking them to reconstruct
@@ -65,7 +65,7 @@ is told to run, and how a request finds it.
 | **AIBrix** | Control-plane components for vLLM in one cluster: LLM-aware gateway, autoscaler, LoRA management, distributed KV cache | Same layer as Dynamo's own control plane, inside one cluster |
 | **SkyServe** (SkyPilot) | Serves a model across clouds and regions by provisioning its own VMs or pods and load-balancing across them | Provisions compute itself; Hangar manages clusters you already run and leaves provisioning to you |
 | **LiteLLM, Envoy AI Gateway** | API gateways in front of model providers: one API, keys, rate limits, cost tracking | Route to endpoints that already exist. Hangar's gateway is narrower (no billing, no provider catalog) and is fed by the plane's knowledge of what runs where |
-| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar leaves to the cluster. Hangar does not preempt or run training |
+| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar intentionally leaves to the cluster. Hangar does not preempt or run training |
 
 NVIDIA has signalled multi-cluster coordination for Dynamo. If that ships, the overlap with Hangar
 is cross-cluster placement and routing. What Hangar adds on top of a single cluster's Dynamo today:
@@ -73,7 +73,7 @@ is cross-cluster placement and routing. What Hangar adds on top of a single clus
 - **Clusters that only dial out.** No kubeconfig in a central database and no inbound port on any
   cluster, for the control stream and for inference traffic (§2, §7.2).
 - **Adoption before management.** Models already running in a cluster are observed and can be put
-  under management, without a restart (§6.4).
+  under management by an explicit decision, without a restart (§6.4).
 - **Tenants and endpoints across clusters.** One public model name, per-tenant hosts and API keys,
   per-tenant KV-cache isolation, and weighted or ordered routing to deployments on several clusters.
 - **Fleet inventory per device.** Device identity and health from DCGM, a device-class table shared
@@ -319,7 +319,7 @@ Workloads over one Artifact**, told apart by their `serving_digest`, a hash of e
 that decide what process runs.
 
 That configuration used to be an object of its own, the Recipe. It was deleted: the sharing it
-offered was being reconstructed by comparing fields, not used, and it cost an ordering rule on
+offered was being reconstructed by comparing fields instead of being used, and it cost an ordering rule on
 the wire and a resume race. The configuration now lives on the Workload and reaches the cluster
 inlined on `deployment.desired.serving`
 ([ADR 0014](../decisions/0014-recipe-is-deleted-serving-config-lives-on-the-workload.md)). If a named,
@@ -451,7 +451,7 @@ and must be kept off any ingress and behind a NetworkPolicy
 ([deploying the plane](../operations/deploy-plane.md)).
 
 Because it sees every request, including those that never reach a cluster, the gateway is the one
-accurate source of a failure rate. It counts each request under a closed set of outcomes, keeping
+complete source of a failure rate. It counts each request under a closed set of outcomes, keeping
 "caller over its own limit" and "this hop shedding load" apart even though both are `429`.
 
 ### 7.2 Tunnel and agent
@@ -657,7 +657,7 @@ capacity serving leaves idle and yields when serving scales up. That depends on 
 rendering and on preemption, all of which are on the [roadmap](../roadmap.md) and none of which is
 built.
 
-### 11.3 Deferred
+### 11.3 Deferred by choice
 
 Real work that does not constrain the object model:
 
