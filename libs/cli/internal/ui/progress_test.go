@@ -76,7 +76,7 @@ func TestPlainNarrationIsOneLinePerTransition(t *testing.T) {
 	}
 }
 
-// TestAFailedStepIsMarkedDifferentlyFromADoneOne: the two are the point of narrating.
+// TestAFailedStepIsMarkedDifferentlyFromADoneOne: telling the two apart is why narration exists.
 func TestAFailedStepIsMarkedDifferently(t *testing.T) {
 	done := func(fail bool) string {
 		var buf syncBuf
@@ -124,7 +124,7 @@ func TestStoppingTwiceIsSafe(t *testing.T) {
 	r.Stop()
 }
 
-// TestConcludingAStepTwiceIsSafe: the same reasoning: a deferred Fail after an explicit Done.
+// TestConcludingAStepTwiceIsSafe, for the same reason: a deferred Fail after an explicit Done.
 func TestConcludingAStepTwiceIsSafe(t *testing.T) {
 	var buf syncBuf
 	r := NewReporter(&buf, plain(), true, false)

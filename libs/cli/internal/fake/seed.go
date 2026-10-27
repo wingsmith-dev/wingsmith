@@ -14,9 +14,9 @@ import (
 // plane's, and ages are offsets from now so no fixture ever has to be
 // regenerated to stay plausible.
 //
-// The corpus is awkward, an unreachable cluster, a cordoned
+// The corpus is intentionally awkward (an unreachable cluster, a cordoned
 // node, an unhealthy device, a throttled one, a deployment that never got
-// admitted, a quota over its limit, because a seed where everything is fine
+// admitted, a quota over its limit) because a seed where everything is fine
 // tests nothing that matters.
 func seed() *state {
 	now := time.Now().UTC()
@@ -641,8 +641,8 @@ func seed() *state {
 	)
 
 	// One deployment's whole timeline, so `hgr deployment events` has something to
-	// show offline. Seeded as the awkward case, weights that took most of an hour,
-	// then a rollout that filled in one replica at a time, because a deployment
+	// show offline. Seeded as the awkward case (weights that took most of an hour,
+	// then a rollout that filled in one replica at a time) because a deployment
 	// that came up instantly would not exercise what the command exists to reveal.
 	st.Events = append(st.Events,
 		api.Event{

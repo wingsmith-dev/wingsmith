@@ -10,7 +10,7 @@ import (
 )
 
 // allCodes is every code the package declares, as opposed to every code that has an explanation.
-// The two lists are different and the tests below hold each to its own rule.
+// The two lists differ by design, and the tests below hold each to its own rule.
 var allCodes = []Code{
 	CodeOK,
 	CodeUsage, CodeInputRequired,
@@ -23,8 +23,8 @@ var allCodes = []Code{
 	CodeInterrupted, CodeInternal,
 }
 
-// TestEveryCodeHasAnExitStatus. Codes are stable API, scripts branch on them and each maps to a
-// fixed process exit code, so a code added without one would silently exit 1 alongside a genuine
+// TestEveryCodeHasAnExitStatus. Codes are stable API (scripts branch on them, and each maps to a
+// fixed process exit code), so a code added without one would silently exit 1 alongside a genuine
 // internal error, which is the one thing a caller most needs to tell apart.
 func TestEveryCodeHasAnExitStatus(t *testing.T) {
 	for _, c := range allCodes {

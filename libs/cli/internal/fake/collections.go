@@ -412,7 +412,7 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 	return b.hydrateWorkload(workload), nil
 }
 
-// UpdateWorkload writes only what was sent. Scale is absent: it is
+// UpdateWorkload writes only what was sent. Scale is absent by design: it is
 // the workload.scale operation, because it is long-running and can fail.
 func (b *Backend) UpdateWorkload(ctx context.Context, ref string, req api.WorkloadUpdateRequest) (api.Workload, error) {
 	found, err := b.Workload(ctx, ref)
@@ -557,8 +557,8 @@ func (b *Backend) DiscoveredWorkload(ctx context.Context, ref string) (api.Disco
 	})
 }
 
-// DecideWorkload records the decision and touches nothing else. The fake is as
-// inert as the real thing here: if adopting could ever produce a
+// DecideWorkload records the decision and touches nothing else. The fake is
+// intentionally as inert as the real thing here: if adopting could ever produce a
 // declared object, this is where the shape test would catch it.
 func (b *Backend) DecideWorkload(ctx context.Context, ref, decision string, req api.DecisionRequest) (api.DiscoveredWorkload, error) {
 	found, err := b.DiscoveredWorkload(ctx, ref)
@@ -1204,8 +1204,8 @@ func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRunCreat
 	return run, b.persist()
 }
 
-// resolveHarness refuses the same things the plane does, an unknown harness and
-// a parameter it does not accept, and returns the harness with its defaults
+// resolveHarness refuses the same things the plane does (an unknown harness and
+// a parameter it does not accept) and returns the harness with its defaults
 // laid under the parameters the caller named. A fake that accepted everything
 // would teach a command line the plane then rejects.
 func (b *Backend) resolveHarness(name string, params map[string]any) (*api.BenchmarkHarness, map[string]any, error) {
@@ -1595,7 +1595,7 @@ var fakeMetricRules = []api.MetricRule{
 	{Name: "node.ecc_uncorrectable", Metric: "gpu.ecc_uncorrectable", Unit: "count", Comparison: "above", SubjectType: "node", Severity: "error", Measures: "uncorrectable ECC errors", SuggestedValue: 0.0, Lookback: "5m", ForSeconds: 0},
 }
 
-// AlertRules is the catalogue a threshold may name, served, not compiled
+// AlertRules is the catalogue a threshold may name, served instead of compiled
 // into a command, so a metric name never becomes a string somebody types.
 func (b *Backend) AlertRules(ctx context.Context) ([]api.MetricRule, error) {
 	if err := b.injected(); err != nil {
@@ -1630,7 +1630,7 @@ func (b *Backend) AlertThreshold(ctx context.Context, ref string) (api.AlertThre
 // CreateAlertThreshold refuses what the plane refuses: an unknown rule, and a
 // comparison it will not take because which way a metric is wrong is the rule's
 // judgement and never declared. `metric` and `comparison` are copied off the
-// rule, not read off the request for the same reason.
+// rule instead of read off the request, for the same reason.
 func (b *Backend) CreateAlertThreshold(ctx context.Context, req api.AlertThresholdCreate) (api.AlertThreshold, error) {
 	if err := b.injected(); err != nil {
 		return api.AlertThreshold{}, err

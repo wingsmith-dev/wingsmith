@@ -61,8 +61,8 @@ type App struct {
 	// can refuse to guess.
 	projectSet bool
 
-	// authOptional is set for commands that must run before a token exists,
-	// `login` above all, so setup does not refuse them for want of one.
+	// authOptional is set for commands that must run before a token exists
+	// (`login` above all), so setup does not refuse them for want of one.
 	authOptional bool
 	// local is set for commands that never talk to the control plane: config,
 	// context, explain, version, help and completion. They work on a fresh

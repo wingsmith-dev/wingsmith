@@ -422,7 +422,7 @@ type ServingCache struct {
 // ServingShape is the hardware a serving configuration implies, class first: a
 // count without a class is not a shape.
 //
-// The topology pair is here, not beside the scale numbers because it is a
+// The topology pair is here and not beside the scale numbers, because it is a
 // property of one replica's layout, the same way the counts are.
 type ServingShape struct {
 	DeviceClass                  string  `json:"device_class"`
@@ -511,7 +511,7 @@ type ServingCapabilities struct {
 	SourceURI             *string    `json:"source_uri"`
 }
 
-// ServingOverlay is passthrough for what the plane does not model.
+// ServingOverlay is passthrough for what the plane chooses not to model.
 type ServingOverlay struct {
 	PodSpec map[string]any `json:"pod_spec"`
 	Dynamo  map[string]any `json:"dynamo"`
@@ -619,8 +619,8 @@ type ServingRequest struct {
 
 // WorkloadScale is the declared total and what the shares actually add up to.
 //
-// Unit is named by kind, replicas for service, ranks for gang, completions for
-// task, because the three numbers count different things and a bare integer is
+// Unit is named by kind (replicas for service, ranks for gang, completions for
+// task) because the three numbers count different things and a bare integer is
 // unreadable without it. Placed is the sum of the deployments' shares and Ready
 // the sum of their observed ready counts; the plane derives both, and summing a
 // share against a total anywhere else is always a bug.
@@ -709,7 +709,7 @@ type Workload struct {
 
 // WorkloadCreateRequest is what it takes to run something, without saying where.
 //
-// Cluster is an override instead of the normal path: absent, placement picks
+// Cluster is an override, not the normal path: absent, placement picks
 // from the serving shape, the project's quota, the policies on the workload and
 // what the clusters report free. Naming one is a deliberate escape from the
 // scheduler: it still has to exist, but it is never checked for capacity, and a
@@ -718,7 +718,7 @@ type Workload struct {
 // The three scale numbers are TOTALS across every cluster this workload may use,
 // counted in replicas for service, ranks for gang, completions for task.
 type WorkloadCreateRequest struct {
-	// Serving is the whole of what to run, stated, not named: there is no
+	// Serving states the whole of what to run instead of naming it: there is no
 	// shared serving object to point at, and two workloads asking for the same
 	// thing land on the same serving_digest.
 	Serving          ServingRequest `json:"serving"`
@@ -826,7 +826,7 @@ type DeploymentUpdateRequest struct {
 
 // DeploymentStatus is what the cluster reports the deployment is doing, and why.
 //
-// Reason and Message are the sub-state within Phase and are not errors: a deployment
+// Reason and Message are the sub-state within Phase and are intentionally not errors: a deployment
 // waiting for its weights to download is in a normal state that happens to take a while, and the
 // only thing worse than not saying so is saying it in a field called last_error. Nil until a
 // cluster has reported at all, which is the first seconds of every deployment's life and the
@@ -973,7 +973,7 @@ type EndpointSurface struct {
 
 // EndpointPolicy is the request terms this endpoint sells, on top of whatever the engine does.
 //
-// Version is what a reader that does not understand a future rule reports, not guesses. A
+// Version is what a reader that does not understand a future rule reports instead of guessing. A
 // policy stored in the older language is converted by the plane on read, so only one shape arrives
 // here.
 type EndpointPolicy struct {
@@ -984,8 +984,8 @@ type EndpointPolicy struct {
 // PolicyRule is one term: where it applies, what it is about, and what it says.
 //
 // Route, Stream and WhenPresent are the scope and an omitted one matches everything. Exactly one
-// of Key, a dotted JSON path into the request body, and Predicate, a rule the gateway
-// implements in Go, is the subject. The rest are the terms, and Default, Drop and ValueFrom
+// of Key (a dotted JSON path into the request body) and Predicate (a rule the gateway
+// implements in Go) is the subject. The rest are the terms, and Default, Drop and ValueFrom
 // rewrite a request where Deny refuses one.
 type PolicyRule struct {
 	Route       string   `json:"route"`
@@ -1090,7 +1090,7 @@ type ServingQuotaStandard struct {
 // enforcer, different moment, no field in common.
 //
 // Every limit is nullable and null means UNCOMMITTED, never zero. There is no
-// `usage` here and there is no observed sibling of `Quota.Usage`:
+// `usage` here, and by design no observed sibling of `Quota.Usage`:
 // a serving quota's usage is measured per request in the gateway and never
 // crosses into the control plane.
 type ServingQuota struct {
@@ -1454,7 +1454,7 @@ func (b BenchmarkRun) Target() string {
 }
 
 // Band is the input-length band this run's declared prompt length lands in.
-// Empty when no prompt length was declared, which is a coverage gap instead of
+// Empty when no prompt length was declared, which is a coverage gap and not
 // a band of its own.
 func (b BenchmarkRun) Band() string {
 	value, ok := b.Parameters["input_tokens_mean"]
@@ -1475,7 +1475,7 @@ const (
 	LevelEndpoint   = "endpoint"
 )
 
-// Benchmark modes: a shape of runs over one harness, not a harness
+// Benchmark modes: a shape of runs over one harness, and by design not a harness
 // of its own.
 const (
 	ModeSingle = "single"
@@ -1494,13 +1494,13 @@ const (
 	VerdictNotApplicable = "not_applicable"
 )
 
-// BandUnknown is a run with no declared prompt length. Its own value rather
-// than a silent drop: a coverage gap belongs on the panel, not inside the
+// BandUnknown is a run with no declared prompt length. Its own value instead
+// of a silent drop: a coverage gap belongs on the panel, not inside the
 // number.
 const BandUnknown = "unknown"
 
 // bandUppers are the input-length bands, upper bound inclusive, K being 1024
-// the way a context window is quoted. Duplicated from the plane:
+// the way a context window is quoted. Duplicated from the plane by design:
 // the boundaries belong to a frozen criteria version, and a shared constant
 // would let an edit silently rewrite what an old verdict meant.
 var bandUppers = []struct {
@@ -1585,8 +1585,8 @@ type BenchmarkCheck struct {
 }
 
 // BenchmarkVerdict is whether a run met the standard, derived at read against a
-// pinned criteria version and stored nowhere. The version is what makes
-// deriving it accurate, so it is never shown without one.
+// pinned criteria version and stored nowhere. The version is what makes the
+// derivation reproducible, so it is never shown without one.
 type BenchmarkVerdict struct {
 	Outcome         string           `json:"outcome"`
 	CriteriaVersion string           `json:"criteria_version"`
@@ -1783,7 +1783,7 @@ type MetricRule struct {
 // `Lookback`, `ForSeconds` and `Severity` are returned exactly as declared, null
 // included, because null means "whatever the rule says": substituting the
 // rule's own value would make a row look like it had pinned something it
-// left alone.
+// intentionally left alone.
 type AlertThreshold struct {
 	ID         string         `json:"id"`
 	Rule       string         `json:"rule"`
@@ -1803,13 +1803,13 @@ type AlertThreshold struct {
 }
 
 // FleetDefault reports whether this row is the one that covers every subject of
-// its rule's type, instead of overriding it for one subject.
+// its rule's type instead of overriding it for one subject.
 func (t AlertThreshold) FleetDefault() bool {
 	return t.Subject.ID == nil || *t.Subject.ID == ""
 }
 
-// AlertThresholdCreate declares a threshold. `comparison` is
-// absent: which way a metric is wrong is not declarable.
+// AlertThresholdCreate declares a threshold. `comparison` is absent by
+// design: which way a metric is wrong is not declarable.
 type AlertThresholdCreate struct {
 	Rule        string         `json:"rule"`
 	Value       float64        `json:"value"`
@@ -1839,7 +1839,7 @@ type AlertThresholdUpdate struct {
 }
 
 // EventSubject is what an event is about. `id` is the subject's row
-// identifier and is not a prefixed public id.
+// identifier and is intentionally not a prefixed public id.
 type EventSubject struct {
 	Type string  `json:"type"`
 	ID   *string `json:"id"`

@@ -17,8 +17,8 @@ import (
 )
 
 // noun describes one collection at the command surface: how to list it, how
-// to resolve one of them, and how each is drawn. Everything else, the
-// envelope, pagination, output formats, next actions, is the same for every
+// to resolve one of them, and how each is drawn. Everything else (the
+// envelope, pagination, output formats, next actions) is the same for every
 // noun and lives here once.
 type noun[T any] struct {
 	name    string
@@ -53,8 +53,8 @@ type noun[T any] struct {
 	// getArg names the argument in help, e.g. "<node>".
 	getArg string
 	// extra are subcommands beyond ls and get. A noun whose object has a
-	// second question worth asking about one instance, not a different
-	// listing of many, hangs it here instead of becoming a bespoke command
+	// second question worth asking about one instance (not a different
+	// listing of many) hangs it here instead of becoming a bespoke command
 	// tree and losing the shared flags, output modes and reference resolution.
 	extra func(app *App) []*cobra.Command
 }
@@ -285,8 +285,8 @@ func (n noun[T]) getCmd(app *App) *cobra.Command {
 }
 
 // resolve turns a reference into one object, falling back to prefix matching
-// over the collection. The API does not do prefixes, a server
-// that guesses at ambiguous input eventually guesses wrong, so the guessing,
+// over the collection. The API does not match prefixes by design: a server
+// that guesses at ambiguous input eventually guesses wrong. So the guessing,
 // and the AMBIGUOUS error when there is nothing to guess, happen here.
 func (n noun[T]) resolve(ctx context.Context, app *App, ref string) (T, error) {
 	return n.lookup(ctx, app, ref, strings.HasPrefix)
@@ -529,7 +529,7 @@ func parseDeadline(raw, what string) (*time.Time, error) {
 }
 
 // parseDurationInstant turns a duration into a time `direction` of now: -1 for ago,
-// +1 for from now. A negative duration is refused, not silently
+// +1 for from now. A negative duration is refused instead of silently
 // flipping which side of now it lands on.
 func parseDurationInstant(raw, what string, direction time.Duration) (*time.Time, error) {
 	raw = strings.TrimSpace(raw)

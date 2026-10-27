@@ -147,7 +147,7 @@ modelCache:
 #
 # Whether this cluster can run a replica whose devices do not fit on one machine is
 # discovered, not declared: the operator reads the API groups it is served and
-# reports a leader-worker backend, Grove or LeaderWorkerSet, if one is there. So
+# reports a leader-worker backend (Grove or LeaderWorkerSet) if one is there. So
 # the way to turn multi-node on is `dynamo-platform.global.grove.install`, and the
 # capability follows on the next observation tick with nothing set here.
 # `dynamo-platform.global.grove.enabled` is the other half of that pair and turns
@@ -321,8 +321,8 @@ agent:
   # same number the gateway defaults to.
   #
   # A non-streamed completion sends no header until its last token, so on that
-  # shape this bounds the whole generation. Every hop on the path, the gateway,
-  # the tunnel, this agent, arms the same timer and only the smallest of them is
+  # shape this bounds the whole generation. Every hop on the path (the gateway,
+  # the tunnel, this agent) arms the same timer and only the smallest of them is
   # ever observed, so raising this alone does nothing: a cluster that needs longer
   # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway's
   # deployment too, and the same value in both places.
@@ -384,7 +384,7 @@ frontend:
   # ── both modes ──────────────────────────────────────────────────────────
 
   # Two, so a rollout does not take a model's only way in with it. A frontend
-  # holds no model state, the workers do, so a replica is cheap and stateless.
+  # holds no model state (the workers do), so a replica is cheap and stateless.
   replicas: 2
 
   # Secrets in the workload namespace the kubelet presents when pulling a
@@ -631,7 +631,7 @@ monitoring:
     # A send buffer, not storage: it holds only what is unacknowledged, so a
     # restart costs the unsent tail and a PVC here would buy nothing.
     walSizeLimit: 4Gi
-    # Empty: GPU nodes carry a taint this pod does not tolerate, so the
+    # Empty by design: GPU nodes carry a taint this pod does not tolerate, so the
     # default placement already keeps it off the expensive hardware.
     nodeSelector: {}
     tolerations: []
@@ -656,7 +656,7 @@ hfToken:
 
 # A DaemonSet on GPU nodes. Both the toleration and the selector are essential:
 # with the toleration alone this lands on every node, and an exporter on a CPU node
-# has no GPU to read: the operator then discovers a target set that does not match
+# has no GPU to read, so the operator then discovers a target set that does not match
 # the hardware, which is the missing-devices and phantom-`fell_off_bus` failure. So
 # an empty selector is a data-integrity bug, not wasted scheduling.
 #
@@ -712,26 +712,26 @@ dcgm-exporter:
 # at their subchart defaults; component discovery is the Kubernetes API.
 #
 # Grove is the leader-worker backend a multi-node replica renders onto, and it is
-# written out here, not left at its default because the two keys are not the
+# written out here instead of left at its default, because the two keys are not the
 # same question and the names do not say so. `install` bundles NVIDIA's Grove
 # subchart and deploys the Grove operator cluster-wide; `enabled` only tells the
 # Dynamo operator it may emit PodCliqueSets, and is implied by `install`. A cluster
-# that got Grove from somewhere else, an NVIDIA install, a platform team, a
-# separate release, sets `enabled` alone and leaves `install` false, or it gets two
+# that got Grove from somewhere else (an NVIDIA install, a platform team, a
+# separate release) sets `enabled` alone and leaves `install` false, or it gets two
 # Grove operators reconciling the same CRDs.
 #
 # Both default off. Turning `install` on is a cluster-wide change: it adds CRDs, a controller
 # deployment and three admission webhooks that intercept `grove.io` objects, so it
 # is a deliberate act on a cluster meant to serve a model too large for one node,
 # not a default. NVIDIA's own note is that production installs are recommended to
-# install Grove separately, not through this subchart: the bundled copy is
+# install Grove separately instead of through this subchart. The bundled copy is
 # pinned to the platform chart's version and upgrades only when it does, which for
 # an alpha controller is the wrong coupling. Take the bundle to get a cluster
 # serving multi-node today; move to a separate release when the cluster matters.
 #
 # The hangar operator needs neither key. It discovers the backend by reading the API
-# groups the cluster serves and matching `grove`, Grove serves `grove.io` and
-# `scheduler.grove.io`, so the capability appears on the next observation tick after
+# groups the cluster serves and matching `grove` (Grove serves `grove.io` and
+# `scheduler.grove.io`), so the capability appears on the next observation tick after
 # the CRDs land, whatever this file says. These keys install the thing; `multinode.enabled`
 # above only overrides the reading.
 #

@@ -1,6 +1,6 @@
 // Package fake is a local, deterministic stand-in for the Hangar control
-// plane. It answers with the same shapes the real API answers with, same
-// field names, same envelope, same cursor behaviour, so a command tested
+// plane. It answers with the same shapes the real API answers with (same
+// field names, same envelope, same cursor behaviour), so a command tested
 // against it is a command tested for real shape.
 //
 // Select it with --fake, HANGAR_FAKE=1, or `fake: true` in the config file.

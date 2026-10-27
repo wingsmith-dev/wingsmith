@@ -478,8 +478,8 @@ func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 	}
 }
 
-// promotedDeployment reads back the one cluster copy a promotion made. A promotion mints the pair,
-// a workload and the single deployment pinned to what is running, and the adoption fields are
+// promotedDeployment reads back the one cluster copy a promotion made. A promotion mints the pair
+// (a workload and the single deployment pinned to what is running), and the adoption fields are
 // per-cluster, so they are read where they live.
 func promotedDeployment(t *testing.T, workload map[string]any) map[string]any {
 	t.Helper()

@@ -220,7 +220,7 @@ func TestNoColourMeansNoEscapes(t *testing.T) {
 	}
 }
 
-// TestEveryColourLevelKeepsTheText, whatever the escapes, the words have to survive, or a
+// TestEveryColourLevelKeepsTheText: whatever the escapes, the words have to survive, or a
 // listing becomes unreadable on a terminal we guessed wrong about.
 func TestEveryColourLevelKeepsTheText(t *testing.T) {
 	for _, level := range []ColorLevel{ColorNone, Color16, Color256, ColorTrue} {

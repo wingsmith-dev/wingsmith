@@ -92,7 +92,7 @@ spec:
               env:
                 # The Anthropic Messages API is a second protocol on the same
                 # frontend, so it needs no second deployment and no proxy. Set as
-                # env, not args because `DynamoGraphDeployment` owns the
+                # env instead of args because `DynamoGraphDeployment` owns the
                 # command line: appending args here would fight the operator for
                 # it, and every one of these flags has an env var for that reason.
                 - name: DYN_ENABLE_ANTHROPIC_API
@@ -104,7 +104,7 @@ spec:
                 # decides which worker already holds a prefix by hashing block
                 # contents; Python salts hashes per process by default, so a
                 # frontend and a worker that disagree on the salt hash identical
-                # blocks differently and every cache hit is missed: silently, as a
+                # blocks differently and every cache hit is missed in silence, as a
                 # performance loss nothing reports. Set here, not left to
                 # `frontend.env`, because a default that has to be right on every
                 # cluster is not a per-cluster value.

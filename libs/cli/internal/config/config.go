@@ -248,7 +248,7 @@ func ValidateServer(raw string) error {
 }
 
 // Set writes a dotted key. Values are checked here, so a bad one is refused
-// when it is typed, not stored and then failing every later command.
+// when it is typed instead of being stored and then failing every later command.
 // An empty value clears the key and is always accepted.
 func (f *File) Set(key, value string) error {
 	c := f.Context("")

@@ -99,11 +99,11 @@ func declaredLimits(q api.ServingQuota) api.ResolvedLimits {
 }
 
 // effectiveLimits is what the replica at index enforces once the scope is
-// applied. Under per_replica the declared set is returned unchanged, that is
-// what the mode means, not divided by one, so the two modes cannot
+// applied. Under per_replica the declared set is returned unchanged (that is
+// what the mode means) instead of divided by one, so the two modes cannot
 // converge by accident at a single replica.
 //
-// max_output_tokens is not divided: it is a ceiling on what one
+// max_output_tokens is intentionally not divided: it is a ceiling on what one
 // request may ask for, not an allowance spent over a minute.
 func effectiveLimits(q api.ServingQuota, replicas, index int) api.ResolvedLimits {
 	if q.LimitScope != api.ScopeDivided {
@@ -117,8 +117,8 @@ func effectiveLimits(q api.ServingQuota, replicas, index int) api.ResolvedLimits
 	return out
 }
 
-// share is one replica's slice of a fleet-wide limit. Largest remainder rather
-// than a floor: the floor alone throws away limit%replicas of what was sold on
+// share is one replica's slice of a fleet-wide limit. Largest remainder instead
+// of a floor: the floor alone throws away limit%replicas of what was sold on
 // every uneven split. An uncommitted limit stays uncommitted: dividing null
 // would turn "not limited on this axis" into a number, and at any fleet larger
 // than the limit that number would be zero.

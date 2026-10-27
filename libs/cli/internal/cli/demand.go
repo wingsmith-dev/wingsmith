@@ -484,8 +484,8 @@ func scaleCell(s ui.Style, sc api.WorkloadScale) string {
 	return cell
 }
 
-// footprintSummary is a serving configuration on one line, `8 x h100-80 · tp8 ·
-// 128k · fp8`, the one cell that says how a workload is served.
+// footprintSummary is a serving configuration on one line, such as `8 x h100-80 ·
+// tp8 · 128k · fp8`. It is the one cell that says how a workload is served.
 // It formats the same fields in the same order as the console's own
 // footprintSummary, so the two surfaces name a footprint identically.
 func footprintSummary(sv api.ServingSpec) string {
@@ -805,8 +805,8 @@ func isOmniEngine(engine string) bool {
 // omniBehaviour is the serving block an omni workload sends, or nil for every
 // other workload so that the plane's defaults stand untouched.
 //
-// A sampling value is sent as the JSON it reads as, 8 as a number, 4.0 as a
-// number, true as a boolean, and as a string only when it is none of those,
+// A sampling value is sent as the JSON it reads as (8 as a number, 4.0 as a
+// number, true as a boolean) and as a string only when it is none of those,
 // because the stage config hands it to the pipeline as it arrives.
 func omniBehaviour(modality, modelClass string, defaults []string) (*api.ServingBehaviour, error) {
 	if modality == "" {
@@ -888,7 +888,7 @@ and removes the deployment once its replicas are gone.`,
 //
 // The share is placement's answer and asserting one per cluster would be a
 // second answer to a question that already has one. --floor is how a caller says
-// something about where, and it is still a floor instead of a share.
+// something about where, and it is still a floor, not a share.
 func newWorkloadScaleCmd(app *App) *cobra.Command {
 	var (
 		wait     bool
@@ -1054,7 +1054,7 @@ func emitWorkload(app *App, cmd *cobra.Command, wl api.Workload) error {
 //
 // Its own subcommand instead of a section of `get`, because `get` answers "what is
 // true now" in a fixed amount of space and this is unbounded. It is also the one
-// listing in the CLI that is oldest-first: every other listing is a set
+// listing in the CLI that is oldest-first by design: every other listing is a set
 // where the newest row matters most, and this is a sequence that only reads correctly
 // in the order it happened.
 func newDeploymentEventsCmd(app *App) *cobra.Command {
@@ -1146,8 +1146,8 @@ there, for example an hour spent waiting for weights to download.`,
 
 // eventReason is the machine-readable half of why a reconcile concluded what it did.
 //
-// Read off details, not parsed out of the message, because it is the field the
-// operator sets (WeightsNotResident, NoSchedulableCapacity, Applied)
+// Read off details, not parsed out of the message, because it is the stable code the
+// operator sets (WeightsNotResident, NoSchedulableCapacity, Applied),
 // and the message around it is prose that may be reworded.
 func eventReason(e api.Event) string {
 	if reason, ok := e.Details["reason"].(string); ok && reason != "" {

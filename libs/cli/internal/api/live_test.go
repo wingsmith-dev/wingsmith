@@ -10,8 +10,8 @@ import (
 )
 
 // These run against a real plane when one is pointed at, and are skipped
-// otherwise. The corpus in testdata keeps the types accurate without a server;
-// this keeps the transport accurate with one: query params, envelopes, the
+// otherwise. The corpus in testdata checks the types without a server;
+// this checks the transport with one: query params, envelopes, the
 // error body, and cursor following are things only a real server can confirm.
 //
 //	HANGAR_TEST_SERVER=http://localhost:8099 go test ./internal/api/

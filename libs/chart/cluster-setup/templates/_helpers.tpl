@@ -131,8 +131,8 @@ not in values (a Secret created out of band), which rolls nothing.
 
 {{/*
 `cluster.allowedOperations` as a clean comma-separated list, from either a
-string ("cordon, benchmark") or a YAML list. Unknown kinds are refused rather
-than passed on, because the RBAC below is derived from this list and a typo
+string ("cordon, benchmark") or a YAML list. Unknown kinds are refused instead
+of passed on, because the RBAC below is derived from this list and a typo
 would otherwise grant nothing and fail only when the plane asks.
 */}}
 {{- define "cluster-setup.allowedOperations" -}}

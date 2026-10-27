@@ -136,7 +136,7 @@ func benchmarkDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 //
 // Anything shaped like a statistic block becomes a row of percentiles, because
 // that is the shape load generators converge on and it is what is worth reading
-// at a glance. Everything else is named and left as JSON, which is the accurate
+// at a glance. Everything else is named and left as JSON, which is the faithful
 // rendering of a field nothing promised the shape of, and the reason -o json is
 // pointed at in the help, not treated as a fallback.
 func printSummary(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
@@ -304,7 +304,7 @@ func newBenchmarkVerdictCmd(app *App) *cobra.Command {
 
 Nothing is stored: the checks are recomputed against the criteria version named
 here, defaulting to whatever the plane currently publishes. Pass --criteria to
-grade against an older standard.`,
+choose an older standard to grade against.`,
 		Example: `  hgr benchmark verdict bmk_01m…
   hgr benchmark verdict bmk_01m… --criteria acceptance-2026.1`,
 		Args: cobra.ExactArgs(1),
@@ -574,7 +574,7 @@ func benchmarkBands(app *App, w io.Writer, s ui.Style, bands []api.BenchmarkBand
 }
 
 // verdictWord colours an outcome the way the console does: a pass is green, a
-// fail is red, and inconclusive is warned, not greyed: a missing
+// fail is red, and inconclusive is warned, not greyed, because a missing
 // measurement is the outcome someone has to go and fix, not a nothing.
 func verdictWord(s ui.Style, outcome string) string {
 	switch outcome {

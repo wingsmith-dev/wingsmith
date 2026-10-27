@@ -287,7 +287,7 @@ internal/errs/      typed errors, exit codes, explanations
 internal/ui/        style, tables, key-value blocks, spinners, prompts
 ```
 
-The rule that keeps this accurate: **a command builds an `output.Result` and returns it.** It never
+The rule that keeps the layers apart: **a command builds an `output.Result` and returns it.** It never
 writes to stdout, never formats for a specific consumer, and never touches a transport. Adding a
 noun means adding one file under `internal/cli/` and one method per verb on `api.Backend`.
 

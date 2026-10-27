@@ -62,8 +62,8 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 func (c *Client) Simulated() bool { return false }
 
 // Identity reports the configured context and whether the plane answers.
-// The plane has no identity endpoint, a human is the one admin, and a tenant
-// login is scoped to its own serving view, so `/health` is the only thing
+// The plane has no identity endpoint (a human is the one admin, and a tenant
+// login is scoped to its own serving view), so `/health` is the only thing
 // that can be truthfully asked.
 func (c *Client) Identity(ctx context.Context) (Identity, error) {
 	id := Identity{Server: c.Server, Project: c.DefaultProject, HasToken: c.Token != ""}
@@ -292,8 +292,8 @@ func (c *Client) Deployments(ctx context.Context, o ListOpts) (Page[Deployment],
 }
 
 // Deployment resolves by id, or by name within a cluster: a deployment name
-// is unique per cluster and not globally, two clusters holding shares of one
-// workload share a name, so `--cluster` is how a name is made unambiguous.
+// is unique per cluster and not globally (two clusters holding shares of one
+// workload share a name), so `--cluster` is how a name is made unambiguous.
 func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error) {
 	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
 }
@@ -544,8 +544,8 @@ func (c *Client) BenchmarkVerdict(ctx context.Context, ref, criteria string) (Be
 	return out, err
 }
 
-// BenchmarkRequest reads one ask. There is no listing of requests
-// on the plane: the runs are the collection, and `--request` filters them.
+// BenchmarkRequest reads one ask. The plane has no listing of requests, by
+// design: the runs are the collection, and `--request` filters them.
 func (c *Client) BenchmarkRequest(ctx context.Context, ref string) (BenchmarkRequest, error) {
 	return one[BenchmarkRequest](ctx, c, "/v1/benchmarks/requests", ref, nil)
 }
@@ -586,8 +586,8 @@ func (c *Client) BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, er
 	return page.Items, err
 }
 
-// CreateBenchmark starts a run. It creates two things on the plane, the record
-// and the operation that carries it out, and returns the record; the operation
+// CreateBenchmark starts a run. It creates two things on the plane (the record
+// and the operation that carries it out) and returns the record; the operation
 // is named on it and is where cancellation lives.
 func (c *Client) CreateBenchmark(ctx context.Context, req BenchmarkRunCreate) (BenchmarkRun, error) {
 	var out BenchmarkRun
@@ -784,7 +784,7 @@ type wireError struct {
 }
 
 // planeCodes maps the plane's error vocabulary onto the CLI's. The plane's
-// `invalid` (422) is a well-formed request the plane refuses instead of a
+// `invalid` (422) is a well-formed request the plane refuses, not a
 // malformed one, so it maps to INVALID_STATE and not USAGE.
 var planeCodes = map[string]errs.Code{
 	"not_found":       errs.CodeNotFound,

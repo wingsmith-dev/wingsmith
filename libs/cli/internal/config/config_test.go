@@ -273,12 +273,12 @@ func TestASubstringOfARealKeyIsSuggested(t *testing.T) {
 }
 
 // TestATypoWithAnExtraCharacterGetsNoSuggestion pins a real weakness instead of an intent: the
-// near-miss check asks whether a settable key contains what was typed, so "context.servers", the
-// most common way to get this wrong, is longer than every candidate and matches none. The user
+// near-miss check asks whether a settable key contains what was typed, so "context.servers" (the
+// most common way to get this wrong) is longer than every candidate and matches none. The user
 // still gets `hgr config list`, so nothing is broken, but the suggestion that would have saved the
 // round trip does not appear.
 //
-// TODO: match on edit distance, or on the typed key's prefix, not containment.
+// TODO: match on edit distance, or on the typed key's prefix, instead of containment.
 func TestATypoWithAnExtraCharacterGetsNoSuggestion(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
 	var e *errs.Error

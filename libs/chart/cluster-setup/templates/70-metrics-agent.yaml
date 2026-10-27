@@ -52,8 +52,8 @@ data:
       scrape_interval: {{ .Values.monitoring.agent.scrapeInterval }}
       scrape_timeout: {{ .Values.monitoring.agent.scrapeTimeout }}
       # `cluster` is the label the plane narrows every query on, and it must equal
-      # the cluster id the plane knows this cluster by: derived from
-      # `cluster.id`, not asked for a second time, because a second field
+      # the cluster id the plane knows this cluster by. It is derived from
+      # `cluster.id` instead of asked for a second time, because a second field
       # is a second chance to disagree and the symptom of disagreement is an
       # empty panel, not an error.
       external_labels:
@@ -112,8 +112,8 @@ data:
             target_label: node
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
-      # Dynamo's frontend, workers and planner. These are the serving numbers,
-      # TTFT, inter-token latency, queue depth, KV-cache hit rate, token counts,
+      # Dynamo's frontend, workers and planner. These are the serving numbers
+      # (TTFT, inter-token latency, queue depth, KV-cache hit rate, token counts),
       # and they come from the ports the Dynamo operator names on the pods it
       # owns, so a new DynamoGraphDeployment is picked up without editing this.
       #
@@ -152,7 +152,7 @@ data:
             target_label: pod
       # The router reports itself as component type `default` and declares no
       # container port, so the job above cannot match it. Its metrics are on
-      # DYN_SYSTEM_PORT (9090), forced onto the pod IP here, not required
+      # DYN_SYSTEM_PORT (9090), forced onto the pod IP here instead of required
       # in the pod spec.
       - job_name: dynamo-router
         honor_labels: true
