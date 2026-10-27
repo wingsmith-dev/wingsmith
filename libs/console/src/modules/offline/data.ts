@@ -1858,6 +1858,9 @@ export const components: Component[] = [
 ]
 
 const drainNode = nodes[2]
+const cordonNode = nodes[3]
+const failedDrainNode = nodes.find((n) => n.name === "sjc-1-n02")!
+const pendingCordonNode = nodes.find((n) => n.name === "sjc-1-n03")!
 
 export const operations: Operation[] = [
   {
@@ -1882,8 +1885,8 @@ export const operations: Operation[] = [
   {
     id: uid("opr_"),
     cluster_id: clusters[0].id,
-    type: "device.reset",
-    target: { type: "device", id: devices[7].id },
+    type: "node.cordon",
+    target: { type: "node", id: cordonNode.id },
     reason: "ecc uncorrectable",
     requested_by: "operator",
     parameters: {},
@@ -1891,7 +1894,7 @@ export const operations: Operation[] = [
     created_at: iso(240),
     updated_at: iso(238),
     phase: "succeeded",
-    result: { reset: true },
+    result: { node: cordonNode.name, changed: "true", unschedulable: "true" },
     error: null,
     attempts: 1,
     cancel_requested_at: null,
@@ -1901,11 +1904,11 @@ export const operations: Operation[] = [
   {
     id: uid("opr_"),
     cluster_id: clusters[1].id,
-    type: "component.upgrade",
-    target: { type: "component", id: components[2].id },
-    reason: null,
+    type: "node.drain",
+    target: { type: "node", id: failedDrainNode.id },
+    reason: "device unhealthy",
     requested_by: "operator",
-    parameters: { version: "0.4.2" },
+    parameters: { grace_seconds: 600 },
     deadline_at: null,
     created_at: iso(75),
     updated_at: iso(70),
@@ -1919,10 +1922,10 @@ export const operations: Operation[] = [
   },
   {
     id: uid("opr_"),
-    cluster_id: clusters[2].id,
-    type: "cache.warm",
-    target: { type: "artifact", id: artifacts[0].id },
-    reason: "pre-stage for rollout",
+    cluster_id: clusters[1].id,
+    type: "node.cordon",
+    target: { type: "node", id: pendingCordonNode.id },
+    reason: "node not reporting",
     requested_by: "operator",
     parameters: {},
     deadline_at: null,
