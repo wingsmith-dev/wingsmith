@@ -212,31 +212,23 @@ func TestPodOverlayMergesByName(t *testing.T) {
 	}
 }
 
-// TestDynamoOverlayReplacesComponents is the other half of the overlay story: there is no schema to
-// read merge keys off a foreign CRD, so lists replace, and replacing spec.components wholesale is
-// the intended way to hand-write a topology this renderer cannot derive.
-func TestDynamoOverlayReplacesComponents(t *testing.T) {
+// TestADynamoOverlayCannotReplaceTheComponents is the other half of the overlay story: the graph
+// merge replaces lists, so a components list would drop the rendered workers and frontend for
+// replica counts and device requests placement never counted. The plane refuses it on write and the
+// renderer refuses it again.
+func TestADynamoOverlayCannotReplaceTheComponents(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"components": []any{
-			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
-			map[string]any{"name": "VllmDecodeWorker", "replicas": int64(3)},
-		},
+		"components": []any{map[string]any{"name": WorkerComponent, "replicas": int64(3)}},
 	}
-	obj, err := DynamoGraphDeployment(in, testOptions())
-	if err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	comps, _, err := unstructured.NestedSlice(obj.Object, "spec", "components")
-	if err != nil {
-		t.Fatalf("components: %v", err)
-	}
-	if len(comps) != 2 {
-		t.Fatalf("components = %v, want the overlay's two", comps)
-	}
-	first, _ := comps[0].(map[string]any)
-	if first["name"] != "VllmPrefillWorker" {
-		t.Fatalf("components were merged rather than replaced: %v", comps)
+	for _, opts := range []Options{testOptions(), frontendOptions()} {
+		_, err := DynamoGraphDeployment(in, opts)
+		if err == nil || !strings.Contains(err.Error(), "overlay.dynamo may not set components") {
+			t.Fatalf("error = %v, want the components overlay refused", err)
+		}
+		if !strings.Contains(err.Error(), in.Deployment.DeploymentID) {
+			t.Errorf("the refusal does not name the deployment: %v", err)
+		}
 	}
 }
 
@@ -779,89 +771,6 @@ func TestTheFrontendRefusesResourcesThatWouldNotSchedule(t *testing.T) {
 				t.Fatalf("error = %v, want one naming %q", err, tc.want)
 			}
 		})
-	}
-}
-
-// The overlay merges over the graph and lists replace, so an overlay written before there was a
-// frontend to lose deletes it — leaving a graph that applies, workers that come up healthy, and a
-// model no request can reach. Nothing else catches that, so this is a refusal.
-func TestAnOverlayThatDeletesTheFrontendIsRefused(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"components": []any{
-			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
-			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
-		},
-	}
-	_, err := DynamoGraphDeployment(in, frontendOptions())
-	if err == nil {
-		t.Fatal("an overlay that deletes the frontend rendered without complaint")
-	}
-	if !strings.Contains(err.Error(), in.Deployment.DeploymentID) {
-		t.Errorf("the refusal does not name the deployment: %v", err)
-	}
-	if !strings.Contains(err.Error(), FrontendComponent) {
-		t.Errorf("the refusal does not name what was lost: %v", err)
-	}
-	if !strings.Contains(err.Error(), "spec.components") {
-		t.Errorf("the refusal does not say what to do about it: %v", err)
-	}
-}
-
-// The escape hatch stays open: an overlay may still hand-write a topology this renderer cannot
-// derive, so long as the frontend is still in it and still carries the label a request finds it by.
-func TestAnOverlayThatRestatesTheFrontendIsAccepted(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"components": []any{
-			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
-			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
-			map[string]any{
-				"name": FrontendComponent, "type": "frontend", "replicas": int64(1),
-				"podTemplate": map[string]any{"metadata": map[string]any{"labels": map[string]any{
-					deploymentIDLabel: in.Deployment.DeploymentID,
-				}}},
-			},
-		},
-	}
-	if _, err := DynamoGraphDeployment(in, frontendOptions()); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-}
-
-// A frontend that is in the graph and anonymous fails exactly the way a missing one does: Dynamo
-// derives a Service from it carrying no `hangar.dev/deployment-id`, so nothing the gateway has
-// already resolved to this deployment can find it. Checking only that the component is present
-// would let the guard pass the defect it exists for.
-func TestAnOverlayThatRestatesTheFrontendWithoutItsRoutingLabelIsRefused(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"components": []any{
-			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
-			map[string]any{"name": FrontendComponent, "type": "frontend", "replicas": int64(1)},
-		},
-	}
-	_, err := DynamoGraphDeployment(in, frontendOptions())
-	if err == nil {
-		t.Fatal("an anonymous frontend rendered without complaint; nothing could route to it")
-	}
-	if !strings.Contains(err.Error(), deploymentIDLabel) {
-		t.Errorf("the refusal does not name the label that is missing: %v", err)
-	}
-	if !strings.Contains(err.Error(), in.Deployment.DeploymentID) {
-		t.Errorf("the refusal does not say what the label has to say: %v", err)
-	}
-}
-
-// A cluster that has not opted in has no frontend in the graph to lose, so an overlay that
-// replaces the components is what it always was: the intended way to hand-write a topology.
-func TestTheOverlayRefusalDoesNotApplyBeforeTheClusterOptsIn(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"components": []any{map[string]any{"name": WorkerComponent, "replicas": int64(3)}},
-	}
-	if _, err := DynamoGraphDeployment(in, testOptions()); err != nil {
-		t.Fatalf("render: %v", err)
 	}
 }
 

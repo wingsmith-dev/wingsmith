@@ -311,6 +311,9 @@ func roleComponent(role string) (component, kind string, err error) {
 // DynamoGraphDeployment renders one deployment into the object that serves it: the model's
 // workers and, where the cluster opted in, its own frontend.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
+	if err := checkOverlay(in.Deployment.Serving.Overlay); err != nil {
+		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
+	}
 	roles, err := WorkerRoles(in.Deployment)
 	if err != nil {
 		return nil, err
@@ -377,11 +380,6 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		return nil, err
 	}
 	obj.Object = withoutContentLoggingEnv(obj.Object).(map[string]any)
-	if opts.FrontendEnabled {
-		if err := checkFrontendSurvivedOverlay(obj, in); err != nil {
-			return nil, err
-		}
-	}
 	if err := checkImages(obj.Object, opts); err != nil {
 		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
 	}
@@ -1203,45 +1201,6 @@ func frontendResources(opts Options) (corev1.ResourceRequirements, error) {
 	}, nil
 }
 
-// checkFrontendSurvivedOverlay refuses a render whose overlay left the deployment unreachable. The
-// Dynamo overlay replaces lists, so an overlay that writes `spec.components` can drop the frontend,
-// or restate it without the `hangar.dev/deployment-id` label the agent routes on. Nothing else
-// would report either.
-func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) error {
-	components, found, err := unstructured.NestedSlice(obj.Object, "spec", "components")
-	if err != nil || !found {
-		return fmt.Errorf(
-			"deployment %s left the rendered object with no spec.components",
-			in.Deployment.DeploymentID)
-	}
-	for _, entry := range components {
-		component, ok := entry.(map[string]any)
-		if !ok || component["name"] != FrontendComponent {
-			continue
-		}
-		labels, _, err := unstructured.NestedStringMap(component, "podTemplate", "metadata", "labels")
-		if err != nil || labels[deploymentIDLabel] != in.Deployment.DeploymentID {
-			return fmt.Errorf(
-				"deployment %s restates the %s component in its Dynamo overlay without "+
-					"%s=%s on its pod template — Dynamo copies those labels onto the Service it "+
-					"derives, and that label is how a request already resolved to this deployment "+
-					"finds this frontend, so the deployment would come up healthy and be reachable "+
-					"by nothing; carry the labels the render puts on the component",
-				in.Deployment.DeploymentID, FrontendComponent, deploymentIDLabel,
-				in.Deployment.DeploymentID,
-			)
-		}
-		return nil
-	}
-	return fmt.Errorf(
-		"deployment %s writes spec.components in its Dynamo overlay, which replaces the rendered "+
-			"list wholesale and takes the %s component with it — the deployment would come up "+
-			"healthy and be reachable by nothing; restate the %s component in the overlay, or "+
-			"express the change without rewriting spec.components",
-		in.Deployment.DeploymentID, FrontendComponent, FrontendComponent,
-	)
-}
-
 // globalNamespace is the globalDynamoNamespace every component of a graph renders with.
 //
 // Without per-model frontends the setting does not apply: the only frontend is the cluster-wide
@@ -1706,7 +1665,8 @@ func HFSnapshotDir(repo, revision string) string {
 }
 
 // applyPodOverlay merges the serving block's pod configuration over the rendered spec by strategic
-// merge, so containers, env and volumes merge by name instead of being replaced.
+// merge, so containers and env merge by name instead of being replaced. checkOverlay has already
+// limited it to the keys in podOverlayKeys.
 func applyPodOverlay(spec *corev1.PodSpec, overlay map[string]any) (*corev1.PodSpec, error) {
 	if len(overlay) == 0 {
 		return spec, nil
@@ -1731,7 +1691,8 @@ func applyPodOverlay(spec *corev1.PodSpec, overlay map[string]any) (*corev1.PodS
 }
 
 // applyDynamoOverlay merges the serving block's configuration over the graph: maps merge, lists
-// replace, since the CRD has no Go type to read merge keys from.
+// replace, since the CRD has no Go type to read merge keys from. checkOverlay has already limited
+// it to annotations and envs, so it cannot replace spec.components.
 func applyDynamoOverlay(obj *unstructured.Unstructured, overlay map[string]any) error {
 	if len(overlay) == 0 {
 		return nil

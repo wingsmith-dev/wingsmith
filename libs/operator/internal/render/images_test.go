@@ -42,16 +42,15 @@ func TestARenderOutsideTheAllowedImagesIsRefused(t *testing.T) {
 	}
 }
 
-// An overlay is merged after the render, and an image it names is held to the same list.
+// An overlay may not name an image at all, allowlist or not: the image is a declared, hashed field
+// of its own.
 func TestAnOverlayCannotBringItsOwnImage(t *testing.T) {
-	opts := testOptions()
-	opts.ImagePrefixes = []string{"nvcr.io/nvidia/ai-dynamo"}
 	in := testInputs()
 	in.Deployment.Serving.Overlay.PodSpec = map[string]any{
 		"containers": []any{map[string]any{"name": "sidecar", "image": "docker.io/evil/miner:1"}},
 	}
-	_, err := DynamoGraphDeployment(in, opts)
-	if err == nil || !strings.Contains(err.Error(), "docker.io/evil/miner:1") {
+	_, err := DynamoGraphDeployment(in, testOptions())
+	if err == nil || !strings.Contains(err.Error(), "may not set image") {
 		t.Fatalf("error = %v, want the overlay's image refused", err)
 	}
 }

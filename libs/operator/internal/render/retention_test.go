@@ -101,7 +101,7 @@ func TestARolesVerboseLogLevelIsRemovedToo(t *testing.T) {
 }
 
 // contentLoggingEnvOverlay sets every variable that logs request content, and one beside them that
-// does not, through both overlays: the pod's env and a Dynamo component's envs.
+// does not, through both overlays: the pod's env and the graph's shared envs.
 func contentLoggingEnvOverlay(in *Inputs) {
 	env := func() []any {
 		return []any{
@@ -109,16 +109,14 @@ func contentLoggingEnvOverlay(in *Inputs) {
 			map[string]any{"name": "DYN_LOGGING_CONFIG_PATH", "value": "/etc/dynamo/logging.toml"},
 			map[string]any{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
 			map[string]any{"name": "VLLM_DEBUG_LOG_API_SERVER_RESPONSE", "value": "true"},
-			map[string]any{"name": "DYN_LOG", "valueFrom": map[string]any{"configMapKeyRef": map[string]any{"name": "l", "key": "k"}}},
+			map[string]any{"name": "DYN_LOG", "valueFrom": map[string]any{"fieldRef": map[string]any{"fieldPath": "metadata.name"}}},
 			map[string]any{"name": "NCCL_DEBUG", "value": "INFO"},
 		}
 	}
 	in.Deployment.Serving.Overlay.PodSpec = map[string]any{
 		"containers": []any{map[string]any{"name": "main", "env": env()}},
 	}
-	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
-		"extraComponentSettings": map[string]any{"envs": env()},
-	}
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{"envs": env()}
 }
 
 func TestAnOverlayEnvVarThatLogsRequestContentNeverReachesAContainer(t *testing.T) {
@@ -157,7 +155,7 @@ func TestTheClampLeavesTheInputsOverlayAlone(t *testing.T) {
 	in := testInputs()
 	contentLoggingEnvOverlay(&in)
 	renderedJSON(t, in)
-	envs := in.Deployment.Serving.Overlay.Dynamo["extraComponentSettings"].(map[string]any)["envs"].([]any)
+	envs := in.Deployment.Serving.Overlay.Dynamo["envs"].([]any)
 	if len(envs) != 6 {
 		t.Errorf("the input overlay was edited: %d entries left", len(envs))
 	}

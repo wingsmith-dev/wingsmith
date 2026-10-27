@@ -258,12 +258,13 @@ type CapacityObserved struct {
 // field by field, and mirroring it is a losing race. The serving configuration models what the
 // plane reasons about and passes the rest through.
 type Overlay struct {
-	// PodSpec is merged over the rendered pod with strategic-merge semantics, so containers,
-	// env, volumes and volume mounts merge by name.
+	// PodSpec is merged over the rendered pod with strategic-merge semantics, so containers and
+	// env merge by name. The renderer refuses any key outside its allowlist (render/overlay.go),
+	// which mirrors the plane's.
 	PodSpec map[string]any `json:"pod_spec"`
 
-	// Dynamo is merged over the rendered graph deployment. No schema is available to read merge
-	// keys from, so maps merge and lists replace.
+	// Dynamo is merged over the rendered graph deployment: maps merge and lists replace. Only
+	// annotations and envs are accepted.
 	Dynamo map[string]any `json:"dynamo"`
 }
 
