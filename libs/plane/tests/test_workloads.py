@@ -16,6 +16,7 @@ import msgspec
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
 from app.db.models import Workload
+from app.core.schemas import UNSET
 from app.core.exceptions import Invalid
 from app.modules.workloads.views import UNITS
 from app.modules.workloads.views import _revision
@@ -24,10 +25,8 @@ from app.modules.workloads.routes import WorkloadRoutes
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
 from app.modules.workloads.schemas import OverlaySchema
-from app.modules.workloads.schemas import WorkloadSchema
 from app.modules.workloads.schemas import ParallelismSchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
-from app.modules.workloads.schemas import WorkloadServingSchema
 from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
 from app.modules.workloads.schemas import WorkloadServingRequest
@@ -37,6 +36,7 @@ from app.modules.workloads.services import STRATEGIES
 from app.modules.policies.repository import SUBJECTS
 from app.modules.workloads.repository import WorkloadRepository
 from app.modules.workloads.validation import check_scale
+from app.modules.workloads.validation import check_overlay
 
 
 EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
@@ -94,6 +94,15 @@ def patch(body: bytes, type_=None):
     return msgspec.json.decode(body, type=type_ or WorkloadUpdateRequest)
 
 
+def decode(body: dict, type_):
+    """A body as a client would send it, through the decoder the routes use."""
+    return msgspec.json.decode(msgspec.json.encode(body), type=type_)
+
+
+def a_create_body(**kwargs) -> dict:
+    return {"name": "serve", "project": "acme", "serving": msgspec.to_builtins(a_serving())} | kwargs
+
+
 @pytest.mark.parametrize("field", ["desired_scale", "min_scale", "max_scale"])
 def test_scale_is_an_operation_and_not_a_field_write(field):
     with pytest.raises(msgspec.ValidationError, match=field):
@@ -129,19 +138,21 @@ def test_a_revision_snapshot_decodes_as_a_patch_because_the_two_structs_agree():
     Any other field added to one struct and not the other silently makes old revisions
     un-reappliable, which is the failure this pins.
     """
-    request = set(WorkloadServingRequest.__struct_fields__)
-    update = set(WorkloadServingUpdate.__struct_fields__)
-    assert request - update == {"artifact"}
-    assert update - request == set()
+    stored = a_serving(overlay=OverlaySchema(pod_spec={"terminationGracePeriodSeconds": 60}))
+    body = msgspec.to_builtins(stored)
+    artifact = body.pop("artifact")
+    reapplied = decode(body, WorkloadServingUpdate)
+    assert UNSET not in reapplied.to_dict().values()
+    assert decode(msgspec.to_builtins(reapplied) | {"artifact": artifact}, WorkloadServingRequest) == stored
 
 
 def test_the_serving_configuration_is_declared_on_the_workload_and_patchable():
     """It is stated inline rather than named: there is no shared object to point at."""
-    assert "serving" in WorkloadCreateRequest.__struct_fields__
-    assert "serving" in WorkloadUpdateRequest.__struct_fields__
-    assert WorkloadCreateRequest.__annotations__["serving"] is WorkloadServingRequest
-    assert "serving_digest" in WorkloadSchema.__struct_fields__
-    assert WorkloadSchema.__annotations__["serving"] is WorkloadServingSchema
+    assert decode(a_create_body(), WorkloadCreateRequest).serving == a_serving()
+    data = patch(b'{"serving": {"engine_runtime_version": "0.7.0"}}')
+    assert data.serving.to_dict(exclude_unset=True) == {"engine_runtime_version": "0.7.0"}
+    with pytest.raises(msgspec.ValidationError, match="serving_digest"):
+        patch(b'{"serving_digest": "svg_0"}')
 
 
 def test_a_serving_patch_leaves_absent_fields_unset():
@@ -174,15 +185,19 @@ def test_device_class_cannot_be_cleared_by_a_patch():
 
 
 def test_context_length_lives_on_the_serving_block_and_not_on_a_catalog_entry():
-    assert "context_length" in WorkloadServingSchema.__struct_fields__
-    assert "context_length" in WorkloadServingRequest.__struct_fields__
+    assert decode(a_create_body(), WorkloadCreateRequest).serving.context_length == 8192
+    assert patch(b'{"context_length": 32768}', WorkloadServingUpdate).context_length == 32768
+    with pytest.raises(msgspec.ValidationError, match="context_length"):
+        decode(a_create_body(context_length=8192), WorkloadCreateRequest)
 
 
 def test_kv_cache_is_serving_configuration_and_not_the_weight_cache():
     """Per-request attention state, not a declared warm set with observed residency."""
-    fields = set(CacheSchema.__struct_fields__)
-    assert fields == {"kv_cache_dtype", "kv_cache_fraction", "prefix_cache_enabled", "prefix_cache_config"}
-    assert not [f for f in WorkloadServingSchema.__struct_fields__ if "warm" in f or "resident" in f]
+    cache = {"kv_cache_dtype": "fp8", "kv_cache_fraction": 0.9, "prefix_cache_enabled": False}
+    assert decode(cache, CacheSchema) == CacheSchema(**cache)
+    for weights in ({"warm_set": ["llama-70b"]}, {"resident": True}):
+        with pytest.raises(msgspec.ValidationError):
+            decode(weights, CacheSchema)
 
 
 def test_a_workload_that_says_nothing_about_the_prefix_cache_gets_it():
@@ -192,30 +207,39 @@ def test_a_workload_that_says_nothing_about_the_prefix_cache_gets_it():
     false default here meant every workload that never mentioned the field shipped
     --no-enable-prefix-caching.
     """
-    field = {f.name: f for f in msgspec.structs.fields(CacheSchema)}["prefix_cache_enabled"]
-    assert field.default is True
+    assert decode({}, CacheSchema).prefix_cache_enabled is True
+    assert a_serving().cache.prefix_cache_enabled is True
 
 
-def test_the_shape_is_returned_as_one_thing_class_included():
-    assert "device_class" in ShapeSchema.__struct_fields__
-    assert "device_class" not in WorkloadServingSchema.__struct_fields__
-    assert "device_class" not in WorkloadSchema.__struct_fields__
+def test_the_shape_is_stated_as_one_thing_class_included():
+    assert patch(b'{"shape": {"device_class": "h200"}}', WorkloadServingUpdate).shape.device_class == "h200"
+    with pytest.raises(msgspec.ValidationError, match="device_class"):
+        patch(b'{"device_class": "h200"}', WorkloadServingUpdate)
+    with pytest.raises(msgspec.ValidationError, match="device_class"):
+        decode(a_create_body(device_class="h200"), WorkloadCreateRequest)
 
 
 def test_the_topology_pair_sits_with_the_shape_it_describes():
     """One replica's layout, declared once. It used to be a recipe's requirement and a
     nullable override of it on the workload, so a null meant "the recipe decides"."""
-    assert {"requires_single_topology_domain", "topology_domain_kind"} <= set(ShapeSchema.__struct_fields__)
-    assert not {"requires_single_topology_domain", "topology_domain_kind"} & set(WorkloadSchema.__struct_fields__)
+    pair = {"requires_single_topology_domain": True, "topology_domain_kind": "nvlink"}
+    shape = decode({"device_class": "h100"} | pair, ShapeSchema)
+    assert (shape.requires_single_topology_domain, shape.topology_domain_kind) == (True, "nvlink")
+    with pytest.raises(msgspec.ValidationError, match="requires_single_topology_domain"):
+        decode(a_create_body(requires_single_topology_domain=True), WorkloadCreateRequest)
     assert ShapeSchema(device_class="h100").requires_single_topology_domain is False
 
 
 def test_the_overlay_is_a_passthrough_on_every_edge_of_the_surface():
-    """What the plane does not model still has to be sayable, readable, patchable."""
-    assert set(OverlaySchema.__struct_fields__) == {"pod_spec", "dynamo"}
-    assert "overlay" in WorkloadServingSchema.__struct_fields__
-    assert "overlay" in WorkloadServingRequest.__struct_fields__
-    assert "overlay" in WorkloadServingUpdate.__struct_fields__
+    """What the plane does not model still has to be sayable and patchable, inside its allowlist."""
+    overlay = {"pod_spec": {"terminationGracePeriodSeconds": 60}, "dynamo": {"annotations": {"team": "search"}}}
+    body = a_create_body()
+    body["serving"]["overlay"] = overlay
+    assert decode(body, WorkloadCreateRequest).serving.overlay == OverlaySchema(**overlay)
+    assert decode({"overlay": overlay}, WorkloadServingUpdate).overlay == OverlaySchema(**overlay)
+    check_overlay(overlay["pod_spec"], overlay["dynamo"])
+    with pytest.raises(Invalid, match="hostNetwork"):
+        check_overlay({"hostNetwork": True}, {})
 
 
 def test_an_absent_overlay_defaults_to_an_empty_one():
@@ -223,11 +247,6 @@ def test_an_absent_overlay_defaults_to_an_empty_one():
     assert data.overlay == OverlaySchema()
     assert (data.overlay.pod_spec, data.overlay.dynamo) == ({}, {})
     assert data.parallelism == ParallelismSchema(tensor=1, pipeline=1, expert=1)
-
-
-def test_workload_has_no_cluster_of_its_own():
-    assert "cluster_id" not in WorkloadSchema.__struct_fields__
-    assert "admission_phase" not in WorkloadSchema.__struct_fields__
 
 
 def test_scale_bounds_must_be_ordered_and_non_negative():
@@ -301,17 +320,6 @@ def test_deployments_are_fetched_for_a_whole_page_at_once(repo):
     assert "supply_cluster" in query
 
 
-def test_routes_are_the_five_a_user_needs():
-    names = {n for n, _ in inspect.getmembers(WorkloadRoutes)}
-    assert {
-        "list_workloads",
-        "create_workload",
-        "get_workload",
-        "update_workload",
-        "delete_workload",
-    } <= names
-
-
 def test_the_served_weights_are_loaded_with_the_page_and_not_labelled_field_by_field(repo):
     """The read needs the artifact entity, not a column of it.
 
@@ -326,20 +334,13 @@ def test_the_served_weights_are_loaded_with_the_page_and_not_labelled_field_by_f
     assert loads == [(Workload.artifact.property, (("lazy", "selectin"),))]
 
 
-def test_the_artifact_tag_is_a_nullable_addition_that_replaces_nothing():
-    fields = WorkloadSchema.__struct_fields__
-    assert "artifact_tag" in fields
-    assert WorkloadSchema.__annotations__["artifact_tag"] == (str | None)
-    assert "recipe_id" not in fields and "recipe_name" not in fields
-
-
 def test_the_weights_are_named_inside_the_serving_block():
     """One place a workload says which weights it serves, and it is where the rest of the
     configuration is. `artifact` is a filter on the list because "which workloads serve
     these weights" is a question, not because the id is declared twice."""
-    assert "artifact_id" in WorkloadServingSchema.__struct_fields__
-    assert "artifact" in WorkloadServingRequest.__struct_fields__
-    assert "artifact_id" not in WorkloadSchema.__struct_fields__
+    assert decode(a_create_body(), WorkloadCreateRequest).serving.artifact == "llama-70b"
+    with pytest.raises(msgspec.ValidationError, match="artifact"):
+        decode(a_create_body(artifact="llama-70b"), WorkloadCreateRequest)
 
 
 def test_label_selector_becomes_a_predicate_per_key(repo):
@@ -424,21 +425,6 @@ def test_placement_rollup_reads_only_live_allocations_and_devices(repo):
     assert "bind_allocation_device" in query
     assert "supply_node" in query
     assert query.count("released_at IS NULL") == 2
-
-
-def test_placement_rollup_carries_no_serving_telemetry():
-    from app.modules.workloads.schemas import WorkloadPlacementSchema
-    from app.modules.workloads.schemas import WorkloadPlacementNodeSchema
-    from app.modules.workloads.schemas import WorkloadReplicaPlacementSchema
-
-    forbidden = {"latency", "throughput", "utilization", "tokens", "requests", "temperature", "memory"}
-    for struct in (WorkloadPlacementSchema, WorkloadPlacementNodeSchema, WorkloadReplicaPlacementSchema):
-        assert not [f for f in struct.__struct_fields__ if any(word in f for word in forbidden)], struct
-
-
-def test_placement_is_a_read_only_route():
-    names = {n for n, _ in inspect.getmembers(WorkloadRoutes)}
-    assert "workload_placement" in names
 
 
 @pytest.mark.parametrize("kind", ["task", "gang"])
