@@ -9,9 +9,10 @@ it lives here beside the other harness images so all of them build from one plac
 An accuracy run grades a serving surface against standard datasets (`mmlu_pro`,
 `gpqa_diamond`, `aime2025` and the like), and EvalScope already speaks that list against an
 OpenAI-compatible endpoint. This image is a thin carrier: the pinned `evalscope` wheel, a
-shell, and nothing else. The whole CLI shape is composed plane-side, in
-[`harnesses.py:_evalscope_command`](../../../plane/app/modules/benchmarks/harnesses.py),
-so a new evalscope release is a plane edit plus an image bump, not a new image shape.
+shell, and nothing else. The plane sends the run's parameters (datasets, limit, seed, generation
+settings) and the operator turns them into `evalscope eval` flags, in
+[`render/benchmark.go:evalscopeArgs`](../../../operator/internal/render/benchmark.go), so a new
+evalscope release is an operator edit plus an image bump, not a new image shape.
 
 ## Build
 
@@ -33,13 +34,13 @@ The image's entrypoint is `sh`. The operator runs the benchmark wrapper under it
 docker run --rm hangar-evalscope:1.11.1 -c 'evalscope eval --help'
 ```
 
-In a real run the wrapper is the generic sentinel-framed one in
-[`render/benchmark.go:genericScript`](../../../operator/internal/render/benchmark.go): the
-plane sends a `command` parameter (`evalscope eval --model ... --api-url ...`) and a
-`report_glob`, the operator runs the command, merges every per-dataset report EvalScope wrote
-under its work directory into one `{"reports": [...]}` document, frames it between
-`---HANGAR-BENCHMARK-SUMMARY-BEGIN---` / `---HANGAR-BENCHMARK-SUMMARY-END---`, and the plane
-reads it back off the pod's log with `summaries.dataset_scores`.
+In a real run the wrapper is `evalscopeScript` in
+[`render/benchmark.go`](../../../operator/internal/render/benchmark.go): the operator runs
+`evalscope eval` with the flags it built against the deployment's cluster-local endpoint, merges
+every per-dataset report EvalScope wrote under `reports/` in its work directory into one
+`{"reports": [...]}` document, frames it between `---HANGAR-BENCHMARK-SUMMARY-BEGIN---` /
+`---HANGAR-BENCHMARK-SUMMARY-END---`, and the plane reads it back off the pod's log with
+[`summaries.dataset_scores`](../../../plane/app/modules/benchmarks/summaries.py).
 
 A version bump on the harness must not silently rewrite the shape the plane reads, so any
 adaptation of EvalScope's report happens in the plane's reader, not in this image.
