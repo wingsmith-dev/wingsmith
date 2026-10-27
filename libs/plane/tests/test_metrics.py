@@ -435,7 +435,7 @@ def test_worker_identity_keeps_a_graphs_own_namespace():
 
 
 def test_worker_identity_is_empty_when_either_half_is_missing():
-    """Empty means "not observed yet", which must fall back, not select nothing."""
+    """Empty means "not observed yet", which must fall back instead of selecting nothing."""
     assert worker_identity({"dynamo-namespace": "dynamo"}) == ""
     assert worker_identity({"dynamo-worker-hash": "891b8dda"}) == ""
     assert worker_identity({}) == ""
@@ -447,7 +447,7 @@ def test_the_worker_dimension_selects_on_the_dynamo_namespace():
 
 
 def test_the_worker_join_separates_two_deployments_of_one_model():
-    """The point: `model_name` cannot tell them apart and `dynamo_namespace` can."""
+    """Why the join is on the worker: `model_name` cannot tell them apart and `dynamo_namespace` can."""
     one = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-aaaa",)})
     two = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-bbbb",)})
     assert selector(one) != selector(two)

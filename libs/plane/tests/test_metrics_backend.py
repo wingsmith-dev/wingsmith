@@ -188,7 +188,7 @@ async def test_a_non_summed_metric_unions_its_candidates():
     await backend(client).samples(request(throttle))
 
     issued = [q for q in client.instant_queries if not q.startswith("count(")]
-    assert " or " in issued[0], "a max over two spellings should union, not probe"
+    assert " or " in issued[0], "a max over two spellings should union instead of probing"
     assert not [q for q in client.instant_queries if q.startswith("count(")], (
         "an idempotent aggregate should not pay for a probe"
     )

@@ -4,7 +4,7 @@ Revision ID: a1d6e83f2b47
 Revises: f9c5a7b3e401
 Create Date: 2026-08-20 20:40:00.000000
 
-One table. A benchmark is carried out by an `Operation`, that machinery already
+One table. A benchmark is carried out by an `Operation`. That machinery already
 has phases, a deadline, cancellation and replay across a reconnect, and none of it
 is worth building twice, so what is missing is only the record of the run and its
 result, which is this.
@@ -16,8 +16,8 @@ premature one would be permanent. Same-harness comparison is what this table
 promises, and `harness` plus `harness_version` are what make that promise hold
 across a release that redefines a percentile.
 
-The provenance columns, `model`, `deployment_generation`, `recipe_id`,
-`recipe_version`, `engine_args`, are snapshots taken at creation, not
+The provenance columns (`model`, `deployment_generation`, `recipe_id`,
+`recipe_version`, `engine_args`) are snapshots taken at creation, not
 joins. The recipe is mutable and the deployment is disposable; a run has to keep
 describing what it measured after both have moved on.
 

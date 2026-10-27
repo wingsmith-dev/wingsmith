@@ -10,13 +10,13 @@ the operator already puts on the wire: `ReplicaObserved.serving_digest` has been
 dropped since disaggregation. No declared column moves, no `serving_digest` is recomputed, and
 no deployment's generation is touched, so no cluster sees a change of any kind.
 
-**No backfill.** A revision's `snapshot` is a serving patch body, and building
+**No backfill, by design.** A revision's `snapshot` is a serving patch body, and building
 one here would mean a stub standing in for `Workload` and `Artifact` across some forty
 attributes. `a7c31f8e64b2` already paid for that lesson twice and wrote it down: a stub that is
 a subset of what the live function reads is a migration that crashes on a fresh database the day
 that function grows a field. So the history starts empty, and a workload older than this table
 records its existing configuration as an `imported` revision from the pre-image its next serving
-edit reads, which is code that is covered by tests and moves with the schema, instead of a
+edit reads. That is code that is covered by tests and moves with the schema, not a
 snapshot frozen at the shape this file happened to know.
 
 Replicas already running keep `serving_digest` null until their cluster reports them again,

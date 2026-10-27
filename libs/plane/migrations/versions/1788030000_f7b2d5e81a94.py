@@ -13,9 +13,9 @@ can find the worker already holding a prefix, and the gateway reports
 `cached_input` tokens that such a recipe could never produce.
 
 Existing rows are backfilled, not left alone. False could not be told apart
-from unset, there was no third state, so leaving them would keep every recipe
+from unset (there was no third state), so leaving them would keep every recipe
 that exists on a default nobody chose, which is the thing this migration is for.
-A recipe that wants the cache off now says so, and `downgrade` does
+A recipe that wants the cache off now says so, and `downgrade` intentionally does
 not undo the backfill: by then some of those rows are a real choice.
 
 """

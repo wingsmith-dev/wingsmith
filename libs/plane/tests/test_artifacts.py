@@ -435,8 +435,8 @@ async def test_the_suggested_context_is_the_declared_one_and_devices_follow_from
 async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
     """Five devices is arithmetically right and cannot be tensor-parallelised.
 
-    The parameter count is derived from the biggest card the contract table names,
-    not written down. The suggestion divides by that card, so a literal here
+    The parameter count is derived from the biggest card the contract table names
+    instead of written down. The suggestion divides by that card, so a literal here
     would stop testing sharding the week a bigger one is added to the table: it
     would still pass, for the wrong reason, having stopped needing to shard at all.
     """
@@ -457,7 +457,7 @@ async def test_the_suggestion_is_sized_against_the_cards_the_fleet_owns():
     """The failure this exists for, in the shape it actually happened.
 
     GLM-5.3-Flash needed about 383 GB. Divided by the biggest card the contract table
-    names, a 288 GB B300, that is two devices at a 192 GiB floor. The fleet holds
+    names (a 288 GB B300), that is two devices at a 192 GiB floor. The fleet holds
     H200s at 141 GB, so every one of them failed the floor, placement reported each
     cluster as owning no such device, and the workload was placed nowhere. Divided by
     a card we actually have, the same model spreads over four and asks for a floor

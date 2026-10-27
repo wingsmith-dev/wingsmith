@@ -363,7 +363,7 @@ class FakeWorkload:
     It carries what a `FakeRecipe` used to as well as what a workload already did.
     The serving configuration moved onto the workload, so the `engine_args` hatch,
     the declared name and the digest the revision is built from are one object's
-    fields now instead of two objects', and the fit-shaped name is still here,
+    fields now instead of two objects'. The fit-shaped name is still here,
     because it is the string these tests exist to keep off the routing table.
     """
 
@@ -516,8 +516,8 @@ async def test_the_engines_name_is_the_artifacts_slug_and_the_workload_cannot_ov
     """There used to be a ladder here: the workload's declaration, then the recipe's, then a slug
     the plane re-derived at read time. It is one column now, on the artifact.
 
-    The ladder is what broke the fleet. The plane's derivation could not produce an organisation,
-    it read the artifact's bare `name`, while the operator started every engine on a `--model`
+    The ladder is what broke the fleet. The plane's derivation could not produce an organisation
+    (it read the artifact's bare `name`), while the operator started every engine on a `--model`
     taken from the artifact's location, which had one. The gateway rewrote to the plane's answer
     and the frontend had registered the operator's, so a healthy deployment behind an open tunnel
     answered `model_not_found` from inside the cluster.
@@ -545,8 +545,8 @@ async def test_an_explicit_served_model_name_wins_over_the_declared_name():
 async def test_two_clusters_serving_different_weights_carry_their_own_served_names():
     """Why this rides the upstream and not the endpoint: there is no single answer.
 
-    One public name over two deployments of *different* artifacts, a quantised build beside a
-    full-precision one, is the canary case, and each engine answers to its own weights' slug.
+    One public name over two deployments of *different* artifacts (a quantised build beside a
+    full-precision one) is the canary case, and each engine answers to its own weights' slug.
     That is why the routing table carries the name per upstream: an endpoint-level field would
     have to pick one and rewrite half the traffic to a string nothing had registered.
     """
@@ -570,7 +570,7 @@ async def test_renaming_the_served_model_moves_the_revision_the_gateway_polls():
 
     The rename is on the artifact, because that is where the name lives. A slug corrected on an
     artifact that three clusters serve has to reach every gateway on the next poll, and the row
-    the gateway would otherwise watch, the endpoint's, has not been touched at all.
+    the gateway would otherwise watch (the endpoint's) has not been touched at all.
     """
     before = await resolution([tunnelled_row()]).resolved()
     renamed = tunnelled_row(artifact=FakeArtifact(slug="acme/llama-70b"))
@@ -849,8 +849,8 @@ async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
     """A real workload holds the dashes, because that is what a command line looks like.
 
     This is the spelling every serving configuration in the fleet actually carried,
-    and matching the raw key missed all of them. The miss was silent, the plane
-    fell through to the declared name and published it, so the first symptom was
+    and matching the raw key missed all of them. The miss was silent (the plane
+    fell through to the declared name and published it), so the first symptom was
     Kimi K3 404ing from inside the cluster with a healthy deployment and an open
     tunnel.
     """
@@ -908,8 +908,8 @@ actually reads, so the level the caller asked for is the level that runs, and th
 
 It was a `drop` first, and a drop is only half the contract. Nothing behind this
 endpoint reads `thinking.effort`, so removing the loser left the engine on its own
-default, `thinking.effort=low` sent with no `reasoning_effort` at all still ran at
-max, and the trace-length comparison standing in for the term was comparing two
+default (`thinking.effort=low` sent with no `reasoning_effort` at all still ran at
+max), and the trace-length comparison standing in for the term was comparing two
 samples of one distribution."""
 
 
@@ -1164,8 +1164,8 @@ def test_an_unknown_field_is_refused_rather_than_ignored():
 def test_a_rule_the_gateway_could_not_act_on_is_refused(rule):
     """Every one of these would be stored, read, and enforce nothing.
 
-    A key and a predicate are different namespaces, one is read out of the body,
-    the other is looked up in a registry, so a rule that names both names
+    A key and a predicate are different namespaces (one is read out of the body,
+    the other is looked up in a registry), so a rule that names both names
     nothing the gateway can resolve. A route that is not a path matches no
     request. A key with an empty segment resolves to no value. None of them has a
     symptom anywhere downstream, which is why they have to fail on write.
@@ -1289,7 +1289,7 @@ def test_a_surface_is_read_back_field_by_field():
     """Declared state with no reader is state nobody can check.
 
     The surface is accepted on a patch and acted on by the gateway, so the
-    object a console or the CLI reads has to carry it, otherwise the only way
+    object a console or the CLI reads has to carry it; otherwise the only way
     to see what an endpoint sells is the routing table the gateway polls.
     """
     surface = endpoint_surface(

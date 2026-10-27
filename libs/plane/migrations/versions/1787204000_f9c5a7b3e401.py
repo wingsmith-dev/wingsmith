@@ -5,13 +5,13 @@ Revises: e8b4f6a2d3c7
 Create Date: 2026-08-20 19:20:00.000000
 
 Three tables for one gap. The plane recorded every fact needed to know that a
-deployment was down, replica counts, cluster reachability, an append-only event
-log, and had nothing that ever read them back and said so. `ops_alert` is that reading, made durable so it can be acknowledged;
+deployment was down (replica counts, cluster reachability, an append-only event
+log) and had nothing that ever read them back and said so. `ops_alert` is that reading, made durable so it can be acknowledged;
 `ops_notification_channel` is where it gets sent; `ops_reactor_state` is the lease
 and cursor that keep exactly one process doing either.
 
-`ops_alert.subject_uid` is a string and not a foreign key. An alert
-about a node routinely outlives the node, that is frequently the alert, and a
+`ops_alert.subject_uid` is a string and intentionally not a foreign key. An alert
+about a node routinely outlives the node (that is frequently the alert), and a
 cascade would delete the record along with the thing it was about.
 
 No backfill. Conditions are level-triggered and the first tick after this lands

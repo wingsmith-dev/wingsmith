@@ -9,8 +9,8 @@ and `none`, which is how tenants behind an operator's own edge run, so every exi
 as it already behaves. `host` is nullable and unique, and empty for every tenant until one is
 given a hostname to answer on.
 
-`bind_tenant_api_key` is new: a gateway-side credential, its own table instead of
-a column reused from `bind_tenant_token`: that one signs in to the console, this one calls the
+`bind_tenant_api_key` is new: a gateway-side credential, intentionally its own table instead of
+a column reused from `bind_tenant_token`. That one signs in to the console, this one calls the
 gateway, and a single table would mean revoking one kind of credential could touch the other.
 
 Additive, and nothing reads any of it yet: the resolved routing table does not carry `tenant_id`

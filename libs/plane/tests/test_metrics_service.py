@@ -1,7 +1,7 @@
 """The service's assembly step: a backend's numbers into a response.
 
-`_answer` never touches the session, it resolves a source, builds a request,
-and shapes what comes back, so it is testable against an in-memory Cluster and
+`_answer` never touches the session (it resolves a source, builds a request,
+and shapes what comes back), so it is testable against an in-memory Cluster and
 a stub backend. The scoping joins that do read the database live in the
 database-marked suite.
 """
@@ -588,8 +588,8 @@ async def test_an_unobserved_worker_falls_back_to_the_served_model():
 class ScriptedSession:
     """Answers a fixed sequence of queries, in the order the service issues them.
 
-    A workload answer is three reads, the workload, the clusters it landed in,
-    the devices it holds, so a session that answers every query the same way
+    A workload answer is three reads (the workload, the clusters it landed in,
+    the devices it holds), so a session that answers every query the same way
     cannot exercise it.
     """
 
@@ -856,7 +856,7 @@ def test_a_utilization_two_clusters_reported_is_dropped_rather_than_averaged():
     """A mean of two means is only a mean if the clusters were the same size.
 
     Eight devices at 90% in one cluster and one device at 10% in another average
-    to 50%, which is true of no device the workload holds, and it is the figure a
+    to 50%, which is true of no device the workload holds, yet it is the figure a
     person would read as the workload's utilization. Both real numbers are in the
     breakdown; the merged tile says nothing instead of saying that.
     """

@@ -1,8 +1,8 @@
 """The workload's own surface: what a caller may state, and how a read is narrowed.
 
 The serving configuration it absorbed from `Recipe` is tested in `test_serving.py`.
-What is here is the object, the request and response shapes, the repository's
-filters, the routes, including the shapes of the serving block *as an API surface*,
+What is here is the object (the request and response shapes, the repository's
+filters, the routes), including the shapes of the serving block *as an API surface*,
 because "can a patch clear the device class" is a question about the request struct,
 not about what a validator does with it.
 """
@@ -147,7 +147,7 @@ def test_a_revision_snapshot_decodes_as_a_patch_because_the_two_structs_agree():
 
 
 def test_the_serving_configuration_is_declared_on_the_workload_and_patchable():
-    """It is stated inline, not named: there is no shared object to point at."""
+    """It is stated inline instead of named: there is no shared object to point at."""
     assert decode(a_create_body(), WorkloadCreateRequest).serving == a_serving()
     data = patch(b'{"serving": {"engine_runtime_version": "0.7.0"}}')
     assert data.serving.to_dict(exclude_unset=True) == {"engine_runtime_version": "0.7.0"}
@@ -344,7 +344,7 @@ def test_the_weights_are_named_inside_the_serving_block():
 
 
 def test_label_selector_becomes_a_predicate_per_key(repo):
-    """One `->>` comparison per key, so two labels narrow, not widen."""
+    """One `->>` comparison per key, so two labels narrow the match instead of widening it."""
     text = sql(repo.list_query(limit=10, labels={"tier": "gold", "team": "search"}))
     assert text.count("demand_workload.labels ->>") == 2
     assert "->>" not in sql(repo.list_query(limit=10))

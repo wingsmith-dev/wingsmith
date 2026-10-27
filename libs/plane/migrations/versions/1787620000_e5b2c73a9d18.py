@@ -6,7 +6,7 @@ Create Date: 2026-08-24 00:00:00.000000
 
 A workload with no deployment has nothing to take its name and shape from, so it
 cannot be carried over. The upgrade refuses and lists those workloads instead of
-deleting them. To drop them, rerun with
+deleting them. To drop them anyway, rerun with
 `alembic -x drop_orphan_workloads=true upgrade head`.
 """
 from typing import Sequence

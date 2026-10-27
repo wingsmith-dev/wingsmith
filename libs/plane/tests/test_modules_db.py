@@ -141,7 +141,7 @@ async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str =
 def a_serving(artifact_ref: str, **extra) -> WorkloadServingRequest:
     """The serving block every fixture workload is created with.
 
-    Stated inline, not named, because there is no shared object to name any
+    Stated inline instead of named, because there is no shared object to name any
     more: two workloads built from this helper carry the same `serving_digest`
     without either of them having to find the other first.
     """
@@ -470,7 +470,7 @@ async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSessi
     handed to it, so none of them exercised the one caller that has to build one,
     and it shipped calling the sessionmaker a level short, closing every
     operator's handshake with an internal error. Going through the hub entry
-    point instead of the repository is the point of this test.
+    point instead of the repository is what this test is for.
     """
     monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     service = ClusterService(db)
@@ -1067,7 +1067,7 @@ async def test_a_replica_that_is_not_ready_is_not_live(db: AsyncSession) -> None
 
 
 async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:
-    """Declared on create, patched, and cleared, and never confused with the engine image.
+    """Declared on create, patched and cleared, and never confused with the engine image.
 
     The two images are the same shape and one column apart, which is exactly the
     kind of pair a write path collapses by accident. Clearing matters as much as
@@ -1302,8 +1302,8 @@ async def test_resuming_a_workload_announces_the_clusters_it_was_parked_on(db: A
 async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSession) -> None:
     """The divergence this seam exists not to introduce.
 
-    Two ways of reaching a cluster with the same deployment, the snapshot on
-    connect and the single frame on a write, have to agree field for field, or a
+    Two ways of reaching a cluster with the same deployment (the snapshot on
+    connect and the single frame on a write) have to agree field for field, or a
     reconnect silently changes what is running.
     """
     cluster, _, _, created = await a_deployment(db)
@@ -1402,7 +1402,7 @@ async def test_a_deletion_withdraws_the_warm_set_with_it(db: AsyncSession) -> No
 
     The deletion used to travel alone. The operator turns a warm-set entry into a
     prefetch Job, so a cluster that was never told the entry had gone went on
-    downloading weights for a workload that no longer existed, and for the last
+    downloading weights for a workload that no longer existed. For the last
     workload on a cluster the warm set emptied, which the plane rendered as no
     frame at all. An empty warm set is "hold nothing", not silence.
     """
@@ -1506,9 +1506,9 @@ async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession)
 async def _two_serving_deployments(db: AsyncSession):
     """Two per-cluster deployments of one project, both dialable, for one endpoint to front.
 
-    A single-target endpoint never exercises the part of resolution that matters,
-    the fan-out across clusters, the per-target weights and roles, and what
-    survives one cluster going quiet, so the routing scenarios below all start
+    A single-target endpoint never exercises the part of resolution that matters
+    (the fan-out across clusters, the per-target weights and roles, and what
+    survives one cluster going quiet), so the routing scenarios below all start
     from a workload that talks to two deployments in two clusters, both serving.
     """
     cluster_a, project, artifact, workload_a = await a_workload(db, name="chat-alpha")
@@ -1556,8 +1556,8 @@ async def test_one_cluster_going_quiet_drops_its_upstream_and_keeps_the_other(db
     Turning it off and *clearing* it are no longer the same thing, and this is where
     the difference shows. `enabled=False` is somebody saying "not this address" and
     the upstream goes; clearing the row leaves the cluster in exactly the state every
-    cluster we run is in, no published address, reached over the tunnel its agent
-    dialled, so the upstream stays with an empty url. What stops traffic to a cluster
+    cluster we run is in (no published address, reached over the tunnel its agent
+    dialled), so the upstream stays with an empty url. What stops traffic to a cluster
     outright is its `phase`, which the test below covers.
     """
     project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
@@ -2010,7 +2010,7 @@ async def test_a_serving_change_announces_to_the_cluster_running_it(db: AsyncSes
     It used to be a fan-out nothing else needed: a recipe had no cluster of its own,
     so every cluster with a deployment naming it had to be found and told exactly
     once. The configuration is on the workload now, so the reachable set is the
-    workload's own expansion, and the cluster still has to be told, or it keeps
+    workload's own expansion. The cluster still has to be told, or it keeps
     rendering the old engine configuration for ever.
     """
     notifier = MemoryNotifier()
@@ -2056,9 +2056,9 @@ async def test_a_kind_live_dispatch_does_not_carry_answers_nothing(db: AsyncSess
 async def test_a_workloads_topology_requirement_round_trips(db: AsyncSession) -> None:
     """Declared once, on the shape, and readable back.
 
-    It used to be declared twice, a requirement on the recipe and a nullable
-    override of it on the workload, so a null meant "the recipe decides" rather
-    than "no". There is one level left and the column is the answer.
+    It used to be declared twice (a requirement on the recipe and a nullable
+    override of it on the workload), so a null meant "the recipe decides" and
+    not "no". There is one level left and the column is the answer.
     """
     # Unplaced, so the shape change is not refused for placing fewer units than run now: the
     # seeded supply has no NVSwitch domain to satisfy it.
@@ -2120,8 +2120,8 @@ async def test_the_creation_event_is_committed_with_the_deployment_and_not_after
     """One fact, one transaction.
 
     Rolling back afterwards is the check: an event written in a transaction of
-    its own would not survive it, and the pair it would leave behind, a
-    deployment that exists with nothing recording it having been asked for, is
+    its own would not survive it, and the pair it would leave behind (a
+    deployment that exists with nothing recording it having been asked for) is
     exactly the gap this event closes.
     """
     _, _, _, created = await a_deployment(db)

@@ -3,7 +3,7 @@
 Two seams are exercised and neither needs a database. The writer's half is a
 `Notifier`, so a service can be watched announcing without Postgres; the reader's
 half takes its connection and its renderer as arguments, so the listen loop can be
-driven by hand. What is *not* asserted anywhere here is delivery:
+driven by hand. What is intentionally *not* asserted anywhere here is delivery:
 a dropped notification is corrected by the next resync, and a test that pinned it
 down would be inventing a guarantee the design does not make.
 """

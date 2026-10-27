@@ -3,7 +3,7 @@
 No database anywhere in here, which is the property the design is for. `rules.py`
 takes floats and returns intents, `conditions.metric_thresholds` takes a reader it
 does not construct, and the module's validation is functions over a request struct.
-The one thing that needs Postgres, the threshold rows themselves, is the one thing
+The one thing that needs Postgres (the threshold rows themselves) is the one thing
 these tests stub.
 """
 

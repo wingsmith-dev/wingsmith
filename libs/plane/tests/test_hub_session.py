@@ -1,7 +1,7 @@
 """Drives `OperatorSession` over an in-memory connection pair.
 
-The point of these tests is the four things ADR 0001 gave up codegen for, framing, correlation,
-resume and backpressure, so they exercise the protocol instead of the Structs. No database, no
+The point of these tests is the four things ADR 0001 gave up codegen for (framing, correlation,
+resume and backpressure), so they exercise the protocol instead of the Structs. No database, no
 socket: the `Sink` seam is what makes that possible.
 """
 
@@ -928,7 +928,7 @@ async def test_claim_is_atomic_under_concurrent_claims() -> None:
 
 async def test_a_session_that_lost_its_claim_stops_writing() -> None:
     """Once displaced, the session must not go on treating frames as applied: it should
-    raise and close, not silently keep acking on behalf of a claim it no longer holds.
+    raise and close instead of silently acking on behalf of a claim it no longer holds.
     """
     claims = MemoryClaimStore()
     config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)

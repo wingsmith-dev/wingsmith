@@ -272,7 +272,7 @@ def test_a_trillion_parameter_recipe_reads_as_a_replica_total_and_not_a_card(cor
     """Kimi K3: 2.8T parameters, 1.6 TB, and no single card that could hold it.
 
     The published floor is the whole replica. Multiplying it by the tested
-    parallelism, or handing it to placement as a per-device minimum, asks for
+    parallelism (or handing it to placement as a per-device minimum) asks for
     hardware that does not exist, and every smaller model in the corpus hides the
     error because its `tp` is one.
     """

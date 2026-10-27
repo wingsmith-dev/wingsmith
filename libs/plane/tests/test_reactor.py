@@ -19,7 +19,7 @@ from app.reactor.conditions import overdue
 
 
 class FakeAlert:
-    """Enough of an `Alert` for the pure helpers. Not the model."""
+    """Enough of an `Alert` for the pure helpers. Intentionally not the model."""
 
     def __init__(self, state: str, notified_state: str | None, severity: str = "error") -> None:
         self.state = state

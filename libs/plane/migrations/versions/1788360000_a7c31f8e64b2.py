@@ -26,9 +26,9 @@ under the same name and type, placement reads the shape off the workload instead
 its recipe, and the shape still reaches a cluster on the deployment's `placement`,
 not in the serving block.
 
-Two columns merge, not move. `requires_single_topology_domain` and
-`topology_domain_kind` existed on both, non-null on the recipe, nullable on the
-workload as an override of it, and become one non-null answer, backfilled
+Two columns merge instead of moving. `requires_single_topology_domain` and
+`topology_domain_kind` existed on both (non-null on the recipe, nullable on the
+workload as an override of it) and become one non-null answer, backfilled
 `COALESCE(workload, recipe)` so a workload that overrode keeps its override.
 
 `ops_benchmark_run.recipe_id` and `recipe_version` become `serving_digest`. The old

@@ -85,7 +85,7 @@ async def seed_demand(sessions) -> None:
 async def seed_workload(db, name: str, digest_seed: str) -> uuid.UUID:
     """One workload row carrying the serving configuration, written directly.
 
-    Not through `WorkloadService`: creating a workload expands it
+    Not through `WorkloadService`, intentionally: creating a workload expands it
     onto a cluster, and a subject seeded that way would be holding the very
     capacity the test is about to ask after.
     """
@@ -200,7 +200,7 @@ async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
 
 
 def four_devices(**overrides) -> PlacementShapeRequest:
-    """The shape a preview asks about, stated, not named.
+    """The shape a preview asks about, stated inline instead of named.
 
     A recipe was a declared object you could ask about before any workload
     referenced it, and this is what asking looks like without one. Field for field
@@ -216,7 +216,7 @@ def four_devices(**overrides) -> PlacementShapeRequest:
 def serving(**overrides) -> WorkloadServingRequest:
     """The four-device vLLM configuration every workload here asks for.
 
-    Stated on the create, not named, because there is no shared serving
+    Stated on the create instead of named, because there is no shared serving
     object to point at any more. Two of these produce the same `serving_digest`,
     which is the whole of what naming a recipe used to buy.
     """
@@ -453,7 +453,7 @@ async def test_a_pin_at_a_cluster_that_cannot_take_it_places_nothing(sessions) -
 async def test_a_region_allow_list_narrows_placement_without_choosing_for_it(sessions) -> None:
     """A region allow-list is a constraint, not a pin.
 
-    The roomier cluster is the one that loses, which is the point: placement still
+    The roomier cluster is the one that loses, and that is the property under test: placement still
     ranks and still picks, it just cannot leave the region it was given.
     """
     await seed_demand(sessions)
@@ -496,7 +496,7 @@ async def test_the_constraint_a_workload_declared_survives_into_later_expansions
 
     This is the half that a create-time-only constraint would get wrong. The policy is
     read back through its attachment on every expansion, so a workload that outgrows its
-    region takes a shortfall, not quietly spilling into another one.
+    region takes a shortfall instead of quietly spilling into another one.
     """
     await seed_demand(sessions)
     await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
@@ -729,8 +729,8 @@ async def test_re_expanding_onto_the_same_split_does_not_bump_a_generation(sessi
 async def test_a_workload_operation_needs_no_cluster(sessions) -> None:
     """A workload spans clusters, so the plane executes these itself.
 
-    The guard that every other operation type relies on, a target belonging to
-    one cluster, would reject these outright, which is what made the console's
+    The guard that every other operation type relies on (a target belonging to
+    one cluster) would reject these outright, which is what made the console's
     scale button a 400 before they were plane-executed.
     """
     await seed_demand(sessions)
@@ -1017,8 +1017,8 @@ async def test_a_second_workload_does_not_land_on_capacity_the_first_was_already
 
     Two clusters of eight, a recipe wanting four, and two workloads created one
     after the other at two replicas each. The first fills a cluster exactly. Nothing
-    has bound a device yet, allocations come from the cluster, and the cluster has
-    not spoken, so the only record that the capacity is gone is the deployment
+    has bound a device yet (allocations come from the cluster, and the cluster has
+    not spoken), so the only record that the capacity is gone is the deployment
     itself. Read from observed state alone, both clusters look empty both times and
     both workloads pile onto the same one.
     """

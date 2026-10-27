@@ -16,7 +16,7 @@ somebody decided it should be.
 The server default is `observed`, so a row written by any path that has not thought
 about the question fails closed. Existing rows are backfilled from the rule the
 operator was already applying: `managed` where `adopted_workload_uid` is null,
-`observed` where it is set. That is behaviour-preserving, not
+`observed` where it is set. That is intentionally behaviour-preserving, not
 tidy. A blanket `observed` would stop the plane converging deployments it created
 and is converging today; a blanket `managed` would start it converging four adopted
 production workloads because a migration ran. Both are changes nobody asked this

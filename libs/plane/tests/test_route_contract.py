@@ -1,8 +1,8 @@
 """Every operation in the published OpenAPI document, walked: what it answers.
 
 `test_route_auth.py` covers who is refused. This covers what a caller who gets
-through is told, driven by the document a client generates against, not
-by the router, so the two cannot drift apart unnoticed.
+through is told, driven by the document a client generates against instead
+of by the router, so the two cannot drift apart unnoticed.
 
 The offline walk points the app at a database that is not there. Anything a
 handler did would be a `500`, so every `400` below is decided before a handler
@@ -156,7 +156,7 @@ def test_every_collection_answers_as_documented_against_the_database(plane_db, m
     """No 5xx from an empty, migrated plane with no metrics store: a success the document
     lists, or a refusal in the error envelope (a required query parameter, a route only a
     tenant reads). The one 5xx allowed is `metrics_unavailable`, which says the store is
-    missing instead of that the plane failed."""
+    missing, not that the plane failed."""
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000", raise_server_exceptions=False) as client:
         response = client.get(path, headers=_headers(method, path))
     if response.status_code == 503:

@@ -43,8 +43,8 @@ async def connect(sessions, cluster: uuid.UUID, reachable: bool = True) -> None:
     """Marks the cluster active and its agent connected, the way enrolment and `hello` would.
 
     The phase matters as much as the reachability. Every condition is scoped to
-    clusters we expect to be carrying work, so a `pending` cluster, which is what
-    the shared fixture seeds, is silent.
+    clusters we expect to be carrying work, so a `pending` cluster (which is what
+    the shared fixture seeds) is silent by design.
     """
     async with sessions.begin() as db:
         await db.execute(text("UPDATE supply_cluster SET phase = 'active' WHERE id = :cluster"), {"cluster": cluster})

@@ -209,7 +209,7 @@ async def test_an_adoption_survives_its_sighting_being_pruned(sessions, cluster)
     for as long as the wire's adopt block was joined onto that row every frame
     rendered inside the window went down without one. An operator receiving one
     stops recognising the deployment as adopted and never reads a rollout for it
-    again, and nothing re-dispatches when the sighting returns, so a serving
+    again. Nothing re-dispatches when the sighting returns, so a serving
     workload reads `placed · 0/1` until somebody writes to it by hand.
     """
     await seed_demand(sessions)

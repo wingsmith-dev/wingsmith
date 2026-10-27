@@ -9,7 +9,7 @@ cluster has and applies nothing the plane declares. That was invisible from the
 plane, so placement would pick such a cluster, the hub would stream the desired
 state, and the workload would sit at zero replicas with no error anywhere.
 
-Observed, so it lands on the sync-state row, not on the registry row,
+Observed, so it lands on the sync-state row instead of the registry row:
 only the operator knows it, and `Cluster` has exactly one writer that is not
 ingestion. Defaults false, which is both the right answer for every existing row
 and the right reading of an operator too old to send the field.

@@ -12,7 +12,7 @@ to see a cluster.
 `bind_tenant_token` is that second credential. It is a console credential and never an inference
 key: the gateway authenticates the system in front of it, and a token that named a tenant there
 would make that hop a credential store. The refresh token gains the credential it was opened
-with, so revoking a tenant's token ends the sessions it opened, not only refusing the
+with, so revoking a tenant's token ends the sessions it opened instead of only refusing the
 next sign-in.
 """
 

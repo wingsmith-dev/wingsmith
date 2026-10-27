@@ -110,7 +110,7 @@ def test_v1_routes_are_mounted():
 
 
 def test_observed_collections_reject_writes():
-    """Observed objects are discovered, not created: API.md §6."""
+    """Observed objects are discovered, not created (API.md §6)."""
     methods = {route.path: route.methods for route in create_app().routes}
     for collection in OBSERVED:
         assert "POST" not in methods[f"/v1/{collection}"]
@@ -249,7 +249,7 @@ SINGLE_PAGE_LISTS = {
     "/v1/alert-rules",
     "/v1/benchmarks/requests/{ref:str}/bands",
 }
-"""List routes that answer in one page: fixed catalogues, not collections."""
+"""List routes that answer in one page by design: fixed catalogues, not collections."""
 
 
 def _list_routes():
@@ -272,7 +272,7 @@ def test_every_paginated_list_route_accepts_limit_and_cursor():
     and because `reject_unknown_params` is doing its job, the client sees the
     failure on the *first* request, not the second. `/clusters/rollups` shipped
     that way and every cluster card rendered its counts as unknown. Adding a
-    route to `SINGLE_PAGE_LISTS` is how a fixed catalogue opts out.
+    route to `SINGLE_PAGE_LISTS` is how a fixed catalogue opts out, explicitly.
     """
     missing = {
         path: sorted({"limit", "cursor"} - accepted)
@@ -311,7 +311,7 @@ def test_health_is_unaffected():
 def test_slug_is_read_from_the_location():
     """`hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`, and this is the whole repair.
 
-    Every artifact in the fleet was named `gpt-oss-20b`, `Kimi-K3`, `GLM-5.3-Flash`, bare, no
+    Every artifact in the fleet was named `gpt-oss-20b`, `Kimi-K3`, `GLM-5.3-Flash`: bare, with no
     organisation, because a name is what a person types. The organisation was only ever written
     in the location, which nothing read, so the plane published a model id no frontend had
     registered while the operator started the engine on `--model` taken from that same location.
@@ -349,7 +349,7 @@ def test_preferred_location_names_the_model():
 def test_an_adopted_artifact_is_named_by_its_reference_digest():
     """Weights adopted by watching a cluster serve them have no location at all.
 
-    The reference is the digest (`hf:org/model`, which is also why such a row is unverified) so
+    The reference is the digest (`hf:org/model`, which is also why such a row is unverified), so
     that is read next instead of leaving the model with no name.
     """
     from app.core.serving import artifact_slug

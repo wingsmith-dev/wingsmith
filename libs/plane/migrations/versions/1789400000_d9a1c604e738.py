@@ -5,13 +5,13 @@ Revises: b6d3f8a2e514
 Create Date: 2026-09-08 10:00:00.000000
 
 Additive, and both columns are written by ingestion and by nothing else. The previous migration
-gave a workload its declared roles; this is the observed half coming back, which role a running
+gave a workload its declared roles; this is the observed half coming back: which role a running
 replica turned out to be, and how many of each role its cluster has ready against how many it
 rendered.
 
 `demand_deployment_status.roles` is a JSONB array instead of a table, because nothing joins it,
-filters on it or aggregates it: it is read whole with its deployment and displayed. It is stored,
-not derived from `demand_replica.role` because the derivation is only half available: a
+filters on it or aggregates it: it is read whole with its deployment and displayed. It is stored
+instead of derived from `demand_replica.role` because the derivation is only half available: a
 rollup over replica rows can say how many prefill workers exist and never how many were asked for,
 and the second number is the one that makes a shortfall legible. Deriving one and storing the other
 would also split one internally consistent frame across two sources read at different instants,

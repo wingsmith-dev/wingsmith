@@ -2,8 +2,8 @@
 
 The table is created by the fixture, not by the migration chain, because the
 migration for `ops_alert_threshold` is written by hand and is not in the chain yet.
-Everything else here is the real thing, the real `SELECT`, the real `NUMERIC`, the
-real unique index, and the metrics store is the only stub, which is the point of
+Everything else here is the real thing (the real `SELECT`, the real `NUMERIC`, the
+real unique index), and the metrics store is the only stub, which is the point of
 `app/reactor/measures.py` existing at all.
 """
 
@@ -52,9 +52,9 @@ class StubReader:
 async def thresholds(sessions):
     """Creates `ops_alert_threshold` and takes it away again.
 
-    Dropped, not left behind so that a suite run twice sees the same
+    Dropped instead of left behind, so that a suite run twice sees the same
     database twice, and so that the day the migration lands this fixture stops
-    being essential without anything else changing.
+    being needed without anything else changing.
     """
     async with sessions() as db:
         await db.run_sync(lambda s: AlertThreshold.__table__.create(s.get_bind(), checkfirst=True))
@@ -201,7 +201,7 @@ async def test_the_whole_evaluation_still_runs_when_the_table_is_missing(session
 
 
 async def test_a_threshold_row_survives_the_object_it_was_written_about(sessions, cluster, thresholds):
-    """No foreign key on `subject_uid`: a commitment outlives its subject."""
+    """No foreign key on `subject_uid`, by design: a commitment outlives its subject."""
     await seed_node(sessions, cluster)
     await declare(sessions, value=60, subject_uid=NODE)
     async with sessions.begin() as db:

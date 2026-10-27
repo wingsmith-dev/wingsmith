@@ -10,7 +10,7 @@ downloading, no node advertises enough accelerators. The operator has always kno
 these and had nowhere to put them: they went to a log line in another cluster and
 the plane showed `pending` with no explanation for as long as it lasted.
 
-Not `last_error`. Waiting for a download is not an error, and a column
+Intentionally not `last_error`. Waiting for a download is not an error, and a column
 whose name says otherwise turns every ordinary wait into something a reader has to
 decide is fine. `reason` is a closed set the operator owns (MESSAGES.md); this
 column does not constrain it, so a value the plane has never heard of is stored and

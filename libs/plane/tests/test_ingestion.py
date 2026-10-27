@@ -261,8 +261,8 @@ def test_deployment_status_stores_the_per_role_counts_beside_the_scalars() -> No
 
     `2 of 3` is the same pair of integers for a missing prefill worker and a missing
     decode one, and those are a deployment serving nothing and a deployment serving
-    slowly. The scalars stay the rollup, a reader that ignores `roles` is right and
-    merely coarse, which is what makes the column additive instead of a replacement.
+    slowly. The scalars stay the rollup (a reader that ignores `roles` is right and
+    merely coarse), which is what makes the column additive instead of a replacement.
     """
     observed = payload("deployment.observed")
     assert observed.roles
@@ -661,7 +661,7 @@ def test_a_departed_node_stops_claiming_to_be_ready() -> None:
 
     Until this existed the plane recorded the departure and left the row saying
     the node was ready, so it stayed a placement candidate until a completed
-    resync happened to prune it, which, on a session that never dropped, was
+    resync happened to prune it. On a session that never dropped, that was
     never.
     """
     sql, params = compile_sql(statements.mark_node_left(CLUSTER_ID, NODE_UID, MOMENT))
@@ -855,7 +855,7 @@ async def test_applying_one_frame_commits_once() -> None:
 async def test_a_malformed_id_is_acknowledged_and_dropped_not_replayed() -> None:
     """A poison frame would come back forever; the stream behind it must advance.
 
-    The contrast with the unknown-cluster case below is the point: that one
+    The contrast with the unknown-cluster case below is what this test is for: that one
     raises, because a cluster the plane has not enrolled yet is a condition a
     later retry can resolve.
     """
@@ -1296,7 +1296,7 @@ def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
 def _workload(**kwargs):
     """A workload carrying the serving configuration a recipe used to hold.
 
-    The name is still the fit (`example-moe-mxfp4-tp8-1024k`) because that is the
+    The name is still the fit (`example-moe-mxfp4-tp8-1024k`), because that is the
     string these tests exist to keep off the wire. It is a workload's name now
     instead of a recipe's, and it is no more a model id than it was.
     """

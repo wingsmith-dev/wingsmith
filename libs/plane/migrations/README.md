@@ -52,10 +52,10 @@ Revisions that rewrite tables hold an exclusive lock for as long as the copy
 takes. `b6f96e7c388b` (seq becomes bigint) rewrites every table, so on a large
 `ops_event` expect it to take minutes.
 
-Some revisions refuse to run, not guess:
+Some revisions refuse to run instead of guessing:
 
 - `e5b2c73a9d18` lists workloads that have no deployment and stops. Give them a
-  deployment, or delete them with
+  deployment, or delete them explicitly with
   `alembic -x drop_orphan_workloads=true upgrade head`.
 - `730d51320227` lists duplicate fleet-wide quotas or credentials and stops.
   Delete all but one of each before upgrading.
@@ -94,7 +94,7 @@ Then read what autogenerate wrote; it is a draft. Rules for new revisions:
   you need into the revision and freeze it.
 - No deployment-specific data: no cluster names, ids or hosts. A data change
   must be correct for every database the revision will ever run on.
-- Refuse, not delete. If existing rows cannot be carried over, raise with
+- Refuse instead of deleting. If existing rows cannot be carried over, raise with
   the offending ids, and offer an explicit `-x` flag for the destructive path.
 - Write a downgrade that restores the previous schema exactly (indexes,
   constraint names, identity options), and keep `alembic check` clean: the

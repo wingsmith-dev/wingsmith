@@ -4,8 +4,8 @@ Revision ID: ffc641804308
 Revises: 07ccbf04c05d
 Create Date: 2026-08-19 20:50:13.403246
 
-Two tables because they have two writers. `demand_discovered_workload` is a sighting, what
-the operator found already running when it arrived, and ingestion is its only writer.
+Two tables because they have two writers. `demand_discovered_workload` is a sighting (what
+the operator found already running when it arrived), and ingestion is its only writer.
 `demand_workload_adoption` is what a human decided about that sighting, written only by the
 API, keyed by the cluster's stable workload uid instead of a foreign key so a decision
 survives the row being pruned and rediscovered.

@@ -585,7 +585,7 @@ def test_the_ladder_reaches_the_recommendation_when_it_spans_several_nodes():
 
 
 def test_the_ladder_keeps_a_trimmed_window_as_a_choice_rather_than_dropping_it():
-    """Fewer cards at a shorter window is a trade somebody makes."""
+    """Fewer cards at a shorter window is a trade somebody chooses to make."""
     sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
     device = klass("h200-141gb-sxm")
     intent = Intent(context_length=131072, concurrency=32, devices_per_node=8)

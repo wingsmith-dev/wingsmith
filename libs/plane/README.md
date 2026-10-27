@@ -1,10 +1,10 @@
 # plane
 
-Python control plane. Three concerns, kept apart:
+Python control plane. Three concerns, kept apart by design:
 
 - **Modules / intent** (`app/modules/`): one package per object in the model. CRUD over declared
   objects. Should stay boring.
-- **Placement** (`app/modules/placement/`), which cluster a workload goes to. A pure function over
+- **Placement** (`app/modules/placement/`): which cluster a workload goes to. A pure function over
   observed state, so it is testable without a cluster.
 - **Ingestion** (`app/ingestion/`): writes arriving from the hub. High frequency, idempotent,
   last-writer-wins per cluster.
@@ -19,8 +19,8 @@ its own loop under a lease.
 
 ```
 app/
-├── api/            HTTP process, Litestar app, route registration, __main__
-├── hub/            WebSocket process, operator sessions, __main__
+├── api/            HTTP process: Litestar app, route registration, __main__
+├── hub/            WebSocket process: operator sessions, __main__
 ├── reactor/        derived alerts, leased loop, notification channels, __main__
 ├── modules/        one package per object in the model; placement lives here too
 ├── ingestion/      observed-state writes from the hub
@@ -40,8 +40,8 @@ writes nothing: it takes a snapshot and returns a decision. A module whose objec
 (nodes, devices, topology domains, allocations, events) is read-only: its service has no write
 methods at all.
 
-Most modules have the same five files, `routes`, `schemas`, `services` (owns the commit),
-`repository` (flushes only) and `depends`, and the exceptions are listed in
+Most modules have the same five files: `routes`, `schemas`, `services` (owns the commit),
+`repository` (flushes only) and `depends`. The exceptions are listed in
 `app/modules/__init__.py`: `metrics` has no repository, and `tenants`, `serving` and `metrics`
 issue some reads straight from their services.
 
@@ -58,7 +58,7 @@ uv run python -m app.api --reload   # with autoreload
 uv run python -m app.hub            # operator hub on :8001
 ```
 
-`--check` on either process builds it, runs its lifecycle, and exits: enough to prove wiring
+`--check` on either process builds it, runs its lifecycle, and exits, which is enough to prove wiring
 without binding a long-lived listener.
 
 The api process serves its own Prometheus series at `GET /metrics`, unauthenticated; the hub and reactor have
@@ -68,10 +68,10 @@ none yet. [`METRICS.md`](METRICS.md) lists the series and how to scrape them.
 
 The hub runs N replicas under Kubernetes. Per
 [ADR 0005](../../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md), it scales by
-**shedding** session state instead of sharing it: `SessionState`, cursors and the replay buffer,
+**shedding** session state instead of sharing it: `SessionState` (cursors and the replay buffer)
 stays in one pod's memory, never in Postgres. Reconnecting to the pod you left resumes exactly;
 reconnecting to a different one, which a Service makes routine, costs a `full_resync`
-(`libs/packages/contract/PROTOCOL.md` §4): expensive but always correct, never a silent gap.
+(`libs/packages/contract/PROTOCOL.md` §4), which is expensive but always correct, never a silent gap.
 
 What *is* shared, in Postgres, is a single fact: exactly one hub session may be the writer for a
 given `cluster_id` at a time. `hello` claims that cluster with one atomic `INSERT ... ON CONFLICT
@@ -93,10 +93,10 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 
 | Variable | Default |
 |---|---|
-| `APP_ENV` | `production`, `local` is opt-in, and compose sets it |
+| `APP_ENV` | `production`; `local` is opt-in, and compose sets it |
 | `APP_DEBUG` | `false` |
 | `APP_LOG_LEVEL` / `APP_LOG_FORMAT` | `INFO` / `console` (`json` in production) |
-| `API_HOST` / `API_PORT` | unset, `127.0.0.1` when `APP_ENV=local`, `0.0.0.0` otherwise / `8000` |
+| `API_HOST` / `API_PORT` | unset (`127.0.0.1` when `APP_ENV=local`, `0.0.0.0` otherwise) / `8000` |
 | `HUB_HOST` / `HUB_PORT` / `HUB_PATH` | `0.0.0.0` / `8001` / `/v1/hub/sync` |
 | `HUB_INSTANCE_ID` | unset: falls back to `$HOSTNAME`, then a random id |
 | `HUB_SESSION_TTL_SECONDS` | `600` |
@@ -107,18 +107,18 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 | `REACTOR_ENABLED` | `true` |
 | `REACTOR_INTERVAL_SECONDS` / `REACTOR_LEASE_SECONDS` | `60` / `180` |
 | `REACTOR_EVENT_BATCH` / `REACTOR_NOTIFY_TIMEOUT` | `500` / `5` |
-| `METRICS_SOURCES` | unset, `default=<url>\|token=...`; the per-cluster label is `Cluster.metrics_label` |
+| `METRICS_SOURCES` | unset; takes `default=<url>\|token=...`, and the per-cluster label is `Cluster.metrics_label` |
 | `METRICS_TIMEOUT` / `METRICS_WINDOW` / `METRICS_STEP` | `5` / `5m` / `60s` |
-| `METRICS_REMOTE_WRITE_URL` | unset, where the fleet pushes; rendered into the setup values. Empty renders `monitoring.enabled: false` |
-| `REMOTE_WRITE_AUTH_ENABLED` | `false`; optional: keep an htpasswd Secret for a basic-auth write receiver (ADR 0012) |
+| `METRICS_REMOTE_WRITE_URL` | unset: where the fleet pushes, rendered into the setup values. Empty renders `monitoring.enabled: false` |
+| `REMOTE_WRITE_AUTH_ENABLED` | `false`. Optional: keeps an htpasswd Secret for a basic-auth write receiver (ADR 0012) |
 | `REMOTE_WRITE_AUTH_NAMESPACE` / `REMOTE_WRITE_AUTH_SECRET` / `REMOTE_WRITE_AUTH_KEY` | unset / `prom-remote-write-auth` / `users` |
 | `SETUP_CHART_REF` / `SETUP_CHART_VERSION` / `SETUP_CHART_PRIVATE` | `oci://ghcr.io/hangar-dev/charts/cluster-setup` / unset / `false` |
 | `BENCHMARK_CONFORMANCE_IMAGE` / `BENCHMARK_EVALSCOPE_IMAGE` | `ghcr.io/hangar-dev/conformance:0.1.0` / `ghcr.io/hangar-dev/evalscope:1.11.1` |
 | `HF_TOKEN` | unset |
-| `GATEWAY_SERVICE_TOKEN` | unset, falls back to `hangar-local-gateway-token` only when `APP_ENV=local` |
-| `ADMIN_AUTH` | unset, `disabled` when `APP_ENV=local`; always `enabled` otherwise |
-| `ADMIN_PASSWORD_HASH` | unset, required outside `local` |
-| `SESSION_SIGNING_SECRET` | unset, required outside `local`; a random per-process key in `local` |
+| `GATEWAY_SERVICE_TOKEN` | unset: falls back to `hangar-local-gateway-token` only when `APP_ENV=local` |
+| `ADMIN_AUTH` | unset: `disabled` when `APP_ENV=local`; always `enabled` otherwise |
+| `ADMIN_PASSWORD_HASH` | unset; required outside `local` |
+| `SESSION_SIGNING_SECRET` | unset; required outside `local`, and a random per-process key in `local` |
 | `SESSION_TTL_SECONDS` / `REFRESH_TTL_SECONDS` | `900` / `604800` (absolute session lifetime) |
 | `TRUSTED_PROXIES` | unset: proxies whose `X-Forwarded-For` is believed when charging failed sign-ins |
 | `ALLOWED_ORIGINS` | `http://localhost:5273,http://127.0.0.1:5273` |

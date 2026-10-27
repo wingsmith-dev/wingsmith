@@ -146,7 +146,7 @@ def service_over(row: Row) -> tuple[DiscoveredWorkloadService, SightingRepo, Wri
 
 @pytest.mark.parametrize("decision", ["tracked", "ignored"])
 async def test_tracking_a_workload_declares_nothing(decision) -> None:
-    """The essential test. Tracking writes a decision and no declared state.
+    """The test the rest of this file depends on. Tracking writes a decision and no declared state.
 
     Promotion is the only path that creates a deployment, and it is a separate,
     explicitly gated call. Track and ignore construct nothing a reconciler could

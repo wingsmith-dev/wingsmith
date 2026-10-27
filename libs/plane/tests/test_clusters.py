@@ -254,7 +254,7 @@ def test_setup_values_register_a_cluster_that_reconciles():
 
 
 def test_setup_values_leave_the_agent_off_for_the_first_install():
-    """Not because of `readOnly`, because the frontend's CRD is applied at runtime.
+    """Not because of `readOnly`, but because the frontend's CRD is applied at runtime.
 
     The chart refuses an agent with no frontend to forward to, and the frontend
     renders a DynamoGraphDeployment whose CRD does not exist until the Dynamo

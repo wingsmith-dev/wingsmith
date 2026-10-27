@@ -5,8 +5,8 @@ Revises: e2b8d05c4f16
 Create Date: 2026-08-20 00:30:00.000000
 
 A recipe describes one replica of one engine, and its `requires_single_topology_domain`
-is right for serving. A gang is a different shape of the same recipe, eight ranks that
-have to share one NVLink fabric, and until now it had no way to say so, because the only
+is right for serving. A gang is a different shape of the same recipe (eight ranks that
+have to share one NVLink fabric), and until now it had no way to say so, because the only
 topology requirement in the system belonged to the recipe.
 
 Both columns are nullable, and null is not false: it means "whatever the recipe says".

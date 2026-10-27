@@ -114,8 +114,8 @@ def capabilities(**kwargs) -> CapabilitiesSchema:
 def a_workload(**kwargs) -> Workload:
     """A Workload row as SQLAlchemy hands one back, with no server defaults applied.
 
-    Every column here is one the recipe used to own. They are set explicitly rather
-    than left to the model's defaults because a row read back from Postgres has all
+    Every column here is one the recipe used to own. They are set explicitly instead
+    of left to the model's defaults because a row read back from Postgres has all
     of them, and a factory that left holes would let a `None` pass a test that the
     database would never produce.
     """
@@ -812,7 +812,7 @@ def test_a_declared_frontend_image_is_carried_verbatim():
 
     The plane knows which repository an engine's workers come from because
     `ENGINE_RUNTIME_REPOS` tells it. Nothing tells it what a cluster serves its
-    frontends through, that is the operator's fact, so the only frontend image
+    frontends through (that is the operator's fact), so the only frontend image
     this side can state is one a person pinned.
     """
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"
@@ -858,8 +858,8 @@ def test_the_serving_spec_carries_no_identity_and_no_routing():
 def test_the_typed_serving_block_reaches_the_cluster():
     """The flags a workload declares must be the flags the engine is started with.
 
-    `ServingSpec` carries no typed block, the operator renders a command line and
-    has no use for a typed one, so the resolved arguments are what goes on the
+    `ServingSpec` carries no typed block (the operator renders a command line and
+    has no use for a typed one), so the resolved arguments are what goes on the
     wire. Sending `engine_args` raw instead made the whole serving block a view: the
     console rendered `--reasoning-parser` and no cluster was ever told.
     `libs/conformance` found it that way round, against a live endpoint whose
@@ -1046,7 +1046,7 @@ def test_the_digest_is_read_off_the_row_and_never_off_the_request():
 def test_the_slug_of_the_weights_is_what_the_engine_answers_to():
     """A fact about the weights, which survives a re-fit.
 
-    It used to be `Recipe.name` (`kimi-k3-mxfp4-tp8-1024k`) so re-fitting the same
+    It used to be `Recipe.name` (`kimi-k3-mxfp4-tp8-1024k`), so re-fitting the same
     model at a different tensor degree renamed the model every client codes against.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT), name="Kimi-K3", slug="moonshotai/kimi-k3")
@@ -1131,7 +1131,7 @@ def test_an_aggregated_workload_hashes_exactly_as_it_did_before_roles_existed():
 def test_a_ratio_change_does_not_change_the_identity_of_the_configuration():
     """1:2 and 2:4 are the same configuration served at two scales, and one digest.
 
-    Not because a digest change would restart anything: it would not; every scale in the system
+    Not because a digest change would restart anything. It would not: every scale in the system
     already bumps the generation and re-applies. Because `ops_benchmark_run.serving_digest` is
     what links a measurement to what it measured, and a weight in the hash would orphan every
     benchmark on a model the moment somebody added a prefill worker. Those benchmarks are the
@@ -1190,7 +1190,7 @@ def test_device_count_is_per_worker_and_the_group_total_is_not_a_column():
     """The side door the weights would otherwise come back through.
 
     `device_count` *is* a digest field. If it ever held the group's 24 devices instead of one
-    worker's 8, the weights would be in the hash again: silently, because nothing about the
+    worker's 8, the weights would be in the hash again, silently, because nothing about the
     column's name says which of the two it holds. So the group's cost is `Σ (weight × device_count)`,
     derived where it is used and stored nowhere, and these two assertions are what say so: the
     weights move nothing, and the per-worker count moves everything.
@@ -1261,7 +1261,7 @@ def test_a_role_may_not_contradict_a_flag_the_plane_already_decided(flag):
     `kv-transfer-config` is the same string on both roles because the transfer mechanism belongs
     to the topology, and `disaggregation-mode` *is* the role. A value for either from a role's
     own arguments is a second answer to a settled question, and `engine_args` wins on the command
-    line, so it would not be overruled, it would win.
+    line, so it would not be overruled; it would win.
     """
     roles = [a_role("prefill", engine_args={flag: "1"}), a_role("decode")]
     with pytest.raises(Invalid):
@@ -1281,7 +1281,7 @@ def test_a_group_costs_the_sum_of_its_roles_and_device_count_stays_per_worker():
 
     `device_count` is a digest field and means devices per worker. The group's cost is derived
     wherever it is used and stored nowhere, because a column holding it would put the role weights
-    into `serving_digest` through a second door: silently, since nothing about such a column's
+    into `serving_digest` through a second door, silently, since nothing about such a column's
     name would say which of the two it held.
     """
     roles = [a_role("prefill", weight=1), a_role("decode", weight=2)]

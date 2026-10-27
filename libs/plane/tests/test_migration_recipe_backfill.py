@@ -51,8 +51,8 @@ def scratch():
 def _seed(cur) -> dict[str, uuid.UUID]:
     """One artifact, two recipes, three workloads and a benchmark run, pre-migration.
 
-    Two workloads share a recipe, the canary case, and the only shape in which the
-    old sharing bought anything, so the backfill has to give them the same digest.
+    Two workloads share a recipe (the canary case, and the only shape in which the
+    old sharing bought anything), so the backfill has to give them the same digest.
     """
     ids = {name: uuid.uuid4() for name in ("artifact", "rec_a", "rec_b", "w1", "w2", "w3", "run")}
     cur.execute(

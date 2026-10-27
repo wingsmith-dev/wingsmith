@@ -6,8 +6,8 @@ Create Date: 2026-08-19 23:30:00.000000
 
 Engines and the Kubernetes operators that run them carry far more configuration than a
 control plane wants to mirror field by field, and mirroring it is a losing race against
-every engine release. `overlay` holds what the recipe does not model,
-`pod_spec` merged over the rendered pod, `dynamo` over the rendered graph deployment,
+every engine release. `overlay` holds what the recipe intentionally does not model
+(`pod_spec` merged over the rendered pod, `dynamo` over the rendered graph deployment),
 and the plane never reads inside it.
 
 """
