@@ -52,6 +52,43 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DiscoveryStaleAfter != 5*time.Minute {
 		t.Errorf("DiscoveryStaleAfter = %s, want 5m", cfg.DiscoveryStaleAfter)
 	}
+	if cfg.ShutdownGrace != 120*time.Second || cfg.DrainTimeout != 115*time.Second {
+		t.Errorf("grace %s, drain %s, want 2m0s and 1m55s", cfg.ShutdownGrace, cfg.DrainTimeout)
+	}
+	if warnings := cfg.Warnings(); len(warnings) != 1 || !strings.Contains(warnings[0], "HANGAR_TUNNEL_TLS") {
+		t.Errorf("warnings = %q, want only the one about TLS being off", warnings)
+	}
+}
+
+// The drain is cut from the grace period the pod is given, the way the gateway's phases are, so
+// raising terminationGracePeriodSeconds and HANGAR_SHUTDOWN_GRACE together is enough. A drain set
+// explicitly is kept as given and warned about when it outlasts the grace period.
+func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
+	env := minimal()
+	env["HANGAR_SHUTDOWN_GRACE"] = "10m"
+	cfg, err := load(t, env)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DrainTimeout != 10*time.Minute-ShutdownMargin {
+		t.Errorf("drain = %s, want the grace less %s", cfg.DrainTimeout, ShutdownMargin)
+	}
+
+	env["HANGAR_DRAIN_TIMEOUT"] = "15m"
+	cfg, err = load(t, env)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DrainTimeout != 15*time.Minute {
+		t.Errorf("drain = %s, want the 15m set explicitly", cfg.DrainTimeout)
+	}
+	warned := false
+	for _, warning := range cfg.Warnings() {
+		warned = warned || strings.Contains(warning, "HANGAR_DRAIN_TIMEOUT")
+	}
+	if !warned {
+		t.Errorf("a drain longer than the grace period was not warned about: %q", cfg.Warnings())
+	}
 }
 
 // A cluster is configured with one address and never with a list of replicas. The chart used to
@@ -81,6 +118,7 @@ func TestValidateNamesTheSetting(t *testing.T) {
 		{"no dial timeout", map[string]string{"HANGAR_TUNNEL_DIAL_TIMEOUT": "0s"}, "HANGAR_TUNNEL_DIAL_TIMEOUT"},
 		{"no handshake timeout", map[string]string{"HANGAR_TUNNEL_HANDSHAKE_TIMEOUT": "0s"}, "HANGAR_TUNNEL_HANDSHAKE_TIMEOUT"},
 		{"no drain", map[string]string{"HANGAR_DRAIN_TIMEOUT": "0s"}, "HANGAR_DRAIN_TIMEOUT"},
+		{"grace inside the margin", map[string]string{"HANGAR_SHUTDOWN_GRACE": "5s"}, "HANGAR_SHUTDOWN_GRACE"},
 		{"CA without TLS", map[string]string{"HANGAR_TUNNEL_CA_FILE": "/etc/ca.pem"}, "HANGAR_TUNNEL_CA_FILE"},
 		{"bad log format", map[string]string{"HANGAR_LOG_FORMAT": "logfmt"}, "HANGAR_LOG_FORMAT"},
 		{"bad log level", map[string]string{"HANGAR_LOG_LEVEL": "chatty"}, "HANGAR_LOG_LEVEL"},
@@ -121,6 +159,7 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 		HandshakeTimeout: time.Second,
 		BackoffMin:       time.Second,
 		BackoffMax:       time.Second,
+		ShutdownGrace:    time.Minute,
 		DrainTimeout:     time.Second,
 		HealthAddr:       ":8081",
 		LogFormat:        "json",
@@ -197,6 +236,7 @@ func TestLoadRefusesValuesItCannotParse(t *testing.T) {
 		"HANGAR_TUNNEL_CONNS_PER_GATEWAY":    "two",
 		"HANGAR_TUNNEL_DIAL_TIMEOUT":         "10",
 		"HANGAR_DRAIN_TIMEOUT":               "a minute",
+		"HANGAR_SHUTDOWN_GRACE":              "two minutes",
 	} {
 		t.Run(key, func(t *testing.T) {
 			env := minimal()

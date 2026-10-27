@@ -76,8 +76,18 @@ type Config struct {
 	BackoffMin time.Duration
 	BackoffMax time.Duration
 
-	// DrainTimeout is how long shutdown waits for in-flight streams after GOAWAY. Every one of
-	// them is somebody's half-written completion, so it is generous.
+	// ShutdownGrace is the pod's terminationGracePeriodSeconds, which the kubelet waits after
+	// SIGTERM before it kills the process. It has to be told: nothing in the process can read it.
+	ShutdownGrace time.Duration
+
+	// DrainTimeout is how long shutdown waits for in-flight streams after GOAWAY. Unset, it is
+	// ShutdownGrace less ShutdownMargin, so the drain uses the whole grace period and still ends
+	// before the kill.
+	//
+	// It, and not ResponseHeaderTimeout, bounds which generations survive an agent rollout. Any
+	// stream still open when it ends is cut, including a non-streamed completion that the header
+	// timeout would have let run for most of an hour. Carrying longer ones through a rollout
+	// means raising the grace period and ShutdownGrace together.
 	DrainTimeout time.Duration
 
 	// HealthAddr is the listen address for the health, readiness and scrape endpoints.
@@ -120,6 +130,13 @@ type Config struct {
 	LogFormat string
 }
 
+// DefaultShutdownGrace is the terminationGracePeriodSeconds the chart gives the agent.
+const DefaultShutdownGrace = 120 * time.Second
+
+// ShutdownMargin is left unspent at the end of the grace period, for the process to exit after
+// the drain and for the kubelet's own timing.
+const ShutdownMargin = 5 * time.Second
+
 // Load reads configuration from the environment, applying defaults and validating the result.
 //
 // A value that is set and cannot be parsed fails the load. Falling back to the default instead
@@ -140,7 +157,7 @@ func Load() (*Config, error) {
 		HandshakeTimeout:      r.duration("HANGAR_TUNNEL_HANDSHAKE_TIMEOUT", 10*time.Second),
 		BackoffMin:            r.duration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            r.duration("HANGAR_BACKOFF_MAX", 30*time.Second),
-		DrainTimeout:          r.duration("HANGAR_DRAIN_TIMEOUT", 60*time.Second),
+		ShutdownGrace:         r.duration("HANGAR_SHUTDOWN_GRACE", DefaultShutdownGrace),
 		HealthAddr:            env("HANGAR_HEALTH_ADDR", ":8081"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
@@ -149,6 +166,7 @@ func Load() (*Config, error) {
 		ResponseHeaderTimeout: r.duration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
 		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
 	}
+	c.DrainTimeout = r.duration("HANGAR_DRAIN_TIMEOUT", c.ShutdownGrace-ShutdownMargin)
 	if err := errors.Join(r.errs...); err != nil {
 		return nil, err
 	}
@@ -175,6 +193,11 @@ func (c *Config) Warnings() []string {
 	if c.TLSEnabled && c.TLSInsecureSkipVerify {
 		warnings = append(warnings, "HANGAR_TUNNEL_INSECURE_SKIP_VERIFY is on: the gateway's certificate "+
 			"is not checked, so anything that can intercept the dial receives the enrolment token")
+	}
+	if c.ShutdownGrace > 0 && c.DrainTimeout > c.ShutdownGrace-ShutdownMargin {
+		warnings = append(warnings, fmt.Sprintf("HANGAR_DRAIN_TIMEOUT (%s) runs past HANGAR_SHUTDOWN_GRACE (%s) "+
+			"less %s: the pod is killed mid-drain unless terminationGracePeriodSeconds and "+
+			"HANGAR_SHUTDOWN_GRACE are raised", c.DrainTimeout, c.ShutdownGrace, ShutdownMargin))
 	}
 	return warnings
 }
@@ -216,6 +239,9 @@ func (c *Config) validate() error {
 	}
 	if c.BackoffMax < c.BackoffMin {
 		return fmt.Errorf("HANGAR_BACKOFF_MAX must be >= HANGAR_BACKOFF_MIN")
+	}
+	if c.ShutdownGrace <= ShutdownMargin {
+		return fmt.Errorf("HANGAR_SHUTDOWN_GRACE must be longer than %s, the margin left before the kill", ShutdownMargin)
 	}
 	if c.DrainTimeout <= 0 {
 		return fmt.Errorf("HANGAR_DRAIN_TIMEOUT must be positive")
