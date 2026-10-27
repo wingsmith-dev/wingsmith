@@ -30,7 +30,7 @@ func serve(t *testing.T, checks map[string]Check) (string, context.CancelFunc, <
 	s := New(addr, quiet(), checks)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	// stopped is closed rather than sent on, so cleanup can wait for the goroutine even when the
+	// stopped is closed, not sent on, so cleanup can wait for the goroutine even when the
 	// test has already taken the error off done.
 	stopped := make(chan struct{})
 	go func() { done <- s.Run(ctx); close(stopped) }()
@@ -113,7 +113,7 @@ func TestReadinessNamesTheCheckThatFailed(t *testing.T) {
 	}
 }
 
-// TestReadinessFollowsTheCheckBackToReady proves the check is consulted per request rather than
+// TestReadinessFollowsTheCheckBackToReady proves the check is consulted per request, not
 // sampled once at construction.
 func TestReadinessFollowsTheCheckBackToReady(t *testing.T) {
 	failing := true
@@ -175,7 +175,7 @@ func TestRunShutsDownOnContextCancel(t *testing.T) {
 	}
 }
 
-// TestRunReportsAListenFailure: a port already taken must surface as an error from Run rather than
+// TestRunReportsAListenFailure: a port already taken must surface as an error from Run instead of
 // a process that looks up but is serving nothing.
 func TestRunReportsAListenFailure(t *testing.T) {
 	held, err := net.Listen("tcp", "127.0.0.1:0")

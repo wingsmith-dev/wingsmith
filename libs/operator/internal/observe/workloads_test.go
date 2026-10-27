@@ -118,7 +118,7 @@ func TestDiscoverySkipsWhatThePlaneDeclared(t *testing.T) {
 }
 
 // TestDiscoverySkipsAnythingThisOperatorRendered: the deployment id only ever lands on what a
-// deployment rendered, and Dynamo names the pods it derives after the graph rather than after us.
+// deployment rendered, and Dynamo names the pods it derives after the graph, not after us.
 // `managed-by` is on everything this operator writes, which is what makes the test complete.
 func TestDiscoverySkipsAnythingThisOperatorRendered(t *testing.T) {
 	rendered := map[string]string{labelManagedBy: managedByOperator}
@@ -153,7 +153,7 @@ func TestDiscoveryIgnoresWorkloadsHoldingNoDevices(t *testing.T) {
 }
 
 // TestDiscoveredWorkloadIDsAreStable: the decision to track a workload is stored against this id,
-// so two operators — or one operator across a restart — must derive the same one.
+// so two operators, or one operator across a restart, must derive the same one.
 func TestDiscoveredWorkloadIDsAreStable(t *testing.T) {
 	a := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "llama-70b-vllm")
 	b := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "llama-70b-vllm")

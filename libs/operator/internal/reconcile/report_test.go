@@ -183,7 +183,7 @@ func TestADeletedDeploymentForgetsWhatItLastReported(t *testing.T) {
 	}
 }
 
-// An observed deployment is held rather than applied, and that too is a state worth reporting: the
+// An observed deployment is held, not applied, and that too is a state worth reporting: the
 // plane otherwise cannot tell "held because authority says so" from "stuck".
 func TestHeldAsObservedIsReported(t *testing.T) {
 	rep := &recordingReporter{}
@@ -219,8 +219,8 @@ func TestNameToIDInvertsResourceName(t *testing.T) {
 	}
 }
 
-// A session the hub could not resume is one where the dedupe's assumption — that a skipped frame
-// was delivered — does not hold: the hub prunes what it had and expects it restated.
+// A session the hub could not resume is one where the dedupe's assumption, that a skipped frame
+// was delivered, does not hold: the hub prunes what it had and expects it restated.
 func TestAFreshSessionForgetsWhatWasReported(t *testing.T) {
 	rep := &recordingReporter{}
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
@@ -278,7 +278,7 @@ func (s *chainSpy) Resync(_ context.Context) error {
 	return s.resyncEr
 }
 
-// TestWithReporterIsAPassThroughForOrdinaryFrames — it exists for the Resync hook and must not
+// TestWithReporterIsAPassThroughForOrdinaryFrames: it exists for the Resync hook and must not
 // otherwise change how declared state is handled.
 func TestWithReporterIsAPassThroughForOrdinaryFrames(t *testing.T) {
 	inner := &chainSpy{}
@@ -322,7 +322,7 @@ func TestAFreshSessionForgetsWhatWasAlreadySaid(t *testing.T) {
 	}
 }
 
-// TestAFailedResyncKeepsWhatWasSaid — forgetting after a resync the store refused would restate
+// TestAFailedResyncKeepsWhatWasSaid: forgetting after a resync the store refused would restate
 // everything against a stream that is not ready for it.
 func TestAFailedResyncKeepsWhatWasSaid(t *testing.T) {
 	inner := &chainSpy{resyncEr: errors.New("prune failed")}
@@ -337,7 +337,7 @@ func TestAFailedResyncKeepsWhatWasSaid(t *testing.T) {
 	}
 }
 
-// TestWithReporterOnANilReconcilerIsTheStoreItself — the operator can run without the reconciler,
+// TestWithReporterOnANilReconcilerIsTheStoreItself: the operator can run without the reconciler,
 // and wrapping nil must not introduce a handler that dereferences it.
 func TestWithReporterOnANilReconcilerIsTheStoreItself(t *testing.T) {
 	inner := &chainSpy{}
@@ -346,7 +346,7 @@ func TestWithReporterOnANilReconcilerIsTheStoreItself(t *testing.T) {
 	}
 }
 
-// TestForgetAllIsSafeToCallTwice — a hub that opens two fresh sessions in a row must not panic.
+// TestForgetAllIsSafeToCallTwice: a hub that opens two fresh sessions in a row must not panic.
 func TestForgetAllIsSafeToCallTwice(t *testing.T) {
 	r := &SyncedResourceReconciler{reported: map[string]reportKey{"dep-x": {}}}
 	r.ForgetAll()
@@ -359,7 +359,7 @@ func TestForgetAllIsSafeToCallTwice(t *testing.T) {
 // The prune the plane performs is only as good as the set this frame carries, and there is one
 // failure mode that matters: a pod replaced one-for-one moves no count at all. Without the replica
 // set in the suppression key that frame is dropped as unchanged, the plane never hears that the
-// old replica is gone, and its row keeps counting towards the rollup for ever — which is how a
+// old replica is gone, and its row keeps counting towards the rollup for ever, which is how a
 // deployment of one came to read three ready of one.
 func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
@@ -403,7 +403,7 @@ func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
 }
 
 // A deployment with no pods yet has to be able to say so, because an empty claim and no claim at
-// all mean opposite things to the prune on the other end — and the frames that never looked at a
+// all mean opposite things to the prune on the other end, and the frames that never looked at a
 // pod must make no claim, or a deployment waiting on its artifact would have its replicas deleted.
 func TestOnlyTheFrameReadBackFromPodsClaimsAReplicaSet(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
@@ -441,7 +441,7 @@ func TestTeardownClaimsAnEmptyReplicaSet(t *testing.T) {
 		t.Errorf("phase = %q, want %q", last.Phase, phaseTerminating)
 	}
 	if last.ReplicaIDs == nil {
-		t.Fatal("replica_ids is nil, which is the frame that makes no claim — teardown has to claim none")
+		t.Fatal("replica_ids is nil, which is the frame that makes no claim: teardown has to claim none")
 	}
 	if len(last.ReplicaIDs) != 0 {
 		t.Errorf("replica_ids = %v, want empty", last.ReplicaIDs)
@@ -452,7 +452,7 @@ func TestTeardownClaimsAnEmptyReplicaSet(t *testing.T) {
 }
 
 // The other half of the same gap: an allocation is held for as long as it is reported, and a
-// deployment that goes away stops reporting rather than releasing. The devices stayed committed.
+// deployment that goes away stops reporting instead of releasing. The devices stayed committed.
 func TestTeardownReleasesWhatItWasHolding(t *testing.T) {
 	rep := &recordingReporter{}
 	r, dep := runRenderedReporting(t, rep)
@@ -478,7 +478,7 @@ func TestTeardownReleasesWhatItWasHolding(t *testing.T) {
 		t.Errorf("allocation = %q, want alc_1", released[0].AllocationID)
 	}
 	if released[0].ProjectID != "prj_1" {
-		t.Errorf("project = %q, want prj_1 — a release with no project is dropped on arrival", released[0].ProjectID)
+		t.Errorf("project = %q, want prj_1: a release with no project is dropped on arrival", released[0].ProjectID)
 	}
 	if released[0].DeviceIDs == nil || len(released[0].DeviceIDs) != 0 {
 		t.Errorf("device_ids = %v, want empty and not nil", released[0].DeviceIDs)
@@ -521,7 +521,7 @@ func tearDown(t *testing.T, r *SyncedResourceReconciler, dep *v1alpha1.SyncedRes
 //
 // The suppression key exists so a deployment re-examined every fifteen seconds does not spend the
 // stream restating a fact that has not moved. A prefill worker dying as a decode worker comes
-// ready moves nothing the key used to hold — same phase, same reason, same `2 of 3` — and takes
+// ready moves nothing the key used to hold (same phase, same reason, same `2 of 3`) and takes
 // the deployment from degraded-and-still-serving to serving nothing, which is the one transition
 // the frame exists to carry.
 func TestARoleMovingInsideAFixedTotalIsNotSuppressed(t *testing.T) {

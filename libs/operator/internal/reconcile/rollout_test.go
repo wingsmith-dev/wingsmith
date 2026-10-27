@@ -21,8 +21,8 @@ import (
 //
 // The arithmetic is what hides it: a 1P:2D group with two ready decode workers and no prefill has
 // two of three workers ready, which is a shortfall like any other and reads as degraded on its way
-// up. It is not on its way up — a decode worker with no prefill peer has nothing to decode from,
-// so nothing is serving at all — and without `roleShort` the totals cannot tell the two apart.
+// up. It is not on its way up, a decode worker with no prefill peer has nothing to decode from,
+// so nothing is serving at all, and without `roleShort` the totals cannot tell the two apart.
 func TestARoleThatIsShortIsDegradedEvenWhenTheTotalsWouldNotSaySo(t *testing.T) {
 	full := rollout{desired: 3, ready: 3}
 	if got := full.phase(); got != phaseRunning {
@@ -58,7 +58,7 @@ func TestAnAggregatedRolloutIsUnaffectedByRoleReadiness(t *testing.T) {
 // `2 of 3 ready` is the same pair of integers for "one prefill missing" and "one decode missing",
 // and the two are a deployment that serves nothing and a deployment that serves slowly. The
 // per-role counts are the only thing that separates them, which is why they are reported beside
-// the scalars rather than left to be inferred from the replica frames.
+// the scalars, not left to be inferred from the replica frames.
 func TestADisaggregatedRolloutReportsEachRolesOwnCounts(t *testing.T) {
 	dep := disaggregatedDesired()
 	pods := append(roleWorkerPods(render.PrefillComponent, 1), roleWorkerPods(render.WorkerComponent, 1)...)
@@ -71,7 +71,7 @@ func TestADisaggregatedRolloutReportsEachRolesOwnCounts(t *testing.T) {
 	if !reflect.DeepEqual(out.roles, want) {
 		t.Fatalf("roles = %+v, want %+v", out.roles, want)
 	}
-	// The scalars stay the rollup, which is what makes the field additive rather than a
+	// The scalars stay the rollup, which is what makes the field additive instead of a
 	// replacement: a plane that reads only these is right, less precisely.
 	if out.desired != 3 || out.ready != 2 {
 		t.Fatalf("scalars = %d of %d, want 2 of 3", out.ready, out.desired)

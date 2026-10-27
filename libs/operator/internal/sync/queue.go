@@ -44,7 +44,7 @@ type outbound struct {
 //
 // Above the soft bound the queue grows only by frames that cannot be replaced, so its size is
 // bounded by the cluster's own inventory. The hard limit is the backstop for the frames a later
-// resync restates — a correlated stream's, its opener and terminator, a reply — and a Push of one
+// resync restates (a correlated stream's, its opener and terminator, a reply) and a Push of one
 // of those past it fails, and the writer ends the session. An uncorrelated observation is still
 // admitted past the limit, because nothing restates it: an operation's or a benchmark's terminal
 // report is one, and so is the last reading of a device. It cannot grow the queue without bound
@@ -254,7 +254,7 @@ func (q *inboundQueue) pop(ctx context.Context) (inbound, error) {
 //
 // Overflow discards the oldest unacknowledged frame and marks the buffer lossy. Lossy is not a
 // detail: it is the admission that this side can no longer reproduce its own stream, which
-// PROTOCOL §4 says must be declared in the next hello rather than papered over with a resume.
+// PROTOCOL §4 says must be declared in the next hello, not papered over with a resume.
 type replayBuffer struct {
 	mu    stdsync.Mutex
 	items []*Envelope

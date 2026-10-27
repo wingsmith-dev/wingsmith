@@ -90,7 +90,7 @@ func TestAnOperationDoesNotReachTheStore(t *testing.T) {
 	t.Error("the operation reached neither the store nor the executor")
 }
 
-// TestTheStoresErrorIsNotSwallowed — the tee routes, it does not decide.
+// TestTheStoresErrorIsNotSwallowed: the tee routes, it does not decide.
 func TestTheStoresErrorIsNotSwallowed(t *testing.T) {
 	h, inner, _ := teeUnder(t)
 	inner.handleEr = errors.New("write failed")
@@ -134,7 +134,7 @@ func TestResyncErrorIsPropagated(t *testing.T) {
 	}
 }
 
-// TestAnUndecodableOperationIsAnError rather than a silently dropped frame.
+// TestAnUndecodableOperationIsAnError instead of a silently dropped frame.
 func TestAnUndecodableOperationIsAnError(t *testing.T) {
 	h, _, _ := teeUnder(t)
 	env := &syncpkg.Envelope{Type: TypeOperationDesired, Payload: json.RawMessage(`{"kind":`)}
@@ -144,7 +144,7 @@ func TestAnUndecodableOperationIsAnError(t *testing.T) {
 }
 
 // TestHandleIgnoresAFrameItIsNotFor: the executor is also wired directly in places, and a
-// non-operation reaching it must be a no-op rather than a decode error.
+// non-operation reaching it must be a no-op instead of a decode error.
 func TestHandleIgnoresAFrameItIsNotFor(t *testing.T) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),
@@ -157,7 +157,7 @@ func TestHandleIgnoresAFrameItIsNotFor(t *testing.T) {
 }
 
 // TestReportWithNoReporterBoundDoesNotPanic. Bind happens after construction, so there is a window
-// in which an operation could conclude with nothing to report to — it must survive it.
+// in which an operation could conclude with nothing to report to: it must survive it.
 func TestReportWithNoReporterBoundDoesNotPanic(t *testing.T) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),

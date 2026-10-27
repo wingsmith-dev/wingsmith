@@ -78,7 +78,7 @@ func (r *recorder) resyncCount() int {
 }
 
 // resyncOrdering records the interleaving of resyncs and frames as a string: "r" for a resync,
-// "f" for a frame. The order is the assertion — a snapshot frame applied before the resync that
+// "f" for a frame. The order is the assertion: a snapshot frame applied before the resync that
 // announces it would be applied into a local view still claiming to be authoritative.
 type resyncOrdering struct {
 	recorder
@@ -506,7 +506,7 @@ func TestPanickingHandlerDoesNotCrashTheProcess(t *testing.T) {
 // TestPanickingResyncEndsTheSessionAndRetries is Resync's analogue: unlike a handler panic,
 // Resync is not about one frame, so a recovered panic there does not get §6b's accept-and-discard
 // treatment. It surfaces as an ordinary session error, ending the session and retrying with
-// backoff exactly like any other resync failure — visible and bounded rather than crashing.
+// backoff exactly like any other resync failure: visible and bounded instead of crashing.
 func TestPanickingResyncEndsTheSessionAndRetries(t *testing.T) {
 	h := newFakeHub(t)
 	rec := &recorder{panicSync: true}
@@ -522,7 +522,7 @@ func TestPanickingResyncEndsTheSessionAndRetries(t *testing.T) {
 	// The panic ends the session like any other resync failure: no ack is possible for a
 	// resync that never finished opening its epoch, so the durable cursor's session id is what
 	// the retry resumes against. The properties under test are that the goroutine survives the
-	// panic and the run loop redials rather than the process going down.
+	// panic and the run loop redials instead of the process going down.
 	eventually(t, 3*time.Second, "the client redials after the panic instead of dying", func() bool {
 		return h.connectionCount() >= 2
 	})
@@ -581,7 +581,7 @@ func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
 	opts.LivenessTimeout = 30 * time.Second
 	startWith(t, opts)
 	// Released after the client's own cleanup is registered, so it is unblocked before the client
-	// is asked to stop rather than after.
+	// is asked to stop, not after.
 	t.Cleanup(stall.release)
 
 	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
@@ -602,7 +602,7 @@ func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
 //
 // The session's goroutines used to be joined before the session could report anything, so a handler
 // blocked on an unresponsive API server held up the error, the log line, the backoff, the redial,
-// and the deferred flag that readiness is read from — all at once. The pod stayed Ready and the
+// and the deferred flag that readiness is read from: all at once. The pod stayed Ready and the
 // operator stayed silently disconnected. This handler ignores its context, which
 // is the shape that caused it: a call that does not honour cancellation cannot be waited out.
 func TestAWedgedApplyStillRedials(t *testing.T) {
@@ -629,7 +629,7 @@ func TestAWedgedApplyStillRedials(t *testing.T) {
 	eventually(t, 10*time.Second, "a redial past a wedged apply", func() bool { return h.connectionCount() >= 2 })
 }
 
-// stallingHandler blocks in Handle until released, and ignores its context while it does — a
+// stallingHandler blocks in Handle until released, and ignores its context while it does: a
 // reconcile against an API server that has stopped answering, which is what the read path used to
 // be exposed to.
 type stallingHandler struct {
@@ -656,7 +656,7 @@ func (s *stallingHandler) Resync(context.Context) error { return nil }
 func (s *stallingHandler) release() { s.closeOnce.Do(func() { close(s.released) }) }
 
 // TestLossyHelloAfterReplayOverflow: once the buffer has discarded an unacknowledged frame this
-// side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so rather than
+// side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so, not
 // ask for a resume it cannot honour.
 func TestLossyHelloAfterReplayOverflow(t *testing.T) {
 	h := newFakeHub(t)
@@ -689,7 +689,7 @@ func TestBackpressureReplacesTheSameSubject(t *testing.T) {
 		}
 	}
 	if q.Len() != 2 {
-		t.Fatalf("a repeated subject must replace rather than grow the queue: %d", q.Len())
+		t.Fatalf("a repeated subject must replace, not grow the queue: %d", q.Len())
 	}
 	other := mustEnvelope(t, "device.observed", wire.DeviceObserved{DeviceID: "dev_2"})
 	if err := q.Push(&outbound{env: other, subject: "dev_2"}); err != nil {
@@ -712,8 +712,8 @@ func TestBackpressureReplacesTheSameSubject(t *testing.T) {
 }
 
 // TestBackpressureNeverEvictsAStreamOrAReport fills the queue past its soft bound with the frames
-// that used to be evicted from the head — a stream's opener and terminator, its correlated frames,
-// and an operation's terminal report — and checks every one of them is still sent, in order.
+// that used to be evicted from the head, a stream's opener and terminator, its correlated frames,
+// and an operation's terminal report, and checks every one of them is still sent, in order.
 func TestBackpressureNeverEvictsAStreamOrAReport(t *testing.T) {
 	q := newSendQueue(2)
 	push := func(typ MessageType, subject, replyTo string) {

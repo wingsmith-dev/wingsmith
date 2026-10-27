@@ -75,14 +75,14 @@ func TestARefusedSpecIsReportedRatherThanCountedAsStarting(t *testing.T) {
 		t.Errorf("reason = %q, want ClusterRejected", out.reason())
 	}
 	if out.phase() != phaseFailed {
-		t.Errorf("phase = %q, want %q — a permanent refusal is not a deployment starting up",
+		t.Errorf("phase = %q, want %q: a permanent refusal is not a deployment starting up",
 			out.phase(), phaseFailed)
 	}
 	if !strings.Contains(out.message(), "63 bytes") {
 		t.Errorf("the controller's own words did not survive: %s", out.message())
 	}
 	if !strings.Contains(out.message(), "0 of 1 replicas ready") {
-		t.Errorf("the counts were replaced rather than added to: %s", out.message())
+		t.Errorf("the counts were replaced, not added to: %s", out.message())
 	}
 	if err := out.trouble.lastError("now"); err == nil || err.Code != "ClusterRejected" {
 		t.Errorf("last_error not set: %+v", err)
@@ -132,8 +132,8 @@ func TestPodTroubleIsReadFromTheWaitingReasonNotThePhase(t *testing.T) {
 
 // The crash the whole evening turned on, and the one line that would have ended it in seconds.
 //
-// `CrashLoopBackOff` carries the kubelet's account of the loop — "back-off restarting failed
-// container" — which is identical for every crash-looping container ever and says nothing about
+// `CrashLoopBackOff` carries the kubelet's account of the loop, "back-off restarting failed
+// container", which is identical for every crash-looping container ever and says nothing about
 // the fault. The process's own last words named the argument. They reach `lastState` only because
 // the renderer asks for `FallbackToLogsOnError`, and they reach the plane only because this reads
 // them.
@@ -165,7 +165,7 @@ func TestACrashLoopReportsWhatTheContainerSaidAndNotJustThatItLooped(t *testing.
 }
 
 // A pod from a render that predates the policy, or a container the kubelet killed, has no last
-// words — and must still be reported rather than dropped for lacking them.
+// words, and must still be reported, not dropped for lacking them.
 func TestACrashLoopWithNoCapturedOutputStillReports(t *testing.T) {
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-abc", Namespace: testRender.Namespace},
@@ -300,7 +300,7 @@ func TestAStuckPodBesideALoadingOneIsStillReported(t *testing.T) {
 }
 
 // A replica that is serving must not hide another stuck in Pending either. The deployment is
-// degraded rather than failed, so the stuck pod is named without failing it.
+// degraded, not failed, so the stuck pod is named without failing it.
 func TestAStuckPodBesideAReadyOneIsReportedWithoutFailingTheDeployment(t *testing.T) {
 	const graph = "chat-iad"
 	r := diagnoser(t, graphObject(graph, stallAfter+time.Hour))

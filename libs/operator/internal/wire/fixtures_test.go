@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// fixtureDir is a symlink to libs/packages/contract/fixtures. It is package-local on purpose: Go's test
+// fixtureDir is a symlink to libs/packages/contract/fixtures. It is package-local: Go's test
 // result cache only tracks files opened inside the package directory, so a corpus referenced by
 // a relative path outside the module would let a stale PASS survive a fixture edit.
 const fixtureDir = "fixtures"
@@ -220,9 +220,9 @@ func TestDecodeRejectsUnregisteredType(t *testing.T) {
 	}
 }
 
-// The frontend image travels under exactly this key, and that is worth pinning here rather than
+// The frontend image travels under exactly this key, and that is worth pinning here instead of
 // leaving to the corpus alone: the plane, the operator and the console each name it themselves,
-// and a Go tag that drifts decodes to nil rather than failing — a cluster that quietly serves
+// and a Go tag that drifts decodes to nil instead of failing: a cluster that quietly serves
 // every model through its default frontend and reports nothing about it.
 func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
 	var dep DeploymentDesired
@@ -237,7 +237,7 @@ func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
 		t.Fatalf("frontend_image = %q", *dep.Serving.FrontendImage)
 	}
 	// A pointer, so that a plane too old to send the field is distinguishable from one that
-	// deliberately sent nothing.
+	// sent nothing.
 	var absent DeploymentDesired
 	if err := json.Unmarshal([]byte(`{"deployment_id":"dep_1","serving":{}}`), &absent); err != nil {
 		t.Fatalf("decode: %v", err)

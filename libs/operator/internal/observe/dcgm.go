@@ -23,7 +23,7 @@ import (
 // The workload holding a card is spelled two different ways depending on who scraped the exporter,
 // and both have to be read. Scraped through Prometheus, the scraper stamps its own `pod` and
 // `namespace` on every series and the exporter's own values are renamed out of the collision to
-// `exported_pod` / `exported_namespace`. Scraped directly — which is what this operator does — no
+// `exported_pod` / `exported_namespace`. Scraped directly, which is what this operator does, no
 // collision happens, nothing is renamed, and the workload is in plain `pod` / `namespace`.
 //
 // Reading only the `exported_` spelling is why the binding was empty on every real cluster: the
@@ -93,7 +93,7 @@ type DCGMSource struct {
 	Client   *http.Client
 
 	// Kube expands Endpoint to the pods behind it. Optional: without it, or when Endpoint is not
-	// a Service's cluster-DNS name, Endpoint is scraped exactly as given — which is what a
+	// a Service's cluster-DNS name, Endpoint is scraped exactly as given, which is what a
 	// single exporter, a literal address, or a test server wants.
 	Kube client.Client
 
@@ -150,7 +150,7 @@ func (s *DCGMSource) Scrape(ctx context.Context) (*DCGMInventory, error) {
 		s.log().Warn("dcgm coverage is partial", "scraped", len(got), "failed", failed)
 	}
 
-	// One parse over the concatenated exposition rather than a merge of inventories: the parser
+	// One parse over the concatenated exposition instead of a merge of inventories: the parser
 	// already keys devices by UUID and indexes them by host, so joining the bodies is the merge.
 	return ParseDCGM(strings.Join(got, "\n")), nil
 }
@@ -181,7 +181,7 @@ func (s *DCGMSource) fetch(ctx context.Context, endpoint string) (string, error)
 }
 
 // targets expands the configured endpoint to one URL per exporter pod, falling back to the
-// endpoint itself whenever that cannot be done — no client, not a Service name, or a Service
+// endpoint itself whenever that cannot be done: no client, not a Service name, or a Service
 // nothing is behind. The fallback is the old single-GET behaviour, never an empty scrape.
 func (s *DCGMSource) targets(ctx context.Context) []string {
 	single := []string{s.Endpoint}
@@ -228,8 +228,8 @@ func (s *DCGMSource) targets(ctx context.Context) []string {
 }
 
 // parseServiceHost reads `<service>.<namespace>.svc[.cluster.local]`, the only host shape that
-// names something with pods behind it. Anything else — an address, an external name, a Prometheus
-// federate URL — is a single target and is left alone.
+// names something with pods behind it. Anything else, an address, an external name, a Prometheus
+// federate URL, is a single target and is left alone.
 func parseServiceHost(host string) (service, namespace string, ok bool) {
 	parts := strings.Split(strings.TrimSuffix(host, "."), ".")
 	if len(parts) < 3 || parts[2] != "svc" {
@@ -268,13 +268,13 @@ func parseSelector(spec, service string) (map[string]string, error) {
 
 // ParseDCGM reads a Prometheus text exposition into a device inventory.
 //
-// It is deliberately not a full exposition parser: every series the exporter emits carries the
+// It is not a full exposition parser: every series the exporter emits carries the
 // same identity labels, so the first line mentioning a UUID settles that device and the rest are
 // only consulted for a workload binding the first line happened not to carry.
 func ParseDCGM(body string) *DCGMInventory {
 	// Whether this body came through a scraper that stamped its own pod on every series. The
 	// prefixed spelling exists only as the loser of that collision, so one occurrence anywhere
-	// settles it for the whole body — and its absence settles the other way just as firmly.
+	// settles it for the whole body, and its absence settles the other way just as firmly.
 	renamed := strings.Contains(body, dcgmLabelPod+"=")
 
 	seen := map[string]*DCGMDevice{}

@@ -39,7 +39,7 @@ func withMultinode(t *testing.T) {
 }
 
 // The bug this whole path exists for. Two one-device nodes cannot run a tensor group of two, and
-// the old message blamed the device plugin — sending a person to look at the one component that
+// the old message blamed the device plugin: sending a person to look at the one component that
 // was demonstrably working, on a cluster advertising its accelerators perfectly well.
 func TestTheDevicePluginIsBlamedOnlyWhenNothingIsAdvertised(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
@@ -102,7 +102,7 @@ func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
 
 // Detection is what enables multi-node, not the configured flag: a cluster that reports a
 // leader-worker backend renders one even though nothing set multinode.enabled. This is the whole
-// point of observing the capability — installing Grove is enough, on its own.
+// point of observing the capability: installing Grove is enough, on its own.
 func TestMultinodeIsEnabledByObservingABackend(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
@@ -164,7 +164,7 @@ func TestSingleDomainRefusesNodesWithNoFabricBetweenThem(t *testing.T) {
 
 // And where a fabric is asserted, the replica is pinned to it. Without the selector the scheduler
 // is free to put one pod in each of two cliques, which is the split the declaration exists to
-// prevent — and the deployment would look placed while being exactly what was ruled out.
+// prevent, and the deployment would look placed while being exactly what was ruled out.
 func TestSingleDomainPinsTheReplicaToOneFabric(t *testing.T) {
 	withMultinode(t)
 	desired := pipelined()

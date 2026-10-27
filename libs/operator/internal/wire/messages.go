@@ -588,7 +588,7 @@ type AllocationObserved struct {
 }
 
 // CacheNodeResidency is what one node holds of one artifact. A node mid-fetch and a node
-// already serving are not the same fact, so state and bytes are per node rather than rolled up.
+// already serving are not the same fact, so state and bytes are per node, not rolled up.
 type CacheNodeResidency struct {
 	NodeID        string  `json:"node_id"`
 	State         string  `json:"state"`

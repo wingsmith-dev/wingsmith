@@ -2,7 +2,7 @@
 
 This is not a second implementation of the protocol: every frame is produced and consumed by
 `app.hub.session.OperatorSession`, the same object the plane's hub runs. What lives here is
-process wiring — an ephemeral port, a `MemorySink` instead of the database sink, a `DesiredSource`
+process wiring: an ephemeral port, a `MemorySink` instead of the database sink, a `DesiredSource`
 fed from the golden fixture corpus, and a handful of HTTP control routes that let a test provoke
 the situations the contract specifies but a healthy hub never produces on its own: a dropped
 connection, a forgotten session, a deliberate sequence gap, a duplicate, a sink that refuses a
@@ -71,9 +71,9 @@ class ListDesiredSource:
 class TapConnection:
     """A `Connection` that records what the session sent and can stop sending it.
 
-    Recording gives `/dup` a real frame to re-send rather than a re-encoded imitation. Muting is
+    Recording gives `/dup` a real frame to re-send instead of a re-encoded imitation. Muting is
     how the harness makes the hub go silent without killing the socket, which is the only way to
-    test that the operator's liveness deadline — not TCP — is what tears the session down.
+    test that the operator's liveness deadline, not TCP, is what tears the session down.
     """
 
     def __init__(self, inner: ServerConnection, harness: "Harness") -> None:

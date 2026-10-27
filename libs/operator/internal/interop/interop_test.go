@@ -124,7 +124,7 @@ func TestResumeAcrossClientRestart(t *testing.T) {
 	}
 }
 
-// TestFullResync is PROTOCOL §4: an unresumable point is refused rather than pretended away, and
+// TestFullResync is PROTOCOL §4: an unresumable point is refused, not pretended away, and
 // each side opens its own snapshot with resync.begin and closes it with stream.end.
 func TestFullResync(t *testing.T) {
 	h := startHub(t, "--desired-count", "3")
@@ -143,7 +143,7 @@ func TestFullResync(t *testing.T) {
 		t.Fatalf("hub streamed %d begins and %d declarations, want 1 and 3", len(begins), len(desired))
 	}
 	if begins[0].Seq == nil || *begins[0].Seq != 1 {
-		t.Fatalf("hub's resync.begin is seq %v, want 1 — a fresh session renumbers from 1", begins[0].Seq)
+		t.Fatalf("hub's resync.begin is seq %v, want 1: a fresh session renumbers from 1", begins[0].Seq)
 	}
 	if ends[0].Seq == nil || *ends[0].Seq != 5 {
 		t.Fatalf("hub's stream.end is seq %v, want 5", ends[0].Seq)
@@ -172,7 +172,7 @@ func TestFullResync(t *testing.T) {
 		t.Fatalf("operator's upward stream did not restart at 1: %+v", state.Received.Observed)
 	}
 
-	// A session the hub has no record of is unresumable, and it says so rather than guessing.
+	// A session the hub has no record of is unresumable, and it says so instead of guessing.
 	h.forget()
 	h.kill()
 	waitFor(t, "a second, fresh session", func() bool {
@@ -189,7 +189,7 @@ func TestFullResync(t *testing.T) {
 }
 
 // TestLossyForcesFreshSession is PROTOCOL §4: a sender that cannot serve as a resume base is
-// given a new session rather than allowed to pretend.
+// given a new session, not allowed to pretend.
 func TestLossyForcesFreshSession(t *testing.T) {
 	h := startHub(t, "--desired-count", "0")
 	store := newFileStore(t)
@@ -314,7 +314,7 @@ func TestGapClosesAndDuplicateDoesNot(t *testing.T) {
 }
 
 // TestLiveness is PROTOCOL §5: the application-level heartbeat holds the session open, and
-// silence past the deadline is what tears it down — at both ends.
+// silence past the deadline is what tears it down: at both ends.
 func TestLiveness(t *testing.T) {
 	t.Run("heartbeat holds the session", func(t *testing.T) {
 		h := startHub(t, "--desired-count", "0", "--ping-interval", "0.1", "--liveness-timeout", "1")
@@ -385,7 +385,7 @@ func TestLiveness(t *testing.T) {
 }
 
 // TestUnknownTypeIsNotFatal is PROTOCOL §2: a type the receiver does not know is dropped and
-// answered with an error, and the session carries on — which is only true if the frame still
+// answered with an error, and the session carries on, which is only true if the frame still
 // consumed its sequence number at both ends.
 func TestUnknownTypeIsNotFatal(t *testing.T) {
 	h := startHub(t, "--desired-count", "0")

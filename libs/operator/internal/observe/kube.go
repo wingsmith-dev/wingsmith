@@ -33,7 +33,7 @@ const (
 	labelZone         = "topology.kubernetes.io/zone"
 	// labelPool is the fallback pool label, used when no key is configured. A cluster that
 	// labels its pools with anything else sets HANGAR_POOL_LABEL_KEY, which is the same key
-	// placement selects on — observing one key while scheduling against another puts a node in
+	// placement selects on: observing one key while scheduling against another puts a node in
 	// a pool the plane cannot then target.
 	labelPool         = "hangar.dev/pool"
 	labelDeviceClass  = "hangar.dev/device-class"
@@ -41,7 +41,7 @@ const (
 	labelInstanceBeta = "beta.kubernetes.io/instance-type"
 
 	// annotationDeviceUUIDs carries the node's accelerator UUIDs in index order. Device UUIDs
-	// are not published as labels — a label value cannot hold eight of them — and Kubernetes
+	// are not published as labels, a label value cannot hold eight of them, and Kubernetes
 	// does not expose them at all, so identity comes from the DCGM exporter (ADR 0007). This
 	// annotation is retained as an override for a cluster that runs no DCGM; absent both,
 	// devices are keyed by node and index, which is stable for as long as the hardware does
@@ -57,19 +57,19 @@ const (
 
 // KubeDiscoverer reads supply out of the Kubernetes API.
 //
-// It is deliberately uncached and read-only: the observation loop runs on an interval, so a watch
+// It is uncached and read-only: the observation loop runs on an interval, so a watch
 // would buy latency the hub does not need and a second copy of every node object it does not want.
 type KubeDiscoverer struct {
 	Client client.Client
 	// DCGM is the in-cluster exporter device identity is read from. Nil, or unreachable, and
-	// discovery degrades to the annotation and then to synthetic ids rather than failing:
+	// discovery degrades to the annotation and then to synthetic ids instead of failing:
 	// inventory the plane cannot see is worse than inventory whose metrics do not join.
 	DCGM *DCGMSource
 	// PoolLabelKey is the node label whose value names the pool a node belongs to. Empty falls
 	// back to {@link labelPool}.
 	PoolLabelKey string
 	// Groups is where the leader-worker backend is detected. Nil reads as no backend, which
-	// parks multi-node replicas rather than hanging them.
+	// parks multi-node replicas instead of hanging them.
 	Groups GroupSource
 	Log    *slog.Logger
 }
@@ -88,7 +88,7 @@ var _ Discoverer = (*KubeDiscoverer)(nil)
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Discover implements Discoverer. KubeDiscoverer is not a controller-runtime reconciler, but the
-// RBAC markers live here rather than on a Reconcile method because this is the only place that
+// RBAC markers live here, not on a Reconcile method because this is the only place that
 // issues the List calls they authorize; controller-gen aggregates markers by package, not by
 // type, so placement next to the call site keeps the grant traceable to its use.
 func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
@@ -117,7 +117,7 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		k.log().Debug("scraped device identity", "devices", inventory.Devices, "hosts", inventory.Hosts)
 	}
 
-	// A discovery failure degrades to "no backend" rather than failing the tick. The direction
+	// A discovery failure degrades to "no backend" instead of failing the tick. The direction
 	// matters: absent the capability a multi-node replica parks with a reason, where claiming
 	// one the cluster does not have produces a pod that hangs in collective initialisation with
 	// nothing saying why. Losing inventory over a transient read would be worse than either.
@@ -199,7 +199,7 @@ func holdsDevices(obj runtime.Object) bool {
 }
 
 // allocatedByNode counts accelerators committed to work, from the cluster's own scheduling
-// records rather than from the hardware. It takes the pod listing rather than making its own:
+// records, not from the hardware. It takes the pod listing instead of making its own:
 // workload discovery reads the same pods, and two listings a moment apart would let a node's
 // allocation and the workload holding it disagree.
 func allocatedByNode(pods *corev1.PodList) map[string]int {
@@ -271,22 +271,22 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 // When the two disagree on the count, GFD wins and the disagreement is logged with both numbers:
 // DCGM entries beyond the GFD count are dropped, and GFD slots DCGM did not name fall through to
 // the annotation and then to a synthetic id. Neither view is discarded silently. If GFD says
-// nothing at all — no gpu.count label — DCGM's count is used, so a cluster without GFD still
+// nothing at all, no gpu.count label, DCGM's count is used, so a cluster without GFD still
 // yields inventory.
 //
 // The two fallbacks log at different levels because they answer different questions. A
 // disagreement is a surprise: two sources that both saw the node returned different numbers, and
 // somebody has to decide which is lying, so it stays a WARN. Falling back for a missing label is
-// not a surprise at all — it is the supported path this function is written to take, and whether
+// not a surprise at all: it is the supported path this function is written to take, and whether
 // a node group carries GFD's labels is a permanent property of how it was installed, not an event.
 // A WARN here would fire on every observation pass for as long as the node group exists, burying
 // the lines worth reading, so it is Debug, beside the scrape line in Discover that already reports
 // device provenance at that level.
 //
-// Debug rather than once-per-node-when-it-changes: the change worth catching is a node's device
+// Debug, not once-per-node-when-it-changes: the change worth catching is a node's device
 // count moving, and that is visible in the snapshot itself, which the plane diffs. Remembering the
 // last count per node would put cross-pass mutable state into a projection that is otherwise a pure
-// function of one node object, and would have to be pruned as the node set churns — a cache with a
+// function of one node object, and would have to be pruned as the node set churns: a cache with a
 // lifetime problem, bought for a log line whose reader is already running at Debug.
 func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.Logger) []Device {
 	labels, annotations := n.Labels, n.Annotations
@@ -422,15 +422,15 @@ func deviceClass(gfdProduct, dcgmModel string) string {
 // classMemoryMiB is what a card of this class holds, according to the embedded dictionary.
 //
 // It is the fallback for a cluster that publishes no `nvidia.com/gpu.memory`, which is the ordinary
-// case for a device plugin installed without GPU feature discovery — the same case the device count
+// case for a device plugin installed without GPU feature discovery: the same case the device count
 // above already falls back to DCGM for. Memory was the one field left reporting zero there, and a
 // zero is worse than an absence: the plane filters a workload's `device_memory_mib_min` against it,
 // so every workload that asks for memory at all becomes unplaceable, and the refusal names the
-// floor rather than the missing label.
+// floor instead of the missing label.
 //
-// The dictionary is the right source because memory is part of a class's identity — an h100-80gb-sxm
+// The dictionary is the right source because memory is part of a class's identity: an h100-80gb-sxm
 // and an h100-94gb-sxm are different classes, so naming the class has already named the memory. An
-// unknown class slug is not in the table and stays at zero, which is honest: nothing here knows how
+// unknown class slug is not in the table and stays at zero, which is accurate: nothing here knows how
 // big a card nobody has described is.
 func classMemoryMiB(class string) int64 {
 	if entry, ok := devices.Load().ByClass(class); ok {
@@ -440,7 +440,7 @@ func classMemoryMiB(class string) int64 {
 }
 
 // snake renders a Kubernetes CamelCase identifier in the wire's lower_snake_case vocabulary.
-// An acronym stays together — PIDPressure is pid_pressure, not p_i_d_pressure.
+// An acronym stays together: PIDPressure is pid_pressure, not p_i_d_pressure.
 func snake(s string) string {
 	runes := []rune(s)
 	var b strings.Builder

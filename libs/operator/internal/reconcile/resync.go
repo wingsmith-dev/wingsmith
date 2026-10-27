@@ -18,7 +18,7 @@ const demandScope = "demand"
 
 // StreamingReporter is a Reporter that can also open a correlated stream.
 //
-// Separate from Reporter rather than folded into it because only one caller needs it, and widening
+// Separate from Reporter, not folded into it because only one caller needs it, and widening
 // the interface every reporting path takes would make a test double implement a resync to report a
 // single conclusion. The sync client satisfies both; anything that does not simply never resyncs.
 type StreamingReporter interface {
@@ -29,17 +29,17 @@ type StreamingReporter interface {
 // ResyncDemand streams the whole of this cluster's demand-side observed state as one correlated
 // snapshot, so the plane can delete what the cluster no longer has.
 //
-// The gap this closes, and why it has to be a snapshot rather than more frames. Replicas and
+// The gap this closes, and why it has to be a snapshot, not more frames. Replicas and
 // allocations were only ever reported per deployment, as changes: a replica set on the
 // deployment's own frame, and an allocation released by diffing against a map held in this
 // process's memory. Both are transitions, and a transition is exactly what nobody sees. Tear a
-// deployment down and its frame stops arriving, so the last one stays true for ever — a paused
+// deployment down and its frame stops arriving, so the last one stays true for ever: a paused
 // workload kept `ready` replicas and `held` cards that nothing would ever collect. Restart this
 // operator and the map is empty, so a pod that went away while it was down is never reported as
 // departed at all.
 //
 // A snapshot has no such failure. It says what is here now, and absence from it is evidence
-// because the stream declares its own length and completeness — the plane prunes only when the two
+// because the stream declares its own length and completeness: the plane prunes only when the two
 // agree. That is the same contract the supply side has had all along, and the same guard.
 //
 // Completeness is the one thing this must never overstate. Any deployment that could not be read
@@ -86,17 +86,17 @@ func (r *SyncedResourceReconciler) ResyncDemand(ctx context.Context) error {
 
 // RunDemandResync streams the snapshot on an interval, for as long as the operator is running.
 //
-// On a timer rather than only on a fresh session, because a session is the wrong trigger and the
-// only one this had at first. The hub resumes a stream whenever it can — `full_resync: false` is
-// the normal reconnect — so hanging the repair off a fresh session means it runs almost never, and
+// On a timer, not only on a fresh session, because a session is the wrong trigger and the
+// only one this had at first. The hub resumes a stream whenever it can, `full_resync: false` is
+// the normal reconnect, so hanging the repair off a fresh session means it runs almost never, and
 // never on any schedule. Drift that nothing is looking for is drift that stays.
 //
 // The same interval the observer restates the supply side on, for the same reason: this is the
 // mechanism that converges the two pictures, and how stale the plane may be is one property of the
-// cluster rather than two.
+// cluster instead of two.
 //
-// A failed snapshot is logged and waited out rather than returned. It costs a stale row until the
-// next tick, which is the cheap half of the trade this whole file is built around — and killing the
+// A failed snapshot is logged and waited out, not returned. It costs a stale row until the
+// next tick, which is the cheap half of the trade this whole file is built around, and killing the
 // operator over a report it could not send would stop it reconciling anything.
 func (r *SyncedResourceReconciler) RunDemandResync(ctx context.Context, every time.Duration) error {
 	if every <= 0 {
@@ -118,12 +118,12 @@ func (r *SyncedResourceReconciler) RunDemandResync(ctx context.Context, every ti
 
 // demandSnapshot reads every deployment this cluster holds and returns what is running under them.
 //
-// The declared copies are the enumeration rather than the pods, because a pod is only evidence
+// The declared copies are the enumeration instead of the pods, because a pod is only evidence
 // about a deployment the plane knows: reading pods directly would have to guess which of them the
 // plane models, and the ones it guessed wrong about would be streamed as replicas of nothing.
 //
-// One deployment failing does not abandon the others. Their frames are still worth sending — the
-// upserts they carry are useful on their own — and it is only the permission to delete that is
+// One deployment failing does not abandon the others. Their frames are still worth sending, the
+// upserts they carry are useful on their own, and it is only the permission to delete that is
 // withdrawn, which is what the false return is.
 func (r *SyncedResourceReconciler) demandSnapshot(
 	ctx context.Context,
@@ -156,7 +156,7 @@ func (r *SyncedResourceReconciler) demandSnapshot(
 }
 
 // observeDeclared reads what one declared deployment is running, by whichever route it was put
-// there — rendered by this operator, or adopted from something that was already running.
+// there: rendered by this operator, or adopted from something that was already running.
 //
 // A deployment waiting on an artifact that has not arrived is not a failure: it has no pods yet,
 // and contributing nothing to the snapshot is the correct and complete answer for it.

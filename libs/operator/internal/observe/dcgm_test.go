@@ -121,7 +121,7 @@ func TestScrapeFailsSoftly(t *testing.T) {
 	}
 }
 
-// TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass is the whole point of the change: the id
+// TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass is the point of the change: the id
 // the plane stores for a device must be the id the metrics store knows it by.
 func TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass(t *testing.T) {
 	node := gpuNode(fixtureNode, map[string]string{
@@ -205,7 +205,7 @@ func TestAnExplicitDeviceClassStillCarriesItsMemory(t *testing.T) {
 }
 
 // TestHardwareNobodyHasDescribedReportsNoMemory: an unknown class slugifies, is not in the
-// dictionary, and must stay at zero rather than borrow a number from a card it is not.
+// dictionary, and must stay at zero, not borrow a number from a card it is not.
 func TestHardwareNobodyHasDescribedReportsNoMemory(t *testing.T) {
 	node := gpuNode("gpu-exotic", map[string]string{
 		labelGPUCount:   "1",

@@ -8,8 +8,8 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// Clouds and distributions this operator can name. Anything it cannot name is reported empty
-// rather than guessed: an unknown provider is a fact, and "aws" asserted about a bare-metal
+// Clouds and distributions this operator can name. Anything it cannot name is reported empty,
+// not guessed: an unknown provider is a fact, and "aws" asserted about a bare-metal
 // cluster is worse than saying nothing.
 const (
 	CloudAWS          = "aws"
@@ -70,8 +70,8 @@ var providerSchemes = map[string]string{
 
 // cloudOf names the cloud a node belongs to from its provider reference.
 //
-// The reference is `<scheme>://<path>`, and the path shape differs per provider — AWS writes an
-// empty host and puts the zone first (`aws:///us-east-2b/i-0abc`), others do not — so only the
+// The reference is `<scheme>://<path>`, and the path shape differs per provider, AWS writes an
+// empty host and puts the zone first (`aws:///us-east-2b/i-0abc`), others do not, so only the
 // scheme is read. Empty for a node with no provider reference at all, which is what bare metal
 // and an unconfigured cloud controller both look like.
 func cloudOf(providerID string) string {
@@ -133,10 +133,10 @@ var versionMarkers = []struct {
 //
 // Three sources in falling order of certainty: a label only one distribution sets, a fragment
 // stamped into the kubelet version, and the OS image for the distributions that are an operating
-// system. A node that matches none is reported as plain `kubernetes` rather than empty — the
+// system. A node that matches none is reported as plain `kubernetes`, not empty: the
 // question was answered, and the answer is that it is not a recognised distribution.
 //
-// This is the one judgement in this package that is deliberately about Kubernetes: the plane is
+// This is the one judgement in this package that is about Kubernetes: the plane is
 // never told what a distribution is, only handed the string as an observed cluster attribute.
 func distributionOf(labels map[string]string, kubeletVersion, osImage string) string {
 	for _, marker := range distributionMarkers {

@@ -151,7 +151,7 @@ func TestNewSessionCannotClaimHistory(t *testing.T) {
 }
 
 // TestLossySurvivesRestartAndIsDeclared proves a lossy marker cannot be laundered away by a
-// crash: it is durable, and it reaches the client so that hello can declare it rather than ask
+// crash: it is durable, and it reaches the client so that hello can declare it, not ask
 // for a resume this side cannot honour.
 func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 	ctx := context.Background()

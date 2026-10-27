@@ -203,7 +203,7 @@ func TestSnakeCasesKubernetesConditions(t *testing.T) {
 }
 
 // TestDeviceClassPrecedence pins the order the class is decided in: the hangar label overrides
-// everything, the dictionary names what it knows, and anything else is slugified rather than
+// everything, the dictionary names what it knows, and anything else is slugified, not
 // dropped, so a cluster with no hangar labels at all still groups its hardware.
 func TestDeviceClassPrecedence(t *testing.T) {
 	labelled := gpuNode("gpu-a", map[string]string{
@@ -230,7 +230,7 @@ func TestDeviceClassPrecedence(t *testing.T) {
 }
 
 // TestKubePoolLabelKeyIsConfigurable: the label a cluster names its pools with is the one
-// HANGAR_POOL_LABEL_KEY sets, and observation must read that key rather than a compiled-in one.
+// HANGAR_POOL_LABEL_KEY sets, and observation must read that key instead of a compiled-in one.
 // Reading a different key than placement selects on is silent: the node arrives in the default
 // pool, no pool of that name is declared, and the plane stores a null pool without complaining.
 func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
@@ -302,7 +302,7 @@ func dcgmInventoryFor(host string, n int) *DCGMInventory {
 
 // TestMissingGPUCountLabelIsNotAWarning: a node group installed without GFD's labels takes its
 // device count from DCGM on every pass for as long as it exists. That is the supported path, so it
-// must not shout — a WARN twice every thirty seconds buries the reconcile lines. The count itself
+// must not shout: a WARN twice every thirty seconds buries the reconcile lines. The count itself
 // must still be right.
 func TestMissingGPUCountLabelIsNotAWarning(t *testing.T) {
 	const name = "ip-10-5-103-180.eu-north-1.compute.internal"

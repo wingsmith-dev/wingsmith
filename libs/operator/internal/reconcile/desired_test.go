@@ -62,7 +62,7 @@ func TestEveryDesiredTypeDecodesToAnIdentity(t *testing.T) {
 	}
 }
 
-// TestADeletionIsDecodedAsOne — a deployment.deleted that decoded as an ordinary desired frame
+// TestADeletionIsDecodedAsOne: a deployment.deleted that decoded as an ordinary desired frame
 // would re-create the object it was sent to remove.
 func TestADeletionIsDecodedAsOne(t *testing.T) {
 	got, err := decodeDesired(frame(t, wireDeploymentDeleted, 1,
@@ -79,7 +79,7 @@ func TestADeletionIsDecodedAsOne(t *testing.T) {
 }
 
 // TestAuthorityAndAdoptionSurviveTheDecode. Authority is the operator's gate (ADR 0009), and the
-// digest is what the cluster checks before it will manage something it did not create — a decode
+// digest is what the cluster checks before it will manage something it did not create: a decode
 // that dropped either would open the gate by omission.
 func TestAuthorityAndAdoptionSurviveTheDecode(t *testing.T) {
 	payload := wire.DeploymentDesired{
@@ -109,7 +109,7 @@ func TestAuthorityAndAdoptionSurviveTheDecode(t *testing.T) {
 	}
 }
 
-// TestADeploymentWithNoAdoptionCarriesNone — an empty ref is not the same as no ref, and an
+// TestADeploymentWithNoAdoptionCarriesNone: an empty ref is not the same as no ref, and an
 // invented one would gate a deployment against a digest nothing published.
 func TestADeploymentWithNoAdoptionCarriesNone(t *testing.T) {
 	got, err := decodeDesired(frame(t, wireDeploymentDesired, 1,
@@ -142,7 +142,7 @@ func TestAFrameWithNoIDIsRefused(t *testing.T) {
 	}
 }
 
-// TestACacheFrameWithNoClusterStillNamesSomething — the name is derived from a prefix plus the
+// TestACacheFrameWithNoClusterStillNamesSomething: the name is derived from a prefix plus the
 // cluster id, so it is never empty and the id-less check cannot catch it. This records that.
 func TestACacheFrameWithNoClusterStillNamesSomething(t *testing.T) {
 	got, err := decodeDesired(frame(t, wireCacheDesired, 1, wire.CacheDesired{}))
@@ -163,7 +163,7 @@ func TestAnUndecodablePayloadIsRefused(t *testing.T) {
 }
 
 // TestATypeThatIsNotDesiredStateIsRefused. The store routes on isDesired, so this is the
-// belt-and-braces half: a mismatch between the two must fail loudly rather than store a blank.
+// belt-and-braces half: a mismatch between the two must fail loudly, not store a blank.
 func TestATypeThatIsNotDesiredStateIsRefused(t *testing.T) {
 	for _, kind := range []string{"node.observed", "operation.desired", "", "deployment.observed"} {
 		if _, err := decodeDesired(frame(t, kind, 1, map[string]string{})); err == nil {
@@ -172,7 +172,7 @@ func TestATypeThatIsNotDesiredStateIsRefused(t *testing.T) {
 	}
 }
 
-// TestIsDesiredAgreesWithDecodeDesired — the routing predicate and the decoder must accept exactly
+// TestIsDesiredAgreesWithDecodeDesired: the routing predicate and the decoder must accept exactly
 // the same set, or a frame is either dropped silently or refused forever.
 func TestIsDesiredAgreesWithDecodeDesired(t *testing.T) {
 	for kind := range desiredTypes {

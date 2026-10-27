@@ -265,7 +265,7 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 	if strings.Contains(joined, "@6cee5e") {
 		t.Errorf("the pin leaked into the model id: %s", joined)
 	}
-	// The path has already resolved the revision — its last segment is the commit — so sending
+	// The path has already resolved the revision, its last segment is the commit, so sending
 	// --revision as well says the same thing twice and lets an engine disagree with itself.
 	if strings.Contains(joined, "--revision") {
 		t.Errorf("--revision alongside a resolved path: %s", joined)
@@ -292,7 +292,7 @@ func TestAnUnpinnedSourceKeepsTheRepoID(t *testing.T) {
 }
 
 // The regression this shape exists for. Z-AI's GLM-5.3-Flash processor opens
-// `<--model>/processor_config.json` itself rather than resolving the repo id through
+// `<--model>/processor_config.json` itself instead of resolving the repo id through
 // huggingface_hub, so a repo id reaches it as a relative path and the worker dies on
 // `FileNotFoundError: 'zai-org/GLM-5.3-Flash/processor_config.json'`.
 func TestAPinnedModelIsServedFromADirectory(t *testing.T) {
@@ -339,7 +339,7 @@ func TestTheObjectIsNamedAfterTheDeploymentAndFallsBackToItsID(t *testing.T) {
 }
 
 // The pods Dynamo derives carry our labels only if they are on the template it derives them
-// from — and without them every deployment this operator created came back as a sighting to
+// from, and without them every deployment this operator created came back as a sighting to
 // adopt, because discovery reads pod labels to decide what it did not put there.
 func TestTheOwnershipLabelsReachThePodTemplate(t *testing.T) {
 	obj, err := DynamoGraphDeployment(testInputs(), testOptions())
@@ -378,9 +378,9 @@ func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
 // Every component this renderer emits has to fit `componentNameBudget`, which is the contract that
 // replaced a bound derived from the components themselves.
 //
-// The direction matters and is the whole point. The old `maxWorkloadName` was `63 - max(suffixes)`,
+// The direction matters and is the point. The old `maxWorkloadName` was `63 - max(suffixes)`,
 // so adding a longer component shortened the bound and silently renamed deployments that had
-// nothing to do with it — a rename being a delete, a recreate and a weight reload. Now the number
+// nothing to do with it: a rename being a delete, a recreate and a weight reload. Now the number
 // is fixed and the components are held to it, so the same mistake is this test failing with the
 // offending name in the message.
 func TestComponentBudget(t *testing.T) {
@@ -692,7 +692,7 @@ func TestTheFrontendAndEngineTakeTheirPullSecrets(t *testing.T) {
 	}
 }
 
-// Both are settings so that a cluster can answer them without a code change — the replica count
+// Both are settings so that a cluster can answer them without a code change: the replica count
 // because a rollout must not be an outage, the namespace because whether a frontend can be
 // narrowed to its own model is unresolved and needs an experiment.
 func TestTheFrontendReplicaCountAndNamespaceAreClusterSettings(t *testing.T) {
@@ -775,7 +775,7 @@ func TestTheFrontendRefusesResourcesThatWouldNotSchedule(t *testing.T) {
 }
 
 // The name bound has to hold for every component the graph actually holds, not for the worker
-// alone. The worker's derived name is the longest today, so nothing moves — but a bound derived
+// alone. The worker's derived name is the longest today, so nothing moves, but a bound derived
 // from one component is right by coincidence, and the overflow it stops is silent: the API server
 // refuses a child object this operator never reads, and the deployment sits at zero replicas
 // ready with no pod and no explanation.
@@ -805,7 +805,7 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 }
 
 // Dynamo names each DynamoComponentDeployment `<graph>-<component>-<hash>`, where the hash covers
-// the whole component pod template — labels included. So the set below is not bookkeeping: it is
+// the whole component pod template: labels included. So the set below is not bookkeeping: it is
 // an input to a name, and changing it renames every component in the fleet, which Dynamo answers
 // by abandoning the running one and starting a replacement that reloads the model's weights.
 //
@@ -815,8 +815,8 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 //
 // The reconciler no longer applies a graph deployment whose inputs are unchanged, so a set edited
 // here reaches only workloads whose declaration moves afterwards. This test is the second half of
-// that: it makes an edit to the set deliberate rather than a side effect of tidying up somewhere
-// else. Adding or removing a label is allowed — update the list and know that you are paying a
+// that: it makes an edit to the set deliberate instead of a side effect of tidying up somewhere
+// else. Adding or removing a label is allowed: update the list and know that you are paying a
 // reload for anything that redeploys.
 func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 	want := []string{
@@ -841,7 +841,7 @@ func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 		}
 		sort.Strings(got)
 		if !slices.Equal(got, want) {
-			t.Fatalf("%s pod-template labels = %v, want %v — every workload that redeploys "+
+			t.Fatalf("%s pod-template labels = %v, want %v: every workload that redeploys "+
 				"reloads its weights for this change", name, got, want)
 		}
 	}
@@ -852,7 +852,7 @@ func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 //
 // `modelRef` points --model at the snapshot directory, which is the only form every engine reads
 // the same way. That string is also the identity of the model card the worker publishes, and the
-// frontend resolves the card to build its tokenizer and prompt formatter — so a frontend with no
+// frontend resolves the card to build its tokenizer and prompt formatter, so a frontend with no
 // access to that path resolves nothing, registers nothing, and answers 404 for the model while
 // every count in the cluster reads healthy.
 func TestTheFrontendCanReadTheSnapshotTheWorkerIsPointedAt(t *testing.T) {
@@ -886,8 +886,8 @@ func TestTheFrontendCanReadTheSnapshotTheWorkerIsPointedAt(t *testing.T) {
 	}
 }
 
-// A cluster with no cache claim configured gets a frontend without the volume, rather than one
-// naming an empty claim — which the API server rejects, taking the whole graph with it.
+// A cluster with no cache claim configured gets a frontend without the volume, instead of one
+// naming an empty claim, which the API server rejects, taking the whole graph with it.
 func TestAFrontendWithNoCacheClaimRendersNoVolume(t *testing.T) {
 	opts := frontendOptions()
 	opts.ModelCachePVC = ""
@@ -943,7 +943,7 @@ func disaggInputs() Inputs {
 // deployment must render byte-for-byte what it rendered before disaggregation existed.
 //
 // Not a nicety. The rendered pod template is what Dynamo hashes into the object name, so a single
-// added label or reordered flag renames every worker in the fleet — and a rename is a delete, a
+// added label or reordered flag renames every worker in the fleet, and a rename is a delete, a
 // recreate and a weight reload, twenty minutes each for a large model, on clusters where nothing
 // was declared to have changed. `FrontendEnabled` sets itself the same bar and for the same reason.
 func TestAnAggregatedRenderIsUnchangedByDisaggregationExisting(t *testing.T) {
@@ -1033,7 +1033,7 @@ func TestADisaggregatedDeploymentRendersBothRoles(t *testing.T) {
 	}
 }
 
-// The flags that come from the topology rather than from anything a person typed.
+// The flags that come from the topology, not from anything a person typed.
 func TestEachRoleGetsItsOwnDerivedFlagsAndArguments(t *testing.T) {
 	for _, tc := range []struct {
 		role           string
@@ -1158,7 +1158,7 @@ func TestEachRolesPodsCarryTheirRole(t *testing.T) {
 //
 // A long conversation that grows each turn hits the prefix cache on a warm prefill worker. That
 // reuse is what these flags protect, and each of
-// them fails silently on its own — as a cold cache and a latency nobody can attribute, never as an
+// them fails silently on its own, as a cold cache and a latency nobody can attribute, never as an
 // error.
 func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
 	in := disaggInputs()
@@ -1238,20 +1238,20 @@ func TestTheFrontendRoutesByKVWhateverTheTopology(t *testing.T) {
 		"disaggregated": disaggInputs(),
 	} {
 		if got := routerMode(t, in); got != "kv" {
-			t.Fatalf("%s frontend DYN_ROUTER_MODE = %q, want kv — it routes round-robin, "+
+			t.Fatalf("%s frontend DYN_ROUTER_MODE = %q, want kv: it routes round-robin, "+
 				"so every turn of a conversation lands on a worker that never saw its prefix", name, got)
 		}
 	}
 }
 
-// A one-replica deployment is rendered the same way, deliberately. The KV router with a single
-// registered worker picks the only candidate — the choice round-robin would have made — so there
+// A one-replica deployment is rendered the same way. The KV router with a single
+// registered worker picks the only candidate, the choice round-robin would have made, so there
 // is nothing to gain from a `Replicas > 1` gate and a moving autoscaler count to lose to it.
 func TestTheFrontendRoutesByKVEvenAtOneReplica(t *testing.T) {
 	in := testInputs()
 	in.Deployment.MinReplicas = 1
 	if got := routerMode(t, in); got != "kv" {
-		t.Fatalf("single-replica frontend DYN_ROUTER_MODE = %q, want kv — the mode must not "+
+		t.Fatalf("single-replica frontend DYN_ROUTER_MODE = %q, want kv: the mode must not "+
 			"depend on a replica count that moves under an autoscaler", got)
 	}
 }
@@ -1437,7 +1437,7 @@ func argValue(args []string, flag string) string {
 }
 
 // Liveness must be slower to act than readiness. The two probes answer the same endpoint family on
-// a worker whose health reflects whether it is accepting rather than whether it is alive, so the
+// a worker whose health reflects whether it is accepting, not whether it is alive, so the
 // only thing separating a saturated worker from a dead one is how long each probe waits. Readiness
 // takes it out of rotation; liveness destroys a process holding a 1.4 TB model.
 func TestWorkerProbesDoNotKillASaturatedWorker(t *testing.T) {
@@ -1467,8 +1467,8 @@ func TestWorkerProbesDoNotKillASaturatedWorker(t *testing.T) {
 
 // The offload tier is off unless a workload asks for it, and asking for it must not change decode.
 //
-// Both halves matter. The first is what makes the tier measurable — the same fleet renders with and
-// without it from a workload edit — and the second is the asymmetry the tier is built on: prefill
+// Both halves matter. The first is what makes the tier measurable, the same fleet renders with and
+// without it from a workload edit, and the second is the asymmetry the tier is built on: prefill
 // is the only role whose cache can be hit, so decode offloading would spend host bandwidth writing
 // blocks nothing reads.
 func TestHostOffloadTierIsOptInAndPrefillOnly(t *testing.T) {
@@ -1499,7 +1499,7 @@ func TestHostOffloadTierIsOptInAndPrefillOnly(t *testing.T) {
 		!strings.Contains(prefill, `"kv_connector":"NixlConnector"`) {
 		t.Fatalf("prefill renders %q; it must wrap both the offload and the transport connector", prefill)
 	}
-	// GiB in, bytes out — the conversion is the whole reason the field is not passed through.
+	// GiB in, bytes out: the conversion is the whole reason the field is not passed through.
 	if want := `"cpu_bytes_to_use":274877906944`; !strings.Contains(prefill, want) {
 		t.Errorf("prefill renders %q; 256 GiB must reach the engine as %s", prefill, want)
 	}
@@ -1531,7 +1531,7 @@ func TestOffloadPoolBoundsWorkerMemory(t *testing.T) {
 		t.Errorf("memory limit = %d, want %d (128 GiB requested + a 256 GiB pool)", limit.Value(), want)
 	}
 
-	// Off, nothing is bounded — every other worker in the fleet renders as it did before.
+	// Off, nothing is bounded: every other worker in the fleet renders as it did before.
 	in.Deployment.Serving.PrefixCacheConfig = nil
 	spec, err = podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{Role: "prefill"})
 	if err != nil {
@@ -1544,11 +1544,11 @@ func TestOffloadPoolBoundsWorkerMemory(t *testing.T) {
 
 // A worker that advertises the node-local mirror publishes a path the frontend must be able to
 // open. If it cannot, it reads the path as a Hugging Face repo id, is answered 404, and publishes
-// no model card at all — so a fleet of healthy workers serves an empty model list while every
+// no model card at all, so a fleet of healthy workers serves an empty model list while every
 // probe passes.
 func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
 	in := testInputs()
-	// A pinned source, because only a pinned revision resolves to a snapshot directory — which is
+	// A pinned source, because only a pinned revision resolves to a snapshot directory, which is
 	// the only case where the worker advertises a path at all.
 	in.Artifact.Sources = []wire.ArtifactSource{
 		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
@@ -1614,14 +1614,14 @@ func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
 
 // Aggregated serving can be the faster topology for a model, and the offload tier was written for
 // disaggregated prefill. A tier that only works in the arm we are not shipping is not
-// a tier, so an aggregated worker gets one too — standing alone, because there is no second worker
+// a tier, so an aggregated worker gets one too: standing alone, because there is no second worker
 // to move a cache to and so nothing to compose with.
 func TestOffloadTierReachesAnAggregatedWorker(t *testing.T) {
 	in := testInputs()
 	opts := Options{ModelCachePVC: "model-cache"}
 
 	// Off: an aggregated worker renders no transfer config at all. That is the normal case and
-	// the flag's absence is load-bearing — vLLM behaves differently when it is present and empty.
+	// the flag's absence is essential: vLLM behaves differently when it is present and empty.
 	args, err := engineArgs(in, opts, workerRole{})
 	if err != nil {
 		t.Fatal(err)
@@ -1765,7 +1765,7 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 		t.Fatalf("FI_PROVIDER=%q, want efa; libfabric would be free to pick shm or tcp", env["FI_PROVIDER"])
 	}
 	if env["HF_HOME"] != HFHome {
-		t.Fatal("fabric env displaced the existing container env rather than adding to it")
+		t.Fatal("fabric env displaced the existing container env instead of adding to it")
 	}
 
 	// A cluster with no fabric renders the container it always did: no privilege, no host IPC,

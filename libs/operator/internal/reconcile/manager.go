@@ -1,6 +1,6 @@
 // Package reconcile owns the second of the operator's two loops: CRDs -> Kubernetes objects.
 //
-// The split from internal/sync is load-bearing. The sync loop never creates a Kubernetes object
+// The split from internal/sync is essential. The sync loop never creates a Kubernetes object
 // and the reconcile loop never touches the stream; the CRDs between them are the durable local
 // copy of desired state, which is what lets a cluster keep running through a control-plane
 // outage.
@@ -41,7 +41,7 @@ func Scheme() (*runtime.Scheme, error) {
 }
 
 // NewManager builds the controller-runtime manager. Health and readiness endpoints are served by
-// internal/health rather than the manager so that they stay up while the manager is starting.
+// internal/health instead of the manager so that they stay up while the manager is starting.
 func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 	scheme, err := Scheme()
 	if err != nil {
@@ -67,8 +67,8 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 		LeaderElectionReleaseOnCancel: true,
 		// Both namespaces, not one. Declared state lives in the operator's own namespace and
 		// what it renders lives in the workload namespace, and the reconciler reads back what
-		// it wrote — a prefetch job's completion is the gate a deployment waits on. A cache
-		// scoped to the first namespace alone would report those objects as absent rather than
+		// it wrote: a prefetch job's completion is the gate a deployment waits on. A cache
+		// scoped to the first namespace alone would report those objects as absent, not
 		// as unreadable, which is the failure that looks like a logic bug for a day.
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{
@@ -85,8 +85,8 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 
 // SetupWithManager registers every controller this operator runs and returns the reconciler.
 //
-// The reconciler is returned rather than kept private because it reports upward as well as
-// reconciling downward, and the sync client it reports through does not exist yet at this point —
+// The reconciler is returned, not kept private because it reports upward as well as
+// reconciling downward, and the sync client it reports through does not exist yet at this point:
 // it takes the store and the observer as its own options. Binding after construction is how the
 // observe loop resolves the same cycle.
 func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger) (*SyncedResourceReconciler, error) {
@@ -110,7 +110,7 @@ func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger)
 
 // RenderOptions lifts the per-cluster rendering conventions out of configuration.
 func RenderOptions(cfg *config.Config) render.Options {
-	// Copied rather than pointed at the Config, so that the rendered options cannot be changed
+	// Copied, not pointed at the Config, so that the rendered options cannot be changed
 	// by anything that later edits the configuration they came from.
 	globalDynamoNamespace := cfg.FrontendGlobalDynamoNamespace
 	return render.Options{

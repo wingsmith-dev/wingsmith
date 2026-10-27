@@ -122,7 +122,7 @@ func componentExists(t *testing.T, c client.Client, name string) bool {
 
 // TestPruneSuperseded is the production defect and every guard against over-reaching on it. The
 // Dynamo operator names a component deployment after a hash of its spec, so a serving edit makes a
-// new one and abandons the old — which keeps its accelerators and deadlocks a full node.
+// new one and abandons the old, which keeps its accelerators and deadlocks a full node.
 func TestPruneSuperseded(t *testing.T) {
 	current := "llama-70b-vllmdecodeworker-0a26de60"
 	stale := "llama-70b-vllmdecodeworker-24273190"
@@ -239,8 +239,8 @@ func TestPruneSuperseded(t *testing.T) {
 	}
 }
 
-// TestPruneSupersededWithoutAGraphIsNotAnError — the graph is applied one call earlier and read
-// back here, and a cluster where it has not landed yet is a wait rather than a failure.
+// TestPruneSupersededWithoutAGraphIsNotAnError: the graph is applied one call earlier and read
+// back here, and a cluster where it has not landed yet is a wait instead of a failure.
 func TestPruneSupersededWithoutAGraphIsNotAnError(t *testing.T) {
 	scheme := clientgoscheme.Scheme
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -253,8 +253,8 @@ func TestPruneSupersededWithoutAGraphIsNotAnError(t *testing.T) {
 // A component nobody edits must not become a floor that stops every other component being pruned.
 //
 // The floor is per component for this reason alone. One floor across the graph was harmless while
-// a graph held one component: adding a second — a frontend, created with the graph and never
-// edited since — pins the earliest current creation at the graph's own birth, and every
+// a graph held one component: adding a second, a frontend, created with the graph and never
+// edited since, pins the earliest current creation at the graph's own birth, and every
 // superseded worker is younger than that. The prune then finds nothing to do, silently and
 // forever, and the abandoned generation keeps its accelerators.
 func TestPruneSupersededIsNotBlockedByALongLivedSecondComponent(t *testing.T) {
@@ -382,7 +382,7 @@ func TestPruneSupersededDuringARollingUpdate(t *testing.T) {
 		},
 		{
 			// Creation timestamps are second-granularity. Two objects of one component born in
-			// the same second cannot be ordered, and deleting the wrong one costs a reload — so
+			// the same second cannot be ordered, and deleting the wrong one costs a reload, so
 			// the tie keeps both and the next pass looks again.
 			name:  "a tie on creation time prunes nothing",
 			graph: rolling(graphDeployment(previous, next)),

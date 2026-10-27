@@ -26,7 +26,7 @@ import (
 //
 // Every rendered object goes out as a server-side apply under this name, which is what lets the
 // Dynamo operator own the fields it writes back without the two of us overwriting each other on
-// every pass. It also means a field this operator stops rendering is removed rather than left
+// every pass. It also means a field this operator stops rendering is removed, not left
 // behind, which hand-rolled create-then-update does not give.
 const fieldOwner = client.FieldOwner("hangar-operator")
 
@@ -38,10 +38,10 @@ const waitForDependency = 15 * time.Second
 // again with nothing having happened to it.
 //
 // A watch is the fast path and this is the floor under it. The rendered object lives in a
-// different namespace from the declared one, so it is reached by label rather than by owner
+// different namespace from the declared one, so it is reached by label, not by owner
 // reference, and a label-based watch is only as good as the labels surviving on the object. This
 // is what makes a rendered object that was deleted, edited or never really created come back
-// without anyone writing desired state again — the property the previous ownerReference-only
+// without anyone writing desired state again: the property the previous ownerReference-only
 // design assumed it had and did not.
 const resyncAfterApply = 5 * time.Minute
 
@@ -60,7 +60,7 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 // reconcileDeployment renders one deployment into the objects that serve it.
 //
 // Two things have to be true before anything is applied: the artifact it serves has arrived, and
-// those weights are already resident on this cluster. Neither is an error when absent — they are
+// those weights are already resident on this cluster. Neither is an error when absent: they are
 // orderings, and the answer to each is to wait. How to serve the model is not one of them: the
 // serving block rides on the deployment itself, so it is never absent and never late.
 func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res *v1alpha1.SyncedResource) (ctrl.Result, error) {
@@ -76,9 +76,9 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.stage(res, dep, "Accepted", fmt.Sprintf("reconciling revision %d", res.Spec.Revision))
 
 	// The gates below admit a new apply and nothing else. A deployment already running from this
-	// declaration is past them, and re-checking it on every pass turned a transient answer — an
+	// declaration is past them, and re-checking it on every pass turned a transient answer, an
 	// artifact read that failed, a node cordoned for a drain, the deployment's own pods holding
-	// the accelerators the capacity check counts — into a running deployment reported as Waiting.
+	// the accelerators the capacity check counts, into a running deployment reported as Waiting.
 	live, err := r.runningAsDeclared(ctx, dep)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -113,7 +113,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 			fmt.Sprintf("waiting for %s to finish downloading", artifactID))
 	}
 
-	// Capacity is checked before rendering rather than left to the scheduler, because the
+	// Capacity is checked before rendering, not left to the scheduler, because the
 	// scheduler's answer to an impossible request is silence.
 	placed, err := schedulable(ctx, r.uncached(), dep, render.NodeSelector(dep, r.Render), render.WorkerTolerations(r.Render))
 	if err != nil {
@@ -126,7 +126,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// A replica the check could only place across machines, on a cluster that cannot run one.
 	// Rendering it anyway produces a single pod holding a fraction of the devices the engine was
 	// told to expect, which starts and then hangs in collective initialisation with nothing
-	// saying why — so this waits, and names the thing that has to be installed.
+	// saying why, so this waits, and names the thing that has to be installed.
 	if placed.NodesPerReplica > 1 && !r.multinodeEnabled() {
 		return r.wait(ctx, res, "MultinodeNotEnabled", fmt.Sprintf(
 			"one replica needs %d nodes of %d accelerators and no leader-worker backend was found "+
@@ -166,8 +166,8 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// Nothing is written when what is running was already built from these inputs. The apply
 	// below is otherwise unconditional, and an unconditional apply makes every change to the
 	// renderer a fleet-wide reload: Dynamo hashes a component's whole pod template to name the
-	// DynamoComponentDeployment it creates, so a single byte of difference — even a label nothing
-	// reads — abandons the running worker and starts a new one. Every model reloads its weights,
+	// DynamoComponentDeployment it creates, so a single byte of difference, even a label nothing
+	// reads, abandons the running worker and starts a new one. Every model reloads its weights,
 	// and on a saturated cluster that deadlocks: the new pod cannot schedule until the old one
 	// releases the accelerators it is still holding.
 	//
@@ -177,10 +177,10 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	//
 	// The cost, stated plainly: while the declaration and the layout stand still, this operator
 	// no longer corrects drift on the graph deployment, and a fix to the renderer does not reach
-	// a running workload. Both are deliberate — a render that reaches a running workload without
+	// a running workload. Both are deliberate: a render that reaches a running workload without
 	// anybody declaring a change is exactly the behaviour above. To force one, bump the
 	// deployment's generation, or delete the graph deployment as `TopologyImmutable` describes;
-	// either is a decision somebody made rather than a side effect of a rollout restart.
+	// either is a decision somebody made instead of a side effect of a rollout restart.
 	current, err := r.renderIsCurrent(ctx, obj)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -223,7 +223,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 //
 // It is reached from both sides of the apply because none of it is about the write. Collecting a
 // renamed object, collecting one Dynamo abandoned, and reporting what is actually running are all
-// statements about the cluster as it is now — a pass that wrote nothing still owes the plane the
+// statements about the cluster as it is now: a pass that wrote nothing still owes the plane the
 // rollout, and a superseded component holding accelerators is no less stuck for the fact that
 // this pass was not the one that created it.
 func (r *SyncedResourceReconciler) afterApply(
@@ -241,7 +241,7 @@ func (r *SyncedResourceReconciler) afterApply(
 
 	// An edit to the serving block renders the same graph deployment under the same name, and
 	// Dynamo answers it by creating a component deployment under a new spec hash and abandoning
-	// the previous one — which keeps its accelerators. See supersede.go; on a full node the new
+	// the previous one, which keeps its accelerators. See supersede.go; on a full node the new
 	// pod can never schedule until the abandoned one is gone.
 	if err := r.pruneSuperseded(ctx, obj.GetName()); err != nil {
 		return ctrl.Result{}, err
@@ -283,10 +283,10 @@ func (r *SyncedResourceReconciler) afterApply(
 // from an operator that predates one of these annotations has to be applied once so that it
 // carries them, and the pass that does it is the last one that ever writes it unprompted.
 //
-// Read with a plain Get rather than from a cache, because the answer decides whether to write. A
+// Read with a plain Get, not from a cache, because the answer decides whether to write. A
 // stale read here is a reload of a model, which is the expensive direction to be wrong in.
 //
-// Not found is not current — there is nothing running to leave alone. Neither is a cluster whose
+// Not found is not current: there is nothing running to leave alone. Neither is a cluster whose
 // CRD is absent, which the apply reports better than a comparison could.
 func (r *SyncedResourceReconciler) renderIsCurrent(
 	ctx context.Context,
@@ -319,7 +319,7 @@ func (r *SyncedResourceReconciler) renderIsCurrent(
 // declaration's generation and serving digest, and nil when there is none or it was built from
 // something else.
 //
-// The layout is deliberately not compared. It is the capacity check's answer, and asking the
+// The layout is not compared. It is the capacity check's answer, and asking the
 // question again of a deployment that is running is what this exists to stop: a different answer
 // would move a serving model for no change anybody declared.
 func (r *SyncedResourceReconciler) runningAsDeclared(
@@ -363,7 +363,7 @@ func (r *SyncedResourceReconciler) runningAsDeclared(
 // It is found by name instead, and only by the one name that is safe to assume: `render.Name(id)`
 // is what `WorkloadName` falls back to for a deployment with no renderable name, so an object
 // sitting there is one this operator rendered or would render. An object carrying somebody else's
-// deployment id is left alone even so — a label that disagrees is evidence, and the only reading of
+// deployment id is left alone even so: a label that disagrees is evidence, and the only reading of
 // it is that the object is not this deployment's.
 func (r *SyncedResourceReconciler) pruneUnlabelled(ctx context.Context, id, keep string) error {
 	name := render.Name(id)
@@ -412,7 +412,7 @@ func (r *SyncedResourceReconciler) holdOpen(ctx context.Context, res *v1alpha1.S
 
 // teardown removes what a declared deployment rendered, then lets it go.
 //
-// By label rather than by name, because the rendered name is the deployment's name and a
+// By label, not by name, because the rendered name is the deployment's name and a
 // deployment can be renamed: deleting the name the payload carries now would leave whatever the
 // previous name rendered running forever. The label is the id, which nothing renames. Absent is
 // success: the point is that nothing is left behind, not that this call is the one that removed
@@ -444,7 +444,7 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 // pruneRendered deletes every graph deployment rendered for one deployment id except `keep`.
 //
 // An empty `keep` removes all of them, which is what teardown wants. A missing CRD or a namespace
-// with nothing in it are both success — the postcondition is that nothing rendered for this
+// with nothing in it are both success: the postcondition is that nothing rendered for this
 // deployment survives under another name, not that this call did the removing.
 func (r *SyncedResourceReconciler) pruneRendered(ctx context.Context, id, keep string) error {
 	list := &unstructured.UnstructuredList{}
@@ -481,7 +481,7 @@ func (r *SyncedResourceReconciler) pruneRendered(ctx context.Context, id, keep s
 
 // weightsResident reports whether an artifact's prefetch has run to completion on this cluster.
 //
-// The Job's own completion is the signal rather than anything this operator records separately.
+// The Job's own completion is the signal instead of anything this operator records separately.
 // A count kept here would be a second copy of a fact the API server already holds, and the two
 // would disagree the first time the Job was deleted by hand. Found by label, for the reason on
 // prefetchJobFor: a name is a rendering, and a deployment held behind a fetch that already
@@ -517,7 +517,7 @@ func (r *SyncedResourceReconciler) artifact(ctx context.Context, id string) (*wi
 
 // declared reads one declared object out of the durable local copy.
 //
-// A resource of the wrong kind under the expected name reads as absent rather than as an error, and
+// A resource of the wrong kind under the expected name reads as absent, not as an error, and
 // so does an empty id. Names are derived from prefixed ids that do not collide across kinds, so the
 // only way to see either is a bug, and treating it as absent waits instead of rendering something
 // from the wrong payload or asking the API server for a nameless object.
@@ -568,7 +568,7 @@ func (r *SyncedResourceReconciler) ready(ctx context.Context, res *v1alpha1.Sync
 // The deployment path reads back what is actually running and reports that instead. Doing both
 // would not merely be redundant: the two frames carry different replica counts, so each would
 // look like news against the other's remembered key and the pair would re-send on every single
-// pass, forever. Splitting the write from the report is what keeps the suppression rule honest.
+// pass, forever. Splitting the write from the report is what keeps the suppression rule accurate.
 func (r *SyncedResourceReconciler) markReady(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) error {
 	patch := client.MergeFrom(res.DeepCopy())
 	res.Status.ObservedRevision = res.Spec.Revision
@@ -579,7 +579,7 @@ func (r *SyncedResourceReconciler) markReady(ctx context.Context, res *v1alpha1.
 
 // wait records that a precondition has not been met and asks to be called again.
 //
-// ObservedRevision is deliberately not advanced: nothing was applied, so claiming the revision was
+// ObservedRevision is not advanced: nothing was applied, so claiming the revision was
 // acted on would let the next pass skip it once the precondition finally clears.
 func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(res.DeepCopy())
@@ -604,17 +604,17 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 //	after creation: components added: [Frontend]
 //
 // Without this the apply returns an error, the controller requeues it, and the same rejection
-// repeats for as long as the deployment exists — a log full of one line, a deployment that never
+// repeats for as long as the deployment exists: a log full of one line, a deployment that never
 // changes, and nothing anywhere saying that the remedy is to recreate the graph.
 //
-// It is deliberately not recreated here. The graph holds the running worker, so deleting it is a
-// full reload of the weights — tens of minutes on the hardware this runs on — and an operator that
+// It is not recreated here. The graph holds the running worker, so deleting it is a
+// full reload of the weights, tens of minutes on the hardware this runs on, and an operator that
 // did that on its own would take a serving model down as a side effect of a configuration flag
-// somebody flipped. Saying so and stopping is the honest half.
+// somebody flipped. Saying so and stopping is the accurate half.
 //
 // Matched on the webhook's own words, which is fragile and is the lesser fragility: the string is
 // someone else's and may change, and if it does this returns false and the behaviour is exactly
-// what it was before — a retry loop rather than a wrong answer.
+// what it was before: a retry loop instead of a wrong answer.
 func immutableTopology(err error) bool {
 	if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
 		return false
@@ -624,19 +624,19 @@ func immutableTopology(err error) bool {
 
 // clusterRejected reports whether the cluster refused this object in a way a retry cannot fix.
 //
-// `Invalid`, `Forbidden` and `BadRequest` are the API server — or an admission webhook in front of
-// it — saying the object is wrong, which it will still be on the next pass. Returning those as a
+// `Invalid`, `Forbidden` and `BadRequest` are the API server, or an admission webhook in front of
+// it, saying the object is wrong, which it will still be on the next pass. Returning those as a
 // controller-runtime error requeues them with backoff for ever and tells the plane nothing: the
 // deployment sits at `Rendering`, the reason is a log line in a cluster somebody would have to go
 // and read, and the console shows a workload that was dispatched and then stopped having a story.
 // `ClusterRejected` is the reason MESSAGES.md already reserves for exactly this, and the API
-// server's own sentence is the most useful message there is — it names the field.
+// server's own sentence is the most useful message there is: it names the field.
 //
 // `diagnose` cannot cover it. That reads conditions off the objects Dynamo derived from ours, and
 // a webhook denial means nothing was created to derive anything from, so the one rejection with no
 // live object to inspect was the one with no reporter.
 //
-// Everything else — a conflict, a timeout, a 500 — stays a requeue. Those are the errors where
+// Everything else (a conflict, a timeout, a 500) stays a requeue. Those are the errors where
 // trying again is the correct answer, and reporting a deployment as failed because the API server
 // was briefly busy would be worse than saying nothing.
 func clusterRejected(err error) bool {
@@ -648,7 +648,7 @@ func clusterRejected(err error) bool {
 // It returns no error for the same reason the adoption refusal does not: requeueing with backoff
 // and logging a failure forever describes a transient fault, and a payload that does not decode or
 // a serving block that names no image is not transient. The next write of desired state is what
-// fixes it, and that arrives as a new revision rather than as a retry.
+// fixes it, and that arrives as a new revision, not as a retry.
 func (r *SyncedResourceReconciler) fail(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(res.DeepCopy())
 	res.Status.Phase = "Failed"

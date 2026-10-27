@@ -27,7 +27,7 @@ const maxLogBytes = 8 << 20
 // PodLogs is the client-go half of LogReader.
 //
 // A typed clientset and not the controller-runtime client, because logs are a subresource served
-// as a stream rather than an object, and controller-runtime deals only in objects. This is the
+// as a stream instead of an object, and controller-runtime deals only in objects. This is the
 // only place in the operator that needs one.
 type PodLogs struct {
 	Client kubernetes.Interface

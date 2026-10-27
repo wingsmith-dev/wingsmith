@@ -21,7 +21,7 @@ type frame struct {
 }
 
 // recordingSender stands in for sync.Client. It records what was enqueued, in order, which is the
-// only thing the loop is responsible for — everything past the queue is the client's contract.
+// only thing the loop is responsible for: everything past the queue is the client's contract.
 type recordingSender struct {
 	frames []frame
 	nextID int
@@ -111,7 +111,7 @@ func sampleSnapshot() Snapshot {
 }
 
 // TestFirstTickSendsTheInventory: a first reading is state, not transitions. Every observed object
-// goes out and no event does — an operator restart must not invent a fleet-wide join.
+// goes out and no event does: an operator restart must not invent a fleet-wide join.
 func TestFirstTickSendsTheInventory(t *testing.T) {
 	o := newTestObserver(t, NewFake(sampleSnapshot()))
 	r := o.recorder(t)
@@ -458,7 +458,7 @@ func TestResyncStreamsTheWholeInventory(t *testing.T) {
 }
 
 // TestResyncSurvivesAFailedDiscovery: the resync is the hub's only repair, so it streams the last
-// known projection rather than declining to answer — but it does not call that snapshot complete.
+// known projection instead of declining to answer, but it does not call that snapshot complete.
 // Completeness is the plane's sole permission to delete everything absent from the stream, and a
 // projection nothing just confirmed is not evidence that anything is absent.
 func TestResyncSurvivesAFailedDiscovery(t *testing.T) {

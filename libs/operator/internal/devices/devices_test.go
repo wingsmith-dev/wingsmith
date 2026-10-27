@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestEmbeddedTableMatchesTheContract keeps the copy the binary carries honest. contract.json is a
+// TestEmbeddedTableMatchesTheContract keeps the copy the binary carries accurate. contract.json is a
 // symlink to libs/packages/contract/devices.json, which go:embed will not follow, so the copy is checked instead.
 func TestEmbeddedTableMatchesTheContract(t *testing.T) {
 	contract, err := os.ReadFile("contract.json")
@@ -94,7 +94,7 @@ func TestFallthroughIsWarnedOnce(t *testing.T) {
 	}
 }
 
-// TestTheTwoDialectsConvergeOnOneClass is the whole point of the table: a card named with hyphens
+// TestTheTwoDialectsConvergeOnOneClass is the point of the table: a card named with hyphens
 // on a node label and with spaces on a Prometheus label must not become two classes that placement
 // then refuses to pool.
 func TestTheTwoDialectsConvergeOnOneClass(t *testing.T) {

@@ -85,7 +85,7 @@ type Config struct {
 	ReadOnly bool
 
 	// AllowedOperations are the operation kinds (cordon, drain, benchmark) a read-only operator
-	// still performs. Empty, the default, means none. A list rather than a switch because the
+	// still performs. Empty, the default, means none. A list instead of a switch because the
 	// kinds differ in blast radius: a benchmark runs an allowlisted harness image, a drain evicts
 	// serving pods. Ignored when ReadOnly is false: a managed cluster already lets the plane
 	// decide what runs in its workload namespace, so it performs every kind. The chart grants
@@ -396,7 +396,7 @@ func (c *Config) validate() error {
 	}
 	// Zero would render a frontend that exists and serves nothing, which is a deployment
 	// reachable by nothing and healthy in every reading of it. Turning the frontend off is
-	// HANGAR_FRONTEND_ENABLED and not a replica count, so say so rather than quietly substitute
+	// HANGAR_FRONTEND_ENABLED and not a replica count, so say so, not quietly substitute
 	// the default for what somebody wrote.
 	if c.FrontendEnabled && c.FrontendReplicas < 1 {
 		return fmt.Errorf("HANGAR_FRONTEND_REPLICAS must be at least 1; set HANGAR_FRONTEND_ENABLED=false to render no frontend")

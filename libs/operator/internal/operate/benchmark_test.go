@@ -52,7 +52,7 @@ func TestExtractSummaryTreatsNullAsNoResult(t *testing.T) {
 	}
 }
 
-// A job that died before printing anything must yield nothing rather than half of somebody
+// A job that died before printing anything must yield nothing, not half of somebody
 // else's output.
 func TestExtractSummaryHandlesAnUnframedLog(t *testing.T) {
 	summary, version := parseBenchmarkLog("Traceback (most recent call last):\n  ConnectionRefused\n")
@@ -62,7 +62,7 @@ func TestExtractSummaryHandlesAnUnframedLog(t *testing.T) {
 }
 
 // `aiperf --version` fails on an image that does not carry the subcommand, and the script prints
-// `unknown` instead. That is what should be recorded — not an empty field that reads as "not asked".
+// `unknown` instead. That is what should be recorded, not an empty field that reads as "not asked".
 func TestExtractVersionKeepsAnUnknownAnswer(t *testing.T) {
 	if _, version := parseBenchmarkLog(framed("unknown", "null")); version != "unknown" {
 		t.Errorf("version is %q", version)
@@ -195,7 +195,7 @@ func deploymentFrontendService(name, namespace, deploymentID string, port int32)
 }
 
 // One frontend per model means a run can aim at the frontend that actually serves the model under
-// test, rather than at a process shared with every other model on the cluster — whose queueing
+// test, not at a process shared with every other model on the cluster, whose queueing
 // would be measured as if it were this model's.
 func TestBenchmarkPicksTheFrontendForTheDeploymentUnderTest(t *testing.T) {
 	e := &Executor{
@@ -295,7 +295,7 @@ func TestBenchmarkStillRefusesWhenNoFrontendIsThisDeploymentsAndTwoAreShared(t *
 	}
 }
 
-// A deployment whose frontend was rendered twice — two graphs, one id — is the one case where the
+// A deployment whose frontend was rendered twice (two graphs, one id) is the one case where the
 // label answers nothing, and guessing between them is the same mistake as before.
 func TestBenchmarkRefusesTwoFrontendsWearingTheSameDeploymentId(t *testing.T) {
 	e := &Executor{

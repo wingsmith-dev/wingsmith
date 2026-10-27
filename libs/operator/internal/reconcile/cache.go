@@ -24,12 +24,12 @@ import (
 //
 // Every other path here wakes on an event: a warm-set frame arrives, a prefetch Job changes, a pod
 // moves. A warm set that has dispatched every download waits on nothing and therefore returns no
-// requeue at all, and that is the state the cluster can get stuck in — a Job that leaves outside
+// requeue at all, and that is the state the cluster can get stuck in: a Job that leaves outside
 // of a warm-set change takes its own wake-up with it, so nothing looks again and the warm set goes
 // on reporting itself dispatched over an artifact with no download running. A deployment gated on
 // those weights then waits forever on a completion that can no longer come. It is the same
 // deadlock the attempt counter closed for a *failed* download, reached by a job that is not failed
-// but absent — deleted by hand, cleaned out with a namespace, or collected by a TTL.
+// but absent: deleted by hand, cleaned out with a namespace, or collected by a TTL.
 //
 // Five minutes, because this is a backstop and not the mechanism: the watches are still what makes
 // the loop responsive, and this only has to be shorter than a person's patience. A cluster holding
@@ -38,7 +38,7 @@ const cacheResync = 5 * time.Minute
 
 // reconcileCache makes the cluster's declared warm-set resident.
 //
-// Fetching is driven by the warm-set rather than by any deployment, and that inversion is the
+// Fetching is driven by the warm-set, not by any deployment, and that inversion is the
 // whole point. Weights are per-cluster and deployments are many, so a fetch owned by a deployment
 // would run once per deployment of the same model, race with its siblings over a shared
 // filesystem, and leave the second deployment of a model paying the first one's cost again. Here
@@ -97,7 +97,7 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		return r.wait(ctx, res, "WarmSetIncomplete",
 			fmt.Sprintf("%d of %d warm-set entries are not yet fetchable", pending, len(warm.Entries)))
 	}
-	// Ready, and still asking to be called again — see cacheResync. r.ready reports no requeue
+	// Ready, and still asking to be called again; see cacheResync. r.ready reports no requeue
 	// because for a deployment there is nothing left to check; a warm set is never finished
 	// with, because what it dispatched can go away underneath it.
 	result, err := r.ready(ctx, res, "WarmSetDispatched",
@@ -112,11 +112,11 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 // prunePrefetch removes the download jobs of artifacts the warm set no longer names.
 //
 // The warm set is a full-object frame and the whole of what this cluster must hold, so an artifact
-// absent from it is one the plane has stopped asking for — a workload deleted, a deployment drained
+// absent from it is one the plane has stopped asking for: a workload deleted, a deployment drained
 // to another cluster, a pin withdrawn. Nothing else removes these: a prefetch Job is created in the
 // workload namespace and the SyncedResource that asked for it lives in another, so it carries a
 // label back to its origin and not an owner reference, and Kubernetes garbage-collects on owner
-// references alone. Deleting the workload therefore left the download running — or its completed
+// references alone. Deleting the workload therefore left the download running, or its completed
 // pod sitting in `kubectl get pods` under the name of a model nobody had asked for since,
 // indistinguishable from something still being served.
 //
@@ -172,8 +172,8 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, owner *v1a
 // declare.
 //
 // "Not in my warm set" is not the same as "nothing asks for it", and treating the two as one has a
-// cluster tearing up its own work. A renamed warm set — say from `cache-clu-<cluster id>` to the
-// cluster's name — leaves two SyncedResources of kind cache, each holding a different set. A prune
+// cluster tearing up its own work. A renamed warm set, say from `cache-clu-<cluster id>` to the
+// cluster's name, leaves two SyncedResources of kind cache, each holding a different set. A prune
 // that listed every Job in the workload namespace and deleted the ones its own set did not name
 // would have the stale object delete the live object's downloads and the live object recreate
 // them, once every reconcile. A model in the middle of a multi-hundred-gigabyte pull would never
@@ -181,9 +181,9 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, owner *v1a
 // download that kept starting over.
 //
 // So a job with an owner that still exists and is not this one is left alone. The owner is read
-// back rather than trusted from the label, because the case that has to keep working is exactly the
+// back, not trusted from the label, because the case that has to keep working is exactly the
 // rename: once the stale object is gone, its jobs are prunable again and the leak closes itself. A
-// job carrying no owner label at all predates the labels and is pruned as before — it belongs to no
+// job carrying no owner label at all predates the labels and is pruned as before: it belongs to no
 // live claim, and refusing to touch it would strand it for ever.
 func (r *SyncedResourceReconciler) prefetchIsPrunable(ctx context.Context, owner *v1alpha1.SyncedResource, job *batchv1.Job) (bool, error) {
 	name := job.Labels[render.OwnerNameLabel]
@@ -212,22 +212,22 @@ func (r *SyncedResourceReconciler) prefetchIsPrunable(ctx context.Context, owner
 // maxPrefetchAttempts bounds how many times a download is started again after failing outright.
 //
 // A bound and not a retry loop, because the two failures behind this are opposite and only one of
-// them is worth repeating. A download killed with the node under it should start again — nothing
-// about the artifact is wrong. A download of weights that cannot be fetched at all — a repository
-// that has moved, a gated one nobody holds the token for — fails identically every time, and an
+// them is worth repeating. A download killed with the node under it should start again: nothing
+// about the artifact is wrong. A download of weights that cannot be fetched at all, a repository
+// that has moved, a gated one nobody holds the token for, fails identically every time, and an
 // unbounded retry there is this cluster pulling on somebody else's registry for ever, at whatever
 // fraction of a large model it reaches before dying.
 //
-// Four rather than one, because the Job already spends its own BackoffLimit on the transient case:
+// Four instead of one, because the Job already spends its own BackoffLimit on the transient case:
 // reaching here means three pod attempts have already failed, so what this counts is whole
-// downloads lost, and the loss that motivated it — a node going NotReady — takes every attempt on
+// downloads lost, and the loss that motivated it, a node going NotReady, takes every attempt on
 // that node with it at once.
 const maxPrefetchAttempts = 4
 
 // ensurePrefetch creates an artifact's download job if it does not already exist, and starts it
 // again if the last one failed outright.
 //
-// Create rather than apply, and never an update. A Job's pod template is immutable once created,
+// Create, not apply, and never an update. A Job's pod template is immutable once created,
 // so a server-side apply that differed in any field would be rejected by the API server on every
 // pass; and re-running a completed download to close a cosmetic difference would re-pull tens of
 // gigabytes for nothing. An artifact is content-addressed, so a job that succeeded for one is
@@ -236,7 +236,7 @@ const maxPrefetchAttempts = 4
 // A *failed* one is not, and treating the mere existence of a Job object as a handled download is
 // a deadlock with no way out of it. A Job that tips over its BackoffLimit when the node under it
 // goes NotReady is never retried, the warm set reports itself Ready over it, and the deployment
-// gate waits on a completion that can no longer come. Nothing in the cluster is wrong by then —
+// gate waits on a completion that can no longer come. Nothing in the cluster is wrong by then,
 // only the record of it.
 //
 // It returns whether the artifact has run out of attempts, which the caller counts as pending. A
@@ -285,7 +285,7 @@ func (r *SyncedResourceReconciler) ensurePrefetch(ctx context.Context, owner *v1
 	// download has been restarted lives on the Job, so a pass that deleted first would hand the
 	// next one a clean slate and the bound would never advance.
 	//
-	// Background propagation rather than foreground: a Job carrying JobFailed has already given up
+	// Background propagation, not foreground: a Job carrying JobFailed has already given up
 	// and has no pod still writing into the shared cache, so there is nothing here to wait for, and
 	// waiting would hold the outgoing name against the incoming one.
 	policy := metav1.DeletePropagationBackground
@@ -299,9 +299,9 @@ func (r *SyncedResourceReconciler) ensurePrefetch(ctx context.Context, owner *v1
 
 // prefetchFailure is the Job's own account of why it failed, and empty when it has not.
 //
-// Read from the JobFailed condition rather than from Status.Failed, because those two say
+// Read from the JobFailed condition, not from Status.Failed, because those two say
 // different things. Status.Failed counts pods that have died, and a Job with one dead pod and two
-// attempts left is still running — restarting it there would throw away a download in progress on
+// attempts left is still running: restarting it there would throw away a download in progress on
 // every transient pod failure. The condition is set only once the Job has given up.
 func prefetchFailure(job *batchv1.Job) string {
 	for _, condition := range job.Status.Conditions {
@@ -327,20 +327,20 @@ func prefetchAttempt(job *batchv1.Job) int {
 	return n
 }
 
-// prefetchJobFor finds an artifact's download job by label rather than by reconstructing its name.
+// prefetchJobFor finds an artifact's download job by label, not by reconstructing its name.
 //
 // By label because the name is a rendering and not a key. It leads with the model now and it did
 // not before, so a lookup that rebuilt the string would see none of the jobs already running on a
-// live cluster — and the consequences are not cosmetic. ensurePrefetch would create a second job
+// live cluster, and the consequences are not cosmetic. ensurePrefetch would create a second job
 // pulling the same weights into the same shared cache, which is the concurrent download the job
 // exists to prevent; reportResidency and weightsResident would call weights absent that are on
 // disk, and hold every deployment of them behind a fetch that already finished.
 //
 // One artifact must resolve to one job on every pass, and this operator can inherit a state it does
-// not create — a rename, a hand-run pull, a job restored from a backup. A succeeded job therefore
+// not create: a rename, a hand-run pull, a job restored from a backup. A succeeded job therefore
 // wins over any other, because completed weights are the fact worth reporting whatever else is in
 // flight, and the oldest wins among equals. Creation timestamps are only second-granular, so the
-// name breaks a tie rather than list order: residency must not flicker between two answers on
+// name breaks a tie, not list order: residency must not flicker between two answers on
 // alternate reconciles.
 func (r *SyncedResourceReconciler) prefetchJobFor(ctx context.Context, artifactID string) (*batchv1.Job, error) {
 	var jobs batchv1.JobList
@@ -365,7 +365,7 @@ func (r *SyncedResourceReconciler) prefetchJobFor(ctx context.Context, artifactI
 //
 // The failed test comes before the age test and not after it, because the one moment two jobs
 // legitimately share an artifact is a restart, where the outgoing one is both older and dead. Age
-// alone would answer with the corpse — reporting the artifact as failed for as long as the delete
+// alone would answer with the corpse: reporting the artifact as failed for as long as the delete
 // took, and handing ensurePrefetch back the same job it had just replaced.
 func prefetchOutranks(job, over *batchv1.Job) bool {
 	if (job.Status.Succeeded > 0) != (over.Status.Succeeded > 0) {
@@ -385,11 +385,11 @@ func prefetchOutranks(job, over *batchv1.Job) bool {
 // It is the engine image of a deployment that serves the artifact, not a general-purpose
 // downloader, because the cache layout a download produces has to be the one the engine later
 // expects to read. A different version of the same client can lay the same weights out
-// differently, and the symptom is not an error — it is every worker silently re-downloading what
+// differently, and the symptom is not an error: it is every worker silently re-downloading what
 // is already on disk.
 //
 // An artifact in the warm-set that no deployment on this cluster serves has no such image to
-// borrow, and there is no safe default, so it waits. That is the honest answer: the cluster was
+// borrow, and there is no safe default, so it waits. That is the accurate answer: the cluster was
 // told to hold weights and not told what will read them.
 func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID string) (string, error) {
 	var list v1alpha1.SyncedResourceList
@@ -419,7 +419,7 @@ func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID 
 //
 // Read from the prefetch Job, which is the same source the deployment path gates on. A count kept
 // alongside it would be a second copy of a fact the API server already holds, and the two would
-// disagree the first time a Job was deleted by hand — so residency has one reading here, whoever
+// disagree the first time a Job was deleted by hand, so residency has one reading here, whoever
 // is asking.
 //
 // Reported at the cluster tier with no per-node rows, because the fetch lands on one shared
@@ -454,7 +454,7 @@ func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifact
 		// contradict it, and the deployment behind it waited on a completion that could not come.
 		//
 		// Failed pods still read as `fetching` while the Job has attempts left, because it is
-		// still fetching — the condition below, and not a pod count, is what says it has stopped.
+		// still fetching: the condition below, and not a pod count, is what says it has stopped.
 		failure = prefetchFailure(job)
 		if failure == "" && (job.Status.Active > 0 || job.Status.Failed > 0) {
 			state = "fetching"

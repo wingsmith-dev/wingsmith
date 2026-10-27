@@ -20,7 +20,7 @@ var (
 )
 
 // TestPodLogsReadsTheStream. The fake clientset serves a fixed body for any pod's log, which is
-// enough to prove the stream is opened, drained and closed rather than dropped.
+// enough to prove the stream is opened, drained and closed, not dropped.
 func TestPodLogsReadsTheStream(t *testing.T) {
 	reader := &PodLogs{Client: k8sfake.NewSimpleClientset()}
 	out, err := reader.PodLogs(context.Background(), "dynamo", "bench-abc")
@@ -56,7 +56,7 @@ func TestNewPodLogsBuildsAReader(t *testing.T) {
 	}
 }
 
-// TestNewPodLogsRefusesAConfigItCannotUse rather than handing back a reader that fails on first
+// TestNewPodLogsRefusesAConfigItCannotUse instead of handing back a reader that fails on first
 // use, which would surface as a benchmark with no result instead of a misconfigured operator.
 func TestNewPodLogsRefusesABadConfig(t *testing.T) {
 	_, err := NewPodLogs(&rest.Config{Host: "https://127.0.0.1:6443", ExecProvider: &clientcmdExec, AuthProvider: &clientcmdAuth})

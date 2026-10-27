@@ -23,9 +23,9 @@ const DefaultName = "stream"
 // A CRD was chosen over a ConfigMap for three reasons. It lives beside the CRDs as PROTOCOL.md §4
 // requires, so a single RBAC rule and a single backup covers desired state and the cursor that
 // indexes it. It carries an OpenAPI schema, so a malformed or hand-edited cursor is rejected by
-// the API server rather than decoded into a plausible-looking wrong number. And it is a resource
+// the API server, not decoded into a plausible-looking wrong number. And it is a resource
 // of its own, so the operator can be granted write access to its cursor without being granted
-// write access to ConfigMaps — a permission that in most clusters is a lateral move.
+// write access to ConfigMaps: a permission that in most clusters is a lateral move.
 //
 // The client must be uncached. The cursor is read during startup before the manager's cache has
 // synced, and a cursor read that blocks on cache warm-up would make the resume point depend on
@@ -79,7 +79,7 @@ func (s *CRDStore) Load(ctx context.Context) (State, error) {
 }
 
 // Save validates the advance and writes it. The write is a full read-modify-write against the
-// live object so that a second writer — a stray operator replica — collides on resourceVersion
+// live object so that a second writer, a stray operator replica, collides on resourceVersion
 // instead of silently overwriting a further-ahead cursor.
 func (s *CRDStore) Save(ctx context.Context, next State) error {
 	s.mu.Lock()

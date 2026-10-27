@@ -17,7 +17,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// Envelope is the wire envelope. It is an alias rather than a wrapper so that a frame handed to
+// Envelope is the wire envelope. It is an alias instead of a wrapper so that a frame handed to
 // a Handler is the same object the fixture corpus round-trips.
 type Envelope = wire.Envelope
 
@@ -49,7 +49,7 @@ const (
 // time, so a newer one does not supersede an older one.
 const eventSuffix = ".event"
 
-// isEvent reports whether a frame is an event, which the send queue drops rather than replaces.
+// isEvent reports whether a frame is an event, which the send queue drops, not replaces.
 func isEvent(t MessageType) bool { return strings.HasSuffix(t, eventSuffix) }
 
 // timestampLayout is the only accepted timestamp form on the wire: RFC 3339, UTC, milliseconds.

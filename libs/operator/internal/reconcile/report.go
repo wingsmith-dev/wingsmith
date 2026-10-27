@@ -22,7 +22,7 @@ const (
 
 // Reporter is the upward half of the reconcile loop: what this operator decided, sent to the hub.
 //
-// The same shape the observe loop's Sender has, and deliberately not the same object. The observer
+// The same shape the observe loop's Sender has, and not the same object. The observer
 // reports what the cluster is; this reports what the operator did about it, which is a different
 // fact with a different writer even though both travel the same stream.
 type Reporter interface {
@@ -38,7 +38,7 @@ func (r *SyncedResourceReconciler) Bind(rep Reporter) {
 	r.Report = rep
 }
 
-// The phases a reconcile outcome maps onto. The wire enum is wider than this — running, degraded
+// The phases a reconcile outcome maps onto. The wire enum is wider than this: running, degraded
 // and terminating describe replicas actually serving, which is the Dynamo object's status to
 // report and not this loop's.
 const (
@@ -47,7 +47,7 @@ const (
 	phaseDegraded = "degraded"
 	phaseRunning  = "running"
 	phaseFailed   = "failed"
-	// Reported only by teardown, and deliberately outside the plane's admission mapping: it
+	// Reported only by teardown, and outside the plane's admission mapping: it
 	// says what is running here and claims nothing about how far through the scheduler the
 	// deployment got, which is still true of a deployment that is merely paused.
 	phaseTerminating = "terminating"
@@ -56,7 +56,7 @@ const (
 // reasonModelNotRegistered is a frontend that is up and does not serve the model the deployment
 // exists for.
 //
-// Its own reason rather than `Progressing`, because it is the one shortfall that never resolves
+// Its own reason instead of `Progressing`, because it is the one shortfall that never resolves
 // on its own and reads exactly like a healthy rollout while it does not: every replica ready,
 // every pod probing green, and nothing serving. Free text on the wire (MESSAGES.md), so a plane
 // that predates it files it as any other reason and shows the message.
@@ -110,11 +110,11 @@ type reportKey struct {
 // applies the same rule to nodes for the same reason (PROTOCOL §6): the stream is full-object and
 // at-least-once, so a repeat is not wrong, only wasteful.
 //
-// Only deployments are reported. An artifact has no observed counterpart — the cluster holds it,
-// it does not do anything with it — and a cache's residency is reported by the cache
-// path, from what is on disk rather than from what a reconcile concluded.
+// Only deployments are reported. An artifact has no observed counterpart, the cluster holds it,
+// it does not do anything with it, and a cache's residency is reported by the cache
+// path, from what is on disk, not from what a reconcile concluded.
 //
-// A failure to send is swallowed on purpose. The frame is a progress report, and losing one must
+// A failure to send is swallowed. The frame is a progress report, and losing one must
 // never turn a reconcile that otherwise succeeded into a retry: the next pass restates it, and the
 // next resync restates it whether or not anything changed.
 func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, reason, message string) {
@@ -136,7 +136,7 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 		return
 	}
 
-	// ReplicaIDs is left nil deliberately. This frame is a conclusion about a write and never
+	// ReplicaIDs is left nil. This frame is a conclusion about a write and never
 	// reads the pods, so it is not entitled to say which replicas exist; an empty set here
 	// would tell the plane to delete every replica of a deployment that is merely waiting.
 	r.send(reporter, id, wire.DeploymentObserved{
@@ -156,9 +156,9 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 // says what this loop concluded about a write; this says what came of it, read back off the pods.
 // They share the frame and the suppression rule, and nothing else.
 //
-// The reason comes from the counts rather than from the reconcile that applied them. `Applied` is a
+// The reason comes from the counts, not from the reconcile that applied them. `Applied` is a
 // statement about a write and stays true forever once it has happened, so keeping it here made it
-// the reason on every frame a deployment ever sent after its first — which is why a serving
+// the reason on every frame a deployment ever sent after its first, which is why a serving
 // deployment read "Applied to the cluster; waiting for replicas" underneath a strip that already
 // said it was serving. `Progressing` and `Serving` are what the pods actually say.
 func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, out rollout) {
@@ -203,7 +203,7 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 
 	// The replicas themselves, each under its own id. Not suppressed against a previous
 	// report: a replica frame carries a restart count and a readiness that move on their own,
-	// and the set is small — one frame per running pod per reconcile, not per pod per second.
+	// and the set is small: one frame per running pod per reconcile, not per pod per second.
 	for _, replica := range out.replicas {
 		if err := reporter.Send(TypeReplicaObserved, replica.ReplicaID, replica); err != nil {
 			r.Log.Warn("could not report replica", "replica", replica.Name, "error", err)
@@ -219,7 +219,7 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 //
 // The releases are the half that is easy to leave out and cannot be. The plane treats an allocation
 // as held for as long as it is reported and expects release to be "the allocation ceasing to be
-// reported" — but nothing on the receiving side acts on a frame that does not arrive, and demand
+// reported", but nothing on the receiving side acts on a frame that does not arrive, and demand
 // state is never pruned against a resync the way supply is. So an allocation that simply stopped
 // being sent stayed held forever, and a deployment that rolled ten times would have marked ten
 // pods' worth of cards permanently committed. Reporting the departure explicitly, as an allocation
@@ -259,10 +259,10 @@ func (r *SyncedResourceReconciler) reportAllocations(reporter Reporter, id strin
 // departed is the allocations this deployment held on the last pass and does not hold now, each
 // restated as the frame that granted it with its devices taken away.
 //
-// The whole frame is kept and replayed rather than a bare id being sent, because the receiving side
+// The whole frame is kept and replayed instead of a bare id being sent, because the receiving side
 // resolves a deployment *and* a project before it will apply anything and drops the frame when
 // either is missing. A release built from the id alone carries no project, so it would be discarded
-// on arrival and the devices it was sent to free would stay held — the exact failure it exists to
+// on arrival and the devices it was sent to free would stay held: the exact failure it exists to
 // prevent, and a silent one.
 func (r *SyncedResourceReconciler) departed(id string, held map[string]wire.AllocationObserved) []wire.AllocationObserved {
 	r.reportMu.Lock()
@@ -287,14 +287,14 @@ func (r *SyncedResourceReconciler) departed(id string, held map[string]wire.Allo
 // reportTornDown says this deployment has nothing left on this cluster.
 //
 // Teardown is the one transition the plane cannot work out for itself. Demand state is never
-// pruned against a resync, and the per-deployment prune rides on `deployment.observed.replica_ids`
-// — a frame this operator stops sending the moment the deployment is removed. So the last frame
+// pruned against a resync, and the per-deployment prune rides on `deployment.observed.replica_ids`:
+// a frame this operator stops sending the moment the deployment is removed. So the last frame
 // before it went away stayed true for ever: a paused workload kept its replicas `ready` and its
 // allocations `held`, and the cards they were on were never handed back.
 //
 // The empty set is the whole message. `ReplicaIDs` is empty and never nil, which the wire defines
 // as the claim that there are none, and every allocation this deployment was holding is restated
-// holding nothing — the same release path a rolled pod takes, for the case where the deployment
+// holding nothing: the same release path a rolled pod takes, for the case where the deployment
 // itself is what went away.
 func (r *SyncedResourceReconciler) reportTornDown(id string) {
 	reporter := r.reporter()
@@ -351,8 +351,8 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 		key.errorCode = payload.LastError.Code
 	}
 	// A frame that makes no claim about replicas inherits the last one's, so it compares on
-	// the fields it actually carries. Without this the two senders alternate — `report` with
-	// no set, `reportRollout` with one — each looks like news against the other's key, and the
+	// the fields it actually carries. Without this the two senders alternate, `report` with
+	// no set, `reportRollout` with one, each looks like news against the other's key, and the
 	// pair re-sends on every pass forever, which is the exact loop the key exists to stop.
 	if payload.ReplicaIDs == nil {
 		key.replicas = r.lastReported(id).replicas
@@ -378,8 +378,8 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 //
 // The plain suppression rule is not enough for these. It compares against the last frame sent, and
 // a waiting deployment reports `Accepted` then a wait reason then `Accepted` again on the next
-// pass — each one news against the one before it. What makes a stage a stage is that it is true
-// once per instruction rather than for an interval, so it is remembered per revision instead.
+// pass: each one news against the one before it. What makes a stage a stage is that it is true
+// once per instruction, not for an interval, so it is remembered per revision instead.
 func (r *SyncedResourceReconciler) stage(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, reason, message string) {
 	if dep.DeploymentID == "" || !r.markStaged(dep.DeploymentID, res.Spec.Revision, reason) {
 		return
@@ -441,7 +441,7 @@ func (r *SyncedResourceReconciler) forgetReported(id string) {
 // deploymentID recovers the plane's id from the object name, for the one case that cannot read it
 // out of the payload: a payload that does not decode.
 //
-// Exact rather than a guess. resourceName swaps the prefix separator for a hyphen and lowercases,
+// Exact instead of a guess. resourceName swaps the prefix separator for a hyphen and lowercases,
 // and a ULID contains neither an underscore nor a hyphen, so the first hyphen is always the one
 // that was an underscore.
 func deploymentID(res *v1alpha1.SyncedResource) string {
@@ -462,10 +462,10 @@ func nameToID(name string) string {
 // Called when the hub opens a fresh session. The dedupe in report assumes the frame it skipped was
 // delivered, and a session the hub could not resume is one where that assumption does not hold:
 // the hub prunes what it had and expects the cluster to restate it. Nothing else the operator
-// sends has this problem, because the observe loop restates its whole view on Resync — the
+// sends has this problem, because the observe loop restates its whole view on Resync: the
 // reconciler had no such hook, so its conclusions were the one thing a new session lost for good.
 //
-// The stages are deliberately not cleared with it. They are transitions rather than state, and the
+// The stages are not cleared with it. They are transitions, not state, and the
 // state they preceded is restated by the conclusion that follows on the next pass. Replaying
 // `Accepted` for a deployment that has been serving for a week would file a step backwards into
 // its timeline and describe a reconnect as a redeploy.
@@ -498,7 +498,7 @@ func (h *reportingHandler) Handle(ctx context.Context, e *syncpkg.Envelope) erro
 // Resync implements sync.Handler.
 //
 // Forgetting is not enough on its own and never was. It makes the next pass restate every
-// deployment this cluster still has, which repairs a stale value — but says nothing about a
+// deployment this cluster still has, which repairs a stale value, but says nothing about a
 // deployment it no longer has, and that is the row the plane cannot otherwise collect. The
 // snapshot is the half that can shrink the plane's picture as well as correct it.
 func (h *reportingHandler) Resync(ctx context.Context) error {
@@ -512,7 +512,7 @@ func (h *reportingHandler) Resync(ctx context.Context) error {
 // rolesKey flattens the per-role split into the one string the repeat check compares.
 //
 // Order comes from the renderer, which takes it from the wire, so it is stable across passes and
-// a re-ordering would be a change worth reporting rather than noise to be normalised away.
+// a re-ordering would be a change worth reporting, not noise to be normalised away.
 func rolesKey(roles []wire.RoleObserved) string {
 	if len(roles) == 0 {
 		return ""

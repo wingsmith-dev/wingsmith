@@ -156,7 +156,7 @@ func (h *hub) base() string { return fmt.Sprintf("http://127.0.0.1:%d", h.port) 
 
 func (h *hub) url() string { return fmt.Sprintf("ws://127.0.0.1:%d/v1/hub/sync", h.port) }
 
-// waitHealthy polls /health rather than sleeping, so the harness never races the interpreter.
+// waitHealthy polls /health instead of sleeping, so the harness never races the interpreter.
 func (h *hub) waitHealthy() {
 	h.t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -250,7 +250,7 @@ func (h *hub) push(typeName string, count int) []uint64 {
 }
 
 // pushGap burns a sequence number before sending, which is the one thing a correct hub never
-// does and the only way to prove the operator closes on a hole rather than accepting it.
+// does and the only way to prove the operator closes on a hole instead of accepting it.
 func (h *hub) pushGap(typeName string) {
 	h.t.Helper()
 	h.control(fmt.Sprintf("/control/push?type=%s&n=1&gap=1", typeName), nil)
@@ -551,7 +551,7 @@ func (r *runner) stop() {
 	}
 }
 
-// waitFor polls a condition rather than sleeping a guessed interval.
+// waitFor polls a condition instead of sleeping a guessed interval.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)

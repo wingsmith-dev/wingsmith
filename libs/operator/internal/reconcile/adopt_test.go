@@ -158,7 +158,7 @@ func adoptedWithPayload(t *testing.T, f string) *v1alpha1.SyncedResource {
 }
 
 // selectedDeployment is a live adopted Deployment with a real selector and replica count, which is
-// what the adopted rollout has to read its pods by — it has none of this operator's render labels.
+// what the adopted rollout has to read its pods by: it has none of this operator's render labels.
 func selectedDeployment(image string, replicas int32) *appsv1.Deployment {
 	d := servingDeployment(image)
 	d.Spec.Replicas = &replicas
@@ -238,7 +238,7 @@ func TestAnAdoptedWorkloadReportsWhatItIsRunning(t *testing.T) {
 		t.Fatalf("reported %s/%s, want running/Serving", got.Phase, got.Reason)
 	}
 	if len(rep.replicaFrames) != 2 {
-		t.Fatalf("sent %d replica frames, want 2 — the rollup is counted from these",
+		t.Fatalf("sent %d replica frames, want 2: the rollup is counted from these",
 			len(rep.replicaFrames))
 	}
 }
@@ -264,8 +264,8 @@ func TestAnAdoptedRolloutCountsOnlyReadyPods(t *testing.T) {
 	}
 }
 
-// TestAnAdoptedWorkloadIsRequeued: neither watch can wake an adopted object — it carries none of
-// the owner labels `declaredFor` maps back from — so without a requeue the fingerprint check runs
+// TestAnAdoptedWorkloadIsRequeued: neither watch can wake an adopted object, it carries none of
+// the owner labels `declaredFor` maps back from, so without a requeue the fingerprint check runs
 // once at startup and a workload that drifts afterwards is never noticed.
 func TestAnAdoptedWorkloadIsRequeued(t *testing.T) {
 	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 1)
@@ -275,7 +275,7 @@ func TestAnAdoptedWorkloadIsRequeued(t *testing.T) {
 		servingPod("llama-70b-vllm-a", true))
 
 	if got.RequeueAfter != resyncAfterApply {
-		t.Fatalf("requeued after %v, want %v — a drift check that never runs again is not a check",
+		t.Fatalf("requeued after %v, want %v: a drift check that never runs again is not a check",
 			got.RequeueAfter, resyncAfterApply)
 	}
 }
@@ -322,7 +322,7 @@ func (c cachedNamespaces) List(ctx context.Context, list client.ObjectList, opts
 
 // TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead: the manager caches the operator's and
 // the workload namespace only, and an adopted workload can be anywhere. The adoption check reads
-// the API server directly, so a workload in a third namespace is verified rather than refused.
+// the API server directly, so a workload in a third namespace is verified, not refused.
 func TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead(t *testing.T) {
 	live := servingDeployment("ghcr.io/acme/vllm:0.9.1")
 	res := adoptedResource(workload.Fingerprint(&live.Spec.Template.Spec))

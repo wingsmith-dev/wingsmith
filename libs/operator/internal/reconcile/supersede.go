@@ -33,7 +33,7 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 //
 // The defect this exists for is NVIDIA's, not ours, and it cannot be fixed where it lives. Dynamo
 // names each DynamoComponentDeployment `<graph>-<component>-<hash>`, where the hash is a digest of
-// that component's spec — so every edit to a serving block produces a *new* name, and Dynamo's create
+// that component's spec, so every edit to a serving block produces a *new* name, and Dynamo's create
 // path is "get by that name, not found, create". It never enumerates the ones it made before, so
 // it never deletes them. Their ownerReference points at the graph deployment, which is still
 // alive, so Kubernetes' garbage collector has no reason to touch them either. They simply
@@ -47,7 +47,7 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 // The signal is the graph deployment's own status. `status.components[<component>].componentNames`
 // is Dynamo saying which objects are the current generation of that component; anything owned by
 // this graph, for a component the graph still declares, that is not in that list has been
-// superseded. That is an explicit statement rather than a heuristic on age or on a scheduler's
+// superseded. That is an explicit statement instead of a heuristic on age or on a scheduler's
 // message, which matters because a wrong answer here deletes a serving model.
 //
 // Three guards make a wrong answer unreachable:
@@ -72,14 +72,14 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 // conclusion the paragraph below reaches for the ordinary case, reached one status earlier.
 //
 // Pruning happens on observing the supersession, not on observing the new pod fail to schedule.
-// The tempting alternative — hold the old one until the new one is Pending on insufficient
-// accelerators — reads the scheduler's refusal as the trigger, which makes correctness depend on
+// The tempting alternative, hold the old one until the new one is Pending on insufficient
+// accelerators, reads the scheduler's refusal as the trigger, which makes correctness depend on
 // a message string, only ever fires in the deadlock case, and leaves every non-saturated cluster
 // running a second copy of the model into the same global Dynamo namespace, where the frontend
 // can route to it. There is no blue/green to protect here: the plane declares one deployment at
 // one generation, and this cluster's capacity check already admitted exactly one replica's
 // worth of devices. Holding two generations at once is only possible where there is slack, and
-// where there is not it is a guaranteed deadlock. At most one generation exists — the one the
+// where there is not it is a guaranteed deadlock. At most one generation exists: the one the
 // graph deployment names.
 //
 // This is reconciliation and not an operation (rule 1): it converges the cluster onto declared
@@ -246,10 +246,10 @@ func currentComponents(graph *unstructured.Unstructured) map[string]bool {
 // Per component, and that is the whole of it. One floor across the graph was the conservative
 // reading while a graph held one component, and it becomes a floor that prunes nothing the moment
 // a graph holds two: a component nobody edits keeps the object it was created with, so its
-// creation time — the graph's own birth — becomes a floor no superseded object can be older than.
+// creation time, the graph's own birth, becomes a floor no superseded object can be older than.
 // Every candidate is then skipped, silently and forever, which is the accumulation this whole
 // function exists to stop. Timestamps here are second-granularity, so even the first generation
-// ties rather than passing.
+// ties instead of passing.
 //
 // An object carrying no component label contributes no floor and is looked up under the empty
 // key, which never matches a labelled component. It is left alone, as `declaresComponent` also
@@ -291,7 +291,7 @@ func controlledBy(obj *unstructured.Unstructured, uid types.UID) bool {
 // declaresComponent reports whether the graph still asks for the component this object serves.
 //
 // A last check on the other axis. The status set answers "which generation", and this answers
-// "which component" — an object labelled for a component the graph no longer declares is not
+// "which component": an object labelled for a component the graph no longer declares is not
 // something the status was ever going to name, and removing a component from the spec is a
 // different change from editing one. An object carrying no component label is left alone: it is
 // not something this render produced, and guessing would be the one mistake that is expensive.

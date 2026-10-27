@@ -38,7 +38,7 @@ func TestParseLevelAcceptsTheNamesAndRejectsTheRest(t *testing.T) {
 	}
 }
 
-// TestParseLevelNamesTheChoicesItWouldHaveAccepted — a level typo is a config error the operator
+// TestParseLevelNamesTheChoicesItWouldHaveAccepted: a level typo is a config error the operator
 // has to be restarted to fix, so the message has to be enough to fix it on the first try.
 func TestParseLevelNamesTheChoices(t *testing.T) {
 	_, err := parseLevel("trace")
@@ -139,8 +139,8 @@ func TestReadOnlyYesFailsStartup(t *testing.T) {
 	}
 }
 
-// TestEnvTreatsAnEmptyValueAsUnset — an env var set to the empty string is how a Helm template
-// renders an omitted field, and it must mean "not configured" rather than "configured to nothing".
+// TestEnvTreatsAnEmptyValueAsUnset: an env var set to the empty string is how a Helm template
+// renders an omitted field, and it must mean "not configured" instead of "configured to nothing".
 func TestEnvTreatsAnEmptyValueAsUnset(t *testing.T) {
 	t.Setenv("HANGAR_TEST_STR", "")
 	if got := env("HANGAR_TEST_STR", "fallback"); got != "fallback" {

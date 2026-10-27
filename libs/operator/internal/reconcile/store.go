@@ -38,10 +38,10 @@ type desiredState struct {
 // resyncEpoch accumulates a full-resync snapshot as it streams in.
 //
 // It exists only in memory and only between Resync and the matching stream.end. That is
-// deliberate: the epoch is the authority for pruning, so losing it — to a crash, a disconnect, or
-// a truncated stream — can only ever result in no prune, never in a prune against a partial view.
+// deliberate: the epoch is the authority for pruning, so losing it, to a crash, a disconnect, or
+// a truncated stream, can only ever result in no prune, never in a prune against a partial view.
 //
-// A failed apply is held against the frame's sequence number rather than the whole epoch, because
+// A failed apply is held against the frame's sequence number instead of the whole epoch, because
 // the sync client retries a rejected frame in place: one that fails and then applies leaves the
 // snapshot whole, and only one still failing at stream.end means the local view is missing
 // something. A frame with no sequence number cannot be matched to its retry, so its failure
@@ -89,7 +89,7 @@ type Store struct {
 var _ syncpkg.Handler = (*Store)(nil)
 
 // Handle implements sync.Handler. Returning an error withholds the acknowledgement, so the hub
-// replays the envelope on the next resume rather than the operator losing it.
+// replays the envelope on the next resume instead of the operator losing it.
 func (s *Store) Handle(ctx context.Context, e *syncpkg.Envelope) error {
 	switch {
 	case isDesired(e.Type):
@@ -135,7 +135,7 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 	}
 
 	// Read uncached and written under an optimistic lock, so the revision compared is the one
-	// that is stored and a write that raced this one is retried against it rather than undone.
+	// that is stored and a write that raced this one is retried against it, not undone.
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var existing v1alpha1.SyncedResource
 		err := s.reader().Get(ctx, key, &existing)

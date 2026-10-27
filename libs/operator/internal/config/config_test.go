@@ -74,7 +74,7 @@ func TestLoadOverrides(t *testing.T) {
 }
 
 // The frontend is off until a cluster says otherwise, because with it off the operator renders
-// exactly what it always did — which is what lets this binary reach every cluster before any
+// exactly what it always did, which is what lets this binary reach every cluster before any
 // cluster changes shape.
 func TestTheFrontendIsOffByDefaultAndItsSwitchesAreOn(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
@@ -146,7 +146,7 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 }
 
 // Zero replicas is a frontend that exists and serves nothing, which reads as healthy everywhere
-// and is reachable by nothing. Turning the frontend off is its own setting, so say so rather than
+// and is reachable by nothing. Turning the frontend off is its own setting, so say so, not
 // quietly substitute the default for what somebody wrote.
 func TestZeroFrontendReplicasIsRefusedRatherThanDefaulted(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")

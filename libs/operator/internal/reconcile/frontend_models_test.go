@@ -73,7 +73,7 @@ func observedRolloutProbing(
 //
 // A frontend registers a model by resolving the card the worker published, and a card it cannot
 // resolve leaves it listening, probing green and serving nothing. Every worker is ready, the graph
-// reports `successful`, the agent forwards to it and the gateway prefers it — and each request is
+// reports `successful`, the agent forwards to it and the gateway prefers it, and each request is
 // answered 404 by the frontend itself. Nothing above this line can see that, because everything
 // above this line is counting pods.
 func TestAReadyFrontendThatDoesNotServeTheModelIsNotRunning(t *testing.T) {
@@ -113,7 +113,7 @@ func TestAFrontendServingTheModelReadsAsItAlwaysDid(t *testing.T) {
 
 // Under one Dynamo namespace every frontend discovers every worker, so a frontend listing models
 // is not evidence about this one. The list has to be searched for this deployment's own model, or
-// the check passes on a cluster where one model registered and this one did not — which is the
+// the check passes on a cluster where one model registered and this one did not, which is the
 // blast radius ADR 0013 leaves open and the exact shape this must not be blind to.
 func TestAnotherModelOnTheFrontendIsNotThisModel(t *testing.T) {
 	probe := &fakeFrontend{models: []string{"openai/gpt-oss-20b", "google/gemma-4-26b-a4b-it"}}
@@ -129,7 +129,7 @@ func TestAnotherModelOnTheFrontendIsNotThisModel(t *testing.T) {
 // A question that could not be put is not a negative answer, and the direction of that mistake is
 // the whole reason the probe returns two values. The plane withdraws a deployment it is told is
 // not running, so a NetworkPolicy, a restarting pod or an operator with no route to the workload
-// namespace would take a serving fleet out of the routing table — a check that causes the outage
+// namespace would take a serving fleet out of the routing table: a check that causes the outage
 // it was written to reveal.
 func TestAFrontendThatCannotBeAskedIsTakenAtItsWord(t *testing.T) {
 	probe := &fakeFrontend{err: errors.New("dial tcp 10.0.0.1:8000: i/o timeout")}

@@ -109,7 +109,7 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 }
 
 // TestPrefetchJobCustomWeights covers the artifact that has no HuggingFace source. Custom weights
-// are a first-class case, so it must render a job rather than refuse, and it must land them at the
+// are a first-class case, so it must render a job, not refuse, and it must land them at the
 // same path modelRef points --model at.
 func TestPrefetchJobCustomWeights(t *testing.T) {
 	art := wire.ArtifactDesired{
@@ -217,7 +217,7 @@ func sourced(id, uri string) wire.ArtifactDesired {
 	return wire.ArtifactDesired{ArtifactID: id, Sources: []wire.ArtifactSource{{URI: uri}}}
 }
 
-// TestAPrefetchJobNameLeadsWithTheModel is the whole point of the shape: a `kubectl get jobs` in
+// TestAPrefetchJobNameLeadsWithTheModel is the point of the shape: a `kubectl get jobs` in
 // the workload namespace has to read as who is downloading, not as a column of opaque ids.
 func TestAPrefetchJobNameLeadsWithTheModel(t *testing.T) {
 	cases := []struct {
@@ -236,7 +236,7 @@ func TestAPrefetchJobNameLeadsWithTheModel(t *testing.T) {
 }
 
 // TestAnArtifactWithNoReadableSourceStillGetsAName. The model is decoration over the id, so its
-// absence must fall back to the older shape rather than render a placeholder segment or nothing.
+// absence must fall back to the older shape, not render a placeholder segment or nothing.
 func TestAnArtifactWithNoReadableSourceStillGetsAName(t *testing.T) {
 	for _, art := range []wire.ArtifactDesired{
 		{ArtifactID: "art_01J9X2"},
@@ -250,7 +250,7 @@ func TestAnArtifactWithNoReadableSourceStillGetsAName(t *testing.T) {
 }
 
 // TestTheArtifactIDSurvivesTruncation is the property that makes the name safe to change at all:
-// the id is what distinguishes one job from another, and the model is only for the reader — so a
+// the id is what distinguishes one job from another, and the model is only for the reader, so a
 // long model must lose characters and a long id must never lose them to it.
 func TestTheArtifactIDSurvivesTruncation(t *testing.T) {
 	long := sourced("art_01J9X2AAAAAAAAAAAAAAAAAAAA", "hf://acme/"+strings.Repeat("verylongmodel", 6))
@@ -317,8 +317,8 @@ func TestAPrefetchJobSaysWhichModelItIsPulling(t *testing.T) {
 	}
 }
 
-// TestAnArtifactWithNoModelIsNotLabelledWithNothing — an empty label value is a legal label and a
-// misleading one, reading as a model named "" rather than as a model nobody could name.
+// TestAnArtifactWithNoModelIsNotLabelledWithNothing: an empty label value is a legal label and a
+// misleading one, reading as a model named "", not as a model nobody could name.
 func TestAnArtifactWithNoModelIsNotLabelledWithNothing(t *testing.T) {
 	job, err := PrefetchJob(wire.ArtifactDesired{
 		ArtifactID: "art_01J9X2",
@@ -335,8 +335,8 @@ func TestAnArtifactWithNoModelIsNotLabelledWithNothing(t *testing.T) {
 	}
 }
 
-// TestARunningPrefetchSaysHowFarItHasGot. The bars stay off — they bury the one line worth reading
-// — but a job that prints nothing for forty minutes cannot be told from a stuck one.
+// TestARunningPrefetchSaysHowFarItHasGot. The bars stay off, they bury the one line worth reading,
+// but a job that prints nothing for forty minutes cannot be told from a stuck one.
 func TestARunningPrefetchSaysHowFarItHasGot(t *testing.T) {
 	for _, art := range []wire.ArtifactDesired{hfArtifact(), sourced("art_custom", "s3://weights/custom/model.bin")} {
 		job, err := PrefetchJob(art, prefetchImage, testOptions())
@@ -359,7 +359,7 @@ func TestARunningPrefetchSaysHowFarItHasGot(t *testing.T) {
 	}
 }
 
-// TestProgressIsCountedOnlyUnderTheModelBeingFetched — HF_HOME is the shared volume every artifact
+// TestProgressIsCountedOnlyUnderTheModelBeingFetched: HF_HOME is the shared volume every artifact
 // lands in, so a walk over its root would report each concurrent job the other's bytes.
 func TestProgressIsCountedOnlyUnderTheModelBeingFetched(t *testing.T) {
 	command, err := prefetchCommand(hfArtifact())
@@ -384,7 +384,7 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-// The figures this replaced — four CPUs and eight gigabytes — were larger than an m7i.large has
+// The figures this replaced, four CPUs and eight gigabytes, were larger than an m7i.large has
 // allocatable at all, so the job could not be placed on a system node however many were added.
 func TestAPrefetchAsksForLittleEnoughToBePlaced(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{Namespace: "dynamo"})
@@ -429,7 +429,7 @@ func TestAnUnparseableQuantityIsRefusedAtRender(t *testing.T) {
 }
 
 // The plane pins an artifact as hf://owner/name@<sha>, and huggingface_hub rejects an '@' in a repo
-// id outright — so the whole URI as a repo id is a failed pull, not a resolved pin.
+// id outright, so the whole URI as a repo id is a failed pull, not a resolved pin.
 func TestAPinnedRevisionIsNotPartOfTheRepoID(t *testing.T) {
 	art := wire.ArtifactDesired{
 		ArtifactID: "art_01J9X2AAAAAAAAAAAAAAAAAAAA",
@@ -446,7 +446,7 @@ func TestAPinnedRevisionIsNotPartOfTheRepoID(t *testing.T) {
 		t.Errorf("repo id still carries the pin:\n%s", command)
 	}
 	if !strings.Contains(command, `"6cee5e81ee83917806bbde320786a8fb61efebee"`) {
-		t.Errorf("the pin is dropped rather than resolved:\n%s", command)
+		t.Errorf("the pin is dropped, not resolved:\n%s", command)
 	}
 }
 
@@ -475,7 +475,7 @@ func TestSplitHFRef(t *testing.T) {
 
 // The ceiling must not follow the request down. It did, and a large model was OOM killed part-way
 // through: pages written to the shared NFS volume are charged to the cgroup until EFS writeback
-// takes them, and that backlog is far larger than anything the job holds on purpose.
+// takes them, and that backlog is far larger than anything the job holds.
 func TestTheMemoryCeilingIsNotDerivedFromTheRequest(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{PrefetchMemory: "1Gi"})
 	if err != nil {
@@ -498,7 +498,7 @@ func TestACeilingBelowTheRequestIsRefused(t *testing.T) {
 }
 
 // The download runs the engine image, so a private engine registry has to be reachable from the
-// prefetch job too — without this the pull fails while the credential sits unused in the same
+// prefetch job too, without this the pull fails while the credential sits unused in the same
 // namespace, and nothing in the event says which of the two is missing.
 func TestThePrefetchJobTakesTheEnginePullSecrets(t *testing.T) {
 	opts := testOptions()
@@ -524,7 +524,7 @@ func TestThePrefetchJobTakesTheEnginePullSecrets(t *testing.T) {
 }
 
 // The cache taint is tolerated whatever value the cluster gave it, or exactly the configured one,
-// and an unset key tolerates nothing rather than everything.
+// and an unset key tolerates nothing instead of everything.
 func TestPrefetchToleratesTheCacheTaintByKey(t *testing.T) {
 	opts := testOptions()
 	job, err := PrefetchJob(hfArtifact(), prefetchImage, opts)

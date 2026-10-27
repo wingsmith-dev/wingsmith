@@ -33,8 +33,8 @@ import (
 
 // SyncedResourceReconciler converges the durable local copy of declared state onto the cluster.
 //
-// One controller over one CRD rather than one per domain kind. The kinds are not independent —
-// a deployment cannot render without its artifact and those weights already being resident — so
+// One controller over one CRD instead of one per domain kind. The kinds are not independent,
+// a deployment cannot render without its artifact and those weights already being resident, so
 // splitting them into separate controllers would buy separation and immediately spend it on
 // cross-controller lookups for the same objects.
 type SyncedResourceReconciler struct {
@@ -46,7 +46,7 @@ type SyncedResourceReconciler struct {
 	// Client is used, which is what the tests want.
 	//
 	// The cache holds two namespaces, this operator's and the workload namespace, and an adopted
-	// workload can live in any other. Read through the cache, it reads as unreadable rather than
+	// workload can live in any other. Read through the cache, it reads as unreadable, not
 	// as what it is, and every adoption outside those two namespaces was refused.
 	Reader client.Reader
 
@@ -65,7 +65,7 @@ type SyncedResourceReconciler struct {
 	Report Reporter
 
 	// Devices says which accelerators a pod holds. Optional: left nil, no allocation is ever
-	// reported, which is the honest answer — the binding comes from the exporters and a loop
+	// reported, which is the accurate answer: the binding comes from the exporters and a loop
 	// that cannot read them does not know what any replica is holding.
 	Devices DeviceIndex
 
@@ -101,8 +101,8 @@ type Capabilities interface {
 
 // multinodeEnabled says whether this cluster can render a replica that spans machines.
 //
-// Observation first, configuration as an override that can only widen. Detection is the honest
-// answer — the CRDs are either served or they are not — and it keeps working when somebody
+// Observation first, configuration as an override that can only widen. Detection is the accurate
+// answer, the CRDs are either served or they are not, and it keeps working when somebody
 // installs a backend without touching this operator's values. The configured flag stays because
 // detection matches on group name, so a backend named something unanticipated can still be
 // asserted by hand; it cannot turn the capability off, because a cluster that demonstrably has a
@@ -142,7 +142,7 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Teardown runs before every other branch, including the authority gate. A resource being
 	// deleted has no desired state left to converge on, and the one thing still owed to it is
-	// the removal of what it rendered — which is this operator's job now that the rendered
+	// the removal of what it rendered, which is this operator's job now that the rendered
 	// object no longer carries an owner reference back to it.
 	if !res.DeletionTimestamp.IsZero() {
 		return r.teardown(ctx, &res)
@@ -153,8 +153,8 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// the cluster object and not the desired state describing it.
 	//
 	// Observed is the closed direction and it is checked by value, not by absence: an empty
-	// Authority is observed, so a plane that predates the field — or a payload that failed to
-	// decode into one — writes nothing to this cluster. Managed is the only value that opens the
+	// Authority is observed, so a plane that predates the field, or a payload that failed to
+	// decode into one, writes nothing to this cluster. Managed is the only value that opens the
 	// gate, and it has to be said out loud (ADR 0009).
 	//
 	// An adopted object takes the adoption path whatever its authority. Managed authority over an
@@ -168,7 +168,7 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.observed(ctx, &res)
 	}
 
-	// Every kind is re-examined on every pass rather than skipped once its revision has been
+	// Every kind is re-examined on every pass, not skipped once its revision has been
 	// observed. Desired state is only one of the inputs: a deployment also depends on an
 	// artifact that may have arrived since, on weights that may have finished downloading since, and on
 	// a rendered object that something else may have edited since. Gating on the revision alone
@@ -181,12 +181,12 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.reconcileCache(ctx, &res)
 	case "artifact":
 		// Nothing to converge on its own. It is read by the deployment path, and an edit to it
-		// re-triggers that path through the watch below rather than doing work here.
+		// re-triggers that path through the watch below instead of doing work here.
 		return r.observed(ctx, &res)
 	case "component":
-		// Cluster-level dependencies — GPU operator, device plugin, storage, ingress. Driving
-		// these to a declared version is a Helm release rather than an object to apply, which
-		// is long-running and failable in a way an apply is not. It is deliberately not done
+		// Cluster-level dependencies: GPU operator, device plugin, storage, ingress. Driving
+		// these to a declared version is a Helm release instead of an object to apply, which
+		// is long-running and failable in a way an apply is not. It is not done
 		// here yet.
 		return r.observed(ctx, &res)
 	default:
@@ -213,9 +213,9 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 // whose status changes, or a prefetch job that finishes downloading, wakes the declared object it
 // came from without anything having to poll for it.
 //
-// By label rather than by ownership. Both rendered kinds live in the workload namespace and the
-// declared copies live in this operator's own, and controller-runtime's ownership handler — like
-// the garbage collector it mirrors — resolves an owner within the dependent's namespace. Owning
+// By label, not by ownership. Both rendered kinds live in the workload namespace and the
+// declared copies live in this operator's own, and controller-runtime's ownership handler, like
+// the garbage collector it mirrors, resolves an owner within the dependent's namespace. Owning
 // them across that boundary linked nothing in this direction and actively destroyed the objects
 // in the other.
 //
@@ -267,8 +267,8 @@ func servesGraph(mapper apimeta.RESTMapper) (bool, error) {
 // declaredFor maps a rendered object back to the declared one it came from.
 //
 // The owner labels are the only link across the namespace boundary, and an object carrying neither
-// is not ours — something else in the workload namespace, or one rendered before these labels
-// existed. Either way the answer is to enqueue nothing rather than to guess a name from the
+// is not ours: something else in the workload namespace, or one rendered before these labels
+// existed. Either way the answer is to enqueue nothing, not to guess a name from the
 // object's own.
 func (r *SyncedResourceReconciler) declaredFor(_ context.Context, obj client.Object) []ctrl.Request {
 	labels := obj.GetLabels()
@@ -320,7 +320,7 @@ func deploymentPodEvents() predicate.Funcs {
 
 // podStatusKey is the part of a pod that deployment observation reads.
 //
-// Container messages are deliberately absent. Kubelet rewrites the backoff sentence as attempts
+// Container messages are absent. Kubelet rewrites the backoff sentence as attempts
 // accumulate, but the waiting reason is the state transition and is what diagnose.go maps onto the
 // wire's closed set. Including the message would send the same failure repeatedly with a new
 // countdown.
@@ -354,7 +354,7 @@ func podStatusKey(pod *corev1.Pod) string {
 // It is the one place in this operator that is allowed to say no. An adopted object is not applied
 // and never will be by this path: the plane promised it matches what is live, and the only useful
 // thing to do is check that promise and refuse when it is broken. Converging instead would replace
-// a serving pod template with a rendered one and reload every model behind it — the exact cost the
+// a serving pod template with a rendered one and reload every model behind it: the exact cost the
 // whole adoption path exists to avoid.
 //
 // Refusing is not an error. Returning one would requeue with backoff and log a failure every time,
@@ -381,7 +381,7 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "FingerprintMismatch"
 		condition.Message = fmt.Sprintf(
-			"%s/%s digests to %s but was adopted at %s; refusing to reconcile — converging would restart it",
+			"%s/%s digests to %s but was adopted at %s; refusing to reconcile: converging would restart it",
 			adopt.Namespace, adopt.Name, short(live), short(adopt.SpecFingerprint))
 		r.Log.Warn("adopted workload drifted; refusing to reconcile",
 			"namespace", adopt.Namespace, "name", adopt.Name, "live", live, "adopted", adopt.SpecFingerprint)
@@ -405,7 +405,7 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 	// Requeued on the same floor a managed deployment gets, and for a stronger reason. Neither
 	// watch below can ever wake an adopted object: `declaredFor` maps back from the owner labels
 	// this operator's render stamps, and an adopted object was put there by something else and
-	// carries none — nor is it the rendered kind being watched. So without a requeue the
+	// carries none, nor is it the rendered kind being watched. So without a requeue the
 	// fingerprint check, which is the whole reason this path exists, runs once at startup and
 	// then never again, and a workload that drifts afterwards is never noticed.
 	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
@@ -413,7 +413,7 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 
 // reportAdopted tells the plane what an adopted deployment is actually running.
 //
-// The adopted path applies nothing, which was taken to mean it had nothing to say — so it said
+// The adopted path applies nothing, which was taken to mean it had nothing to say, so it said
 // nothing, and a deployment the plane had enrolled and that was serving normally reported no
 // replicas and no counts for as long as it lived. Not applying is not the same as not observing:
 // the pods are there to be read, and they are the only thing that makes an adopted deployment

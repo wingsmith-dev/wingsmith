@@ -22,7 +22,7 @@ const (
 	// what they already own.
 	//
 	// Two keys because the deployment id is only on what a deployment renders, while
-	// `managed-by` is on everything this operator writes — a prefetch job, a benchmark run —
+	// `managed-by` is on everything this operator writes (a prefetch job, a benchmark run)
 	// none of which is a workload anybody discovered.
 	labelManaged   = "hangar.dev/deployment-id"
 	labelManagedBy = "hangar.dev/managed-by"
@@ -225,8 +225,8 @@ func (k *KubeDiscoverer) controllers(ctx context.Context, usage map[workloadKey]
 // workloadKeyFor traces a pod back to the thing that owns it.
 //
 // A pod owned by a ReplicaSet is a Deployment's pod, and the Deployment's name is the ReplicaSet's
-// with the pod-template-hash suffix removed — which is why this needs no permission to read
-// ReplicaSets. An owner this does not recognise is reported under its own kind rather than
+// with the pod-template-hash suffix removed, which is why this needs no permission to read
+// ReplicaSets. An owner this does not recognise is reported under its own kind, not
 // dropped: a cluster is entitled to run models under a CRD we have never heard of, and an
 // inventory that silently omits them is worse than one that names them oddly.
 func workloadKeyFor(p *corev1.Pod) workloadKey {
@@ -245,8 +245,8 @@ func workloadKeyFor(p *corev1.Pod) workloadKey {
 	return workloadKey{Namespace: p.Namespace, Kind: kind, Name: name}
 }
 
-// schedulable is whether a pod still holds what it was given. A pod that has finished — succeeded
-// or failed — has released its accelerators and is not part of anything running.
+// schedulable is whether a pod still holds what it was given. A pod that has finished, succeeded
+// or failed, has released its accelerators and is not part of anything running.
 func schedulable(p *corev1.Pod) bool {
 	if p.Spec.NodeName == "" {
 		return false
@@ -339,7 +339,7 @@ func keys(in map[string]bool) []string {
 }
 
 // servingSpec reports how the workload was told to serve, from the container that holds the
-// accelerators. A pod template can carry sidecars — a metrics exporter, a log shipper — and none
+// accelerators. A pod template can carry sidecars (a metrics exporter, a log shipper) and none
 // of them describe the model, so the container asking for GPUs is the one that answers.
 //
 // Nothing here is interpreted. `--tensor-parallel-size 2` leaves as two strings in a list, and the
@@ -388,7 +388,7 @@ var servingFlags = map[string]bool{
 	"output-modalities": true, "stage-configs-path": true, "disaggregation-mode": true,
 }
 
-// RedactedValue stands in for a flag value discovery does not report. A placeholder rather than
+// RedactedValue stands in for a flag value discovery does not report. A placeholder instead of
 // nothing, so a reader of the argument list sees that the flag took a value and does not mistake
 // it for a boolean switch.
 const RedactedValue = "<redacted>"
@@ -451,7 +451,7 @@ func commandShape(command []string) []string {
 
 // envNames lists what the container expects to find in its environment, names only.
 //
-// The values are deliberately absent and must stay that way. `envFrom` a secret is how a serving
+// The values are absent and must stay that way. `envFrom` a secret is how a serving
 // pod is given a HuggingFace token or a registry credential, and a discovery pass that shipped
 // values would copy every one of them into the control plane's database, where nothing needs them
 // and a backup would carry them further still. A name is enough to tell a reader what the

@@ -22,7 +22,7 @@ const acceleratorResource = corev1.ResourceName("nvidia.com/gpu")
 // one: a domain the plane was told about and a domain the render selects on must be the same set
 // of machines, or `single_domain` means one thing in the placement decision and another here.
 //
-// A node without it is its own domain. That is not a gap to fill in later — it is the only honest
+// A node without it is its own domain. That is not a gap to fill in later: it is the only accurate
 // reading. No label means nothing has asserted a fabric between this machine and any other, and a
 // replica that must stay inside one domain therefore cannot leave the node.
 const cliqueLabel = render.CliqueLabel
@@ -31,14 +31,14 @@ const cliqueLabel = render.CliqueLabel
 //
 // Derived, never declared. The plane sends the device count and the serving block sends the
 // parallel degrees; how many machines that becomes depends on how big this cluster's machines are, which
-// is a local fact and so a local decision — rule 3, the same reason device selection is the
+// is a local fact and so a local decision: rule 3, the same reason device selection is the
 // cluster's and cluster selection is the plane's.
 type shape struct {
 	// Devices is the whole replica, across every machine it lands on.
 	Devices int
 	// Tensor is the group that has to fit inside one node. A tensor group reaching over the
 	// backend fabric is the one split that does not work, so this is a hard per-node floor
-	// rather than a preference.
+	// instead of a preference.
 	Tensor int
 	// Groups is how many tensor groups the replica is, which is its pipeline depth.
 	Groups int
@@ -253,7 +253,7 @@ func tolerated(node *corev1.Node, tolerations []corev1.Toleration) bool {
 // fitWithinOneDomain answers the same question with the replica confined to one fabric.
 //
 // Every domain is tried and the first that holds the replica wins. Which one is then recorded on
-// the fit, because a replica spanning machines inside a domain has to be told which domain — the
+// the fit, because a replica spanning machines inside a domain has to be told which domain: the
 // scheduler is free to spread pods over every fabric in the cluster otherwise, and a gang split
 // across two fabrics is exactly what the declaration was made to prevent.
 func fitWithinOneDomain(want shape, dep wire.DeploymentDesired, candidates []candidate) fit {
@@ -370,7 +370,7 @@ func devicePluginHint(largest int64) string {
 //
 // Cordoned nodes are excluded. A drain in progress is exactly when this check matters most: the
 // accelerators are still allocatable and still reported, and treating them as available would
-// promise capacity that is deliberately being taken away.
+// promise capacity that is being taken away.
 func nodeUsable(node *corev1.Node) bool {
 	if node.Spec.Unschedulable {
 		return false

@@ -11,7 +11,7 @@ import (
 )
 
 // fixturePayload reads the canonical example for a type. The corpus is the only thing standing in
-// for codegen (PROTOCOL §8), so what this loop produces is checked against it rather than against
+// for codegen (PROTOCOL §8), so what this loop produces is checked against it, not against
 // the Go structs, which cannot disagree with themselves.
 func fixturePayload(t *testing.T, typ string) map[string]any {
 	t.Helper()

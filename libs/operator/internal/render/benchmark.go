@@ -20,7 +20,7 @@ const benchmarkNamePrefix = "benchmark-"
 
 // SummaryBegin and SummaryEnd delimit the harness's JSON export in the job's log.
 //
-// The result comes back through pod logs rather than a shared volume or a sidecar that posts it.
+// The result comes back through pod logs instead of a shared volume or a sidecar that posts it.
 // Logs are the one channel every container already has, need no RBAC beyond what reading a job
 // requires, and survive the pod being cleaned up for as long as the operator is still watching.
 // The sentinels exist because a load generator prints a human summary too, and picking the JSON
@@ -60,7 +60,7 @@ type BenchmarkOptions struct {
 	TokenSecret string
 }
 
-// Defaults for a load generator's request. Deliberately modest: no CPU limit is set anywhere
+// Defaults for a load generator's request. Modest: no CPU limit is set anywhere
 // here, so this is a scheduling floor a run bursts above, and a floor set higher than a cluster's
 // spare capacity is a run that never starts.
 const (
@@ -70,10 +70,10 @@ const (
 
 // aiperfScript runs the harness and then hands its export back through the log.
 //
-// Written as a shell wrapper rather than as the container's argv because three things have to
+// Written as a shell wrapper, not as the container's argv because three things have to
 // happen in one container and only the first is the harness: run it, find the export it wrote
 // under a directory whose name it chooses, and frame that file so the operator can lift it out of
-// the log. `set -o pipefail` is deliberately absent — sh has no such option, and the exit status
+// the log. `set -o pipefail` is absent: sh has no such option, and the exit status
 // that matters is aiperf's, which is captured before anything else runs.
 //
 // The export is emitted even when the harness exits non-zero. A run that hit its deadline after
@@ -92,13 +92,13 @@ echo "%s"
 exit ${rc:-0}
 `
 
-// benchmarkShell is how the wrapper above is started, and it is a bare name rather than a path.
+// benchmarkShell is how the wrapper above is started, and it is a bare name instead of a path.
 //
 // AIPerf ships distroless: there is a `/bin`, but nothing in it, and the only shell is busybox's
 // at `/busybox/sh`. `/bin/sh` is the reflex and it fails the pod before the harness runs, with a
-// runc error about a missing file rather than anything naming the image. Left unqualified, the
+// runc error about a missing file instead of anything naming the image. Left unqualified, the
 // runtime resolves it against the image's own PATH, which is where an image that moved its shell
-// says so — so this works for the distroless layout and for an ordinary one without the operator
+// says so, so this works for the distroless layout and for an ordinary one without the operator
 // having to know which it was handed.
 const benchmarkShell = "sh"
 
@@ -139,8 +139,8 @@ const sharedCacheDir = "/models/hf"
 //
 // The shared cache is mounted read-only, and huggingface_hub does not treat a cache it cannot
 // write as a cache: asked for a repository it does not already hold, it creates the repository
-// directory before it checks anything, and the run dies on `[Errno 30] Read-only file system`
-// rather than on a missing file. Which is exactly what happened on the cluster whose cache held
+// directory before it checks anything, and the run dies on `[Errno 30] Read-only file system`,
+// not on a missing file. Which is exactly what happened on the cluster whose cache held
 // three other models and not this one.
 //
 // So the choice is made before the harness starts, on whether the shared cache already holds the
@@ -150,7 +150,7 @@ const sharedCacheDir = "/models/hf"
 // still never written to by a benchmark.
 //
 // With no tokenizer resolved at all there is nothing to look for, and the private cache is the
-// only safe answer — the harness will default the tokenizer to the served model name and needs
+// only safe answer: the harness will default the tokenizer to the served model name and needs
 // somewhere writable to fail or succeed on its own terms.
 func hfCachePreamble(tokenizer string) string {
 	if tokenizer == "" {
@@ -166,7 +166,7 @@ func hfCachePreamble(tokenizer string) string {
 // BenchmarkJob renders one benchmark run as a one-shot job.
 //
 // It is scheduled unconstrained: no node selector and no toleration. A load generator is CPU and
-// network work with no placement requirement of its own — the tokenizer it needs comes off an RWX
+// network work with no placement requirement of its own: the tokenizer it needs comes off an RWX
 // volume that mounts from anywhere, and the endpoint it drives is a Service. What it must not do
 // is land on the accelerator pool, where it would hold a GPU idle to drive requests at other GPUs
 // and take capacity away from the thing being measured; the taint that pool already carries
@@ -174,7 +174,7 @@ func hfCachePreamble(tokenizer string) string {
 //
 // An earlier version pinned this to the cache pool, reasoning by analogy with the weight prefetch.
 // That was wrong: the cache pool exists to hold the weights volume and is not a general home for
-// non-accelerator work, and a cluster is under no obligation to have one — the two that do not
+// non-accelerator work, and a cluster is under no obligation to have one: the two that do not
 // could not schedule a benchmark at all.
 //
 // The cost of running off the accelerator pool is that load originates a node hop away from the
@@ -355,7 +355,7 @@ func BenchmarkJobName(benchmarkID string) string {
 // aiperfArgs turns the plane's parameter map into AIPerf's command line.
 //
 // Only flags the plane declared are emitted. A zero is not the same as an absent value for the
-// stddev knobs — asking for zero spread is a real request — so they are always written, while
+// stddev knobs, asking for zero spread is a real request, so they are always written, while
 // warmup is omitted at zero because AIPerf's own default there is what "no warmup" means.
 //
 // `--tokenizer` is emitted only when the plane resolved one. AIPerf otherwise defaults it to
@@ -510,7 +510,7 @@ func flagParam(parameters map[string]string, key string, def bool) bool {
 //
 // Requests only, and no CPU limit: throttling the thing doing the measuring would put the
 // throttle's own latency into the numbers. The memory limit is a backstop against a harness that
-// buffers every response rather than a budget, and is derived from the request so that raising
+// buffers every response instead of a budget, and is derived from the request so that raising
 // one raises the other.
 func benchmarkResources(bench BenchmarkOptions) (corev1.ResourceRequirements, error) {
 	cpuText := bench.CPU

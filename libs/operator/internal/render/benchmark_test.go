@@ -96,7 +96,7 @@ func TestBenchmarkCarriesTheDeclaredLoad(t *testing.T) {
 	}
 }
 
-// Streaming off means no TTFT and no ITL, so the flag must actually disappear rather than be
+// Streaming off means no TTFT and no ITL, so the flag must actually disappear, not be
 // written with a false value AIPerf would read as present.
 func TestBenchmarkOmitsStreamingWhenItIsOff(t *testing.T) {
 	body := script(t, benchParams(map[string]string{"streaming": "false"}))
@@ -190,7 +190,7 @@ func TestBenchmarkRunsOffTheAcceleratorPool(t *testing.T) {
 }
 
 // An HTTP client's request must fit on an ordinary node. The failure this guards against is not
-// subtle — a request larger than a small pool's spare capacity is a run that never schedules.
+// subtle: a request larger than a small pool's spare capacity is a run that never schedules.
 func TestBenchmarkRequestsFitAModestNode(t *testing.T) {
 	opts, bench := benchOpts()
 	params := benchParams(nil)
@@ -359,7 +359,7 @@ func TestBenchmarkCarriesTheResolvedTokenizer(t *testing.T) {
 	}
 }
 
-// And when the plane could not resolve one, the flag must be absent rather than empty: an empty
+// And when the plane could not resolve one, the flag must be absent, not empty: an empty
 // `--tokenizer ”` is a repository named the empty string, not a request to use the default.
 func TestBenchmarkOmitsAnUnresolvedTokenizer(t *testing.T) {
 	body := script(t, benchParams(map[string]string{"tokenizer": ""}))
@@ -381,7 +381,7 @@ func TestBenchmarkReadsACachedTokenizerOffline(t *testing.T) {
 	}
 }
 
-// And asked for one it does not hold, it must download into a cache it can write to rather than
+// And asked for one it does not hold, it must download into a cache it can write to, not
 // die on `[Errno 30] Read-only file system` inside the shared one.
 func TestBenchmarkFallsBackToAWritableCache(t *testing.T) {
 	body := script(t, benchParams(map[string]string{"tokenizer": "Qwen/Qwen3.8-27B"}))

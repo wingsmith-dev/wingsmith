@@ -11,7 +11,7 @@ import (
 )
 
 // desiredTypes are the hub -> operator frames that declare state this store keeps a durable local
-// copy of, and prunes against a snapshot. Operations are absent on purpose: an operation is
+// copy of, and prunes against a snapshot. Operations are absent: an operation is
 // imperative and failable, not a declaration, and pruning one because a snapshot omitted it would
 // cancel work that is still running.
 var desiredTypes = map[syncpkg.MessageType]struct{}{
@@ -38,7 +38,7 @@ func isDesired(t syncpkg.MessageType) bool {
 // decodeDesired lifts the identity of a declared object out of its frame.
 //
 // Revision is the hub's generation where the type carries one. Types without a generation are
-// stored at revision 0, which makes every arrival authoritative — correct for a full-object
+// stored at revision 0, which makes every arrival authoritative: correct for a full-object
 // stream whose frames are already delivered in sequence order.
 func decodeDesired(e *syncpkg.Envelope) (desiredState, error) {
 	d := desiredState{Object: e.Payload}

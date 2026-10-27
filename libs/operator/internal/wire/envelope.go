@@ -2,7 +2,7 @@
 //
 // The envelope and its semantics are specified in libs/packages/contract/PROTOCOL.md; the type registry is
 // libs/packages/contract/MESSAGES.md. These structs are hand-written by design (see ADR 0001) and are kept
-// honest against the Python side by the golden corpus in libs/packages/contract/fixtures/.
+// accurate against the Python side by the golden corpus in libs/packages/contract/fixtures/.
 //
 // Timestamps are RFC 3339 UTC with milliseconds and are carried as string, not time.Time. The
 // wire form is the contract, and a time.Time round-trip is lossy with respect to its own text:
@@ -76,7 +76,7 @@ type Frame struct {
 
 // Decode parses a frame and decodes its payload into the type registered for its Type.
 //
-// An unregistered type is an error the caller logs and drops rather than treats as fatal, per
+// An unregistered type is an error the caller logs and drops, not treats as fatal, per
 // PROTOCOL §2.
 func Decode(data []byte) (*Frame, error) {
 	var env Envelope

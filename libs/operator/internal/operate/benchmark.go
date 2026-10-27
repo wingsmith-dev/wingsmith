@@ -27,12 +27,12 @@ const benchmarkPoll = 5 * time.Second
 
 // logTailCap is the largest amount of a run's stdout that crosses the wire. Sized so a typical
 // harness's last page of errors and progress is there in full, and so `benchmark.observed` stays
-// a frame the hub can carry unfragmented — a run that wants its full log preserved publishes
+// a frame the hub can carry unfragmented: a run that wants its full log preserved publishes
 // under ArtifactsURI instead.
 const logTailCap = 64 * 1024
 
 // tailBytes returns the last n bytes of s, snapped to a newline so the first visible line is
-// whole. Empty input returns empty rather than a sentinel, the field is omitempty on the wire.
+// whole. Empty input returns empty instead of a sentinel, the field is omitempty on the wire.
 func tailBytes(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -58,9 +58,9 @@ type LogReader interface {
 //
 // The work is a Job and not an in-process HTTP loop. A load generator has to saturate an inference
 // endpoint, and an operator that did that from its own goroutines would be spending the memory and
-// CPU of its reconcile loops on it — the process responsible for reporting the cluster's health
+// CPU of its reconcile loops on it: the process responsible for reporting the cluster's health
 // would be the process making it look unhealthy. It also means the harness is whatever image the
-// plane named, so adding vLLM's benchmark script later is a case in the renderer rather than a
+// plane named, so adding vLLM's benchmark script later is a case in the renderer instead of a
 // dependency here.
 //
 // The result travels on `benchmark.observed` and the operation reports only that the errand
@@ -89,7 +89,7 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 
 	// Whatever happens below, the plane is told. The deferred report is the only path that
 	// writes the run's terminal phase, so an early return above the defer would be a run left
-	// pending — which is why nothing between here and the end returns before it is armed.
+	// pending, which is why nothing between here and the end returns before it is armed.
 	defer func() {
 		observed.Phase = "succeeded"
 		if err != nil {
@@ -135,7 +135,7 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 
 	// The log is read whether or not the job succeeded. A run that hit its deadline after most
 	// of its requests still measured those requests, and the export it wrote is the only
-	// evidence about what happened — discarding it because the process exited non-zero would
+	// evidence about what happened: discarding it because the process exited non-zero would
 	// throw away the more useful half of a failure.
 	logs, logErr := e.jobLogs(ctx, job.Namespace, benchmarkID)
 	if logErr != nil {
@@ -171,13 +171,13 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 
 // frontendComponentLabel is how Dynamo's operator marks the Service in front of a graph.
 //
-// The value this is matched against is render.FrontendComponent rather than a second copy of the
+// The value this is matched against is render.FrontendComponent instead of a second copy of the
 // same string, because that name is what this lookup and the serving agent's both find a frontend
-// by, and a copy that drifts is a lookup that finds nothing rather than a compile error.
+// by, and a copy that drifts is a lookup that finds nothing instead of a compile error.
 const frontendComponentLabel = "nvidia.com/dynamo-component"
 
 // deploymentIDLabel is the label the operator puts on everything it renders for one deployment,
-// and — because Dynamo copies a component's pod-template labels onto the Service it derives — the
+// and, because Dynamo copies a component's pod-template labels onto the Service it derives, the
 // label that says which deployment a frontend Service belongs to.
 const deploymentIDLabel = "hangar.dev/deployment-id"
 
@@ -251,7 +251,7 @@ func serviceNames(services []corev1.Service) string {
 // frontendDeploymentID reads which deployment a frontend Service belongs to.
 //
 // The Service's own labels first, because that is where Dynamo copies the pod template's, and its
-// selector second — a Service that selects on the deployment id can only reach that deployment's
+// selector second: a Service that selects on the deployment id can only reach that deployment's
 // pods, so it is no less an answer. Empty means the Service says nothing, which is what the one
 // shared frontend a cluster installs looks like.
 func frontendDeploymentID(service corev1.Service) string {
@@ -275,7 +275,7 @@ func serviceEndpoint(service corev1.Service) string {
 
 // startJob creates the run's job, or adopts the one already there.
 //
-// Adoption rather than recreation, because the one case that produces an existing job is an
+// Adoption, not recreation, because the one case that produces an existing job is an
 // operator that restarted mid-run and was replayed the operation. Deleting and starting again
 // would discard a measurement that may be nearly finished and charge the cluster for a second one.
 func (e *Executor) startJob(ctx context.Context, job *batchv1.Job) error {
@@ -330,7 +330,7 @@ func (e *Executor) awaitJob(ctx context.Context, op wire.OperationDesired, names
 
 // jobLogs finds the pod a run's job created and reads its log.
 //
-// Matched by the benchmark label rather than by the job's selector, because the label is one this
+// Matched by the benchmark label, not by the job's selector, because the label is one this
 // operator put there and the selector is one the API server generates. The most recent pod wins:
 // with BackoffLimit at zero there is normally exactly one, and if a node failure produced a second
 // the later one is the attempt that has something to say.
@@ -358,7 +358,7 @@ func (e *Executor) jobLogs(ctx context.Context, namespace, benchmarkID string) (
 //
 // The sentinels are what make this reliable: a load generator prints a human-readable table too,
 // and identifying the JSON among it by shape would be guessing at a format the harness is free to
-// change. Anything that is not valid JSON between the markers is treated as no result rather than
+// change. Anything that is not valid JSON between the markers is treated as no result, not
 // forwarded, because a truncated export stored as a run's summary is worse than an obvious gap.
 func parseBenchmarkLog(logs string) (json.RawMessage, string) {
 	return extractSummary(logs), extractVersion(logs)

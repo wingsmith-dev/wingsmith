@@ -190,7 +190,7 @@ type Layout struct {
 
 // Fingerprint is the layout as one comparable string: nodes, devices per node, and the fabric.
 //
-// Spelled rather than hashed because it is stamped on the object as an annotation and a person
+// Spelled, not hashed because it is stamped on the object as an annotation and a person
 // reading `2x8/nvlink-domain/ab12` learns something a sha256 would not have told them.
 func (l Layout) Fingerprint() string {
 	return fmt.Sprintf("%dx%d/%s", l.NodesPerReplica, l.DevicesPerNode, l.Domain)
@@ -241,7 +241,7 @@ type workerRole struct {
 	// Component is the Dynamo component name, which is also a label value two lookups match on.
 	Component string
 	// Type is the `type` Dynamo puts on the component: `decode` for the aggregated worker as
-	// well, because an aggregated worker decodes — it just prefills too.
+	// well, because an aggregated worker decodes: it just prefills too.
 	Type string
 	// Role is `prefill` or `decode` on a disaggregated deployment, and empty on an aggregated
 	// one. Empty is the discriminator for every conditional in this file.
@@ -368,7 +368,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			},
 		},
 		"spec": map[string]any{
-			// Set on the first render rather than patched on later: Dynamo copies
+			// Set on the first render, not patched on later: Dynamo copies
 			// `spec.annotations` into every worker pod template and hashes it, so arriving late
 			// costs a full weight reload.
 			"annotations": rolloutStrategy(),
@@ -505,9 +505,9 @@ fallback() {
 # outside the mirror, du agrees the model is 492 KB, so the space check passes, the copy
 # reports success, and the marker is written over a directory holding no weights at all. The
 # engine then reads a path that exists and is empty -- which the fallback cannot catch,
-# because the fallback tests for the directory rather than for its contents.
+# because the fallback tests for the directory, not for its contents.
 #
-# Checked before copying rather than discovered during it: a node whose disk cannot hold the model
+# Checked before copying, not discovered during it: a node whose disk cannot hold the model
 # would otherwise spend the whole download finding that out, and the fallback is free.
 need=$(du -skL "$SRC" | cut -f1)
 mkdir -p "$(dirname "$DST")"
@@ -559,8 +559,8 @@ DST="$2"
 
 mkdir -p "$DST"
 # Everything a tokenizer or a config might be, and nothing that could be a tensor. Listing what to
-# take rather than what to skip: a new weight file extension would otherwise be copied by default,
-# and a model's weights in an emptyDir fill the node's disk rather than failing honestly.
+# take instead of what to skip: a new weight file extension would otherwise be copied by default,
+# and a model's weights in an emptyDir fill the node's disk instead of failing visibly.
 # -type l as well as -type f, and cp -L: in a huggingface_hub cache every entry in a snapshot
 # directory is a symlink into ../../blobs/, so -type f alone matches nothing and stages an empty
 # directory -- which fails exactly like having no directory at all, only later and more quietly.
@@ -838,7 +838,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 
 	// Tensor-parallel workers exchange activations over shared memory. The container default of
 	// 64MB is far too small, and the failure is a NCCL or bus error at startup that never names
-	// /dev/shm as the cause — so it is sized here rather than left to be rediscovered.
+	// /dev/shm as the cause, so it is sized here, not left to be rediscovered.
 	shm := resource.MustParse("16Gi")
 	liveness, readiness := workerProbes()
 
@@ -881,7 +881,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
 				// fixed seed the frontend and the workers hash identical blocks differently
-				// and every cache hit is missed — silently, as a performance loss.
+				// and every cache hit is missed: silently, as a performance loss.
 				{Name: "PYTHONHASHSEED", Value: "0"},
 			}...),
 			EnvFrom: []corev1.EnvFromSource{{
@@ -942,7 +942,7 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 	return map[string]any{
 		// `type: frontend` is what earns the component its ports and the command it runs;
 		// `name: Frontend` is what the two label-based lookups match on. Different fields
-		// saying different things, and both load-bearing.
+		// saying different things, and both essential.
 		"name":                  FrontendComponent,
 		"type":                  "frontend",
 		"replicas":              int64(replicas),
@@ -997,7 +997,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 
 	// Named by configuration and therefore able to be empty. A volume claiming nothing is
 	// rejected by the API server, so a cluster with no cache volume gets a frontend without
-	// one rather than a deployment that will not apply.
+	// one instead of a deployment that will not apply.
 	if claim := strings.TrimSpace(opts.ModelCachePVC); claim != "" {
 		spec.Volumes = []corev1.Volume{{
 			Name: "model-cache",
@@ -1416,7 +1416,7 @@ func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 
 // kvTransferConfig is how the two roles move a KV cache between them: NixlConnector, with
 // `kv_role: kv_both` on prefill and decode alike. The transfer mechanism is a property of the
-// topology rather than of a role, which is why it is derived here and refused from a role's own
+// topology, not of a role, which is why it is derived here and refused from a role's own
 // arguments.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
@@ -1500,8 +1500,8 @@ func publishesKVEvents(in Inputs, role workerRole) bool {
 	if role.Role == "decode" {
 		return false
 	}
-	// A prefill role's cache is on regardless of the workload's answer — see the exemption
-	// `engineArgs` applies below — so only the aggregated worker consults the setting.
+	// A prefill role's cache is on regardless of the workload's answer, see the exemption
+	// `engineArgs` applies below, so only the aggregated worker consults the setting.
 	return role.Role == "prefill" || in.Deployment.Serving.PrefixCacheEnabled
 }
 
@@ -1526,7 +1526,7 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 		"max-model-len":     strconv.Itoa(in.Deployment.Serving.ContextLength),
 	}
 	// Only against a repo id. --revision is what huggingface_hub resolves the repo at, and the
-	// path form has already resolved it — the revision is the last segment of the directory.
+	// path form has already resolved it: the revision is the last segment of the directory.
 	// Sending both says the same thing twice and invites an engine to disagree with itself.
 	if rev := hfRevision(in.Artifact); rev != "" && !isPath {
 		derived["revision"] = rev
@@ -1565,7 +1565,7 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 	}
 
 	// An aggregated worker has no role and normally no transfer config. The offload tier is the
-	// one thing that gives it one, so it is set here rather than inside the role branch below.
+	// one thing that gives it one, so it is set here, not inside the role branch below.
 	if role.Role == "" {
 		if cfg := aggregatedKVTransferConfig(in); cfg != "" {
 			if _, set := derived["kv-transfer-config"]; !set {
@@ -1756,8 +1756,8 @@ func Owned(obj *unstructured.Unstructured, owner metav1.Object, gvk schema.Group
 }
 
 // OwnedMeta stamps the owner labels alone, for a rendered object that never takes an owner
-// reference — a prefetch Job, whose pod template is immutable and which is therefore created once
-// and left alone rather than applied on every pass.
+// reference: a prefetch Job, whose pod template is immutable and which is therefore created once
+// and left alone, not applied on every pass.
 func OwnedMeta(obj metav1.Object, owner metav1.Object) {
 	labels := obj.GetLabels()
 	if labels == nil {

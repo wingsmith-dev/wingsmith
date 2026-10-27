@@ -18,7 +18,7 @@ func TestMultinodeCapableRecognisesABackend(t *testing.T) {
 	}
 }
 
-// A cluster with no backend must read false rather than nearly-true. The failure this guards is
+// A cluster with no backend must read false, not nearly-true. The failure this guards is
 // silent: claiming a capability the cluster does not have renders a pod that hangs in collective
 // initialisation instead of parking with a reason.
 func TestMultinodeCapableIsFalseWithoutABackend(t *testing.T) {
@@ -43,7 +43,7 @@ func TestMultinodeCapableIsFalseOnAnEmptyReading(t *testing.T) {
 }
 
 // A nil source is the operator that could not build a discovery client. It reports no groups
-// rather than failing, and the caller reads that as no backend.
+// instead of failing, and the caller reads that as no backend.
 func TestDiscoveryGroupsIsEmptyWhenUnset(t *testing.T) {
 	var source *DiscoveryGroups
 	groups, err := source.Groups()
@@ -55,8 +55,8 @@ func TestDiscoveryGroupsIsEmptyWhenUnset(t *testing.T) {
 	}
 }
 
-// The reconcile loop reads this holder on its own clock, so an unpublished one must be false
-// rather than panic or report a capability nothing observed.
+// The reconcile loop reads this holder on its own clock, so an unpublished one must be false,
+// not panic or report a capability nothing observed.
 func TestCapabilityDefaultsToIncapable(t *testing.T) {
 	var unset *Capability
 	if unset.Multinode() {

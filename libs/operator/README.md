@@ -64,7 +64,7 @@ and layout. A change reaches a running deployment only through a new declaration
 ## The wire
 
 `libs/packages/contract/PROTOCOL.md` and `libs/packages/contract/MESSAGES.md` are the authority;
-`internal/wire` is the Go half of them, kept honest by the fixture corpus in
+`internal/wire` is the Go half of them, kept in step by the fixture corpus in
 `libs/packages/contract/fixtures`. The operator reads every envelope version from
 `wire.MinEnvelopeVersion` to `wire.EnvelopeVersion`.
 

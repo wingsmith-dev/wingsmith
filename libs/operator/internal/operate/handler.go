@@ -14,9 +14,9 @@ type tee struct {
 
 // WithExecutor returns a sync.Handler that also runs operations.
 //
-// Operations sit outside the resync contract entirely, which is why this composes rather than
+// Operations sit outside the resync contract entirely, which is why this composes instead of
 // extending the store. A resync snapshot is the authority for pruning declared state, and an
-// operation that a snapshot did not mention has not been withdrawn — it is simply not the kind of
+// operation that a snapshot did not mention has not been withdrawn: it is simply not the kind of
 // thing a snapshot describes. Routing it through the store would put running work within reach of
 // a prune.
 func WithExecutor(inner syncpkg.Handler, e *Executor) syncpkg.Handler {
@@ -39,8 +39,8 @@ func (t *tee) Handle(ctx context.Context, e *syncpkg.Envelope) error {
 
 // Resync implements sync.Handler.
 //
-// Nothing happens here on purpose. A fresh session means the hub could not honour the resume
-// point, so declared state is re-sent whole — but an operation already running in this process is
+// Nothing happens here. A fresh session means the hub could not honour the resume
+// point, so declared state is re-sent whole, but an operation already running in this process is
 // unaffected by that, and cancelling it to await a re-send would abandon work half-done for the
 // sake of a protocol event that says nothing about it.
 func (t *tee) Resync(ctx context.Context) error {

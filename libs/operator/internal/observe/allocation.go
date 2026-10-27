@@ -7,7 +7,7 @@ import (
 
 // PodDevices is which accelerators each pod holds, keyed by the pod's namespaced name.
 //
-// The values are device UUIDs rather than this cluster's minted device ids, because the UUID is
+// The values are device UUIDs instead of this cluster's minted device ids, because the UUID is
 // what the exporter reports and what `DeviceID` is derived from. Minting is left to the reader, so
 // that a caller holding a cluster id does it once in the place it already names things.
 type PodDevices map[string][]string
@@ -19,7 +19,7 @@ func PodKey(namespace, name string) string {
 
 // podDevicesFrom reads the pod bindings out of one DCGM scrape.
 //
-// Cards with no binding are skipped rather than recorded against an empty pod: an idle accelerator
+// Cards with no binding are skipped, not recorded against an empty pod: an idle accelerator
 // is held by nobody, and grouping the idle ones together under "" would read as one workload
 // holding every free card in the cluster.
 func podDevicesFrom(inventory *DCGMInventory) PodDevices {
@@ -74,7 +74,7 @@ func sortStrings(in []string) {
 //
 // A reader that finds nothing gets nothing, never a guess. An empty index means the exporter was
 // unreachable or reported no bindings, and reporting an allocation with no devices would tell the
-// plane a replica holds zero cards — which is a claim, and a false one.
+// plane a replica holds zero cards, which is a claim, and a false one.
 type DeviceIndex struct {
 	mu      sync.RWMutex
 	devices PodDevices

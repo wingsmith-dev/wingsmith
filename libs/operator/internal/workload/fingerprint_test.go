@@ -82,9 +82,9 @@ func TestFingerprintMovesWithWhatIsRunning(t *testing.T) {
 	}
 }
 
-// TestEnvOrderIsPartOfTheDigest records a real property rather than an aspiration: the digest is
+// TestEnvOrderIsPartOfTheDigest records a real property instead of an aspiration: the digest is
 // over the marshalled spec, so a reordered env list reads as a change. Kubernetes preserves the
-// order it was given, so this does not fire on its own — but a renderer that sorts env differently
+// order it was given, so this does not fire on its own, but a renderer that sorts env differently
 // between versions would trip the gate, and that is worth knowing before it happens.
 func TestEnvOrderIsPartOfTheDigest(t *testing.T) {
 	spec := podSpec()
@@ -144,7 +144,7 @@ func TestFingerprintPodIgnoresIdentityAndStatus(t *testing.T) {
 	}
 }
 
-// TestEmptySpecStillDigests: the zero spec is marshallable, so it gets a real digest rather than
+// TestEmptySpecStillDigests: the zero spec is marshallable, so it gets a real digest instead of
 // the empty string that means "failed closed".
 func TestEmptySpecStillDigests(t *testing.T) {
 	if got := Fingerprint(&corev1.PodSpec{}); !strings.HasPrefix(got, "sha256:") {

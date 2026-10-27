@@ -1,6 +1,6 @@
 // Package checkpoint owns the durable resume cursor for the hub stream.
 //
-// PROTOCOL.md §4 requires the cursor to live beside the CRDs rather than in memory. An operator
+// PROTOCOL.md §4 requires the cursor to live beside the CRDs, not in memory. An operator
 // that restarts during a control-plane partition and comes back with an in-memory cursor rewinds
 // its own stream: the hub replays from a point the operator has already passed, or worse believes
 // the operator is further along than it is, and the cluster diverges from declared state with
@@ -14,7 +14,7 @@
 //   - Recording is ordered after applying. A crash between the two therefore loses the record,
 //     not the application: the operator resumes slightly behind and the hub replays frames that
 //     were already applied. That direction is the safe one because applying desired state is
-//     idempotent and re-applying converges, whereas the opposite failure — recording first —
+//     idempotent and re-applying converges, whereas the opposite failure, recording first,
 //     would silently skip a frame and leave the cluster permanently wrong with no signal.
 package checkpoint
 

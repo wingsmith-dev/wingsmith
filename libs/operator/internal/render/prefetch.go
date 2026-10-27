@@ -19,14 +19,14 @@ const prefetchNamePrefix = "prefetch-"
 // The labels and annotation that say which weights a download job is pulling.
 //
 // AttemptAnnotation counts how many times this operator has recreated an artifact's download after
-// the previous one failed outright. It lives on the object rather than in the process, because the
-// operator restarts and an in-memory counter would reset the bound on every restart — which is not
+// the previous one failed outright. It lives on the object, not in the process, because the
+// operator restarts and an in-memory counter would reset the bound on every restart, which is not
 // a bound at all, and turns a permanently unfetchable artifact into an unbounded retry against
 // somebody else's registry.
 //
 // ArtifactLabel is the key the whole operator finds a prefetch job by, and it is the only one that
 // carries meaning to code: the object name is a rendering for people and has changed shape once
-// already. ModelLabel and ModelSourceAnnotation are for the reader — `kubectl get jobs -L
+// already. ModelLabel and ModelSourceAnnotation are for the reader: `kubectl get jobs -L
 // hangar.dev/model` answers "who is downloading" even for an artifact whose slug was truncated out
 // of the name, and the annotation holds the full source URI, which no object name could.
 const (
@@ -39,11 +39,11 @@ const (
 
 // What one download asks the scheduler for, when the cluster does not say.
 //
-// Deliberately small. Pulling weights is bound by the link and by the write to the shared volume,
-// not by cores, and the earlier figures — four CPUs and eight gigabytes — were large enough that
+// Small. Pulling weights is bound by the link and by the write to the shared volume,
+// not by cores, and the earlier figures, four CPUs and eight gigabytes, were large enough that
 // the job could not be placed on an ordinary node at all. A cluster with a dedicated cache pool
 // can raise them; a cluster running this beside its system workloads should not have to.
-// The ceiling is deliberately not derived from the request. What a download needs reserved and
+// The ceiling is not derived from the request. What a download needs reserved and
 // what it may peak at are different facts: it is placed on how little it needs to start, and it
 // peaks on dirty page cache, because pages written to the shared NFS volume are charged to this
 // cgroup until writeback flushes them to the network volume, which can be slower than the pull
@@ -71,21 +71,21 @@ const minModelSegment = 4
 // progressScript prints one line of download progress on a timer, and is prepended to every fetch
 // strategy so that a running job says something before it is finished.
 //
-// A line rather than a bar. HF_HUB_DISABLE_PROGRESS_BARS stays set for the reason it was set — a
+// A line instead of a bar. HF_HUB_DISABLE_PROGRESS_BARS stays set for the reason it was set, a
 // carriage-returned bar renders in `kubectl logs` as thousands of lines that bury the one worth
-// reading — but the job that resulted said nothing at all for the forty minutes of a large pull,
+// reading, but the job that resulted said nothing at all for the forty minutes of a large pull,
 // and a silent job is indistinguishable from a stuck one. That question, not the byte count, is
 // what somebody tailing the log is actually asking.
 //
-// Bytes are measured on disk under the directory the fetch writes into, rather than taken from a
+// Bytes are measured on disk under the directory the fetch writes into, not taken from a
 // hook inside the client library: it is the same number the volume will hold at the end, one
 // implementation serves both strategies, and it costs a directory walk every interval instead of a
-// dependency on huggingface_hub's internals. lstat rather than stat because a HuggingFace snapshot
+// dependency on huggingface_hub's internals. lstat, not stat because a HuggingFace snapshot
 // is symlinks into a blob store under the same root, and following them would count every file
 // twice.
 //
 // Thirty seconds is slow enough that an hour-long pull is sixty lines of log, and fast enough that
-// a reader waiting on a stalled download sees the number stop moving rather than wondering whether
+// a reader waiting on a stalled download sees the number stop moving instead of wondering whether
 // anything is due. The thread is a daemon so it cannot hold the job open past the fetch.
 const progressScript = `import os, threading, time
 _start = time.monotonic()
@@ -112,7 +112,7 @@ def _watch(path):
 //
 // max_workers=4 is enough parallelism to saturate the link without tripping HuggingFace rate
 // limiting on an unauthenticated pull. It was 8, which also multiplied by four the dirty page
-// cache waiting on writeback to the shared NFS volume — memory this job is charged for.
+// cache waiting on writeback to the shared NFS volume: memory this job is charged for.
 //
 // Progress is watched on the repo's own directory under the hub cache and not on HF_HOME, because
 // HF_HOME is the shared volume every artifact lands in: two warm-set entries fetch at once, and a
@@ -131,9 +131,9 @@ print("cached at", p, flush=True)
 
 // fetchScript pulls custom weights into the cache at the path modelRef falls back to.
 //
-// Written inline in python3 rather than shelling out to a cloud CLI, because the only thing the
+// Written inline in python3 instead of shelling out to a cloud CLI, because the only thing the
 // engine runtime image is guaranteed to carry is a python with huggingface_hub in it; an image
-// without the aws CLI would fail at runtime with a message about a missing binary rather than
+// without the aws CLI would fail at runtime with a message about a missing binary, not
 // about the weights.
 //
 // TODO: credentials. ArtifactSource.CredentialRef names the secret this should read, and nothing
@@ -164,16 +164,16 @@ print("cached at", dest, flush=True)
 // dies on lock acquisition and crash-loops the whole graph deployment. Running the download to
 // completion in one job first means the workers only ever read.
 //
-// It runs on the cache pool rather than the accelerator pool: this is network and disk work, and
+// It runs on the cache pool instead of the accelerator pool: this is network and disk work, and
 // there is no reason to hold a GPU idle for the length of a multi-tens-of-gigabytes pull.
 //
 // The job is keyed on the artifact and takes no deployment: residency is declared by the
 // cluster's warm-set, so an artifact is fetched because it should be present here, whether or
 // not anything serves it yet. A second deployment of the same weights then costs nothing and reads
-// residency as a precondition instead of doing the work again. The image is passed in rather than
-// derived because it must be the same runtime image the workers run — a different huggingface_hub
+// residency as a precondition instead of doing the work again. The image is passed in, not
+// derived because it must be the same runtime image the workers run, a different huggingface_hub
 // version lays the cache out differently and the workers would silently re-download what this job
-// just fetched — and that is the caller's fact to know, not this function's.
+// just fetched, and that is the caller's fact to know, not this function's.
 func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1.Job, error) {
 	if image == "" {
 		return nil, fmt.Errorf("artifact %s has no image to fetch with", art.ArtifactID)
@@ -202,8 +202,8 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 			Annotations: prefetchAnnotations(art),
 		},
 		Spec: batchv1.JobSpec{
-			// A failed pull is nearly always transient — a rate limit or a dropped
-			// connection — so it retries rather than waiting for a human.
+			// A failed pull is nearly always transient, a rate limit or a dropped
+			// connection, so it retries instead of waiting for a human.
 			BackoffLimit: ptr(int32(3)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -213,8 +213,8 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyOnFailure,
 					// The same credential the workers pull with. This job runs the
-					// engine image by design — it must lay the cache out the way the
-					// workers read it — so a private engine image is private here too,
+					// engine image by design, it must lay the cache out the way the
+					// workers read it, so a private engine image is private here too,
 					// and without this the download fails on the pull with no clue
 					// that the credential exists one namespace over.
 					ImagePullSecrets:             imagePullSecrets(opts.EnginePullSecrets),
@@ -292,7 +292,7 @@ func prefetchPodSecurityContext() *corev1.PodSecurityContext {
 	}
 }
 
-// jobUID is the user the benchmark job runs as. Fixed rather than taken from the
+// jobUID is the user the benchmark job runs as. Fixed, not taken from the
 // image, so runAsNonRoot holds for images whose USER is a name or root.
 const jobUID = 1000
 
@@ -319,7 +319,7 @@ func jobContainerSecurityContext() *corev1.SecurityContext {
 // prefetchResources is what one download asks the scheduler for.
 //
 // Requests only for CPU, because a throttled download is a slower download and nothing else. The
-// memory ceiling is set on its own rather than derived from the request, for the reason given on
+// memory ceiling is set on its own, not derived from the request, for the reason given on
 // defaultPrefetchMemoryLimit.
 func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 	cpuText := opts.PrefetchCPU
@@ -360,12 +360,12 @@ func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 
 // PrefetchJobName is the object name for an artifact's prefetch job.
 //
-// Keyed on the artifact id rather than the deployment, because the download is per set of
+// Keyed on the artifact id instead of the deployment, because the download is per set of
 // weights: two deployments over one artifact want the same job, and the second reconcile must find
-// the first one's rather than start a competing pull.
+// the first one's, not start a competing pull.
 //
 // The model leads the name only so that a `kubectl get jobs` reads as who is downloading rather
-// than as a list of opaque ids. It is decoration in front of the key, not part of it — which is why
+// than as a list of opaque ids. It is decoration in front of the key, not part of it, which is why
 // the truncation cuts the model and never the id when 63 bytes bite, and why an artifact whose
 // sources name no model keeps the bare `prefetch-<id>` shape instead of growing a placeholder.
 //
@@ -385,7 +385,7 @@ func PrefetchJobName(art wire.ArtifactDesired) string {
 // never advance and the retry would be unbounded after all.
 //
 // Two objects therefore share one artifact for as long as the delete takes, which is only safe
-// because the outgoing one has already given up — a Job in JobFailed has no pod still writing into
+// because the outgoing one has already given up: a Job in JobFailed has no pod still writing into
 // the cache, so this is not the concurrent download the whole design is built to prevent. What
 // keeps residency from flickering between them meanwhile is reconcile.prefetchOutranks, which
 // prefers a job that has not failed.
@@ -417,10 +417,10 @@ func PrefetchAttemptName(art wire.ArtifactDesired, attempt int) string {
 //
 // A fresh map per call, and never one shared between the Job and its pod template: OwnedMeta stamps
 // the owner onto the Job's labels after this returns, and a shared map would put the warm-set's
-// name into the pod's selector labels too — a difference the API server would then reject on any
+// name into the pod's selector labels too: a difference the API server would then reject on any
 // later apply of an immutable template.
 //
-// The model is a label rather than only a name segment because a label survives what a name cannot:
+// The model is a label, not only a name segment because a label survives what a name cannot:
 // it is present in full on an artifact whose slug was truncated out of the name, and `kubectl get
 // jobs -L hangar.dev/model` reads it back without parsing anything.
 func prefetchLabels(art wire.ArtifactDesired) map[string]string {
@@ -479,8 +479,8 @@ func prefetchCommand(art wire.ArtifactDesired) (string, error) {
 // prefetchSource picks the source a fetch reads from, as the preferred HuggingFace one and the
 // preferred source of any other kind.
 //
-// Extracted so the job's name and the job's command are decided by one rule rather than two. The
-// name says which model is being downloaded, and it says so by reading the source — a second copy
+// Extracted so the job's name and the job's command are decided by one rule instead of two. The
+// name says which model is being downloaded, and it says so by reading the source: a second copy
 // of this preference would eventually name one model while fetching another, which is worse than
 // an opaque name because it is confidently wrong.
 func prefetchSource(art wire.ArtifactDesired) (hf, other *wire.ArtifactSource) {
@@ -504,7 +504,7 @@ func prefetchSource(art wire.ArtifactDesired) (hf, other *wire.ArtifactSource) {
 //
 // Read off the artifact's own source, because that is the only name of the model the operator has
 // here. An artifact carries a digest, a size and a list of URIs; it does not carry the string a
-// human calls the model, and the deployments that do have a different lifetime — an artifact in
+// human calls the model, and the deployments that do have a different lifetime: an artifact in
 // the warm-set need not be served by anything on this cluster at all.
 //
 // Empty when there is nothing to read, and the caller falls back to the artifact id alone. A job
@@ -530,7 +530,7 @@ func PrefetchModel(art wire.ArtifactDesired) string {
 
 // slug reduces a model name to what a DNS-1123 object name and a label value may both contain.
 //
-// A run of unusable characters collapses to one separator rather than one each, because the input
+// A run of unusable characters collapses to one separator instead of one each, because the input
 // is a repo id or a file name and `Llama-3.1-8B-Instruct.safetensors` should read as a model and
 // not as its own punctuation.
 func slug(name string) string {

@@ -56,7 +56,7 @@ func TestIDsAreStable(t *testing.T) {
 	}
 }
 
-// TestNoTelemetryOnTheWire is PROTOCOL §7 asserted against the encoded frame rather than the
+// TestNoTelemetryOnTheWire is PROTOCOL §7 asserted against the encoded frame instead of the
 // struct, because the struct is not what crosses the link.
 func TestNoTelemetryOnTheWire(t *testing.T) {
 	o := newTestObserver(t, NewFake(sampleSnapshot()))

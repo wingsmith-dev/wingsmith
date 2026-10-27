@@ -15,8 +15,8 @@ type joinedHandler struct {
 }
 
 // WithObserver returns a sync.Handler that also streams the observed inventory whenever the hub
-// grants a fresh session. The two directions of a full resync are independent — each side opens
-// and closes its own stream — so joining them here costs nothing but the ordering.
+// grants a fresh session. The two directions of a full resync are independent, each side opens
+// and closes its own stream, so joining them here costs nothing but the ordering.
 func WithObserver(inner syncpkg.Handler, o *Observer) syncpkg.Handler {
 	return &joinedHandler{inner: inner, observer: o}
 }

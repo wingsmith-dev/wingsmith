@@ -97,7 +97,7 @@ func TestADemandResyncStatesEveryReplicaAndAllocation(t *testing.T) {
 	}
 }
 
-// A deployment with nothing running contributes nothing, and that is the whole point: the plane
+// A deployment with nothing running contributes nothing, and that is the point: the plane
 // prunes exactly the replicas this snapshot did not name.
 func TestADemandResyncOfATornDownDeploymentIsEmptyAndComplete(t *testing.T) {
 	rep := &streamingReporter{}
@@ -155,7 +155,7 @@ func TestAReporterThatCannotStreamSkipsTheDemandResync(t *testing.T) {
 	}
 }
 
-// An adopted deployment is reported by a different route, and it has to be in the snapshot too —
+// An adopted deployment is reported by a different route, and it has to be in the snapshot too,
 // otherwise every resync would delete the replicas of everything this operator did not render.
 func TestADemandResyncIncludesAdoptedDeployments(t *testing.T) {
 	rep := &streamingReporter{}
@@ -181,8 +181,8 @@ func TestADemandResyncIncludesAdoptedDeployments(t *testing.T) {
 }
 
 // The trigger matters as much as the snapshot. Hanging the repair off a fresh session means it
-// runs almost never — the hub resumes a stream whenever it can — so the ticker is what makes
-// convergence a property of time rather than of a reconnect that may not come.
+// runs almost never, the hub resumes a stream whenever it can, so the ticker is what makes
+// convergence a property of time, not of a reconnect that may not come.
 func TestTheDemandResyncRunsOnItsInterval(t *testing.T) {
 	rep := &streamingReporter{}
 	r := demandReconciler(t, rep, declared(t, "deployment", testDeploymentID, testDeploymentDesired()))

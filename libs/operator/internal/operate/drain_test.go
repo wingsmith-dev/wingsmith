@@ -125,7 +125,7 @@ func TestDrainLeavesPodsOnOtherNodesAlone(t *testing.T) {
 	rec := runDrain(t, c, operation("drain", "gpu-0", nil))
 
 	if got := rec.last().Result["accelerator_pods"]; got != "1" {
-		t.Fatalf("accelerator_pods = %q, want 1 — the node selector is not being applied", got)
+		t.Fatalf("accelerator_pods = %q, want 1: the node selector is not being applied", got)
 	}
 	if gone(t, c, "dynamo", "elsewhere") {
 		t.Error("draining gpu-0 evicted a pod on gpu-1")
@@ -186,7 +186,7 @@ func TestARefusedEvictionFailsTheDrainRatherThanDeleting(t *testing.T) {
 
 	last := rec.last()
 	if last.Phase != "failed" {
-		t.Fatalf("phase = %q, want failed — a refused eviction is not a drained node", last.Phase)
+		t.Fatalf("phase = %q, want failed: a refused eviction is not a drained node", last.Phase)
 	}
 	if last.Failure == nil || !strings.Contains(last.Failure.Message, "could not be evicted") {
 		t.Errorf("failure does not say what happened: %+v", last.Failure)

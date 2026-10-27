@@ -73,7 +73,7 @@ func TestWarmSetDispatchesAPrefetchPerArtifact(t *testing.T) {
 	}
 }
 
-// TestAWarmSetEntryWithNoArtifactWaits — the plane named weights whose artifact has not arrived on
+// TestAWarmSetEntryWithNoArtifactWaits: the plane named weights whose artifact has not arrived on
 // this stream yet, which is a race and not an error.
 func TestAWarmSetEntryWithNoArtifactWaits(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
@@ -128,7 +128,7 @@ func TestADeploymentWithNoEngineRuntimeImageIsNotAnImageToBorrow(t *testing.T) {
 	}
 }
 
-// TestAnEmptyEngineRuntimeImageIsTreatedAsAbsent — a serving field set to "" is how an omitted value
+// TestAnEmptyEngineRuntimeImageIsTreatedAsAbsent: a serving field set to "" is how an omitted value
 // arrives, and it must not become an image reference of nothing.
 func TestAnEmptyEngineRuntimeImageIsTreatedAsAbsent(t *testing.T) {
 	blank := ""
@@ -169,7 +169,7 @@ func TestAnExistingPrefetchIsLeftAlone(t *testing.T) {
 	}
 }
 
-// TestAnEmptyWarmSetIsReadyRatherThanPending — a cluster told to hold nothing is holding it.
+// TestAnEmptyWarmSetIsReadyRatherThanPending: a cluster told to hold nothing is holding it.
 func TestAnEmptyWarmSetIsReady(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet())
 	_, out, _ := runReconcile(t, cache)
@@ -182,7 +182,7 @@ func TestAnEmptyWarmSetIsReady(t *testing.T) {
 
 // TestAWithdrawnArtifactLosesItsDownload is what deleting a workload was missing. The prefetch Job
 // is created in the workload namespace and the warm set that asked for it is not, so it carries a
-// label home rather than an owner reference — and Kubernetes garbage-collects on owner references
+// label home instead of an owner reference, and Kubernetes garbage-collects on owner references
 // alone. Nothing removed it: the workload was deleted, the deployment went with it, and the pod
 // went on pulling weights under the name of a model nobody had asked for since.
 func TestAWithdrawnArtifactLosesItsDownload(t *testing.T) {
@@ -218,7 +218,7 @@ func TestAWarmSetKeepsTheDownloadsItStillNames(t *testing.T) {
 }
 
 // TestAWarmSetIsPartiallyDispatched: one fetchable entry gets its job even while another waits,
-// rather than the whole set stalling on its slowest member.
+// instead of the whole set stalling on its slowest member.
 func TestAWarmSetIsPartiallyDispatched(t *testing.T) {
 	const otherArtifact = "art_01j9x2kkkkkkkkkkkkkkkkkkkk"
 	cache := declared(t, "cache", testCacheID, warmSet(
@@ -245,7 +245,7 @@ func TestAWarmSetIsPartiallyDispatched(t *testing.T) {
 	}
 }
 
-// TestAnUndecodableWarmSetFailsWithoutRetrying — a payload this operator cannot read will not
+// TestAnUndecodableWarmSetFailsWithoutRetrying: a payload this operator cannot read will not
 // become readable by trying again.
 func TestAnUndecodableWarmSetFailsWithoutRetrying(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet())
@@ -274,8 +274,8 @@ func lastCache(t *testing.T, r *recordingReporter, artifactID string) wire.Cache
 }
 
 // TestAStalledWarmSetEntrySaysWhyItIsStalled is the gap that let a workload hang indefinitely with
-// no explanation anywhere the plane could read. The operator knew the download would never start —
-// there is no image to start it with — and kept that entirely to itself, reporting a bare `absent`
+// no explanation anywhere the plane could read. The operator knew the download would never start,
+// there is no image to start it with, and kept that entirely to itself, reporting a bare `absent`
 // that is indistinguishable from a download about to begin.
 func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
 	dep := testDeploymentDesired()
@@ -299,7 +299,7 @@ func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
 	}
 }
 
-// TestAnUndeclaredArtifactSaysSo — the other stalled entry, and a different action: this one
+// TestAnUndeclaredArtifactSaysSo: the other stalled entry, and a different action: this one
 // resolves on its own when the frame arrives, so it must not read like the one that never does.
 func TestAnUndeclaredArtifactSaysSo(t *testing.T) {
 	rep := &recordingReporter{}
@@ -311,7 +311,7 @@ func TestAnUndeclaredArtifactSaysSo(t *testing.T) {
 	}
 }
 
-// TestADispatchedPrefetchReportsItIsPending — a warm-set entry that is fetchable but whose job has
+// TestADispatchedPrefetchReportsItIsPending: a warm-set entry that is fetchable but whose job has
 // not run yet is also `absent`, and it is the one `absent` that needs no action at all.
 func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
 	rep := &recordingReporter{}
@@ -330,7 +330,7 @@ func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
 	}
 }
 
-// TestResidencyIsReportedOncePerTransition — the report is suppressed when it would repeat itself,
+// TestResidencyIsReportedOncePerTransition: the report is suppressed when it would repeat itself,
 // so the plane's event log is transitions and not a heartbeat every fifteen seconds.
 func TestResidencyIsReportedOncePerTransition(t *testing.T) {
 	rep := &recordingReporter{}
@@ -374,7 +374,7 @@ func legacyPrefetch(status batchv1.JobStatus) *batchv1.Job {
 // TestAPrefetchUnderTheOldNameIsStillFound is the migration this rename had to survive. Every job
 // already running on every cluster was named before the model led the name, and a lookup that
 // rebuilt the string would have seen none of them: this reconcile would have started a second pull
-// into the same shared cache — the concurrent download the job exists to prevent — while reporting
+// into the same shared cache, the concurrent download the job exists to prevent, while reporting
 // the weights it was already holding as absent.
 func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
 	existing := legacyPrefetch(batchv1.JobStatus{Active: 1})
@@ -403,7 +403,7 @@ func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
 	}
 }
 
-// TestWeightsUnderTheOldNameAreResident — the same migration read from the deployment side, where
+// TestWeightsUnderTheOldNameAreResident: the same migration read from the deployment side, where
 // missing the job holds every deployment of those weights behind a fetch that already finished.
 func TestWeightsUnderTheOldNameAreResident(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
@@ -419,7 +419,7 @@ func TestWeightsUnderTheOldNameAreResident(t *testing.T) {
 }
 
 // TestOneArtifactResolvesToOneJob. Two jobs for one artifact is a state this operator does not
-// create but can inherit — a rename, a hand-run pull — and residency that flickered with list
+// create but can inherit (a rename, a hand-run pull) and residency that flickered with list
 // order would report the weights arriving and leaving on alternate reconciles.
 func TestOneArtifactResolvesToOneJob(t *testing.T) {
 	done := legacyPrefetch(batchv1.JobStatus{Succeeded: 1})
@@ -495,7 +495,7 @@ func TestAFailedDownloadIsStartedAgain(t *testing.T) {
 	}
 }
 
-// TestTheRestartBoundAdvancesAcrossFailures — each restart has to count the last one, or the bound
+// TestTheRestartBoundAdvancesAcrossFailures: each restart has to count the last one, or the bound
 // is a bound in name only and an unfetchable artifact pulls on a registry for ever.
 func TestTheRestartBoundAdvancesAcrossFailures(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
@@ -514,9 +514,9 @@ func TestTheRestartBoundAdvancesAcrossFailures(t *testing.T) {
 	}
 }
 
-// TestADownloadThatKeepsFailingIsGivenUpOn — weights that cannot be fetched at all fail identically
+// TestADownloadThatKeepsFailingIsGivenUpOn: weights that cannot be fetched at all fail identically
 // every time, and an unbounded retry there is this cluster pulling on somebody else's registry for
-// ever. Giving up has to leave the warm set saying so rather than reporting itself dispatched.
+// ever. Giving up has to leave the warm set saying so instead of reporting itself dispatched.
 func TestADownloadThatKeepsFailingIsGivenUpOn(t *testing.T) {
 	rep := &recordingReporter{}
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
@@ -534,8 +534,8 @@ func TestADownloadThatKeepsFailingIsGivenUpOn(t *testing.T) {
 	}
 }
 
-// TestAFailedDownloadIsNotReportedAsRunning — the failure that made the deadlock take investigation
-// rather than a glance. A Job past its BackoffLimit was folded in with the active ones, so the
+// TestAFailedDownloadIsNotReportedAsRunning: the failure that made the deadlock take investigation
+// instead of a glance. A Job past its BackoffLimit was folded in with the active ones, so the
 // cluster went on telling the plane the download was running long after it had stopped trying.
 func TestAFailedDownloadIsNotReportedAsRunning(t *testing.T) {
 	rep := &recordingReporter{}
@@ -561,7 +561,7 @@ func TestAFailedDownloadIsNotReportedAsRunning(t *testing.T) {
 	}
 }
 
-// TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching — the condition and not a pod count is
+// TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching: the condition and not a pod count is
 // what says a download has stopped. Restarting on a dead pod would throw away a download in
 // progress every time one is preempted.
 func TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching(t *testing.T) {
@@ -593,7 +593,7 @@ func conditionReason(res *v1alpha1.SyncedResource) string {
 
 // TestADispatchedWarmSetAsksToBeCalledAgain is the deadlock the resync closes. The controller is
 // otherwise driven purely by watches, so a warm set that had dispatched every download returned no
-// requeue and nothing woke it again — and a Job removed outside of a warm-set change took its own
+// requeue and nothing woke it again, and a Job removed outside of a warm-set change took its own
 // wake-up with it.
 func TestADispatchedWarmSetAsksToBeCalledAgain(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
@@ -643,7 +643,7 @@ func TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack(t *testing.T) {
 	}
 }
 
-// Two SyncedResources of kind cache can exist at once — a rename leaves the old name behind holding
+// Two SyncedResources of kind cache can exist at once: a rename leaves the old name behind holding
 // a stale set. A prune that deleted every download its own set did not name would have the stale
 // one tear up the live one's jobs on every pass and the live one make them again, and a model in
 // the middle of a multi-hundred-gigabyte pull would never reach the end of one.

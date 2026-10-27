@@ -2,7 +2,7 @@
 //
 // Operations are the third kind of thing in this design and the one that does not fit the other
 // two. Declared state is converged toward forever and observed state is reported forever, but a
-// drain starts, takes minutes, and then is over — succeeded or failed. It is never a status field
+// drain starts, takes minutes, and then is over: succeeded or failed. It is never a status field
 // on the object it acted upon, because the object outlives it.
 //
 // That shape drives everything here. An operation is not stored as desired state and is never
@@ -52,7 +52,7 @@ const (
 //
 // A ramp is the case this depth is for: one request becomes a step per concurrency level, all of
 // them arriving within a second of each other, and every one of them has to be kept. Deep enough
-// for a long ramp, and still bounded — an unbounded queue would turn a plane
+// for a long ramp, and still bounded: an unbounded queue would turn a plane
 // that keeps asking into a cluster that keeps agreeing and never measures anything.
 const defaultBenchmarkQueue = 64
 
@@ -74,9 +74,9 @@ type Reporter interface {
 
 // Executor accepts operations off the stream and runs them.
 //
-// Its client is deliberately the direct one rather than the manager's cache. A drain has to see
+// Its client is the direct one instead of the manager's cache. A drain has to see
 // every pod on a node, in whatever namespace it happens to live, and the cache is scoped to the
-// two namespaces this operator otherwise deals in — an unseen pod would be reported as a node
+// two namespaces this operator otherwise deals in: an unseen pod would be reported as a node
 // successfully emptied.
 type Executor struct {
 	Client    client.Client
@@ -92,12 +92,12 @@ type Executor struct {
 
 	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
 	// scheduling conventions, and the endpoint the load is aimed at. Both are per-cluster facts
-	// the plane deliberately does not declare.
+	// the plane does not declare.
 	Render    render.Options
 	Benchmark render.BenchmarkOptions
 
 	// Logs reads a finished job's output back, which is how a harness's result gets here.
-	// Nil leaves benchmarks refusing rather than running blind.
+	// Nil leaves benchmarks refusing instead of running blind.
 	Logs LogReader
 
 	// BenchmarkTimeout bounds a run whose operation carried no deadline of its own.
@@ -118,7 +118,7 @@ type Executor struct {
 	cancels  map[string]context.CancelFunc
 
 	// completed holds the terminal frame of each concluded operation, oldest first in
-	// completedOrder, so a replay is answered with the result rather than run again.
+	// completedOrder, so a replay is answered with the result, not run again.
 	completed      map[string]wire.OperationObserved
 	completedOrder []string
 
@@ -137,7 +137,7 @@ type queued struct {
 
 // New fills in an Executor's defaults and starts the benchmark lane.
 //
-// The lane's worker is started here rather than by a caller, because an executor that accepted a
+// The lane's worker is started here, not by a caller, because an executor that accepted a
 // benchmark with nothing draining the lane would hold the step for ever and report nothing. It
 // stops on Close, or when the context handed to Start is cancelled.
 func New(e *Executor) *Executor {
@@ -162,7 +162,7 @@ func New(e *Executor) *Executor {
 // Start ties the benchmark lane's lifetime to ctx.
 //
 // Optional: an executor whose owner never calls it runs until Close. It exists so that a process
-// shutting down through its root context takes the lane with it rather than leaving the worker
+// shutting down through its root context takes the lane with it instead of leaving the worker
 // behind.
 func (e *Executor) Start(ctx context.Context) {
 	go func() {
@@ -176,7 +176,7 @@ func (e *Executor) Start(ctx context.Context) {
 
 // Close stops the benchmark lane and waits for the step in flight.
 //
-// Waiting rather than returning at once, because the step is a job in the cluster and the frames
+// Waiting instead of returning at once, because the step is a job in the cluster and the frames
 // that say how it ended are written by the goroutine being stopped. It is safe to call twice, and
 // on an executor that never went through New there is no lane to stop.
 func (e *Executor) Close() {
@@ -195,10 +195,10 @@ func (e *Executor) laneClosing() bool {
 
 // serve runs queued benchmarks one at a time, in the order they arrived.
 //
-// One worker and no more is the whole point. A ramp is a sequence of steps at rising concurrency,
+// One worker and no more is the point. A ramp is a sequence of steps at rising concurrency,
 // and steps that overlap measure each other: every point on the curve carries the load of every
 // other point, so the knee the ramp exists to find is not in the numbers at all. Every other kind
-// keeps its goroutine per operation — a drain waiting behind a twenty-minute benchmark would be a
+// keeps its goroutine per operation: a drain waiting behind a twenty-minute benchmark would be a
 // maintenance window missed for a measurement.
 func (e *Executor) serve() {
 	defer close(e.laneDone)
@@ -235,8 +235,8 @@ func (e *Executor) abandon() {
 
 // serveOne runs one queued benchmark, unless it was cancelled while it waited.
 //
-// A step whose context went with the lane's was not cancelled by anybody — the operator is
-// stopping — and saying so is the difference between a step that can be asked for again and one
+// A step whose context went with the lane's was not cancelled by anybody, the operator is
+// stopping, and saying so is the difference between a step that can be asked for again and one
 // somebody has to work out was never really refused.
 func (e *Executor) serveOne(work queued) {
 	if work.ctx.Err() == nil {
@@ -266,13 +266,13 @@ func (e *Executor) Bind(r Reporter) {
 // Handle accepts an operation and returns immediately.
 //
 // The work runs elsewhere and the frame is acknowledged now. Holding the acknowledgement for the
-// length of a drain would stall every other frame behind it on a stream that is strictly ordered —
+// length of a drain would stall every other frame behind it on a stream that is strictly ordered:
 // desired state for the whole cluster would queue behind one node's maintenance window. Progress
 // is reported as it happens instead, which is what `operation.observed` is for.
 //
 // Elsewhere is a goroutine of its own for every kind but one. A benchmark goes on a lane that runs
 // its steps in turn, because concurrent benchmarks against the same deployment measure each other.
-// Enqueuing never blocks the reader: a lane with no room refuses the step out loud rather than
+// Enqueuing never blocks the reader: a lane with no room refuses the step out loud instead of
 // making the stream wait for a measurement to finish.
 func (e *Executor) Handle(ctx context.Context, env *syncpkg.Envelope) error {
 	if env.Type != TypeOperationDesired {
@@ -329,7 +329,7 @@ func (e *Executor) HandleCancel(ctx context.Context, env *syncpkg.Envelope) erro
 //
 // A step that vanished would be worse than one that failed. The plane would go on waiting for a
 // point on a curve that nobody is measuring, and the ramp would end short with no reason recorded
-// anywhere — so a full lane is a loud log and a failed operation, which is a conclusion the plane
+// anywhere, so a full lane is a loud log and a failed operation, which is a conclusion the plane
 // already knows how to read.
 func (e *Executor) enqueue(op wire.OperationDesired) {
 	ctx := e.track(op.OperationID, e.laneCtx)
@@ -338,7 +338,7 @@ func (e *Executor) enqueue(op wire.OperationDesired) {
 		case e.lane <- queued{ctx: ctx, op: op}:
 			e.Log.Info("benchmark queued", "operation", op.OperationID, "waiting", len(e.lane))
 			// The lane can stop between the check above and this send, which would leave
-			// the step in a queue nobody drains again. Sweeping here rather than locking
+			// the step in a queue nobody drains again. Sweeping here instead of locking
 			// the two together: refusing a step twice is impossible, and the sweep is a
 			// no-op in every case but that one.
 			if e.laneCtx.Err() != nil {
@@ -398,7 +398,7 @@ func (e *Executor) concluded(id string) (wire.OperationObserved, bool) {
 	return frame, ok
 }
 
-// remember records a conclusion so a replay of the operation is answered rather than re-run.
+// remember records a conclusion so a replay of the operation is answered, not re-run.
 //
 // A retryable refusal is not remembered: it says "not now", and the plane asking again under the
 // same id is how it retries. The set is bounded, oldest first out, and lives only as long as the
@@ -428,9 +428,9 @@ func (e *Executor) remember(id string, frame wire.OperationObserved) {
 // claim reports whether this operation is ours to start.
 //
 // The stream is at-least-once, so the same operation arrives again after any resume. Running a
-// drain twice concurrently is not idempotent in the way re-applying declared state is — the second
-// pass would report progress against evictions the first is still making — so a replay of
-// something already in flight is dropped rather than started.
+// drain twice concurrently is not idempotent in the way re-applying declared state is, the second
+// pass would report progress against evictions the first is still making, so a replay of
+// something already in flight is dropped, not started.
 func (e *Executor) claim(id string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -469,7 +469,7 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 	case err != nil && ctx.Err() == context.Canceled:
 		// The work did not fail; it was stopped. Reported as an ordinary execution failure it
 		// would read as a measurement this cluster cannot make, and a ramp step nobody asks
-		// for again — so it carries the reason it was stopped for, and whether asking again
+		// for again, so it carries the reason it was stopped for, and whether asking again
 		// is worth anything.
 		code, retryable := "cancelled", false
 		reason := fmt.Errorf("the operation was cancelled while it ran")
@@ -491,11 +491,11 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 
 // dispatch routes an operation to the thing that performs it.
 //
-// An unsupported kind fails loudly rather than being ignored. Silence would leave the operation
+// An unsupported kind fails loudly instead of being ignored. Silence would leave the operation
 // pending until it timed out, and a timeout says the cluster was slow when what happened is that
 // it was asked for something it cannot do.
 //
-// A refused kind is refused here rather than at the handler, so that the refusal travels the same
+// A refused kind is refused here, not at the handler, so that the refusal travels the same
 // route as any other failure: an `operation.observed` that says why.
 func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
 	if e.ReadOnly && !e.permits(op.Kind) {
@@ -645,7 +645,7 @@ func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired, node *c
 
 // drain empties a node of the accelerator workloads this operator placed on it.
 //
-// Eviction rather than deletion, because eviction is the request the API server can refuse: a pod
+// Eviction, not deletion, because eviction is the request the API server can refuse: a pod
 // covered by a disruption budget at its floor stays put. A refused eviction is retried with
 // backoff until the drain's deadline, and the drain then waits for every evicted pod to exit, so
 // success means the node is actually empty of them.
@@ -795,7 +795,7 @@ func (e *Executor) evict(ctx context.Context, pod *corev1.Pod, grace int) error 
 // node resolves an operation's target to the node it names.
 //
 // Observed ids are one-way derivations of a natural key (ADR 0002), so the way back is to re-mint
-// the id for every node and look for the match. Deriving rather than storing is the whole point of
+// the id for every node and look for the match. Deriving instead of storing is the point of
 // that decision: there is no side table to disagree with the cluster, and a restarted operator
 // resolves the same id to the same node.
 func (e *Executor) node(ctx context.Context, target wire.OperationTarget) (*corev1.Node, error) {
@@ -889,8 +889,8 @@ func succeeded(op wire.OperationDesired, started, completed time.Time, result ma
 // failed reports a conclusion, not a request to try again.
 //
 // Retryable is false for everything this executor gives up on. Whether a drain that hit a
-// disruption budget should be retried is a decision about the fleet — another cluster may have
-// taken the load by now, or the maintenance window may have closed — and that decision belongs
+// disruption budget should be retried is a decision about the fleet, another cluster may have
+// taken the load by now, or the maintenance window may have closed, and that decision belongs
 // where the fleet is visible, which is not here.
 func failed(op wire.OperationDesired, started, completed time.Time, result map[string]string, err error) wire.OperationObserved {
 	return wire.OperationObserved{
@@ -907,7 +907,7 @@ func failed(op wire.OperationDesired, started, completed time.Time, result map[s
 
 // refused is a conclusion the executor reached without performing the operation at all.
 //
-// Retryable is true where `failed` has it false, and the difference is honest rather than
+// Retryable is true where `failed` has it false, and the difference is accurate, not
 // convenient: a lane that is full or closing says nothing about whether the benchmark can be run,
 // only that this operator cannot take it now. A cancellation is the other case here and is not
 // retryable, because somebody asked for it to stop.
@@ -924,7 +924,7 @@ func refused(op wire.OperationDesired, when time.Time, code string, retryable bo
 
 // stopped is a conclusion reached because this operator ended the work, not because the work
 // ended. It keeps StartedAt and whatever the operation had measured so far, because the run did
-// begin — the difference from `refused`, which reports something that never started at all.
+// begin: the difference from `refused`, which reports something that never started at all.
 func stopped(op wire.OperationDesired, started, completed time.Time, result map[string]string, code string, retryable bool, err error) wire.OperationObserved {
 	return wire.OperationObserved{
 		OperationID: op.OperationID,

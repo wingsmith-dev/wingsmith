@@ -49,7 +49,7 @@ type Observer struct {
 	OperatorVersion string
 
 	// ReadOnly mirrors config.Config.ReadOnly onto every projection, so the plane can see that
-	// this operator applies nothing. It belongs on the upward loop rather than being inferred
+	// this operator applies nothing. It belongs on the upward loop instead of being inferred
 	// downstream: whether the reconcile loop is running is a fact only this process holds, and
 	// the plane cannot tell an operator that declines to act from one that has not acted yet.
 	ReadOnly   bool
@@ -60,7 +60,7 @@ type Observer struct {
 
 	// Devices is where each tick publishes which pod holds which accelerator, for the reconcile
 	// loop to read. Optional: left nil, this loop behaves exactly as it did before and the
-	// reconcile loop reports no allocations rather than guessing at them.
+	// reconcile loop reports no allocations instead of guessing at them.
 	Devices *DeviceIndex
 
 	// Capabilities is where each tick publishes what the cluster can do, for the reconcile loop
@@ -76,7 +76,7 @@ type Observer struct {
 	// ResyncInterval is how often the loop restates its whole inventory even though nothing
 	// asked it to.
 	//
-	// Incremental observation cannot express a removal — a node that is gone is absent from the
+	// Incremental observation cannot express a removal: a node that is gone is absent from the
 	// projection, and absence is only evidence against a complete snapshot. That makes resync
 	// the only thing that can retire a departed node from the plane, and until this existed the
 	// only trigger for one was a reconnect the hub declared fresh. An operator that stayed
@@ -116,7 +116,7 @@ func New(o *Observer) *Observer {
 // Since reports how long ago a discovery last completed, and whether one ever has.
 //
 // Exposed so the readiness probe can fail on a loop that has stopped observing. A wedged loop is
-// invisible from outside the process — it neither exits nor logs — so something has to ask.
+// invisible from outside the process, it neither exits nor logs, so something has to ask.
 func (o *Observer) Since(now time.Time) (time.Duration, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -177,7 +177,7 @@ func (o *Observer) Run(ctx context.Context) error {
 
 // discover runs one discovery under Timeout.
 //
-// The deadline is the whole point: every discoverer this has ever had reaches the network, and a
+// The deadline is the point: every discoverer this has ever had reaches the network, and a
 // read with no bound is a loop with no bound.
 func (o *Observer) discover(ctx context.Context) (Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
@@ -236,7 +236,7 @@ func (o *Observer) Resync(ctx context.Context) error {
 	// A snapshot is only complete if it came from a discovery that worked. Saying otherwise is
 	// not a white lie: `complete` is the sole permission the plane needs to delete everything
 	// absent from the stream, so a failed discovery that still claimed completeness would prune
-	// this cluster's entire inventory — and before the loop has ever seen anything, the
+	// this cluster's entire inventory, and before the loop has ever seen anything, the
 	// projection is empty and that is exactly what would happen.
 	complete := err == nil && seen
 	if !complete && !seen {
@@ -357,7 +357,7 @@ func (o *Observer) sendChanged(prev, next projection, seen bool) error {
 }
 
 // sendEvents reports transitions. An event is something that happened, so it is only ever derived
-// from a difference between two readings — never from a state that merely holds.
+// from a difference between two readings, never from a state that merely holds.
 func (o *Observer) sendEvents(prev, next projection, seen bool, at time.Time) error {
 	occurred := formatTime(at)
 	prevNodes := indexNodes(prev.nodes)

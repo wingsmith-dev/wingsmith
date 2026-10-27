@@ -38,7 +38,7 @@ func imageAllowed(image string, prefixes []string) bool {
 
 // checkImages refuses a rendered object that runs an image outside opts.ImagePrefixes.
 //
-// It walks the whole object rather than the containers this package wrote, because a deployment's
+// It walks the whole object instead of the containers this package wrote, because a deployment's
 // pod and Dynamo overlays are merged in afterwards and can name an image of their own.
 func checkImages(object any, opts Options) error {
 	if len(opts.ImagePrefixes) == 0 {

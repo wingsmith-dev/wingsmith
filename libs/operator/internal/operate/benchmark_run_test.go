@@ -101,7 +101,7 @@ func benchmarkOperation(params map[string]string) wire.OperationDesired {
 }
 
 // finishedJob is the job the renderer would have produced, already complete. startJob adopts an
-// existing job rather than recreating it, so pre-creating it is exactly the restart-mid-run case.
+// existing job instead of recreating it, so pre-creating it is exactly the restart-mid-run case.
 func finishedJob(condition batchv1.JobConditionType, message string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Namespace: benchNS, Name: render.BenchmarkJobName(benchID)},
@@ -258,14 +258,14 @@ func TestABenchmarkWithNoPodFailsRatherThanReportingNothing(t *testing.T) {
 	if !ok {
 		t.Fatal("no benchmark frame")
 	}
-	// The specific reason — no pod — is logged as a warning and does not reach the frame; the
+	// The specific reason, no pod, is logged as a warning and does not reach the frame; the
 	// plane is told only that nothing was found. See TestAReadFailureOnTheLogIsReported.
 	if bench.Phase != "failed" || !strings.Contains(bench.Error, "wrote no result") {
 		t.Errorf("a run whose log is unreachable must say so: %+v", bench)
 	}
 }
 
-// TestAnOperatorThatCannotReadLogsRefusesUpFront rather than running a job whose result it could
+// TestAnOperatorThatCannotReadLogsRefusesUpFront instead of running a job whose result it could
 // never collect and charging the cluster for it.
 func TestAnOperatorThatCannotReadLogsRefusesUpFront(t *testing.T) {
 	rec, c := runBenchmark(t, nil, benchmarkOperation(nil))
@@ -379,11 +379,11 @@ func TestARestartedOperatorAdoptsTheJobItAlreadyStarted(t *testing.T) {
 		t.Fatalf("read job: %v", err)
 	}
 	if after.Labels["adopted-me"] != "yes" {
-		t.Error("the existing job was replaced rather than adopted; its measurement was thrown away")
+		t.Error("the existing job was replaced, not adopted; its measurement was thrown away")
 	}
 }
 
-// TestAJobThatCannotBeReadFailsTheRun rather than being taken for one that is not there yet and
+// TestAJobThatCannotBeReadFailsTheRun instead of being taken for one that is not there yet and
 // created a second time.
 func TestAJobThatCannotBeReadFailsTheRun(t *testing.T) {
 	boom := interceptor.Funcs{
@@ -465,7 +465,7 @@ func TestABenchmarkDeadlineEndsTheWait(t *testing.T) {
 	t.Fatal("the benchmark timeout never fired")
 }
 
-// TestAnOperationDeadlineAlsoBoundsABenchmark — the wire-level deadline arms the same way.
+// TestAnOperationDeadlineAlsoBoundsABenchmark: the wire-level deadline arms the same way.
 func TestAnOperationDeadlineAlsoBoundsABenchmark(t *testing.T) {
 	pending := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Namespace: benchNS, Name: render.BenchmarkJobName(benchID)},

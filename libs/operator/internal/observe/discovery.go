@@ -68,7 +68,7 @@ type Device struct {
 	Throttled       bool
 	ThrottleReasons []string
 	Mig             Mig
-	// DomainKind and DomainKey name the topology domain this device shares with others —
+	// DomainKind and DomainKey name the topology domain this device shares with others:
 	// an NVLink domain, a PCIe root, a NUMA node. Empty means the device is in no domain.
 	DomainKind string
 	DomainKey  string
@@ -92,7 +92,7 @@ type Node struct {
 	KernelVersion  string
 	DriverVersion  string
 	RuntimeVersion string
-	// InstanceType is the machine's shape as its provider names it — `g5.12xlarge`, `a2-highgpu-8g`.
+	// InstanceType is the machine's shape as its provider names it: `g5.12xlarge`, `a2-highgpu-8g`.
 	// It is the answer to "what kind of node is this", which node counts alone never give.
 	InstanceType string
 	// Cloud is the provider this machine belongs to, derived from its provider reference rather
@@ -112,19 +112,19 @@ type Node struct {
 	// the labels that identify it are raw cluster labels and never survive into Labels, which is
 	// filtered down to what the plane is meant to see.
 	//
-	// Per node rather than per cluster for the same reason Cloud is: it is read off the machine,
+	// Per node, not per cluster for the same reason Cloud is: it is read off the machine,
 	// and a cluster mid-migration genuinely has two answers. The cluster-wide value is the
 	// plurality of these.
 	Distribution string
 	// AllocatedDevices is how many of this node's accelerators are committed to work, counted
-	// from the cluster's own accounting rather than asked of the hardware.
+	// from the cluster's own accounting, not asked of the hardware.
 	AllocatedDevices int
 }
 
 // Workload is one workload found already running in the cluster that the plane did not put there.
 //
 // It is recorded as a sighting and never as a deployment. The plane has declared nothing about
-// this object, so there is no declared-versus-running difference for anything to reconcile — which
+// this object, so there is no declared-versus-running difference for anything to reconcile, which
 // is the point: adopting a model that is already serving must not move a byte of it out of VRAM.
 type Workload struct {
 	Namespace         string
@@ -140,22 +140,22 @@ type Workload struct {
 	// Model is what the workload says it is serving, when it says so at all. A hint for the
 	// human deciding whether to track it, never something placement reads.
 	Model string
-	// Fingerprint digests the pod template — what is running, not how much of it. It is what
+	// Fingerprint digests the pod template: what is running, not how much of it. It is what
 	// an adoption is pinned to: the plane records the digest it adopted, and a reconciler that
-	// finds a different one refuses to converge rather than restarting the workload to match.
+	// finds a different one refuses to converge instead of restarting the workload to match.
 	Fingerprint string
 	// Spec is how the workload was told to serve: the image, the arguments, the resources it
-	// asked for. Reported verbatim and uninterpreted — reading `--tensor-parallel-size` as
+	// asked for. Reported verbatim and uninterpreted: reading `--tensor-parallel-size` as
 	// parallelism is the plane's job, not this one's, so that improving the reading is a plane
-	// deploy rather than a roll across every cluster in the fleet.
+	// deploy instead of a roll across every cluster in the fleet.
 	Spec *WorkloadSpec
 }
 
 // WorkloadSpec is what one container was told to do, as its own cluster records it.
 //
 // Environment variables appear here by name and never by value. A serving pod's environment holds
-// registry credentials and HuggingFace tokens — `envFrom` a secret is the ordinary way to run one
-// — and the control plane has no business storing them. The names are enough to tell a reader
+// registry credentials and HuggingFace tokens, `envFrom` a secret is the ordinary way to run one,
+// and the control plane has no business storing them. The names are enough to tell a reader
 // what the workload expects to find.
 type WorkloadSpec struct {
 	Image        string
@@ -175,13 +175,13 @@ type Snapshot struct {
 	Workloads []Workload
 
 	// Devices is which pod holds which accelerator, from the same scrape the nodes were built
-	// from. Carried on the snapshot rather than fetched again by whoever needs it, for the
+	// from. Carried on the snapshot, not fetched again by whoever needs it, for the
 	// reason every other pairing in this file is read once: two scrapes a moment apart let a
 	// card's owner and the workload holding it disagree.
 	Devices PodDevices
 
 	// Multinode says a leader-worker backend is installed, so Dynamo can render a replica that
-	// spans machines. Discovered rather than configured: whether the CRDs are present is a fact
+	// spans machines. Discovered, not configured: whether the CRDs are present is a fact
 	// about this cluster that the operator can read directly, and a flag asserting it is a
 	// second copy of the same truth that can be wrong.
 	Multinode bool
@@ -189,9 +189,9 @@ type Snapshot struct {
 	At time.Time
 }
 
-// Fleet is what a snapshot says about the cluster as a whole rather than about any one machine.
+// Fleet is what a snapshot says about the cluster as a whole, not about any one machine.
 //
-// Derived from the nodes rather than discovered separately, because every source for it is a node
+// Derived from the nodes, not discovered separately, because every source for it is a node
 // attribute: the cloud is on each machine's provider reference and the distribution is stamped in
 // each kubelet's version. Taking the majority answer means a cluster keeps reporting sensibly
 // while a single odd node joins or a migration is half done.

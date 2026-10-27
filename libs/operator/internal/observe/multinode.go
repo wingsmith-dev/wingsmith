@@ -9,7 +9,7 @@ import (
 )
 
 // multinodeBackends are the leader-worker controllers Dynamo can render a multi-node replica
-// onto, matched as substrings of an API group name rather than as exact groups.
+// onto, matched as substrings of an API group name, not as exact groups.
 //
 // Substrings because the group a backend serves is the backend's to change, and the cost of the
 // two mistakes is not symmetric: reading an unknown group as "no backend" parks every multi-node
@@ -24,7 +24,7 @@ type GroupSource interface {
 
 // DiscoveryGroups reads them from the API server's discovery endpoint.
 //
-// Discovery rather than listing CustomResourceDefinitions: `/apis` is served to every
+// Discovery instead of listing CustomResourceDefinitions: `/apis` is served to every
 // authenticated caller through the built-in `system:discovery` role, so this costs no RBAC rule
 // anywhere. Listing CRDs would need `apiextensions.k8s.io` read across the cluster, which is a
 // broad grant to buy one boolean.
@@ -71,7 +71,7 @@ type Capability struct {
 }
 
 // Publish replaces the reading. A tick that could not discover reports false, which parks
-// multi-node replicas rather than hanging them.
+// multi-node replicas instead of hanging them.
 func (c *Capability) Publish(multinode bool) {
 	if c == nil {
 		return

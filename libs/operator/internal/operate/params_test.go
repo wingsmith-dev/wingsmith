@@ -29,7 +29,7 @@ func TestParseTimeAcceptsRFC3339AndRejectsTheRest(t *testing.T) {
 }
 
 // TestParseTimeIsWhatArmsTheDeadline: an unparseable deadline leaves the operation unbounded
-// rather than failing it immediately, which is the safer of the two for work already accepted.
+// instead of failing it immediately, which is the safer of the two for work already accepted.
 func TestParseTimeRoundTripsAStamp(t *testing.T) {
 	when := time.Date(2026, 8, 23, 15, 4, 5, 0, time.UTC)
 	got, ok := parseTime(when.Format(time.RFC3339))
@@ -83,7 +83,7 @@ func TestIntParamFallsBackOnAnythingItCannotRead(t *testing.T) {
 }
 
 // TestCordoningKeepsTheOperationsIdentity: the drain's first step is reported against the same
-// operation, so it must not invent a new one — but it must not inherit the drain's parameters
+// operation, so it must not invent a new one, but it must not inherit the drain's parameters
 // either, or a `cordon=false` on the drain would uncordon the node it is emptying.
 func TestCordoningKeepsTheOperationsIdentity(t *testing.T) {
 	drain := operation("drain", "gpu-0", map[string]string{"cordon": "false", "grace_period_seconds": "45"})
@@ -118,8 +118,8 @@ func TestStampAndAtAgreeOnFormat(t *testing.T) {
 	}
 }
 
-// TestStampNormalisesToUTC — the contract's timestamps are UTC, and a local-zone stamp would be
-// silently wrong by hours rather than obviously malformed.
+// TestStampNormalisesToUTC: the contract's timestamps are UTC, and a local-zone stamp would be
+// silently wrong by hours, not obviously malformed.
 func TestStampNormalisesToUTC(t *testing.T) {
 	zone := time.FixedZone("UTC+7", 7*3600)
 	when := time.Date(2026, 8, 23, 22, 4, 5, 0, zone)

@@ -15,7 +15,7 @@ import (
 
 // FrontendModels answers which models one frontend pod is actually serving.
 //
-// An interface rather than a bare function because it is the only thing in this loop that leaves
+// An interface instead of a bare function because it is the only thing in this loop that leaves
 // the API server, and a reconciler that cannot reach the data path must still reconcile. Left nil
 // on the reconciler, no frontend is ever asked and the readiness of its pod stands on its own,
 // which is what every test that does not care about registration wants.
@@ -31,15 +31,15 @@ const frontendPort = 8000
 
 // HTTPFrontendModels reads `/v1/models` off a frontend pod directly.
 //
-// Pod addresses rather than the Service, because the caller has already decided which pods are
+// Pod addresses instead of the Service, because the caller has already decided which pods are
 // ready and asking the Service would put a load balancer between a specific judgement and the pod
-// it was made about — the answer would come back from a pod this loop never looked at.
+// it was made about: the answer would come back from a pod this loop never looked at.
 type HTTPFrontendModels struct {
 	client *http.Client
 }
 
 // NewHTTPFrontendModels builds the probe with timeouts short enough that a frontend which has
-// stopped answering costs one reconcile a couple of seconds rather than blocking it.
+// stopped answering costs one reconcile a couple of seconds instead of blocking it.
 func NewHTTPFrontendModels() *HTTPFrontendModels {
 	return &HTTPFrontendModels{client: &http.Client{Timeout: 2 * time.Second}}
 }
@@ -53,7 +53,7 @@ func (h *HTTPFrontendModels) Serving(ctx context.Context, podIP string) ([]strin
 }
 
 // servingAt is the request itself, split from the address so a test can put the question to a
-// server it stood up rather than to a pod address it would have to invent a network for.
+// server it stood up, not to a pod address it would have to invent a network for.
 func (h *HTTPFrontendModels) servingAt(ctx context.Context, url string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

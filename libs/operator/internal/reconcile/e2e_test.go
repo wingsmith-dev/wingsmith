@@ -11,8 +11,8 @@
 //
 // The lesson is narrow and worth stating: a fake API server is a fine model of the API and no
 // model at all of the controllers behind it. Anything whose correctness depends on what
-// Kubernetes *does* to an object after it is written — garbage collection, finalizers, defaulting
-// — has to be tested somewhere the controller-manager is running.
+// Kubernetes *does* to an object after it is written, garbage collection, finalizers, defaulting,
+// has to be tested somewhere the controller-manager is running.
 //
 // Run with `just e2e`, or: go test -tags e2e ./internal/reconcile/ -run E2E -v
 // It needs the SyncedResource CRD from deploy/crd/ and deploy/crd/testing_dynamographdeployments.yaml.
@@ -50,8 +50,8 @@ import (
 
 // settleFor is how long a rendered object is watched before it is called survived.
 //
-// The garbage collector acts within a couple of seconds — the reproduction of this bug on a
-// local cluster deleted a cross-namespace dependent in under five — so this is generous on
+// The garbage collector acts within a couple of seconds, the reproduction of this bug on a
+// local cluster deleted a cross-namespace dependent in under five, so this is generous on
 // purpose. A test that asserted the object existed immediately after the apply would have
 // passed against the broken code too, which is the whole failure being guarded against.
 const settleFor = 20 * time.Second
@@ -66,7 +66,7 @@ type reported struct {
 }
 
 // capture is a Reporter that keeps what it was given, so a test can assert on what the plane
-// would have been told rather than on what the reconciler wrote locally.
+// would have been told, not on what the reconciler wrote locally.
 type capture struct {
 	frames []reported
 }
@@ -219,7 +219,7 @@ func newLive(t *testing.T) *live {
 //
 // The finalizer is why this cannot be a plain delete. A namespace will not finish terminating
 // while a resource in it still carries one, and the only thing that removes `hangar.dev/rendered`
-// is a running reconciler — which a finished test no longer has. Deleting the namespace and
+// is a running reconciler, which a finished test no longer has. Deleting the namespace and
 // walking away leaves it Terminating forever, and the next run adds another.
 //
 // The same shape is true of a real install, and is worth knowing: uninstalling the operator from a
@@ -384,8 +384,8 @@ func TestE2EARenderedDeploymentSurvivesTheGarbageCollector(t *testing.T) {
 	if got := readyCondition(t, out).Reason; got != "Applied" {
 		t.Fatalf("reason = %q (%s), want Applied", got, readyCondition(t, out).Message)
 	}
-	// Nothing is serving in this cluster — there is no Dynamo operator to turn the graph into
-	// pods — so a rollout that has not filled in is watched at the rollout's pace, not the
+	// Nothing is serving in this cluster, there is no Dynamo operator to turn the graph into
+	// pods, so a rollout that has not filled in is watched at the rollout's pace, not the
 	// drift floor's.
 	if result.RequeueAfter != waitForDependency {
 		t.Errorf("RequeueAfter = %s, want %s while nothing is ready", result.RequeueAfter, waitForDependency)
@@ -488,7 +488,7 @@ func TestE2ENoDevicesAtAllIsStatedRatherThanLeftPending(t *testing.T) {
 		t.Errorf("message = %q, want it to raise the device plugin", condition.Message)
 	}
 	if result.RequeueAfter != waitForDependency {
-		t.Errorf("RequeueAfter = %s, want %s — capacity can arrive", result.RequeueAfter, waitForDependency)
+		t.Errorf("RequeueAfter = %s, want %s: capacity can arrive", result.RequeueAfter, waitForDependency)
 	}
 	if _, err := l.getGraph(context.Background()); !apierrors.IsNotFound(err) {
 		t.Error("a workload was applied against a cluster that cannot run it")

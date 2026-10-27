@@ -183,7 +183,7 @@ func TestCordoningAnAlreadyCordonedNodeReportsNoChange(t *testing.T) {
 	}
 }
 
-// A drain that could not find its node must say so rather than report an empty node emptied.
+// A drain that could not find its node must say so, not report an empty node emptied.
 func TestOperationFailsWhenTheTargetIsNotInThisCluster(t *testing.T) {
 	op := operation("drain", "gpu-0", nil)
 	op.Target.ID = "nod_01j9x2zzzzzzzzzzzzzzzzzzzz"
@@ -212,7 +212,7 @@ func TestAnUnsupportedKindFailsLoudly(t *testing.T) {
 	}
 }
 
-// A read-only operator refuses, and the refusal is an answer rather than silence.
+// A read-only operator refuses, and the refusal is an answer, not silence.
 func TestAReadOnlyOperatorRefusesAndLeavesTheNodeAlone(t *testing.T) {
 	rec, e := runOperationOn(t, true, operation("cordon", "gpu-0", nil), node("gpu-0", false))
 
@@ -275,8 +275,8 @@ func TestOnlyAcceleratorPodsAreDrained(t *testing.T) {
 // ------------------------------------------------------------------ the benchmark lane
 
 // A ramp arrives as one operation per step, all of them within a second of each other. Run
-// concurrently they measure each other — every point on the curve carries the load of every other
-// point — so the lane runs them in turn, and these tests are about that turn-taking.
+// concurrently they measure each other, every point on the curve carries the load of every other
+// point, so the lane runs them in turn, and these tests are about that turn-taking.
 
 func stepBenchmarkID(n int) string {
 	return fmt.Sprintf("bmr_01j9x2step%08d", n)
@@ -294,7 +294,7 @@ func stepOperation(n int) wire.OperationDesired {
 }
 
 // stepObjects are the job and pod a step would find had it created them, already finished. Being
-// adopted rather than created is what keeps these runs fast; the turn-taking under test is the
+// adopted, not created is what keeps these runs fast; the turn-taking under test is the
 // same either way.
 func stepObjects(n int) []client.Object {
 	id := stepBenchmarkID(n)
@@ -445,8 +445,8 @@ func TestARampRunsItsStepsOneAtATimeAndInOrder(t *testing.T) {
 		submit(t, e, stepOperation(n))
 	}
 	// The stream reader must not be held behind a measurement. Handle that waited for the lane
-	// would take the whole ramp — six steps of 30ms — so anything under 50ms is decisively an
-	// acceptance rather than a wait, with room for a loaded machine.
+	// would take the whole ramp, six steps of 30ms, so anything under 50ms is decisively an
+	// acceptance instead of a wait, with room for a loaded machine.
 	if held := time.Since(accepted); held > 50*time.Millisecond {
 		t.Errorf("Handle held the sync stream for %s; enqueuing must not wait for the lane", held)
 	}
@@ -536,7 +536,7 @@ func TestAFullLaneRefusesOutLoudRatherThanDroppingTheStep(t *testing.T) {
 	if frame.Failure.Code != "queue_full" || !frame.Failure.Retryable {
 		t.Errorf("failure = %+v, want a retryable queue_full", frame.Failure)
 	}
-	// Refusing it must also let it be asked for again rather than holding the claim for ever.
+	// Refusing it must also let it be asked for again instead of holding the claim for ever.
 	if !e.claim(refusedStep.OperationID) {
 		t.Error("a refused step stayed claimed and can never be resubmitted")
 	}
@@ -582,7 +582,7 @@ func TestAQueuedBenchmarkCanBeCancelled(t *testing.T) {
 	}
 }
 
-// TestCancellingAnOperationThisExecutorDoesNotHoldSaysSo, rather than reporting a stop it cannot
+// TestCancellingAnOperationThisExecutorDoesNotHoldSaysSo, instead of reporting a stop it cannot
 // make.
 func TestCancellingAnOperationThisExecutorDoesNotHoldSaysSo(t *testing.T) {
 	e, _ := laneExecutor(t, &laneProbe{}, 0)
@@ -591,7 +591,7 @@ func TestCancellingAnOperationThisExecutorDoesNotHoldSaysSo(t *testing.T) {
 	}
 }
 
-// TestTheLaneStopsWhenItsContextIsCancelled — one worker started with the executor, and no
+// TestTheLaneStopsWhenItsContextIsCancelled: one worker started with the executor, and no
 // goroutine left behind when the process shuts down.
 func TestTheLaneStopsWhenItsContextIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -670,7 +670,7 @@ func TestAReplayOfAQueuedBenchmarkIsDropped(t *testing.T) {
 }
 
 // TestAStepRunningAtShutdownIsReportedRetryable. The lane's context is the running step's, so
-// stopping the operator stops the measurement — and a measurement this operator abandoned is not
+// stopping the operator stops the measurement, and a measurement this operator abandoned is not
 // one the cluster cannot make. Reported as an ordinary execution failure it would be a ramp step
 // nobody ever asks for again.
 func TestAStepRunningAtShutdownIsReportedRetryable(t *testing.T) {
@@ -735,7 +735,7 @@ func TestARunningBenchmarkCancelledSaysItWasCancelled(t *testing.T) {
 
 // TestCloseIsSafeOnAnExecutorThatNeverStartedALane. Several tests in this package build an
 // Executor directly to exercise one method; a Close that blocked on a lane that was never made
-// would hang the suite rather than fail it.
+// would hang the suite, not fail it.
 func TestCloseIsSafeOnAnExecutorThatNeverStartedALane(t *testing.T) {
 	done := make(chan struct{})
 	go func() {

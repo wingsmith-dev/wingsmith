@@ -62,7 +62,7 @@ func run() error {
 		return err
 	}
 	// The manager runs either way. Its cached client is what the desired-state store reads and
-	// writes, and that store keeps working read-only — what stops is the controller that would
+	// writes, and that store keeps working read-only: what stops is the controller that would
 	// turn those CRDs into Kubernetes objects, which is simply never registered.
 	// One scrape of the exporters, read by both loops. The observation loop publishes the
 	// pod-to-accelerator binding it already read; the reconcile loop uses it to say which cards
@@ -110,7 +110,7 @@ func run() error {
 		return fmt.Errorf("build checkpoint client: %w", err)
 	}
 	// Discovery is how the observation loop learns whether a leader-worker backend is installed.
-	// Built here from the same rest config rather than inside the discoverer so that a cluster
+	// Built here from the same rest config, not inside the discoverer so that a cluster
 	// this operator cannot even reach discovery on fails at startup, where it is visible, rather
 	// than degrading to "no multi-node backend" on every tick.
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restCfg)
@@ -202,8 +202,8 @@ func run() error {
 
 	observer.Bind(client)
 	executor.Bind(client)
-	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains —
-	// New starts it — but a SIGTERM would stop the process with steps still queued and nothing
+	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains,
+	// New starts it, but a SIGTERM would stop the process with steps still queued and nothing
 	// said about them, leaving the plane waiting for points on a curve this operator will never
 	// measure. Start makes the shutdown report them refused and retryable instead.
 	executor.Start(ctx)

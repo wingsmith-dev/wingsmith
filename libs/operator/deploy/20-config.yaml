@@ -8,7 +8,7 @@
 #     --from-literal=enrolment-token=<token>
 #
 # 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod fails
-# to start rather than dialling the hub with no credential.
+# to start instead of dialling the hub with no credential.
 apiVersion: v1
 kind: ConfigMap
 metadata:

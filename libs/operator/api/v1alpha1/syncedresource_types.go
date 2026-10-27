@@ -6,8 +6,8 @@ import (
 )
 
 // SyncedResourceSpec is the durable local copy of one piece of desired state received from the
-// hub. The payload is held as it arrived rather than as typed fields: the wire schema evolves with
-// the plane, and the CRD stays a faithful copy of what the plane said rather than this operator's
+// hub. The payload is held as it arrived, not as typed fields: the wire schema evolves with
+// the plane, and the CRD stays a faithful copy of what the plane said instead of this operator's
 // reading of it.
 type SyncedResourceSpec struct {
 	// Kind is the domain object kind as named on the wire.
@@ -28,7 +28,7 @@ type SyncedResourceSpec struct {
 	// verify and write nothing to the cluster; managed means render and converge. Empty reads as
 	// observed, so an object from a plane that predates the field is never managed by accident.
 	//
-	// This is the gate, and it is deliberately not the presence of Adopt. Where an object came
+	// This is the gate, and it is not the presence of Adopt. Where an object came
 	// from is a historical fact; whether this operator may act on it is a decision the plane
 	// makes and can reverse (ADR 0009).
 	// +kubebuilder:validation:Enum=observed;managed
@@ -37,17 +37,17 @@ type SyncedResourceSpec struct {
 
 	// Adopt names a cluster object that already exists and is already running, promoted from a
 	// discovered workload. It is provenance and a drift check: the reconciler takes ownership in
-	// place rather than applying a rendered spec over it, and only while the live object still
+	// place instead of applying a rendered spec over it, and only while the live object still
 	// digests to SpecFingerprint.
 	//
-	// Both fields are on the durable copy rather than read out of the payload each time because
+	// Both fields are on the durable copy, not read out of the payload each time because
 	// they are safety gates. A gate that depends on parsing the domain schema is a gate that
 	// opens when the parse fails.
 	// +optional
 	Adopt *AdoptRef `json:"adopt,omitempty"`
 }
 
-// Authority values. Observed is the zero value on purpose: nothing acquires management by omission.
+// Authority values. Observed is the zero value: nothing acquires management by omission.
 const (
 	AuthorityObserved = "observed"
 	AuthorityManaged  = "managed"
@@ -89,8 +89,8 @@ type SyncedResourceStatus struct {
 // +kubebuilder:printcolumn:name="Revision",type=integer,JSONPath=`.spec.revision`
 // +kubebuilder:printcolumn:name="Observed",type=integer,JSONPath=`.status.observedRevision`
 
-// SyncedResource is one declared object from the plane — a deployment, an artifact, a cache or a
-// cluster component — held in the cluster so the operator keeps reconciling it through a
+// SyncedResource is one declared object from the plane, a deployment, an artifact, a cache or a
+// cluster component, held in the cluster so the operator keeps reconciling it through a
 // control-plane outage.
 type SyncedResource struct {
 	metav1.TypeMeta   `json:",inline"`

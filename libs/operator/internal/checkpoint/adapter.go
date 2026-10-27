@@ -8,9 +8,9 @@ import (
 
 // Adapter presents a Store as the sync client's Checkpointer.
 //
-// The two carry the same three facts — session, contiguous applied seq, and whether this side can
-// still reproduce its own stream — so the adaptation is a rename rather than a translation. The
-// lossy flag in particular is passed through rather than folded into an empty cursor: the client
+// The two carry the same three facts, session, contiguous applied seq, and whether this side can
+// still reproduce its own stream, so the adaptation is a rename instead of a translation. The
+// lossy flag in particular is passed through, not folded into an empty cursor: the client
 // declares it in hello, and a hub that is told the truth can hand back a fresh session instead of
 // inferring one from a suspiciously blank resume.
 type Adapter struct{ Store Store }
@@ -33,7 +33,7 @@ func (a *Adapter) Load(ctx context.Context) (syncpkg.Cursor, error) {
 // treats as fatal to the session: a cursor that cannot be recorded is not a cursor.
 //
 // A save never clears the lossy marker. Clearing is the business of the two things that actually
-// repair loss — a fresh session, which the Store clears across, and a completed resync — and an
+// repair loss (a fresh session, which the Store clears across, and a completed resync) and an
 // ordinary cursor advance carries no evidence about either.
 func (a *Adapter) Save(ctx context.Context, c syncpkg.Cursor) error {
 	if err := a.Store.Save(ctx, State{SessionID: c.SessionID, AppliedSeq: c.Seq, Lossy: c.Lossy}); err != nil {

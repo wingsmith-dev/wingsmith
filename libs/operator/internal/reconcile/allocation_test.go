@@ -17,7 +17,7 @@ func (f fakeDevices) DevicesForPod(namespace, name string) []string {
 	return f[observe.PodKey(namespace, name)]
 }
 
-// allocatingReconciler is a reconciler with a known device binding and nothing else — the rollout
+// allocatingReconciler is a reconciler with a known device binding and nothing else: the rollout
 // helpers it exercises read pods that are handed to them, so no API server is involved.
 func allocatingReconciler(devices DeviceIndex) *SyncedResourceReconciler {
 	return &SyncedResourceReconciler{ClusterID: "ap-cluster-1", Devices: devices}
@@ -77,7 +77,7 @@ func TestAReplicaWithNoKnownBindingReportsNoAllocation(t *testing.T) {
 }
 
 // TestNoDeviceIndexReportsNoAllocations: a loop that cannot read the exporters does not know what
-// anything is holding, and must say nothing rather than say zero.
+// anything is holding, and must say nothing, not say zero.
 func TestNoDeviceIndexReportsNoAllocations(t *testing.T) {
 	r := allocatingReconciler(nil)
 	out := r.rolloutFrom([]corev1.Pod{gpuPod("gemma-decode-0", "node-a")}, testDeploymentDesired(), 1, "", "")
