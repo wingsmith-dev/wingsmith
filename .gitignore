@@ -26,3 +26,12 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 .claude/
+
+# Coverage output (`just cov`, pytest-cov, go test -coverprofile, vitest)
+.coverage
+.coverage.*
+coverage.xml
+coverage_html/
+htmlcov/
+coverage.out
+coverage.html
