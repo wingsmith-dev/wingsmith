@@ -555,7 +555,7 @@ func pollInterval(raw string) (time.Duration, error) {
 // phase change instead of every poll, so a slow drain prints a line when
 // something actually happened.
 func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Duration) error {
-	step := a.Report.Step("waiting for " + ref)
+	step := a.Report.Step("waiting for %s", ref)
 	last := ""
 	var op api.Operation
 	expired, err := a.poll(every, func(ctx context.Context) (bool, error) {

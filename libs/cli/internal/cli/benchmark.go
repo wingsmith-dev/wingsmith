@@ -724,7 +724,7 @@ This is the table the plane validates --param against.`,
 // waitForBenchmark polls one run to a terminal phase, reporting phase changes
 // instead of every poll.
 func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Duration) error {
-	step := a.Report.Step("waiting for " + ref)
+	step := a.Report.Step("waiting for %s", ref)
 	last := ""
 	var run api.BenchmarkRun
 	expired, err := a.poll(every, func(ctx context.Context) (bool, error) {

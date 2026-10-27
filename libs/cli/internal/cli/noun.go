@@ -104,7 +104,7 @@ func (n noun[T]) runList(app *App, cmd *cobra.Command, f *filters) error {
 	ctx, cancel := app.RequestContext()
 	defer cancel()
 
-	step := app.Report.Step("listing " + n.pluralName())
+	step := app.Report.Step("listing %s", n.pluralName())
 	page, err := n.list(ctx, app.Backend, opts)
 	if err != nil {
 		step.Fail("failed")
