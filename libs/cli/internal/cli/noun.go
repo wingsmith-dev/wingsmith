@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -297,8 +298,12 @@ func (n noun[T]) resolve(ctx context.Context, app *App, ref string) (T, error) {
 func (n noun[T]) resolveExact(ctx context.Context, app *App, ref string) (T, error) {
 	item, err := n.lookup(ctx, app, ref, func(key, ref string) bool { return key == ref })
 	if errs.As(err) != nil && errs.As(err).Code == errs.CodeNotFound {
-		err = errs.As(err).WithCause("a verb that changes something needs the full id or name, never a prefix").
-			WithFix("Find the full name", "hgr "+n.name+" ls")
+		e := errs.As(err).WithCause("a verb that changes something needs the full id or name, never a prefix")
+		list := "hgr " + n.name + " ls"
+		if !slices.ContainsFunc(e.Remediation, func(a errs.Action) bool { return a.Command == list }) {
+			e = e.WithFix("Find the full name", list)
+		}
+		err = e
 	}
 	return item, err
 }

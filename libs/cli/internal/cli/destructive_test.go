@@ -26,6 +26,9 @@ func TestDestructiveVerbsNeverResolveByPrefix(t *testing.T) {
 		if code != 4 {
 			t.Errorf("hgr %s exited %d, want 4 (NOT_FOUND): %s", strings.Join(args, " "), code, errOut)
 		}
+		if n := strings.Count(errOut, "hgr "+args[0]+" ls"); n > 1 {
+			t.Errorf("hgr %s suggests the same listing %d times: %s", strings.Join(args, " "), n, errOut)
+		}
 	}
 	if _, _, code := run(t, "workload", "get", "chat"); code != 0 {
 		t.Fatal("a prefix-addressed rm deleted the workload anyway")
