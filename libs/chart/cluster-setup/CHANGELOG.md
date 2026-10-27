@@ -36,6 +36,10 @@ upgrade sources; install fresh.
   network policy on, the ingress controller in `networkPolicy.frontendFrom`.
 - `frontend.enabled` and `operator.frontend.enabled` are removed in favour of
   `frontend.mode`; the chart refuses either with migration instructions.
+- `fabric.devices` alone no longer means EFA. Set `fabric.type: efa` beside it
+  (or `rdma` with `fabric.resource`); the chart refuses devices with no type.
+  The operator now gets `HANGAR_FABRIC` and `HANGAR_FABRIC_DEVICES` instead of
+  `HANGAR_EFA_DEVICES`.
 
 ### Added
 
@@ -43,6 +47,13 @@ upgrade sources; install fresh.
   images the plane can have this cluster run: the operator refuses an engine,
   frontend or prefetch image outside the prefixes, and a benchmark harness not
   on the list. Both are empty by default, which keeps today's behaviour.
+- `fabric.type` (`efa` or `rdma`) and `fabric.privileged`, for an RDMA fabric
+  that is not AWS EFA.
+- `pools.gpuTolerationKey`, `pools.gpuTolerationValue` and
+  `pools.cacheTaintValue`, for pools tainted differently from the operator's
+  defaults.
+- `operator.benchmark.tokenSecret` hands benchmark jobs a Secret's keys as
+  environment, for a tokenizer in a gated repository.
 - `values.schema.json` refuses a value of the wrong type before anything
   renders, such as `cluster.readOnly: "false"` as a string, which the templates
   would read as true.

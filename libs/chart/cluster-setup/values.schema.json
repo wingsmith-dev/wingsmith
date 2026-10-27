@@ -74,7 +74,10 @@
         "labelKey": { "type": "string" },
         "gpuValue": { "$ref": "#/definitions/nameOrNumber" },
         "cacheValue": { "$ref": "#/definitions/nameOrNumber" },
-        "cacheTaintKey": { "type": "string" }
+        "cacheTaintKey": { "type": "string" },
+        "cacheTaintValue": { "$ref": "#/definitions/nameOrNumber" },
+        "gpuTolerationKey": { "type": "string" },
+        "gpuTolerationValue": { "$ref": "#/definitions/nameOrNumber" }
       }
     },
     "workloadNamespace": {
@@ -103,8 +106,10 @@
     "fabric": {
       "type": "object",
       "properties": {
+        "type": { "enum": ["", "efa", "rdma"] },
         "devices": { "type": "integer", "minimum": 0 },
         "resource": { "type": "string" },
+        "privileged": { "type": ["boolean", "null"] },
         "nixlBackends": { "$ref": "#/definitions/stringList" }
       }
     },
@@ -142,7 +147,8 @@
         "benchmark": {
           "type": "object",
           "properties": {
-            "images": { "$ref": "#/definitions/stringList" }
+            "images": { "$ref": "#/definitions/stringList" },
+            "tokenSecret": { "type": "string" }
           }
         }
       }

@@ -170,6 +170,24 @@ different numbers of replicas with nothing anywhere saying so.
 path, off by default. The frontend behind it authenticates nobody, so the chart refuses the route
 unless `serving.middlewares` names a Traefik Middleware that does.
 
+## Hardware
+
+The operator renders for NVIDIA GPUs only: workers request `nvidia.com/gpu`, and
+DCGM is where device identity comes from. What differs per cluster is in
+`pools` and `fabric`:
+
+- `pools.labelKey`, `pools.gpuValue` and `pools.cacheValue` (required) name the
+  node label and its values on the GPU pool and on the pool that downloads
+  weights. `pools.gpuTolerationKey`/`gpuTolerationValue` and
+  `pools.cacheTaintKey`/`cacheTaintValue` name the taints each pool carries.
+  Empty takes the operator's defaults, `nvidia.com/gpu` and `hangar.dev/cache`
+  with any value.
+- `fabric.type` is the RDMA fabric workers move KV over: empty for none, `efa`
+  for AWS Elastic Fabric Adapter, `rdma` for another RDMA device plugin (which
+  also needs `fabric.resource`). `fabric.devices` is the interfaces per worker
+  pod. Fabric workers run privileged with host IPC under `efa` and not under
+  `rdma`; `fabric.privileged` overrides that.
+
 ## The Dynamo subchart
 
 `dynamo-platform` (NVIDIA's chart, pinned at 1.4.1) is on by default because the

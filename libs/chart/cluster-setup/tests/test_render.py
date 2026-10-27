@@ -211,6 +211,7 @@ def test_metrics_agent_mounts_only_the_password_key(chart):
     assert volume["secret"]["items"] == [{"key": "enrolment-token", "path": "enrolment-token"}]
 
 
+
 # ── workload namespace ───────────────────────────────────────────────────────
 
 
@@ -654,3 +655,49 @@ def test_schema_refuses_a_wrong_type_before_rendering(chart, key, value, where):
 
 def test_schema_accepts_an_unquoted_numeric_cluster_name(chart):
     render(chart, **{"cluster.id": 123, "cluster.region": 7})
+
+
+# ── fabric, taints and the operator's other knobs ───────────────────────────
+
+
+def _operator_config(chart, **values):
+    return get(render(chart, **values), "ConfigMap", "hangar-operator")["data"]
+
+
+def test_no_fabric_by_default(chart):
+    data = _operator_config(chart)
+    for key in ("HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_PRIVILEGED",
+                "HANGAR_EFA_DEVICES", "HANGAR_GPU_TOLERATION_KEY", "HANGAR_CACHE_TAINT_VALUE",
+                "HANGAR_BENCHMARK_TOKEN_SECRET"):
+        assert key not in data, key
+
+
+def test_fabric_reaches_the_operator_under_its_own_keys(chart):
+    data = _operator_config(chart, **{"fabric.type": "efa", "fabric.devices": 4})
+    assert data["HANGAR_FABRIC"] == "efa"
+    assert data["HANGAR_FABRIC_DEVICES"] == "4"
+    assert "HANGAR_FABRIC_PRIVILEGED" not in data
+    data = _operator_config(chart, **{"fabric.type": "rdma", "fabric.devices": 8,
+                                      "fabric.resource": "rdma/ib", "fabric.privileged": False})
+    assert (data["HANGAR_FABRIC"], data["HANGAR_FABRIC_RESOURCE"]) == ("rdma", "rdma/ib")
+    assert data["HANGAR_FABRIC_PRIVILEGED"] == "false"
+
+
+@pytest.mark.parametrize("values,says", [
+    ({"fabric.devices": 4}, "fabric.type=efa"),
+    ({"fabric.type": "efa"}, "fabric.devices is 0"),
+    ({"fabric.type": "rdma", "fabric.devices": 8}, "fabric.resource"),
+])
+def test_incomplete_fabric_is_refused(chart, values, says):
+    assert says in refusal(chart, **values)
+
+
+def test_taints_and_benchmark_token_reach_the_operator(chart):
+    data = _operator_config(chart, **{
+        "pools.gpuTolerationKey": "example.com/gpu", "pools.gpuTolerationValue": "true",
+        "pools.cacheTaintValue": "cache", "operator.benchmark.tokenSecret": "hf-token-secret"})
+    assert data["HANGAR_GPU_TOLERATION_KEY"] == "example.com/gpu"
+    assert data["HANGAR_GPU_TOLERATION_VALUE"] == "true"
+    assert data["HANGAR_CACHE_TAINT_VALUE"] == "cache"
+    assert data["HANGAR_BENCHMARK_TOKEN_SECRET"] == "hf-token-secret"
+

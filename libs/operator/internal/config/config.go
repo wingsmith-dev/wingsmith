@@ -316,7 +316,7 @@ func Load() (*Config, error) {
 		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
 
-	// HANGAR_EFA_DEVICES is the older spelling of an EFA fabric, still what the chart writes.
+	// HANGAR_EFA_DEVICES is the older spelling of an EFA fabric, what charts before 0.3.0 wrote.
 	// Honoured only when HANGAR_FABRIC is unset, so a chart that has not moved to the new keys
 	// keeps its fabric instead of quietly falling back to TCP.
 	if efa := l.int("HANGAR_EFA_DEVICES", 0); efa != 0 {

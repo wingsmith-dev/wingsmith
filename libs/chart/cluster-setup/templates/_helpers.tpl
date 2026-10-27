@@ -234,6 +234,19 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if and .Values.serving.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.frontendFrom) -}}
 {{- fail "serving.enabled is true with networkPolicy.enabled, but networkPolicy.frontendFrom is empty — the frontend policy would drop every request the route forwards. Add the ingress controller's namespace, e.g. networkPolicy.frontendFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: traefik}}}]." -}}
 {{- end -}}
+{{- $fabric := .Values.fabric.type | default "" | toString -}}
+{{- if not (has $fabric (list "" "efa" "rdma")) -}}
+{{- fail (printf "fabric.type is %q: it takes efa (AWS Elastic Fabric Adapter), rdma (any other RDMA device plugin), or empty for none." $fabric) -}}
+{{- end -}}
+{{- if and (not $fabric) (gt (int .Values.fabric.devices) 0) -}}
+{{- fail "fabric.devices is set but fabric.type is empty. Name the fabric: fabric.type=efa for AWS Elastic Fabric Adapter (what fabric.devices alone used to mean), or fabric.type=rdma with fabric.resource for another RDMA device plugin." -}}
+{{- end -}}
+{{- if and $fabric (lt (int .Values.fabric.devices) 1) -}}
+{{- fail (printf "fabric.type is %s but fabric.devices is 0, so worker pods would ask for no interfaces. Set fabric.devices to the interfaces one worker pod uses, or clear fabric.type." $fabric) -}}
+{{- end -}}
+{{- if and (eq $fabric "rdma") (not .Values.fabric.resource) -}}
+{{- fail "fabric.type is rdma but fabric.resource is empty. Name the device plugin's extended resource (rdma/hca, rdma/ib or your vendor's); read it off a GPU node's .status.allocatable." -}}
+{{- end -}}
 {{- if .Values.monitoring.enabled -}}
 {{- if not .Values.monitoring.remoteWrite.url -}}
 {{- fail "monitoring.enabled is true but monitoring.remoteWrite.url is empty — set it to the central store's write endpoint (https://metrics.example.com/api/v1/write). An agent with no remote_write scrapes the cluster and discards every sample, which looks like a healthy install and produces empty console panels." -}}

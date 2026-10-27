@@ -26,7 +26,9 @@ cluster:
   # comma-separated list of cordon, drain and benchmark. Each one adds only the
   # RBAC it needs: benchmark creates Jobs in the workload namespace and reads
   # their logs, cordon patches nodes, drain also evicts pods. Empty refuses all
-  # of them. Ignored when readOnly is false, where every operation is on.
+  # of them. Ignored when readOnly is false, where every operation is on,
+  # including benchmark, which runs a harness image from
+  # `operator.benchmark.images` in the workload namespace.
   allowedOperations: ""
   logLevel: info
   logFormat: json
@@ -80,16 +82,25 @@ imagePullSecret:
 
 # ── What this cluster's hardware looks like ───────────────────────────────────
 
-# All three are required: the node label that names a pool, its value on the GPU
-# nodes, and its value on the nodes that download model weights. The operator's
-# own default key is unlikely to match your nodes, so an empty value discovers no
-# pools, and a `cacheValue` naming a pool that does not exist leaves prefetch
-# jobs Pending.
+# The first three are required: the node label that names a pool, its value on
+# the GPU nodes, and its value on the nodes that download model weights. The
+# operator's own default key is unlikely to match your nodes, so an empty value
+# discovers no pools, and a `cacheValue` naming a pool that does not exist leaves
+# prefetch jobs Pending.
+#
+# The taints are optional. Empty takes the operator's defaults: workers tolerate
+# `nvidia.com/gpu` with any value, and prefetch jobs tolerate `hangar.dev/cache`
+# with any value. Set a value to tolerate only that value of the key. The
+# operator renders for NVIDIA GPUs only; the GPU resource is `nvidia.com/gpu`
+# whatever the taint is called.
 pools:
   labelKey: ""
   gpuValue: ""
   cacheValue: ""
   cacheTaintKey: ""
+  cacheTaintValue: ""
+  gpuTolerationKey: ""
+  gpuTolerationValue: ""
 
 # Where the operator renders models, and where the model cache and the
 # frontends live. Created by the chart and kept on `helm uninstall`, because
@@ -161,6 +172,11 @@ multinode:
 # The high-speed fabric a worker pod asks for, so that NIXL can move the KV cache
 # over RDMA instead of falling back to TCP on the pod network.
 #
+# `type` names it: empty for none, `efa` for AWS Elastic Fabric Adapter, or
+# `rdma` for any other RDMA device plugin (InfiniBand or RoCE on bare metal).
+# `devices` is how many interfaces one worker pod asks for, and must be set
+# with a type and left 0 without one.
+#
 # `devices: 0` asks for nothing, which is correct for any pool without the
 # interfaces. It is not a cosmetic default: with no request the device plugin
 # mounts no /dev/infiniband, UCX finds no RDMA transport, and prefill/decode
@@ -170,17 +186,24 @@ multinode:
 # look like a verdict on disaggregation rather than on the pod spec.
 #
 # `resource` is the extended-resource name, which belongs to whoever supplies the
-# compute rather than to the fabric. Empty means the AWS EFA device plugin's name,
-# `vpc.amazonaws.com/efa`. A bare-metal or non-EC2 pool runs a
-# different plugin -- `rdma/hca`, `rdma/ib`, a vendor name -- and carries a
+# compute and not to the fabric. Empty under `efa` means the AWS EFA device
+# plugin's name, `vpc.amazonaws.com/efa`; `rdma` requires it. A bare-metal pool
+# runs a different plugin (`rdma/hca`, `rdma/ib`, a vendor name) and carries a
 # different number of interfaces per chassis. Read both off the node:
 #   kubectl get node <n> -o jsonpath='{.status.allocatable}'
 # Asking for a name no node advertises leaves the pod Pending with no other
 # symptom, so a wrong value here reads as a scheduling problem.
+#
+# `privileged` runs fabric workers privileged with host IPC. Unset takes the
+# operator's default: on for `efa`, whose GPU memory registration needs it, and
+# off for `rdma`. Set it only when your plugin documents otherwise.
 fabric:
+  type: ""
   devices: 0
   resource: ""
-  # NIXL plugins the KV connector registers. Empty leaves vLLM's default of UCX.
+  privileged: null
+  # NIXL plugins the KV connector registers. Empty leaves vLLM's default of UCX,
+  # which suits InfiniBand and RoCE.
   #
   # On EFA this must be LIBFABRIC. EFA is a libfabric provider; NIXL ships
   # libplugin_UCX.so and libplugin_LIBFABRIC.so side by side and defaults to UCX,
@@ -249,6 +272,13 @@ operator:
     # refuse benchmarks altogether, leave `benchmark` out of
     # `cluster.allowedOperations` on a read-only cluster.
     images: []
+    # A Secret in the workload namespace whose keys become each benchmark job's
+    # environment, for a tokenizer in a gated repository. `hfToken.secretName`
+    # is the usual choice. Empty hands the jobs no credential.
+    tokenSecret: ""
+  # A synthetic probe put the operator's peak heap near 30Mi at 128 GPU nodes and
+  # near 220Mi at 1000 nodes with 7500 GPU pods. Raise the memory limit past a
+  # few hundred GPU nodes.
   resources:
     requests:
       cpu: 50m
@@ -392,15 +422,16 @@ frontend:
     # image, which is right for the ordinary case: the Dynamo runtime image
     # carries the frontend and the engine together.
     image: ""
-    # Whether each rendered frontend watches every Dynamo namespace on the
-    # cluster or only its own graph's. True is the only setting that currently
-    # works: the workers are pinned to the global namespace, so a
-    # frontend narrowed to its own graph discovers nothing at all.
+    # Whether each model's graph, its frontend and its workers together,
+    # registers in the cluster-wide Dynamo namespace (true) or in one of its own
+    # (false). The operator moves the two halves together, so a narrowed
+    # frontend still finds its own workers.
     #
-    # This is also the open edge of ADR 0013: while it is true, every frontend
-    # still discovers every worker, so a model one of them cannot tokenize still
-    # empties that frontend's model list — the blast radius is not yet contained.
-    # Narrowing both halves costs a restart of every worker on the cluster; see
+    # True is the open edge of ADR 0013: every frontend discovers every worker,
+    # so a model one of them cannot tokenize still empties that frontend's model
+    # list. False contains that, but has not yet been verified on a live cluster
+    # serving several models. Switching it restarts every worker on the
+    # cluster, since the namespace is part of the worker's pod spec; see
     # docs/decisions/0013-*.md before changing it.
     globalDynamoNamespace: true
     # Left empty to take the operator's own defaults.

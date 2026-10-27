@@ -31,6 +31,15 @@ data:
   {{- with .Values.pools.cacheTaintKey }}
   HANGAR_CACHE_TAINT_KEY: {{ . | quote }}
   {{- end }}
+  {{- with .Values.pools.cacheTaintValue | default "" | toString }}
+  HANGAR_CACHE_TAINT_VALUE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pools.gpuTolerationKey }}
+  HANGAR_GPU_TOLERATION_KEY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pools.gpuTolerationValue | default "" | toString }}
+  HANGAR_GPU_TOLERATION_VALUE: {{ . | quote }}
+  {{- end }}
 
   HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
   {{- with .Values.modelCache.localDir }}
@@ -39,7 +48,13 @@ data:
 
   HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
 
-  HANGAR_EFA_DEVICES: {{ .Values.fabric.devices | quote }}
+  {{- with .Values.fabric.type }}
+  HANGAR_FABRIC: {{ . | quote }}
+  HANGAR_FABRIC_DEVICES: {{ $.Values.fabric.devices | quote }}
+  {{- end }}
+  {{- if kindIs "bool" .Values.fabric.privileged }}
+  HANGAR_FABRIC_PRIVILEGED: {{ .Values.fabric.privileged | quote }}
+  {{- end }}
   {{- with .Values.fabric.resource }}
   HANGAR_FABRIC_RESOURCE: {{ . | quote }}
   {{- end }}
@@ -55,6 +70,9 @@ data:
   {{- end }}
   {{- with .Values.operator.benchmark.images }}
   HANGAR_BENCHMARK_IMAGES: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.operator.benchmark.tokenSecret }}
+  HANGAR_BENCHMARK_TOKEN_SECRET: {{ . | quote }}
   {{- end }}
 
   # One frontend per model, rendered by the operator into each model's own graph.
