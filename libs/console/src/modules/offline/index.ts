@@ -414,11 +414,6 @@ function hfSlug(source: string): string {
 }
 
 /**
- * Registered ahead of the artifact collection for the same reason `/resolve` is:
- * the fixture router takes the first matching route, and `/artifacts/:ref` would
- * otherwise swallow the sub-resource.
- */
-/**
  * `GET /artifacts/:ref/usage` and its batched form, with the plane's
  * definitions: a workload counts once whether it serves the weights or names
  * them as an adapter, and downstream is the artifacts naming one as base.
@@ -437,6 +432,11 @@ function artifactUsage(artifact: Artifact) {
   }
 }
 
+/**
+ * Registered ahead of the artifact collection for the same reason `/resolve` is:
+ * the fixture router takes the first matching route, and `/artifacts/:ref` would
+ * otherwise swallow the sub-resource.
+ */
 registerFixtures([
   {
     method: "GET",
