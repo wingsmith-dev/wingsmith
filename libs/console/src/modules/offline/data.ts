@@ -571,7 +571,7 @@ for (const spec of SPECS) {
         operator_version: spec.operatorVersion,
         labels: spec.labels,
         taints: node.cordoned
-          ? [{ key: "hangar.io/cordoned", effect: "NoSchedule" }]
+          ? [{ key: "node.kubernetes.io/unschedulable", effect: "NoSchedule" }]
           : [],
         devices: {
           total: node.devices,
