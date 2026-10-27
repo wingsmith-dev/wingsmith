@@ -443,7 +443,7 @@ registerFixtures([
 
 /** `metadata.huggingface_id` first, then an `hf://` location with its revision dropped. */
 function artifactSource(artifact: Artifact): string | null {
-  const stored = artifact.metadata?.huggingface_id
+  const stored = artifact.metadata.huggingface_id
   if (typeof stored === "string" && hfSlug(stored)) return `hf://${stored}`
   for (const location of artifact.locations) {
     const candidate = location.uri.split("@")[0]
@@ -549,7 +549,7 @@ registerFixtures([
           provider_model_id: slug,
           context_length: 131072,
           input_modalities: ["text"],
-          licence: found?.licence ?? null,
+          licence: found.licence,
           source_uri: `https://huggingface.co/${slug}`,
           recorded_by: "huggingface",
           recorded_at: new Date().toISOString(),
@@ -686,7 +686,7 @@ registerFixtures([
     path: "/workloads/:ref/revisions/:revision",
     handler: ({ params, body }: FixtureContext) => {
       const workload = workloadByRef(params.ref)
-      const note = (body as { note?: string | null })?.note ?? null
+      const note = (body as { note?: string | null } | null)?.note ?? null
       revisionNotes.set(workload.id, note)
       return firstRevision(workload)
     },
@@ -749,7 +749,7 @@ registerFixtures([
     path: "/tenants/:ref/keys",
     handler: ({ params, body }: FixtureContext) => {
       const tenant = tenantByRef(params.ref)
-      const name = (body as { name?: string })?.name || "default"
+      const name = (body as { name?: string } | null)?.name || "default"
       const key: TenantAPIKey = {
         id: uid("tak_"),
         tenant: tenant.slug,
@@ -1229,7 +1229,7 @@ registerFixtures([
  */
 function servingDraft(workload: DiscoveredWorkload): ServingDraft {
   const args: Record<string, string> = {}
-  const list = workload.spec?.args ?? []
+  const list = workload.spec.args ?? []
   for (let i = 0; i < list.length; i++) {
     if (!list[i].startsWith("--")) continue
     const next = list[i + 1]
@@ -1237,7 +1237,7 @@ function servingDraft(workload: DiscoveredWorkload): ServingDraft {
     if (next && !next.startsWith("--")) i++
   }
   const match = /\/([a-z0-9]+)-runtime:([^@\s]+)/.exec(
-    workload.spec?.image ?? ""
+    workload.spec.image ?? ""
   )
   const model = args["model"] ?? null
   const context = args["max-model-len"] ? Number(args["max-model-len"]) : null
@@ -1247,7 +1247,7 @@ function servingDraft(workload: DiscoveredWorkload): ServingDraft {
     name: args["served-model-name"] ?? workload.name,
     engine: match?.[1] ?? null,
     engine_runtime_version: match?.[2] ?? null,
-    engine_runtime_image: workload.spec?.image ?? null,
+    engine_runtime_image: workload.spec.image ?? null,
     engine_args: {},
     imported_args: args,
     context_length: context,
@@ -1686,7 +1686,7 @@ registerFixtures([
       const endpoint = endpoints[index]
       const now = new Date()
       const month =
-        query?.get("month") ??
+        query.get("month") ??
         `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`
       const [year, number] = month.split("-").map(Number)
       const start = new Date(Date.UTC(year, number - 1, 1))

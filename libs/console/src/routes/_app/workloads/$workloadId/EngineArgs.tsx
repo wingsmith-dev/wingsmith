@@ -24,8 +24,8 @@ export function EngineArgsPanel({
   workload: Workload
   onEdit?: () => void
 }) {
-  const resolved = workload.serving.resolved_engine_args ?? {}
-  const declared = workload.serving.engine_args ?? {}
+  const resolved = workload.serving.resolved_engine_args
+  const declared = workload.serving.engine_args
   const overrides = servingOverrides(
     workload.serving.engine,
     declared,

@@ -194,7 +194,7 @@ function RatioControl({
                 role: role.role,
                 weight: role.weight,
                 max_batch_tokens: role.max_batch_tokens,
-                engine_args: role.engine_args ?? {},
+                engine_args: role.engine_args,
               })),
             },
           },
@@ -380,9 +380,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
   )
   const [args, setArgs] = useState<Record<string, Record<string, unknown>>>(
     () =>
-      Object.fromEntries(
-        declared.map((r) => [r.role, { ...(r.engine_args ?? {}) }])
-      )
+      Object.fromEntries(declared.map((r) => [r.role, { ...r.engine_args }]))
   )
   const [valid, setValid] = useState(true)
 
@@ -392,8 +390,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
   const changed = declared.some(
     (role) =>
       (batch[role.role] ?? null) !== (role.max_batch_tokens ?? null) ||
-      JSON.stringify(args[role.role] ?? {}) !==
-        JSON.stringify(role.engine_args ?? {})
+      JSON.stringify(args[role.role] ?? {}) !== JSON.stringify(role.engine_args)
   )
 
   const save = () =>
@@ -547,7 +544,7 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
               )
               setArgs(
                 Object.fromEntries(
-                  declared.map((r) => [r.role, { ...(r.engine_args ?? {}) }])
+                  declared.map((r) => [r.role, { ...r.engine_args }])
                 )
               )
             }}

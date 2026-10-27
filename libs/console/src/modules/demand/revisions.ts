@@ -87,7 +87,7 @@ export function liveDigests(
 ): Record<string, number> {
   const total: Record<string, number> = {}
   for (const deployment of deployments)
-    for (const [digest, ready] of Object.entries(deployment.live_digests ?? {}))
+    for (const [digest, ready] of Object.entries(deployment.live_digests))
       total[digest] = (total[digest] ?? 0) + ready
   return total
 }

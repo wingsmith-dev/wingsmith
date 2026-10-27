@@ -203,7 +203,7 @@ export function WorkloadForm({
     engine_runtime_version: engineRuntimeVersion,
     engine_runtime_image: engineRuntimeImage || null,
     frontend_image: frontendImage || null,
-    engine_args: (engineArgs as Record<string, unknown>) ?? {},
+    engine_args: (engineArgs ?? {}) as Record<string, unknown>,
     quantization: quantization || null,
     dtype: dtype || null,
     parallelism: {
@@ -253,7 +253,7 @@ export function WorkloadForm({
             deadline_at: deadline || null,
             strategy,
             max_clusters: maxClusters,
-            overrides: (overrides as Record<string, unknown>) ?? {},
+            overrides: (overrides ?? {}) as Record<string, unknown>,
             labels,
           },
           revision: workload.revision,
@@ -306,7 +306,7 @@ export function WorkloadForm({
         gang_size: gangSize ?? 1,
         preemptible,
         deadline_at: deadline || null,
-        overrides: (overrides as Record<string, unknown>) ?? {},
+        overrides: (overrides ?? {}) as Record<string, unknown>,
         labels,
       },
       {
@@ -631,7 +631,7 @@ export function WorkloadForm({
         engine={engine}
         value={behaviour}
         onChange={setBehaviour}
-        engineArgs={(engineArgs as Record<string, unknown>) ?? {}}
+        engineArgs={(engineArgs ?? {}) as Record<string, unknown>}
       />
 
       <CapabilityFields value={capabilities} onChange={setCapabilities} />

@@ -130,9 +130,7 @@ export function EditDetailsDialog({
   const { save, pending, error } = useSection(workload, onOpenChange)
   const [name, setName] = useState(workload.name)
   const [deadline, setDeadline] = useState(workload.deadline_at ?? "")
-  const [labels, setLabels] = useState<Record<string, string>>(
-    workload.labels ?? {}
-  )
+  const [labels, setLabels] = useState<Record<string, string>>(workload.labels)
 
   return (
     <FormDialog
@@ -190,16 +188,14 @@ export function EditPlacementDialog({
   const { save, pending, error } = useSection(workload, onOpenChange)
   const { data: priorities } = usePriorityClassOptions()
   const { data: clusters } = useClusterOptions()
-  const [priorityClass, setPriorityClass] = useState(
-    workload.priority_class ?? ""
-  )
+  const [priorityClass, setPriorityClass] = useState(workload.priority_class)
   const [preemptible, setPreemptible] = useState(workload.preemptible)
   const [strategy, setStrategy] = useState(workload.strategy)
   const [maxClusters, setMaxClusters] = useState<number | null>(
     workload.max_clusters ?? null
   )
   const [floors, setFloors] = useState<Record<string, number>>(
-    workload.cluster_floors ?? {}
+    workload.cluster_floors
   )
 
   return (
@@ -412,7 +408,7 @@ export function EditEngineDialog({
       kv_cache_dtype: kvCacheDtype || null,
       kv_cache_fraction: kvCacheFraction,
       prefix_cache_enabled: prefixCache,
-      prefix_cache_config: serving.cache.prefix_cache_config ?? {},
+      prefix_cache_config: serving.cache.prefix_cache_config,
     },
     shape: {
       device_class: deviceClass,
@@ -664,10 +660,10 @@ export function EditEngineArgsDialog({
   const { save, pending, error } = useSection(workload, onOpenChange)
   const arm = useArmed(workload)
   const [engineArgs, setEngineArgs] = useState<unknown>(
-    workload.serving.engine_args ?? {}
+    workload.serving.engine_args
   )
   const [argsValid, setArgsValid] = useState(true)
-  const [overrides, setOverrides] = useState<unknown>(workload.overrides ?? {})
+  const [overrides, setOverrides] = useState<unknown>(workload.overrides)
   const [overridesValid, setOverridesValid] = useState(true)
 
   return (
@@ -687,9 +683,9 @@ export function EditEngineArgsDialog({
           save(
             {
               serving: {
-                engine_args: (engineArgs as Record<string, unknown>) ?? {},
+                engine_args: (engineArgs ?? {}) as Record<string, unknown>,
               },
-              overrides: (overrides as Record<string, unknown>) ?? {},
+              overrides: (overrides ?? {}) as Record<string, unknown>,
             },
             "Engine arguments"
           )
@@ -760,7 +756,7 @@ export function EditServingDialog({
           arm.disarm()
           setBehaviour(value)
         }}
-        engineArgs={workload.serving.engine_args ?? {}}
+        engineArgs={workload.serving.engine_args}
       />
 
       <RollNotice workload={workload} armed={arm.armed} />

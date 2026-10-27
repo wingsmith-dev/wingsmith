@@ -76,9 +76,9 @@ export function PolicyForm({
     allowed_device_classes: deviceClasses,
     allowed_clusters: split(allowedClusters),
     denied_clusters: split(deniedClusters),
-    rules: (rules as Record<string, unknown>) ?? {},
+    rules: (rules ?? {}) as Record<string, unknown>,
     enabled,
-    attachments: (attachments as PolicyAttachmentRequest[]) ?? [],
+    attachments: (attachments ?? []) as PolicyAttachmentRequest[],
   }
 
   const done = (verb: string) => {

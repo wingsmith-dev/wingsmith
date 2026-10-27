@@ -474,7 +474,7 @@ export function WorkloadDetailPage() {
                         {formatAbsolute(workload.created_at)}
                       </Field>
                       <Field label="Labels" className="sm:col-span-2">
-                        <Labels labels={workload.labels ?? {}} />
+                        <Labels labels={workload.labels} />
                       </Field>
                     </FieldGrid>
                   </Panel>
@@ -583,7 +583,7 @@ export function WorkloadDetailPage() {
                           : "not required"}
                       </Field>
                       <Field label="Adapters">
-                        {workload.adapter_artifact_ids?.length || "none"}
+                        {workload.adapter_artifact_ids.length || "none"}
                       </Field>
                       <Field label="Digest" className="sm:col-span-2">
                         <span className="font-mono text-2xs break-all text-muted-foreground">
@@ -618,13 +618,11 @@ export function WorkloadDetailPage() {
 
             {/* ---- Performance -------------------------------------- */}
             <TabsContent value="performance" className="space-y-4">
-              {workload && (
-                <PerformanceView
-                  workloadId={workload.id}
-                  placed={workload.deployments.length > 0}
-                  gpuCount={placement?.gpu_count ?? 0}
-                />
-              )}
+              <PerformanceView
+                workloadId={workload.id}
+                placed={workload.deployments.length > 0}
+                gpuCount={placement?.gpu_count ?? 0}
+              />
             </TabsContent>
 
             {/* ---- Workbench ---------------------------------------- */}

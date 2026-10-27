@@ -139,10 +139,5 @@ describe("liveDigests", () => {
 
   it("survives a cluster that has reported no digest at all", () => {
     expect(liveDigests([{ live_digests: {} }])).toEqual({})
-    expect(
-      liveDigests([
-        { live_digests: undefined as unknown as Record<string, number> },
-      ])
-    ).toEqual({})
   })
 })

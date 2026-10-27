@@ -54,7 +54,7 @@ export function ActivityStream({
         (subject === "weights" && isCache) ||
         (subject === "plane" && isPlane) ||
         (!isCache && !isPlane && event.subject.id === subject) ||
-        event.details?.deployment_id === subject
+        event.details.deployment_id === subject
       const matchesSeverity = severity === "all" || event.severity === severity
       const matchesSearch =
         needle === "" ||

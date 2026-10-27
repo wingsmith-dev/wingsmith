@@ -48,7 +48,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   // the hand-made-token command is the only one.
   const usingGh = loginVia === "gh" && view?.registry_login_gh != null
   const loginCommand =
-    (usingGh ? view?.registry_login_gh : view?.registry_login) ?? ""
+    (usingGh ? view.registry_login_gh : view?.registry_login) ?? ""
 
   const steps = [
     {

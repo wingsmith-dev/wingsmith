@@ -302,7 +302,7 @@ export function ArtifactFitmentPanel({
   contextLength?: number | null
   onContextLengthChange?: (contextLength: number) => void
 }) {
-  const declared = (artifact.metadata?.context_length ?? null) as number | null
+  const declared = (artifact.metadata.context_length ?? null) as number | null
   const selecting = mode === "select"
   const [scope, setScope] = useState<FitmentScope>("fleet")
   const [ownContextLength, setOwnContextLength] = useState<number | undefined>()
@@ -329,7 +329,7 @@ export function ArtifactFitmentPanel({
    * nothing — and nothing is the right answer for unquantized weights.
    */
   const declaredQuantization =
-    quantization || ((artifact.metadata?.quantization as string | null) ?? "")
+    quantization || ((artifact.metadata.quantization as string | null) ?? "")
 
   /** Selecting is always against the fleet: the other scope answers a purchase order. */
   const effectiveScope: FitmentScope = selecting ? "fleet" : scope

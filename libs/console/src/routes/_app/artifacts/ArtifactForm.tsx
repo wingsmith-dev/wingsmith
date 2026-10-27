@@ -111,7 +111,7 @@ export function ArtifactForm({
     licence: licence || null,
     parameter_count: parameterCount,
     project: project === UNSET ? null : project,
-    metadata: (metadata as Record<string, unknown>) ?? {},
+    metadata: (metadata ?? {}) as Record<string, unknown>,
     locations,
     upstream,
   }

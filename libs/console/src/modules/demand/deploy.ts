@@ -198,7 +198,7 @@ export function proposedCapabilities(
   const effective = behaviour ?? proposedBehaviour(upstream, claims)
   const tools = claims?.tool_calling === true || !!effective.tool_call_parser
   const reasoning = claims?.reasoning === true || !!effective.reasoning.parser
-  const modalities = claims?.input_modalities?.length
+  const modalities = claims?.input_modalities.length
     ? claims.input_modalities
     : block.input_modalities
   return {
@@ -206,7 +206,7 @@ export function proposedCapabilities(
     reasoning_supported: reasoning,
     tool_calling_supported: tools,
     tool_choice_modes: tools ? ["auto", "none", "required"] : [],
-    structured_output_modes: claims?.structured_output_modes?.length
+    structured_output_modes: claims?.structured_output_modes.length
       ? claims.structured_output_modes
       : block.structured_output_modes,
     // Text is always an input modality and the plane says so. A claim that lost it
@@ -283,7 +283,7 @@ function chosen(
  * hold the weights.
  */
 function perDeviceFloor(override: number | undefined): number {
-  if (override === undefined || override === null) return 0
+  if (override === undefined) return 0
   return override > 0 ? Math.ceil(override) : 0
 }
 
@@ -416,9 +416,9 @@ export function servingProvenance(
   if (claims?.reasoning === true) at.reasoning_supported = "publisher"
   else if (upstream?.reasoning_parser && claims?.reasoning !== false)
     at.reasoning_supported = "upstream"
-  if ((claims?.input_modalities?.length ?? 0) > 1)
+  if ((claims?.input_modalities.length ?? 0) > 1)
     at.input_modalities = "publisher"
-  if (claims?.structured_output_modes?.length)
+  if (claims?.structured_output_modes.length)
     at.structured_output_modes = "publisher"
 
   // A field somebody typed into is theirs, whatever proposed the value it replaced.
@@ -456,7 +456,7 @@ export function workloadsMatching(
       workload.serving.context_length === footprint.context_length &&
       workload.serving.parallelism.tensor === footprint.tensor_parallel &&
       workload.serving.parallelism.pipeline === footprint.pipeline_parallel &&
-      (workload.serving.quantization ?? "") === (footprint.quantization ?? "")
+      (workload.serving.quantization ?? "") === footprint.quantization
   )
 }
 

@@ -113,7 +113,7 @@ function makeResolver(
   const artifactById = new Map(artifacts.map((a) => [a.id, a]))
 
   return (endpoint: Endpoint) => {
-    const targets = endpoint.targets ?? []
+    const targets = endpoint.targets
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
     const deployment = primary
       ? deploymentById.get(primary.deployment_id)
@@ -262,7 +262,7 @@ function columns(
       key: "targets",
       header: "Targets",
       cell: (endpoint) => {
-        const targets = endpoint.targets ?? []
+        const targets = endpoint.targets
         const enabled = targets.filter((t) => t.enabled).length
         return (
           <div className="flex items-center gap-2">

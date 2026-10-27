@@ -70,7 +70,7 @@ export function TopologyChoice({
         />
       </div>
 
-      {disaggregated && roles && (
+      {roles && (
         <div className="space-y-2 rounded-md border p-3">
           <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
             Workers per group
@@ -206,7 +206,7 @@ export function RoleParamFields({
   return (
     <div className="space-y-3">
       {roles.map((role) => {
-        const refused = refusedRoleArgs(role.engine_args ?? {})
+        const refused = refusedRoleArgs(role.engine_args)
         return (
           <div key={role.role} className="space-y-2 rounded-md border p-3">
             <div className="flex items-baseline justify-between">
@@ -230,7 +230,7 @@ export function RoleParamFields({
             />
             <JsonField
               label="Engine args"
-              value={role.engine_args ?? {}}
+              value={role.engine_args}
               rows={3}
               onChange={(value, ok) =>
                 ok &&

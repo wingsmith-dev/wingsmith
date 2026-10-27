@@ -245,11 +245,11 @@ export function rolesAtGroupCount(
 export function roleOverrides(
   role: WorkloadRole
 ): { key: string; value: string }[] {
-  const rows = Object.entries(role.engine_args ?? {}).map(([key, value]) => ({
+  const rows = Object.entries(role.engine_args).map(([key, value]) => ({
     key,
     value: String(value === "" ? "(set)" : value),
   }))
-  if (role.max_batch_tokens !== null && role.max_batch_tokens !== undefined) {
+  if (role.max_batch_tokens !== null) {
     rows.unshift({
       key: "max-num-batched-tokens",
       value: role.max_batch_tokens.toLocaleString(),

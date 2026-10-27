@@ -214,7 +214,7 @@ function columns(
              * has reported a digest, which is not the same as nothing running.
              */
             cell: (deployment: WorkloadDeployment) => {
-              const entries = Object.entries(deployment.live_digests ?? {})
+              const entries = Object.entries(deployment.live_digests)
               if (!entries.length)
                 return (
                   <span className="font-mono text-2xs text-muted-foreground">

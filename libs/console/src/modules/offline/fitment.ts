@@ -227,9 +227,9 @@ function sizingOf(artifact: Artifact, quantization?: string): Sizing | null {
   if (!artifact.parameter_count) return null
   const quant =
     quantization ||
-    (artifact.metadata?.quantization as string | undefined) ||
+    (artifact.metadata.quantization as string | undefined) ||
     DEFAULT_QUANTIZATION
-  const stored = artifact.metadata?.shape as Partial<ModelShape> | undefined
+  const stored = artifact.metadata.shape as Partial<ModelShape> | undefined
   if (!stored?.num_hidden_layers)
     return {
       total_params: artifact.parameter_count,
@@ -491,7 +491,7 @@ export function fitment(
   const maxDevices = Math.min(query.max_devices ?? MAX_DEVICES, MAX_DEVICES)
   const sizing = sizingOf(artifact, query.quantization)
 
-  const declared = artifact.metadata?.context_length as number | undefined
+  const declared = artifact.metadata.context_length as number | undefined
   const contextLength =
     query.context_length ||
     declared ||

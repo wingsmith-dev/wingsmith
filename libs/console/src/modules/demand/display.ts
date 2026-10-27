@@ -84,7 +84,7 @@ export function formatParameters(count: number | null): string {
  * call means the person is not offered an action that can only fail.
  */
 export function artifactSource(artifact: Artifact): string | null {
-  const stored = artifact.metadata?.huggingface_id
+  const stored = artifact.metadata.huggingface_id
   if (typeof stored === "string" && stored.includes("/"))
     return `hf://${stored}`
   for (const location of artifact.locations) {
@@ -520,7 +520,7 @@ export function servingOverrides(
   const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
   const derived = servingArgs(engine, serving)
   const declared = new Map<string, string>()
-  for (const [key, value] of Object.entries(engineArgs ?? {})) {
+  for (const [key, value] of Object.entries(engineArgs)) {
     declared.set(String(key).replace(/^--/, ""), String(value))
   }
   const out: ServingOverride[] = []
