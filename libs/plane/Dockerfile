@@ -7,10 +7,10 @@
 # that runs the console dev server, wants.
 ARG CONSOLE=bundled
 
-FROM python:3.12.8-slim-bookworm AS console-none
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS console-none
 RUN mkdir -p /src/dist
 
-FROM node:22.19.0-bookworm-slim AS console-bundled
+FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS console-bundled
 WORKDIR /src
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -31,13 +31,12 @@ COPY console/ ./
 # tunnel, or an ingress without being rebuilt for each.
 ENV VITE_API_BASE_URL=""
 ARG VITE_API_MODE
-ARG VITE_API_PROJECT
 ARG VITE_READ_ONLY
 RUN pnpm run build
 
 FROM console-${CONSOLE} AS console
 
-FROM python:3.12.8-slim-bookworm AS build
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS build
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /bin/
 WORKDIR /src
 
@@ -59,7 +58,7 @@ COPY plane/README.md ./
 COPY packages/contract/devices.json ./contract/devices.json
 RUN uv sync --locked --no-dev
 
-FROM python:3.12.8-slim-bookworm
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
 
 # psycopg is the pure-Python build and loads libpq at import time. A developer's machine has one
 # already, which is why this is missing rather than wrong: the image had never been run. Installing

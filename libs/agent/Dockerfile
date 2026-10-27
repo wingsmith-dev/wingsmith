@@ -1,7 +1,7 @@
 # Build context is `libs/`, not `libs/agent/` — see the note in gateway/Dockerfile. The agent requires
 # libs/packages/tunnel through a `replace`, and a path outside the context does not exist to the
 # builder.
-FROM golang:1.25-alpine AS build
+FROM golang:1.25.14-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS build
 WORKDIR /src
 
 COPY packages/tunnel/ ./packages/tunnel/
@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION}" \
       -o /out/agent ./cmd/agent
 
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 # Links the GHCR package to this repository. Without it a pushed package is owned
 # by the org and attached to nothing, so its access comes from a per-package list
 # rather than from repository permissions — which is also why a fine-grained token,

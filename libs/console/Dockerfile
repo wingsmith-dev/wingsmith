@@ -1,4 +1,4 @@
-FROM node:22.19.0-bookworm-slim AS build
+FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS build
 WORKDIR /src
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -13,7 +13,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 COPY . .
 RUN pnpm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 
 # Nothing about the plane is baked into the bundle. 40-hangar-config.sh writes config.js and the
 # CSP from these at container start, so one image serves any plane. An empty base URL means the
