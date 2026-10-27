@@ -186,11 +186,6 @@ class Harness:
             await asyncio.wait_for(self.task, timeout=2)
 
 
-async def settle() -> None:
-    for _ in range(8):
-        await asyncio.sleep(0)
-
-
 async def until(predicate: Any, timeout: float = 1.0) -> None:
     """Waits for a condition the session reaches on its own event-loop turns."""
     async with asyncio.timeout(timeout):
@@ -699,7 +694,6 @@ async def test_a_full_outbound_buffer_closes_the_connection() -> None:
     with pytest.raises(Backpressure):
         for _ in range(8):
             await harness.session.send_desired("deployment.desired", desired_payload())
-            await settle()
 
     assert harness.connection.closed.is_set(), "hub -> operator never drops; it closes instead"
     assert harness.connection.close_code == 1013
