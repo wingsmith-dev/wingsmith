@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -577,5 +578,111 @@ func TestOnlyForwardedPathsReachTheFrontend(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{}`)))
 	if recorder.Code != http.StatusOK || len(reached) != 1 {
 		t.Fatalf("POST /v1/embeddings = %d, frontend reached by %v", recorder.Code, reached)
+	}
+}
+
+type finished struct {
+	outcome, code string
+}
+
+type recordingObserver struct {
+	mu       sync.Mutex
+	started  int
+	finished []finished
+}
+
+func (o *recordingObserver) RequestStarted() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.started++
+}
+
+func (o *recordingObserver) RequestFinished(outcome, code string, _ time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.finished = append(o.finished, finished{outcome, code})
+}
+
+// TestEveryRequestIsReportedWithWhatBecameOfIt pins the outcomes the agent's
+// request metrics are labelled with, one per way a request can end here.
+func TestEveryRequestIsReportedWithWhatBecameOfIt(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/embeddings" {
+			http.Error(w, "engine fell over", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer upstream.Close()
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedTarget := targetFor(t, closed)
+	closed.Close()
+
+	for _, tc := range []struct {
+		name   string
+		target Target
+		method string
+		path   string
+		want   finished
+	}{
+		{"answered", targetFor(t, upstream), http.MethodPost, "/v1/chat/completions", finished{OutcomeForwarded, "2xx"}},
+		{"engine error", targetFor(t, upstream), http.MethodPost, "/v1/embeddings", finished{OutcomeForwarded, "5xx"}},
+		{"unlisted path", targetFor(t, upstream), http.MethodGet, "/metrics", finished{OutcomeUnsupportedPath, "4xx"}},
+		{"no frontend", fixedTarget{err: ErrNoFrontend}, http.MethodPost, "/v1/chat/completions", finished{OutcomeNoFrontend, "5xx"}},
+		{"resolution failure", fixedTarget{err: errors.New("broken")}, http.MethodPost, "/v1/chat/completions", finished{OutcomeFrontendError, "5xx"}},
+		{"frontend down", closedTarget, http.MethodPost, "/v1/chat/completions", finished{OutcomeFrontendUnavailable, "5xx"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			observer := &recordingObserver{}
+			handler := NewHandler(tc.target, 0, WithObserver(observer))
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))
+			if observer.started != 1 || len(observer.finished) != 1 || observer.finished[0] != tc.want {
+				t.Fatalf("started %d, finished %+v, want one %+v", observer.started, observer.finished, tc.want)
+			}
+		})
+	}
+}
+
+// TestTheObserverKeepsStreamsFlushing guards the status-recording wrapper: if it
+// hid the Flusher, every SSE response would arrive in one piece at the end.
+func TestTheObserverKeepsStreamsFlushing(t *testing.T) {
+	release := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: first\n\n"))
+		w.(http.Flusher).Flush()
+		<-release
+		_, _ = w.Write([]byte("data: second\n\n"))
+	}))
+	defer upstream.Close()
+	agent := httptest.NewServer(NewHandler(targetFor(t, upstream), 0, WithObserver(&recordingObserver{})))
+	defer agent.Close()
+	// Released before either server closes: both wait for the handler, which
+	// waits for this.
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	defer unblock()
+
+	// Unflushed, even the response header waits for the second event.
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Post(agent.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("the first event never arrived on its own: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	got := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 64)
+		n, _ := resp.Body.Read(buf)
+		got <- string(buf[:n])
+	}()
+	select {
+	case first := <-got:
+		if !strings.Contains(first, "first") {
+			t.Fatalf("first read = %q", first)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first event never arrived on its own: the observer's writer is not flushing")
 	}
 }

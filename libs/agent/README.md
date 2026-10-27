@@ -38,6 +38,20 @@ readiness failure: `hangar_agent_gateways_expected` against the number of
 `hangar_agent_gateway_up` series, with `hangar_agent_dial_duplicates_total` as the one to watch if
 coverage never settles.
 
+## Requests
+
+The agent forwards only a `POST` to one of the inference paths in
+[`libs/packages/tunnel/paths.go`](../packages/tunnel/paths.go), the same list the gateway checks, and
+answers anything else `404 unsupported_path` without reaching the frontend.
+
+`hangar_agent_requests_total{outcome,code}` counts every request that came down a tunnel. `outcome`
+is `forwarded` (the frontend answered; `code` says with what), `unsupported_path`, `no_frontend`,
+`deployment_frontend_not_ready`, `frontend_error`, `frontend_unavailable` (the frontend did not
+answer), `canceled` (the caller left first) or `aborted` (the response was cut after it started).
+Read beside the gateway's own request series, it says whether a failure happened inside the cluster
+or before it. `hangar_agent_requests_in_flight` and `hangar_agent_request_duration_seconds` go with
+it. There is no model or deployment label: the gateway already counts per endpoint.
+
 ## Stale frontend discovery
 
 Discovery re-reads the frontend Services every `HANGAR_FRONTEND_DISCOVERY_INTERVAL` (30s by

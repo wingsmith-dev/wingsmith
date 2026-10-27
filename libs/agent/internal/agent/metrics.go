@@ -30,6 +30,10 @@ type Metrics struct {
 	established *prometheus.CounterVec
 	closed      *prometheus.CounterVec
 	sessions    *prometheus.HistogramVec
+
+	requests *prometheus.CounterVec
+	inFlight prometheus.Gauge
+	duration prometheus.Histogram
 }
 
 // Reasons a dial failed, as the `reason` label on hangar_agent_dial_failures_total.
@@ -95,8 +99,26 @@ func NewMetrics() *Metrics {
 		Buckets: []float64{1, 10, 60, 300, 1800, 7200, 43200},
 	}, []string{labelGateway})
 
+	// The requests that came down a tunnel, by what became of them. No model, deployment or
+	// caller label: the gateway already counts per endpoint, and this hop exists to say whether a
+	// failure happened inside the cluster or before it.
+	m.requests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hangar_agent_requests_total",
+		Help: "Requests that arrived over a tunnel, by outcome and the status class answered. forwarded with code 5xx is the frontend's own error; frontend_unavailable is a frontend that did not answer; aborted is a response cut after it started.",
+	}, []string{"outcome", "code"})
+	m.inFlight = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "hangar_agent_requests_in_flight",
+		Help: "Requests this agent is serving now, across every tunnel.",
+	})
+	m.duration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "hangar_agent_request_duration_seconds",
+		Help: "Time from a request's arrival over the tunnel to its last response byte.",
+		// The gateway's request buckets, so the two hops can be read side by side.
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+	})
+
 	m.registry.MustRegister(m.expected, m.tunnels, m.up, m.attempts, m.failures, m.duplicates,
-		m.established, m.closed, m.sessions)
+		m.established, m.closed, m.sessions, m.requests, m.inFlight, m.duration)
 	m.attempts.Add(0)
 	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake, reasonRefused} {
 		m.failures.WithLabelValues(reason).Add(0)
@@ -119,6 +141,18 @@ func (m *Metrics) Registry() *prometheus.Registry { return m.registry }
 // Handler serves the exposition.
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+}
+
+// RequestStarted counts a request in flight. It implements dynamo.Observer.
+func (m *Metrics) RequestStarted() {
+	m.inFlight.Inc()
+}
+
+// RequestFinished records a request that has ended. It implements dynamo.Observer.
+func (m *Metrics) RequestFinished(outcome, code string, elapsed time.Duration) {
+	m.inFlight.Dec()
+	m.requests.WithLabelValues(outcome, code).Inc()
+	m.duration.Observe(elapsed.Seconds())
 }
 
 // expect records how many replicas the gateway says it is running.

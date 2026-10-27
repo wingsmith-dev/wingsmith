@@ -83,10 +83,15 @@ const (
 // unsupported_path, the gateway's own answer to it. The gateway refuses those
 // paths first, so one arriving here came from a gateway that did not check, and
 // the frontend's admin, debug and metrics routes stay out of reach either way.
-func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
+func NewHandler(target Target, headerTimeout time.Duration, opts ...Option) http.Handler {
+	var cfg handlerConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	proxy := newReverseProxy(headerTimeout)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !tunnel.Forwarded(r.Method, r.URL.Path) {
+			setOutcome(r, OutcomeUnsupportedPath)
 			slog.Warn("frontend: refusing a path that is not forwarded", "method", r.Method, "path", r.URL.Path)
 			writeError(w, http.StatusNotFound, "unsupported_path", r.Method+" "+r.URL.Path+" is not answered here.")
 			return
@@ -97,6 +102,7 @@ func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
 			// yet. A cluster whose graphs are still coming up is unavailable
 			// and retryable, and a caller can tell those apart by status.
 			if errors.Is(err, ErrNoFrontend) {
+				setOutcome(r, OutcomeNoFrontend)
 				slog.Warn("frontend: no address yet, refusing", "path", r.URL.Path)
 				writeError(w, http.StatusServiceUnavailable, "no_frontend",
 					"This cluster is not serving inference traffic yet.")
@@ -110,12 +116,14 @@ func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
 			// is worth being able to tell from a cluster that is serving
 			// nothing at all when reading a log or a dashboard.
 			if errors.Is(err, ErrNoDeploymentFrontend) {
+				setOutcome(r, OutcomeDeploymentNotReady)
 				slog.Warn("frontend: no frontend for this deployment yet, refusing",
 					"path", r.URL.Path, "err", err)
 				writeError(w, http.StatusServiceUnavailable, "deployment_frontend_not_ready",
 					"The frontend for this model is not up in this cluster yet.")
 				return
 			}
+			setOutcome(r, OutcomeFrontendError)
 			slog.Error("frontend: could not resolve an address", "path", r.URL.Path, "err", err)
 			writeError(w, http.StatusInternalServerError, "frontend_error",
 				"This cluster could not route the request internally.")
@@ -125,6 +133,10 @@ func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), targetKey{}, upstream))
 		proxy.ServeHTTP(w, r)
 	})
+	if cfg.observer == nil {
+		return handler
+	}
+	return observed(cfg.observer, handler)
 }
 
 // frontendFor picks the frontend for one request.
@@ -195,8 +207,10 @@ func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
 			// nobody left to tell: writing a status here would only be a write
 			// to a closed connection.
 			if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+				setOutcome(r, OutcomeCanceled)
 				return
 			}
+			setOutcome(r, OutcomeFrontendUnavailable)
 			slog.Error("frontend: the inference frontend failed", "path", r.URL.Path, "err", err)
 			writeError(w, http.StatusBadGateway, "frontend_unavailable",
 				"The inference frontend in this cluster did not respond.")

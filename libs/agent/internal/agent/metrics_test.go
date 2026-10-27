@@ -103,6 +103,24 @@ func TestMetricsHandlerExposes(t *testing.T) {
 	}
 }
 
+func TestRequestsAreCountedByOutcomeAndCode(t *testing.T) {
+	m := NewMetrics()
+	m.RequestStarted()
+	m.RequestStarted()
+	if got := gaugeValue(t, m, "hangar_agent_requests_in_flight", nil); got != 2 {
+		t.Fatalf("in flight = %v, want 2", got)
+	}
+	m.RequestFinished("forwarded", "2xx", time.Second)
+	m.RequestFinished("frontend_unavailable", "5xx", time.Second)
+	if got := gaugeValue(t, m, "hangar_agent_requests_in_flight", nil); got != 0 {
+		t.Errorf("in flight = %v after both finished, want 0", got)
+	}
+	if got := counterValue(t, m, "hangar_agent_requests_total",
+		map[string]string{"outcome": "frontend_unavailable", "code": "5xx"}); got != 1 {
+		t.Errorf("frontend_unavailable 5xx = %v, want 1", got)
+	}
+}
+
 // gaugeValue and counterValue read one series off the registry, which is the only way to see what a
 // scrape would see.
 func gaugeValue(t *testing.T, m *Metrics, name string, labels map[string]string) float64 {

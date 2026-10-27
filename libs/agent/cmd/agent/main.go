@@ -58,11 +58,15 @@ func run() error {
 		return err
 	}
 
+	metrics := agent.NewMetrics()
+	metrics.WatchDiscovery(resolver.DiscoveryAge)
+
 	// BaseContext is deliberately not ctx. Cancelling it aborts every handler mid-stream, and
 	// SIGTERM has to drain instead: the server's Shutdown sends GOAWAY and lets the streams
 	// already accepted finish, each of which is a generation somebody is reading.
 	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{
-		Handler:     dynamo.NewHandler(resolver, tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout)),
+		Handler: dynamo.NewHandler(resolver, tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout),
+			dynamo.WithObserver(metrics)),
 		Limits:      tunnel.Limits{MaxConcurrentStreams: uint32(cfg.MaxConcurrentStreams)}, //nolint:gosec // bounded by validate
 		BaseContext: context.Background(),
 	})
@@ -75,8 +79,6 @@ func run() error {
 		return err
 	}
 
-	metrics := agent.NewMetrics()
-	metrics.WatchDiscovery(resolver.DiscoveryAge)
 	supervisor, err := agent.NewSupervisor(agent.SupervisorConfig{
 		Gateway:         cfg.Gateway,
 		ConnsPerGateway: cfg.ConnsPerGateway,
