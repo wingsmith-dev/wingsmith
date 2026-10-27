@@ -848,9 +848,13 @@ class ClusterService:
         return await self.get(cluster.uid)
 
     async def delete(self, ref: str, if_match: str | None = None, force: bool = False) -> None:
-        """Removes a cluster's registry row, which takes its history with it.
+        """Removes a cluster's registry row and everything it reported about itself.
 
-        Two guards, because the foreign keys cascade and nothing else would ask.
+        Nodes, devices, pools and sync state go with the row. Operations, benchmark
+        runs, events and alerts stay, with no cluster, because they are the history
+        of why it was drained.
+
+        Two guards, because those foreign keys cascade and nothing else would ask.
         The caller must name the revision it looked at (`If-Match`) or say
         `force`, so a delete aimed at what a stale screen showed is refused. And
         a cluster that still has deployments, unreleased allocations or pinned

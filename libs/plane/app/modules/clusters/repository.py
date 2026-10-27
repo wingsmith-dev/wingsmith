@@ -3,13 +3,17 @@ from uuid import UUID
 from sqlalchemy import Select
 from sqlalchemy import case
 from sqlalchemy import func
+from sqlalchemy import delete
+from sqlalchemy import exists
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
+from app.db.models import Event
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Workload
@@ -253,5 +257,24 @@ class ClusterRepository:
         return {key: int(value or 0) for key, value in row._mapping.items()}
 
     async def delete(self, cluster: Cluster) -> None:
+        """Deletes the row; its operations, benchmark runs, events and alerts stay, with no cluster.
+
+        An event whose cluster becomes null can match one already held with no cluster on
+        every column of `uq_ops_event_occurrence`, which would refuse the delete. That pair
+        is one occurrence recorded twice, so this cluster's copy goes first.
+        """
+        kept = aliased(Event)
+        await self.db.execute(
+            delete(Event).where(
+                Event.cluster_id == cluster.id,
+                exists().where(
+                    kept.cluster_id.is_(None),
+                    kept.type == Event.type,
+                    kept.subject_type == Event.subject_type,
+                    kept.occurred_at == Event.occurred_at,
+                    func.md5(kept.message) == func.md5(Event.message),
+                ),
+            )
+        )
         await self.db.delete(cluster)
         await self.db.flush()

@@ -284,6 +284,47 @@ async def test_cluster_with_pinned_workload_refuses_delete(db: AsyncSession) -> 
     assert (await service.get(cluster.id)).id == cluster.id
 
 
+async def test_deleting_a_drained_cluster_keeps_its_history(db: AsyncSession) -> None:
+    """Operations, benchmark runs, events and alerts stay with no cluster; nodes go."""
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    row = await service.repo.get(created.id)
+    params = {"cluster": row.id}
+    await db.execute(
+        text("INSERT INTO supply_node (uid, cluster_id, name, condition) VALUES ('nod_gone', :cluster, 'n', 'ready');"),
+        params,
+    )
+    for sql in (
+        "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by, phase)"
+        " VALUES ('opr_kept', :cluster, 'drain', 'node', gen_random_uuid(), 'staff', 'succeeded')",
+        "INSERT INTO ops_benchmark_run (uid, cluster_id, harness, requested_by, model)"
+        " VALUES ('bmk_kept', :cluster, 'aiperf', 'staff', 'm')",
+        "INSERT INTO ops_alert (uid, dedupe_key, rule, title, cluster_id, subject_type, first_seen_at, last_seen_at)"
+        " VALUES ('alr_kept', 'cluster.unreachable:alpha', 'cluster.unreachable', 'gone', :cluster, 'cluster',"
+        " now(), now())",
+        "INSERT INTO ops_event (uid, cluster_id, type, severity, subject_type, message, occurred_at)"
+        " VALUES ('evt_kept', :cluster, 'node.left', 'warning', 'node', 'node n left', '2026-10-01T00:00:00Z')",
+        # The same occurrence already held with no cluster: one of the pair has to go for the delete to pass.
+        "INSERT INTO ops_event (uid, cluster_id, type, severity, subject_type, message, occurred_at)"
+        " VALUES ('evt_twin', :cluster, 'node.left', 'warning', 'node', 'node m left', '2026-10-01T00:00:00Z')",
+        "INSERT INTO ops_event (uid, cluster_id, type, severity, subject_type, message, occurred_at)"
+        " VALUES ('evt_held', NULL, 'node.left', 'warning', 'node', 'node m left', '2026-10-01T00:00:00Z')",
+    ):
+        await db.execute(text(sql), params)
+    await db.commit()
+
+    await service.delete(created.id, force=True)
+
+    async def kept(table: str) -> list:
+        return (await db.execute(text(f"SELECT uid, cluster_id FROM {table} ORDER BY uid"))).all()
+
+    assert await kept("ops_operation") == [("opr_kept", None)]
+    assert await kept("ops_benchmark_run") == [("bmk_kept", None)]
+    assert await kept("ops_alert") == [("alr_kept", None)]
+    assert await kept("ops_event") == [("evt_held", None), ("evt_kept", None)]
+    assert await kept("supply_node") == []
+
+
 async def test_registered_cluster_is_labelled_by_its_own_name(db: AsyncSession) -> None:
     """The chart stamps `external_labels.cluster` from the same name (ADR 0011)."""
     service = ClusterService(db)

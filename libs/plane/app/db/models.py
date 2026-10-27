@@ -1578,7 +1578,7 @@ class Operation(BaseMixin):
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     cluster_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True, index=True
     )
     type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -1706,7 +1706,7 @@ class BenchmarkRun(BaseMixin):
         DBUUID, ForeignKey("demand_endpoint.id", ondelete="SET NULL"), nullable=True, index=True
     )
     cluster_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True, index=True
     )
     operation_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("ops_operation.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1776,7 +1776,7 @@ class Event(BaseMixin):
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     cluster_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True
     )
     type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="info", index=True)
@@ -1984,7 +1984,7 @@ class Alert(BaseMixin):
     state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
 
     cluster_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True
     )
     subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
     subject_uid: Mapped[str | None] = mapped_column(String(64), nullable=True)
