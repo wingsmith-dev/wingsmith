@@ -236,8 +236,8 @@ func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
 	}
 }
 
-// The chart still writes HANGAR_EFA_DEVICES. Dropping it silently would turn the fabric off on
-// every install that sets it and move KV over TCP with nothing saying so.
+// Charts before 0.3.0 wrote HANGAR_EFA_DEVICES. Dropping it silently would turn the fabric off on
+// every such install and move KV over TCP with nothing saying so.
 func TestTheOlderEFASpellingStillDeclaresTheFabric(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "c")
 	t.Setenv("HANGAR_HUB_URL", "wss://h/x")
