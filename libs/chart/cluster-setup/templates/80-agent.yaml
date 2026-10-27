@@ -99,6 +99,8 @@ data:
   # precedence as the operator's, so a cluster that had to override it there
   # overrides it the same way here.
   HANGAR_INFERENCE_ENDPOINT: {{ .Values.agent.frontendEndpoint | quote }}
+  # The pod's grace period, so the agent's drain (this less 5s) ends before the kill.
+  HANGAR_SHUTDOWN_GRACE: {{ printf "%ds" (int .Values.agent.terminationGracePeriodSeconds) | quote }}
   {{- with .Values.agent.responseHeaderTimeout }}
   # Raise this and the gateway's together or it buys nothing: the agent is the
   # innermost of three hops arming this timer and the smallest one is the only
@@ -236,15 +238,15 @@ spec:
             capabilities:
               drop: ["ALL"]
       # Longer than the drain it has to contain: SIGTERM sends GOAWAY on every
-      # tunnel and then waits up to HANGAR_DRAIN_TIMEOUT (60s by default) for the
-      # streams already open, and one of those is somebody's half-written
-      # completion. A grace period below that turns the drain into a kill. The
-      # operator's 30s is right for a reconciler and would sever generations here.
+      # tunnel and then waits for the streams already open, up to
+      # HANGAR_SHUTDOWN_GRACE (set from this value above) less 5s, and one of those
+      # is somebody's half-written completion. The operator's 30s is right for a
+      # reconciler and would sever generations here.
       {{- if .Values.agent.gateway.caBundle }}
       volumes:
         - name: tunnel-ca
           configMap:
             name: hangar-tunnel-ca
       {{- end }}
-      terminationGracePeriodSeconds: 120
+      terminationGracePeriodSeconds: {{ int .Values.agent.terminationGracePeriodSeconds }}
 {{- end }}

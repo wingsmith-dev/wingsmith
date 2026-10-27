@@ -66,14 +66,15 @@ are skipped and logged on their own; every other deployment keeps refreshing.
 On `SIGTERM` the agent stops dialling, sends GOAWAY on every tunnel and waits for the streams already
 open, then severs whatever is left. The wait is `HANGAR_DRAIN_TIMEOUT`, which by default is
 `HANGAR_SHUTDOWN_GRACE` less 5 seconds. `HANGAR_SHUTDOWN_GRACE` must equal the pod's
-`terminationGracePeriodSeconds`, 120 seconds in the chart and by default, so the drain ends before
-the kubelet's `SIGKILL`. A drain set explicitly is used as given, with a warning at startup when it
+`terminationGracePeriodSeconds`, so the drain ends before the kubelet's `SIGKILL`. Both are 120
+seconds by default, and the chart sets both from `agent.terminationGracePeriodSeconds`. A drain set explicitly is used as given, with a warning at startup when it
 runs past the grace period.
 
 That drain bounds which generations survive an agent rollout, and `HANGAR_RESPONSE_HEADER_TIMEOUT`
 does not. A non-streamed completion sends nothing until its last token, and the header timeout lets
 it run for up to 45 minutes; a rollout still cuts it when the drain ends. To carry longer
-generations through one, raise `terminationGracePeriodSeconds` and `HANGAR_SHUTDOWN_GRACE` together.
+generations through one, raise `agent.terminationGracePeriodSeconds` in the chart, or both values
+together elsewhere.
 The gateway's own shutdown is separate and is described in its README.
 
 ## Why it is not part of libs/gateway

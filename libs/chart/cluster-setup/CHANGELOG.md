@@ -52,6 +52,8 @@ upgrade sources; install fresh.
 - `pools.gpuTolerationKey`, `pools.gpuTolerationValue` and
   `pools.cacheTaintValue`, for pools tainted differently from the operator's
   defaults.
+- `agent.terminationGracePeriodSeconds` (default 120) sets the agent pod's grace
+  period and its `HANGAR_SHUTDOWN_GRACE` together.
 - `operator.benchmark.tokenSecret` hands benchmark jobs a Secret's keys as
   environment, for a tokenizer in a gated repository.
 - `networkPolicy.servingEgress` closes egress from the serving pods to their

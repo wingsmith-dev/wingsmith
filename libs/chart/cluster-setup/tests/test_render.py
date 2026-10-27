@@ -504,6 +504,15 @@ def test_tunnel_server_name_and_ca_reach_the_agent(chart):
     assert container(agent, "agent")["volumeMounts"][0]["mountPath"] == "/etc/hangar/tunnel-ca"
 
 
+@pytest.mark.parametrize("grace", [None, 300])
+def test_agent_shutdown_grace_follows_the_pod_grace_period(chart, grace):
+    values = AGENT_ON if grace is None else {**AGENT_ON, "agent.terminationGracePeriodSeconds": grace}
+    docs = render(chart, **values)
+    seconds = grace or 120
+    assert get(docs, "ConfigMap", "hangar-agent")["data"]["HANGAR_SHUTDOWN_GRACE"] == f"{seconds}s"
+    assert get(docs, "Deployment", "hangar-agent")["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == seconds
+
+
 # ── pod hardening ────────────────────────────────────────────────────────────
 
 

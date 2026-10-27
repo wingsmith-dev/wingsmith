@@ -168,7 +168,8 @@
           }
         },
         "frontendEndpoint": { "type": "string" },
-        "responseHeaderTimeout": { "type": "string" }
+        "responseHeaderTimeout": { "type": "string" },
+        "terminationGracePeriodSeconds": { "type": "integer", "minimum": 6 }
       }
     },
     "frontend": {

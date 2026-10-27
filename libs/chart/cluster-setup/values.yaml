@@ -327,6 +327,10 @@ agent:
   # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway's
   # deployment too, and the same value in both places.
   responseHeaderTimeout: ""
+  # How long a terminating pod has to drain, in seconds. Also given to the agent as
+  # HANGAR_SHUTDOWN_GRACE, which it drains for less 5 seconds, so the two cannot
+  # drift. Raise it if a generation can outlast the drain.
+  terminationGracePeriodSeconds: 120
   # A proxy, not a runtime: it copies bytes and holds streams open. No CPU limit,
   # because throttling the data path is latency on every token.
   resources:
