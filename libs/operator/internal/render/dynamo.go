@@ -1,9 +1,6 @@
-// Package render turns declared domain objects into the Kubernetes objects that serve them.
-//
-// This is the only package in the operator that knows what a DynamoGraphDeployment is or what a
-// vLLM flag looks like; everything upstream deals in deployments, serving blocks and artifacts.
-// Objects are built as unstructured rather than against NVIDIA's Go types, so the build does not
-// track their release cadence, and they are applied server-side where the API server validates.
+// Package render turns declared domain objects into the Kubernetes objects that serve them. It
+// is the only operator package that knows Dynamo's and vLLM's shapes. Objects are unstructured so
+// the build does not track NVIDIA's Go types, and they are applied server-side.
 package render
 
 import (
@@ -27,27 +24,16 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// HFHome is where the shared model cache is mounted, and therefore what HF_HOME is set to in every
-// pod that reads or writes it.
-//
-// One constant because the download and the worker have to agree on it exactly: the prefetch job
-// writes the weights under this root and the worker is pointed at a directory beneath it, so two
-// literals that drifted apart would leave a job filling one path and a worker waiting on another,
-// with nothing in either pod's log to say the two were different.
+// HFHome is the shared model cache mount and HF_HOME in every pod that uses it. One constant
+// because the prefetch job and the worker must agree on it exactly.
 const HFHome = "/models/hf"
 
-// LocalModels is where a node's own copy of the weights is mounted inside the worker.
-//
-// A second root rather than a mount over /models, because the fallback has to stay reachable: the
-// init container reads the shared copy and writes the local one in the same filesystem namespace,
-// and a worker whose mirror is a symlink back to /models needs both paths to resolve at once.
+// LocalModels is where a node's own copy of the weights is mounted inside the worker. A second
+// root, not a mount over /models, so the init container can read one and write the other.
 const LocalModels = "/models-local"
 
-// localModelPath mirrors a path under /models onto the node-local root, preserving the layout.
-//
-// The layout is preserved rather than flattened so that a directory holding a repo's snapshot
-// keeps the sibling files huggingface_hub and the engines expect to find next to it, and so that
-// the two roots can be compared by eye when one of them is wrong.
+// localModelPath mirrors a path under /models onto the node-local root, keeping the layout so a
+// snapshot's sibling files stay where huggingface_hub and the engines expect them.
 func localModelPath(shared string) (string, bool) {
 	rest, ok := strings.CutPrefix(shared, "/models/")
 	if !ok {
@@ -134,11 +120,9 @@ type Options struct {
 	FrontendMemory      string
 	FrontendMemoryLimit string
 
-	// AnthropicAPIEnabled serves the Anthropic Messages API (`/v1/messages`) beside the OpenAI
-	// one. AnthropicStripPreamble removes a client-injected system-prompt prefix that varies per
-	// request and carries no instructions for the model, so requests from the same client share a
-	// prefix the cache can hit. Both are environment because Dynamo owns the frontend's command
-	// line.
+	// AnthropicAPIEnabled serves `/v1/messages` beside the OpenAI API. AnthropicStripPreamble
+	// drops a client-injected, per-request system-prompt prefix so the prefix cache can hit. Both
+	// are environment because Dynamo owns the frontend's command line.
 	AnthropicAPIEnabled    bool
 	AnthropicStripPreamble bool
 
@@ -164,33 +148,19 @@ type Inputs struct {
 	Layout     Layout
 }
 
-// The three annotations that say which inputs a rendered graph was built from.
-//
-// They exist so that a later pass can ask "is what is running already built from this?" without
-// comparing the rendered object to the live one. That distinction is the whole point: a
-// comparison of outputs makes every change to this renderer a change to every running workload,
-// and a comparison of inputs does not. See `renderIsCurrent` in the reconciler.
-//
-// Between them they cover everything a render reads. Generation and the serving digest are the
-// plane's — the plane bumps the generation on any declared change, including scale and the
-// served model name, and the digest is its own hash of what decides the running process,
-// artifact included. The layout is this cluster's, computed here by the capacity check and
-// invisible to the plane, which is why it needs a third annotation rather than riding on either
-// of theirs.
+// The annotations recording which inputs a rendered graph was built from. The reconciler
+// (`renderIsCurrent`) compares these inputs, not the rendered output, so a renderer change does
+// not touch every running workload. Generation and serving digest are the plane's; the layout is computed
+// on this cluster and invisible to the plane, hence a third.
 const (
 	GenerationAnnotation    = "hangar.dev/generation"
 	ServingDigestAnnotation = "hangar.dev/serving-digest"
 	LayoutAnnotation        = "hangar.dev/layout"
 )
 
-// The rollout strategy Dynamo reads off `spec.annotations` of the graph deployment.
-//
-// Dynamo's defaults (25%/25%) round to surge 1 / unavailable 0 at small replica counts, which
-// deadlocks on a GPU pool with no spare cards: the new pod is Pending on `Insufficient
-// nvidia.com/gpu` while the old one may not be scaled down. Surge 0, unavailable 1 rolls in place,
-// one worker at a time. Rendered for aggregated deployments too, since they have the same zero
-// spare cards. A constant rather than a declared field because it is the only safe value until a
-// cluster with spare capacity needs another.
+// The rollout strategy Dynamo reads off the graph's `spec.annotations`. Dynamo's 25%/25% rounds
+// to surge 1 at small counts, which deadlocks a GPU pool with no spare cards; surge 0 /
+// unavailable 1 rolls in place.
 const (
 	MaxSurgeAnnotation       = "nvidia.com/deployment-rolling-update-max-surge"
 	MaxUnavailableAnnotation = "nvidia.com/deployment-rolling-update-max-unavailable"
@@ -208,10 +178,7 @@ func rolloutStrategy() map[string]any {
 }
 
 // Layout is how one replica's devices are spread over machines, as the capacity check concluded.
-//
-// Passed in rather than re-derived here, because what was admitted and what is applied have to be
-// the one calculation. A zero value means the ordinary case — the whole replica on one node — so
-// a caller that has not run the check still renders what it always did.
+// Passed in so admission and render are one calculation; the zero value is one node.
 type Layout struct {
 	// DevicesPerNode is what one pod asks for.
 	DevicesPerNode int
@@ -248,55 +215,28 @@ func (l Layout) devices(dep wire.DeploymentDesired) int {
 	return 1
 }
 
-// WorkerComponent is the Dynamo component name for the engine.
-//
-// One worker, aggregated: prefill and decode share an engine loop. Disaggregating them is a
-// topology decision with a real trade — it buys latency isolation and pays for it in KV capacity,
-// because each worker loads its own copy of the weights — and nothing on the serving block
-// expresses that choice yet. Rendering it silently would be picking a side of that trade on the operator's own
-// authority.
+// WorkerComponent is the Dynamo component name for the engine: one aggregated worker unless the
+// deployment declares a disaggregated topology.
 const WorkerComponent = "VllmDecodeWorker"
 
-// PrefillComponent is the Dynamo component name for the prefill engine of a disaggregated
-// deployment, beside `WorkerComponent` which stays the decode one.
-//
-// Declared here before anything renders it, because its length is the reason `maxWorkloadName`
-// stopped being derived: it is one byte longer than `VllmDecodeWorker`, and under the old
-// arithmetic merely naming it would have shortened the bound for every deployment in the fleet.
-// `TestComponentBudget` holds it to the budget instead.
-//
-// The spelling is Dynamo's, not ours, for the reason `FrontendComponent` gives below: the name
-// goes into the `nvidia.com/dynamo-component` label and into the Service selector derived from
-// it, so it is matched on rather than read.
+// PrefillComponent is the prefill engine of a disaggregated deployment; WorkerComponent stays the
+// decode one. Spelling is Dynamo's (see FrontendComponent), and `TestComponentBudget` holds its
+// length to maxWorkloadName.
 const PrefillComponent = "VllmPrefillWorker"
 
-// FrontendComponent is the Dynamo component name for the OpenAI-compatible frontend.
-//
-// The string is not ours to choose. Dynamo puts a component's name in the `nvidia.com/dynamo-
-// component` label and in the Service selector derived from it, and two things in this repository
-// find a frontend by that label rather than by name — the serving agent's resolver and this
-// operator's own benchmark executor — because the name is the part that varies between clusters
-// while the label does not. Renaming this breaks both, and it breaks them as a lookup that finds
-// nothing rather than as a compile error.
+// FrontendComponent is the Dynamo component name for the frontend. Dynamo puts it in the
+// `nvidia.com/dynamo-component` label that the agent's resolver and the benchmark executor match
+// on, so renaming it breaks both silently.
 const FrontendComponent = "Frontend"
 
-// Disaggregated says whether a deployment's roles are separate processes.
-//
-// Reads the topology rather than the presence of roles, and both have to agree before anything
-// renders differently: a plane too old to send either leaves both empty, and empty must render
-// exactly what it rendered before this existed. The plane refuses the disagreeing cases at
-// declaration, so this is the last cheap check rather than the only one.
+// Disaggregated says whether a deployment's roles are separate processes. Topology and roles must
+// agree; an old plane sends neither and renders as before.
 func Disaggregated(dep wire.DeploymentDesired) bool {
 	return dep.Serving.Topology == "disaggregated" && len(dep.Serving.Roles) > 0
 }
 
-// workerRole is one worker component to render: which Dynamo component it is, how many of it, and
-// the per-role configuration that makes its process different from the other role's.
-//
-// One descriptor rather than a second copy of the render keyed on three constants. The aggregated
-// case is a single descriptor with an empty Role and a nil Spec, which is what keeps its output
-// byte-identical: every disaggregated addition below is guarded on Role being non-empty, so there
-// is one code path and the aggregated branch of it renders what it always did.
+// workerRole is one worker component to render. The aggregated case is a single descriptor with
+// an empty Role, and every disaggregated addition is guarded on Role so its output is unchanged.
 type workerRole struct {
 	// Component is the Dynamo component name, which is also a label value two lookups match on.
 	Component string
@@ -313,12 +253,8 @@ type workerRole struct {
 	Spec *wire.RoleSpec
 }
 
-// workerRoles is the set of worker components this deployment renders, in a stable order.
-//
-// Ordered by the wire's own role list rather than sorted, because the plane owns the order and a
-// re-ordering here would change the rendered object without changing anything about it. Dynamo
-// hashes the components together (see `specHashPlaceholder`), so a spurious re-order is a rename,
-// and a rename is a weight reload.
+// WorkerRoles is the worker components this deployment renders, in the plane's order: Dynamo
+// hashes the components together, so a re-order would rename and reload them.
 func WorkerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
 	if IsOmni(dep) {
 		if Disaggregated(dep) {
@@ -359,12 +295,8 @@ func WorkerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
 	return roles, nil
 }
 
-// roleComponent maps a declared role onto the Dynamo component that serves it.
-//
-// Closed, and an unknown role is an error rather than a default. A role this operator does not
-// know renders a `--disaggregation-mode` no engine accepts, which is a worker that will not start
-// — and the plane has already refused anything outside the set, so reaching here means the two
-// disagree and guessing would hide that.
+// roleComponent maps a declared role onto its Dynamo component. An unknown role is an error,
+// since the plane already refuses it and a guess would hide the disagreement.
 func roleComponent(role string) (component, kind string, err error) {
 	switch role {
 	case "prefill":
@@ -376,12 +308,8 @@ func roleComponent(role string) (component, kind string, err error) {
 	}
 }
 
-// DynamoGraphDeployment renders one deployment into the object that serves it.
-//
-// The graph holds the model's workers and, where the cluster has opted in, the frontend the model
-// is served through: one per model, so a model that needs a different frontend build is that
-// deployment's business alone. The gateway has already resolved a request to a deployment, and
-// the in-cluster agent picks the frontend by label, so nothing routes on the request body.
+// DynamoGraphDeployment renders one deployment into the object that serves it: the model's
+// workers and, where the cluster opted in, its own frontend.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
 	roles, err := WorkerRoles(in.Deployment)
 	if err != nil {
@@ -465,17 +393,10 @@ func Name(id string) string {
 	return strings.ToLower(strings.ReplaceAll(id, "_", "-"))
 }
 
-// maxWorkloadName bounds the rendered name so the objects Dynamo derives from it stay inside the
-// 63 byte limit their own names are held to.
-//
-// The binding limit is the DynamoComponentDeployment Dynamo names after the graph, whose name is
-// also the value of the `nvidia.com/selector` label on the Deployment beneath it: a label value is
-// 63 bytes, and a child over it is refused by the API server on an object this operator never
-// reads, leaving the deployment at 0 ready replicas with no reason given.
-//
-// A chosen number, not one derived from the component list: deriving it made adding a component
-// shorten the bound and rename (and reload) every deployment at the old length.
-// `TestComponentBudget` holds the components to it instead. Do not re-derive it.
+// maxWorkloadName bounds the rendered name so the DynamoComponentDeployment Dynamo derives from it,
+// whose name is also a 63-byte label value, is not refused. A chosen number: deriving it from the
+// components would rename every deployment when one is added. `TestComponentBudget` holds the
+// components to it.
 const maxWorkloadName = 32
 
 // componentNameBudget is what a component name may spend: what is left of the 63 bytes after the
@@ -486,25 +407,13 @@ const componentNameBudget = maxObjectNameBytes - maxWorkloadName - len("-") - le
 // maxObjectNameBytes is the label-value limit the derived name is actually held to.
 const maxObjectNameBytes = 63
 
-// specHashPlaceholder stands in for the hash Dynamo derives for worker components. Only its
-// length is used.
-//
-// Dynamo's `ComputeDGDWorkersSpecHash` hashes every worker component of a graph together, so both
-// roles of a disaggregated deployment carry the same suffix and resolve to the same runtime
-// namespace, which is how the frontend pairs prefill with decode. Rendering the roles as two
-// graphs would put them in two namespaces and quietly stop disaggregation. Replicas are excluded
-// from the hash, so a ratio change costs nothing.
+// specHashPlaceholder stands in for the hash Dynamo derives for worker components; only its
+// length is used. Dynamo hashes all workers together, which puts both disaggregated roles in one
+// runtime namespace, so they must stay in one graph.
 const specHashPlaceholder = "00000000"
 
-// WorkloadName is the object name one deployment renders under.
-//
-// The deployment's own name rather than its id, because every Kubernetes object underneath is
-// named after this one: the id put `dep-01m0sktt1s3vszhp5rkdp925dh-vllmdecodeworker-...` on every
-// pod, which tells a person reading `kubectl get pods` nothing they came to find out. The name is
-// unique per cluster, which is the property that makes it usable as an object name at all.
-//
-// The id remains the fallback for a deployment that names itself nothing renderable, because a
-// workload with no name is still a workload that has to be applied somewhere.
+// WorkloadName is the object name one deployment renders under: its name, unique per cluster and
+// readable in `kubectl get pods`, or its id when the name renders to nothing.
 func WorkloadName(dep wire.DeploymentDesired) string {
 	if slug := slugify(dep.Name); slug != "" {
 		return slug
@@ -539,22 +448,10 @@ func slugify(in string) string {
 // for a request the gateway has already resolved to this deployment.
 const deploymentIDLabel = "hangar.dev/deployment-id"
 
-// ownershipLabels mark everything this operator renders for a deployment as ours.
-//
-// They go on the pod template as well as on the graph deployment, and that is what makes them
-// load-bearing rather than decorative: discovery reads pod labels to decide whether a running
-// workload is one the plane put there, and Dynamo does not copy a graph deployment's labels onto
-// the pods it derives from it. Without them on the template, every deployment this operator
-// created came back up the wire as a sighting to be adopted.
-// The role label is added only for a disaggregated deployment, and that conditional is the same
-// one every other addition in this file makes: an aggregated deployment's pod template has to stay
-// byte-identical to what it was, because the template is what Dynamo hashes into the object name
-// and a new label would rename and reload every worker in the fleet.
-//
-// Ingestion reads it back to say which role a replica is, which is the whole reason it is a label
-// rather than something derived from the component name at read time: `RoleLabel` is one string
-// this operator writes and the observed path matches on, where a name is a convention two sides
-// would have to keep agreeing about.
+// ownershipLabels mark what this operator renders as ours. They go on the pod template too, because
+// discovery reads pod labels and Dynamo does not copy the graph's labels onto its pods. The role
+// label is added only for disaggregated deployments, so an aggregated template, which Dynamo
+// hashes into the object name, stays unchanged.
 func ownershipLabels(in Inputs, role workerRole) map[string]any {
 	labels := map[string]any{
 		deploymentIDLabel:       in.Deployment.DeploymentID,
@@ -571,21 +468,9 @@ func ownershipLabels(in Inputs, role workerRole) map[string]any {
 // where there is one worker and nothing to distinguish.
 const RoleLabel = "hangar.dev/role"
 
-// Replicas is what the deployment asks to run right now.
-//
-// The number is this cluster's share of a total the operator never sees. A workload declares a
-// total across every cluster it is allowed to use and the plane divides it; a deployment carries
-// one portion of that division. This operator sees one cluster and cannot tell a whole workload
-// from a fragment of one, which is the point — it renders exactly the number it is sent, and must
-// never sum, scale, or re-derive it against anything else.
-//
-// MinReplicas, not MaxReplicas: the maximum is the ceiling an autoscaler is allowed to reach, and
-// nothing in this operator autoscales yet. Rendering the ceiling would run every deployment at its
-// most expensive configuration from the moment it is created.
-//
-// Exported because the reconciler compares what is running against it. Two definitions of how
-// many replicas ought to exist would eventually disagree, and the one that decides what is
-// rendered has to be the one that decides whether the result is complete.
+// Replicas is this cluster's share of the workload, as the plane divided it; render exactly that.
+// MinReplicas, because nothing here autoscales. Exported so the reconciler judges completeness by
+// the same number it renders.
 func Replicas(dep wire.DeploymentDesired) int {
 	if dep.MinReplicas < 0 {
 		return 0
@@ -593,26 +478,10 @@ func Replicas(dep wire.DeploymentDesired) int {
 	return dep.MinReplicas
 }
 
-// localizeScript mirrors one model directory onto the node's own disk before the engine starts.
-//
-// Written as a shell script rather than a Go loop because it runs where the weights are, and the
-// only thing it needs is to be readable by whoever is standing in front of a worker that started
-// slowly and wants to know which copy it read.
-//
-// The contract with the engine is that $DST always resolves to the weights afterwards. It is a
-// real directory when the mirror succeeded and a symlink to the shared copy when it did not, so
-// the worker's --model argument is the same string either way and no argument has to be rendered
-// conditionally on something only the node knows.
-//
-// Failure is a slow start and never a broken one, which is what makes this safe to turn on ahead
-// of the disk being right. A node with no room, a read error part-way through, an interrupted
-// previous attempt: each ends at the symlink, and the engine reads over NFS exactly as it did
-// before this existed.
-//
-// $DST/.hangar-complete is the marker, written last. Its absence is what makes a partial copy
-// worthless rather than dangerous — a mirror interrupted by a spot reclaim is discarded and
-// redone rather than served as if it were whole, and a half-written tensor file is the kind of
-// corruption that surfaces as garbage output rather than as an error.
+// localizeScript mirrors one model directory onto the node's disk before the engine starts.
+// Afterwards $DST is either the mirror or a symlink to the shared copy, so --model never changes
+// and a failure is only a slow start. $DST/.hangar-complete is written last, so an interrupted
+// copy is redone, never served.
 const localizeScript = `set -eu
 SRC="$1"
 DST="$2"
@@ -658,11 +527,8 @@ mv "$DST.partial" "$DST"
 echo "weights localized: $DST"
 `
 
-// localizeContainers is the init container that fills the node-local mirror, or nothing.
-//
-// It runs on the engine image so that the copy sees the same filesystem the engine will, and it
-// asks for no accelerator: this is a file copy, and a pod that requested a GPU for it would hold
-// eight of them idle for the length of the download.
+// localizeContainers is the init container that fills the node-local mirror, or nothing. It runs
+// the engine image and requests no GPU, since it is only a file copy.
 func localizeContainers(in Inputs, opts Options, image string) []corev1.Container {
 	if opts.LocalModelCacheDir == "" {
 		return nil
@@ -686,17 +552,9 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 	}}
 }
 
-// frontendLocalizeScript copies a model's metadata, and deliberately not its weights.
-//
-// The frontend materializes a model card by opening the path the worker advertised. Once the
-// worker advertises the node-local mirror, the frontend has to be able to open that same string --
-// but the frontend runs on ordinary nodes with no mirror on them and no reason to hold weights it
-// will never read. `ignore_weights` is already true on its side; the tokenizer and the configs are
-// all it wants, and they are a few megabytes.
-//
-// So this is the same path with none of the bulk, into an emptyDir rather than the host disk: it
-// is per-pod scratch, it cannot be mistaken for a real mirror by a worker that later lands on the
-// node, and it writes no `.hangar-complete`.
+// frontendLocalizeScript gives the frontend the metadata at the path the workers advertise, without
+// the weights, into an emptyDir. It writes no `.hangar-complete`, so it is never mistaken for a
+// mirror.
 const frontendLocalizeScript = `set -eu
 SRC="$1"
 DST="$2"
@@ -724,11 +582,8 @@ echo "model metadata staged at $DST ($staged files):"
 ls "$DST"
 `
 
-// frontendLocalizeContainers gives the frontend the path the workers advertise.
-//
-// Without it the frontend reads `/models-local/...` as a Hugging Face repo id, asks the Hub for a
-// model of that name, gets a 404 and retries forever -- so no model card is ever published, and
-// every request to a fleet of perfectly healthy workers is answered with an empty model list.
+// frontendLocalizeContainers gives the frontend the path the workers advertise. Without it the
+// frontend treats `/models-local/...` as a Hub repo id and serves an empty model list.
 func frontendLocalizeContainers(in Inputs, opts Options, image string) []corev1.Container {
 	if opts.LocalModelCacheDir == "" {
 		return nil
@@ -765,13 +620,8 @@ func frontendLocalModelVolume(opts Options) []corev1.Volume {
 	}}
 }
 
-// localModelVolume is the node's own disk, or nothing.
-//
-// A hostPath and not an ephemeral volume, because the point is to outlive the pod: a mirror that
-// were wiped on every restart would pay the copy every time and never once collect on it, which
-// is strictly worse than reading from the shared cache.
-//
-// DirectoryOrCreate so that a node which has never held a model is not a scheduling failure.
+// localModelVolume is the node's own disk, or nothing. A hostPath so the mirror outlives the pod;
+// DirectoryOrCreate so a node with no mirror yet still schedules.
 func localModelVolume(opts Options) []corev1.Volume {
 	if opts.LocalModelCacheDir == "" {
 		return nil
@@ -794,14 +644,9 @@ func localModelMount(opts Options, readOnly bool) []corev1.VolumeMount {
 	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels, ReadOnly: readOnly}}
 }
 
-// workerProbes replace Dynamo's defaults, which kill a busy worker rather than a broken one.
-//
-// Dynamo renders liveness with failureThreshold 1 and a four-second timeout, and the workers'
-// /live reports the generate endpoint's health, which is 503 both while a worker is saturated and
-// while it loads. One slow answer under load would SIGKILL a worker holding a multi-hundred-GB
-// model. Readiness stays quick, since leaving rotation is cheap and reversible; liveness allows
-// three minutes, which still catches a wedged worker long before the reload it causes. The
-// startup probe is left to Dynamo.
+// workerProbes replace Dynamo's defaults (liveness failureThreshold 1, 4s timeout), under which a
+// saturated worker's 503 gets it killed. Readiness stays quick; liveness allows three minutes; the
+// startup probe is Dynamo's.
 func workerProbes() (liveness, readiness *corev1.Probe) {
 	probe := func(path string, period, timeout, threshold int32) *corev1.Probe {
 		return &corev1.Probe{
@@ -858,11 +703,9 @@ func fabricPrivileged(opts Options) bool {
 	return fabricOn(opts) && opts.FabricPrivileged
 }
 
-// fabricSecurityContext widens a fabric worker so NIXL can register GPU memory with the NIC:
-// IPC_LOCK for pinned memory, and privileged where the cluster says its fabric needs it (EFA
-// does, for fi_mr_reg against CUDA memory). A privileged container is not isolated from its
-// node, which is why it is opt-in per cluster and limited to GPU workers that own their node.
-// Delete the privileged half once NIXL registers through DMA-BUF instead.
+// fabricSecurityContext lets NIXL register GPU memory with the NIC: IPC_LOCK, plus privileged where
+// the cluster's fabric needs it (EFA does). Opt-in per cluster; drop the privileged half once NIXL
+// registers through DMA-BUF.
 func fabricSecurityContext(opts Options) *corev1.SecurityContext {
 	if !fabricOn(opts) {
 		return nil
@@ -952,20 +795,9 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		}
 	}
 
-	// A host KV offload pool is the one allocation here that is both large and unbounded by the
-	// GPU, so it is the one that needs a ceiling: without a limit the pool grows into the node
-	// and the kernel picks a victim, which on a node running one worker per eight GPUs means the
-	// OOM killer takes the thing we are measuring.
-	//
-	// Derived from the pool rather than declared, so the number has a reason. The limit is the
-	// pool plus the declared request -- the pool is what the connector adds on top of everything
-	// the worker already needed, and the request is the best available statement of that. A
-	// deployment that turned the tier on without declaring memory gets no limit, because a
-	// ceiling computed from an unknown floor is a guess, and an OOMKill mid-benchmark is worse
-	// than an unbounded pool we are watching.
-	//
-	// Only when the tier is on: every other worker in the fleet keeps rendering exactly as before,
-	// which keeps a change made for one experiment from becoming a fleet-wide OOMKill risk.
+	// A host KV offload pool is large and unbounded by the GPU, so it gets a memory limit: the pool
+	// plus the declared request. Without a declared request there is no limit, since any ceiling
+	// would be a guess. Only rendered when the tier is on.
 	if gib, on := offloadTier(in); on {
 		if declared, ok := requests[corev1.ResourceMemory]; ok {
 			ceiling := declared.DeepCopy()
@@ -1039,20 +871,9 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			WorkingDir: "/workspace/examples/backends/vllm",
 			Command:    []string{"python3", "-m", "dynamo." + module},
 			Args:       args,
-			// What an engine says on its way out, kept where the plane can read it.
-			//
-			// The default policy reads /dev/termination-log, which nothing here writes, so a
-			// container that died of `unrecognized arguments: --tool-call-parser glm47` left
-			// Kubernetes holding `exitCode: 2` and nothing else. `containerTrouble` reported
-			// `CrashLooping` with the words "back-off restarting failed container", and the
-			// sentence that named the flag existed only in `kubectl logs --previous` on a
-			// cluster nobody outside it can reach.
-			//
-			// FallbackToLogsOnError has the kubelet copy the tail of the container's own
-			// output into `lastState.terminated.message` whenever it exits non-zero, which is
-			// the field the diagnosis already reads. It costs nothing on a container that
-			// exits cleanly and is the difference between "a replica is repeatedly crashing"
-			// and knowing which argument to remove.
+			// Have the kubelet copy the tail of a failing container's output into
+			// lastState.terminated.message, which the diagnosis reads. Nothing writes
+			// /dev/termination-log.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 			SecurityContext:          fabricSecurityContext(opts),
 			LivenessProbe:            liveness,
@@ -1103,12 +924,8 @@ const (
 	defaultFrontendMemoryLimit = "2Gi"
 )
 
-// frontendComponent renders the frontend this model is served through.
-//
-// The pod template carries ownershipLabels, and that is load-bearing: Dynamo copies a component's
-// pod-template labels onto the Service it derives, and `hangar.dev/deployment-id` on that Service
-// is how the in-cluster agent finds this frontend for a request already resolved to this
-// deployment. Without them the deployment is reachable by nothing.
+// frontendComponent renders the frontend this model is served through. Its pod template carries
+// ownershipLabels, which Dynamo copies onto the derived Service where the agent finds it.
 func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 	pod, err := frontendPodSpec(in, opts)
 	if err != nil {
@@ -1139,18 +956,9 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 	}, nil
 }
 
-// frontendPodSpec is what one frontend pod is.
-//
-// Not podSpec: the GPU node selector and toleration belong on the engine, and a frontend that
-// tolerated the GPU taint could occupy an accelerator node while holding no weights. No command
-// or arguments either: Dynamo derives the frontend's command line from `type: frontend`, so its
-// settings are environment. The serving block's pod overlay is not applied, because it is written
-// about the engine container and both are called `main`.
-//
-// The model cache is mounted read-only because the worker advertises its model as a path (see
-// modelRef) and the frontend resolves the model card from that same path to build its tokenizer.
-// A frontend that cannot open it asks huggingface.co for a repo named after the path, gets a 404
-// and serves an empty model list while passing every probe.
+// frontendPodSpec is one frontend pod: no GPU selector or toleration, no command (Dynamo derives it
+// from `type: frontend`), and no pod overlay, which is written for the engine. The model cache is
+// mounted read-only because the frontend builds its tokenizer from the path the worker advertises.
 func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	image, err := frontendImage(in, opts)
 	if err != nil {
@@ -1181,12 +989,8 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			Env: append([]corev1.EnvVar{
 				{Name: "DYN_ENABLE_ANTHROPIC_API", Value: strconv.FormatBool(opts.AnthropicAPIEnabled)},
 				{Name: "DYN_STRIP_ANTHROPIC_PREAMBLE", Value: strconv.FormatBool(opts.AnthropicStripPreamble)},
-				// The same fixed seed the worker gets, and it is worth nothing unless it
-				// is the same on both. KV-aware routing decides which worker already
-				// holds a prefix by hashing block contents; Python salts hashes per
-				// process, so a frontend and a worker that disagree on the salt hash
-				// identical blocks differently and miss every cache hit — silently, as a
-				// performance loss nothing reports.
+				// Same fixed seed as the worker: KV-aware routing hashes block contents,
+				// and different salts would silently miss every cache hit.
 				{Name: "PYTHONHASHSEED", Value: "0"},
 			}, router...),
 			Resources: resources,
@@ -1262,18 +1066,10 @@ var routerModes = map[string]bool{
 // routerQueuePolicies is Dynamo 1.5.0's `--router-queue-policy` choices.
 var routerQueuePolicies = map[string]bool{"fcfs": true, "wspt": true}
 
-// frontendRouterEnv is the router configuration a frontend is started with, as environment.
-//
-// `DYN_ROUTER_MODE` is always rendered, `kv` when nothing is declared. Upstream's default is
-// round-robin, which at two or more workers sends alternate turns of a conversation to a worker
-// that has never seen it, re-prefilling the whole context and halving the fleet's prefix hit rate.
-// It does not depend on the replica count, since a mode that moved with an autoscaled count would
-// roll the frontend on a scale event. With one worker the KV router picks the only candidate.
-//
-// The other variables render only when declared, in a fixed order, because Dynamo hashes the
-// frontend's pod template and an added variable rolls the frontend. KV mode is half of a pair; the
-// other half is `kvEventsConfig` on the worker. The plane has already refused values Dynamo would
-// reject; these checks are the last cheap ones.
+// frontendRouterEnv is the frontend's router configuration as environment. `DYN_ROUTER_MODE` is
+// always rendered, `kv` by default, since round-robin halves the prefix hit rate. The rest render
+// only when declared, in a fixed order, because the pod template is hashed. The worker's half of
+// KV mode is `kvEventsConfig`.
 func frontendRouterEnv(router *wire.RouterSpec, omni bool) ([]corev1.EnvVar, error) {
 	mode := DefaultRouterMode
 	if omni {
@@ -1312,11 +1108,8 @@ func frontendRouterEnv(router *wire.RouterSpec, omni bool) ([]corev1.EnvVar, err
 	return env, nil
 }
 
-// routerFloat spells a router number the way Python writes a float: `1.0`, never `1`.
-//
-// Dynamo parses either. The spelling is fixed because it is part of the pod template Dynamo hashes,
-// and it is Python's because that is how the values were first set by hand on a running frontend,
-// so declaring the same numbers renders the same template instead of rolling it.
+// routerFloat spells a router number as Python does (`1.0`), because the spelling is part of the
+// hashed pod template.
 func routerFloat(field string, v float64) (string, error) {
 	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 		return "", fmt.Errorf("router %s must be a finite number >= 0, got %v", field, v)
@@ -1372,12 +1165,8 @@ func frontendImage(in Inputs, opts Options) (string, error) {
 		in.Deployment.DeploymentID)
 }
 
-// frontendResources is what one frontend pod asks the scheduler for.
-//
-// A memory ceiling and no CPU one, which is the same trade the chart makes and for the same
-// reason: the frontend copies every token of every response, so a CPU limit is latency on the
-// data path, while unbounded memory on a pod that downloads model repository files is a node
-// nobody can schedule onto.
+// frontendResources is what one frontend pod requests: a memory ceiling and no CPU limit, since
+// CPU throttling is latency on the data path.
 func frontendResources(opts Options) (corev1.ResourceRequirements, error) {
 	cpuText := opts.FrontendCPU
 	if cpuText == "" {
@@ -1414,25 +1203,10 @@ func frontendResources(opts Options) (corev1.ResourceRequirements, error) {
 	}, nil
 }
 
-// checkFrontendSurvivedOverlay refuses a render whose overlay left the deployment unreachable.
-//
-// A refusal, where nothing else about the overlay is refused, and the asymmetry is the point. The
-// Dynamo overlay is a recursive map merge over someone else's CRD, so lists replace rather than
-// merge — which is the intended way to hand-write a disaggregated topology, and which means an
-// overlay that writes `spec.components` at all discards every component this renderer put there.
-// Under one frontend per cluster that cost the deployment nothing, because the frontend was not
-// in the graph. Now it is, and an overlay written before this change removes the only thing that
-// makes the deployment reachable, leaving a graph that applies cleanly, workers that come up
-// healthy, and a model no request can arrive at. Nothing in Kubernetes and nothing in Dynamo
-// reports that; the only place it can be caught is here.
-//
-// The routing label is checked and not only the component's presence, because a frontend that is
-// there and anonymous fails in exactly the way a missing one does. Dynamo copies a component's
-// pod-template labels onto the Service it derives, and `hangar.dev/deployment-id` on that Service
-// is how the agent picks this frontend for a request the gateway has already resolved to this
-// deployment. A restated component that carries no labels — which is what restating one from the
-// example in an error message looks like — is a Service nothing can match, so accepting it would
-// let the guard pass a graph with the defect the guard exists for.
+// checkFrontendSurvivedOverlay refuses a render whose overlay left the deployment unreachable. The
+// Dynamo overlay replaces lists, so an overlay that writes `spec.components` can drop the frontend,
+// or restate it without the `hangar.dev/deployment-id` label the agent routes on. Nothing else
+// would report either.
 func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) error {
 	components, found, err := unstructured.NestedSlice(obj.Object, "spec", "components")
 	if err != nil || !found {
@@ -1505,20 +1279,11 @@ func NodeSelector(dep wire.DeploymentDesired, opts Options) map[string]string {
 	return out
 }
 
-// archLabel is the well-known node label for a node's CPU architecture.
-//
-// Pinned to amd64 on an omni worker because vLLM-Omni has no arm64 build: on a Grace node the
-// image pulls and the container dies on its first instruction. The plane refuses an omni
-// workload on a Grace device class before it is placed; this is the cluster's own half, and
-// because the capacity check reads the same selector, a cluster with only arm64 GPU nodes
-// reports no capacity rather than rendering a pod that cannot run.
+// archLabel is the node label for CPU architecture. Omni workers are pinned to amd64 because
+// vLLM-Omni has no arm64 build; the capacity check reads the same selector.
 const archLabel = "kubernetes.io/arch"
 
-// podNodeSelector is what the render actually lands on: the deployment's selector, plus the fabric
-// when the replica was pinned to one.
-//
-// Kept apart from NodeSelector because the capacity check runs before a domain has been chosen and
-// has to ask about every node, where the render asks about the one domain the check settled on.
+// podNodeSelector is NodeSelector plus the fabric domain the capacity check settled on.
 func podNodeSelector(in Inputs, opts Options) map[string]string {
 	out := NodeSelector(in.Deployment, opts)
 	if kind, key, ok := splitDomain(in.Layout.Domain); ok && kind == "nvlink" {
@@ -1541,12 +1306,8 @@ func splitDomain(domain string) (kind, key string, ok bool) {
 	return domain[:slash], domain[slash+1:], true
 }
 
-// engineModule maps a declared engine onto the Dynamo entrypoint that runs it.
-//
-// Closed, and an unknown engine is an error. It used to fall through to `vllm`, which was a
-// harmless guess while every engine served chat. With omni beside it, a guess is a workload that
-// comes up healthy answering the wrong API, so a name this operator has never heard of fails the
-// render and says so.
+// engineModule maps a declared engine onto its Dynamo entrypoint. Unknown engines are an error,
+// not a fall-through to vllm.
 func engineModule(engine string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(engine)) {
 	case "vllm":
@@ -1568,11 +1329,8 @@ func IsOmni(dep wire.DeploymentDesired) bool {
 	return err == nil && module == "vllm.omni"
 }
 
-// OmniComponent is the Dynamo component name for a vLLM-Omni worker, and `worker` its type.
-//
-// A diffusion worker has no prefill/decode split. `type` is not decorative: Dynamo derives port
-// mapping, frontend detection and the `nvidia.com/dynamo-component-type` label from it. Nothing
-// outside this file matches on a worker's component name, so other code follows this constant.
+// OmniComponent is the Dynamo component for a vLLM-Omni worker, with type `worker`, from which
+// Dynamo derives ports, frontend detection and the component-type label.
 const (
 	OmniComponent = "OmniWorker"
 	omniType      = "worker"
@@ -1584,11 +1342,8 @@ const (
 	OutputVideo = "video"
 )
 
-// omniMediaURL is where the omni worker writes what it generates before returning it inline.
-//
-// A pod-local path because image and video are synchronous today: the frontend answers with the
-// bytes, and nothing reads the directory afterwards. Video jobs (plan 07) will point this at
-// object storage, which is the whole of the worker half of that change.
+// omniMediaURL is where the omni worker writes output before returning it inline. Pod-local,
+// since image and video responses are synchronous.
 const omniMediaURL = "file:///tmp/dynamo_media"
 
 // Where the omni stage configuration is written inside the worker pod.
@@ -1599,12 +1354,8 @@ const (
 	omniStageEnv    = "HANGAR_OMNI_STAGE_CONFIG"
 )
 
-// omniStageConfig is the stage-config file for a deployment that declares a diffusion block, or
-// "" when it declares none and omni's own defaults stand.
-//
-// JSON, which YAML parses. The fixed parts are one stage, synchronous chunks, the multiprocessing
-// executor and one sequence at a time; `devices` is every device the pod holds, counted from zero,
-// because that is how the container sees them.
+// omniStageConfig is the stage-config JSON for a deployment with a diffusion block, or "" to keep
+// omni's defaults. `devices` counts the pod's devices from zero, as the container sees them.
 func omniStageConfig(in Inputs) (string, error) {
 	d := in.Deployment.Serving.Diffusion
 	if d == nil || (d.ModelClassName == "" && len(d.DefaultSamplingParams) == 0) {
@@ -1637,13 +1388,8 @@ func omniStageConfig(in Inputs) (string, error) {
 	return string(body), nil
 }
 
-// omniStageContainer writes the stage configuration into a volume the worker reads it from.
-//
-// An init container over an emptyDir, and not a ConfigMap. A ConfigMap is a second object with
-// its own lifecycle — this operator has no RBAC for one, would have to apply it, name it by
-// content so an edit reaches the pod, and prune the old ones — while this is part of the pod
-// template, so Dynamo's spec hash covers the configuration and an edit rolls the worker like any
-// other serving change. The worker's own image does the writing, so there is nothing new to pull.
+// omniStageContainer writes the stage config into an emptyDir, so it is part of the hashed pod
+// template and needs no ConfigMap lifecycle or RBAC.
 func omniStageContainer(image, config string) corev1.Container {
 	return corev1.Container{
 		Name:                     "omni-stage-config",
@@ -1655,12 +1401,8 @@ func omniStageContainer(image, config string) corev1.Container {
 	}
 }
 
-// omniArgs is the omni worker's command line.
-//
-// Its own list rather than engineArgs with flags removed: `dynamo.vllm.omni` takes none of the KV,
-// context or prefix-cache flags the chat worker is built around, and exits on any of them. It
-// takes the model, the served name, the output modality, the media URL, the stage-config path and
-// `--quantization`. engine_args is laid over last, as everywhere else.
+// omniArgs is the omni worker's command line, its own list because `dynamo.vllm.omni` exits on the
+// chat worker's KV and cache flags. engine_args is laid over last.
 func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 	modality := in.Deployment.Serving.OutputModality
 	if modality != OutputImage && modality != OutputVideo {
@@ -1713,13 +1455,8 @@ func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 // arguments.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
-// nixlBackendsFragment is the `backends` entry for a NixlConnector's extra config, or "" to let
-// vLLM choose.
-//
-// vLLM defaults to `["UCX"]`. On an EFA fabric that is the wrong plugin: EFA is a libfabric
-// provider, and UCX reaches it only through a path that moves KV no faster than TCP. Mounting the
-// fabric is necessary and not sufficient; NIXL has to be told to use LIBFABRIC. Empty keeps vLLM's
-// default, so a cluster with no fabric renders as before.
+// nixlBackendsFragment is the `backends` entry for NixlConnector's extra config, or "" for vLLM's
+// default UCX, which reaches EFA no faster than TCP; EFA needs LIBFABRIC.
 func nixlBackendsFragment(opts Options) string {
 	if len(opts.NIXLBackends) == 0 {
 		return ""
@@ -1741,18 +1478,8 @@ func nixlConnector(opts Options) string {
 	return `{"kv_connector":"NixlConnector","kv_role":"kv_both"` + nixlBackendsFragment(opts) + `}`
 }
 
-// offloadTier reads the host-memory KV offload switch out of the workload's prefix_cache_config.
-//
-// `offload: host` turns it on and `offload_gib` sizes it; anything else is off. The field already
-// runs plane -> DB -> digest -> wire and was ignored here, so turning the tier on is a workload
-// edit and not a release — which is what makes it possible to measure with and without it on the
-// same hardware in one night.
-//
-// Sizing is in GiB because that is the unit the person choosing it thinks in, and it is converted
-// to the bytes vLLM demands here rather than in the workload. `cpu_bytes_to_use` is the whole
-// instance's pool across every TP rank, not per rank -- `CPUOffloadingSpec` multiplies the
-// per-worker block size by world_size before dividing (kv_offload/cpu/spec.py:88-99) -- so the
-// number means what a reader expects it to mean and is not silently multiplied by eight.
+// offloadTier reads `offload: host` and `offload_gib` from prefix_cache_config. GiB is converted to
+// vLLM's `cpu_bytes_to_use`, which is the whole instance's pool across TP ranks, not per rank.
 func offloadTier(in Inputs) (gib int, on bool) {
 	cfg := in.Deployment.Serving.PrefixCacheConfig
 	if !strings.EqualFold(strings.TrimSpace(cfg["offload"]), "host") {
@@ -1767,17 +1494,9 @@ func offloadTier(in Inputs) (gib int, on bool) {
 	return gib, true
 }
 
-// roleKVTransferConfig is the connector stack for one role.
-//
-// Without the offload tier, both roles get NixlConnector. With it, prefill gets vLLM's
-// `MultiConnector` wrapping `OffloadingConnector` and `NixlConnector`, and decode is left alone:
-// prefill is the only role whose cache can be hit, since the next turn resends this turn's
-// context, and decode never prefills.
-//
-// vLLM's `MultiConnector` rather than Dynamo's `PdConnector`, because `PdConnector` limits its
-// first connector to ones without hybrid KV cache manager support, which models with SSM layers
-// require. `blocks_per_chunk` is left at its default because `block_size` must divide the
-// engine's block size, which nothing here sets.
+// roleKVTransferConfig is the connector stack for one role: NixlConnector, and with the offload
+// tier vLLM's MultiConnector over OffloadingConnector and NixlConnector on prefill only, since
+// decode never prefills. Not Dynamo's PdConnector, which rejects hybrid KV cache models.
 func roleKVTransferConfig(in Inputs, opts Options, role workerRole) string {
 	gib, on := offloadTier(in)
 	if !on || role.Role != "prefill" {
@@ -1792,11 +1511,8 @@ func roleKVTransferConfig(in Inputs, opts Options, role workerRole) string {
 	)
 }
 
-// aggregatedKVTransferConfig is the offload tier on a worker that has no role.
-//
-// An aggregated worker prefills and decodes in one process, so `OffloadingConnector` stands alone
-// with no transport to compose with, and an aggregated deployment renders no
-// `kv-transfer-config` at all unless the tier is on.
+// aggregatedKVTransferConfig is the offload tier on a worker with no role: OffloadingConnector
+// alone, or nothing when the tier is off.
 func aggregatedKVTransferConfig(in Inputs) string {
 	gib, on := offloadTier(in)
 	if !on {
@@ -1809,21 +1525,12 @@ func aggregatedKVTransferConfig(in Inputs) string {
 	)
 }
 
-// kvEventsConfig makes a worker publish which blocks it holds, which is what the frontend indexes
-// to route a conversation back to the worker that already prefilled it.
-//
-// Explicit, because upstream's `create_kv_events_config` returns nil unless it is set: enabling
-// prefix caching is not enough, whatever the flag's help text suggests. A KV-mode frontend with no
-// events scores every worker at zero overlap and degrades to load balancing while still reporting
-// itself as a KV router.
+// kvEventsConfig makes a worker publish the blocks it holds for the frontend's KV router. Upstream
+// publishes nothing unless this is set, whatever prefix caching says.
 const kvEventsConfig = `{"publisher":"zmq","topic":"kv-events","endpoint":"tcp://*:20080","enable_kv_cache_events":true}`
 
-// publishesKVEvents says whether this role should advertise the blocks it holds.
-//
-// Mirrors upstream's rule: a worker publishes when it prefills and its prefix cache is on.
-// Aggregated workers prefill too, so they publish; leaving them out leaves multi-replica
-// aggregated models routing cache-blind. A disaggregated decode role never prefills and upstream
-// refuses the config there.
+// publishesKVEvents follows upstream: a worker publishes when it prefills with its prefix cache
+// on, aggregated included; decode never does.
 func publishesKVEvents(in Inputs, role workerRole) bool {
 	if role.Role == "decode" {
 		return false
@@ -1833,11 +1540,8 @@ func publishesKVEvents(in Inputs, role workerRole) bool {
 	return role.Role == "prefill" || in.Deployment.Serving.PrefixCacheEnabled
 }
 
-// engineArgs builds the engine command line from the deployment's serving block.
-//
-// The serving fields are rendered first and engine_args second, so an explicit argument wins over
-// the derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
-// operator has never heard of, and an escape hatch that loses to a default is not one.
+// engineArgs builds the engine command line: serving fields first, engine_args over them, so the
+// escape hatch wins over a default.
 func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 	model, isPath, err := modelRef(in.Artifact)
 	if err != nil {
@@ -1887,31 +1591,10 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 		derived[strings.TrimPrefix(key, "--")] = value
 	}
 
-	// The role's own layer, above the deployment's and below nothing. Guarded on Role rather than
-	// on Spec so that the aggregated command line is assembled exactly as it was: no new key, no
-	// changed order, and therefore the same pod template and the same object name.
-	//
-	// `disaggregation-mode` and `kv-transfer-config` are derived here and refused from engine_args
-	// by the plane, which is what makes them derived rather than defaulted. They come from the
-	// topology — a decision already made, validated and placed against — and the operator lays
-	// engine_args over its derived flags last, so a value arriving from anywhere else would not be
-	// overruled by this, it would overrule it.
-	// The events the frontend's KV router indexes, on every role that prefills — the aggregated
-	// worker included, which is why this sits outside the role guard below rather than inside it.
-	//
-	// It is the half of the pair that costs something. Unlike the frontend's `DYN_ROUTER_MODE`,
-	// this lands in the worker's argument list, and `ComputeDGDWorkersSpecHash` covers the worker
-	// components, so adding it renames the worker Deployment and its pods reload their weights
-	// once. That is a real bill and it is paid knowingly: without the events, KV mode on the
-	// frontend indexes an empty tree and buys nothing at all.
-	//
-	// Defaulted and not derived, which is the difference between this flag and the two below it.
-	// The plane refuses `disaggregation-mode` and `kv-transfer-config` from engine_args
-	// (`TOPOLOGY_FLAGS`) and refuses neither this one nor anything else, so a workload is free to
-	// send its own endpoint or topic and this must not overrule it — engine_args is the escape
-	// hatch, and an escape hatch that loses to a default is not one. The deployment's own
-	// engine_args are already merged by the time this runs, so the guard is what lets them win;
-	// a role's engine_args are merged after and win by overwriting.
+	// KV events on every role that prefills, unless engine_args set them. Adding the flag changes
+	// the hashed worker spec and reloads weights once; without it the KV router indexes nothing.
+	// Unlike `disaggregation-mode` and `kv-transfer-config` below, which the plane refuses from
+	// engine_args, this is a default engine_args may override.
 	if _, set := derived["kv-events-config"]; !set && publishesKVEvents(in, role) {
 		derived["kv-events-config"] = kvEventsConfig
 	}
@@ -1954,36 +1637,18 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 			args = append(args, derived[key])
 		}
 	}
-	// vLLM enables prefix caching by default, so only the off case needs saying.
-	//
-	// **A disaggregated prefill worker is exempt, and that exemption is the whole warm path.**
-	// Prefill is the only role whose prefix cache can be hit: turn N+1 of a conversation resends
-	// turn N's context, and if the worker that prefilled it still holds those blocks the engine
-	// skips them. Decode never prefills, so its prefix cache buys nothing and costs KV blocks —
-	// which is why NVIDIA's own `disagg-kv-router` recipe puts `--no-enable-prefix-caching` on
-	// the decode worker alone and leaves prefill's caching on. Copying that flag onto both roles,
-	// which is what a uniform render does, forecloses the reuse: for the agentic shape we are
-	// sizing for — a 30k prompt growing 1.3k a turn over 25 turns — it is the difference between
-	// ~1.2M tokens prefilled per conversation and ~67k.
-	//
-	// It also disables KV-aware routing by a second route, because the events the router indexes
-	// are only published when prefix caching is on. See `kvEventsConfig`.
+	// vLLM caches prefixes by default, so only off needs saying. A disaggregated prefill worker
+	// keeps its cache regardless: it is the only role whose cache can be hit, and the KV router's
+	// events need it.
 	if !in.Deployment.Serving.PrefixCacheEnabled && role.Role != "prefill" {
 		args = append(args, "--no-enable-prefix-caching")
 	}
 	return args, nil
 }
 
-// contentLoggingFlags are the engine flags that write a request's prompt or its completion to the
-// worker's log: vLLM's `--enable-log-requests` and `--enable-log-outputs`, and SGLang's
-// `--log-requests` and its level.
-//
-// Zero retention of request content is a promise made about the whole serving path, and a worker's
-// stdout is collected, shipped and kept by whatever the cluster's log pipeline is — with a retention
-// and an audience nobody agreed to for a caller's prompt. Both engines default these off, so the
-// only way one reaches a command line is engine_args, which is the escape hatch and wins over
-// everything else here. This is the one thing it does not win over: the plane refuses these keys on
-// a workload, and this removes them again for any row written before it did.
+// contentLoggingFlags write a request's prompt or completion to the worker's log. Request content
+// is not retained, so these are stripped even from engine_args; the plane refuses them too, and
+// this covers rows written before it did.
 var contentLoggingFlags = []string{"enable-log-requests", "enable-log-outputs", "log-requests", "log-requests-level"}
 
 // withoutContentLogging deletes every content-logging flag from an assembled argument map, under
@@ -2002,36 +1667,16 @@ func withoutContentLogging(derived map[string]string) {
 	}
 }
 
-// servedModelName is the model id an API client sends, as the plane resolved it.
-//
-// Nothing is derived here and there is nothing left to choose between: the plane collapses the
-// workload's own declaration and the artifact's slug before it sends, so the field is never empty
-// on the wire and this renders the string it is told. `engine_args["served-model-name"]` still
-// beats it, because engine_args is laid over the derived flags.
+// servedModelName is the model id clients send, as the plane resolved it; engine_args can still
+// override it.
 func servedModelName(in Inputs) string {
 	return strings.TrimSpace(in.Deployment.ServedModelName)
 }
 
-// modelRef is what --model is pointed at, and whether that is a path rather than a repo id.
-//
-// A pinned Hugging Face source is served from the directory the prefetch job already wrote it to,
-// and not by repo id. Both forms resolve to the same bytes in the shared cache — HF_HOME is the
-// cache volume, so a repo id costs no second copy — but only one of them works everywhere. A repo
-// id is resolved by huggingface_hub, and an engine is free to reach the weights without it:
-// GLM-5.3-Flash's own processor in Z-AI's vLLM build opens `<--model>/processor_config.json`
-// directly, so a repo id arrives at the kernel as a relative path and the worker dies on
-//
-//	FileNotFoundError: 'zai-org/GLM-5.3-Flash/processor_config.json'
-//
-// A directory is what every engine agrees on, and it costs nothing to give: the path is derived
-// from the same repo and revision the prefetch job derived it from, so the two cannot disagree
-// about where the weights are without disagreeing about which weights they are.
-//
-// A source with no pinned revision keeps the repo id, because there is no snapshot directory to
-// name — huggingface_hub resolves the branch head to a commit at download time and this renderer
-// cannot know which. An artifact with no HF source at all falls back to the digest path the cache
-// writes to, which was already a path and is why the path shape needs no engine support that the
-// object-store case did not already need.
+// modelRef is what --model points at, and whether it is a path. A pinned HF source is served from
+// its snapshot directory, since some engines open files under --model directly and a repo id
+// would read as a relative path. Unpinned sources keep the repo id; sources with no HF ref use
+// the cache's digest path.
 func modelRef(art wire.ArtifactDesired) (ref string, isPath bool, err error) {
 	repo := ""
 	revision := ""
@@ -2054,24 +1699,14 @@ func modelRef(art wire.ArtifactDesired) (ref string, isPath bool, err error) {
 	return "/models/" + art.ArtifactID, true, nil
 }
 
-// HFSnapshotDir is where huggingface_hub lays one revision of one repo down under the shared cache.
-//
-// The layout is reconstructed rather than asked for, because the only thing that could answer is a
-// download that has already finished, and this renders the pod that waits on it. It is the same
-// reconstruction hfScript makes to watch its own progress, and it has to stay the same one: these
-// two are the writer and the reader of a single directory, and a layout change upstream must break
-// them together rather than leave a worker reading an empty path a job filled in elsewhere.
+// HFSnapshotDir is where huggingface_hub lays down one revision of a repo in the shared cache. It
+// must match hfScript's reconstruction, the writer of that directory.
 func HFSnapshotDir(repo, revision string) string {
 	return HFHome + "/hub/models--" + strings.ReplaceAll(repo, "/", "--") + "/snapshots/" + revision
 }
 
-// applyPodOverlay merges the serving block's pod configuration over the rendered spec.
-//
-// Strategic merge rather than a plain JSON merge patch, because PodSpec declares merge keys:
-// containers, env, volumes and volumeMounts merge by name. Under RFC 7386 those are lists and a
-// list is replaced wholesale, so adding one environment variable would mean restating every one
-// this renderer set — including PYTHONHASHSEED, whose absence costs prefix cache hits and reports
-// nothing.
+// applyPodOverlay merges the serving block's pod configuration over the rendered spec by strategic
+// merge, so containers, env and volumes merge by name instead of being replaced.
 func applyPodOverlay(spec *corev1.PodSpec, overlay map[string]any) (*corev1.PodSpec, error) {
 	if len(overlay) == 0 {
 		return spec, nil
@@ -2095,12 +1730,8 @@ func applyPodOverlay(spec *corev1.PodSpec, overlay map[string]any) (*corev1.PodS
 	return &out, nil
 }
 
-// applyDynamoOverlay merges the serving block's configuration over the rendered graph deployment.
-//
-// A plain recursive merge, and it has to be: DynamoGraphDeployment is someone else's CRD, so
-// there is no Go type here to read merge keys off. Maps merge, and anything else — including
-// lists — replaces. Replacing spec.components wholesale is the intended way to hand-write a
-// disaggregated topology this renderer does not know how to derive.
+// applyDynamoOverlay merges the serving block's configuration over the graph: maps merge, lists
+// replace, since the CRD has no Go type to read merge keys from.
 func applyDynamoOverlay(obj *unstructured.Unstructured, overlay map[string]any) error {
 	if len(overlay) == 0 {
 		return nil
@@ -2131,26 +1762,15 @@ func mergeMaps(base, over map[string]any) map[string]any {
 	return out
 }
 
-// Label keys that record which declared object a rendered one came from.
-//
-// They exist because an owner reference often cannot. Kubernetes resolves an ownerReference in the
-// dependent's own namespace, so a namespaced owner in a different namespace does not merely fail
-// to link the two — the garbage collector reads it as an owner that has been deleted and removes
-// the dependent, seconds after it was applied. Declared state lives in Options.Namespace and
-// rendered workloads live in the workload namespace, so that is the ordinary case here, not an
-// edge one.
+// Labels recording which declared object a rendered one came from. An owner reference across
+// namespaces reads as a deleted owner and gets the dependent collected.
 const (
 	OwnerNameLabel      = "hangar.dev/owner"
 	OwnerNamespaceLabel = "hangar.dev/owner-namespace"
 )
 
-// Owned records which declared object a rendered one came from.
-//
-// An owner reference is stamped only when the two share a namespace, where it is both valid and
-// useful. Across namespaces the labels are the only link, and teardown becomes a real code path —
-// the finalizer in the reconciler — rather than the API server's job. That is the cost of
-// rendering into a namespace of its own, and it is paid explicitly here instead of being written
-// as a reference that Kubernetes will act on in the one way nobody wants.
+// Owned records which declared object a rendered one came from: an owner reference only within one
+// namespace, labels always, and the reconciler's finalizer handles teardown across namespaces.
 func Owned(obj *unstructured.Unstructured, owner metav1.Object, gvk schema.GroupVersionKind) {
 	OwnedMeta(obj, owner)
 
@@ -2183,13 +1803,8 @@ func OwnedMeta(obj metav1.Object, owner metav1.Object) {
 
 func ptr[T any](v T) *T { return &v }
 
-// SplitHFRef separates a HuggingFace URI into the repo id and the revision pinned onto it.
-//
-// The plane writes a pinned artifact as hf://owner/name@<sha>, and huggingface_hub validates the
-// repo id against a character set that does not include '@' — so passing the whole thing through
-// fails the pull outright rather than resolving the pin. The separator is the last '@' because a
-// repo id may not contain one and a revision may not either, but splitting from the right is the
-// reading that survives a source that acquires one later.
+// SplitHFRef splits hf://owner/name@<sha> into repo id and revision, since huggingface_hub rejects
+// '@' in a repo id.
 func SplitHFRef(uri string) (repo, revision string) {
 	repo = strings.TrimPrefix(uri, "hf://")
 	if i := strings.LastIndex(repo, "@"); i >= 0 {
@@ -2198,11 +1813,8 @@ func SplitHFRef(uri string) (repo, revision string) {
 	return repo, ""
 }
 
-// hfRevision is the revision the preferred HuggingFace source pins, if it pins one.
-//
-// Handed to the engine as --revision so that it resolves the same commit the prefetch downloaded.
-// Without it the engine resolves the branch head against the shared cache, which is a second copy
-// of the weights at best and a different model at worst.
+// hfRevision is the revision the preferred HF source pins, passed as --revision so the engine
+// loads the commit the prefetch downloaded.
 func hfRevision(art wire.ArtifactDesired) string {
 	for _, source := range art.Sources {
 		if strings.HasPrefix(source.URI, "hf://") {
