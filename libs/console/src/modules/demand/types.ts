@@ -7,19 +7,9 @@ export interface ArtifactLocation {
 }
 
 /**
- * `ArtifactUpstreamSchema` — what the publisher said this release does.
- *
- * The reference, never our configuration: a workload's `context_length` is only a
- * finding when there is something to compare it against. It is `metadata`'s
- * opposite in the way `imported_args` is `engine_args` — one is a claim somebody
- * signed, the other is a bag — which is why the provenance triple
- * (`source_uri`, `recorded_by`, `recorded_at`) is part of the block and not
- * optional decoration. Nothing here reaches a cluster.
- *
- * `licence` is deliberately a second spelling of `Artifact.licence`: that one is
- * what we believe applies, this one is what the model card said, and a
- * difference between them is a finding rather than a bug. `parameter_count` is
- * not duplicated — it is already a field on the artifact.
+ * `ArtifactUpstreamSchema`: what the publisher claims for this release, with provenance. Never
+ * reaches a cluster. Its `licence` is the model card's; a mismatch with `Artifact.licence` is a
+ * finding.
  */
 export interface ArtifactUpstream {
   provider: string | null
@@ -42,16 +32,8 @@ export interface ArtifactUpstream {
 export type ArtifactUpstreamRequest = Partial<ArtifactUpstream>
 
 /**
- * `ArtifactBaselineSchema` — one declared quality floor, per dataset and metric.
- *
- * Declared, not observed and not derived: somebody asserts that these weights
- * score this number on this eval and signs it, so an acceptance review is an
- * argument about the assertion rather than about whichever number a harness
- * produced last.
- *
- * `tolerance_pct` is the recorder's own per-row slack and is **not** the
- * acceptance floor — that is a property of the criteria version, resolved when a
- * verdict is derived, and it is `ACCEPTANCE_FLOOR` x this value.
+ * `ArtifactBaselineSchema`: a declared, signed quality floor. `tolerance_pct` is the recorder's
+ * slack, not the acceptance floor.
  */
 export interface ArtifactBaseline {
   id: string
@@ -91,40 +73,19 @@ export interface Artifact {
   locations: ArtifactLocation[]
 }
 
-/**
- * `ArtifactUsageSchema` — what depends on this artifact, counted at read time.
- * `workload_count` is the distinct workloads serving these weights,
- * `downstream_count` the artifacts derived from this one.
- */
+/** `ArtifactUsageSchema`: dependent workloads and derived artifacts, counted at read time. */
 export interface ArtifactUsage {
   artifact_id: string
   workload_count: number
   downstream_count: number
 }
 
-/**
- * The two questions a fitment matrix can answer, and they are not one question.
- *
- * `fleet` is *what can I run right now* — every class a cluster has reported, where
- * a no-fit row is a dead end. `catalog` is *what hardware would I need* — every
- * class the contract table names as well, where a fit on a class the fleet has none
- * of needs hardware first rather than being deployable.
- */
+/** `fleet`: classes a cluster reported. `catalog`: the contract table's too (may need hardware). */
 export const FITMENT_SCOPES = ["fleet", "catalog"] as const
 
 export type FitmentScope = (typeof FITMENT_SCOPES)[number]
 
-/**
- * `ArtifactFitLayoutSchema` — one of the several ways a class can hold this artifact.
- *
- * A fit's own fields are the recommendation: the fewest cards carrying the full
- * window. These are the rest of them, ascending, and the difference between them is a
- * real decision — four H200 at 32k leaves half the node for somebody else, eight at
- * 131k does not. Every entry serves; nothing that cannot is listed.
- *
- * `weights_gb` and `kv_counted` are not repeated here. They belong to the artifact
- * rather than to the layout and are the same for every entry.
- */
+/** `ArtifactFitLayoutSchema`: another serving device count for the class, ascending. */
 export interface ArtifactFitLayout {
   device_count: number
   node_count: number
@@ -141,40 +102,21 @@ export interface ArtifactFitLayout {
 }
 
 /**
- * `ArtifactFitSchema` — whether this artifact serves on one class of card.
- *
- * The fit half is durable and the three counts are the fleet half. They stay apart
- * because `fits` with `devices_allocatable: 0` is a capacity problem and `fits:
- * false` is a physics problem, and only one of them is fixed by waiting.
- *
- * `devices_allocatable` is not a promise that a replica of `device_count` devices
- * can be placed — contiguity inside a topology domain decides that, and placement
- * preview is what answers it.
+ * `ArtifactFitSchema`: whether this serves on one class. `fits` is physics; the counts are
+ * capacity.
  */
 export interface ArtifactFit {
   device_class: string
   label: string
   fits: boolean
-  /**
-   * The half of `fits` that is arithmetic rather than estimate: the weights sit on the
-   * cards, and the attention heads divide across the tensor group. False is a refusal
-   * the plane will make too. `fits` false with `possible` true is the sizing's opinion
-   * about the window, which is advice and is overrulable.
-   */
+  /** Weights fit and heads divide. False is a refusal; `fits` false with this true is advice. */
   possible: boolean
   /** The window had to be cut below the one asked for. Deliberately not a failure. */
   reduced: boolean
   device_count: number
-  /**
-   * Nodes the replica spans. The unit that gets ordered and racked, and the number to
-   * lead with — "4 nodes of B300" is an order, "32 devices" is a number to divide.
-   */
+  /** Nodes the replica spans: the unit that gets ordered. */
   node_count: number
-  /**
-   * How big one node was taken to be. Read from the fleet's observed topology for a class
-   * the fleet has, assumed otherwise. Eight on an HGX board, seventy-two on a GB300 NVL72 — the
-   * interconnect is what makes a node a node, and the rack has one.
-   */
+  /** Observed node size for a known class, assumed otherwise (8 on HGX, 72 on NVL72). */
   devices_per_node: number
   /** Inside a node, where the interconnect is coherent. Capped by `devices_per_node`. */
   tensor_parallel: number
@@ -185,44 +127,21 @@ export interface ArtifactFit {
   weights_gb: number
   required_gb: number
   context_length: number
-  /**
-   * False when the artifact published no attention shape, so `required_gb` is the
-   * weights and nothing else and `context_length` is zero. Such a row is a floor —
-   * the real requirement is strictly larger — and showing it as a full sizing would
-   * promise a window nobody costed.
-   */
+  /** False without an attention shape: `required_gb` is weights only, a floor. */
   kv_counted: boolean
   reason: string
   devices_total: number
   devices_allocatable: number
   cluster_count: number
-  /**
-   * The fleet holds this class and fewer of it than one replica needs — a fit
-   * nobody can run today. Not the same as owning none of the class, which is a
-   * purchase, and not the same as the free count being low, which waiting fixes.
-   */
+  /** The fleet has this class but fewer than one replica needs. */
   supply_short: boolean
   /** False for hardware the contract table has never named, fitted from what a cluster reported. */
   in_catalog: boolean
-  /**
-   * Every count on this class that serves, the recommendation included. The fields
-   * above are one of these; this is the choice between context and cards.
-   */
+  /** Every serving count on this class, the recommendation included. */
   layouts: ArtifactFitLayout[]
 }
 
-/**
- * `ArtifactFitmentSchema` — the classes an artifact could be served on, ranked.
- *
- * Every input is echoed because a fit is meaningless without them: the same
- * artifact fits very different hardware at 8k and at 131k, and a matrix that did
- * not say which would be read as a property of the weights.
- *
- * `sizable` is false only when the artifact carries no parameter count at all —
- * `items` is then empty and `note` says why. A missing attention shape is not that
- * case: the weights still bound which cards are too small, so the matrix comes back
- * with every row's `kv_counted` false and `note` saying the windows are uncosted.
- */
+/** `ArtifactFitmentSchema`: classes ranked, inputs echoed. `sizable` false: no parameter count. */
 export interface ArtifactFitment {
   artifact_id: string
   scope: FitmentScope
@@ -237,13 +156,7 @@ export interface ArtifactFitment {
   items: ArtifactFit[]
 }
 
-/**
- * One row of a fitment, carried into a workload's serving block as a starting point.
- *
- * The fit told us these four things and nothing else — which card, how many, at what
- * window, at what precision. Everything else about serving is still the person's to
- * declare, which is why this is six fields rather than a whole draft.
- */
+/** A fitment row seeded into a workload's serving block. */
 export interface ServingFootprint {
   device_class: string
   device_count: number
@@ -307,16 +220,7 @@ export interface ArtifactUpdateRequest {
   locations?: ArtifactLocationRequest[]
 }
 
-/**
- * `ServingDefaults` — serving parameters implied by the weights. A suggestion the
- * plane never applies: a workload's serving block is declared state someone owns,
- * so these seed that form and go nowhere else.
- *
- * `context_length`, `quantization` and `dtype` are read off the repository;
- * `device_count` and `device_memory_mib_min` are what serving that needs. The
- * derivation only runs that way — an artifact never trims its own context to fit
- * a card, because it knows nothing about which cards exist.
- */
+/** `ServingDefaults`: implied by the weights. Seeds the form; the plane never applies them. */
 export interface ServingDefaults {
   device_count: number
   device_memory_mib_min: number
@@ -325,13 +229,7 @@ export interface ServingDefaults {
   dtype: string | null
 }
 
-/**
- * `UpstreamDeployment` — what the corpus's own rules render for one node shape.
- *
- * A large model has no single tested parallelism, it has one per node it can run
- * on, so this is a list rather than a number. Nothing here is a fact about the
- * fleet: it says the layout works, not that the fleet has such a node.
- */
+/** `UpstreamDeployment`: the corpus's layout for one node shape, not a fleet fact. */
 export interface UpstreamDeployment {
   hardware: string
   display_name: string
@@ -343,19 +241,8 @@ export interface UpstreamDeployment {
 }
 
 /**
- * `UpstreamRecipe` — serving parameters somebody upstream has run,
- * attributed to them.
- *
- * Kept apart from `ServingDefaults` on purpose. That is the plane's own arithmetic
- * over `config.json`; this is a third party's measurement of a different question —
- * not "what do these weights need" but "what did this configuration do when it
- * was served". Merging them would produce a form where no field can say where its
- * number came from, and the numbers do not always agree.
- *
- * Every field is a claim, and the two URIs are how it is read back, which is why
- * the console shows the attribution beside any value it seeds from here.
- * `verified_hardware` names the node shapes the publisher ran on — evidence the
- * configuration works, and no evidence at all that the fleet has such a node.
+ * `UpstreamRecipe`: a third party's tested configuration, attributed, kept apart from
+ * `ServingDefaults` so each seeded value says where it came from.
  */
 export interface UpstreamServing {
   source: string
@@ -367,26 +254,10 @@ export interface UpstreamServing {
   variant: string
   precision: string | null
   engine: string
-  /**
-   * The lowest vLLM release that serves these weights, as the recipe declares it.
-   *
-   * vLLM's own version (`0.28.0`), and not a workload's `engine_runtime_version`, which
-   * names a tag of the Dynamo runtime image (`vllm-runtime:1.4.1`). The two count
-   * in different sequences and one is not the other spelled differently, so this
-   * is shown and never seeded into the form: `vllm-runtime:0.28.0` is an address
-   * that has never existed.
-   */
+  /** Lowest vLLM release. Shown, never seeded: it is not a Dynamo runtime tag. */
   engine_version_min: string | null
   nightly_required: boolean
-  /**
-   * The image the publisher serves this model from, when it names one of its own.
-   *
-   * Reported, never seeded. It is a third party's runtime with no `ai-dynamo` in
-   * it, so pinning `engine_runtime_image` to this trades one startup failure for another.
-   * What it supports is the negative claim — that the image the plane derives from
-   * the engine and version cannot load these weights, and somebody has to supply
-   * one that can.
-   */
+  /** The publisher's own image. Reported, never seeded: it has no Dynamo in it. */
   docker_image: string | null
   tensor_parallel: number | null
   default_strategy: string | null
@@ -407,24 +278,13 @@ export interface UpstreamServing {
   verified_hardware: string[]
 }
 
-/**
- * `ResolveNote` — one remark about a resolved source, and how much it matters.
- *
- * `info` is something the plane handled and is telling you about — a duplicate
- * copy of the weights excluded from the digest. `warn` is something that will
- * bite: weights the Hub cannot address, or a gate that needs a token. Painting
- * both amber is how a person learns to skim past the second.
- */
+/** `ResolveNote`: `info` was handled; `warn` will bite (unaddressable weights, a gate). */
 export interface ResolveNote {
   level: "info" | "warn"
   message: string
 }
 
-/**
- * `ResolvedArtifact` — a source manifest read as an artifact. Nothing is written.
- * `digest` is derived by the plane from the source's per-file oids, which is why
- * the form shows it read-only: a digest a person typed is a claim nobody checked.
- */
+/** `ResolvedArtifact`: a source read as an artifact. `digest` comes from the file oids. */
 export interface ResolvedArtifact {
   reference: string
   digest: string
@@ -443,28 +303,13 @@ export interface ResolvedArtifact {
   serving: ServingDefaults
   /** Null when no corpus entry names these weights. Never our own arithmetic. */
   upstream: UpstreamServing | null
-  /**
-   * What the publisher claims, as opposed to `upstream`, which is what an engine ran.
-   * Two third parties answering two questions, which is why they are two fields.
-   */
+  /** What the publisher claims; `upstream` is what an engine ran. */
   publisher: ArtifactUpstream
   existing_id: string | null
   notes: ResolveNote[]
 }
 
-/**
- * `ArtifactRefresh` — the result of `POST /artifacts/:ref/refresh`.
- *
- * `changed` is the point of the response, not decoration. A refresh that records
- * an attention shape the plane only recently learned to read leaves the artifact
- * looking identical apart from one metadata key, so a button that could only say
- * "refreshed" would leave the person guessing whether anything happened. Keys are
- * dotted for metadata (`metadata.shape`), and an empty list is a success — the
- * source still says exactly what was already recorded.
- *
- * `notes` is about the source rather than the diff: a repo that has since become
- * gated says so here even when nothing changed.
- */
+/** `ArtifactRefresh`: `changed` lists dotted keys that moved; empty is a no-op success. */
 export interface ArtifactRefresh {
   artifact: Artifact
   source: string
@@ -508,13 +353,7 @@ export interface ServingResources {
   disk_gib: number | null
 }
 
-/**
- * `ReasoningSchema` — how this workload thinks, as rendered flags.
- *
- * Its own object for the reason `ServingCache` is: the fields are meaningless
- * individually and all of them are conditioned on the model being able to think
- * at all. What it *can* do is `capabilities.reasoning_supported`.
- */
+/** `ReasoningSchema`: flags that only mean something together. */
 export interface ServingReasoning {
   default_on: boolean
   parser: string | null
@@ -524,14 +363,7 @@ export interface ServingReasoning {
   suppress_eos_until_think_end: boolean
 }
 
-/**
- * `ServingSchema` — what the served API does, as the engine is told to do it.
- *
- * Every field renders to a flag or a rendered value, so honoring any of it
- * means a replica restart — which is why it sits in the serving block beside
- * `cache` and not on the endpoint. Every default is the behavior of a block
- * that says nothing, so it is inert until somebody fills it in.
- */
+/** `ServingSchema`: API behavior as engine flags, so a change restarts replicas. */
 export interface ServingBehavior {
   reasoning: ServingReasoning
   stream_usage: string
@@ -542,15 +374,7 @@ export interface ServingBehavior {
   max_videos_per_request: number | null
 }
 
-/**
- * `CapabilitiesSchema` — what this engine x artifact is *claimed* to do.
- *
- * The same split as `engine_args` against `imported_args`, one level up: nothing
- * here becomes a flag or reaches a cluster, because a cluster has no use for a
- * claim about itself. The plane holds no table of what an engine can do, so a
- * block that is internally consistent and entirely false is accepted, stored,
- * and falsified by the first conformance run.
- */
+/** `CapabilitiesSchema`: claimed, never rendered, stored unchecked; conformance tests it. */
 export interface ServingCapabilities {
   reasoning_supported: boolean
   streaming_supported: boolean
@@ -595,11 +419,7 @@ export const TOOL_CHOICE_MODES = [
 export const INPUT_MODALITIES = ["text", "image", "audio", "video"] as const
 export const PROMPT_CACHE_MODES = ["off", "automatic", "explicit"] as const
 
-/**
- * Parsers we have run, offered so that the common case is a pick rather than a
- * spelling test. The plane takes any string — an engine build knows parsers this
- * console does not — so every one of these fields keeps a way to type one in.
- */
+/** Parsers we have run. The plane takes any string, so fields accept free text. */
 export const REASONING_PARSERS = [
   "deepseek_r1",
   "glm45",
@@ -624,44 +444,22 @@ export const STRUCTURED_OUTPUT_BACKENDS = [
   "xgrammar",
 ] as const
 
-/**
- * `OverlaySchema` — passthrough for what the plane deliberately does not model.
- *
- * `pod_spec` merges over the rendered pod with strategic-merge semantics;
- * `dynamo` merges over the rendered graph deployment, where maps merge and lists
- * replace.
- */
+/** `OverlaySchema`: strategic merge over the pod; map merge over the graph deployment. */
 export interface ServingOverlay {
   pod_spec: Record<string, unknown>
   dynamo: Record<string, unknown>
 }
 
 /**
- * `WorkloadServingSchema` — how one workload serves its weights, as one block.
- *
- * Everything an engine is told, and nothing about how much of it runs or where.
- * There is no object behind it and no id to point at: two workloads configured
- * the same way carry the same `serving_digest`, and that is how a configuration
- * is reused.
- *
- * `serving` inside `serving` is not a slip and is not a name this console chose.
- * The outer block is the whole configuration; the inner one is the typed
- * API-behavior group that lands in the `serving` column and is hashed into the
- * digest under that name. Renaming it here for readability would leave the HTTP
- * body, the column and the digest field list each calling one thing something
- * different — and because TypeScript erases, the rename would typecheck green and
- * read `undefined` in a browser. `ServingBehavior` is the type name; `serving`
- * is the property, because that is what arrives.
+ * `WorkloadServingSchema`: everything an engine is told, identified by `serving_digest`. The inner
+ * `serving` is the wire name of the `ServingBehavior` group.
  */
 export interface WorkloadServing {
   artifact_id: string
   engine: string
   engine_runtime_version: string
   engine_runtime_image: string | null
-  /**
-   * A second image, not a spelling of `engine_runtime_image`: a frontend and a worker are
-   * separately versioned binaries. Null means the cluster decides.
-   */
+  /** A separately versioned frontend image. Null lets the cluster decide. */
   frontend_image: string | null
   engine_args: Record<string, unknown>
   /** Read off a running process. Recorded in full, never rendered, never hashed. */
@@ -675,36 +473,16 @@ export interface WorkloadServing {
   serving: ServingBehavior
   /** Asserted, never rendered, and it never reaches a cluster. */
   capabilities: ServingCapabilities
-  /**
-   * `engine_args` with the flags the typed `serving` block dictates laid over the
-   * top, keyed the way the operator keys them — without the leading dashes.
-   * Derived on every read and stored nowhere, so that "which value actually took
-   * effect" is something to read rather than something to reconstruct.
-   */
+  /** `engine_args` with the `serving` flags laid over, keyed without dashes. Derived on read. */
   resolved_engine_args: Record<string, string>
   shape: ServingShape
   resources: ServingResources
   overlay: ServingOverlay
-  /**
-   * Absent from a plane that predates disaggregation, which reads as
-   * `aggregated` everywhere this console branches. That is not a guess: every
-   * workload such a plane knows about is aggregated by definition, and reading
-   * absent as unknown would render a third state the object model does not have.
-   */
+  /** Absent from planes that predate disaggregation; read as `aggregated`. */
   topology?: ServingTopologyView
 }
 
-/**
- * The write shape of `serving`, grouped exactly like the read shape.
- *
- * Deliberately the same object in both directions: what a caller sends and what
- * it gets back are one shape, so a form can round-trip a block without a
- * translation layer that is one rename away from being wrong.
- *
- * `artifact` is here rather than on the workload because the weights and the
- * configuration that serves them are one declaration: repointing at other bytes
- * is a different serving block and a different digest.
- */
+/** Write shape of `serving`, same as the read shape so a form round-trips. */
 export interface WorkloadServingRequest {
   artifact: string
   engine: string
@@ -724,41 +502,18 @@ export interface WorkloadServingRequest {
   overlay?: ServingOverlay
   serving?: ServingBehavior
   capabilities?: ServingCapabilities
-  /**
-   * Omitted entirely on an aggregated workload rather than sent with an
-   * aggregated value and an empty role list. `serving_digest` only adds the
-   * block to the hashed payload when the workload is disaggregated, so sending
-   * it unconditionally would change every existing digest in the fleet.
-   */
+  /** Omitted when aggregated, so existing digests do not change. */
   topology?: ServingTopologyRequest
 }
 
-/**
- * A partial update. The artifact is absent: other bytes are a different workload.
- *
- * The sub-blocks replace whole, which is why this is `Partial` over the groups
- * rather than over their fields — `parallelism`, `cache`, `shape`, `resources`,
- * `serving` and `capabilities` are each meaningless in halves, so sending one
- * means stating it.
- */
+/** A partial update without the artifact. Each sub-block replaces whole. */
 export type WorkloadServingUpdate = Partial<
   Omit<WorkloadServingRequest, "artifact">
 >
 
 /**
- * `WorkloadRevisionSchema` — one serving configuration a workload has held.
- *
- * `serving` is a `WorkloadServingUpdate` and that is the whole point: a revision is stored as
- * the body that restates it, so going back is `PATCH /v1/workloads/{ref}` carrying it, validated
- * on the way in by the same checks as any hand-written patch. There is no rollback verb and
- * nothing here needs one.
- *
- * `artifact` sits beside `serving` rather than inside it because the weights are not patchable —
- * repointing a workload at other bytes is a different workload. A revision from before a weights
- * swap is a record, not something to reapply blind.
- *
- * `number` counts from 1 within the workload and never rewinds: going back to revision 2 appends
- * a new one carrying revision 2's body rather than deleting what came after.
+ * `WorkloadRevisionSchema`: a held configuration, stored as the PATCH body that restores it.
+ * `number` never rewinds; going back appends.
  */
 export interface WorkloadRevision {
   id: string
@@ -772,22 +527,11 @@ export interface WorkloadRevision {
   serving: WorkloadServingUpdate
 }
 
-/**
- * Which write filed a revision.
- *
- * `imported` is the one that is not a write: the configuration a workload older than its own
- * history was already running, recorded from the pre-image of its first serving edit.
- */
+/** `imported` records what a workload ran before it had a history. */
 export type WorkloadRevisionReason =
   "created" | "updated" | "reshaped" | "promoted" | "imported" | (string & {})
 
-/**
- * The only write a revision accepts.
- *
- * Everything else on it records what ran, and editing that would be editing history. The note is
- * an account of the record rather than part of it, and an account is usually written after the
- * run that explains it. `null` clears one.
- */
+/** The only write a revision accepts. `null` clears the note. */
 export interface WorkloadRevisionUpdate {
   note: string | null
 }
@@ -795,18 +539,11 @@ export interface WorkloadRevisionUpdate {
 /** `Workload.kind` — one scheduling supertype across serving and batch. */
 export type WorkloadKind = "service" | "task" | "gang" | (string & {})
 
-/**
- * `Workload.phase`, derived from the deployments underneath it and stored
- * nowhere: `running` when every deployment runs, `failed` if any failed,
- * otherwise the least advanced phase among them.
- */
+/** Derived: `running` when all run, `failed` if any failed, else the least advanced. */
 export type WorkloadPhase =
   "pending" | "admitted" | "placed" | "running" | "failed" | (string & {})
 
-/**
- * How placement spends the total across the clusters a workload may use.
- * `pack` fills one cluster before reaching for the next; `spread` levels them.
- */
+/** `pack` fills one cluster before the next; `spread` levels them. */
 export type WorkloadStrategy = "pack" | "spread" | (string & {})
 
 /** `DeploymentReplicaRollupSchema` — observed replicas, counted not listed. */
@@ -819,14 +556,7 @@ export interface DeploymentReplicaRollup {
   at_current_generation: number
 }
 
-/**
- * `WorkloadScaleSchema` — declared totals, and what the shares add up to.
- *
- * `unit` is named by kind — replicas, ranks, completions — because the three
- * numbers count different things and a bare integer is unreadable without it.
- * `placed` and `ready` are sums over the deployments and are the only place
- * summing a share against anything is legal.
- */
+/** `WorkloadScaleSchema`: declared totals in `unit`, plus sums over the deployments. */
 export interface WorkloadScale {
   unit: string
   min: number
@@ -836,12 +566,7 @@ export interface WorkloadScale {
   ready: number
 }
 
-/**
- * `WorkloadDeploymentSchema` — one cluster's share, as seen from the workload.
- *
- * Enough to render the per-cluster table and link into the deployment; the full
- * per-cluster object is `GET /deployments/{ref}`.
- */
+/** `WorkloadDeploymentSchema`: one cluster's share, for the per-cluster table. */
 export interface WorkloadDeployment {
   id: string
   name: string
@@ -861,26 +586,11 @@ export interface WorkloadDeployment {
   placed_at: string | null
   replicas: DeploymentReplicaRollup
   status: DeploymentStatus | null
-  /**
-   * Ready replicas in this cluster per serving configuration they actually came up on.
-   *
-   * The observed answer to "which version is live", and a map because there is often more
-   * than one: two entries is a rollout in progress, and an entry that is not the workload's
-   * `serving_digest` is a cluster still running what it was asked for last time. Empty is "no
-   * ready replica has reported one" — a cluster whose agent has not resynced, or an operator
-   * too old to stamp the annotation — and never "none running".
-   */
+  /** Ready replicas per digest. Two entries is a rollout; empty is unreported, not none. */
   live_digests: Record<string, number>
 }
 
-/**
- * `WorkloadSchema` — what was asked for, and where it ended up.
- *
- * The workload is global: it names no cluster. `deployments` is the per-cluster
- * expansion placement chose, one row per cluster. A `gang` always has exactly
- * one — splitting a gang across clusters is rejected at placement, not ranked
- * down — and so does a workload with `pinned_cluster_id` set.
- */
+/** `WorkloadSchema`: global. A gang or pinned workload has exactly one deployment. */
 export interface Workload {
   id: string
   name: string
@@ -891,22 +601,11 @@ export interface Workload {
   preemptible: boolean
   paused: boolean
   gang_size: number
-  /**
-   * `svg_<64 hex>` over everything in `serving` that reaches an engine, recomputed
-   * by the plane on every write and never accepted from a client. Two workloads
-   * that would produce the same running process carry the same digest; nothing
-   * else identifies a configuration.
-   */
+  /** `svg_<64 hex>` over what reaches an engine, computed by the plane on write. */
   serving_digest: string
   serving: WorkloadServing
   adapter_artifact_ids: string[]
-  /**
-   * The model id the engine registers under. Read from the artifact's slug, never declared here.
-   *
-   * Reported and not accepted. A per-workload override that the plane resolved against this
-   * would let the id a client sends and the id a frontend registered come apart. What a *client*
-   * sends is still changeable — that is the endpoint's `slug`.
-   */
+  /** Registered model id, from the artifact's slug. Clients use the endpoint's `slug`. */
   served_model_name: string
   overrides: Record<string, unknown>
   labels: Record<string, string>
@@ -928,25 +627,14 @@ export interface Workload {
   artifact_tag: string | null
 }
 
-/**
- * `WorkloadPlacementNodeSchema` — one node a workload's live devices sit on.
- *
- * `device_count` is how many of the node's devices this workload holds right now,
- * derived from the live allocation rows rather than declared anywhere.
- */
+/** `WorkloadPlacementNodeSchema`: a node holding live devices of this workload. */
 export interface WorkloadPlacementNode {
   node: string
   cluster: string
   device_count: number
 }
 
-/**
- * `WorkloadReplicaPlacementSchema` — where one live allocation landed.
- *
- * `replica` is null for an allocation the cluster has not yet tied to a replica.
- * `gang_complete` says whether the allocation currently holds every device it
- * was granted, so a partially satisfied gang is visible here.
- */
+/** `WorkloadReplicaPlacementSchema`: one live allocation; `replica` null until tied. */
 export interface WorkloadReplicaPlacement {
   allocation: string
   replica: string | null
@@ -957,11 +645,7 @@ export interface WorkloadReplicaPlacement {
   gang_complete: boolean
 }
 
-/**
- * `WorkloadPlacementSchema` — where a workload physically is, derived from its
- * live allocations. Read-only, computed at read time; only membership and
- * placement facts, no serving telemetry.
- */
+/** `WorkloadPlacementSchema`: from live allocations at read time. */
 export interface WorkloadPlacement {
   workload: string
   node_count: number
@@ -970,26 +654,13 @@ export interface WorkloadPlacement {
   replicas: WorkloadReplicaPlacement[]
 }
 
-/**
- * What it takes to run something, without saying where.
- *
- * `cluster` is optional and absent is the normal case: placement picks from the
- * serving block's shape, the project's quota, the policies on the workload and what
- * the clusters report free. Naming one is an override that forces a single deployment.
- *
- * The three scale numbers are TOTALS across every cluster this workload may use.
- */
+/** Scale numbers are totals across clusters; `cluster` forces a single deployment. */
 export interface WorkloadCreateRequest {
   serving: WorkloadServingRequest
   name: string
   project: string
   cluster?: string | null
-  /**
-   * Narrows placement without taking the decision off it, unlike `cluster`. The plane
-   * turns either list into a Policy named after the workload and attached to it, so the
-   * constraint is enforced on every later expansion and readable at
-   * `GET /policies?subject_type=workload`. Empty means no opinion.
-   */
+  /** Narrows placement: the plane stores either list as a Policy on the workload. */
   allowed_regions?: string[]
   allowed_clusters?: string[]
   priority_class?: string | null
@@ -1011,15 +682,7 @@ export interface WorkloadCreateRequest {
   note?: string | null
 }
 
-/**
- * A partial update. Cluster is absent by design — a deployment is workload x
- * cluster, so changing it is a new one. Scale is absent too: it is long-running
- * and can sit pending on quota forever, so it is the `workload.scale` operation
- * and not a field write.
- *
- * `serving` is present, and a write to it recomputes `serving_digest` and rolls
- * the replicas. The artifact is not: other bytes are a different workload.
- */
+/** No cluster or scale (scale is the `workload.scale` operation). `serving` rolls replicas. */
 export interface WorkloadUpdateRequest {
   name?: string
   adapter_artifacts?: string[]
@@ -1032,27 +695,11 @@ export interface WorkloadUpdateRequest {
   strategy?: WorkloadStrategy
   cluster_floors?: Record<string, number>
   max_clusters?: number | null
-  /**
-   * Why this change, landing on the revision the patch files.
-   *
-   * A patch that files none — one carrying only a note, or one arriving at the configuration
-   * already in force — puts it on the revision in force instead, so it is never dropped.
-   */
+  /** A patch that files no revision puts the note on the one in force. */
   note?: string | null
 }
 
-/**
- * One workload's share on one cluster: declared spec, admission, observed replicas.
- *
- * `min_replicas` / `max_replicas` / `desired_replicas` are THIS CLUSTER'S SHARE of
- * the workload's total, never the total. Summing a share against a total, or
- * dividing one out of the other, is always a bug. Placement sets all three equal,
- * so there is no range here to render.
- *
- * Serving, adapters, overrides and labels are not here: they are workload facts,
- * read through `workload_id`. Admission is here, because it is per-cluster — a
- * workload can be running in one region and queued on quota in another.
- */
+/** One cluster's share; replica counts are the share, never the total. */
 export interface Deployment {
   id: string
   name: string
@@ -1082,18 +729,7 @@ export interface Deployment {
   status: DeploymentStatus | null
 }
 
-/**
- * The observed half: where the deployment is, and what is holding it there.
- *
- * `reason` and `message` are deliberately not errors. Most of a deployment's life
- * before it serves is spent waiting on an ordering — the artifact has to arrive, the
- * weights have to be resident, a node has to advertise enough accelerators — and
- * every one of those is expected. `last_error_*` is for the things that went wrong.
- *
- * `reason` is a closed set the operator owns and is typed as a string on purpose: a
- * cluster runs its own build and may report a sub-state this console has never heard
- * of, and showing it beats hiding it.
- */
+/** Observed. `reason` is an expected wait, `last_error_*` a failure. Unknown reasons show. */
 export interface DeploymentStatus {
   observed_generation: number
   phase: string
@@ -1103,11 +739,7 @@ export interface DeploymentStatus {
   ready_replicas: number
   updated_replicas: number
   unavailable_replicas: number
-  /**
-   * Per-role counts. Not served by any plane build today — see
-   * `DeploymentRoleObserved`. The four scalars above stay the group rollup and
-   * are not replaced by this.
-   */
+  /** Per-role counts, not served by any plane yet (see `DeploymentRoleObserved`). */
   roles?: DeploymentRoleObserved[]
   last_error_code: string | null
   last_error_message: string | null
@@ -1115,12 +747,7 @@ export interface DeploymentStatus {
   observed_at: string | null
 }
 
-/**
- * The two answers to who owns a deployment, and there is deliberately no third.
- *
- * A deployment with some fields enforced and others drifting cannot be reasoned
- * about at the moment somebody needs to (ADR 0009).
- */
+/** No partial ownership (ADR 0009). */
 export type DeploymentAuthority = "observed" | "managed"
 
 /** `EndpointTargetSchema`. Named by deployment id; the cluster is not repeated. */
@@ -1129,29 +756,11 @@ export interface EndpointTarget {
   weight: number
   role: string
   enabled: boolean
-  /**
-   * What the engine behind this target answers to, when the plane's answer is
-   * wrong. Null means the deployment's own answer stands.
-   *
-   * The routing table is the plane's and the engine's name is invisible to
-   * clients, so the only property that matters is that the two agree. This is
-   * where a disagreement is corrected, and it costs a gateway poll — correcting
-   * it on the workload instead respecs the pod and reloads the weights.
-   */
+  /** Override for the engine's model name. Costs a gateway poll, not a reload. */
   served_model_name: string | null
 }
 
-/**
- * `EndpointSurfaceSchema` — the terms on which the served API is exposed.
- *
- * Global and read by the gateway; nothing here reaches a cluster. A field
- * belongs here, not on the workload, when honoring it needs no engine flag.
- *
- * Half of it the gateway acts on and half of it is a disclosure it only reports,
- * which is why `SURFACE_ENFORCEMENT` exists and why nothing in this console
- * draws the two the same way. A disclosure rendered as a term is a lie an
- * operator repeats to a customer.
- */
+/** `EndpointSurfaceSchema`: gateway terms, enforced or only disclosed (`SURFACE_ENFORCEMENT`). */
 export interface EndpointSurface {
   protocols: string[]
   auth_mode: string | null
@@ -1160,30 +769,15 @@ export interface EndpointSurface {
   request_timeout_seconds: number | null
   streaming_transport: string | null
   cors_enabled: boolean | null
-  /**
-   * The request fields that control generation length, most significant first.
-   * Membership is support and position is precedence, which is why it is an
-   * ordered list and not three switches. It names the field the serving quota's
-   * `max_output_tokens` applies to; it states no number of its own.
-   */
+  /** Output-length request fields in precedence order; the quota applies to the first. */
   output_length_params: string[]
-  /**
-   * The request terms this endpoint enforces on top of whatever the engine does.
-   * Null on every endpoint that has sold no consistency term, which is most of
-   * them, and null means the gateway forwards what it was given.
-   */
+  /** Terms enforced on top of the engine. Null forwards requests as given. */
   policy?: EndpointPolicy | null
 }
 
 /**
- * `RuleSchema` — one term this endpoint sells: where it applies, what it is
- * about, and what it says.
- *
- * `route`, `stream` and `when_present` are the scope and an omitted one matches
- * everything. Exactly one of `key` (a dotted JSON path into the request body)
- * and `predicate` (a rule the gateway implements in Go) is the subject. The
- * rest are terms: `enum`/`min`/`max` bound the value, `deny` refuses the
- * request, and `default`/`drop`/`value_from` rewrite it and never fail it.
+ * `RuleSchema`: scope (`route`, `stream`, `when_present`), subject (`key` or `predicate`), then
+ * terms that bound, deny or rewrite.
  */
 export interface PolicyRule {
   route?: string
@@ -1200,49 +794,19 @@ export interface PolicyRule {
   value_from?: string
 }
 
-/**
- * `PolicySchema` — the policy the gateway enforces for this endpoint.
- *
- * `version` is what a reader that does not understand a future rule reports
- * rather than guesses. 2 is the scoped-rule shape; a stored v1 policy is
- * converted by the plane on read and never reaches here.
- */
+/** `PolicySchema`: `version` 2 is scoped rules; the plane converts v1 on read. */
 export interface EndpointPolicy {
   version: number
   rules: PolicyRule[]
 }
 
-/**
- * `EndpointSchema` — the stable public name clients call. Global and
- * plane-only: there is no cluster on this object at any depth, because an
- * endpoint spans clusters by construction.
- */
+/** `EndpointSchema`: the stable public name. Global; no cluster at any depth. */
 export interface Endpoint {
   id: string
   name: string
-  /**
-   * The model id clients send. Never empty.
-   *
-   * `name` is the internal handle — URLs, metrics labels, every link in here — and is not
-   * patchable. This is the public contract, and it is, because the resolved table reports it as
-   * the endpoint's name and that is the key the gateway routes on. Changing it costs one gateway
-   * poll and touches no cluster.
-   *
-   * Defaulted from the artifact behind the first target, so an endpoint over one model answers to
-   * that model without anybody typing its name twice. Setting it is publishing an alias.
-   */
+  /** The model id clients send. Defaults from the first target's artifact. */
   slug: string
-  /**
-   * The other model ids that reach this endpoint. Lowercased, and never empty strings.
-   *
-   * `slug` is the canonical one and everything downstream — usage, policy, metrics, logs — is
-   * keyed on it, which is what makes a rename cheap: the old id moves in here and no record is
-   * renamed. `GET /v1/models` lists the canonical only, so an alias never shows a model twice in
-   * a client's picker.
-   *
-   * They share one namespace with every endpoint's slug: an alias already published as somebody's
-   * model id is refused rather than silently shadowing it.
-   */
+  /** Other ids that reach this endpoint; one namespace with all slugs. Records key on `slug`. */
   aliases: string[]
   project_id: string
   visibility: string
@@ -1294,15 +858,7 @@ export interface EndpointUpdateRequest {
   labels?: Record<string, string>
 }
 
-/**
- * `Workload.serving_topology` — whether one process serves a request or two do.
- *
- * Arrives as `topology` on the wire and is named `serving_topology` in the
- * column, because `ServingShape` two objects away already carries
- * `topology_domain_kind` for a physical placement domain. This one names a
- * process split; that one names a fabric. The API shortens it and the column
- * does not, so both spellings are correct and neither is this console's to pick.
- */
+/** `topology` on the wire, `serving_topology` in the column. */
 export type ServingTopology = "aggregated" | "disaggregated" | (string & {})
 
 /** The roles a disaggregated workload has, and it has both or it is not one. */
@@ -1310,17 +866,8 @@ export const SERVING_ROLES = ["prefill", "decode"] as const
 export type ServingRole = (typeof SERVING_ROLES)[number] | (string & {})
 
 /**
- * One declared role: what that process is, and how many of it per group.
- *
- * `weight` is the one field here that is NOT in `serving_digest`, and the split
- * is the whole of what this console has to make visible. What a role *is* —
- * `engine_args`, `max_batch_tokens` — decides what process runs, so editing it
- * renames the objects Dynamo derives and reloads the weights of both roles.
- * How many of a role there are is scale, and scaling reloads nothing.
- *
- * `max_batch_tokens` null inherits the workload's own value rather than meaning
- * unset; the two roles differ on it by sixteenfold in NVIDIA's own recipe, which
- * is why it is a typed column per role and not a line in `engine_args`.
+ * One role. `weight` is scale, outside the digest; the rest is in it and reloads weights. A null
+ * `max_batch_tokens` inherits the workload's.
  */
 export interface WorkloadRole {
   role: ServingRole
@@ -1337,24 +884,13 @@ export interface WorkloadRoleRequest {
   max_batch_tokens?: number | null
 }
 
-/**
- * `TopologySchema` — the write shape. A block rather than two loose fields, so
- * that the aggregated case is expressible by its absence.
- */
+/** `TopologySchema`: the write shape. Aggregated is expressed by omitting it. */
 export interface ServingTopologyRequest {
   serving_topology: ServingTopology
   roles?: WorkloadRoleRequest[]
 }
 
-/**
- * `TopologyViewSchema` — the same block as a read returns it, with the derived
- * numbers beside it.
- *
- * `group_devices` is derived on every read and stored nowhere. A column holding
- * it would put the role weights into `serving_digest` through a second door,
- * because `device_count` is a digest field and nothing about such a column's
- * name would say which of the two totals it held.
- */
+/** `TopologyViewSchema`: `group_devices` is derived on read, keeping weights out of the digest. */
 export interface ServingTopologyView {
   serving_topology: ServingTopology
   roles: WorkloadRole[]
@@ -1362,24 +898,7 @@ export interface ServingTopologyView {
 }
 
 /**
- * One role's observed counts.
- *
- * **No plane build serves this today, and this console must not imply one
- * does.** The operator counts per role and refuses to call a deployment ready
- * while any role is short (`reconcile/rollout.go`), and it stamps `role` on each
- * `replica.observed` — but nothing ingests that into the plane, and
- * `DeploymentStatusSchema` carries only the four scalars. So every reader of
- * this field falls back, and the fallback is the scalar rollup that has always
- * been there.
- *
- * Kept rather than deleted because the shape is specified and the fallback is
- * total: a deployment reporting no roles renders exactly as it did before. The
- * moment ingestion writes it, per-role readiness and the achieved ratio light
- * up with no further change here.
- *
- * There is no achieved ratio on the wire and there must not be: it is the
- * quotient of these two counts, derived at read time, so that ingestion stays
- * the single writer of observed state.
+ * One role's observed counts. No plane serves this yet, so readers fall back to the scalar rollup.
  */
 export interface DeploymentRoleObserved {
   role: ServingRole
