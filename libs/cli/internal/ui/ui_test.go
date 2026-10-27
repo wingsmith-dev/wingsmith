@@ -39,7 +39,7 @@ func TestPromptingWhenDisabledFailsRatherThanBlocking(t *testing.T) {
 	}
 }
 
-// TestADefaultAnswersEvenWithPromptingDisabled — a value that has a sensible default is not a
+// TestADefaultAnswersEvenWithPromptingDisabled: a value that has a sensible default is not a
 // value the caller has to be asked for.
 func TestADefaultAnswersEvenWithPromptingDisabled(t *testing.T) {
 	p, out := prompter("", false)
@@ -77,7 +77,7 @@ func TestAskReadsALineAndFallsBackToTheDefault(t *testing.T) {
 	}
 }
 
-// TestAskOnAClosedStreamIsAnErrorNotAnEmptyAnswer — an empty string accepted as an answer would
+// TestAskOnAClosedStreamIsAnErrorNotAnEmptyAnswer: an empty string accepted as an answer would
 // become a request against the wrong object.
 func TestAskOnAClosedStreamIsAnError(t *testing.T) {
 	p, _ := prompter("", true)
@@ -86,7 +86,7 @@ func TestAskOnAClosedStreamIsAnError(t *testing.T) {
 	}
 }
 
-// TestAskAcceptsALastLineWithNoNewline — a heredoc or a piped answer often has none.
+// TestAskAcceptsALastLineWithNoNewline: a heredoc or a piped answer often has none.
 func TestAskAcceptsALastLineWithNoNewline(t *testing.T) {
 	p, _ := prompter("iad-1", true)
 	got, err := p.Ask("Which cluster?", "", "")
@@ -176,7 +176,7 @@ func TestSelectRefusesSomethingNotOffered(t *testing.T) {
 	}
 }
 
-// TestSelectWithNothingToOfferSaysSo rather than presenting an empty list.
+// TestSelectWithNothingToOfferSaysSo instead of presenting an empty list.
 func TestSelectWithNothingToOfferSaysSo(t *testing.T) {
 	p, _ := prompter("1\n", true)
 	_, err := p.Select("Which cluster?", nil, "--cluster")
@@ -206,7 +206,7 @@ func TestSelectDrawsEveryOptionWithItsNote(t *testing.T) {
 
 // --- style -----------------------------------------------------------------
 
-// TestNoColourMeansNoEscapes — output redirected to a file or a pipe must be plain text.
+// TestNoColourMeansNoEscapes: output redirected to a file or a pipe must be plain text.
 func TestNoColourMeansNoEscapes(t *testing.T) {
 	s := Style{Level: ColorNone}
 	for name, got := range map[string]string{
@@ -220,7 +220,7 @@ func TestNoColourMeansNoEscapes(t *testing.T) {
 	}
 }
 
-// TestEveryColourLevelKeepsTheText — whatever the escapes, the words have to survive, or a
+// TestEveryColourLevelKeepsTheText, whatever the escapes, the words have to survive, or a
 // listing becomes unreadable on a terminal we guessed wrong about.
 func TestEveryColourLevelKeepsTheText(t *testing.T) {
 	for _, level := range []ColorLevel{ColorNone, Color16, Color256, ColorTrue} {
@@ -242,7 +242,7 @@ func TestPaintingNothingIsNothing(t *testing.T) {
 	}
 }
 
-// TestSymbolsDegradeToASCII — a terminal that cannot render ✓ must not print a replacement box
+// TestSymbolsDegradeToASCII: a terminal that cannot render ✓ must not print a replacement box
 // where a status should be.
 func TestSymbolsDegradeToASCII(t *testing.T) {
 	uni := Style{Level: ColorNone, Unicode: true}
@@ -299,7 +299,7 @@ func TestStatusColourGroupsStatusesByMeaning(t *testing.T) {
 	}
 }
 
-// TestLinksAreOnlyEmittedWhenTheTerminalHonoursThem — an OSC-8 sequence in a terminal that does
+// TestLinksAreOnlyEmittedWhenTheTerminalHonoursThem: an OSC-8 sequence in a terminal that does
 // not understand it prints as garbage around the label.
 func TestLinksAreOnlyEmittedWhenSupported(t *testing.T) {
 	off := Style{Level: ColorNone, Links: false}
@@ -318,7 +318,7 @@ func TestLinksAreOnlyEmittedWhenSupported(t *testing.T) {
 
 // --- widths and tables -----------------------------------------------------
 
-// TestDisplayWidthIgnoresEscapes — a coloured cell is the same width on screen as a plain one,
+// TestDisplayWidthIgnoresEscapes: a coloured cell is the same width on screen as a plain one,
 // and counting the escapes would misalign every column after it.
 func TestDisplayWidthIgnoresEscapes(t *testing.T) {
 	s := Style{Level: ColorTrue}
@@ -370,7 +370,7 @@ func TestAnEmptyTableStillDrawsItsHeader(t *testing.T) {
 	}
 }
 
-// TestWideOnlyColumnsAppearOnlyInWideMode — that is what the flag is for.
+// TestWideOnlyColumnsAppearOnlyInWideMode: that is what the flag is for.
 func TestWideOnlyColumnsAppearOnlyInWideMode(t *testing.T) {
 	draw := func(wide bool) string {
 		var buf bytes.Buffer
@@ -404,7 +404,7 @@ func TestKVAlignsItsValues(t *testing.T) {
 	}
 }
 
-// TestAnEmptyValueIsNotDrawn — an error with no cause must not print a blank `cause` row.
+// TestAnEmptyValueIsNotDrawn: an error with no cause must not print a blank `cause` row.
 func TestKVSkipsEmptyValues(t *testing.T) {
 	var buf bytes.Buffer
 	kv := NewKV(plain())

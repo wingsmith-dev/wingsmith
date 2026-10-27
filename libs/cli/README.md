@@ -151,7 +151,7 @@ The JSON contract for a list is the API's own envelope, an **object** and never 
 and the human output says so; `--cursor` takes the next page and `--all` follows the cursors to
 the end.
 
-**Agent mode** (`--agent` or `HANGAR_AGENT=1`) wraps everything — success and failure alike — in
+**Agent mode** (`--agent` or `HANGAR_AGENT=1`) wraps everything, success and failure alike, in
 one envelope: `schema_version`, `ok`, `command`, `data`, `error`, `warnings`, `next_actions`,
 `meta`. Prompts and animation are off, and `meta.simulated` is `true` whenever the fake answered.
 
@@ -167,14 +167,14 @@ server.
   `logout` never touch the network under `--fake`.
 - **Implements `api.Backend`**, the same interface the HTTP client implements. Commands cannot
   tell them apart, so a command tested against the fake is a command tested for real shape.
-- **Shaped like the server** — field names, the envelope, cursor behaviour and the error
+- **Shaped like the server**: field names, the envelope, cursor behaviour and the error
   vocabulary match the plane, and a test compares the fake's output key-for-key against the
   fixtures in `internal/api/testdata`.
-- **Seeded, not random** — four clusters in every phase, including an unreachable one and one
+- **Seeded, not random**: four clusters in every phase, including an unreachable one and one
   that never connected, plus a cordoned node, an unhealthy device, an allocation holding fewer
   devices than it asked for and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
   and persists mutations, so create-then-poll workflows work offline.
-- **Failure injection** — `HANGAR_FAKE_FAIL=NOT_FOUND` (any code from `hgr explain`) makes every
+- **Failure injection**: `HANGAR_FAKE_FAIL=NOT_FOUND` (any code from `hgr explain`) makes every
   call fail with that code, which is how error paths and exit codes get tested.
 
 ---
@@ -206,9 +206,9 @@ Precedence is flag → environment → config file → default.
 | `--project` | `HANGAR_PROJECT` | `context.project` |
 | `--output` | `HANGAR_OUTPUT` | `output` |
 | `--fake` | `HANGAR_FAKE` | `fake` |
-| `--agent` | `HANGAR_AGENT` | — |
-| `--timeout` | `HANGAR_TIMEOUT` | — |
-| `--wait-timeout` | `HANGAR_WAIT_TIMEOUT` | — |
+| `--agent` | `HANGAR_AGENT` | none |
+| `--timeout` | `HANGAR_TIMEOUT` | none |
+| `--wait-timeout` | `HANGAR_WAIT_TIMEOUT` | none |
 
 There is no default server: until one is set, every command that needs the plane fails with
 `USAGE` and says how to set it. `config`, `context`, `explain` and `version` work without a server
@@ -256,7 +256,7 @@ the same thing. `hgr explain` lists them; `hgr explain NOT_FOUND` describes one.
 | 8 | `TIMEOUT` |
 | 9 | `RATE_LIMITED` |
 | 10 | `SERVER_ERROR`, `NETWORK` |
-| 11 | `OPERATION_FAILED` — a waited operation or benchmark ended failed or cancelled |
+| 11 | `OPERATION_FAILED`: a waited operation or benchmark ended failed or cancelled |
 | 130 | `INTERRUPTED` |
 
 6 and 7 are unused. An unknown command, a wrong number of arguments and a bad flag are all
@@ -287,7 +287,7 @@ internal/errs/      typed errors, exit codes, explanations
 internal/ui/        style, tables, key-value blocks, spinners, prompts
 ```
 
-The rule that keeps this honest: **a command builds an `output.Result` and returns it.** It never
+The rule that keeps this accurate: **a command builds an `output.Result` and returns it.** It never
 writes to stdout, never formats for a specific consumer, and never touches a transport. Adding a
 noun means adding one file under `internal/cli/` and one method per verb on `api.Backend`.
 
@@ -301,27 +301,27 @@ and the plane disagree, the plane is right. The schema test catches a disagreeme
 snapshot in `internal/api/testdata/plane-schemas.json`, so a plane change reaches it only once the
 snapshot is regenerated.
 
-- **Envelope** — `{items, count, next_cursor}` on every list; a detail response is the object
+- **Envelope**: `{items, count, next_cursor}` on every list; a detail response is the object
   itself, unwrapped.
-- **Errors** — `{code, message, detail}`, with `detail` an object. `code` is what the CLI
+- **Errors**: `{code, message, detail}`, with `detail` an object. `code` is what the CLI
   branches on: `not_found`, `conflict`, `invalid`, `invalid_request`, `not_authorized`,
   `forbidden`, `internal`.
-- **Identifiers** — prefixed, lowercase, 30 characters. A path segment takes an id or a name.
+- **Identifiers**: prefixed, lowercase, 30 characters. A path segment takes an id or a name.
   `get` also accepts a unique prefix; verbs that change or delete something take only a whole id
   or name.
-- **Filters** — each endpoint declares its own; the client sends only the ones that endpoint
+- **Filters**: each endpoint declares its own; the client sends only the ones that endpoint
   accepts, because a parameter the server does not know is one it ignores in silence. Shared:
   `limit`, `cursor`, `search`, repeatable `label=k=v`.
-- **Declared and observed are never merged** — a cluster has a declared `phase` beside observed
+- **Declared and observed are never merged**: a cluster has a declared `phase` beside observed
   `reachable` and `sync`; a node has observed `condition`, `ready` and `cordoned` as three
   separate facts; a component has `desired_version` beside `status.observed_version`.
-- **No `/v1/whoami`** — human access is a single admin, so `hgr whoami` reports the configured
+- **No `/v1/whoami`**: human access is a single admin, so `hgr whoami` reports the configured
   context and whether `/health` answers.
-- **No project header** — the configured project (`--project`, `HANGAR_PROJECT` or
+- **No project header**: the configured project (`--project`, `HANGAR_PROJECT` or
   `context.project`) limits every listing that takes a project filter and is the project new
   workloads belong to; `--project ''` lists every project. `X-Hangar-Project` is not sent; the
   plane does not scope requests by it.
-- **Writes** — every `POST /v1/operations` carries an `Idempotency-Key`: `--idempotency-key`
+- **Writes**: every `POST /v1/operations` carries an `Idempotency-Key`: `--idempotency-key`
   when given, otherwise a fresh one per invocation, reported in the agent envelope's
   `meta.idempotency_key` so a retry can reuse it. Conditional updates send `If-Match` against
   `revision`.

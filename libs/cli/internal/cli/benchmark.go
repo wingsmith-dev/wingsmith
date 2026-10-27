@@ -25,7 +25,7 @@ func benchmarkNoun() noun[api.BenchmarkRun] {
 		short:   "Measurements taken against a deployment",
 		long: `A benchmark run is the record of one measurement and its result.
 
-The run is carried out by an operation — that is where the phases, the deadline
+The run is carried out by an operation: that is where the phases, the deadline
 and the cancellation live, and 'hgr operation cancel' against the operation named
 on the run is how one is stopped. What the run holds that an operation cannot is
 the result, because a load generator emits nested JSON and an operation's result
@@ -136,9 +136,9 @@ func benchmarkDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 //
 // Anything shaped like a statistic block becomes a row of percentiles, because
 // that is the shape load generators converge on and it is what is worth reading
-// at a glance. Everything else is named and left as JSON — which is the honest
+// at a glance. Everything else is named and left as JSON, which is the accurate
 // rendering of a field nothing promised the shape of, and the reason -o json is
-// pointed at in the help rather than treated as a fallback.
+// pointed at in the help, not treated as a fallback.
 func printSummary(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 	if len(r.Summary) == 0 || string(r.Summary) == "null" {
 		return
@@ -304,7 +304,7 @@ func newBenchmarkVerdictCmd(app *App) *cobra.Command {
 
 Nothing is stored: the checks are recomputed against the criteria version named
 here, defaulting to whatever the plane currently publishes. Pass --criteria to
-grade against an older standard deliberately.`,
+grade against an older standard.`,
 		Example: `  hgr benchmark verdict bmk_01m…
   hgr benchmark verdict bmk_01m… --criteria acceptance-2026.1`,
 		Args: cobra.ExactArgs(1),
@@ -337,7 +337,7 @@ func newBenchmarkRequestCmd(app *App) *cobra.Command {
 		Use:     "request",
 		Aliases: []string{"requests", "req"},
 		Short:   "The ask that fans out into many runs",
-		Long: `A benchmark request is one ask — a level, a target, a harness and a mode —
+		Long: `A benchmark request is one ask (a level, a target, a harness and a mode)
 that the plane expands into a run per input-length band.
 
 Its verdict is the rollup of the runs behind it, and its bands are those runs
@@ -574,7 +574,7 @@ func benchmarkBands(app *App, w io.Writer, s ui.Style, bands []api.BenchmarkBand
 }
 
 // verdictWord colours an outcome the way the console does: a pass is green, a
-// fail is red, and inconclusive is warned rather than greyed — a missing
+// fail is red, and inconclusive is warned, not greyed: a missing
 // measurement is the outcome someone has to go and fix, not a nothing.
 func verdictWord(s ui.Style, outcome string) string {
 	switch outcome {
@@ -675,7 +675,7 @@ did not use the same image are not the same comparison group.`,
 	fl := cmd.Flags()
 	fl.StringVar(&harness, "harness", "aiperf", "which load generator to run")
 	fl.StringVar(&image, "image", "", "override the harness image for this run (default: the harness's pinned image)")
-	fl.StringVar(&reason, "reason", "", "why this measurement is being taken — it outlives the person who ran it")
+	fl.StringVar(&reason, "reason", "", "why this measurement is being taken: it outlives the person who ran it")
 	fl.StringVar(&deadline, "deadline", "", "give up after a duration or at an RFC 3339 time")
 	fl.StringArrayVar(&params, "param", nil, "harness parameter (KEY=VALUE, repeatable)")
 	fl.BoolVar(&wait, "wait", false, "poll until the run reaches a terminal phase")
@@ -722,7 +722,7 @@ This is the table the plane validates --param against.`,
 }
 
 // waitForBenchmark polls one run to a terminal phase, reporting phase changes
-// rather than every poll.
+// instead of every poll.
 func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Duration) error {
 	step := a.Report.Step("waiting for " + ref)
 	last := ""

@@ -10,7 +10,7 @@ import (
 )
 
 // allCodes is every code the package declares, as opposed to every code that has an explanation.
-// The two lists are different on purpose and the tests below hold each to its own rule.
+// The two lists are different and the tests below hold each to its own rule.
 var allCodes = []Code{
 	CodeOK,
 	CodeUsage, CodeInputRequired,
@@ -23,8 +23,8 @@ var allCodes = []Code{
 	CodeInterrupted, CodeInternal,
 }
 
-// TestEveryCodeHasAnExitStatus. Codes are stable API — scripts branch on them and each maps to a
-// fixed process exit code — so a code added without one would silently exit 1 alongside a genuine
+// TestEveryCodeHasAnExitStatus. Codes are stable API, scripts branch on them and each maps to a
+// fixed process exit code, so a code added without one would silently exit 1 alongside a genuine
 // internal error, which is the one thing a caller most needs to tell apart.
 func TestEveryCodeHasAnExitStatus(t *testing.T) {
 	for _, c := range allCodes {
@@ -38,7 +38,7 @@ func TestEveryCodeHasAnExitStatus(t *testing.T) {
 	}
 }
 
-// TestSuccessIsTheOnlyZeroExit — anything else exiting 0 would make a failure look like a success
+// TestSuccessIsTheOnlyZeroExit: anything else exiting 0 would make a failure look like a success
 // to every `set -e` script that runs the CLI.
 func TestSuccessIsTheOnlyZeroExit(t *testing.T) {
 	for code, exit := range exitCodes {
@@ -66,7 +66,7 @@ func TestExitCodesStayWhereTheyAre(t *testing.T) {
 	}
 }
 
-// TestInterruptedFollowsTheShellConvention — 130 is what a shell reports for SIGINT, and a CLI
+// TestInterruptedFollowsTheShellConvention: 130 is what a shell reports for SIGINT, and a CLI
 // that exits something else after Ctrl-C breaks the caller's own signal handling.
 func TestInterruptedFollowsTheShellConvention(t *testing.T) {
 	if got := (&Error{Code: CodeInterrupted}).ExitCode(); got != 130 {
@@ -93,7 +93,7 @@ func TestNewFormatsAndCarriesDocs(t *testing.T) {
 	}
 }
 
-// TestSuccessCarriesNoDocsLink — there is no page for "it worked".
+// TestSuccessCarriesNoDocsLink: there is no page for "it worked".
 func TestSuccessCarriesNoDocsLink(t *testing.T) {
 	if got := New(CodeOK, "fine").Docs; got != "" {
 		t.Fatalf("OK carries a docs link: %q", got)
@@ -127,7 +127,7 @@ func TestWrapTolteratesANilCause(t *testing.T) {
 	}
 }
 
-// TestAsSynthesisesForAnythingUntyped — every failure path has to produce one of these so that
+// TestAsSynthesisesForAnythingUntyped: every failure path has to produce one of these so that
 // human, JSON and agent renderings stay identical in substance.
 func TestAsSynthesisesForAnythingUntyped(t *testing.T) {
 	if As(nil) != nil {
@@ -232,7 +232,7 @@ func TestTheJSONShapeIsTheContract(t *testing.T) {
 	}
 }
 
-// TestEveryExplainedCodeIsAKnownOne — `hgr explain` must not describe a code the CLI cannot emit.
+// TestEveryExplainedCodeIsAKnownOne: `hgr explain` must not describe a code the CLI cannot emit.
 func TestEveryExplainedCodeIsAKnownOne(t *testing.T) {
 	known := map[Code]bool{}
 	for _, c := range allCodes {
@@ -282,7 +282,7 @@ func TestAllCodesIsSorted(t *testing.T) {
 	}
 }
 
-// TestParseCodeAcceptsHowAPersonWouldTypeIt — `hgr explain not-found` and `hgr explain NOT_FOUND`
+// TestParseCodeAcceptsHowAPersonWouldTypeIt: `hgr explain not-found` and `hgr explain NOT_FOUND`
 // are the same request.
 func TestParseCodeAcceptsHowAPersonWouldTypeIt(t *testing.T) {
 	cases := map[string]Code{

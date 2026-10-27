@@ -67,7 +67,7 @@ func ago(t *time.Time) string {
 func agoAt(t time.Time) string { return api.Age(t) }
 
 // labelString renders a label map the way every listing prints one. Labels
-// come off the wire as arbitrary JSON, so values are formatted rather than
+// come off the wire as arbitrary JSON, so values are formatted, not
 // asserted to be strings.
 func labelString(labels map[string]any) string {
 	if len(labels) == 0 {

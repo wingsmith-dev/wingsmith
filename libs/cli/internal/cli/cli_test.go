@@ -108,7 +108,7 @@ func TestEveryNounListsAndGets(t *testing.T) {
 	}
 }
 
-// A listing is one page, and the CLI must say so rather than presenting page
+// A listing is one page, and the CLI must say so instead of presenting page
 // one as the whole collection.
 func TestCursorPaginationEndToEnd(t *testing.T) {
 	human, stderr, code := run(t, "device", "ls", "--limit", "3", "-o", "human")
@@ -277,7 +277,7 @@ func TestOperationCancelIsNotDeletion(t *testing.T) {
 	}
 	still, _, code := run(t, "operation", "get", op.ID, "-o", "json")
 	if code != 0 {
-		t.Fatalf("a cancelled operation was deleted rather than kept: %s", still)
+		t.Fatalf("a cancelled operation was deleted, not kept: %s", still)
 	}
 }
 
@@ -474,12 +474,12 @@ func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 		}
 	}
 	if deployment["generation"] != float64(1) {
-		t.Errorf("generation is %v, want 1 — an adoption starts where it is", deployment["generation"])
+		t.Errorf("generation is %v, want 1: an adoption starts where it is", deployment["generation"])
 	}
 }
 
-// promotedDeployment reads back the one cluster copy a promotion made. A promotion mints the pair
-// — a workload and the single deployment pinned to what is running — and the adoption fields are
+// promotedDeployment reads back the one cluster copy a promotion made. A promotion mints the pair,
+// a workload and the single deployment pinned to what is running, and the adoption fields are
 // per-cluster, so they are read where they live.
 func promotedDeployment(t *testing.T, workload map[string]any) map[string]any {
 	t.Helper()

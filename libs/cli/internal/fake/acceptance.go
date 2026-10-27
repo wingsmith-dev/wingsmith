@@ -155,7 +155,7 @@ func outputSpeedCheck(summary map[string]any, parameterCount *int64, tier *strin
 		Observed: &value, Threshold: &floor, Comparator: ">="}
 }
 
-// rollup is unforgiving on purpose: any fail is a fail, otherwise any
+// rollup is unforgiving: any fail is a fail, otherwise any
 // inconclusive, otherwise a pass. A run whose every check was inapplicable
 // measured nothing, and nothing is not a pass.
 func rollup(checks []api.BenchmarkCheck) string {

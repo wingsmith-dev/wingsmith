@@ -75,7 +75,7 @@ func newContextCmd(app *App) *cobra.Command {
 				Human: func(w io.Writer, s ui.Style, width int) {
 					kv := app.KV()
 					kv.Add("context", app.Cfg.CurrentContext)
-					kv.Add("server", orDefault(c.Server, s.Dim("none — hgr config set context.server <url>")))
+					kv.Add("server", orDefault(c.Server, s.Dim("none: hgr config set context.server <url>")))
 					kv.Add("project", app.Project)
 					kv.Add("token", tokenState(c))
 					if app.UseFake() {

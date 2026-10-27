@@ -206,7 +206,7 @@ func deviceNoun() noun[api.Device] {
 		name:    "device",
 		aliases: []string{"devices", "gpu"},
 		group:   "supply",
-		short:   "Individual accelerators — the schedulable unit",
+		short:   "Individual accelerators: the schedulable unit",
 		long: `A device is one accelerator, the unit placement schedules.
 
 Each device shows its health, ECC and throttle state, memory, MIG profile,
@@ -380,7 +380,7 @@ devices is in the catalog but not installed anywhere. A class marked
 			kv.Add("form factor", orDash(c.FormFactor))
 			kv.Add("in catalog", yesNo(s, c.InCatalog))
 			if !c.InCatalog {
-				kv.Add("", s.Dim("not in devices.json — add it there and release both halves"))
+				kv.Add("", s.Dim("not in devices.json: add it there and release both halves"))
 			}
 			kv.Addf("devices", "%d total · %d healthy · %d free · %d allocated",
 				c.Inventory.Devices, c.Inventory.Healthy, c.Inventory.Allocatable, c.Inventory.Allocated)

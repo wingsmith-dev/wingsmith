@@ -72,7 +72,7 @@ func firstItem(t *testing.T, raw []byte) map[string]any {
 	return envelope.Items[0]
 }
 
-// freeform names the fields whose contents are arbitrary JSON rather than
+// freeform names the fields whose contents are arbitrary JSON, not
 // schema. Their keys are data, so comparing them would assert that the fake
 // holds the same labels as one particular database, which is not the point.
 var freeform = map[string]bool{

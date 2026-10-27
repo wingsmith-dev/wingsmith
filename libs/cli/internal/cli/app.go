@@ -57,12 +57,12 @@ type App struct {
 
 	Project string
 	// projectSet is whether a project was named anywhere (flag, environment or
-	// context) rather than falling back to "default", so a command that writes
+	// context) instead of falling back to "default", so a command that writes
 	// can refuse to guess.
 	projectSet bool
 
-	// authOptional is set for commands that must run before a token exists —
-	// `login` above all — so setup does not refuse them for want of one.
+	// authOptional is set for commands that must run before a token exists,
+	// `login` above all, so setup does not refuse them for want of one.
 	authOptional bool
 	// local is set for commands that never talk to the control plane: config,
 	// context, explain, version, help and completion. They work on a fresh
@@ -177,7 +177,7 @@ func (a *App) bootstrapFallback() {
 func newRootCmd(app *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "hgr",
-		Short: "Hangar — control plane for many GPU clusters and many models",
+		Short: "Hangar: control plane for many GPU clusters and many models",
 		Long: `hgr is the Hangar command line. It talks only to the control plane's HTTP API.
 
 Most nouns are read-only here: ls and get for clusters, nodes, devices, pools,
@@ -225,10 +225,10 @@ commands. --fake answers from an offline copy of the plane.`,
 	f.BoolVar(&g.fake, "fake", false, "use the built-in offline control plane")
 
 	root.AddGroup(
-		&cobra.Group{ID: "supply", Title: "Supply — what capacity exists:"},
-		&cobra.Group{ID: "demand", Title: "Demand — what should be running:"},
-		&cobra.Group{ID: "binding", Title: "Binding — tenancy and limits:"},
-		&cobra.Group{ID: "machinery", Title: "Machinery — operating the fleet:"},
+		&cobra.Group{ID: "supply", Title: "Supply (what capacity exists):"},
+		&cobra.Group{ID: "demand", Title: "Demand (what should be running):"},
+		&cobra.Group{ID: "binding", Title: "Binding (tenancy and limits):"},
+		&cobra.Group{ID: "machinery", Title: "Machinery (operating the fleet):"},
 		&cobra.Group{ID: "meta", Title: "CLI:"},
 	)
 

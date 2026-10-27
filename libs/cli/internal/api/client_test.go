@@ -48,7 +48,7 @@ func TestNewClientRefusesWithoutAServer(t *testing.T) {
 	}
 }
 
-// TestNewClientTrimsATrailingSlash — `https://plane.example/` plus `/v1/clusters` would otherwise
+// TestNewClientTrimsATrailingSlash: `https://plane.example/` plus `/v1/clusters` would otherwise
 // request `//v1/clusters`, which some proxies answer with a redirect and others with a 404.
 func TestNewClientTrimsATrailingSlash(t *testing.T) {
 	c, err := NewClient("https://plane.example/", "", "", "1.0", time.Second)
@@ -95,7 +95,7 @@ func TestEveryRequestCarriesTheCredential(t *testing.T) {
 	}
 }
 
-// TestAnUnauthenticatedClientSendsNoAuthorizationHeader — an empty bearer is worse than none,
+// TestAnUnauthenticatedClientSendsNoAuthorizationHeader: an empty bearer is worse than none,
 // because a proxy may accept the header and reject the value with a different status.
 func TestAnUnauthenticatedClientSendsNoAuthorizationHeader(t *testing.T) {
 	var got *http.Request
@@ -115,7 +115,7 @@ func TestAnUnauthenticatedClientSendsNoAuthorizationHeader(t *testing.T) {
 
 // TestAListFetchesOnePageUnlessAskedForEverything. The server has no "give me everything" mode
 // and adding one would be a request with no bound on its own cost, so following the cursor is the
-// client's job — but only when the caller asked.
+// client's job, but only when the caller asked.
 func TestAListFetchesOnePageUnlessAskedForEverything(t *testing.T) {
 	var paths []string
 	c, _ := serveJSON(t, func(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +215,7 @@ func TestAnEmptyPageEndsTheWalk(t *testing.T) {
 	}
 }
 
-// TestGetEscapesTheReference — a ref with a slash in it must not become a different path.
+// TestGetEscapesTheReference: a ref with a slash in it must not become a different path.
 func TestGetEscapesTheReference(t *testing.T) {
 	var path string
 	c, _ := serveJSON(t, func(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +260,7 @@ func TestTheStatusCodeBecomesTheErrorCode(t *testing.T) {
 	}
 }
 
-// TestThePlanesOwnCodeWinsOverTheStatus. The plane's `invalid` is a category error rather than a
+// TestThePlanesOwnCodeWinsOverTheStatus. The plane's `invalid` is a category error instead of a
 // validation failure and answers 422, so it maps to INVALID_STATE and not USAGE.
 func TestThePlanesOwnCodeWinsOverTheStatus(t *testing.T) {
 	cases := []struct {
@@ -288,7 +288,7 @@ func TestThePlanesOwnCodeWinsOverTheStatus(t *testing.T) {
 	}
 }
 
-// TestAnErrorWithNoBodyStillSaysSomething — a bare 502 from a proxy has no JSON at all.
+// TestAnErrorWithNoBodyStillSaysSomething: a bare 502 from a proxy has no JSON at all.
 func TestAnErrorWithNoBodyStillSaysSomething(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
@@ -305,7 +305,7 @@ func TestAnErrorWithNoBodyStillSaysSomething(t *testing.T) {
 	}
 }
 
-// TestANonJSONErrorBodyIsPassedThrough — an HTML error page from a proxy is still information.
+// TestANonJSONErrorBodyIsPassedThrough: an HTML error page from a proxy is still information.
 func TestANonJSONErrorBodyIsPassedThrough(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -317,7 +317,7 @@ func TestANonJSONErrorBodyIsPassedThrough(t *testing.T) {
 	}
 }
 
-// TestDetailIsRenderedInAStableOrder — a map iterated at random would make the same failure print
+// TestDetailIsRenderedInAStableOrder: a map iterated at random would make the same failure print
 // differently on every run, which is unusable in a test or a diff.
 func TestDetailIsRenderedInAStableOrder(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -341,7 +341,7 @@ func TestDetailIsRenderedInAStableOrder(t *testing.T) {
 	}
 }
 
-// TestRateLimitingCarriesRetryAfter so the caller knows how long to wait rather than guessing.
+// TestRateLimitingCarriesRetryAfter so the caller knows how long to wait instead of guessing.
 func TestRateLimitingCarriesRetryAfter(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "42")
@@ -355,7 +355,7 @@ func TestRateLimitingCarriesRetryAfter(t *testing.T) {
 	}
 }
 
-// TestAnUnparseableRetryAfterIsIgnoredRatherThanFatal — the header may be an HTTP date, which
+// TestAnUnparseableRetryAfterIsIgnoredRatherThanFatal: the header may be an HTTP date, which
 // this client does not read, and that is not a reason to fail differently.
 func TestAnUnparseableRetryAfterIsIgnored(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -373,7 +373,7 @@ func TestAnUnparseableRetryAfterIsIgnored(t *testing.T) {
 	}
 }
 
-// TestAnUnreachablePlaneIsANetworkErrorWithAWayOut — the fake backend is the offline escape hatch
+// TestAnUnreachablePlaneIsANetworkErrorWithAWayOut: the fake backend is the offline escape hatch
 // and the error is where someone would find out it exists.
 func TestAnUnreachablePlaneIsANetworkErrorWithAWayOut(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -400,7 +400,7 @@ func TestAnUnreachablePlaneIsANetworkErrorWithAWayOut(t *testing.T) {
 	}
 }
 
-// TestACancelledContextIsATimeoutNotANetworkFailure — the two mean different things to a caller
+// TestACancelledContextIsATimeoutNotANetworkFailure: the two mean different things to a caller
 // deciding whether to retry.
 func TestACancelledContextIsATimeout(t *testing.T) {
 	c, _ := serveJSON(t, func(w http.ResponseWriter, r *http.Request) {

@@ -331,7 +331,7 @@ policy with no attachments has no effect, so attachments are shown with it.`,
 			kv.Render(w)
 
 			if len(p.Attachments) == 0 {
-				fmt.Fprintf(w, "\n%s\n", s.Amber("attached to nothing — this policy constrains nothing"))
+				fmt.Fprintf(w, "\n%s\n", s.Amber("attached to nothing: this policy constrains nothing"))
 				return
 			}
 			fmt.Fprintf(w, "\n%s\n", s.Dim("attachments"))

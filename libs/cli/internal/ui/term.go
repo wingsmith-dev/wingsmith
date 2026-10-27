@@ -10,7 +10,7 @@ import (
 )
 
 // IsTerminal reports whether the file is attached to a terminal. It asks the
-// kernel rather than checking for a character device, because /dev/null is a
+// kernel instead of checking for a character device, because /dev/null is a
 // character device and is not a terminal.
 func IsTerminal(f *os.File) bool {
 	if f == nil {

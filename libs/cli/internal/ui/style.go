@@ -1,5 +1,5 @@
 // Package ui owns everything the human eye sees: colour, symbols, tables,
-// progress, and prompts. Nothing here ever writes to stdout by itself — the
+// progress, and prompts. Nothing here ever writes to stdout by itself: the
 // caller supplies the stream so data and narration stay separated.
 package ui
 

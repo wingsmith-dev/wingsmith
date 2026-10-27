@@ -143,7 +143,7 @@ func readPassword(app *App, fromStdin bool) (string, error) {
 
 // newLogoutCmd revokes the session on the plane and clears it from the active
 // context. It is auth-optional so it still clears a session the plane has
-// already expired, and it clears the local copy even when revocation fails —
+// already expired, and it clears the local copy even when revocation fails,
 // but it says so, because a session that was not revoked is still usable until
 // its refresh token expires.
 func newLogoutCmd(app *App) *cobra.Command {

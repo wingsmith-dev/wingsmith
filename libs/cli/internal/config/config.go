@@ -118,7 +118,7 @@ func (f *File) Override(name string) {
 // The file holds tokens, so it is written to a 0600 temporary file beside the
 // target and renamed over it. A file that already existed with looser
 // permissions comes out 0600, and a crash mid-write leaves the old file whole
-// rather than a truncated one. A symlinked config is written through to the
+// instead of a truncated one. A symlinked config is written through to the
 // file it points at, so a dotfiles checkout keeps its link.
 func (f *File) Save() error {
 	target := f.path
@@ -248,7 +248,7 @@ func ValidateServer(raw string) error {
 }
 
 // Set writes a dotted key. Values are checked here, so a bad one is refused
-// when it is typed rather than stored and then failing every later command.
+// when it is typed, not stored and then failing every later command.
 // An empty value clears the key and is always accepted.
 func (f *File) Set(key, value string) error {
 	c := f.Context("")

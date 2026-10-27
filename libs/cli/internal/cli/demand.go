@@ -123,7 +123,7 @@ func shorten(s string, n int) string {
 // authorityWord renders who owns a deployment, and leans on colour to make the difference
 // impossible to skim past: managed means this plane writes to the cluster.
 //
-// An empty value reads as observed rather than as unknown, matching the operator's own gate — a
+// An empty value reads as observed, not as unknown, matching the operator's own gate: a
 // deployment from before the field existed is not managed, and showing a dash here would suggest
 // the question is open when it is not.
 func authorityWord(s ui.Style, v string) string {
@@ -298,9 +298,9 @@ cluster and wait on quota in another.`,
 // newWorkloadCmd is the noun users actually create, scale and delete, with the
 // three long-running changes hung off it as verbs.
 //
-// Scale, pause and drain are operations rather than field writes: each can sit
+// Scale, pause and drain are operations, not field writes: each can sit
 // pending on quota indefinitely and each can fail, so they get an id to poll
-// rather than a status field to misread.
+// instead of a status field to misread.
 func newWorkloadCmd(app *App) *cobra.Command {
 	cmd := workloadNoun().command(app)
 	cmd.AddCommand(
@@ -484,8 +484,8 @@ func scaleCell(s ui.Style, sc api.WorkloadScale) string {
 	return cell
 }
 
-// footprintSummary is a serving configuration on one line — `8 x h100-80 · tp8 ·
-// 128k · fp8` — the one cell that says how a workload is served.
+// footprintSummary is a serving configuration on one line, `8 x h100-80 · tp8 ·
+// 128k · fp8`, the one cell that says how a workload is served.
 // It formats the same fields in the same order as the console's own
 // footprintSummary, so the two surfaces name a footprint identically.
 func footprintSummary(sv api.ServingSpec) string {
@@ -523,7 +523,7 @@ func writeServing(app *App, w io.Writer, s ui.Style, wl api.Workload) {
 	kv := app.KV()
 	kv.Add("digest", orDash(wl.ServingDigest))
 	kv.Add("footprint", footprintSummary(sv))
-	// "vllm on dynamo 1.4.1" rather than "vllm 1.4.1", because the number is the runtime's
+	// "vllm on dynamo 1.4.1" instead of "vllm 1.4.1", because the number is the runtime's
 	// and reading it as the engine's is the mistake the field was renamed to stop.
 	kv.Add("engine", strings.TrimSpace(sv.Engine))
 	kv.Add("engine runtime", orDash(strings.TrimSpace(sv.EngineRuntimeVersion)))
@@ -764,7 +764,7 @@ how a distilled model gets its step count, because omni defaults every model to
 
 	fl.StringVar(&engine, "engine", "vllm", "inference engine")
 	fl.StringVar(&engineRuntimeVersion, "engine-runtime-version", "",
-		"Dynamo runtime tag the engine runs in, e.g. 1.4.1 — not the engine's own version")
+		"Dynamo runtime tag the engine runs in, e.g. 1.4.1, not the engine's own version")
 	fl.StringVar(&engineRuntimeImage, "engine-runtime-image", "",
 		"override the whole address instead of deriving it from --engine and --engine-runtime-version")
 	fl.StringVar(&frontendImage, "frontend-image", "", "override the image the frontend runs from")
@@ -805,8 +805,8 @@ func isOmniEngine(engine string) bool {
 // omniBehaviour is the serving block an omni workload sends, or nil for every
 // other workload so that the plane's defaults stand untouched.
 //
-// A sampling value is sent as the JSON it reads as — 8 as a number, 4.0 as a
-// number, true as a boolean — and as a string only when it is none of those,
+// A sampling value is sent as the JSON it reads as, 8 as a number, 4.0 as a
+// number, true as a boolean, and as a string only when it is none of those,
 // because the stage config hands it to the pipeline as it arrives.
 func omniBehaviour(modality, modelClass string, defaults []string) (*api.ServingBehaviour, error) {
 	if modality == "" {
@@ -839,7 +839,7 @@ func omniBehaviour(modality, modelClass string, defaults []string) (*api.Serving
 	return &b, nil
 }
 
-// optionalString reads an unset string flag as absent rather than as empty. The
+// optionalString reads an unset string flag as absent, not as empty. The
 // fields it feeds are nullable on the wire and empty is not null.
 func optionalString(v string) *string {
 	if v == "" {
@@ -888,7 +888,7 @@ and removes the deployment once its replicas are gone.`,
 //
 // The share is placement's answer and asserting one per cluster would be a
 // second answer to a question that already has one. --floor is how a caller says
-// something about where, and it is still a floor rather than a share.
+// something about where, and it is still a floor instead of a share.
 func newWorkloadScaleCmd(app *App) *cobra.Command {
 	var (
 		wait     bool
@@ -915,14 +915,14 @@ quota and capacity and can fail or wait. --wait polls it until it finishes.`,
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.StringVar(&reason, "reason", "", "why: it outlives the person who ran it")
 	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
 	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
 	return cmd
 }
 
 // newWorkloadPauseCmd builds pause and resume, which differ only in the value
-// they set. Paused is declared state that placement reads — the deployments stay
+// they set. Paused is declared state that placement reads: the deployments stay
 // where they are with a share of zero, so resuming does not re-place anything.
 func newWorkloadPauseCmd(app *App, paused bool) *cobra.Command {
 	var (
@@ -934,7 +934,7 @@ func newWorkloadPauseCmd(app *App, paused bool) *cobra.Command {
 	long := `Pause a workload.
 
 Every cluster's share goes to zero and the deployment rows stay exactly where
-they are, so resuming restores the shares rather than replacing the workload
+they are, so resuming restores the shares instead of replacing the workload
 somewhere else. Nothing is deleted and no endpoint target is removed.`
 	if !paused {
 		use, short = "resume <workload>", "Let a paused workload run again"
@@ -956,7 +956,7 @@ is for.`
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.StringVar(&reason, "reason", "", "why: it outlives the person who ran it")
 	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
 	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
 	return cmd
@@ -997,7 +997,7 @@ re-expanded to carry the total.`,
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&cluster, "cluster", "", "the cluster to remove from the workload")
-	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.StringVar(&reason, "reason", "", "why: it outlives the person who ran it")
 	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
 	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
 	return cmd
@@ -1006,7 +1006,7 @@ re-expanded to carry the total.`,
 // runWorkloadOperation is the one path scale, pause and drain share.
 //
 // The workload is resolved here so that a prefix or a name works the way it does
-// on `get`, and so the operation carries the id rather than a name the plane
+// on `get`, and so the operation carries the id instead of a name the plane
 // would have to disambiguate a second time. No cluster is sent: these three are
 // plane-local and are never dispatched to one.
 func (a *App) runWorkloadOperation(cmd *cobra.Command, opType, ref string, params map[string]any, reason string, wait bool, interval string) error {
@@ -1052,9 +1052,9 @@ func emitWorkload(app *App, cmd *cobra.Command, wl api.Workload) error {
 
 // newDeploymentEventsCmd renders one deployment's whole history, oldest first.
 //
-// Its own subcommand rather than a section of `get`, because `get` answers "what is
+// Its own subcommand instead of a section of `get`, because `get` answers "what is
 // true now" in a fixed amount of space and this is unbounded. It is also the one
-// listing in the CLI that is deliberately oldest-first: every other listing is a set
+// listing in the CLI that is oldest-first: every other listing is a set
 // where the newest row matters most, and this is a sequence that only reads correctly
 // in the order it happened.
 func newDeploymentEventsCmd(app *App) *cobra.Command {
@@ -1146,8 +1146,8 @@ there, for example an hour spent waiting for weights to download.`,
 
 // eventReason is the machine-readable half of why a reconcile concluded what it did.
 //
-// Read off details rather than parsed out of the message, because it is the field the
-// operator sets deliberately — WeightsNotResident, NoSchedulableCapacity, Applied —
+// Read off details, not parsed out of the message, because it is the field the
+// operator sets (WeightsNotResident, NoSchedulableCapacity, Applied)
 // and the message around it is prose that may be reworded.
 func eventReason(e api.Event) string {
 	if reason, ok := e.Details["reason"].(string); ok && reason != "" {
@@ -1278,7 +1278,7 @@ func renderSurface(app *App, w io.Writer, s ui.Style, surface api.EndpointSurfac
 }
 
 // ruleScope is where a rule was measured. An empty scope is every route and both transport modes,
-// which is what an unscoped rule has always meant, so it prints as "any" rather than as a blank.
+// which is what an unscoped rule has always meant, so it prints as "any", not as a blank.
 func ruleScope(rule api.PolicyRule) string {
 	parts := []string{"any route"}
 	if rule.Route != "" {
@@ -1361,7 +1361,7 @@ func failoverPosition(e api.Endpoint, deployment string) string {
 
 // waitingOn is the one-cell answer to why a deployment is not serving yet.
 //
-// The cluster's reason rather than the plane's phase, because the plane's phase says "placed" for
+// The cluster's reason instead of the plane's phase, because the plane's phase says "placed" for
 // everything between the decision and the first replica and the reason says which of six orderings
 // is actually outstanding. Empty when there is nothing to say: no report yet reads as a dash, and a
 // deployment whose replicas are up has no reason at all.

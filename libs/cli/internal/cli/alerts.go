@@ -25,7 +25,7 @@ must cross before it fires.
 The metric and which way it is wrong are the rule's, not the caller's: a rule
 watches time-to-first-token going up or output speed going down, and 'hgr
 alert-threshold rules' is the catalogue the plane will take. A threshold with no
-subject is the fleet default for its rule — the line every subject of that type
+subject is the fleet default for its rule: the line every subject of that type
 is held to unless one carries its own.`,
 		example: `  hgr alert-threshold ls
   hgr alert-threshold ls --rule deployment.ttft_high
@@ -175,7 +175,7 @@ does not.`,
 	fl.IntVar(&forSeconds, "for", 0, "seconds the metric must stay across before firing")
 	fl.StringVar(&severity, "severity", "", "info|warning|error, defaulting to the rule's")
 	fl.BoolVar(&enabled, "enabled", true, "whether it fires (--enabled=false to declare it dormant)")
-	fl.StringVar(&reason, "reason", "", "why this line was drawn — it outlives whoever drew it")
+	fl.StringVar(&reason, "reason", "", "why this line was drawn: it outlives whoever drew it")
 	return cmd
 }
 
@@ -195,7 +195,7 @@ func newAlertThresholdSetCmd(app *App) *cobra.Command {
 		Aliases: []string{"update", "edit"},
 		Short:   "Change a threshold's value or window",
 		Long: `Edit an alert threshold. Only the fields named change; the rule, metric and
-subject are its identity and are not among them — a different rule or subject is
+subject are its identity and are not among them: a different rule or subject is
 a different threshold.`,
 		Example: `  hgr alert-threshold set alt_01m… --value 3
   hgr alert-threshold set alt_01m… --enabled=false`,

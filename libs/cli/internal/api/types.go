@@ -7,7 +7,7 @@ import (
 
 // Page is the envelope every list response is wrapped in. `count` is the size
 // of this page, not of the collection, and `next_cursor` is absent on the last
-// page — a listing without one is complete, and a listing with one is not.
+// page: a listing without one is complete, and a listing with one is not.
 type Page[T any] struct {
 	Items      []T    `json:"items"`
 	Count      int    `json:"count"`
@@ -16,7 +16,7 @@ type Page[T any] struct {
 
 // ListOpts is every filter the API accepts, in one struct. Each list call
 // sends only the dimensions its own endpoint declares; a value set for a
-// dimension an endpoint does not have is dropped rather than guessed at.
+// dimension an endpoint does not have is dropped, not guessed at.
 type ListOpts struct {
 	Limit  int
 	Cursor string
@@ -24,7 +24,7 @@ type ListOpts struct {
 	Labels map[string]string
 
 	// All follows `next_cursor` until the collection is exhausted, so a
-	// listing is the whole collection rather than its first page.
+	// listing is the whole collection instead of its first page.
 	All bool
 
 	Cluster        string
@@ -144,12 +144,12 @@ type Cluster struct {
 
 	// MetricsLabel is the `cluster` label this cluster's series carry in the
 	// shared metrics store. Nil means it is not observable and its panels say so
-	// rather than querying under a label nobody has confirmed.
+	// instead of querying under a label nobody has confirmed.
 	MetricsLabel *string `json:"metrics_label"`
 }
 
 // Cluster phases. Enrolment and reachability are different questions, so a
-// cluster is never "offline" as a phase — it is active and unreachable.
+// cluster is never "offline" as a phase: it is active and unreachable.
 const (
 	PhasePending  = "pending"
 	PhaseActive   = "active"
@@ -158,7 +158,7 @@ const (
 )
 
 // NodeDeviceRollup is how many devices a node has and how they split by
-// health. State only — no utilization, no temperature, no power.
+// health. State only: no utilization, no temperature, no power.
 type NodeDeviceRollup struct {
 	Total       int            `json:"total"`
 	ByHealth    map[string]int `json:"by_health"`
@@ -223,7 +223,7 @@ type DeviceTopology struct {
 	Identifier string `json:"identifier"`
 }
 
-// Device is one accelerator — the schedulable unit, and always observed.
+// Device is one accelerator: the schedulable unit, and always observed.
 // Health, ECC, throttle, MIG and allocatability are state; utilization and
 // temperature are telemetry and never appear here.
 type Device struct {
@@ -294,7 +294,7 @@ type PoolMembership struct {
 // observed object. Class is the identifier and the only string that goes on the wire; Label is the
 // only one meant for a person.
 //
-// InCatalog false means the fleet holds hardware the contract table does not name — it resolved to
+// InCatalog false means the fleet holds hardware the contract table does not name: it resolved to
 // the slug of its vendor string and is being scheduled onto anyway. That is the row to act on.
 type DeviceClass struct {
 	Class        string               `json:"name"`
@@ -422,7 +422,7 @@ type ServingCache struct {
 // ServingShape is the hardware a serving configuration implies, class first: a
 // count without a class is not a shape.
 //
-// The topology pair is here rather than beside the scale numbers because it is a
+// The topology pair is here, not beside the scale numbers because it is a
 // property of one replica's layout, the same way the counts are.
 type ServingShape struct {
 	DeviceClass                  string  `json:"device_class"`
@@ -452,10 +452,10 @@ type ServingReasoning struct {
 
 // ServingBehaviour is what the served API does, as the engine will actually be
 // told to behave. Every field renders to a flag, which is why it lives beside
-// `cache` rather than on the endpoint: honouring any of it means a replica
+// `cache`, not on the endpoint: honouring any of it means a replica
 // restart.
 //
-// It is the block the plane stores under `serving`, and the wire name is kept —
+// It is the block the plane stores under `serving`, and the wire name is kept:
 // the Go name is not `Serving` only because it is reached through a field of
 // that name already.
 type ServingBehaviour struct {
@@ -511,7 +511,7 @@ type ServingCapabilities struct {
 	SourceURI             *string    `json:"source_uri"`
 }
 
-// ServingOverlay is passthrough for what the plane deliberately does not model.
+// ServingOverlay is passthrough for what the plane does not model.
 type ServingOverlay struct {
 	PodSpec map[string]any `json:"pod_spec"`
 	Dynamo  map[string]any `json:"dynamo"`
@@ -520,7 +520,7 @@ type ServingOverlay struct {
 // ServingSpec is the whole reproducible way one artifact is served: engine,
 // parallelism, cache configuration and the hardware shape they imply.
 //
-// It is not an object. It has no name, no version and no id — a workload
+// It is not an object. It has no name, no version and no id: a workload
 // carries exactly one of these and `serving_digest` is its identity, so two
 // workloads configured the same way digest the same and nothing has to be
 // matched by hand.
@@ -619,8 +619,8 @@ type ServingRequest struct {
 
 // WorkloadScale is the declared total and what the shares actually add up to.
 //
-// Unit is named by kind — replicas for service, ranks for gang, completions for
-// task — because the three numbers count different things and a bare integer is
+// Unit is named by kind, replicas for service, ranks for gang, completions for
+// task, because the three numbers count different things and a bare integer is
 // unreadable without it. Placed is the sum of the deployments' shares and Ready
 // the sum of their observed ready counts; the plane derives both, and summing a
 // share against a total anywhere else is always a bug.
@@ -664,7 +664,7 @@ type WorkloadDeployment struct {
 // a kind, a priority and a total scale across every cluster it may use.
 //
 // It carries no cluster. Placement expands it into one Deployment per cluster,
-// and each of those carries that cluster's share of the total — which is why
+// and each of those carries that cluster's share of the total, which is why
 // Scale is the only place in this package where anything is summed.
 //
 // Kind is service | task | gang, and it is also what makes a workload
@@ -682,7 +682,7 @@ type Workload struct {
 	GangSize      int    `json:"gang_size"`
 	// ServingDigest is derived from Serving on every write and is never accepted
 	// from a client. It is what a benchmark run and a wire frame both name, so
-	// "the same configuration" is one string rather than a comparison of eight
+	// "the same configuration" is one string instead of a comparison of eight
 	// fields.
 	ServingDigest      string      `json:"serving_digest"`
 	Serving            ServingSpec `json:"serving"`
@@ -709,16 +709,16 @@ type Workload struct {
 
 // WorkloadCreateRequest is what it takes to run something, without saying where.
 //
-// Cluster is an override rather than the normal path: absent, placement picks
+// Cluster is an override instead of the normal path: absent, placement picks
 // from the serving shape, the project's quota, the policies on the workload and
 // what the clusters report free. Naming one is a deliberate escape from the
-// scheduler — it still has to exist, but it is never checked for capacity, and a
+// scheduler: it still has to exist, but it is never checked for capacity, and a
 // named cluster forces a single deployment.
 //
 // The three scale numbers are TOTALS across every cluster this workload may use,
 // counted in replicas for service, ranks for gang, completions for task.
 type WorkloadCreateRequest struct {
-	// Serving is the whole of what to run, stated rather than named: there is no
+	// Serving is the whole of what to run, stated, not named: there is no
 	// shared serving object to point at, and two workloads asking for the same
 	// thing land on the same serving_digest.
 	Serving          ServingRequest `json:"serving"`
@@ -744,12 +744,12 @@ type WorkloadCreateRequest struct {
 
 // WorkloadUpdateRequest is a partial update: an absent field is untouched.
 //
-// Serving and cluster are absent by design — a deployment is a workload's
+// Serving and cluster are absent by design: a deployment is a workload's
 // serving configuration on one cluster, so changing either is a new deployment,
 // which is cheap because the endpoint in front of it is the stable name. Scale
 // is absent because changing it is
 // long-running and can sit pending on quota forever, so it is the workload.scale
-// operation rather than a field write.
+// operation instead of a field write.
 type WorkloadUpdateRequest struct {
 	Name             *string         `json:"name,omitempty"`
 	AdapterArtifacts *[]string       `json:"adapter_artifacts,omitempty"`
@@ -762,7 +762,7 @@ type WorkloadUpdateRequest struct {
 	MaxClusters      *int            `json:"max_clusters,omitempty"`
 }
 
-// DeploymentReplicaRollup counts observed replicas rather than listing them.
+// DeploymentReplicaRollup counts observed replicas instead of listing them.
 type DeploymentReplicaRollup struct {
 	Total               int `json:"total"`
 	Ready               int `json:"ready"`
@@ -780,7 +780,7 @@ type DeploymentReplicaRollup struct {
 // or re-derives one from the other.
 //
 // Serving, adapters, overrides and labels are not on it: they are workload facts,
-// read through WorkloadID. Admission is on it, because it is per-cluster — a
+// read through WorkloadID. Admission is on it, because it is per-cluster: a
 // workload can be running in one region and queued on quota in another, and
 // there is no single phase true of both.
 //
@@ -826,7 +826,7 @@ type DeploymentUpdateRequest struct {
 
 // DeploymentStatus is what the cluster reports the deployment is doing, and why.
 //
-// Reason and Message are the sub-state within Phase and are deliberately not errors: a deployment
+// Reason and Message are the sub-state within Phase and are not errors: a deployment
 // waiting for its weights to download is in a normal state that happens to take a while, and the
 // only thing worse than not saying so is saying it in a field called last_error. Nil until a
 // cluster has reported at all, which is the first seconds of every deployment's life and the
@@ -863,7 +863,7 @@ type DeploymentRoleObserved struct {
 // There is no generation and no serving configuration here, and that is the
 // point. Adopting one
 // records a decision and declares nothing, so nothing reconciles and nothing
-// restarts — a model whose weights are already resident stays that way.
+// restarts: a model whose weights are already resident stays that way.
 type DiscoveredWorkload struct {
 	ID                string         `json:"id"`
 	ClusterID         string         `json:"cluster_id"`
@@ -932,7 +932,7 @@ type Endpoint struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	// Slug is what a client sends as `model`, and the key the gateway routes on. Name is the
-	// internal handle and routes nothing — the two are separate so that a public model id can be
+	// internal handle and routes nothing: the two are separate so that a public model id can be
 	// corrected without moving the handle every link and metric label holds.
 	Slug            string `json:"slug"`
 	ProjectID       string `json:"project_id"`
@@ -955,7 +955,7 @@ type Endpoint struct {
 // EndpointSurface is what this name exposes: which protocols answer at it, how a caller
 // authenticates, the ceilings the gateway applies, and the request policy it enforces.
 //
-// Every field is optional and an absent one is not a claim — it is the gateway's own behaviour.
+// Every field is optional and an absent one is not a claim: it is the gateway's own behaviour.
 // Half of the surface is a term the gateway acts on and half is a disclosure nothing upholds; the
 // console draws the difference, and this read-only view states the values without promising which
 // is which.
@@ -973,7 +973,7 @@ type EndpointSurface struct {
 
 // EndpointPolicy is the request terms this endpoint sells, on top of whatever the engine does.
 //
-// Version is what a reader that does not understand a future rule reports rather than guesses. A
+// Version is what a reader that does not understand a future rule reports, not guesses. A
 // policy stored in the older language is converted by the plane on read, so only one shape arrives
 // here.
 type EndpointPolicy struct {
@@ -984,8 +984,8 @@ type EndpointPolicy struct {
 // PolicyRule is one term: where it applies, what it is about, and what it says.
 //
 // Route, Stream and WhenPresent are the scope and an omitted one matches everything. Exactly one
-// of Key — a dotted JSON path into the request body — and Predicate — a rule the gateway
-// implements in Go — is the subject. The rest are the terms, and Default, Drop and ValueFrom
+// of Key, a dotted JSON path into the request body, and Predicate, a rule the gateway
+// implements in Go, is the subject. The rest are the terms, and Default, Drop and ValueFrom
 // rewrite a request where Deny refuses one.
 type PolicyRule struct {
 	Route       string   `json:"route"`
@@ -1004,7 +1004,7 @@ type PolicyRule struct {
 
 // --- binding ---------------------------------------------------------------
 
-// ProjectTenant is the tenant a project belongs to, embedded rather than
+// ProjectTenant is the tenant a project belongs to, embedded, not
 // linked: there is no `/v1/tenants` collection.
 type ProjectTenant struct {
 	ID      string `json:"id"`
@@ -1089,8 +1089,8 @@ type ServingQuotaStandard struct {
 // by the gateway, in front of the clusters. Different table, different
 // enforcer, different moment, no field in common.
 //
-// Every limit is nullable and null means UNCOMMITTED — never zero. There is no
-// `usage` here and there deliberately is no observed sibling of `Quota.Usage`:
+// Every limit is nullable and null means UNCOMMITTED, never zero. There is no
+// `usage` here and there is no observed sibling of `Quota.Usage`:
 // a serving quota's usage is measured per request in the gateway and never
 // crosses into the control plane.
 type ServingQuota struct {
@@ -1232,7 +1232,7 @@ type ServingQuotaCreate struct {
 }
 
 // ServingQuotaUpdate is a partial update: an absent field is untouched. The
-// endpoint is absent by design — it is the row's whole scope, and moving one is
+// endpoint is absent by design: it is the row's whole scope, and moving one is
 // withdrawing a commitment from one contract and granting it to another.
 type ServingQuotaUpdate struct {
 	CommittedRPM           *int     `json:"committed_rpm,omitempty"`
@@ -1305,7 +1305,7 @@ type Policy struct {
 // --- machinery -------------------------------------------------------------
 
 // AllocationDevice is one device inside one allocation. Released members are
-// returned rather than filtered out; `live` says which side of the line.
+// returned, not filtered out; `live` says which side of the line.
 type AllocationDevice struct {
 	Device     string     `json:"device"`
 	DeviceUUID string     `json:"device_uuid"`
@@ -1454,7 +1454,7 @@ func (b BenchmarkRun) Target() string {
 }
 
 // Band is the input-length band this run's declared prompt length lands in.
-// Empty when no prompt length was declared, which is a coverage gap rather than
+// Empty when no prompt length was declared, which is a coverage gap instead of
 // a band of its own.
 func (b BenchmarkRun) Band() string {
 	value, ok := b.Parameters["input_tokens_mean"]
@@ -1475,7 +1475,7 @@ const (
 	LevelEndpoint   = "endpoint"
 )
 
-// Benchmark modes: a shape of runs over one harness, deliberately not a harness
+// Benchmark modes: a shape of runs over one harness, not a harness
 // of its own.
 const (
 	ModeSingle = "single"
@@ -1500,7 +1500,7 @@ const (
 const BandUnknown = "unknown"
 
 // bandUppers are the input-length bands, upper bound inclusive, K being 1024
-// the way a context window is quoted. Duplicated from the plane on purpose:
+// the way a context window is quoted. Duplicated from the plane:
 // the boundaries belong to a frozen criteria version, and a shared constant
 // would let an edit silently rewrite what an old verdict meant.
 var bandUppers = []struct {
@@ -1586,7 +1586,7 @@ type BenchmarkCheck struct {
 
 // BenchmarkVerdict is whether a run met the standard, derived at read against a
 // pinned criteria version and stored nowhere. The version is what makes
-// deriving it honest, so it is never shown without one.
+// deriving it accurate, so it is never shown without one.
 type BenchmarkVerdict struct {
 	Outcome         string           `json:"outcome"`
 	CriteriaVersion string           `json:"criteria_version"`
@@ -1632,7 +1632,7 @@ type BenchmarkParameter struct {
 }
 
 // BenchmarkHarness is a probe suite or load generator, the levels it grades at,
-// and what it takes. The levels are served rather than assumed, so there is no
+// and what it takes. The levels are served, not assumed, so there is no
 // second answer to what a harness may be pointed at.
 type BenchmarkHarness struct {
 	Name        string               `json:"name"`
@@ -1669,7 +1669,7 @@ type BenchmarkRunCreate struct {
 
 // BenchmarkRequestCreate is what to measure and at which level.
 //
-// `Steps` are the load points a stepped mode walks — concurrencies for a ramp,
+// `Steps` are the load points a stepped mode walks: concurrencies for a ramp,
 // prompt lengths for a sweep. A sweep is what makes a per-band
 // time-to-first-token claim evidenceable at all: one invocation measures one
 // load point, and the standard sets a target for each input-length band.
@@ -1745,7 +1745,7 @@ type Component struct {
 }
 
 // AlertSubject is what an alert or a threshold is about, by public id. Unlike
-// EventSubject the id is resolvable — and it may name something that no longer
+// EventSubject the id is resolvable, and it may name something that no longer
 // exists, because an alert about a node that went away has to outlive the node.
 //
 // A null id on a threshold is the fleet default for that rule.
@@ -1755,7 +1755,7 @@ type AlertSubject struct {
 }
 
 // MetricRule is one entry in the catalogue of rules a threshold may name.
-// Read-only and code rather than data: the metric and the comparison are
+// Read-only and code, not data: the metric and the comparison are
 // judgement the plane owns, and the only reason they are on the wire is that a
 // client declaring a threshold has to know which number it is being asked for
 // and in which unit.
@@ -1781,9 +1781,9 @@ type MetricRule struct {
 // observed and are not.
 //
 // `Lookback`, `ForSeconds` and `Severity` are returned exactly as declared, null
-// included, because null means "whatever the rule says" — substituting the
+// included, because null means "whatever the rule says": substituting the
 // rule's own value would make a row look like it had pinned something it
-// deliberately left alone.
+// left alone.
 type AlertThreshold struct {
 	ID         string         `json:"id"`
 	Rule       string         `json:"rule"`
@@ -1803,12 +1803,12 @@ type AlertThreshold struct {
 }
 
 // FleetDefault reports whether this row is the one that covers every subject of
-// its rule's type, rather than overriding it for one subject.
+// its rule's type, instead of overriding it for one subject.
 func (t AlertThreshold) FleetDefault() bool {
 	return t.Subject.ID == nil || *t.Subject.ID == ""
 }
 
-// AlertThresholdCreate declares a threshold. `comparison` is deliberately
+// AlertThresholdCreate declares a threshold. `comparison` is
 // absent: which way a metric is wrong is not declarable.
 type AlertThresholdCreate struct {
 	Rule        string         `json:"rule"`
@@ -1839,7 +1839,7 @@ type AlertThresholdUpdate struct {
 }
 
 // EventSubject is what an event is about. `id` is the subject's row
-// identifier and is deliberately not a prefixed public id.
+// identifier and is not a prefixed public id.
 type EventSubject struct {
 	Type string  `json:"type"`
 	ID   *string `json:"id"`

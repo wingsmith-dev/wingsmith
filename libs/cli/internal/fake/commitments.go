@@ -99,11 +99,11 @@ func declaredLimits(q api.ServingQuota) api.ResolvedLimits {
 }
 
 // effectiveLimits is what the replica at index enforces once the scope is
-// applied. Under per_replica the declared set is returned unchanged — that is
-// what the mode means — rather than divided by one, so the two modes cannot
+// applied. Under per_replica the declared set is returned unchanged, that is
+// what the mode means, not divided by one, so the two modes cannot
 // converge by accident at a single replica.
 //
-// max_output_tokens is deliberately not divided: it is a ceiling on what one
+// max_output_tokens is not divided: it is a ceiling on what one
 // request may ask for, not an allowance spent over a minute.
 func effectiveLimits(q api.ServingQuota, replicas, index int) api.ResolvedLimits {
 	if q.LimitScope != api.ScopeDivided {
@@ -119,7 +119,7 @@ func effectiveLimits(q api.ServingQuota, replicas, index int) api.ResolvedLimits
 
 // share is one replica's slice of a fleet-wide limit. Largest remainder rather
 // than a floor: the floor alone throws away limit%replicas of what was sold on
-// every uneven split. An uncommitted limit stays uncommitted — dividing null
+// every uneven split. An uncommitted limit stays uncommitted: dividing null
 // would turn "not limited on this axis" into a number, and at any fleet larger
 // than the limit that number would be zero.
 func share(limit *int, replicas, index int) *int {
@@ -145,7 +145,7 @@ func share64(limit *int64, replicas, index int) *int64 {
 }
 
 // starvedReplicas counts the replicas that would enforce a hard zero under
-// `divided`. Reported rather than refused: an operator lowering a fleet below a
+// `divided`. Reported, not refused: an operator lowering a fleet below a
 // sold rate needs to see the consequence.
 func starvedReplicas(q api.ServingQuota, replicas int) int {
 	if q.LimitScope != api.ScopeDivided {

@@ -280,7 +280,7 @@ func operationNoun() noun[api.Operation] {
 		long: `An operation is a piece of long-running work: a type, a target, who asked
 and why, and its progress.
 
-Imperative changes go through operations rather than verbs on the object, so
+Imperative changes go through operations, not verbs on the object, so
 each one records who asked, the reason, the attempts, and the outcome. Create
 one, then poll it with get or wait.`,
 		example: `  hgr operation ls --phase running
@@ -463,7 +463,7 @@ and drain start those for you). Benchmarks start with hgr benchmark run.`,
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&reason, "reason", "", "why this is being done — it outlives the person who ran it")
+	fl.StringVar(&reason, "reason", "", "why this is being done: it outlives the person who ran it")
 	fl.StringVar(&deadline, "deadline", "", "give up after a duration or at an RFC 3339 time")
 	fl.StringArrayVar(&params, "param", nil, "operation parameter (KEY=VALUE, repeatable)")
 	fl.StringVar(&cluster, "cluster", "", "cluster, for targets that do not carry one")
@@ -552,7 +552,7 @@ func pollInterval(raw string) (time.Duration, error) {
 }
 
 // waitForOperation polls one operation to a terminal phase. It reports each
-// phase change rather than every poll, so a slow drain prints a line when
+// phase change instead of every poll, so a slow drain prints a line when
 // something actually happened.
 func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Duration) error {
 	step := a.Report.Step("waiting for " + ref)
@@ -717,7 +717,7 @@ func qualifyOperationTarget(opType, ref string) string {
 }
 
 // isPublicID reports whether a reference is already one of the plane's
-// prefixed identifiers rather than a name.
+// prefixed identifiers instead of a name.
 func isPublicID(ref string) bool {
 	prefix, rest, ok := strings.Cut(ref, "_")
 	return ok && len(prefix) == 3 && len(rest) == 26

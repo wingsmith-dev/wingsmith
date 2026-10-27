@@ -39,7 +39,7 @@ func TestPagesDecodeExactly(t *testing.T) {
 
 // checkPage asserts three things about one collection: the envelope is the
 // envelope, every item decodes with no unknown field, and the client's own
-// serialisation has exactly the server's keys — no more, no fewer.
+// serialisation has exactly the server's keys: no more, no fewer.
 func checkPage[T any](t *testing.T, name string) {
 	t.Helper()
 	raw := readFixture(t, name)

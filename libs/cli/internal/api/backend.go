@@ -7,7 +7,7 @@ import "context"
 // command tested against the fake is a command tested for real shape.
 //
 // Every list returns a Page: the envelope is part of the contract, and a
-// command that wants the whole collection sets ListOpts.All rather than
+// command that wants the whole collection sets ListOpts.All instead of
 // assuming the first page was all of it.
 type Backend interface {
 	Identity(ctx context.Context) (Identity, error)

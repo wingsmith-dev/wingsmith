@@ -14,9 +14,9 @@ import (
 // plane's, and ages are offsets from now so no fixture ever has to be
 // regenerated to stay plausible.
 //
-// The corpus is deliberately awkward — an unreachable cluster, a cordoned
+// The corpus is awkward, an unreachable cluster, a cordoned
 // node, an unhealthy device, a throttled one, a deployment that never got
-// admitted, a quota over its limit — because a seed where everything is fine
+// admitted, a quota over its limit, because a seed where everything is fine
 // tests nothing that matters.
 func seed() *state {
 	now := time.Now().UTC()
@@ -364,7 +364,7 @@ func seed() *state {
 	depPending := uid("dep_")
 	// One workload across two clusters, which is the shape the whole model exists
 	// for: a total of 5 replicas that placement split 4/1, so the console and the
-	// CLI both have something whose scale is a sum rather than a copy.
+	// CLI both have something whose scale is a sum instead of a copy.
 	workloadID := uid("wkl_")
 	st.Workloads = append(st.Workloads, api.Workload{
 		ID: workloadID, Name: "chat", Kind: "service", ProjectID: projectID,
@@ -563,7 +563,7 @@ func seed() *state {
 	// Two runs against one deployment at different concurrencies, so that the
 	// comparison the table exists for is visible offline, and one failure, so
 	// that the empty-result path is too. The summaries are AIPerf's own shape
-	// rather than anything tidier: a fixture with an invented schema would make
+	// instead of anything tidier: a fixture with an invented schema would make
 	// the generic renderer look better than it is against a real harness.
 	benchDeployment := st.Deployments[0]
 	benchDeploymentID, benchDeploymentCluster := benchDeployment.ID, benchDeployment.ClusterID
@@ -641,8 +641,8 @@ func seed() *state {
 	)
 
 	// One deployment's whole timeline, so `hgr deployment events` has something to
-	// show offline. Seeded as the awkward case — weights that took most of an hour,
-	// then a rollout that filled in one replica at a time — because a deployment
+	// show offline. Seeded as the awkward case, weights that took most of an hour,
+	// then a rollout that filled in one replica at a time, because a deployment
 	// that came up instantly would not exercise what the command exists to reveal.
 	st.Events = append(st.Events,
 		api.Event{
@@ -728,7 +728,7 @@ func revision(t time.Time) string {
 }
 
 // The declared halves of the seeded endpoint's surface, addressable because a surface field that
-// nobody declared is nil and not a zero — three states, and the fake has to be able to express all
+// nobody declared is nil and not a zero: three states, and the fake has to be able to express all
 // three the way the plane does.
 var (
 	surfaceCORS     = false

@@ -147,7 +147,7 @@ anything in the cluster, so nothing restarts.`,
 				}
 			}
 			return []errs.Action{
-				{Description: "Track it — nothing is declared and nothing restarts",
+				{Description: "Track it: nothing is declared and nothing restarts",
 					Command: "hgr discovered track " + d.Name + " --project <project>"},
 				{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
 				{Description: "Take it off the list for good", Command: "hgr discovered rm " + d.Name},
@@ -164,14 +164,14 @@ func newDecisionCmd(app *App, decision string) *cobra.Command {
 	long := `Track a workload the operator found running.
 
 This records a decision and declares nothing. No deployment is created, no
-serving spec is resolved, and no desired state reaches the cluster — so the
+serving spec is resolved, and no desired state reaches the cluster, so the
 workload keeps running exactly as it is, with its weights where they already
 are.`
 	if decision == decisionIgnored {
 		short = "Stop listing a discovered workload"
 		long = `Ignore a workload the operator found running.
 
-The sighting stays — the cluster keeps reporting it and it is still there. This
+The sighting stays: the cluster keeps reporting it and it is still there. This
 only says we have looked at it and do not want it in the default listing;
 ` + "`hgr discovered ls --status ignored`" + ` still shows it.`
 	}
@@ -209,7 +209,7 @@ only says we have looked at it and do not want it in the default listing;
 			})
 		},
 	}
-	cmd.Flags().StringVar(&note, "note", "", "why — it outlives the person who ran it")
+	cmd.Flags().StringVar(&note, "note", "", "why: it outlives the person who ran it")
 	return cmd
 }
 
@@ -227,7 +227,7 @@ func statusColor(s ui.Style, status string) string {
 // newRemoveWorkloadCmd takes a sighting off the list.
 //
 // It deletes nothing. The sighting is observed state with one writer, and the cluster reports the
-// workload on every observation because it is still running — so what is recorded is the decision,
+// workload on every observation because it is still running, so what is recorded is the decision,
 // and the listing is where it is honoured. `restore` undoes it.
 func newRemoveWorkloadCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -259,7 +259,7 @@ keeps seeing it. It only stops appearing in the list.
 				Data:    map[string]any{"id": found.ID, "name": found.Name, "removed": true},
 				Names:   []string{found.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
-					fmt.Fprintf(w, "%s removed — still running, never touched\n", s.Bold(found.Name))
+					fmt.Fprintf(w, "%s removed: still running, never touched\n", s.Bold(found.Name))
 				},
 				Next: []errs.Action{
 					{Description: "Put it back", Command: "hgr discovered restore " + found.Name},
@@ -306,7 +306,7 @@ func newRestoreWorkloadCmd(app *App) *cobra.Command {
 // newPromoteCmd builds the one verb here that writes declared state.
 //
 // The digest is not a flag. The command reads the workload, sends back the digest it was just
-// shown, and the plane refuses if the workload moved in between — the caller cannot be asked to
+// shown, and the plane refuses if the workload moved in between: the caller cannot be asked to
 // type a value whose whole purpose is that nobody chose it.
 func newPromoteCmd(app *App) *cobra.Command {
 	var (

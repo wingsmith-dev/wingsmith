@@ -13,8 +13,8 @@ import (
 )
 
 // collection is one noun's two entry points, reduced to the thing worth testing about them: which
-// path they hit. Each wrapper is two lines, and the failure mode of a wrong one is silent — the
-// CLI asks for the wrong collection and prints an empty listing rather than an error.
+// path they hit. Each wrapper is two lines, and the failure mode of a wrong one is silent: the
+// CLI asks for the wrong collection and prints an empty listing instead of an error.
 type collection struct {
 	path string
 	list func(context.Context, *Client, ListOpts) error
@@ -171,7 +171,7 @@ func TestEveryCollectionInTheClientIsCovered(t *testing.T) {
 	}
 }
 
-// TestPaginationIsOfferedByEveryCollection — a wrapper that dropped ListOpts would silently
+// TestPaginationIsOfferedByEveryCollection: a wrapper that dropped ListOpts would silently
 // ignore --limit on one noun and honour it on every other.
 func TestPaginationIsOfferedByEveryCollection(t *testing.T) {
 	for _, col := range collections() {
@@ -191,7 +191,7 @@ func TestPaginationIsOfferedByEveryCollection(t *testing.T) {
 	}
 }
 
-// TestAnErrorFromAnyCollectionIsTyped — every path has to produce the same error contract, or a
+// TestAnErrorFromAnyCollectionIsTyped: every path has to produce the same error contract, or a
 // script branching on the code works for some nouns and not others.
 func TestAnErrorFromAnyCollectionIsTyped(t *testing.T) {
 	for _, col := range collections() {

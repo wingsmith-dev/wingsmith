@@ -1,6 +1,6 @@
 // Package fake is a local, deterministic stand-in for the Hangar control
-// plane. It answers with the same shapes the real API answers with — same
-// field names, same envelope, same cursor behaviour — so a command tested
+// plane. It answers with the same shapes the real API answers with, same
+// field names, same envelope, same cursor behaviour, so a command tested
 // against it is a command tested for real shape.
 //
 // Select it with --fake, HANGAR_FAKE=1, or `fake: true` in the config file.
@@ -47,7 +47,7 @@ type state struct {
 
 // load reads a fixture document, falling back to the built-in seed. When a
 // path is set but empty on disk the seed is written to it, so that a sequence
-// of commands — create an operation, poll it, cancel it — shares one control
+// of commands (create an operation, poll it, cancel it) shares one control
 // plane instead of a fresh universe per invocation.
 func load(path string) (*state, error) {
 	if path == "" {

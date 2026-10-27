@@ -49,7 +49,7 @@ func TestSilentNarrationWritesNothing(t *testing.T) {
 	}
 }
 
-// TestPlainNarrationIsOneLinePerTransition — a non-TTY human session (a CI log, a piped run) gets
+// TestPlainNarrationIsOneLinePerTransition: a non-TTY human session (a CI log, a piped run) gets
 // no spinner, but must still say what happened.
 func TestPlainNarrationIsOneLinePerTransition(t *testing.T) {
 	var buf syncBuf
@@ -76,7 +76,7 @@ func TestPlainNarrationIsOneLinePerTransition(t *testing.T) {
 	}
 }
 
-// TestAFailedStepIsMarkedDifferentlyFromADoneOne — the two are the whole point of narrating.
+// TestAFailedStepIsMarkedDifferentlyFromADoneOne: the two are the point of narrating.
 func TestAFailedStepIsMarkedDifferently(t *testing.T) {
 	done := func(fail bool) string {
 		var buf syncBuf
@@ -101,7 +101,7 @@ func TestAFailedStepIsMarkedDifferently(t *testing.T) {
 	}
 }
 
-// TestAStepsLabelCanBeUpdatedBeforeItConcludes — a long placement narrates what it is waiting on.
+// TestAStepsLabelCanBeUpdatedBeforeItConcludes: a long placement narrates what it is waiting on.
 func TestAStepsLabelCanBeUpdated(t *testing.T) {
 	var buf syncBuf
 	r := NewReporter(&buf, plain(), false, false)
@@ -124,7 +124,7 @@ func TestStoppingTwiceIsSafe(t *testing.T) {
 	r.Stop()
 }
 
-// TestConcludingAStepTwiceIsSafe — the same reasoning: a deferred Fail after an explicit Done.
+// TestConcludingAStepTwiceIsSafe: the same reasoning: a deferred Fail after an explicit Done.
 func TestConcludingAStepTwiceIsSafe(t *testing.T) {
 	var buf syncBuf
 	r := NewReporter(&buf, plain(), true, false)
@@ -159,7 +159,7 @@ func TestAProgressBarWithNoTotalIsSafe(t *testing.T) {
 	p.Done("done")
 }
 
-// TestStartingASecondStepStopsTheFirst — two spinners writing to the same line would interleave
+// TestStartingASecondStepStopsTheFirst: two spinners writing to the same line would interleave
 // into nonsense.
 func TestStartingASecondStepStopsTheFirst(t *testing.T) {
 	var buf syncBuf

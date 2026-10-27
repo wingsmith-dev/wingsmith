@@ -24,7 +24,7 @@ and tokens a minute a caller may count on, the concurrency and output ceilings,
 and the objectives the commitment is held to.
 
 Every limit is nullable and a null is UNCOMMITTED, never zero: an axis left
-unset is a promise nobody made rather than a promise of nothing.
+unset is a promise nobody made instead of a promise of nothing.
 
 Serving quotas are advisory today. The gateway does not read them, so no request
 is refused, queued or counted against these numbers. 'enforced' records whether
@@ -126,7 +126,7 @@ func servingQuotaDetail(app *App, w io.Writer, s ui.Style, q api.ServingQuota) {
 
 // servingLimits binds the flags a create and a set share, and turns whichever
 // were actually given into the request. Only a flag the caller changed is sent,
-// so leaving one alone keeps its current value rather than committing a zero.
+// so leaving one alone keeps its current value instead of committing a zero.
 type servingLimits struct {
 	rpm             int
 	tpm             int64
@@ -259,7 +259,7 @@ func newServingQuotaSetCmd(app *App) *cobra.Command {
 		Long: `Edit one endpoint's serving quota. Only the axes named are changed; the rest
 keep the values they had.
 
-An axis cannot be returned to uncommitted here — that is a different intent, and
+An axis cannot be returned to uncommitted here: that is a different intent, and
 'hgr serving-quota rm' removes the commitment entirely.`,
 		Example: `  hgr serving-quota set chat --committed-rpm 2000
   hgr serving-quota set chat --enforced`,

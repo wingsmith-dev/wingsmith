@@ -52,7 +52,7 @@ func TestStateDirHonoursTheOverridesInOrder(t *testing.T) {
 	}
 }
 
-// TestAMissingConfigIsAnEmptyDocumentNotAnError — a fresh checkout runs `hgr` with no config at
+// TestAMissingConfigIsAnEmptyDocumentNotAnError: a fresh checkout runs `hgr` with no config at
 // all, and refusing to start would make the first run a setup task.
 func TestAMissingConfigIsAnEmptyDocument(t *testing.T) {
 	f, err := Load(filepath.Join(t.TempDir(), "nothing-here.yaml"))
@@ -85,7 +85,7 @@ func TestMalformedYAMLIsRefusedWithThePathInTheMessage(t *testing.T) {
 }
 
 // TestSaveRoundTripsAndKeepsTheCredentialPrivate. The file holds a bearer token, so 0600 is not a
-// nicety — a group-readable config leaks the operator's credential to every user on the box.
+// nicety: a group-readable config leaks the operator's credential to every user on the box.
 func TestSaveRoundTripsWithRestrictivePermissions(t *testing.T) {
 	path := tempConfig(t)
 	f, err := Load(path)
@@ -129,7 +129,7 @@ func TestSaveRoundTripsWithRestrictivePermissions(t *testing.T) {
 	}
 }
 
-// TestAnUnknownContextIsEmptyRatherThanMissing — `hgr --context typo cluster ls` must fall through
+// TestAnUnknownContextIsEmptyRatherThanMissing: `hgr --context typo cluster ls` must fall through
 // to a clear "no server configured", not panic on a nil map entry.
 func TestAnUnknownContextIsEmpty(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
@@ -151,7 +151,7 @@ func TestContextNamesAreStable(t *testing.T) {
 	}
 }
 
-// TestSetAndGetCoverEverySettableKey. The list is explicit so a typo is an error rather than a
+// TestSetAndGetCoverEverySettableKey. The list is explicit so a typo is an error instead of a
 // silently ignored setting; this holds the two halves to the same list.
 func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
@@ -189,7 +189,7 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 	}
 }
 
-// TestSettingTheContextWritesToTheCurrentOne — `hgr config set context.server` with a non-default
+// TestSettingTheContextWritesToTheCurrentOne: `hgr config set context.server` with a non-default
 // current context must not silently edit `default`.
 func TestSettingTheContextWritesToTheCurrentOne(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
@@ -272,13 +272,13 @@ func TestASubstringOfARealKeyIsSuggested(t *testing.T) {
 	}
 }
 
-// TestATypoWithAnExtraCharacterGetsNoSuggestion pins a real weakness rather than an intent: the
-// near-miss check asks whether a settable key contains what was typed, so "context.servers" — the
-// most common way to get this wrong — is longer than every candidate and matches none. The user
+// TestATypoWithAnExtraCharacterGetsNoSuggestion pins a real weakness instead of an intent: the
+// near-miss check asks whether a settable key contains what was typed, so "context.servers", the
+// most common way to get this wrong, is longer than every candidate and matches none. The user
 // still gets `hgr config list`, so nothing is broken, but the suggestion that would have saved the
 // round trip does not appear.
 //
-// TODO: match on edit distance, or on the typed key's prefix, rather than containment.
+// TODO: match on edit distance, or on the typed key's prefix, not containment.
 func TestATypoWithAnExtraCharacterGetsNoSuggestion(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
 	var e *errs.Error

@@ -71,9 +71,9 @@ func (b *Backend) Device(ctx context.Context, ref string) (api.Device, error) {
 	})
 }
 
-// DeviceClasses derives the catalog from the seeded devices rather than carrying a table of its
+// DeviceClasses derives the catalog from the seeded devices instead of carrying a table of its
 // own. The contract dictionary is embedded in the plane and in the operator, and a third copy here
-// would be a third thing to keep in step — so every class the fake reports is one it can see
+// would be a third thing to keep in step, so every class the fake reports is one it can see
 // hardware for, and none of them claim a catalog entry.
 func (b *Backend) DeviceClasses(ctx context.Context, o api.ListOpts) (api.Page[api.DeviceClass], error) {
 	classes := b.deviceClasses(o.Cluster)
@@ -194,7 +194,7 @@ func (b *Backend) Artifact(ctx context.Context, ref string) (api.Artifact, error
 }
 
 // Workloads answers with the deployments and the rollup filled in from the
-// per-cluster rows, rather than from a copy stored beside them. A workload's
+// per-cluster rows, not from a copy stored beside them. A workload's
 // scale is a sum of its shares, and a fake that kept its own answer to that
 // would be the one place in the system where the two could disagree.
 func (b *Backend) Workloads(ctx context.Context, o api.ListOpts) (api.Page[api.Workload], error) {
@@ -289,7 +289,7 @@ func scaleUnit(kind string) string {
 }
 
 // workloadPhase is the least advanced phase among the deployments, with failure
-// winning outright. Nothing writes it — a workload running in one region and
+// winning outright. Nothing writes it: a workload running in one region and
 // queued on quota in another is not running.
 func workloadPhase(deployments []api.WorkloadDeployment) string {
 	if len(deployments) == 0 {
@@ -412,7 +412,7 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 	return b.hydrateWorkload(workload), nil
 }
 
-// UpdateWorkload writes only what was sent. Scale is absent on purpose: it is
+// UpdateWorkload writes only what was sent. Scale is absent: it is
 // the workload.scale operation, because it is long-running and can fail.
 func (b *Backend) UpdateWorkload(ctx context.Context, ref string, req api.WorkloadUpdateRequest) (api.Workload, error) {
 	found, err := b.Workload(ctx, ref)
@@ -518,7 +518,7 @@ func (b *Backend) Deployment(ctx context.Context, ref string) (api.Deployment, e
 
 // UpdateDeployment writes the one per-cluster field a caller owns. Everything a
 // workload declares is declared once, globally, and a share is placement's
-// answer rather than something asserted per cluster.
+// answer instead of something asserted per cluster.
 func (b *Backend) UpdateDeployment(ctx context.Context, ref string, req api.DeploymentUpdateRequest) (api.Deployment, error) {
 	found, err := b.Deployment(ctx, ref)
 	if err != nil {
@@ -558,7 +558,7 @@ func (b *Backend) DiscoveredWorkload(ctx context.Context, ref string) (api.Disco
 }
 
 // DecideWorkload records the decision and touches nothing else. The fake is as
-// inert as the real thing here on purpose: if adopting could ever produce a
+// inert as the real thing here: if adopting could ever produce a
 // declared object, this is where the shape test would catch it.
 func (b *Backend) DecideWorkload(ctx context.Context, ref, decision string, req api.DecisionRequest) (api.DiscoveredWorkload, error) {
 	found, err := b.DiscoveredWorkload(ctx, ref)
@@ -1204,8 +1204,8 @@ func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRunCreat
 	return run, b.persist()
 }
 
-// resolveHarness refuses the same things the plane does — an unknown harness and
-// a parameter it does not accept — and returns the harness with its defaults
+// resolveHarness refuses the same things the plane does, an unknown harness and
+// a parameter it does not accept, and returns the harness with its defaults
 // laid under the parameters the caller named. A fake that accepted everything
 // would teach a command line the plane then rejects.
 func (b *Backend) resolveHarness(name string, params map[string]any) (*api.BenchmarkHarness, map[string]any, error) {
@@ -1277,7 +1277,7 @@ func (b *Backend) BenchmarkRequest(ctx context.Context, ref string) (api.Benchma
 
 // CreateBenchmarkRequest expands one ask into its runs, mirroring the plane: a
 // stepped mode walks its load points and each step is one run, so a sweep is one
-// request and several runs rather than several requests.
+// request and several runs instead of several requests.
 func (b *Backend) CreateBenchmarkRequest(ctx context.Context, req api.BenchmarkRequestCreate) (api.BenchmarkRequest, error) {
 	if err := b.injected(); err != nil {
 		return api.BenchmarkRequest{}, err
@@ -1497,7 +1497,7 @@ func (b *Backend) resolveTarget(req api.OperationRequest) (api.OperationTarget, 
 	case "workload":
 		// No cluster. scale, pause and drain are plane-local: they rewrite the
 		// expansion and let the shares reach the clusters as declared state,
-		// rather than being dispatched to one.
+		// instead of being dispatched to one.
 		wl, err := b.Workload(context.Background(), req.Target)
 		if err != nil {
 			return api.OperationTarget{}, nil, err
@@ -1580,7 +1580,7 @@ func (b *Backend) Event(ctx context.Context, ref string) (api.Event, error) {
 // fakeMetricRules mirrors the plane's frozen catalogue of metric-backed rules a
 // threshold may name. A copy, and knowingly one: the fake exists to answer
 // offline, and there is no plane to ask. `suggested_value` is what a number
-// would be if nobody had said otherwise, never a default that fires — no rule
+// would be if nobody had said otherwise, never a default that fires: no rule
 // evaluates until a threshold row declares one.
 var fakeMetricRules = []api.MetricRule{
 	{Name: "deployment.ttft_high", Metric: "inference.ttft", Unit: "seconds", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "time to first token (p95)", SuggestedValue: 2.0, Lookback: "5m", ForSeconds: 900},
@@ -1595,7 +1595,7 @@ var fakeMetricRules = []api.MetricRule{
 	{Name: "node.ecc_uncorrectable", Metric: "gpu.ecc_uncorrectable", Unit: "count", Comparison: "above", SubjectType: "node", Severity: "error", Measures: "uncorrectable ECC errors", SuggestedValue: 0.0, Lookback: "5m", ForSeconds: 0},
 }
 
-// AlertRules is the catalogue a threshold may name, served rather than compiled
+// AlertRules is the catalogue a threshold may name, served, not compiled
 // into a command, so a metric name never becomes a string somebody types.
 func (b *Backend) AlertRules(ctx context.Context) ([]api.MetricRule, error) {
 	if err := b.injected(); err != nil {
@@ -1630,7 +1630,7 @@ func (b *Backend) AlertThreshold(ctx context.Context, ref string) (api.AlertThre
 // CreateAlertThreshold refuses what the plane refuses: an unknown rule, and a
 // comparison it will not take because which way a metric is wrong is the rule's
 // judgement and never declared. `metric` and `comparison` are copied off the
-// rule rather than read off the request for the same reason.
+// rule, not read off the request for the same reason.
 func (b *Backend) CreateAlertThreshold(ctx context.Context, req api.AlertThresholdCreate) (api.AlertThreshold, error) {
 	if err := b.injected(); err != nil {
 		return api.AlertThreshold{}, err
@@ -1897,7 +1897,7 @@ func servingOf(artifactID string, req api.ServingRequest) api.ServingSpec {
 }
 
 // resolvedEngineArgs is the declared args with the flags the shape dictates laid
-// over them, keyed the way the operator keys them — without the leading dashes.
+// over them, keyed the way the operator keys them, without the leading dashes.
 // The plane derives more than this; what matters to a client is that a declared
 // arg is never overwritten by a derived one.
 func resolvedEngineArgs(sv api.ServingSpec) map[string]any {

@@ -62,8 +62,8 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 func (c *Client) Simulated() bool { return false }
 
 // Identity reports the configured context and whether the plane answers.
-// The plane has no identity endpoint — a human is the one admin, and a tenant
-// login is scoped to its own serving view — so `/health` is the only thing
+// The plane has no identity endpoint, a human is the one admin, and a tenant
+// login is scoped to its own serving view, so `/health` is the only thing
 // that can be truthfully asked.
 func (c *Client) Identity(ctx context.Context) (Identity, error) {
 	id := Identity{Server: c.Server, Project: c.DefaultProject, HasToken: c.Token != ""}
@@ -261,7 +261,7 @@ func (c *Client) Workloads(ctx context.Context, o ListOpts) (Page[Workload], err
 
 // Workload resolves by id or by name. A name is unique within a project and not
 // globally, so a bare name outside one project is ambiguous and the plane says
-// so rather than picking.
+// so instead of picking.
 func (c *Client) Workload(ctx context.Context, ref string) (Workload, error) {
 	return one[Workload](ctx, c, "/v1/workloads", ref, nil)
 }
@@ -292,8 +292,8 @@ func (c *Client) Deployments(ctx context.Context, o ListOpts) (Page[Deployment],
 }
 
 // Deployment resolves by id, or by name within a cluster: a deployment name
-// is unique per cluster and not globally — two clusters holding shares of one
-// workload share a name — so `--cluster` is how a name is made unambiguous.
+// is unique per cluster and not globally, two clusters holding shares of one
+// workload share a name, so `--cluster` is how a name is made unambiguous.
 func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error) {
 	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
 }
@@ -314,7 +314,7 @@ func (c *Client) DiscoveredWorkload(ctx context.Context, ref string) (Discovered
 	return one[DiscoveredWorkload](ctx, c, "/v1/discovered", ref, nil)
 }
 
-// DecideWorkload records track or ignore. It is a POST on a subpath rather than
+// DecideWorkload records track or ignore. It is a POST on a subpath instead of
 // a PATCH on the workload because the object it writes is not the workload: the
 // sighting is observed and has exactly one writer, which is ingestion.
 func (c *Client) DecideWorkload(ctx context.Context, ref, decision string, req DecisionRequest) (DiscoveredWorkload, error) {
@@ -544,7 +544,7 @@ func (c *Client) BenchmarkVerdict(ctx context.Context, ref, criteria string) (Be
 	return out, err
 }
 
-// BenchmarkRequest reads one ask. There is deliberately no listing of requests
+// BenchmarkRequest reads one ask. There is no listing of requests
 // on the plane: the runs are the collection, and `--request` filters them.
 func (c *Client) BenchmarkRequest(ctx context.Context, ref string) (BenchmarkRequest, error) {
 	return one[BenchmarkRequest](ctx, c, "/v1/benchmarks/requests", ref, nil)
@@ -578,16 +578,16 @@ func (c *Client) BenchmarkRequestBands(ctx context.Context, ref string) ([]Bench
 	return page.Items, err
 }
 
-// BenchmarkHarnesses is what can be run and what it accepts. Asked of the plane
-// rather than compiled in, so a flag the plane stopped accepting stops being
+// BenchmarkHarnesses is what can be run and what it accepts. Asked of the plane,
+// not compiled in, so a flag the plane stopped accepting stops being
 // offered without a CLI release.
 func (c *Client) BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, error) {
 	page, err := list[BenchmarkHarness](ctx, c, "/v1/benchmarks/harnesses", nil, ListOpts{})
 	return page.Items, err
 }
 
-// CreateBenchmark starts a run. It creates two things on the plane — the record
-// and the operation that carries it out — and returns the record; the operation
+// CreateBenchmark starts a run. It creates two things on the plane, the record
+// and the operation that carries it out, and returns the record; the operation
 // is named on it and is where cancellation lives.
 func (c *Client) CreateBenchmark(ctx context.Context, req BenchmarkRunCreate) (BenchmarkRun, error) {
 	var out BenchmarkRun
@@ -641,9 +641,9 @@ func (c *Client) DeleteAlertThreshold(ctx context.Context, ref string) error {
 	return c.send(ctx, http.MethodDelete, "/v1/alert-thresholds/"+url.PathEscape(ref), nil, nil, nil, nil)
 }
 
-// AlertRules is the catalogue a threshold may name. Its own path rather than a
+// AlertRules is the catalogue a threshold may name. Its own path instead of a
 // segment under /v1/alert-thresholds, so no literal has to win a race against
-// {ref}; asked of the plane rather than compiled in, so a metric name never
+// {ref}; asked of the plane, not compiled in, so a metric name never
 // becomes a string somebody types.
 func (c *Client) AlertRules(ctx context.Context) ([]MetricRule, error) {
 	page, err := list[MetricRule](ctx, c, "/v1/alert-rules", nil, ListOpts{})
@@ -784,7 +784,7 @@ type wireError struct {
 }
 
 // planeCodes maps the plane's error vocabulary onto the CLI's. The plane's
-// `invalid` (422) is a well-formed request the plane refuses rather than a
+// `invalid` (422) is a well-formed request the plane refuses instead of a
 // malformed one, so it maps to INVALID_STATE and not USAGE.
 var planeCodes = map[string]errs.Code{
 	"not_found":       errs.CodeNotFound,

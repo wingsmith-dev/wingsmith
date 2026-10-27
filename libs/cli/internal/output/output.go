@@ -412,7 +412,7 @@ func jsonPath(v any, path string) (any, error) {
 
 // walk resolves the remaining segments against cur.
 //
-// `[*]` recurses rather than returning, because the wildcard is the projection: `.items[*].name`
+// `[*]` recurses instead of returning, because the wildcard is the projection: `.items[*].name`
 // has to answer with the names, not with the items. Returning the list there would silently ignore
 // everything after the wildcard and print whole objects where a column was asked for.
 func walk(cur any, segs []string, path string) (any, error) {

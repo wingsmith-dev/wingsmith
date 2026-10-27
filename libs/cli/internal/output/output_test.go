@@ -129,7 +129,7 @@ func TestAgentModeAlwaysWrapsInTheEnvelope(t *testing.T) {
 	}
 }
 
-// TestTheEnvelopeNeverHasNullCollections — an agent iterating `warnings` must not have to check
+// TestTheEnvelopeNeverHasNullCollections: an agent iterating `warnings` must not have to check
 // for null first, so absent means empty, not nil.
 func TestTheEnvelopeNeverHasNullCollections(t *testing.T) {
 	out, _ := render(t, FormatJSON, "", true, false, &Result{Command: "cluster ls"})
@@ -190,7 +190,7 @@ func TestAgentErrorsAreTheSameEnvelope(t *testing.T) {
 	}
 }
 
-// TestAMachineFormatSendsErrorsToStderrAsJSON — stdout stays parseable even when the command
+// TestAMachineFormatSendsErrorsToStderrAsJSON: stdout stays parseable even when the command
 // failed, which is what lets `hgr ... -o json | jq` behave.
 func TestAMachineFormatSendsErrorsToStderrAsJSON(t *testing.T) {
 	var out, errw bytes.Buffer
@@ -265,7 +265,7 @@ func TestJSONIsIndentedAndJSONLIsNot(t *testing.T) {
 	}
 }
 
-// TestJSONLOfANonSliceIsStillOneLine — a `get` returns a single object, and jsonl must not refuse
+// TestJSONLOfANonSliceIsStillOneLine: a `get` returns a single object, and jsonl must not refuse
 // it or wrap it in a list.
 func TestJSONLOfANonSliceIsOneLine(t *testing.T) {
 	out, _ := render(t, FormatJSONL, "", false, false, &Result{Data: sample()[0]})
@@ -274,7 +274,7 @@ func TestJSONLOfANonSliceIsOneLine(t *testing.T) {
 	}
 }
 
-// TestJSONOfNothingPrintsNothing — `hgr ... -o json` on a command with no data must not emit
+// TestJSONOfNothingPrintsNothing: `hgr ... -o json` on a command with no data must not emit
 // `null`, which every consumer would have to special-case.
 func TestJSONOfNothingPrintsNothing(t *testing.T) {
 	for _, f := range []Format{FormatJSON, FormatYAML} {
@@ -285,7 +285,7 @@ func TestJSONOfNothingPrintsNothing(t *testing.T) {
 	}
 }
 
-// TestYAMLGoesThroughJSONSoTagsDriveBoth — a field named one thing in JSON and another in YAML
+// TestYAMLGoesThroughJSONSoTagsDriveBoth: a field named one thing in JSON and another in YAML
 // would make the two formats disagree about the same object.
 func TestYAMLUsesTheJSONFieldNames(t *testing.T) {
 	out, _ := render(t, FormatYAML, "", false, false, &Result{Data: sample()[0]})
@@ -313,7 +313,7 @@ func TestTSVWritesTheProjectionItWasGiven(t *testing.T) {
 	}
 }
 
-// TestTSVWithoutAProjectionFallsBackToJSON rather than printing nothing.
+// TestTSVWithoutAProjectionFallsBackToJSON instead of printing nothing.
 func TestTSVWithoutAProjectionFallsBackToJSON(t *testing.T) {
 	out, _ := render(t, FormatTSV, "", false, false, &Result{Data: sample()})
 	if !strings.Contains(out, `"id"`) {
@@ -331,7 +331,7 @@ func TestNameFormatPrintsOnlyNames(t *testing.T) {
 	}
 }
 
-// TestQuietPrintsNamesOnStdoutAndNothingElse — `--quiet` exists so a name can be piped into the
+// TestQuietPrintsNamesOnStdoutAndNothingElse: `--quiet` exists so a name can be piped into the
 // next command.
 func TestQuietPrintsOnlyNames(t *testing.T) {
 	out, errw := render(t, FormatHuman, "", false, true, &Result{
@@ -382,7 +382,7 @@ func TestAWarningTheTableAlreadyDrewIsNotPrintedTwice(t *testing.T) {
 	}
 }
 
-// TestANextActionWithNoCommandIsNotOffered — there is nothing for the reader to run.
+// TestANextActionWithNoCommandIsNotOffered: there is nothing for the reader to run.
 func TestANextActionWithNoCommandIsNotOffered(t *testing.T) {
 	_, errw := render(t, FormatHuman, "", false, false, &Result{
 		Next: []errs.Action{{Description: "Ask an operator"}},
@@ -392,7 +392,7 @@ func TestANextActionWithNoCommandIsNotOffered(t *testing.T) {
 	}
 }
 
-// TestASilentResultDrawsNothing — used by commands that stream their own output.
+// TestASilentResultDrawsNothing: used by commands that stream their own output.
 func TestASilentResultDrawsNothing(t *testing.T) {
 	out, _ := render(t, FormatHuman, "", false, false, &Result{
 		Silent: true,
@@ -509,7 +509,7 @@ func TestStreamJSONIsAlwaysNewlineDelimited(t *testing.T) {
 	}
 }
 
-// TestJSONPathProjectsThroughNestedFields — the wildcard has to carry the whole remaining path,
+// TestJSONPathProjectsThroughNestedFields: the wildcard has to carry the whole remaining path,
 // not just one segment of it.
 func TestJSONPathProjectsThroughNestedFields(t *testing.T) {
 	data := map[string]any{"items": []any{
@@ -522,7 +522,7 @@ func TestJSONPathProjectsThroughNestedFields(t *testing.T) {
 	}
 }
 
-// TestABareWildcardStillReturnsTheList — `.items[*]` with nothing after it means the items.
+// TestABareWildcardStillReturnsTheList: `.items[*]` with nothing after it means the items.
 func TestABareWildcardReturnsTheList(t *testing.T) {
 	out, _ := render(t, FormatJSONPath, ".items[*]", false, false,
 		&Result{Data: map[string]any{"items": sample()}})
@@ -535,7 +535,7 @@ func TestABareWildcardReturnsTheList(t *testing.T) {
 	}
 }
 
-// TestAProjectionThatMissesAFieldFailsRatherThanPrintingBlanks — a column that is silently empty
+// TestAProjectionThatMissesAFieldFailsRatherThanPrintingBlanks: a column that is silently empty
 // for half the rows is worse than a refusal, because it reads as data.
 func TestAProjectionThatMissesAFieldFails(t *testing.T) {
 	data := map[string]any{"items": []any{
