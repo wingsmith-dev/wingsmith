@@ -871,7 +871,8 @@ class ClusterService:
 
         Nodes, devices, pools and sync state go with the row. Operations, benchmark
         runs, events and alerts stay, with no cluster, because they are the history
-        of why it was drained.
+        of why it was drained. Operations and runs still open are cancelled with
+        the delete, since no cluster can report on them afterwards.
 
         Two guards, because those foreign keys cascade and nothing else would ask.
         The caller must name the revision it looked at (`If-Match`) or say

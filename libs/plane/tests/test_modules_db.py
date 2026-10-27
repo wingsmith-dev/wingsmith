@@ -325,6 +325,52 @@ async def test_deleting_a_drained_cluster_keeps_its_history(db: AsyncSession) ->
     assert await kept("supply_node") == []
 
 
+async def test_deleting_a_cluster_cancels_what_it_never_reported_on(db: AsyncSession) -> None:
+    """Open work outlives the cluster with nothing left to close it, so the delete closes it.
+
+    The operation has no deadline, which is the case the reactor's timeout never reaches.
+    """
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    other = await service.create(ClusterCreateRequest(name="beta", region="eu-west-1"))
+    row = await service.repo.get(created.id)
+    params = {"cluster": row.id, "other": (await service.repo.get(other.id)).id}
+    for sql in (
+        "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by, phase)"
+        " VALUES ('opr_open', :cluster, 'benchmark', 'deployment', gen_random_uuid(), 'staff', 'running')",
+        "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by, phase)"
+        " VALUES ('opr_done', :cluster, 'drain', 'node', gen_random_uuid(), 'staff', 'succeeded')",
+        "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by, phase)"
+        " VALUES ('opr_away', :other, 'drain', 'node', gen_random_uuid(), 'staff', 'pending')",
+        "INSERT INTO ops_benchmark_run (uid, cluster_id, operation_id, harness, requested_by, model, phase)"
+        " SELECT 'bmk_open', :cluster, id, 'aiperf', 'staff', 'm', 'pending' FROM ops_operation"
+        " WHERE uid = 'opr_open'",
+        "INSERT INTO ops_benchmark_run (uid, cluster_id, harness, requested_by, model, phase)"
+        " VALUES ('bmk_done', :cluster, 'aiperf', 'staff', 'm', 'succeeded')",
+        "INSERT INTO ops_benchmark_run (uid, cluster_id, harness, requested_by, model, phase)"
+        " VALUES ('bmk_away', :other, 'aiperf', 'staff', 'm', 'running')",
+    ):
+        await db.execute(text(sql), params)
+    await db.commit()
+
+    await service.delete(created.id, force=True)
+
+    async def phases(table: str) -> list:
+        sql = f"SELECT uid, phase, finished_at IS NOT NULL, error IS NOT NULL FROM {table} ORDER BY uid"
+        return (await db.execute(text(sql))).all()
+
+    assert await phases("ops_operation") == [
+        ("opr_away", "pending", False, False),
+        ("opr_done", "succeeded", False, False),
+        ("opr_open", "cancelled", True, True),
+    ]
+    assert await phases("ops_benchmark_run") == [
+        ("bmk_away", "running", False, False),
+        ("bmk_done", "succeeded", False, False),
+        ("bmk_open", "cancelled", True, True),
+    ]
+
+
 async def test_registered_cluster_is_labelled_by_its_own_name(db: AsyncSession) -> None:
     """The chart stamps `external_labels.cluster` from the same name (ADR 0011)."""
     service = ClusterService(db)

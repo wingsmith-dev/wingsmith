@@ -1,11 +1,15 @@
+import datetime as dt
+
 from uuid import UUID
 
 from sqlalchemy import Select
+from sqlalchemy import or_
 from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import delete
 from sqlalchemy import exists
 from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +21,20 @@ from app.db.models import Event
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Workload
+from app.db.models import Operation
 from app.db.models import Allocation
 from app.db.models import Credential
 from app.db.models import Deployment
+from app.db.models import BenchmarkRun
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 from app.db.supply import device_free
 from app.db.supply import free_device_sum
+
+
+OPEN_PHASES = ("pending", "running")
+DELETED_OPERATION = "the cluster was deleted before it reported an outcome"
+DELETED_RUN = "the cluster running this benchmark was deleted before it reported a result"
 
 
 class ClusterRepository:
@@ -259,10 +270,30 @@ class ClusterRepository:
     async def delete(self, cluster: Cluster) -> None:
         """Deletes the row; its operations, benchmark runs, events and alerts stay, with no cluster.
 
+        Open operations and runs are cancelled first, in the same transaction. Once the
+        cluster is gone nothing can report on them or be handed them again, and the
+        reactor only times out operations that carry a deadline, so left open they would
+        read as pending for ever.
+
         An event whose cluster becomes null can match one already held with no cluster on
         every column of `uq_ops_event_occurrence`, which would refuse the delete. That pair
         is one occurrence recorded twice, so this cluster's copy goes first.
         """
+        moment = dt.datetime.now(dt.UTC)
+        closed = select(Operation.id).where(Operation.cluster_id == cluster.id, Operation.phase.in_(OPEN_PHASES))
+        await self.db.execute(
+            update(BenchmarkRun)
+            .where(
+                or_(BenchmarkRun.cluster_id == cluster.id, BenchmarkRun.operation_id.in_(closed)),
+                BenchmarkRun.phase.in_(OPEN_PHASES),
+            )
+            .values(phase="cancelled", finished_at=moment, error=DELETED_RUN)
+        )
+        await self.db.execute(
+            update(Operation)
+            .where(Operation.cluster_id == cluster.id, Operation.phase.in_(OPEN_PHASES))
+            .values(phase="cancelled", finished_at=moment, error=DELETED_OPERATION)
+        )
         kept = aliased(Event)
         await self.db.execute(
             delete(Event).where(
