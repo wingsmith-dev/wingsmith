@@ -23,6 +23,11 @@ There are no dates. Order within a section is roughly the order the work is expe
   reserved against other projects, and idle capacity is not shared out by weight.
 - **Engines other than NVIDIA Dynamo.** The wire carries Hangar's own objects so a second renderer
   is possible, but Dynamo (with vLLM, SGLang or TensorRT-LLM inside it) is the only one.
+- **Endpoint-level benchmarks.** Harnesses declare an `endpoint` level (conformance with its
+  failover probe, evalscope against a served endpoint, an LLM judge credential), but nothing
+  executes a run at that level. The plane serves only the `deployment` and `workload` levels and
+  refuses an endpoint-level request until an executor that drives traffic through the gateway
+  exists.
 
 ## Serving
 
@@ -44,6 +49,10 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **Gateway cold start without the plane.** A running gateway keeps serving from its last routing
   table when the plane is down, but a gateway that restarts during a plane outage cannot load a
   table and does not start. Persisting the last known table would remove that dependency.
+- **Gateway replica count at runtime.** Each gateway replica is told how many replicas there are
+  with `HANGAR_GATEWAY_REPLICAS`, which has to match the StatefulSet by hand (see the gateway's
+  [scaling notes](../libs/gateway/README.md#scaling)). Carrying the count in the tunnel listener
+  config, or having agents dial each replica through a headless Service, would remove the setting.
 
 ## Security and access
 
@@ -52,6 +61,13 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **Authenticated metrics labels.** A label-enforcing proxy in front of `remote_write`, so a
   cluster can only write series under its own `cluster` label
   ([ADR 0012](decisions/0012-the-plane-is-the-source-of-the-metrics-write-htpasswd.md)).
+- **Per-purpose cluster credentials.** One enrolment token authenticates a cluster's operator to
+  the hub, its agent to the gateway and, by default, its metrics agent to `remote_write`. Separate
+  credentials per component would keep a leaked metrics credential from opening a hub session.
+- **Refresh token in an HttpOnly cookie.** The console keeps its refresh token in session storage,
+  where script on the page can read it. Moving it to an `HttpOnly`, `SameSite=Strict` cookie scoped
+  to `/v1/auth` needs the plane to set and read the cookie and the console to send credentials on
+  refresh, together.
 - **Enrolment token rotation.** Tokens are minted per cluster, but there is no rotation flow with
   an overlap window, so replacing one means minting a new token and running `helm upgrade` on that
   cluster.
@@ -61,6 +77,8 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **A Helm chart for the control plane.** Today the plane ships as images you run yourself; see
   [deploying the plane](operations/deploy-plane.md). The `cluster-setup` chart covers the
   cluster side only.
+- **Metrics from the hub and reactor.** Only the API process serves `/metrics` (see
+  [METRICS.md](../libs/plane/METRICS.md)); the hub and reactor processes expose none yet.
 - **Published images and charts.** Nothing is published yet. Build the images into your own
   registry.
 - **CRD versioning and conversion.** The CRDs are `v1alpha1` in the interim `hangar.dev` group, with
