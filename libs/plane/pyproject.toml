@@ -6,7 +6,7 @@ description = "Hangar control plane: API, registry, placement, hub"
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
-  "litestar==2.14.0",
+  "litestar==2.22.0",
   "uvicorn==0.42.0",
   "websockets>=14.0",
   "sqlalchemy==2.0.48",
