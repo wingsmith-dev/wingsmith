@@ -161,13 +161,16 @@ class BenchmarkService:
 
         The console would otherwise carry a second copy of both tables, and a
         second copy is a second answer to what a probe suite may be pointed at.
+        Only levels something executes are served, and a knob that means
+        something only at a level nothing executes is left out, so the console
+        never offers a choice `create_request` refuses.
         """
         return [
             BenchmarkHarnessSchema(
                 name=harness.name,
                 image=harness.image,
                 description=harness.description,
-                levels=list(harness.levels),
+                levels=harnesses.runnable(harness.levels),
                 max_probes=harness.max_probes,
                 parameters=[
                     BenchmarkParameterSchema(
@@ -175,9 +178,10 @@ class BenchmarkService:
                         type=parameter.type.__name__,
                         default=parameter.default,
                         description=parameter.description,
-                        levels=list(parameter.levels or harness.levels),
+                        levels=harnesses.runnable(parameter.levels or harness.levels),
                     )
                     for parameter in harness.parameters
+                    if harnesses.runnable(parameter.levels or harness.levels)
                 ],
             )
             for harness in harnesses.HARNESSES.values()
@@ -459,10 +463,10 @@ class BenchmarkService:
         `pending` for ever, which reads as a stuck cluster.
         """
         harness = harnesses.resolve(data.harness, data.level)
-        if data.level == harnesses.ENDPOINT:
+        if data.level not in harnesses.RUNNABLE_LEVELS:
             raise Invalid(
-                "endpoint-level benchmark runs are not supported yet: nothing executes them",
-                {"level": data.level, "supported": [harnesses.DEPLOYMENT, harnesses.WORKLOAD]},
+                f"{data.level}-level benchmark runs are not supported yet: nothing executes them",
+                {"level": data.level, "supported": list(harnesses.RUNNABLE_LEVELS)},
             )
         parameters = harnesses.normalise(harness, data.parameters or {}, data.level)
         image = harnesses.resolve_image(harness, data.image)

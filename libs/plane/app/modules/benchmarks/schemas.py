@@ -51,7 +51,8 @@ class BenchmarkHarnessSchema(Struct):
 
     `levels` is served rather than assumed by the console for the same reason the
     parameter table is: a second copy of it is a second answer to what a probe
-    suite may be run against.
+    suite may be run against. It lists only the levels something executes today
+    (`harnesses.RUNNABLE_LEVELS`), so `endpoint` is absent until its executor exists.
     """
 
     name: str

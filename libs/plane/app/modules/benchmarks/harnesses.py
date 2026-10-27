@@ -45,7 +45,22 @@ what a caller actually gets through the public name, across whatever the gateway
 routed it to. Averaging any two of the three describes nothing that exists.
 """
 
+RUNNABLE_LEVELS: tuple[str, ...] = (DEPLOYMENT, WORKLOAD)
+"""The levels something executes today.
+
+`endpoint` stays declared on the harnesses that grade there, because that is a
+fact about the harness. Nothing runs it yet: a cluster's benchmark job never
+dials out to a public name, and the executor for the public surface is roadmap.
+The catalogue serves only these levels, and only the knobs that mean something
+at one of them, so the console never offers what `create_request` refuses.
+"""
+
 DEFAULT_LEVEL = DEPLOYMENT
+
+
+def runnable(levels: tuple[str, ...]) -> list[str]:
+    """The subset of `levels` something executes, in the order they were declared."""
+    return [level for level in levels if level in RUNNABLE_LEVELS]
 
 
 class Parameter(NamedTuple):
@@ -202,7 +217,13 @@ EVALSCOPE = Harness(
         Parameter("concurrency", int, 8, "Requests in flight."),
         Parameter("judge_base_url", str, "", "Grader's OpenAI-compatible base URL. Empty means no judge."),
         Parameter("judge_model", str, "", "Model name the grader serves."),
-        Parameter("judge_credential_id", str, "", "Credential *reference* the executor redeems. Never a secret."),
+        Parameter(
+            "judge_credential_id",
+            str,
+            "",
+            "Credential *reference* the executor redeems. Never a secret.",
+            levels=(ENDPOINT,),
+        ),
         Parameter("judge_temperature", float, 0.0, "Decoding temperature for the grader."),
         Parameter("judge_max_output_tokens", int, 4096, "Generation cap for the grader."),
     ),
@@ -292,15 +313,19 @@ def normalise(harness: Harness, supplied: dict, level: str | None = None) -> dic
             continue
         value = _coerce(harness, parameter, supplied[name])
         if level is not None and parameter.levels and level not in parameter.levels and value != parameter.default:
+            allowed = runnable(parameter.levels)
+            message = f"{harness.name} parameter {name!r} is {'/'.join(parameter.levels)} level only"
+            if not allowed:
+                message += ", and nothing runs at that level yet"
             raise Invalid(
-                f"{harness.name} parameter {name!r} is {'/'.join(parameter.levels)} level only",
-                {"harness": harness.name, "parameter": name, "level": level, "allowed": list(parameter.levels)},
+                message,
+                {"harness": harness.name, "parameter": name, "level": level, "allowed": allowed},
             )
         resolved[name] = value
 
     if harness.name == EVALSCOPE.name:
         resolved["datasets"] = ",".join(resolve_datasets(resolved.get("datasets") or ""))
-        check_judge(harness, resolved, level)
+        check_judge(harness, resolved)
     return resolved
 
 
@@ -325,15 +350,17 @@ def resolve_datasets(supplied: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def check_judge(harness: Harness, parameters: dict, level: str | None) -> None:
-    """Refuses a judge this plane cannot honour at the level asked for.
+def check_judge(harness: Harness, parameters: dict) -> None:
+    """Refuses a judge nothing can call.
 
     A workload- or deployment-level run is dispatched into a cluster, into a pod
     built for no egress and mounting no credential material. A judge it can
     resolve locally is fine and this plane cannot verify that either way — what
     it can see is a `judge_credential_id`, whose presence is the tell that the
-    grader is somewhere the cluster was not built to reach. So that is what is
-    refused, and a judged run with an external grader is endpoint-level work.
+    grader is somewhere the cluster was not built to reach. That parameter is
+    therefore endpoint-level, and `normalise` refuses it below the endpoint
+    before this runs; a judged run with an external grader waits on the
+    endpoint executor.
 
     A base URL without a model name is refused everywhere: it names a grader
     nothing can call, and a run that silently graded nothing would report a
@@ -352,11 +379,6 @@ def check_judge(harness: Harness, parameters: dict, level: str | None) -> None:
         raise Invalid(
             "a judge credential names a grader that no base URL points at",
             {"harness": harness.name},
-        )
-    if credential and level in (DEPLOYMENT, WORKLOAD):
-        raise Invalid(
-            f"a {level} level run is executed inside a cluster and cannot redeem a judge credential",
-            {"harness": harness.name, "level": level, "allowed": [ENDPOINT]},
         )
 
 

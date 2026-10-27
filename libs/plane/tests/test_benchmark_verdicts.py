@@ -714,11 +714,30 @@ def test_requests_are_a_sibling_collection():
 
 def test_the_harness_catalogue_serves_the_levels_as_well_as_the_knobs():
     served = {harness.name: harness for harness in BenchmarkService(db=None).harnesses()}
-    assert served["conformance"].levels == ["endpoint", "deployment"]
+    assert served["conformance"].levels == ["deployment"]
     assert served["conformance"].max_probes == 200
-    failover = next(p for p in served["conformance"].parameters if p.name == "failover_probe")
-    assert failover.levels == ["endpoint"]
+    assert served["evalscope"].levels == ["workload", "deployment"]
     assert next(p for p in served["evalscope"].parameters if p.name == "temperature").type == "float"
+
+
+def test_the_catalogue_never_offers_a_level_nothing_executes():
+    """Endpoint-level requests are refused at creation, so the console must not be handed them as a choice."""
+    for harness in BenchmarkService(db=None).harnesses():
+        assert harnesses.ENDPOINT not in harness.levels, harness.name
+        for parameter in harness.parameters:
+            assert parameter.levels, (harness.name, parameter.name)
+            assert harnesses.ENDPOINT not in parameter.levels, (harness.name, parameter.name)
+    served = {harness.name: {p.name for p in harness.parameters} for harness in BenchmarkService(db=None).harnesses()}
+    assert "failover_probe" not in served["conformance"]
+    assert "judge_credential_id" not in served["evalscope"]
+    assert "judge_base_url" in served["evalscope"]
+
+
+def test_a_credential_refusal_does_not_point_at_a_level_nothing_executes():
+    judged = {"judge_base_url": "https://judge.example", "judge_model": "grader", "judge_credential_id": "cre_x"}
+    with pytest.raises(Invalid, match="nothing runs at that level yet") as refused:
+        harnesses.normalise(harnesses.EVALSCOPE, judged, harnesses.WORKLOAD)
+    assert refused.value.detail["allowed"] == []
 
 
 @pytest.mark.asyncio
