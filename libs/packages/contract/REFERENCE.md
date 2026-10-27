@@ -50,6 +50,7 @@ response follows are in [`API.md`](API.md).
 | GET | `/v1/artifacts` | ListArtifacts |
 | POST | `/v1/artifacts` | CreateArtifact |
 | GET | `/v1/artifacts/resolve` | ResolveArtifact |
+| GET | `/v1/artifacts/usage` | ListArtifactUsage |
 | GET | `/v1/artifacts/{ref}` | GetArtifact |
 | PATCH | `/v1/artifacts/{ref}` | UpdateArtifact |
 | DELETE | `/v1/artifacts/{ref}` | DeleteArtifact |
@@ -167,6 +168,12 @@ response follows are in [`API.md`](API.md).
 |---|---|---|
 | GET | `/v1/events` | ListEvents |
 | GET | `/v1/events/{ref}` | GetEvent |
+
+## `/v1/fleet`
+
+| Method | Path | What |
+|---|---|---|
+| GET | `/v1/fleet/summary` | FleetSummary |
 
 ## `/v1/gateway`
 

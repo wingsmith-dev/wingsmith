@@ -5153,6 +5153,234 @@
         "title": "ExpansionDecision",
         "type": "object"
       },
+      "FleetClustersSchema": {
+        "properties": {
+          "by_phase": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "reachable": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "by_phase",
+          "reachable",
+          "total"
+        ],
+        "title": "FleetClustersSchema",
+        "type": "object"
+      },
+      "FleetDeploymentsSchema": {
+        "properties": {
+          "by_phase": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "clusters_serving": {
+            "type": "integer"
+          },
+          "replicas_ready": {
+            "type": "integer"
+          },
+          "stuck_after_seconds": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "unschedulable_replicas": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "by_phase",
+          "clusters_serving",
+          "replicas_ready",
+          "stuck_after_seconds",
+          "total",
+          "unschedulable_replicas"
+        ],
+        "title": "FleetDeploymentsSchema",
+        "type": "object"
+      },
+      "FleetDeviceClassSchema": {
+        "properties": {
+          "allocated": {
+            "type": "integer"
+          },
+          "device_class": {
+            "type": "string"
+          },
+          "free": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "allocated",
+          "device_class",
+          "free",
+          "total"
+        ],
+        "title": "FleetDeviceClassSchema",
+        "type": "object"
+      },
+      "FleetDevicesSchema": {
+        "properties": {
+          "allocated": {
+            "type": "integer"
+          },
+          "by_class": {
+            "items": {
+              "$ref": "#/components/schemas/FleetDeviceClassSchema"
+            },
+            "type": "array"
+          },
+          "by_health": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "free": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "allocated",
+          "by_class",
+          "by_health",
+          "free",
+          "total"
+        ],
+        "title": "FleetDevicesSchema",
+        "type": "object"
+      },
+      "FleetEndpointsSchema": {
+        "properties": {
+          "degraded": {
+            "type": "integer"
+          },
+          "disabled": {
+            "type": "integer"
+          },
+          "down": {
+            "type": "integer"
+          },
+          "idle": {
+            "type": "integer"
+          },
+          "serving": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "degraded",
+          "disabled",
+          "down",
+          "idle",
+          "serving",
+          "total"
+        ],
+        "title": "FleetEndpointsSchema",
+        "type": "object"
+      },
+      "FleetNodesSchema": {
+        "properties": {
+          "by_condition": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "cordoned": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "by_condition",
+          "cordoned",
+          "ready",
+          "total"
+        ],
+        "title": "FleetNodesSchema",
+        "type": "object"
+      },
+      "FleetSummarySchema": {
+        "properties": {
+          "clusters": {
+            "$ref": "#/components/schemas/FleetClustersSchema"
+          },
+          "deployments": {
+            "$ref": "#/components/schemas/FleetDeploymentsSchema"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/FleetDevicesSchema"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/FleetEndpointsSchema"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "nodes": {
+            "$ref": "#/components/schemas/FleetNodesSchema"
+          },
+          "workloads": {
+            "$ref": "#/components/schemas/FleetWorkloadsSchema"
+          }
+        },
+        "required": [
+          "clusters",
+          "deployments",
+          "devices",
+          "endpoints",
+          "generated_at",
+          "nodes",
+          "workloads"
+        ],
+        "title": "FleetSummarySchema",
+        "type": "object"
+      },
+      "FleetWorkloadsSchema": {
+        "properties": {
+          "paused": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paused",
+          "total"
+        ],
+        "title": "FleetWorkloadsSchema",
+        "type": "object"
+      },
       "GatewayTenantSchema": {
         "properties": {
           "auth": {
@@ -5433,6 +5661,35 @@
           "items"
         ],
         "title": "ListResponse[ArtifactSchema]",
+        "type": "object"
+      },
+      "ListResponse_app.modules.artifacts.schemas.ArtifactUsageSchema_": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactUsageSchema"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "items"
+        ],
+        "title": "ListResponse[ArtifactUsageSchema]",
         "type": "object"
       },
       "ListResponse_app.modules.benchmarks.schemas.BenchmarkBandSchema_": {
@@ -14494,6 +14751,112 @@
         ]
       }
     },
+    "/v1/artifacts/usage": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ArtifactsUsageListArtifactUsage",
+        "parameters": [
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_app.modules.artifacts.schemas.ArtifactUsageSchema_"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListArtifactUsage",
+        "tags": [
+          "Artifacts"
+        ]
+      }
+    },
     "/v1/artifacts/{ref}": {
       "delete": {
         "deprecated": false,
@@ -22840,6 +23203,58 @@
         "summary": "GetEvent",
         "tags": [
           "Events"
+        ]
+      }
+    },
+    "/v1/fleet/summary": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1FleetSummaryFleetSummary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSummarySchema"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "FleetSummary",
+        "tags": [
+          "Fleet"
         ]
       }
     },

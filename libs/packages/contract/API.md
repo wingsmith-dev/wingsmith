@@ -208,11 +208,12 @@ not created. Writing to an observed resource has no route and returns `405 metho
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
-| `/v1/artifacts` | declared, plus two read-only derived views, one operation, and a declared baseline sub-resource — see below |
+| `/v1/artifacts` | declared, plus read-only derived views (one of them batched across artifacts), one operation, and a declared baseline sub-resource; see below |
 | `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution and a read-only serving history — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/allocations` | observed, read-only |
+| `/v1/fleet/summary` | derived, read-only, belongs to no object; see below |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/tenants/{ref}/tokens`, `/v1/tenants/{ref}/keys` | declared credential sub-resources — mint, list, revoke |
 | `/v1/serving-quotas` | declared traffic commitments per endpoint, plus a read-only resolution — see below |
@@ -411,6 +412,21 @@ is hardware nobody has named yet — it resolved to the slug of its vendor strin
 scheduled onto, and it comes back with `in_catalog` false and no vendor metadata. The second is the
 one to act on. Filters: `cluster`, `architecture`, `present`. Not paginated — the dictionary is
 bounded by the hardware that exists, not by use.
+
+**`GET /v1/fleet/summary` is the fleet in counts**, for an overview that would otherwise drain
+every collection to add them up. Each block is one or two aggregate statements, so the read costs
+the same whatever the fleet's size and no total is a page size. `clusters` carries `total`,
+`reachable` and `by_phase`; `nodes` carries `total`, `ready`, `cordoned` and `by_condition`;
+`devices` carries `total`, `free`, `allocated`, `by_health` and `by_class`, one row per device class
+with the same three counts. `free` is claimable and held by no live allocation, and `allocated` is
+`total - free`, the split `GET /v1/clusters/rollups` makes per cluster; a device's own `allocatable`
+flag is not the allocated count. `deployments` carries `total`, `by_phase` (admission phase),
+`replicas_ready`, `clusters_serving` (clusters with a ready replica) and `unschedulable_replicas`:
+the shortfall of every deployment outside `running` for longer than `stuck_after_seconds`.
+`endpoints` splits by what the targets say, never by measured traffic: `disabled`, and for the rest
+`idle` (no enabled target), `down` (no ready replica), `degraded` (fewer ready than desired) and
+`serving`. `workloads` carries `total` and `paused`. Admin only, like every read outside
+`/v1/serving`.
 
 **`/v1/alerts` is derived, which is a third kind alongside declared and observed.** Nothing on a
 cluster reports an alert and no caller creates one: the reactor computes them by reading observed
@@ -996,6 +1012,16 @@ which cards are too small, so the matrix is returned with every row's `kv_counte
 classes were ranked against `items`, which is capped at five unless `limit` says otherwise; the cap
 is on the response and not on the ranking, so the head is the best five and not the first five
 looked at.
+
+**`GET /v1/artifacts/usage?id=...` is `/v1/artifacts/{ref}/usage` for many artifacts at once.**
+A list view with a usage column would otherwise ask once per row. Repeat `id` for each artifact, up
+to 200; the counts mean what they mean on the single read (`workload_count` counts a workload once
+whether it serves the weights or names them as an adapter, `downstream_count` counts artifacts naming
+this one as base). Only ids are accepted, because a name can match more than one artifact; a name
+or more than 200 ids is `422 invalid`. An id the plane does not know is left out of `items` rather
+than failing the read, so a page that raced a delete still renders. It is a list envelope with
+every result on one page, so `next_cursor` is always null. The literal segment wins over `{ref}`,
+as `/resolve` does, so an artifact named `usage` is read by its id.
 
 **`/v1/artifacts/{ref}/baselines` is the declared quality floor, one row per dataset and metric.**
 Full CRUD — `GET` (filters `dataset`, `metric`), `POST`, `PATCH` on

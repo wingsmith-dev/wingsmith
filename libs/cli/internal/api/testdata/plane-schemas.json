@@ -875,6 +875,59 @@
   "verdicts": "[]$ClusterVerdict",
   "workload": "string"
  },
+ "FleetClustersSchema": {
+  "by_phase": "object",
+  "reachable": "integer",
+  "total": "integer"
+ },
+ "FleetDeploymentsSchema": {
+  "by_phase": "object",
+  "clusters_serving": "integer",
+  "replicas_ready": "integer",
+  "stuck_after_seconds": "integer",
+  "total": "integer",
+  "unschedulable_replicas": "integer"
+ },
+ "FleetDeviceClassSchema": {
+  "allocated": "integer",
+  "device_class": "string",
+  "free": "integer",
+  "total": "integer"
+ },
+ "FleetDevicesSchema": {
+  "allocated": "integer",
+  "by_class": "[]$FleetDeviceClassSchema",
+  "by_health": "object",
+  "free": "integer",
+  "total": "integer"
+ },
+ "FleetEndpointsSchema": {
+  "degraded": "integer",
+  "disabled": "integer",
+  "down": "integer",
+  "idle": "integer",
+  "serving": "integer",
+  "total": "integer"
+ },
+ "FleetNodesSchema": {
+  "by_condition": "object",
+  "cordoned": "integer",
+  "ready": "integer",
+  "total": "integer"
+ },
+ "FleetSummarySchema": {
+  "clusters": "$FleetClustersSchema",
+  "deployments": "$FleetDeploymentsSchema",
+  "devices": "$FleetDevicesSchema",
+  "endpoints": "$FleetEndpointsSchema",
+  "generated_at": "string",
+  "nodes": "$FleetNodesSchema",
+  "workloads": "$FleetWorkloadsSchema"
+ },
+ "FleetWorkloadsSchema": {
+  "paused": "integer",
+  "total": "integer"
+ },
  "GatewayTenantSchema": {
   "auth": "string",
   "enabled": "boolean",

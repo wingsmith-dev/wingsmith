@@ -6,6 +6,7 @@ from app.api.spa import ConsoleRoutes
 from app.api.spa import has_console
 from app.core.routes import HealthRoutes
 from app.core.system_routes import SystemRoutes
+from app.modules.fleet.routes import FleetRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
 from app.modules.alerts.routes import AlertRoutes
@@ -20,6 +21,7 @@ from app.modules.metrics.routes import MetricsRoutes
 from app.modules.serving.routes import ServingRoutes
 from app.modules.serving.routes import TenantServingRoutes
 from app.modules.tenants.routes import TenantRoutes
+from app.modules.artifacts.usage import ArtifactUsageRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
 from app.modules.projects.routes import ProjectRoutes
@@ -41,12 +43,14 @@ from app.modules.topology_domains.routes import TopologyDomainRoutes
 
 V1_ROUTES = [
     ClusterRoutes,
+    FleetRoutes,
     NodeRoutes,
     DeviceRoutes,
     DeviceClassRoutes,
     TopologyDomainRoutes,
     PoolRoutes,
     ArtifactRoutes,
+    ArtifactUsageRoutes,
     WorkloadRoutes,
     DeploymentRoutes,
     PlacementRoutes,
