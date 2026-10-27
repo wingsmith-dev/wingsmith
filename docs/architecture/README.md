@@ -48,7 +48,7 @@ What it deliberately is not:
   plane (§7) that keeps serving when the control plane is down, though a gateway that restarts
   during a control-plane outage cannot come back up (§7.1).
 - **Not a per-cluster configuration repository.** A cluster is registered, handed a token and a
-  `values.yaml`, and installs itself. There is no directory per cluster anywhere in the repository;
+  `values.<cluster>.local.yaml`, and installs itself. There is no directory per cluster anywhere in the repository;
   the plane's registry is the list of clusters.
 
 ### 1.1 Where it sits among related projects
