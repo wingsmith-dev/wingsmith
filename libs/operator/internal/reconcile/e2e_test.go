@@ -510,7 +510,7 @@ func TestE2ECapacitySpreadAcrossNodesDoesNotSatisfyOneReplica(t *testing.T) {
 	if condition.Reason != "NoSchedulableCapacity" {
 		t.Fatalf("reason = %q, want NoSchedulableCapacity", condition.Reason)
 	}
-	if !strings.Contains(condition.Message, "advertises 1") {
+	if !strings.Contains(condition.Message, "has 1 free") {
 		t.Errorf("message = %q, want it to name what the largest node actually has", condition.Message)
 	}
 }
