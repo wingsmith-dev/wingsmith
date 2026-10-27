@@ -274,7 +274,7 @@ function chosen(
  * *within* a class the request has already named, and a class is itself a memory figure, so
  * for everything the fit picks the floor is redundant by construction. What it is genuinely
  * for is the case the console cannot see — a cluster reporting a card of that class with less
- * memory than the catalogue says, a partition, a card that came up degraded — and that is a
+ * memory than the catalog says, a partition, a card that came up degraded. That is a
  * thing an operator knows and states, not a thing a form can infer.
  *
  * So nothing is proposed, and the field is editable. Whether the weights fit at all is still

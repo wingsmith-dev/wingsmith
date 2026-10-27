@@ -56,7 +56,7 @@ export interface DecisionRequest {
 /**
  * `fingerprint` is the whole safety of a promotion: it is `If-Match` for a spec
  * the plane does not own. Scale is deliberately absent — the bounds come from
- * what is already running, so cataloguing a workload never rescales it.
+ * what is already running, so cataloging a workload never rescales it.
  *
  * `artifact` is the only part of the serving configuration a caller states,
  * because it is the only part the cluster cannot tell us. Everything else is read
@@ -80,7 +80,7 @@ export interface PromoteRequest {
  *
  * `digest` is the reference — `hf:org/model`, with the revision when the args
  * carry one — and `verified` is false to say so: a cluster reports what it was
- * told to load, never what it loaded. `existing_id` is the catalogue's id for
+ * told to load, never what it loaded. `existing_id` is the catalog's id for
  * these weights when it already holds them, which is what makes the first step
  * of adoption a confirmation rather than a duplicate.
  */

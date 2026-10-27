@@ -678,7 +678,7 @@ function ParamFields({
         onChange={(mib) => onChange({ device_memory_mib_min: mib ?? 0 })}
         min={0}
         placeholder="No floor — the device class already names the memory"
-        hint="Filters devices within the class the fit chose, so it is empty by default: a class is itself a memory figure, and a number derived from one here is a floor that describes a shape nobody asked for. State one only to exclude a card of this class that a cluster reports as smaller than the catalogue says."
+        hint="Filters devices within the class the fit chose, so it is empty by default: a class is itself a memory figure, and a number derived from one here is a floor that describes a shape nobody asked for. State one only to exclude a card of this class that a cluster reports as smaller than the catalog says."
       />
       <TextField
         label="dtype"

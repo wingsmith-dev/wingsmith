@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { unitLabel } from "@/modules/metrics/format"
-import { metricGroups, type MetricFamily } from "@/modules/metrics/catalogue"
+import { metricGroups, type MetricFamily } from "@/modules/metrics/catalog"
 import { IconAdjustments } from "@tabler/icons-react"
 
 /**

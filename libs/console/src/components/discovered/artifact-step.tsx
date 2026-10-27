@@ -93,7 +93,8 @@ export function ArtifactStep({
       {draft.existing_id ? (
         <div className="rounded-md border bg-muted/30 p-3">
           <p className="font-mono text-2xs text-muted-foreground">
-            the catalogue already holds these weights — nothing to write
+            the catalog already holds these weights, so there is nothing to
+            write
           </p>
         </div>
       ) : (

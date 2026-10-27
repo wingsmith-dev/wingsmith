@@ -46,7 +46,7 @@ export function formatSeconds(seconds: number): string {
  * A declared window, or the rule's own if this row left it alone.
  *
  * Null on a threshold means "whatever the rule says", so the fallback is the
- * catalogue's and never a constant here — and callers are told which of the two
+ * catalog's and never a constant here, and callers are told which of the two
  * they got, because a value shown without its provenance reads as pinned.
  */
 export interface Inherited<T> {

@@ -1,5 +1,5 @@
 import { render, screen } from "@/test/render"
-import { metricGroups } from "@/modules/metrics/catalogue"
+import { metricGroups } from "@/modules/metrics/catalog"
 import userEvent from "@testing-library/user-event"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 
@@ -77,7 +77,7 @@ describe("MetricPicker", () => {
     expect(aggregate).toHaveAttribute("data-state", "unchecked")
   })
 
-  it("adds a metric in catalogue order rather than at the end", async () => {
+  it("adds a metric in catalog order, not at the end", async () => {
     const calls = await open({ selected: ["inference.requests_running"] })
     await userEvent.click(
       screen.getByRole("menuitemcheckbox", {

@@ -7,7 +7,7 @@
  * rather than one wall, and how a metric behaves as scope widens, so nothing in
  * this console adds up a number that must not be added up.
  *
- * A sample arrives with the plane's own title. The catalogue's title wins where
+ * A sample arrives with the plane's own title. The catalog's title wins where
  * one exists, because two of these measurements are told apart only by their
  * label and the console is where somebody reads it.
  */
@@ -427,13 +427,13 @@ const SERVING: MetricDefinition[] = [
   },
 ]
 
-export const CATALOGUE: readonly MetricDefinition[] = [
+export const CATALOG: readonly MetricDefinition[] = [
   ...GPU,
   ...INFERENCE,
   ...SERVING,
 ]
 
-const BY_NAME = new Map(CATALOGUE.map((metric) => [metric.name, metric]))
+const BY_NAME = new Map(CATALOG.map((metric) => [metric.name, metric]))
 
 export const GROUP_LABELS: Record<MetricGroup, string> = {
   occupancy: "Occupancy",
@@ -454,7 +454,7 @@ const GROUP_ORDER: Record<MetricFamily, MetricGroup[]> = {
 /**
  * Why no failure rate is charted here, said where somebody would go looking.
  *
- * Every series in this catalogue is counted by an engine exporter inside a
+ * Every series in this catalog is counted by an engine exporter inside a
  * cluster, and a request that never reached a cluster is counted by nobody. A
  * ratio built out of these would read a total outage as a quiet afternoon.
  */
@@ -514,7 +514,7 @@ export interface MetricGroupList {
 
 /**
  * A family split into its groups, in reading order, with empty groups dropped.
- * `only` narrows to a chosen set of names and keeps the catalogue's order, so
+ * `only` narrows to a chosen set of names and keeps the catalog's order, so
  * picking metrics never reorders the ones already on screen.
  */
 export function metricGroups(
@@ -526,7 +526,7 @@ export function metricGroups(
     .map((group) => ({
       group,
       label: GROUP_LABELS[group],
-      metrics: CATALOGUE.filter(
+      metrics: CATALOG.filter(
         (metric) =>
           metric.family === family &&
           metric.group === group &&

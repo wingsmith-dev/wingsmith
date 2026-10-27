@@ -89,7 +89,7 @@ export function deleteAlertThreshold(ref: string): Promise<void> {
 }
 
 /**
- * The catalogue of rules a threshold may name. Not paginated and not a table —
+ * The catalog of rules a threshold may name. Not paginated and not a table:
  * it is derived from the compiled predicates, and a console that cannot list it
  * has to hardcode metric names.
  */

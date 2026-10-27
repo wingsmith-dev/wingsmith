@@ -53,7 +53,7 @@ export interface AlertAcknowledgeRequest {
 }
 
 /**
- * `MetricRuleSchema` — one entry in the catalogue of rules a threshold may
+ * `MetricRuleSchema`: one entry in the catalog of rules a threshold may
  * name. `metric` is a name from the metrics registry, never an expression, so
  * a form built from this offers registry names and nothing else.
  */
@@ -75,7 +75,7 @@ export interface MetricRule {
  * rule; a row naming a subject overrides it for that subject alone.
  *
  * `lookback`, `for_seconds` and `severity` come back exactly as declared, null
- * included, because null means "whatever the rule says" — the catalogue carries
+ * included, because null means "whatever the rule says": the catalog carries
  * the fallback and this shape must not pretend the row pinned one.
  */
 export interface AlertThreshold {

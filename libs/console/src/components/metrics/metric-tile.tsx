@@ -5,7 +5,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { metricDefinition } from "@/modules/metrics/catalogue"
+import { metricDefinition } from "@/modules/metrics/catalog"
 import { formatMetric } from "@/modules/metrics/format"
 import type { MetricSample, MetricSeriesPoint } from "@/modules/metrics/types"
 

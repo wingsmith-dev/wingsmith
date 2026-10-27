@@ -306,7 +306,7 @@ function fitAt(
       reduced: false,
       required_gb: 0,
       context_length: contextLength,
-      reason: `the catalogue carries no memory size for ${device.name}, so it cannot be fitted against`,
+      reason: `the catalog carries no memory size for ${device.name}, so it cannot be fitted against`,
     }
 
   if (!shardableHeads(sizing.shape, layout.tensor_parallel))

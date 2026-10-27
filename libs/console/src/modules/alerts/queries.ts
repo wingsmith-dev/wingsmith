@@ -67,7 +67,7 @@ export function useAlertThresholdOptions() {
   )
 }
 
-/** The catalogue of rules a threshold may name. Code, not data, so it does not move. */
+/** The catalog of rules a threshold may name. Code, not data, so it does not move. */
 export function useAlertRules() {
   return useQuery({
     queryKey: ["alert-rules"],

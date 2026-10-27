@@ -60,7 +60,7 @@ export function useRestoreWorkload() {
 
 /**
  * Invalidates deployments as well as sightings: a promotion creates one, and
- * the catalogue is wrong until it is re-read.
+ * the catalog is wrong until it is re-read.
  */
 export function usePromoteWorkload() {
   const client = useQueryClient()

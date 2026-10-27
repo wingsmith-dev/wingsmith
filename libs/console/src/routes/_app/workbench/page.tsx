@@ -42,7 +42,7 @@ export function WorkbenchPage() {
   const navigate = route.useNavigate()
   const [creating, setCreating] = useState(false)
 
-  const { data: catalogue } = useHarnesses()
+  const { data: catalog } = useHarnesses()
   const { data: clusters } = useClusterOptions()
 
   /**
@@ -57,11 +57,11 @@ export function WorkbenchPage() {
    */
   const harnessFilter = useMemo(() => {
     if (!search.type) return undefined
-    const names = (catalogue?.items ?? [])
+    const names = (catalog?.items ?? [])
       .map((entry) => entry.name)
       .filter((name) => runKind(name) === search.type)
     return names.length === 1 ? names[0] : undefined
-  }, [search.type, catalogue])
+  }, [search.type, catalog])
 
   const benchmarks = useBenchmarks({
     deployment: search.deployment,

@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  CATALOGUE,
+  CATALOG,
   DEFAULT_TILES,
   metricDefinition,
   metricGroups,
-} from "./catalogue"
+} from "./catalog"
 import { formatMetric } from "./format"
 
 /** The names the plane registered for these two, verbatim. */
 const AGGREGATE = "inference.output_tokens_per_second"
 const PER_STREAM = "inference.output_tokens_per_stream"
 
-describe("catalogue", () => {
+describe("catalog", () => {
   it("carries every metric the plane's registry serves", () => {
     const expected = [
       "gpu.utilization",
@@ -60,9 +60,7 @@ describe("catalogue", () => {
       "serving.output_tokens_per_second",
       "serving.cache_hit_ratio",
     ]
-    expect(CATALOGUE.map((metric) => metric.name).sort()).toEqual(
-      expected.sort()
-    )
+    expect(CATALOG.map((metric) => metric.name).sort()).toEqual(expected.sort())
   })
 
   it("gives the ten newly registered metrics the units the plane sends", () => {
@@ -87,17 +85,17 @@ describe("catalogue", () => {
   })
 
   it("names no metric twice", () => {
-    const names = CATALOGUE.map((metric) => metric.name)
+    const names = CATALOG.map((metric) => metric.name)
     expect(new Set(names).size).toBe(names.length)
   })
 
   it("gives every metric a label no other metric shares", () => {
-    const titles = CATALOGUE.map((metric) => metric.title)
+    const titles = CATALOG.map((metric) => metric.title)
     expect(new Set(titles).size).toBe(titles.length)
   })
 
   it("renders every unit it registers", () => {
-    for (const metric of CATALOGUE) {
+    for (const metric of CATALOG) {
       expect(formatMetric(1.5, metric.unit), metric.name).not.toBe("—")
     }
   })
@@ -153,7 +151,7 @@ describe("failure rate", () => {
     // implies one. The gateway counts the requests that reached no cluster,
     // which is why it is the one family allowed to answer this.
     const forbidden = /fail|error|success rate|availab|uptime|refus/i
-    for (const metric of CATALOGUE) {
+    for (const metric of CATALOG) {
       if (metric.family === "serving") continue
       expect(forbidden.test(metric.name), metric.name).toBe(false)
       expect(forbidden.test(metric.title), metric.title).toBe(false)
@@ -222,7 +220,7 @@ describe("grouping", () => {
     for (const family of ["gpu", "inference", "serving"] as const) {
       const grouped = metricGroups(family).flatMap((group) => group.metrics)
       expect(grouped.length).toBe(
-        CATALOGUE.filter((metric) => metric.family === family).length
+        CATALOG.filter((metric) => metric.family === family).length
       )
     }
   })
@@ -242,7 +240,7 @@ describe("grouping", () => {
 })
 
 describe("defaults", () => {
-  it("open on names the catalogue knows", () => {
+  it("open on names the catalog knows", () => {
     for (const [family, names] of Object.entries(DEFAULT_TILES)) {
       for (const name of names) {
         expect(metricDefinition(name), name).toBeDefined()

@@ -277,9 +277,9 @@ export function AlertsPage() {
   >()
 
   const tab = search.tab ?? "firing"
-  const catalogue = rules ?? []
+  const catalog = rules ?? []
   const declared = allThresholds ?? []
-  const undeclared = catalogue.filter(
+  const undeclared = catalog.filter(
     (entry) => !declared.some((threshold) => threshold.rule === entry.name)
   )
 
@@ -366,7 +366,7 @@ export function AlertsPage() {
                 label="Rule"
                 value={search.rule ?? ALL}
                 onChange={set("rule")}
-                options={catalogue.map((entry) => ({
+                options={catalog.map((entry) => ({
                   value: entry.name,
                   label: entry.name,
                 }))}
@@ -393,7 +393,7 @@ export function AlertsPage() {
 
             {undeclared.length > 0 && (
               <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-2xs text-muted-foreground">
-                {undeclared.length} of {catalogue.length} metric rules have no
+                {undeclared.length} of {catalog.length} metric rules have no
                 declared number, so the reactor evaluates them for nobody:{" "}
                 <span className="text-muted-foreground">
                   {undeclared.map((entry) => entry.name).join(", ")}
@@ -403,7 +403,7 @@ export function AlertsPage() {
 
             <DataTable
               columns={thresholdColumns(
-                catalogue,
+                catalog,
                 declared,
                 setEditing,
                 setDoomed
@@ -424,7 +424,7 @@ export function AlertsPage() {
         <AlertDetail
           alert={opened}
           thresholds={declared}
-          rules={catalogue}
+          rules={catalog}
           open
           onOpenChange={(open) => !open && setOpened(undefined)}
           onDeclare={(rule, subjectUid) =>

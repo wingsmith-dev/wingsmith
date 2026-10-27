@@ -97,7 +97,7 @@ export interface BenchmarkHarness {
  *
  * `summary` is `unknown` on purpose. It is the harness's own export, stored and
  * served verbatim, and typing it here would be this console asserting it knows
- * a shape the plane deliberately refuses to normalise. Anything that reads it
+ * a shape the plane refuses to normalize by design. Anything that reads it
  * has to cope with not recognising it.
  *
  * `deployment_id` and `cluster_id` are nullable because an endpoint-level run

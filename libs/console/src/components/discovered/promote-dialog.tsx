@@ -35,13 +35,13 @@ const NONE = "__none__"
  * Promotion is the one decision here that produces declared state, so it asks for
  * the two things the plane cannot infer — which weights these are, and who owns
  * it — and nothing else. How the workload is served is read off what is running
- * rather than picked from a list: there is no catalogue of serving configurations
+ * instead of picked from a list: there is no catalog of serving configurations
  * to pick from, and the cluster's own spec is a better answer than a person
  * matching one by eye.
  *
  * Replica bounds are taken from the live workload rather than offered as a field:
  * a promotion that also set scale would rescale a serving model as a side effect
- * of being catalogued.
+ * of being cataloged.
  *
  * The fingerprint is sent back exactly as it was shown. If the pod template moved
  * since this row was rendered the plane refuses, which is the point.

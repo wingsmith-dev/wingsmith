@@ -28,7 +28,7 @@ import { toast } from "sonner"
  * as the patch body that restates it, so "go back to this" is the ordinary `PATCH` every other
  * edit on this page makes — validated on the way in by the same checks, and appending a new
  * revision rather than rewinding to an old one. What that buys is that a configuration the
- * catalogue has since dropped fails here, visibly, instead of being restored by a path that never
+ * catalog has since dropped fails here, visibly, instead of being restored by a path that never
  * learned the rules.
  *
  * Declared and live are kept apart on purpose. `serving_digest` on the workload is what the plane

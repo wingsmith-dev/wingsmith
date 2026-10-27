@@ -193,7 +193,7 @@ export function ServingDraftDialog({
   const [promoting, setPromoting] = useState(false)
   const { data: draft, isLoading, error } = useServingDraft(workload.id, open)
 
-  /** Whatever this run registered, or what the catalogue already held. */
+  /** Whatever this run registered, or what the catalog already held. */
   const artifactId = registered || draft?.artifact.existing_id || ""
 
   const reset = () => {

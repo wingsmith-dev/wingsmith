@@ -144,10 +144,10 @@ export function NewRunDialog({
   const [reason, setReason] = useState("")
   const [values, setValues] = useState<Record<string, string | boolean>>({})
 
-  const { data: catalogue, isLoading } = useHarnesses()
+  const { data: catalog, isLoading } = useHarnesses()
   const create = useCreateBenchmarkRequest()
   const navigate = useNavigate()
-  const harnesses = useMemo(() => catalogue?.items ?? [], [catalogue])
+  const harnesses = useMemo(() => catalog?.items ?? [], [catalog])
 
   /** Only the kinds something is actually registered under is offerable. */
   const kinds = useMemo(() => {
@@ -271,7 +271,7 @@ export function NewRunDialog({
         </div>
         {isLoading && (
           <p className="text-2xs text-muted-foreground">
-            Loading the harness catalogue…
+            Loading the harness catalog…
           </p>
         )}
       </div>

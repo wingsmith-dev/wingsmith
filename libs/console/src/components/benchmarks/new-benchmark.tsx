@@ -58,15 +58,15 @@ export function NewBenchmarkDialog({
   const [image, setImage] = useState("")
   const [reason, setReason] = useState("")
   const [values, setValues] = useState<Record<string, string | boolean>>({})
-  const { data: catalogue, isLoading } = useHarnesses()
+  const { data: catalog, isLoading } = useHarnesses()
   const create = useCreateBenchmark()
   const navigate = useNavigate()
 
   const selected = useMemo(() => {
-    const items = catalogue?.items ?? []
+    const items = catalog?.items ?? []
     return items.find((h) => h.name === harness) ?? items[0]
-  }, [catalogue, harness])
-  const harnesses = catalogue?.items ?? []
+  }, [catalog, harness])
+  const harnesses = catalog?.items ?? []
 
   const valueOf = (parameter: BenchmarkParameter): string | boolean =>
     values[parameter.name] ?? (parameter.default as string | boolean)

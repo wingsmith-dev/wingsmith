@@ -1,5 +1,5 @@
 import { render, screen } from "@/test/render"
-import { metricDefinition } from "@/modules/metrics/catalogue"
+import { metricDefinition } from "@/modules/metrics/catalog"
 import type { Metrics, MetricSample } from "@/modules/metrics/types"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -13,7 +13,7 @@ const mocked = vi.mocked(useMetrics)
 function sample(metric: string, value: number | null): MetricSample {
   const definition = metricDefinition(metric)!
   // The wire carries the plane's own title; the console's label is the one the
-  // catalogue holds, and these tests assert the second is what gets rendered.
+  // catalog holds, and these tests assert the second is what gets rendered.
   return {
     metric,
     title: "as the plane spells it",
@@ -101,7 +101,7 @@ describe("MetricsPanel", () => {
     expect(screen.getByText("31.4/s")).toBeInTheDocument()
   })
 
-  it("prefers the catalogue's label to the title on the wire", () => {
+  it("prefers the catalog's label to the title on the wire", () => {
     answer(metrics())
     render(<MetricsPanel scope="deployment" refId="dep_1" family="inference" />)
     expect(screen.queryByText("as the plane spells it")).not.toBeInTheDocument()

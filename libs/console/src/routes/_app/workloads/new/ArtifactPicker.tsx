@@ -14,10 +14,10 @@ import { useState } from "react"
  * Which weights to run — the first question, and the only one with no default.
  *
  * A list rather than a select. A select is the right control for a closed set of a
- * dozen; an artifact catalogue is neither closed nor small, and the things that tell
+ * dozen; an artifact catalog is neither closed nor small, and the things that tell
  * two artifacts apart — parameter count, format, whether the digest was verified — do
  * not fit on one line of a dropdown. The search box filters server-side, because the
- * catalogue outgrows one page long before it outgrows one screen.
+ * catalog outgrows one page long before it outgrows one screen.
  */
 export function ArtifactPicker({
   onPick,

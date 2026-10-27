@@ -13,8 +13,8 @@ import { stuckDeployments, summariseEndpointHealth } from "./fleet"
 
 /**
  * Which half of the inbox a row belongs to. `discovered` is a resource running
- * outside the catalogue and `health` is something serving badly — the same
- * screen, because both are "somebody has to decide", but the tabs keep them
+ * outside the catalog and `health` is something serving badly. They share a
+ * screen because both are "somebody has to decide", but the tabs keep them
  * apart because the decisions are unrelated.
  */
 export type AttentionGroup = "health" | "discovered"

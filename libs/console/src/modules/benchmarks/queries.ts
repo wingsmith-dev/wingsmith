@@ -225,7 +225,7 @@ export function useBenchmarkVerdict(
 }
 
 /**
- * The harness catalogue. Long-lived: it changes when the plane is deployed, not
+ * The harness catalog. Long-lived: it changes when the plane is deployed, not
  * while somebody is filling in a form.
  */
 export function useHarnesses() {

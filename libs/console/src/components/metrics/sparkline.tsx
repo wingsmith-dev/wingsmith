@@ -100,7 +100,7 @@ export interface Curve {
  *
  * Two things a bare `Sparkline` cannot do, and the page needs both.
  *
- * It states the axis. A sparkline is normalised to its own extremes, so a
+ * It states the axis. A sparkline is normalized to its own extremes, so a
  * metric wobbling between 4.01 and 4.02 draws the same picture as one swinging
  * from zero to a thousand — the right trade for a tile the size of a word, and
  * the wrong one for the page's main chart, where the shape means nothing until
@@ -108,7 +108,7 @@ export interface Curve {
  * forced to zero, because pinning a latency band to zero flattens every change
  * worth seeing; stating it is what stops the autoscale being a trick.
  *
- * And it puts curves on a *shared* scale. Three percentiles each normalised to
+ * And it puts curves on a *shared* scale. Three percentiles each normalized to
  * their own extremes are three unrelated pictures — p50 and p99 drawn to
  * different rulers cross and diverge for reasons that are pure arithmetic. One
  * scale is the only way a legend saying p50, p95, p99 means anything.

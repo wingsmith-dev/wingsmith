@@ -8,7 +8,7 @@ import {
   metricDefinition,
   metricGroups,
   type MetricFamily,
-} from "@/modules/metrics/catalogue"
+} from "@/modules/metrics/catalog"
 import {
   formatMetric,
   sampleOf,

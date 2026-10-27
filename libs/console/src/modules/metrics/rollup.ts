@@ -19,7 +19,7 @@ import type {
 /**
  * One metric's curves added across clusters, aligned by timestamp.
  *
- * Only for the metrics the catalogue calls `aggregate`. A bucket no cluster
+ * Only for the metrics the catalog calls `aggregate`. A bucket no cluster
  * reported is dropped rather than counted as zero.
  */
 export function sumCurvePoints(
@@ -167,7 +167,7 @@ export interface LatencyStage {
 /**
  * The stages of a request in the order it passes through them.
  *
- * Every one is a p95 except where the catalogue registers its own percentile,
+ * Every one is a p95 except where the catalog registers its own percentile,
  * and the label carries which — a column of percentiles that were never asked
  * for would be four numbers the store does not hold.
  */
