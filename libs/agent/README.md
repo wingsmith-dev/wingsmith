@@ -63,12 +63,12 @@ are skipped and logged on their own; every other deployment keeps refreshing.
 
 ## Shutdown
 
-On `SIGTERM` the agent stops dialling, sends GOAWAY on every tunnel and waits for the streams already
-open, then severs whatever is left. The wait is `HANGAR_DRAIN_TIMEOUT`, which by default is
+On `SIGTERM` the agent stops dialling, sends GOAWAY on every tunnel and waits for the streams
+already open, then severs whatever is left. The wait is `HANGAR_DRAIN_TIMEOUT`, which by default is
 `HANGAR_SHUTDOWN_GRACE` less 5 seconds. `HANGAR_SHUTDOWN_GRACE` must equal the pod's
 `terminationGracePeriodSeconds`, so the drain ends before the kubelet's `SIGKILL`. Both are 120
-seconds by default, and the chart sets both from `agent.terminationGracePeriodSeconds`. A drain set explicitly is used as given, with a warning at startup when it
-runs past the grace period.
+seconds by default, and the chart sets both from `agent.terminationGracePeriodSeconds`. A drain set
+explicitly is used as given, with a warning at startup when it runs past the grace period.
 
 That drain bounds which generations survive an agent rollout, and `HANGAR_RESPONSE_HEADER_TIMEOUT`
 does not. A non-streamed completion sends nothing until its last token, and the header timeout lets
