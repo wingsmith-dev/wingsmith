@@ -1,8 +1,3 @@
 # Database-backed plane tests CI runs apart from the required suite, one pytest node id per line.
 # A test lands here only with the reason it is unreliable, and leaves when that is fixed. CI still
 # runs these on every change, in a step that reports without blocking, so a fix shows up green.
-
-# Two concurrent applies of one device frame: the upsert conflicts on the (cluster, uuid)
-# constraint while uid has its own unique index, so one insert raises UniqueViolation
-# on supply_device_uid_key in some runs.
-tests/test_ingestion_db.py::test_applying_one_frame_twice_concurrently_is_idempotent
