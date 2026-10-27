@@ -23,6 +23,7 @@ from sqlalchemy import text
 from app.auth import AuthManager
 from app.hub.sink import SinkFrame
 from app.hub.state import new_id
+from app.ingestion import statements
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
 from app.hub.messages import MESSAGE_TYPES
@@ -268,6 +269,26 @@ async def test_applying_one_frame_twice_concurrently_is_idempotent(sessions, clu
 
     rows = await fetch(sessions, "SELECT count(*) FROM supply_device")
     assert rows == [(1,)]
+
+
+async def test_a_write_waits_for_its_clusters_ingestion_lock(sessions, cluster) -> None:
+    """The lock is what closes the race above; the race itself is too narrow to hit on demand.
+
+    Without it two inserts of one device can both pass the (cluster, uuid) arbiter's check
+    before either commits, and the second then fails on the separate `uid` key.
+    """
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("node.observed"))
+
+    async with sessions.begin() as holder:
+        await holder.execute(statements.serialise_cluster(cluster))
+        write = asyncio.create_task(sink.apply_observed(observed("device.observed")))
+        await asyncio.sleep(0.5)
+        assert not write.done()
+        assert await fetch(sessions, "SELECT count(*) FROM supply_device") == [(0,)]
+    await asyncio.wait_for(write, timeout=10)
+
+    assert await fetch(sessions, "SELECT count(*) FROM supply_device") == [(1,)]
 
 
 # --------------------------------------------------------------------------- poison frames
