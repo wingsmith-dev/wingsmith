@@ -41,30 +41,15 @@ linters:
       - path: libs/operator/internal/observe/dcgm\.go
         linters: [errcheck]
         text: io\.Copy
-      - path: libs/operator/internal/reconcile/(cache|deployment)_test\.go
-        linters: [staticcheck]
-        text: "SA1019: .*Result\\)\\.Requeue is deprecated"
-      - path: libs/operator/internal/sync/fakehub_test\.go
-        linters: [unused]
-        text: observedAcks
       - path: libs/cli/internal/config/config\.go
         linters: [errcheck]
         text: e\.WithFix
       - path: libs/cli/internal/fake/seed\.go
         linters: [unused]
         text: boolptr
-      - path: libs/gateway/internal/metrics/metrics\.go
-        linters: [unused]
-        text: tableConfirmed
-      - path: libs/gateway/internal/serving/policy\.go
-        linters: [unused]
-        text: supportedPolicyVersion
       - path: libs/agent/internal/agent/supervisor\.go
         linters: [ineffassign]
         text: wait
-      - path: libs/agent/internal/dynamo/handler_test\.go
-        linters: [unused]
-        text: theResolverAnswersPerDeployment
       # x/net v0.60 deprecates its http2 package for net/http's own. The tunnel serves and dials
       # HTTP/2 over connections it adopts, which needs a port to http.Transport.NewClientConn and
       # http.Server; until that port lands it stays on x/net/http2.
