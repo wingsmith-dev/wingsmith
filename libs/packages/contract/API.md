@@ -47,7 +47,7 @@ and the response is indistinguishable from a correctly filtered one. A silently 
 a lie the caller cannot detect. The accepted set is derived
 from the matched handler's own signature at request time, under each parameter's wire name, so
 aliases (`?class=`), repeated params (`?label=k=v&label=...`), and new filters need no registration
-anywhere. `/metrics` and the OpenAPI routes are exempt.
+anywhere. `/health`, `/metrics` and the OpenAPI routes are exempt.
 
 ## 2. Identity and scope
 

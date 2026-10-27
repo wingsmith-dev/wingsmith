@@ -301,9 +301,11 @@ def test_aliased_parameter_is_accepted_under_its_wire_name():
 def test_health_is_unaffected():
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/health")
+        probed = client.get("/health", params={"probe": "lb"})
 
     assert response.status_code == 200
     assert response.json() == {"status": True}
+    assert probed.status_code == 200
 
 
 def test_slug_is_read_from_the_location():
