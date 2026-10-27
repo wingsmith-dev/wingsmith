@@ -145,8 +145,9 @@ export interface CapacityRow {
 
 /**
  * Allocation pressure per accelerator, which is the number that predicts a
- * failed placement. Allocated is `total - allocatable`, derived the same way the
- * plane's own cluster rollup derives it.
+ * failed placement. Allocated here is a device whose `allocatable` flag is off,
+ * which misses a claimable device a live allocation holds; the plane's cluster
+ * rollup and `GET /fleet/summary` count those as allocated too.
  */
 export function capacityByClass(devices: Device[]): CapacityRow[] {
   const classes = new Map<string, { total: number; allocated: number }>()
