@@ -523,6 +523,53 @@ func (p *Pool) Coverage() map[string]int {
 	return coverage
 }
 
+// ClusterStreams is how busy one cluster's live tunnels on this replica are.
+type ClusterStreams struct {
+	ClusterID string
+	// Tunnels is how many live tunnels the cluster holds here.
+	Tunnels int
+	// Active is the requests open across them.
+	Active int
+	// Capacity is the sum of the stream limits the agent advertised on each.
+	// Active reaching it is when the pool starts answering ErrSaturated.
+	Capacity int
+}
+
+// Streams reports stream use for every cluster with a live tunnel, sorted by
+// cluster. A tunnel that is closing still finishes its streams but takes no new
+// ones, so it counts towards neither Active nor Capacity.
+//
+// Per cluster and not per tunnel: GetClientConn sends each request to the
+// least-loaded live tunnel, so the cluster's sum is what decides saturation, and
+// a tunnel has no identity that outlives a redial to label a series with.
+func (p *Pool) Streams() []ClusterStreams {
+	p.mu.Lock()
+	snapshot := make(map[string][]*Conn, len(p.clusters))
+	for cluster := range p.clusters {
+		snapshot[cluster] = p.snapshotLocked(cluster)
+	}
+	p.mu.Unlock()
+
+	out := make([]ClusterStreams, 0, len(snapshot))
+	for cluster, conns := range snapshot {
+		use := ClusterStreams{ClusterID: cluster}
+		for _, conn := range conns {
+			state := conn.cc.State()
+			if state.Closed || state.Closing || state.MaxConcurrentStreams == 0 {
+				continue
+			}
+			use.Tunnels++
+			use.Active += state.StreamsActive + state.StreamsReserved
+			use.Capacity += int(state.MaxConcurrentStreams)
+		}
+		if use.Tunnels > 0 {
+			out = append(out, use)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ClusterID < out[j].ClusterID })
+	return out
+}
+
 // Clusters lists which clusters are reachable, sorted.
 func (p *Pool) Clusters() []string {
 	coverage := p.Coverage()

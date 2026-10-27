@@ -161,3 +161,33 @@ func TestTheLastCoverageReportCountsEveryTunnel(t *testing.T) {
 		}
 	}
 }
+
+// TestStreamUseIsReportedPerClusterOverItsLiveTunnels pins what the gateway's
+// stream gauges read: the requests open and the limits advertised, summed over
+// the tunnels that can still take a request.
+func TestStreamUseIsReportedPerClusterOverItsLiveTunnels(t *testing.T) {
+	t.Parallel()
+
+	pool := newPool(t, PoolConfig{})
+	busy := link(t, pool, "cluster-a", newConnector(t, echoHandler("a"), Limits{MaxConcurrentStreams: 4}))
+	link(t, pool, "cluster-a", newConnector(t, echoHandler("a"), Limits{MaxConcurrentStreams: 6}))
+	closing := link(t, pool, "cluster-b", newConnector(t, echoHandler("b"), Limits{MaxConcurrentStreams: 8}))
+	link(t, pool, "cluster-b", newConnector(t, echoHandler("b"), Limits{MaxConcurrentStreams: 2}))
+	occupy(busy, 3)
+	_ = closing.Close()
+
+	eventually(t, 5*time.Second, "the closed tunnel to leave the report", func() bool {
+		got := pool.Streams()
+		return len(got) == 2 && got[1].Tunnels == 1
+	})
+	want := []ClusterStreams{
+		{ClusterID: "cluster-a", Tunnels: 2, Active: 3, Capacity: 10},
+		{ClusterID: "cluster-b", Tunnels: 1, Active: 0, Capacity: 2},
+	}
+	got := pool.Streams()
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Streams()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
