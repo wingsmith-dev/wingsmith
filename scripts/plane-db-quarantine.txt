@@ -6,5 +6,3 @@
 # constraint while uid has its own unique index, so one insert raises UniqueViolation
 # on supply_device_uid_key in some runs.
 tests/test_ingestion_db.py::test_applying_one_frame_twice_concurrently_is_idempotent
-# Intermittent assertion failure reading the workload's timeline back.
-tests/test_ingestion_db.py::test_a_workloads_timeline_reaches_the_download_it_is_blocked_on
