@@ -1,6 +1,6 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- $workloads := include "cluster-setup.workloadNamespace" . }}
-# What each policy admits, and why egress is left open: values.yaml, networkPolicy.
+# What each policy admits, and when egress is closed: values.yaml, networkPolicy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -68,6 +68,46 @@ spec:
         {{- with .Values.networkPolicy.frontendFrom }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+{{- if .Values.networkPolicy.servingEgress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-serving-egress
+  namespace: {{ $workloads }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: hangar.dev/deployment-id
+        operator: Exists
+  policyTypes: [Egress]
+  egress:
+    # Frontend to worker, and KV transfer between workers.
+    - to:
+        - podSelector: {}
+    # NATS and the Dynamo operator.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+    # DNS, wherever the cluster's resolver runs.
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        {{- range .Values.networkPolicy.servingEgress.apiServer }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- with .Values.networkPolicy.servingEgress.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
 {{- if and (index .Values "dynamo-platform" "enabled") (index .Values "dynamo-platform" "global" "nats" "install") }}
 ---
 apiVersion: networking.k8s.io/v1

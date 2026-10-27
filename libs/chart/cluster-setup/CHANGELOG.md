@@ -54,6 +54,9 @@ upgrade sources; install fresh.
   defaults.
 - `operator.benchmark.tokenSecret` hands benchmark jobs a Secret's keys as
   environment, for a tokenizer in a gated repository.
+- `networkPolicy.servingEgress` closes egress from the serving pods to their
+  own namespace, the release namespace, DNS, the API server and the peers you
+  list. Off by default.
 - `values.schema.json` refuses a value of the wrong type before anything
   renders, such as `cluster.readOnly: "false"` as a string, which the templates
   would read as true.

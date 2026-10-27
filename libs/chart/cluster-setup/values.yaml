@@ -529,14 +529,35 @@ serving:
 # Most CNIs exempt the kubelet's probes from NetworkPolicy; on one that does
 # not, add the node CIDR to `frontendFrom` as an ipBlock.
 #
-# Egress is not restricted: the hub, the gateway, the API server and the model
-# registries differ per cluster. Add peers (NetworkPolicyPeer objects) to
-# `frontendFrom` or `natsFrom` for anything else that must connect, such as an
-# ingress controller when `serving.enabled`.
+# Add peers (NetworkPolicyPeer objects) to `frontendFrom` or `natsFrom` for
+# anything else that must connect, such as an ingress controller when
+# `serving.enabled`.
+#
+# Egress is open by default: the hub, the gateway, the API server and the model
+# registries differ per cluster. `servingEgress` closes it for the serving pods,
+# the workers and per-model frontends the operator renders (every pod carrying
+# `hangar.dev/deployment-id` in the workload namespace). They may then reach only
+# other pods in that namespace, the release namespace (NATS), DNS on port 53, the
+# API server CIDRs in `apiServer` (Dynamo discovers components through the
+# Kubernetes API; read them with `kubectl get endpoints kubernetes`), and the
+# peers in `to`. Everything else is dropped, including the cloud metadata
+# endpoint and any internal address a request's media URL names. Prefetch and
+# benchmark jobs are not selected, so weight downloads keep their egress.
+#
+# Turn it on only after checking what your models fetch at startup: a deployment
+# whose model is a bare Hugging Face repo id and not a prefetched path, or a
+# multimodal model expected to fetch public image or video URLs, needs those
+# hosts in `to`. vLLM's own `allowed-media-domains` engine argument, set in a
+# deployment's engine_args, narrows media fetches further.
 networkPolicy:
   enabled: true
   frontendFrom: []
   natsFrom: []
+  servingEgress:
+    enabled: false
+    # e.g. ["10.0.0.10/32"]. Required when enabled.
+    apiServer: []
+    to: []
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
 

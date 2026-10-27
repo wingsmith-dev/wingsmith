@@ -11,7 +11,8 @@ in one release:
 - the **hangar operator** and its CRDs, RBAC, config, and Deployment;
 - optionally, the **serving agent** — the cluster's end of the inference tunnel;
 - optionally, the serving `Certificate` + Traefik `IngressRoute`;
-- ingress NetworkPolicies for the operator, agent, inference frontends and NATS.
+- ingress NetworkPolicies for the operator, agent, inference frontends and NATS,
+  and optionally an egress policy for the serving pods.
 
 ## Install
 
@@ -260,6 +261,22 @@ object:
 
 Without an allowlist, treat plane admin as equivalent to write access to the
 workload namespace.
+
+## Serving egress
+
+Egress from the workload namespace is open by default. Media URLs in a request
+(image, video and audio inputs) are fetched from inside the serving pods, so on
+an open network a request can make them reach internal addresses, including a
+cloud metadata endpoint. The gateway refuses private, link-local and
+single-label hosts before forwarding, and
+`networkPolicy.servingEgress.enabled` closes the pods' egress as well: they may
+then reach only their own namespace, the release namespace, DNS, the API server
+CIDRs in `networkPolicy.servingEgress.apiServer`, and the peers in
+`networkPolicy.servingEgress.to`. Prefetch and benchmark jobs are not selected.
+Check what your models fetch at startup before turning it on; values.yaml lists
+the cases that need a peer. vLLM's `allowed-media-domains` engine argument, set
+per deployment in `engine_args`, also limits the domains vLLM fetches media
+from.
 
 ## Operator metrics
 

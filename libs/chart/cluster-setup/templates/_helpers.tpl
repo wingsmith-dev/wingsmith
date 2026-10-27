@@ -234,6 +234,9 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if and .Values.serving.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.frontendFrom) -}}
 {{- fail "serving.enabled is true with networkPolicy.enabled, but networkPolicy.frontendFrom is empty — the frontend policy would drop every request the route forwards. Add the ingress controller's namespace, e.g. networkPolicy.frontendFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: traefik}}}]." -}}
 {{- end -}}
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.servingEgress.enabled (not .Values.networkPolicy.servingEgress.apiServer) -}}
+{{- fail "networkPolicy.servingEgress.enabled is true but networkPolicy.servingEgress.apiServer is empty. Dynamo's frontends and workers discover each other through the Kubernetes API, so a policy that drops it leaves every model unreachable. List the API server's endpoint CIDRs (kubectl get endpoints kubernetes), e.g. apiServer: [\"10.0.0.10/32\"]." -}}
+{{- end -}}
 {{- $fabric := .Values.fabric.type | default "" | toString -}}
 {{- if not (has $fabric (list "" "efa" "rdma")) -}}
 {{- fail (printf "fabric.type is %q: it takes efa (AWS Elastic Fabric Adapter), rdma (any other RDMA device plugin), or empty for none." $fabric) -}}

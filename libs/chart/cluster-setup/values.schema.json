@@ -234,7 +234,15 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "frontendFrom": { "type": "array", "items": { "type": "object" } },
-        "natsFrom": { "type": "array", "items": { "type": "object" } }
+        "natsFrom": { "type": "array", "items": { "type": "object" } },
+        "servingEgress": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "apiServer": { "$ref": "#/definitions/stringList" },
+            "to": { "type": "array", "items": { "type": "object" } }
+          }
+        }
       }
     },
     "monitoring": {

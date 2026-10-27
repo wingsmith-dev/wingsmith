@@ -701,3 +701,33 @@ def test_taints_and_benchmark_token_reach_the_operator(chart):
     assert data["HANGAR_CACHE_TAINT_VALUE"] == "cache"
     assert data["HANGAR_BENCHMARK_TOKEN_SECRET"] == "hf-token-secret"
 
+
+# ── serving egress ───────────────────────────────────────────────────────────
+
+
+def test_serving_egress_is_off_by_default(chart):
+    assert ("dynamo", "hangar-serving-egress") not in _policies(render(chart))
+
+
+def test_serving_egress_needs_the_api_server(chart):
+    assert "apiServer" in refusal(chart, **{"networkPolicy.servingEgress.enabled": True})
+
+
+def test_serving_egress_admits_only_the_cluster_paths(chart):
+    docs = render(chart, **{
+        "networkPolicy.servingEgress.enabled": True,
+        "networkPolicy.servingEgress.apiServer": "{10.0.0.10/32}",
+        "networkPolicy.servingEgress.to[0].ipBlock.cidr": "198.51.100.0/24",
+    })
+    spec = _policies(docs)[("dynamo", "hangar-serving-egress")]["spec"]
+    assert spec["policyTypes"] == ["Egress"]
+    assert spec["podSelector"] == {"matchExpressions": [
+        {"key": "hangar.dev/deployment-id", "operator": "Exists"}]}
+    rules = spec["egress"]
+    assert {"to": [{"podSelector": {}}]} in rules
+    assert {"to": [{"namespaceSelector": {"matchLabels": {
+        "kubernetes.io/metadata.name": "hangar-system"}}}]} in rules
+    assert {"ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}]} in rules
+    assert {"to": [{"ipBlock": {"cidr": "10.0.0.10/32"}}]} in rules
+    assert {"to": [{"ipBlock": {"cidr": "198.51.100.0/24"}}]} in rules
+    assert len(rules) == 5
