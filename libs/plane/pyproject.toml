@@ -64,6 +64,8 @@ branch = true
 omit = ["app/*/__main__.py"]
 
 [tool.coverage.report]
+# The suite without Postgres measures 76% and the full suite more; a drop below this fails `just cov`.
+fail_under = 74
 show_missing = true
 skip_covered = false
 exclude_lines = [
