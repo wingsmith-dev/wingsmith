@@ -478,7 +478,7 @@ async def test_a_label_on_the_deployment_mutes_it_without_a_deploy(sessions, clu
 
     async with sessions.begin() as db:
         await db.execute(
-            text('UPDATE demand_discovered_workload SET labels = \'{"hangar.io/alert": "off"}\' WHERE uid = :uid'),
+            text('UPDATE demand_discovered_workload SET labels = \'{"hangar.dev/alert": "off"}\' WHERE uid = :uid'),
             {"uid": uid},
         )
     await tick(sessions, INSTANCE)
@@ -488,13 +488,13 @@ async def test_a_label_on_the_deployment_mutes_it_without_a_deploy(sessions, clu
 
 
 async def test_a_label_can_lengthen_the_window_before_anything_fires(sessions, cluster):
-    """`hangar.io/alert.for` moves the line between "reconciling" and "broken", per object."""
+    """`hangar.dev/alert.for` moves the line between "reconciling" and "broken", per object."""
     await connect(sessions, cluster)
     await seed_node(sessions, cluster)
     uid = await seed_workload(sessions, cluster, ready=0)
     async with sessions.begin() as db:
         await db.execute(
-            text('UPDATE demand_discovered_workload SET labels = \'{"hangar.io/alert.for": "6h"}\' WHERE uid = :uid'),
+            text('UPDATE demand_discovered_workload SET labels = \'{"hangar.dev/alert.for": "6h"}\' WHERE uid = :uid'),
             {"uid": uid},
         )
     await tick(sessions, INSTANCE)
@@ -519,7 +519,7 @@ async def test_a_label_can_change_the_severity_a_channel_routes_on(sessions, clu
         await db.execute(
             text(
                 "UPDATE demand_discovered_workload"
-                ' SET labels = \'{"hangar.io/alert.severity": "warning"}\' WHERE uid = :uid'
+                ' SET labels = \'{"hangar.dev/alert.severity": "warning"}\' WHERE uid = :uid'
             ),
             {"uid": uid},
         )

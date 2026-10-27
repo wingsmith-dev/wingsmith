@@ -299,7 +299,7 @@ async def test_a_label_still_mutes_a_threshold_backed_condition(monkeypatch):
     monkeypatch.setattr(
         conditions,
         "SUBJECTS",
-        {"deployment": fake_subjects([(DEPLOYMENT, {"hangar.io/alert": "off"}), (OTHER, {})])},
+        {"deployment": fake_subjects([(DEPLOYMENT, {"hangar.dev/alert": "off"}), (OTHER, {})])},
     )
     intents = await conditions.metric_thresholds(db=None, reader=FakeReader({"inference.ttft": 9.0}))
     assert [intent.subject_uid for intent in intents] == [OTHER.uid]
@@ -311,7 +311,7 @@ async def test_a_label_severity_beats_the_declared_one(monkeypatch):
     monkeypatch.setattr(
         conditions,
         "SUBJECTS",
-        {"deployment": fake_subjects([(DEPLOYMENT, {"hangar.io/alert.severity": "critical"})])},
+        {"deployment": fake_subjects([(DEPLOYMENT, {"hangar.dev/alert.severity": "critical"})])},
     )
     intents = await conditions.metric_thresholds(db=None, reader=FakeReader({"inference.ttft": 9.0}))
     assert [intent.severity for intent in intents] == [rules.CRITICAL]

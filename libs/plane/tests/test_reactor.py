@@ -166,8 +166,8 @@ def test_a_typo_in_a_label_is_ignored_rather_than_obeyed_or_raised():
     """A bad label must not stop the tick that would have said the cluster is down."""
     assert tuning.parse_duration("soon") is None
     assert tuning.parse_duration("") is None
-    assert tuning.read({"hangar.io/alert.severity": "extremely"}).severity is None
-    assert tuning.read({"hangar.io/alert.for": "later"}).for_seconds is None
+    assert tuning.read({"hangar.dev/alert.severity": "extremely"}).severity is None
+    assert tuning.read({"hangar.dev/alert.for": "later"}).for_seconds is None
 
 
 def test_an_object_with_no_opinion_leaves_the_intent_exactly_as_it_was():
@@ -179,17 +179,17 @@ def test_an_object_with_no_opinion_leaves_the_intent_exactly_as_it_was():
 
 def test_a_deployment_can_be_muted_from_its_labels():
     intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
-    assert tuning.apply(intent, {"hangar.io/alert": "off"}) is None
-    assert tuning.apply(intent, {"hangar.io/alert": "on"}) is intent
+    assert tuning.apply(intent, {"hangar.dev/alert": "off"}) is None
+    assert tuning.apply(intent, {"hangar.dev/alert": "on"}) is intent
 
 
 def test_severity_and_window_can_be_overridden_independently():
     intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
-    quieter = tuning.apply(intent, {"hangar.io/alert.severity": "warning"})
+    quieter = tuning.apply(intent, {"hangar.dev/alert.severity": "warning"})
     assert quieter.severity == rules.WARNING
     assert quieter.for_seconds == intent.for_seconds
 
-    patient = tuning.apply(intent, {"hangar.io/alert.for": "2h"})
+    patient = tuning.apply(intent, {"hangar.dev/alert.for": "2h"})
     assert patient.for_seconds == 7200
     assert patient.severity == intent.severity
 
@@ -197,7 +197,7 @@ def test_severity_and_window_can_be_overridden_independently():
 def test_a_tuned_alert_says_what_tuned_it():
     """Otherwise "why did this fire as a warning" has no answer short of guessing."""
     intent = rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=False)
-    tuned = tuning.apply(intent, {"hangar.io/alert.severity": "info", "hangar.io/alert.for": "30m"})
+    tuned = tuning.apply(intent, {"hangar.dev/alert.severity": "info", "hangar.dev/alert.for": "30m"})
     assert tuned.details["tuned_by"] == {"severity": "info", "for": 1800}
     assert tuned.details["replicas_ready"] == 0
 
@@ -205,20 +205,20 @@ def test_a_tuned_alert_says_what_tuned_it():
 def test_tuning_never_changes_the_identity_of_an_alert():
     """A dedupe key that moved when someone edited a label would fork one problem into two."""
     intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
-    tuned = tuning.apply(intent, {"hangar.io/alert.severity": "info"})
+    tuned = tuning.apply(intent, {"hangar.dev/alert.severity": "info"})
     assert tuned.dedupe_key == intent.dedupe_key
 
 
 def test_more_specific_labels_win_field_by_field():
     """A deployment setting only the window still inherits the severity from above it."""
-    resolved = tuning.resolve({"hangar.io/alert.for": "10m"}, {"hangar.io/alert.severity": "critical"})
+    resolved = tuning.resolve({"hangar.dev/alert.for": "10m"}, {"hangar.dev/alert.severity": "critical"})
     assert resolved.for_seconds == 600
     assert resolved.severity == rules.CRITICAL
 
 
 def test_a_mute_anywhere_in_the_chain_mutes():
-    assert tuning.resolve({}, {"hangar.io/alert": "off"}).muted
-    assert tuning.resolve({"hangar.io/alert": "off"}, {}).muted
+    assert tuning.resolve({}, {"hangar.dev/alert": "off"}).muted
+    assert tuning.resolve({"hangar.dev/alert": "off"}, {}).muted
 
 
 # --------------------------------------------------------------------------- liveness

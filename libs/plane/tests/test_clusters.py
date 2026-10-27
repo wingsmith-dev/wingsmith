@@ -548,7 +548,7 @@ def test_prefixed_labels_and_nested_capabilities_are_accepted():
             "name": "alpha",
             "region": "eu-west-1",
             "phase": "active",
-            "labels": {"hangar.io/alert.severity": "warning", "tier": ""},
+            "labels": {"hangar.dev/alert.severity": "warning", "tier": ""},
             "capabilities": {"rdma": {"fabric": "ib", "gbps": 400}},
         }
     )

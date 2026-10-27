@@ -452,9 +452,9 @@ and that would only work for the one object it was added to:
 
 | Label | Values | Effect |
 |---|---|---|
-| `hangar.io/alert` | `off` / `on` | `off` mutes every condition about this object |
-| `hangar.io/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
-| `hangar.io/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
+| `hangar.dev/alert` | `off` / `on` | `off` mutes every condition about this object |
+| `hangar.dev/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
+| `hangar.dev/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
 
 They are set on the **workload**, which is the only object that carries them: a workload's serving
 configuration is its own and is not shared with anything, so muting one workload of a model never

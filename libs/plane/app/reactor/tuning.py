@@ -11,9 +11,9 @@ object it was added to.
 
 So the reactor reads a reserved namespace out of the labels it already has:
 
-    hangar.io/alert            off | on
-    hangar.io/alert.severity   info | warning | error | critical
-    hangar.io/alert.for        45m | 2h | 900s | 900
+    hangar.dev/alert            off | on
+    hangar.dev/alert.severity   info | warning | error | critical
+    hangar.dev/alert.for        45m | 2h | 900s | 900
 
 The knob lives on the **workload**, and there is nothing above it to put it on: the
 recipe that was once shared between workloads is gone, and muting on a shared object
@@ -41,7 +41,7 @@ from .rules import SEVERITY_ORDER
 from .rules import AlertIntent
 
 
-PREFIX = "hangar.io/alert"
+PREFIX = "hangar.dev/alert"
 SEVERITY_KEY = f"{PREFIX}.severity"
 FOR_KEY = f"{PREFIX}.for"
 
@@ -106,7 +106,7 @@ def resolve(*label_sources: Any) -> Override:
     """Merges label dicts most-specific-first, field by field.
 
     Field by field rather than whole-dict, so a deployment that only sets
-    `hangar.io/alert.for` still inherits the severity its workload chose. Whole-dict
+    `hangar.dev/alert.for` still inherits the severity its workload chose. Whole-dict
     precedence would make every override an all-or-nothing copy of the parent's.
     """
     muted = False
