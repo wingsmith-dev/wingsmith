@@ -121,3 +121,22 @@ func TestDuplicatesRevocationsAndRetriesAreTheirOwnSeries(t *testing.T) {
 		t.Fatalf("resent = %v (%v)", got, ok)
 	}
 }
+
+func TestTunnelStreamUseIsReadAtScrape(t *testing.T) {
+	recorder := New()
+	samples := []StreamSample{{ClusterID: "clu_ap", Active: 3, Capacity: 10}}
+	recorder.WatchTunnelStreams(func() []StreamSample { return samples })
+
+	labels := map[string]string{"cluster_id": "clu_ap"}
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_streams_active", labels); !ok || got != 3 {
+		t.Fatalf("streams active = %v (%v), want 3", got, ok)
+	}
+	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_streams_capacity", labels); !ok || got != 10 {
+		t.Fatalf("streams capacity = %v (%v), want 10", got, ok)
+	}
+
+	samples = nil
+	if got := family(t, recorder, "hangar_gateway_tunnel_streams_active"); len(got) != 0 {
+		t.Fatalf("a cluster with no live tunnel still has %d stream series", len(got))
+	}
+}

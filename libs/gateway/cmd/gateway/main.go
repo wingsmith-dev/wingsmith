@@ -168,6 +168,14 @@ func main() {
 	}
 	if pool != nil {
 		tunnels, reach = pool, pool
+		recorder.WatchTunnelStreams(func() []metrics.StreamSample {
+			use := pool.Streams()
+			samples := make([]metrics.StreamSample, len(use))
+			for i, cluster := range use {
+				samples[i] = metrics.StreamSample{ClusterID: cluster.ClusterID, Active: cluster.Active, Capacity: cluster.Capacity}
+			}
+			return samples
+		})
 	}
 
 	routerOpts := []routing.Option{routing.WithObserver(recorder)}

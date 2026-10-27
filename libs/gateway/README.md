@@ -306,8 +306,13 @@ from the data plane.
 
 `hangar_gateway_upstream_replays_total` counts request bodies sent to a cluster a second time
 because the transport retried them, usually when a tunnel or connection went away before the
-request was processed. `hangar_gateway_build_info{version}` names the running build. Per-tunnel
-stream use and the agent's own request metrics are not exported yet.
+request was processed. `hangar_gateway_build_info{version}` names the running build.
+
+`hangar_gateway_tunnel_streams_active{cluster_id}` is the requests open on this replica's live
+tunnels to a cluster, and `hangar_gateway_tunnel_streams_capacity{cluster_id}` the stream limits the
+agents advertised on them, summed. When the two meet, the replica answers `503 no_capacity` for that
+cluster until a stream finishes. They are per cluster, not per tunnel: each request goes to the
+least-loaded live tunnel, so the sum is what decides saturation.
 
 The gateway does not start or record traces. A caller's `traceparent` and `tracestate` are forwarded
 to the cluster untouched, so a trace started at the edge continues into the serving runtime.

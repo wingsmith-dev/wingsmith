@@ -77,6 +77,46 @@ func (r *Recorder) TunnelClosed(clusterID string, live int) {
 	r.tunnels.WithLabelValues(clusterID).Set(float64(live))
 }
 
+// StreamSample is one cluster's stream use across this replica's live tunnels.
+type StreamSample struct {
+	ClusterID string
+	Active    int
+	Capacity  int
+}
+
+var (
+	streamsActiveDesc = prometheus.NewDesc("hangar_gateway_tunnel_streams_active",
+		"Requests open on this replica's live tunnels to a cluster. Read against hangar_gateway_tunnel_streams_capacity: when the two meet, new requests for the cluster are refused as no capacity until a stream finishes.",
+		tunnelLabels, nil)
+	streamsCapacityDesc = prometheus.NewDesc("hangar_gateway_tunnel_streams_capacity",
+		"Concurrent streams the agents allow on this replica's live tunnels to a cluster, summed over the tunnels.",
+		tunnelLabels, nil)
+)
+
+// streamCollector reads stream use from the pool at scrape time. A cluster with
+// no live tunnel has no series; hangar_gateway_tunnel_coverage covers that case.
+type streamCollector struct {
+	source func() []StreamSample
+}
+
+func (c streamCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- streamsActiveDesc
+	ch <- streamsCapacityDesc
+}
+
+func (c streamCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, sample := range c.source() {
+		ch <- prometheus.MustNewConstMetric(streamsActiveDesc, prometheus.GaugeValue, float64(sample.Active), sample.ClusterID)
+		ch <- prometheus.MustNewConstMetric(streamsCapacityDesc, prometheus.GaugeValue, float64(sample.Capacity), sample.ClusterID)
+	}
+}
+
+// WatchTunnelStreams publishes the stream use source reports, read at every
+// scrape. Call it once, with the tunnel pool.
+func (r *Recorder) WatchTunnelStreams(source func() []StreamSample) {
+	r.registry.MustRegister(streamCollector{source: source})
+}
+
 // TunnelDialRejected records a dial that did not become a tunnel. Most did not
 // authenticate; a "limit" dial did, and was refused for the tunnel cap.
 func (r *Recorder) TunnelDialRejected(reason string) {
