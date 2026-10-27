@@ -100,6 +100,17 @@ def test_every_argument_read_survives_as_an_imported_one() -> None:
     )
 
 
+def test_a_value_discovery_withheld_is_named_and_not_imported() -> None:
+    """The operator sends a placeholder for every non-serving value; it is not a value to keep."""
+    spec = dict(QWEN)
+    spec["args"] = QWEN["args"] + ["--api-key", "<redacted>", "--enforce-eager"]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert "--api-key" not in draft.imported_args
+    assert draft.imported_args["--enforce-eager"] == ""
+    assert any("--api-key" in note for note in draft.notes)
+    assert draft.confident
+
+
 def test_reading_a_workload_declares_nothing() -> None:
     """A draft proposes no engine_args at all.
 

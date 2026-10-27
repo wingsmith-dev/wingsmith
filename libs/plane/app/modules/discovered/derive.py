@@ -76,8 +76,9 @@ class ServingDraft(Struct):
     not be determined so the person confirming knows where to look rather than
     having to diff the draft against the cluster themselves.
 
-    `imported_args` is the whole argv as flag/value pairs, including arguments that
-    also populated a field above. `engine_args` is empty in a draft and always
+    `imported_args` is the argv as discovery reported it, in flag/value pairs, including
+    arguments that also populated a field above. Flags whose values discovery withheld are
+    named in `notes` and not listed here. `engine_args` is empty in a draft and always
     will be: reading a flag off a pod records it, and asserting it is a separate
     act by a person (ADR 0009). The duplication is deliberate — the draft has to
     be checkable against the cluster without re-reading the pod.
@@ -108,6 +109,10 @@ class ServingDraft(Struct):
     artifact: ArtifactDraft
     output_modality: str | None = None
     """`--output-modalities` off an omni worker, and None on every other engine."""
+
+
+REDACTED = "<redacted>"
+"""What the operator sends in place of a flag value it does not report (`observe.RedactedValue`)."""
 
 
 def parse_args(args: list[str]) -> dict[str, str]:
@@ -419,11 +424,15 @@ def derive(
 
     requests = dict(spec.get("requests") or {})
 
-    # Every argument the workload was actually running with, verbatim and in full, including
-    # the ones that also landed in a first-class field above. This is a record of what was
-    # read and not a proposal to render it — a draft that keeps only what it has columns for
-    # cannot be checked against the cluster by the person confirming it (ADR 0009).
-    imported_args = {f"--{k}": v for k, v in values.items()}
+    # Every argument the workload was running with as discovery reported it, including the ones
+    # that also landed in a first-class field above. This is a record of what was read and not a
+    # proposal to render it (ADR 0009). It is not the full command line: the operator reports the
+    # values of the serving flags only and sends REDACTED for every other flag that took one, so
+    # those flags are named in a note and left out here, where the placeholder would read as a value.
+    withheld = sorted(f"--{k}" for k, v in values.items() if v == REDACTED)
+    if withheld:
+        notes.append(f"discovery withheld the values of {', '.join(withheld)}; set them by hand if they matter")
+    imported_args = {f"--{k}": v for k, v in values.items() if v != REDACTED}
 
     # Nothing is declared by reading. A draft proposes no engine_args at all: asserting a flag
     # is somebody's decision, and the whole point of the split is that it stays visible as one.
