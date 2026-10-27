@@ -122,24 +122,23 @@ func (f *File) Save() error {
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
 	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	// Removing the temp file only matters when the rename never happened.
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	werr := tmp.Chmod(0o600)
+	if werr == nil {
+		_, werr = tmp.Write(data)
 	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	if werr == nil {
+		werr = tmp.Sync()
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
 	}
-	if err := tmp.Close(); err != nil {
-		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	if werr == nil {
+		werr = os.Rename(tmp.Name(), target)
 	}
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		return errs.Wrap(err, errs.CodeInternal, "cannot write config to %s", f.path)
+	if werr != nil {
+		return errs.Wrap(werr, errs.CodeInternal, "cannot write config to %s", f.path)
 	}
 	return nil
 }
