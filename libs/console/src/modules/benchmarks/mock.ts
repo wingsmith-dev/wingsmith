@@ -293,9 +293,9 @@ export function mockRun(id: string): BenchmarkRun {
   return {
     id,
     request_id: mockRequestId(kind),
-    deployment_id: kind === "conformance" ? null : "dep-mock-0001",
-    cluster_id: kind === "conformance" ? null : "usw2",
-    endpoint_id: kind === "conformance" ? "kimi-k2" : null,
+    deployment_id: "dep-mock-0001",
+    cluster_id: "usw2",
+    endpoint_id: null,
     operation_id: null,
     harness,
     harness_version: "0.1.0",
@@ -335,8 +335,9 @@ export function mockRequest(id: string): BenchmarkRequest {
   const run = mockRun(mockRunId(kind))
   return {
     id,
-    level: kind === "conformance" ? "endpoint" : "workload",
-    target_id: kind === "conformance" ? "kimi-k2" : "wl-mock-0001",
+    // The plane refuses endpoint-level requests until that executor exists.
+    level: kind === "conformance" ? "deployment" : "workload",
+    target_id: kind === "conformance" ? "dep-mock-0001" : "wl-mock-0001",
     harness: run.harness,
     image: run.image,
     parameters: run.parameters,
