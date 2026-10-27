@@ -279,7 +279,7 @@ collection({
 
 /**
  * The catalog is keyed by name and is not paginated, so it is registered by
- * hand, not through `collection`, which assumes an id and a cursor,
+ * hand instead of through `collection`, which assumes an id and a cursor,
  * and a device class has neither.
  */
 registerFixtures([
@@ -491,7 +491,7 @@ registerFixtures([
  * Only the derived half, because that is all `POST /artifacts/:ref/refresh` writes.
  * `BAAI/bge-m3`'s entry is the interesting one: the offline `bge-m3-embed` carries no
  * shape, so refreshing it moves that artifact from a weights floor to a priced context
- * window: the whole reason the route exists, reproduced, not described.
+ * window. That move is the whole reason the route exists, reproduced instead of described.
  */
 const HF_REFRESH: Record<string, Record<string, unknown>> = {
   "BAAI/bge-m3": {
@@ -1639,8 +1639,8 @@ registerFixtures([
 
 /**
  * The plane's effective configuration. Static: it describes a process, and the
- * offline plane has none: the values are a plausible deployment. `fra-1` is
- * left out of `metrics.sources`, so the unmapped-cluster marker on
+ * offline plane has none, so the values are a plausible deployment. `fra-1` is
+ * intentionally left out of `metrics.sources`, so the unmapped-cluster marker on
  * the Settings › Configuration panel has something to show.
  */
 registerFixtures([
@@ -1744,7 +1744,7 @@ registerFixtures([
  *
  * So the corpus's own replica rollup stands in for what has been bound: replicas
  * declared, less replicas the cluster reports ready, times the workload's device
- * shape. It is the same quantity, capacity promised and not yet converged,
+ * shape. It is the same quantity (capacity promised and not yet converged),
  * counted from the one book the offline fleet keeps consistently.
  */
 function reservations(query: FixtureQuery) {

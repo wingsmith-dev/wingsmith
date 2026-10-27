@@ -80,7 +80,7 @@ export function createOperation(
 }
 
 /**
- * Cancellation, and not deletion: deleting the row would throw
+ * Cancellation, and intentionally not deletion: deleting the row would throw
  * away who asked for this and why, which is the reason the object exists.
  */
 export function cancelOperation(ref: string): Promise<Operation> {

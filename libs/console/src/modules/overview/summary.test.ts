@@ -459,7 +459,7 @@ describe("deriveClusterActionables", () => {
     expect(got).toEqual([])
   })
 
-  it("says nothing about a deployment scaled to zero", () => {
+  it("says nothing about a deployment intentionally scaled to zero", () => {
     const got = deriveClusterActionables({
       cluster: cluster(),
       deployments: [

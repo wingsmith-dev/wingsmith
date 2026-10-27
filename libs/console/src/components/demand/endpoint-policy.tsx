@@ -56,8 +56,8 @@ function RuleTerms({ rule }: { rule: PolicyRule }) {
  * Where a rule applies, kept to one small tag per condition set: the route it
  * names, the transport it is limited to, the field whose presence triggers it.
  *
- * All three absent is not a gap but the common case, an unscoped rule applies
- * to every route and both transport modes, and it says so instead of
+ * All three absent is not a gap but the common case (an unscoped rule applies
+ * to every route and both transport modes), and it says so instead of
  * leaving a blank an operator reads as missing data.
  */
 function RuleScope({ rule }: { rule: PolicyRule }) {
@@ -90,7 +90,7 @@ function RuleScope({ rule }: { rule: PolicyRule }) {
 }
 
 /**
- * The request terms this endpoint sells, read-only: one row per rule;
+ * The request terms this endpoint sells, read-only. One row per rule, with
  * the parameter it is about, what it says, and where it applies.
  *
  * Every rule whose scope matches applies, so the list has no precedence and

@@ -15,8 +15,8 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * the whole console spends on charts today.
  *
  * The palette is not chosen here by eye. Series colors come from the caller as
- * CSS custom properties so the light and dark steps swap with the theme rather
- * than one being a filter of the other, and both sets were validated for
+ * CSS custom properties so the light and dark steps swap with the theme instead
+ * of one being a filter of the other, and both sets were validated for
  * color-vision separation against this console's own surfaces before they were
  * written down; see `SERIES` in `serving-charts.tsx`.
  */
@@ -30,9 +30,9 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * where a reader is least able to check it.
  *
  * The Fritsch–Carlson condition clamps each tangent so the curve cannot reverse
- * direction inside a rising or falling run. It bounds, not eliminates:
- * around a local peak the curve can still sit a hair above the point itself,
- * 0.007% on a 0, 5, 40, 42, 41 series, which is smoothing, not an invented
+ * direction inside a rising or falling run. It bounds overshoot but does not
+ * eliminate it: around a local peak the curve can still sit a hair above the
+ * point itself (0.007% on a 0, 5, 40, 42, 41 series), which is smoothing, not an invented
  * excursion. A flat run stays flat, because a zero slope zeroes both tangents.
  */
 function splinePath(points: { x: number; y: number }[]): string {
@@ -99,7 +99,7 @@ const PADDING = { top: 10, right: 12, bottom: 20, left: 52 }
 /**
  * A tick label, compacted so it fits the gutter.
  *
- * `formatMetric` spells a rate in full (`1500.0/s`) which is right in a tile
+ * `formatMetric` spells a rate in full (`1500.0/s`), which is right in a tile
  * where there is one number and room for it, and wrong on an axis, where eight
  * characters overflow the gutter and get cut off by the viewport. A clipped tick
  * is worse than a coarse one: `1500.0/s` cropped to `500.0/s` is not an ugly

@@ -23,9 +23,9 @@ export function EmptyNote({ children }: React.PropsWithChildren) {
 /**
  * A panel for an answer the plane cannot give yet.
  *
- * Kept, not deleted, because the question is real and the shape of the
- * page is the argument for building it, and drawn as an empty frame with the
- * reason in it, not as a number, because a designed figure sitting where
+ * Kept instead of deleted, because the question is real and the shape of the
+ * page is the argument for building it. Drawn as an empty frame with the
+ * reason in it instead of as a number, because a designed figure sitting where
  * a measured one goes is indistinguishable from a measurement once somebody
  * screenshots it.
  */
@@ -48,7 +48,7 @@ export function Unbacked({ title, note }: { title: string; note: string }) {
 }
 
 /**
- * A `ListState` wrapper for rows already in hand, a derived table, so they render through the same `DataTable`
+ * A `ListState` wrapper for rows already in hand (a derived table), so they render through the same `DataTable`
  * as the paged, live queries.
  */
 export function staticList<T>(items: T[]) {

@@ -55,7 +55,7 @@ function Line({
  *
  * The whole argument for moving thresholds out of code was that a number could
  * then differ between one subject and the fleet, and be shown beside the alert
- * it produced, neither of which is worth anything if the screen cannot say
+ * it produced. Neither is worth anything if the screen cannot say
  * *which* of the two rows is the one that fired. Inherited and overridden are
  * therefore stated, not implied by a row's position in a table.
  */

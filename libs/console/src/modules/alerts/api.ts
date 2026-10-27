@@ -36,8 +36,8 @@ export function fetchAlerts(
 }
 
 /**
- * Silences an alert without claiming it is over. A `POST` to a sub-path rather
- * than a `PATCH` of `state`: it is a transition with preconditions, not a field
+ * Silences an alert without claiming it is over. A `POST` to a sub-path, not a
+ * `PATCH` of `state`: it is a transition with preconditions, not a field
  * assignment, and nothing about the derived alert itself is editable.
  */
 export function acknowledgeAlert(

@@ -74,7 +74,7 @@ export function useCreateCluster() {
 
 /**
  * Carries the cluster's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane, not silently overwriting it.
+ * stale read is rejected by the plane instead of silently overwriting it.
  */
 export function useUpdateCluster() {
   const client = useQueryClient()
@@ -119,8 +119,8 @@ export function useClusterSetup(ref: string) {
 
 /**
  * Mints or rotates the cluster's enrollment token. A mutation, not a query: it
- * writes, and its result, the plaintext token folded into the values, is shown
- * once and not cached. On success the setup query is invalidated so
+ * writes, and its result (the plaintext token folded into the values) is shown
+ * once and intentionally not cached. On success the setup query is invalidated so
  * a later read reflects `enrolment_token_set`.
  */
 export function useIssueClusterEnrollmentToken() {

@@ -12,7 +12,7 @@ import { IconMinus, IconPlus } from "@tabler/icons-react"
 /**
  * Declaring the split, before anything is running.
  *
- * Nothing here is destructive, there is no workload yet, so none of the
+ * Nothing here is destructive (there is no workload yet), so none of the
  * locking the detail page needs applies. What does apply is the arithmetic: a
  * ratio decides how many devices one indivisible unit costs, and a unit that
  * does not divide the hardware strands whole nodes without anything failing.
@@ -38,7 +38,7 @@ export function TopologyChoice({
   /** Null is aggregated. There is no third state. */
   roles: WorkloadRole[] | null
   onChange: (roles: WorkloadRole[] | null) => void
-  /** Devices per WORKER (8 at TP8) never the group's total. */
+  /** Devices per WORKER (8 at TP8), never the group's total. */
   deviceCount: number
   deviceClass: string
   /** Free devices of this class, for the stranding arithmetic. */

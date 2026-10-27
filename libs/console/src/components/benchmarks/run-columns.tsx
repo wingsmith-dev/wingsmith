@@ -22,8 +22,8 @@ import { Link } from "@tanstack/react-router"
  * A guess by construction: the plane stores whatever shape the tool emitted and
  * promises nothing about it. The key comes from the kind instead of being
  * hardcoded to TTFT, because a conformance run has no time-to-first-token and a
- * column headed `TTFT p50` full of dashes reads as a broken measurement rather
- * than as a question that was never asked.
+ * column headed `TTFT p50` full of dashes reads as a broken measurement instead
+ * of as a question that was never asked.
  */
 function headline(run: BenchmarkRun): string {
   const meta = runKindMeta(run.harness)
@@ -75,7 +75,7 @@ function targetCell(run: BenchmarkRun) {
 /**
  * The fleet-wide run list: type, target, status.
  *
- * Narrower than `benchmarkColumns`. That one is embedded under an
+ * Intentionally narrower than `benchmarkColumns`. That one is embedded under an
  * object that already supplies the context: you are on a workload, so every
  * row's level and target are known and the interesting columns are the numbers.
  * Here nothing is known, so the three identifying facts come first and exactly

@@ -22,7 +22,7 @@ import type { BenchmarkVerdict } from "@/modules/benchmarks/types"
  * An outcome and the standard it was derived under, and never one without the
  * other.
  *
- * The verdict is not stored anywhere, it is computed at read against a pinned
+ * The verdict is not stored anywhere. It is computed at read against a pinned
  * criteria version, so a bare "fail" is a claim nobody can check or reproduce.
  * The version is a required prop instead of an optional one for exactly that
  * reason: there is no call site that is allowed to leave it out.

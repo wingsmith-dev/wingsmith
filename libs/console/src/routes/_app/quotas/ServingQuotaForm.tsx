@@ -38,7 +38,7 @@ import { toast } from "sonner"
  *
  * The endpoint is offered only on create: it is the row's whole scope, and
  * moving it would withdraw a commitment from one contract and grant it to
- * another, not edit this one.
+ * another instead of editing this one.
  */
 export function ServingQuotaForm({
   open,

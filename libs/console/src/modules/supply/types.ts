@@ -162,7 +162,7 @@ export interface Device {
 /**
  * `DeviceClassInventorySchema`: what the fleet holds of one class, counted on read.
  *
- * `allocatable` is free, claimable and unclaimed, and `allocated` is held by
+ * `allocatable` is free (claimable and unclaimed), and `allocated` is held by
  * a live allocation. Neither is the complement of the other: a device that is
  * unschedulable and unheld is in neither count, and a held device can be
  * unhealthy. Never derive one from the other.

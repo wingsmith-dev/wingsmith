@@ -60,7 +60,7 @@ export const useAuthStore = create<AuthState>()(
       kind: "admin",
       tenant: null,
       /**
-       * Not routed through `httpTransport`: that attaches the bearer
+       * Intentionally not routed through `httpTransport`: that attaches the bearer
        * token this call exists to obtain, and its fixtures mode would answer a
        * login the plane never saw.
        */

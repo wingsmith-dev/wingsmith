@@ -65,8 +65,8 @@ export function declaredRatio(workload: Workload): string | null {
  * The devices one group costs.
  *
  * Reported by the plane as `group_devices` when it sends it; otherwise summed
- * here from `Σ weight × device_count`. `device_count` is devices per WORKER, 8
- * at TP8, and must stay that, because it is a digest field and the group's 24
+ * here from `Σ weight × device_count`. `device_count` is devices per WORKER (8
+ * at TP8) and must stay that, because it is a digest field and the group's 24
  * is not. This function is the only place the two are allowed to meet.
  */
 export function groupDevices(workload: Workload): number | null {
@@ -120,8 +120,8 @@ export function roleReadiness(
  * A deployment is ready only when EVERY role is.
  *
  * The scalar rollup cannot answer this. Under a rendered disaggregated graph the
- * old single count compares decode pods to a group count, two numbers that are
- * not comparable, and it can read `ready` on a deployment with no prefill
+ * old single count compares decode pods to a group count (two numbers that are
+ * not comparable), and it can read `ready` on a deployment with no prefill
  * worker at all. Where roles are reported they are the answer and the scalar is
  * not consulted.
  */
@@ -130,7 +130,7 @@ export function rolesReady(roles: RoleReadiness[]): boolean {
 }
 
 export interface AchievedRatio {
-  /** `1 prefill : 1.5 decode`; the quotient, at the same scale as declared. */
+  /** `1 prefill : 1.5 decode`: the quotient, at the same scale as declared. */
   label: string
   /** The observed counts it was derived from, prefill first. */
   counts: DeploymentRoleObserved[]
@@ -154,7 +154,7 @@ export interface AchievedRatio {
  * single writer of observed state: a stored achieved ratio would be a second
  * path to the same fact and the two would drift.
  *
- * `ready` and not `desired` is the numerator. `desired` is the
+ * `ready` and not `desired` is the numerator, by design. `desired` is the
  * plane's own number reflected back and its quotient is the declared ratio by
  * construction, which is a reading that can never disagree and therefore never
  * says anything.
@@ -363,7 +363,7 @@ export interface RolloutCost {
  *
  * Every worker is counted, not just the edited role's. Dynamo hashes one worker
  * spec across the whole graph, so a change to either role renames both roles'
- * objects; that was observed directly: adding one environment variable to the
+ * objects. That was observed directly: adding one environment variable to the
  * prefill component produced a new decode Deployment under a new name and a
  * fresh UID.
  */

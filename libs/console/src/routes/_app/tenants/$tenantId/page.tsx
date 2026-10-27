@@ -154,7 +154,7 @@ function Identity({ tenant }: { tenant: Tenant }) {
  * own page: a support conversation starts with what the customer can see, and
  * an operator who has to guess at that is answering a different question.
  *
- * The route parameter is a slug or an id, either resolves, and the serving
+ * The route parameter is a slug or an id (either resolves), and the serving
  * read is given the tenant's uid off the loaded record instead of the parameter,
  * so the cache is keyed by identity and two links to the same tenant do not read
  * it twice.

@@ -118,7 +118,7 @@ function deploymentItems(deployments: Deployment[]): AttentionItem[] {
 
 /**
  * Everything the fleet cannot place, as one row. Unschedulable replicas are a
- * single condition with one cause, there is no capacity, and one row per
+ * single condition with one cause (there is no capacity), and one row per
  * deployment would bury the health rows under it.
  */
 function placementItem(deployments: Deployment[]): AttentionItem[] {
@@ -257,8 +257,8 @@ function discoveredItems(discovered: DiscoveredWorkload[]): AttentionItem[] {
 /**
  * Everything on the fleet a human should decide about, and nothing else.
  *
- * The fleet counterpart of `deriveClusterActionables`, and not the
- * same list: this one is ordered by how loud a row is, not grouped by
+ * The fleet counterpart of `deriveClusterActionables`, and intentionally not the
+ * same list: this one is ordered by how loud a row is instead of grouped by
  * cluster, and it carries the discovered half that a cluster page shows in its
  * own panel. Each source is optional so one failed query costs its own rows
  * instead of the whole inbox.

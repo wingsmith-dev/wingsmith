@@ -7,7 +7,7 @@ const CUSTOM = "__custom__"
 /**
  * A pick from the values we have run, with a way to type one we have not.
  *
- * Parsers and grammar backends are free strings on the wire, an
+ * Parsers and grammar backends are free strings on the wire by design: an
  * engine build knows names that postdate this console, so a plain select would
  * make a serving block unwritable instead of making it correct. The list is the common
  * case and the escape hatch is one click away.

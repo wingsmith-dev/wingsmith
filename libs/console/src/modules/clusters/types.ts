@@ -39,9 +39,9 @@ export interface ClusterSync {
    */
   read_only: boolean
   /**
-   * A leader-worker backend, Grove or LeaderWorkerSet, is installed, so this
+   * A leader-worker backend (Grove or LeaderWorkerSet) is installed, so this
    * cluster can run a replica whose devices do not fit on one machine. Observed
-   * from the API groups the cluster serves, not configured, so installing
+   * from the API groups the cluster serves instead of configured, so installing
    * a backend is enough to make it true and nothing has to be redeclared.
    */
   multinode: boolean
@@ -49,8 +49,8 @@ export interface ClusterSync {
 
 /**
  * Where the data plane reaches this cluster's serving runtime. Declared, and
- * not part of the cluster patch body: the plane keeps it as its own
- * sub-resource because nothing in the control plane ever dials it, only the
+ * intentionally not part of the cluster patch body: the plane keeps it as its own
+ * sub-resource because nothing in the control plane ever dials it. Only the
  * gateway does.
  */
 export interface ClusterServing {

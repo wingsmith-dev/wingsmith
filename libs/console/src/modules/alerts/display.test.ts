@@ -290,7 +290,7 @@ describe("inherited rule defaults", () => {
     })
   })
 
-  // A zero `for_seconds` is a real commitment, fire on the first tick, and
+  // A zero `for_seconds` is a real commitment (fire on the first tick) and
   // must not be mistaken for an absent one.
   it("keeps a declared zero instead of treating it as unset", () => {
     expect(effectiveForSeconds(threshold({ for_seconds: 0 }), rule())).toEqual({

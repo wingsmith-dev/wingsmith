@@ -100,7 +100,7 @@ function ServingSection({ cluster }: { cluster: Cluster }) {
 /**
  * Identity, declared and observed in one card. Stage is the derived headline the
  * rest of the page is arranged around; phase and reachability sit apart from it
- *, because a cluster can be declared active and be unreachable at
+ * by design, because a cluster can be declared active and be unreachable at
  * once.
  */
 export function ClusterIdentity({ cluster }: { cluster: Cluster }) {

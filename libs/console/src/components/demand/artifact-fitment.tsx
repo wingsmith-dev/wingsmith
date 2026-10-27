@@ -63,7 +63,7 @@ const CONCURRENCIES = [1, 8, 32, 128, 256]
  * the only accurate starting point: the artifact already knows its own precision, and
  * offering fp16 as the default would silently oversize a repo that ships mxfp4.
  *
- * fp16 is absent. It is a dtype, so it is the one entry here that could not
+ * fp16 is left out by design. It is a dtype, so it is the one entry here that could not
  * also be declared as a quantization, and this list feeds both questions: how big is it
  * at this precision, and what should the serving block say. Nothing is lost by dropping
  * it: unquantized weights are already sized at fp16 under the empty value, which is the
@@ -235,7 +235,7 @@ function Terms({
  * The device classes an artifact could be served on, and the entry point to
  * deploying it.
  *
- * Not a form. The plane derives every number here from the weights, and
+ * Intentionally not a form. The plane derives every number here from the weights, and
  * the terms along the top are the only things a person has to state, so the panel
  * reads as a proposal to poke at instead of a set of questions to answer. Picking a
  * row is picking a footprint, which is which card and how many, and nothing else.
@@ -290,9 +290,9 @@ export function ArtifactFitmentPanel({
   /**
    * The window to size against, when the caller owns it.
    *
-   * Passing both of these makes the Context select a view of the caller's state rather
-   * than a question of its own, and that is the whole of the fix: the deploy flow asks
-   * for a window in two places, here and in the Params step, and they were two
+   * Passing both of these makes the Context select a view of the caller's state instead
+   * of a question of its own, and that is the whole of the fix: the deploy flow asks
+   * for a window in two places (here and in the Params step) and they were two
    * `useState`s that met nowhere. One of them could be changed while the other went on
    * describing a different model, and neither said which was going to be submitted.
    *
@@ -545,8 +545,8 @@ export function ArtifactFitmentPanel({
  *
  * The row's own numbers are the fewest cards that carry the full window, which is one
  * answer to a question that has several. A node of H200 will hold a 70B on two cards
- * and hold it better on eight, and a 120B at 32k on four, not at 131k on eight:
- * those are trades between context, throughput and what is left of the node for
+ * and hold it better on eight, and a 120B at 32k on four or at 131k on eight.
+ * Those are trades between context, throughput and what is left of the node for
  * somebody else, and none of them is the plane's to make. Offering only the cheapest
  * one is what made a whole node look like the only thing on the menu.
  *
@@ -669,7 +669,7 @@ function FitRow({
     )
   /**
    * The whole row is the target when selecting. A button in the last cell is right for
-   * an action, it is a thing you do, but wrong for a choice among five, where the
+   * an action (it is a thing you do) but wrong for a choice among five, where the
    * clickable area should be the thing you are comparing.
    */
   /**
@@ -685,8 +685,8 @@ function FitRow({
    * `possible` is where the line actually is, and the plane draws it in the same place:
    * the weights sitting on the cards and the heads dividing across the tensor group are
    * arithmetic, the plane's `check_capacity` refuses over exactly those, and offering a
-   * row it will refuse is a dead end instead of a choice. Everything past that line,
-   * the window, the batch, the KV figure, is an estimate against a flat envelope, and
+   * row it will refuse is a dead end instead of a choice. Everything past that line
+   * (the window, the batch, the KV figure) is an estimate against a flat envelope, and
    * the row says so instead of disabling itself: dimmed, with its reason under it, and
    * a warning carried onto the params step.
    */

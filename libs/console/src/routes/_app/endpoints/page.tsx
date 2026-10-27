@@ -89,7 +89,7 @@ function TargetBar({ enabled, total }: { enabled: number; total: number }) {
 
 /**
  * What an endpoint's primary target resolves to across the object graph the
- * endpoint does not carry, deployment → workload → artifact, plus the regions its
+ * endpoint does not carry (deployment → workload → artifact), plus the regions its
  * targets land in, read off the workload's per-cluster deployments.
  */
 interface ResolvedEndpoint {
@@ -312,8 +312,8 @@ function columns(
 }
 
 /**
- * An endpoint has no cluster at any depth. It spans clusters by construction,
- * that is what the weighted target set is for, so there is nothing here to
+ * An endpoint has no cluster at any depth. It spans clusters by construction
+ * (that is what the weighted target set is for), so there is nothing here to
  * scope by cluster and no column pretending otherwise.
  */
 export function EndpointsPage() {
@@ -354,7 +354,7 @@ export function EndpointsPage() {
 
   /**
    * Each endpoint's own row out of the two breakdowns, keyed the way the
-   * gateway labels them, by endpoint id. A name the store has never seen is
+   * gateway labels them: by endpoint id. A name the store has never seen is
    * absent from the breakdown and reads as unmeasured, which is what it is.
    */
   const read = useMemo(() => {

@@ -352,8 +352,8 @@ export function GpuHeatmap({ curve }: { curve: UtilizationWeek }) {
                   key={hour}
                   title={
                     pct === null
-                      ? `${label} ${String(hour).padStart(2, "0")}:00, not reported`
-                      : `${label} ${String(hour).padStart(2, "0")}:00, ${Math.round(pct)}% GPU util`
+                      ? `${label} ${String(hour).padStart(2, "0")}:00 · not reported`
+                      : `${label} ${String(hour).padStart(2, "0")}:00 · ${Math.round(pct)}% GPU util`
                   }
                   className={cn(
                     "aspect-square rounded-[2px]",

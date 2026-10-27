@@ -1,8 +1,8 @@
 /**
  * `GET /v1/system/config`: the plane's effective, non-secret configuration.
  *
- * The plane names every exposed field by hand, so this is an allowlist rather
- * than a dump of its environment. Nothing here is a credential: a token or a
+ * The plane names every exposed field by hand, so this is an allowlist and not
+ * a dump of its environment. Nothing here is a credential: a token or a
  * password appears only as a `*_set` boolean, and `DATABASE_URL` arrives in
  * parts with the userinfo already gone.
  */

@@ -18,7 +18,7 @@ import { useMemo, useState } from "react"
  * The acceptance ledger: one row per behavioral claim, and whether it matches.
  *
  * This is a different table from every other one in the console and the
- * difference is deliberate. Density is the feature, fifty rows have to be
+ * difference is deliberate. Density is the feature: fifty rows have to be
  * legible without scrolling past the failure, so a row is one line, the
  * verdict is a color in a fixed column, and nothing is padded for air.
  *

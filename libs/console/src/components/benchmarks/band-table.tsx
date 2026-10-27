@@ -16,7 +16,7 @@ import { Link } from "@tanstack/react-router"
 /**
  * One request's runs, read back through the input-length band each landed in.
  *
- * There is no total row. The standard sets a separate
+ * There is no total row, and that is intentional. The standard sets a separate
  * time-to-first-token target for each band, so a single aggregate over a whole
  * sweep evidences none of them: a request that averaged four seconds may have
  * been comfortably inside the target at 2K tokens and far outside it at 100K,

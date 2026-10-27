@@ -87,7 +87,7 @@ import { WorkbenchView } from "./Workbench"
  * One workload: what was asked for, and every cluster it landed on.
  *
  * The page a person lands on when they want to know how something is running.
- * There is no cluster field in its declared spec: a workload has
+ * There is intentionally no cluster field in its declared spec: a workload has
  * as many clusters as placement found, so the answer is the table under it, and
  * the deployment page is the drill-in for one of them.
  *
@@ -116,8 +116,8 @@ export function WorkloadDetailPage() {
   )
   const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
   /**
-   * The most recent ramp read as a curve. Recovered from the runs, not
-   * listed, the plane has no request collection, and read once here so the
+   * The most recent ramp read as a curve. Recovered from the runs instead of
+   * listed (the plane has no request collection), and read once here so the
    * Workbench tiles and the curve panel share one query.
    */
   const curve = useWorkbenchCurve(benchmarks)

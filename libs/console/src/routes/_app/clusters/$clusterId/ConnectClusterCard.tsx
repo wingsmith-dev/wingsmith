@@ -26,7 +26,7 @@ const LOGIN_METHODS: { key: LoginMethod; label: string }[] = [
  * This panel walks that gap: a checklist driven by observed state, and the
  * per-cluster `helm` install that makes it hangar-ready.
  *
- * It is shown only while onboarding is unfinished. Once the agent
+ * It is intentionally shown only while onboarding is unfinished. Once the agent
  * is connected and a serving address is set, the sync card and the identity
  * card's serving section carry the live state and this panel steps aside.
  */
@@ -54,7 +54,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
     {
       label: "Declared in the plane",
       done: true,
-      note: "The registry row exists. Frames from an unknown cluster are rejected, so this comes first, and it already has.",
+      note: "The registry row exists. Frames from an unknown cluster are rejected, so this comes first. It already has.",
     },
     {
       label: "Operator connected",

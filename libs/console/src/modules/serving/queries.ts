@@ -13,8 +13,8 @@ import {
 const REFETCH_MS = POLL.metrics
 
 /**
- * `tenant` is undefined on the tenant's own page, the plane scopes that read by
- * the session, and is the tenant being inspected when an admin opens one, where
+ * `tenant` is undefined on the tenant's own page (the plane scopes that read by
+ * the session), and is the tenant being inspected when an admin opens one, where
  * it selects the `/tenants/{ref}/serving` path instead of a parameter. It is
  * in the key either way, so an admin walking two tenants does not read the first
  * one's models out of the cache under the second one's name.

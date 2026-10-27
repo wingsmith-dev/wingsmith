@@ -144,7 +144,7 @@ export const DOT = {
 
 /**
  * A small grid-backed line chart taking up to two series on a shared scale, so
- * that two measurements read against one axis. Not the
+ * that two measurements read against one axis. Intentionally not the
  * `Sparkline`, which auto-scales each series on its own and would misalign a
  * pair. Pure SVG, no charting dependency.
  */

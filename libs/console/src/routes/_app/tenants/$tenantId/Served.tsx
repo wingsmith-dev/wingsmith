@@ -13,9 +13,9 @@ import { useServingOverview } from "@/modules/serving/queries"
 
 /**
  * The tenant's own dashboard, rendered inside the console for whoever operates
- * it. Same read and the same card, taken from `/tenants/{ref}/serving`, a
- * surface only an admin can reach, so what an operator sees on this page is
- * what the customer is looking at, instead of an admin-side approximation of
+ * it. Same read and the same card, taken from `/tenants/{ref}/serving` (a
+ * surface only an admin can reach), so what an operator sees on this page is
+ * what the customer is looking at instead of an admin-side approximation of
  * it that drifts the first time either one is changed.
  */
 export function TenantServed({ tenant }: { tenant: string }) {

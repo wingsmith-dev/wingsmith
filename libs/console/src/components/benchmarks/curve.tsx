@@ -45,8 +45,8 @@ import { useMemo, useState } from "react"
  *
  * Throughput and latency are one trade, so both are drawn against the same
  * steps and share a hover: moving over either chart moves the readout on both,
- * which is what keeps the price of the next unit of load visible, not
- * inferred. They are separate cards because stacking two axes inside one frame
+ * which is what keeps the price of the next unit of load visible instead of
+ * leaving it to be inferred. They are separate cards because stacking two axes inside one frame
  * made each of them small and neither of them legible, and the trade is read
  * between the cards, not inside a single crowded one.
  *

@@ -89,7 +89,7 @@ export function fetchDevice(ref: string): Promise<Device> {
 }
 
 /**
- * The catalog is not paginated, it is bounded by the hardware that exists,
+ * The catalog is not paginated (it is bounded by the hardware that exists),
  * so this returns the array instead of a cursor page.
  */
 export async function fetchDeviceClasses(

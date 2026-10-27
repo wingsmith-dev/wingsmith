@@ -7,8 +7,8 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * A trend, drawn with SVG instead of a charting library.
  *
  * The console has no chart dependency and this does not justify adding one: a
- * sparkline is a path and a fill, and the panels it serves want shape, is this
- * flat, climbing, or spiky, instead of a readable axis. A real chart with
+ * sparkline is a path and a fill, and the panels it serves want shape (is this
+ * flat, climbing, or spiky?) instead of a readable axis. A real chart with
  * legends and tooltips is a different component and can bring its own library
  * when something needs it.
  */

@@ -36,8 +36,8 @@ const ENFORCEMENT: Record<
 /**
  * What is actually done with a declared field, spelled on the field itself.
  *
- * The whole reason `serving` and `capabilities` are two blocks, and the reason
- * half of an endpoint's surface is not a term, is that one of them is obeyed
+ * The whole reason `serving` and `capabilities` are two blocks (and the reason
+ * half of an endpoint's surface is not a term) is that one of them is obeyed
  * and the other is only said. Rendering them identically is what turns a
  * disclosure into a promise somebody makes on our behalf.
  */

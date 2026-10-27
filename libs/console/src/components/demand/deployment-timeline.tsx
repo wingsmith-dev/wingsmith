@@ -13,7 +13,7 @@ import type { PlaneEvent } from "@/modules/machinery/types"
  * it has landed, to one that came up instantly: the difference only exists in
  * the log.
  *
- * Two writers, one list. `deployment.created` and
+ * Two writers, one list, and that is intentional. `deployment.created` and
  * `deployment.scaled` are things a person did; `deployment.pending` and
  * `deployment.placed` are things a cluster concluded; `deployment.dispatched`
  * is the plane saying it delivered. Splitting them into separate panels would

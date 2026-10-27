@@ -36,7 +36,7 @@ export const BENCHMARK_PHASES = [
 /**
  * A statistic block as harnesses tend to emit one, if that is what this is.
  *
- * A guess and named like one. The plane stores the harness's shape
+ * Intentionally a guess, and named like one. The plane stores the harness's shape
  * verbatim, so this console recognizes the common `{unit, avg, p50, …}` object
  * to render it as a row of percentiles and falls back to raw JSON when it does
  * not, which is the right behavior for a field nothing promised the shape of.

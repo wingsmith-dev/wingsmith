@@ -42,8 +42,8 @@ function pick<T>(next: () => number, options: readonly T[]): T {
 /**
  * Three-valued, and the third value is the point.
  *
- * A probe that could not be observed, the endpoint refused the parameter, the
- * suite skipped it, is not a pass. Folding it into either bucket makes the
+ * A probe that could not be observed (the endpoint refused the parameter, the
+ * suite skipped it) is not a pass. Folding it into either bucket makes the
  * tally a number nobody can defend in front of the person whose acceptance
  * document it is.
  */

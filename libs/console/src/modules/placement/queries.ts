@@ -10,8 +10,8 @@ import {
 
 /**
  * A decision is only true for as long as the fleet holds still, so it is cached
- * briefly and never held across a refresh of the board. Fetched on demand rather
- * than for every brick on mount: each call costs the plane a pass over quota,
+ * briefly and never held across a refresh of the board. Fetched on demand instead
+ * of for every brick on mount: each call costs the plane a pass over quota,
  * policies and per-cluster capacity, and a tray of thirty bricks would ask
  * thirty times to fill a column nobody has looked at yet.
  */

@@ -10,9 +10,9 @@ import type { StatusTone } from "@/components/layout/status-dot"
  * whether a real client can drive it. Two harnesses answering the same question
  * belong under one filter; one harness never spans two.
  *
- * The mapping lives here, not on the plane only because the plane's
- * harness table has no `kind` field yet. It should get one, the console is
- * currently deciding what a harness means, which is the plane's call, and this
+ * The mapping lives here instead of on the plane only because the plane's
+ * harness table has no `kind` field yet. It should get one (the console is
+ * currently deciding what a harness means, which is the plane's call), and this
  * table becomes a fallback for a harness registered before that field existed.
  */
 export type RunKind =

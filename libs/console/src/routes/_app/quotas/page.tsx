@@ -261,7 +261,7 @@ function HardwareQuotas({
 /**
  * Two quotas that share a word and nothing else. Hardware quota is devices,
  * settled once at admission by placement; serving quota is traffic, settled on
- * every request by the gateway. They are kept on separate tabs, not in
+ * every request by the gateway. They are kept on separate tabs instead of in
  * one table, because a single "over quota" column across both would say two
  * different things in the same place.
  */

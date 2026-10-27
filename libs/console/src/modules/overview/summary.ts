@@ -13,7 +13,7 @@ export interface DeviceSummary {
   allocatable: number
   byHealth: { health: string; count: number }[]
   byClass: { deviceClass: string; count: number; healthy: number }[]
-  /** Every device that is not plainly healthy, listed, not counted. */
+  /** Every device that is not plainly healthy, listed instead of counted. */
   impaired: Device[]
 }
 

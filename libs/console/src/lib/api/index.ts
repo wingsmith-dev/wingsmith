@@ -48,7 +48,7 @@ export const api = {
    * body and write nothing, so they must survive read-only mode, which keys off
    * the method, because for every other route the method is the truth.
    *
-   * Its own name instead of a flag on `post`: the guard exists to
+   * Intentionally its own name instead of a flag on `post`: the guard exists to
    * make writing impossible from this browser, and the only safe way to punch
    * through it is one where every caller has to say out loud that it is reading.
    */

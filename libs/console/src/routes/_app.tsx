@@ -21,8 +21,8 @@ function AppErrorComponent({ error }: { error: unknown }) {
 }
 
 /**
- * The operator console. A tenant session reaches nothing under here, the plane
- * refuses it on every route this shell reads, so it is sent to its own view
+ * The operator console. A tenant session reaches nothing under here (the plane
+ * refuses it on every route this shell reads), so it is sent to its own view
  * instead, which is what makes the boundary a boundary instead of a screen full
  * of failed panels.
  */

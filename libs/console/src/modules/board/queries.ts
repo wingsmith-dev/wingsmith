@@ -35,8 +35,8 @@ export interface BoardScope {
  * Every collection here is read in full instead of a page at a time, because
  * every number on the screen is an aggregate: "how many free devices in one
  * fabric" answered over the first page is not a smaller answer, it is a wrong
- * one. That is affordable because all of it is state, membership, health,
- * allocation, and none of it is telemetry.
+ * one. That is affordable because all of it is state (membership, health,
+ * allocation) and none of it is telemetry.
  */
 export function useFleetBoard(scope: BoardScope = {}) {
   const clusters = useAllPages(["clusters", "board"], (cursor) =>
@@ -66,8 +66,8 @@ export function useFleetBoard(scope: BoardScope = {}) {
   )
 
   /**
-   * The declared half, and the only thing on this page the plane derives rather
-   * than the cluster reports.
+   * The declared half, and the only thing on this page that the plane derives
+   * instead of the cluster reporting it.
    *
    * It is scoped exactly the way the devices are, so a board filtered to one
    * cluster or one device class does not carry a reserved total counted over
@@ -121,7 +121,7 @@ export function useFleetBoard(scope: BoardScope = {}) {
 
   /**
    * Reservations are reported but never waited for. Everything else here is what
-   * the board *is*, no devices means no board, while a missing reserved total
+   * the board *is* (no devices means no board), while a missing reserved total
    * costs one row of numerals. Holding the whole page behind it would make the
    * declared half of the answer able to hide the observed half, which is
    * backwards: the observed half is the one an operator can act on.

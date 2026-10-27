@@ -1,5 +1,5 @@
 /**
- * `ProjectTenantSchema`: embedded, not linked: a project always carries
+ * `ProjectTenantSchema`, embedded instead of linked: a project always carries
  * the tenant it belongs to, even though `/v1/tenants` now exists to make one.
  */
 /**
@@ -156,7 +156,7 @@ export type LimitScope = "per_replica" | "divided"
 export type OnExceed = "reject" | "queue"
 
 /**
- * `ServingQuotaStandardSchema`, whether a declared commitment clears the
+ * `ServingQuotaStandardSchema`: whether a declared commitment clears the
  * acceptance standard's floors. Declared against declared: it compares the
  * numbers somebody promised with the numbers the standard asks to be promised,
  * and says nothing about what the endpoint delivered. An uncommitted field is a
@@ -175,7 +175,7 @@ export interface ServingQuotaStandard {
  * request, in front of the clusters. Different enforcer, different moment, and
  * no field in common.
  *
- * Every field is declared, and there is no observed sibling of
+ * Every field is declared, and there is intentionally no observed sibling of
  * `Quota.usage`: a serving quota is counted per request in the gateway, and that
  * measurement never crosses into the control plane.
  *

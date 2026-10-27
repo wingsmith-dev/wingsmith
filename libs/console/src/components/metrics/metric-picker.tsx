@@ -16,8 +16,8 @@ import { IconAdjustments } from "@tabler/icons-react"
  *
  * Every registered name in the family is offered, grouped and with its unit, so
  * the two throughput measurements are never a single row somebody reads as one
- * setting. A name the store returned no series for is offered disabled rather
- * than hidden: "we do not measure that here" and "there is no such metric" are
+ * setting. A name the store returned no series for is offered disabled instead
+ * of hidden: "we do not measure that here" and "there is no such metric" are
  * different answers.
  */
 export function MetricPicker({

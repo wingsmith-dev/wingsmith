@@ -39,9 +39,9 @@ export function BenchmarkDetailPage() {
   const mock = isMockId(runId)
 
   /*
-    A mock id resolves locally and asks the plane nothing. The alternative, a
-    fetch that 404s and an error screen behind the row somebody just clicked,
-    makes the switch look broken, not deliberate.
+    A mock id resolves locally and asks the plane nothing. The alternative (a
+    fetch that 404s and an error screen behind the row somebody just clicked)
+    makes the switch look broken instead of deliberate.
   */
   const query = useBenchmark(mock ? "" : runId)
   const run = mock ? mockRun(runId) : query.data
@@ -302,8 +302,8 @@ export function BenchmarkDetailPage() {
 /**
  * The result, rendered as the kind that produced it.
  *
- * Everything above is a fact about a run, its harness, its parameters, what
- * was behind it when it went, and reads identically whatever was asked. This
+ * Everything above is a fact about a run (its harness, its parameters, what
+ * was behind it when it went) and reads identically whatever was asked. This
  * is the half that does not: a percentile block, a claim ledger, a transcript
  * and a score table share no axis, and rendering all four through one generic
  * key-value dump is how a result page becomes something nobody opens.

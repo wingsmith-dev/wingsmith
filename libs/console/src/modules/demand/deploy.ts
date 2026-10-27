@@ -9,7 +9,7 @@
  *
  * Nothing here is authority. The plane sizes the fit and places the workload; this
  * only assembles the request those two answers imply. Where a field cannot be derived
- * accurately it is left off the request entirely, not guessed, so the plane's own
+ * accurately it is left off the request entirely instead of guessed, so the plane's own
  * default applies instead of one invented here.
  */
 
@@ -34,7 +34,7 @@ export const DEFAULT_ENGINE = "vllm"
  * The Dynamo runtime tag a derived block asks for, which is not a version of the engine.
  *
  * The plane resolves `<repository>:<engine_runtime_version>` against
- * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases (`1.4.1`)
+ * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases (`1.4.1`),
  * while vLLM's own versions are `0.x`. The two count in different sequences.
  *
  * Never seeded from the recipe's `engine_version_min`, which is vLLM's number. Doing so
@@ -104,8 +104,8 @@ export function requiresSingleDomain(footprint: ServingFootprint): boolean {
  *
  * Two sources and they are never merged into one number. `defaults` is the plane's
  * own arithmetic over `config.json`: what the weights need. `upstream` is a third
- * party's measurement of a different question, what a configuration did when they
- * served it, and every field of it is a claim with a permalink behind it. The
+ * party's measurement of a different question (what a configuration did when they
+ * served it), and every field of it is a claim with a permalink behind it. The
  * console seeds from both and says which one a value came from, because "vLLM
  * verified this on H200" is the most useful thing on the form and "we divided a
  * memory figure by a card" is a different kind of statement.
@@ -141,8 +141,8 @@ function denied(claim: boolean | null | undefined): boolean {
  * invented here would be indistinguishable from a tested one on the form.
  *
  * A parser is dropped when the artifact's claims deny the capability it parses.
- * The two sources answer different questions, the publisher says what the model
- * is, the corpus says what one engine ran, and where they disagree the claim
+ * The two sources answer different questions (the publisher says what the model
+ * is, the corpus says what one engine ran), and where they disagree the claim
  * wins, because the plane refuses a parser without the capability under it and a
  * request nobody can submit is worse than a flag nobody set.
  */
@@ -229,8 +229,8 @@ export function proposedCapabilities(
  * cleared back to "say nothing", not back to the proposal.
  *
  * Only what is proposed is here. The six numbers of the footprint belong to the
- * topology step, and the fields nothing proposes, `max_batch_tokens`,
- * `kv_cache_fraction`, `resources`, are left at the plane's default and edited on the
+ * topology step, and the fields nothing proposes (`max_batch_tokens`,
+ * `kv_cache_fraction`, `resources`) are left at the plane's default and edited on the
  * workload, because a form that asks about them before anything is running is asking
  * a question with no evidence behind it.
  */
@@ -290,8 +290,8 @@ function perDeviceFloor(override: number | undefined): number {
 /**
  * The serving block that a fitment row plus an artifact imply, and what was overridden.
  *
- * The fit answers the six things it is, which card, how many, how they are split,
- * at what window and precision, and everything else comes from the proposal, from an
+ * The fit answers the six things it is (which card, how many, how they are split,
+ * at what window and precision), and everything else comes from the proposal, from an
  * override, or is left at the plane's default. Left alone matters: `max_batch_tokens`,
  * `kv_cache_fraction`, `resources` and `topology_domain_kind` are never guessed,
  * because neither the console nor the corpus has an accurate value and the plane's
@@ -380,7 +380,7 @@ export function derivedServingRequest(
  * party, and a wrong one survives into whatever argument the configuration is later
  * defended with.
  *
- * `engine_runtime_version` is absent whatever upstream says. The recipe's
+ * `engine_runtime_version` is intentionally absent whatever upstream says. The recipe's
  * `engine_version_min` is vLLM's number and this field is a Dynamo tag, so attributing
  * it to the corpus would be citing a source for a value the corpus never gave.
  */
@@ -431,8 +431,8 @@ export function servingProvenance(
 /**
  * Workloads already running exactly this configuration.
  *
- * Informational and never a fork. The plane's answer is `serving_digest`, one
- * hash over everything that reaches an engine, but a digest is the plane's to
+ * Informational and never a fork. The plane's answer is `serving_digest` (one
+ * hash over everything that reaches an engine), but a digest is the plane's to
  * compute and there is nothing to compute it over until the workload exists, so
  * this compares the fields the flow actually sets and says what it found. It
  * decides nothing: creating a second workload on one configuration is a normal

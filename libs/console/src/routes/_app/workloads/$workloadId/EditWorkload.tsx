@@ -164,15 +164,15 @@ export function EditDetailsDialog({
 /**
  * Everything placement reads before it chooses, and nothing it does not.
  *
- * Priority and preemptibility are here, not under Details because this is
+ * Priority and preemptibility are here instead of under Details because this is
  * the panel that displays them: they are read by the scheduler, not by a person
  * looking for the workload's name. None of it rebuilds a replica: the plane
  * re-runs placement and moves shares between clusters, so the digest is
  * untouched and no pod is replaced for a change made here.
  *
- * Two things are absent. Affinity, anti-affinity and placement
+ * Two things are intentionally absent. Affinity, anti-affinity and placement
  * grouping are not modeled by the plane at all, so neither the panel nor this
- * dialog shows them, and the pin is create-only, because a
+ * dialog shows them. The pin is create-only, because a
  * pinned workload is never checked for capacity and moving that decision after
  * the fact is a different operation from editing a policy.
  */
@@ -460,7 +460,7 @@ export function EditEngineDialog({
             setEngineRuntimeVersion(v)
           }}
           placeholder="latest"
-          hint="A tag of the Dynamo runtime the engine runs in (1.4.1) and never the engine's own version."
+          hint="A tag of the Dynamo runtime the engine runs in (1.4.1), never the engine's own version."
         />
         <TextField
           label="Engine runtime image"
@@ -764,7 +764,7 @@ export function EditServingDialog({
   )
 }
 
-/** What the model is claimed to support. Asserted, not enforced, and still part of the digest. */
+/** What the model is claimed to support. Asserted, not enforced, but still part of the digest. */
 export function EditCapabilitiesDialog({
   workload,
   open,

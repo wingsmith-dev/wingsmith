@@ -28,8 +28,8 @@ const route = getRouteApi("/_app/workbench")
 /**
  * Every run in the fleet, whatever question it was asking.
  *
- * One list instead of one per kind, because the runs are one object, a
- * harness, a target, parameters, a result, and four pages differing only in a
+ * One list instead of one per kind, because the runs are one object (a
+ * harness, a target, parameters, a result), and four pages differing only in a
  * filter would be four places to look for "did it finish". The kind is the tab
  * strip and the first column instead.
  *
@@ -141,7 +141,7 @@ export function WorkbenchPage() {
         >
           {/*
             The kind is a tab and not a filter select because it is the axis
-            somebody arrives on, "is the conformance run green", and because
+            somebody arrives on ("is the conformance run green"), and because
             each one is a different question with a different answer column, not
             a narrowing of one list. The selects beside the table narrow within
             whichever question is open.

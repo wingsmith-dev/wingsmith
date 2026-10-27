@@ -31,7 +31,7 @@ import { toast } from "sonner"
  * catalog has since dropped fails here, visibly, instead of being restored by a path that never
  * learned the rules.
  *
- * Declared and live are kept apart. `serving_digest` on the workload is what the plane
+ * Declared and live are kept apart by design. `serving_digest` on the workload is what the plane
  * asked for; the replica counts beside it are what is actually up, per configuration, summed over
  * the clusters. During a roll they disagree, and that interval is the one this table exists to
  * make readable.
@@ -315,8 +315,8 @@ function ReapplyDialog({
       {differentWeights && (
         <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
           This revision served a different artifact ({revision.artifact}). The
-          weights are not part of a patch and will not change, only the
-          configuration around them.
+          weights are not part of a patch and will not change; only the
+          configuration around them does.
         </p>
       )}
 

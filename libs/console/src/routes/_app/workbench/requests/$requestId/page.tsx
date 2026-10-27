@@ -287,8 +287,8 @@ export function BenchmarkRequestPage() {
 /**
  * The half of a suite that depends on what it was asking.
  *
- * Above this everything is the same for every kind, the ask, the coverage, the
- * verdict, the runs, because those are facts about a request and not about the
+ * Above this everything is the same for every kind (the ask, the coverage, the
+ * verdict, the runs), because those are facts about a request and not about the
  * question it carried. Below it nothing is shared: a load curve, a claim
  * ledger, a transcript and a score table have no columns in common, and a
  * generic "results" panel that tried to hold all four would show none of them

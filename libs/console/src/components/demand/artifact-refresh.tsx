@@ -11,8 +11,8 @@ import type { Artifact } from "@/modules/demand/types"
 /**
  * Re-reads the artifact's source and records what the plane can now derive from it.
  *
- * Not `layout/refresh-button`, and not called Refresh. That one is a read:
- * it drops cache entries and re-runs the queries a page is already showing, and it
+ * Not `layout/refresh-button`, and intentionally not called Refresh. That one is a
+ * read: it drops cache entries and re-runs the queries a page is already showing, and it
  * belongs in `readActions` because it writes nothing. This one is an operation: it
  * reaches HuggingFace and writes the artifact's derived half, so it lives with Edit and
  * Delete and disappears with them in read-only mode. Both on one header with the same

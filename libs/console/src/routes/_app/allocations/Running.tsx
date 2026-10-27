@@ -29,7 +29,7 @@ const AWAY =
  *
  * The board is a picture and the inspector is a margin note; neither has room
  * for the thing an operator actually wants once they have found the color they
- * were looking for, which workload this is, whose it is, when it took these
+ * were looking for: which workload this is, whose it is, when it took these
  * devices, which devices those are, and the way back to the object that asked
  * for them. That is a page's worth of answer for a click on a 24-pixel square,
  * so it opens over the board instead of pushing it around.
@@ -102,7 +102,7 @@ function Body({
 
   /**
    * The deployment is workload × cluster, and neither the allocation nor the
-   * board carries it, so it is found, not followed. A workload the plane
+   * board carries it, so it is looked up instead of followed. A workload the plane
    * has not answered for yet simply has no link, which is better than a link
    * into a page that does not exist.
    */

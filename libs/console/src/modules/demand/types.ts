@@ -111,7 +111,7 @@ export interface ArtifactFit {
   fits: boolean
   /** Weights fit and heads divide. False is a refusal; `fits` false with this true is advice. */
   possible: boolean
-  /** The window had to be cut below the one asked for. Not a failure. */
+  /** The window had to be cut below the one asked for. Intentionally not a failure. */
   reduced: boolean
   device_count: number
   /** Nodes the replica spans: the unit that gets ordered. */

@@ -72,7 +72,7 @@ export interface BoardInput {
   assignments: Assignments
   /**
    * What the plane says is already spoken for. Optional, and absent means none
-   * are known, not none exist: the board is built from observed state and
+   * are known, not that none exist: the board is built from observed state and
    * must still render when the reservations call has not answered or has failed,
    * because a fleet drawn without its promises is worse than one drawn with none.
    */
@@ -105,7 +105,7 @@ export function buildBoard(input: BoardInput): Board {
  * One pass over the inputs. Everything `buildBoard` does twice, it does here.
  *
  * Split out because a reservation has to be laid onto cells that are free, and
- * "free" is a fact about the finished board, which fabric a device sits in, in
+ * "free" is a fact about the finished board: which fabric a device sits in, in
  * what order, with what already on it. Building once, choosing the cells, and
  * building again is the accurate way to say that; the alternative is a second
  * implementation of fabric grouping that would drift from this one.
@@ -215,9 +215,9 @@ function assemble(input: BoardInput): Board {
 }
 
 /**
- * The board read back as the map it was painted from. Fit checks work off this,
- * not off a map threaded alongside the board, so what they answer about
- * is always the board on screen, live or planned, and never a stale copy.
+ * The board read back as the map it was painted from. Fit checks work off this
+ * instead of off a map threaded alongside the board, so what they answer about
+ * is always the board on screen (live or planned) and never a stale copy.
  */
 /**
  * Sinks a cluster reporting nothing to the bottom of whatever it is sorted in.
@@ -405,8 +405,8 @@ export function isBound(holder: Holder | null): boolean {
  * Deterministic, so the picture does not shuffle under somebody every ten
  * seconds: reservations are taken in a stable order, and each takes free cells
  * of its own class in board order. A reservation that must land in one fabric
- * gets the tightest fabric that can still hold it whole, the same best-fit rule
- * the sandbox uses, and the likeliest thing the cluster will actually do,
+ * gets the tightest fabric that can still hold it whole (the same best-fit rule
+ * the sandbox uses, and the likeliest thing the cluster will actually do),
  * falling back to spreading when no single fabric can. A cluster owing more than
  * it has free simply runs out: what there is gets painted and the rest does not,
  * because `counts.reserved` already carries the true number and the two are

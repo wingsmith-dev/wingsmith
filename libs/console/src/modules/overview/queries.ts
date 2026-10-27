@@ -14,8 +14,8 @@ export const ACTIVITY_LIMIT = 8
 
 /**
  * The drain limit for the fleet aggregates. The overview counts whole
- * collections, "48 of 48 devices healthy" is a lie if it was drawn from a
- * first page, so every tile here reads a drained query, capped at a page size
+ * collections ("48 of 48 devices healthy" is a lie if it was drawn from a
+ * first page), so every tile here reads a drained query, capped at a page size
  * that keeps a three-cluster fleet to a single round trip.
  */
 const DRAIN_LIMIT = 200

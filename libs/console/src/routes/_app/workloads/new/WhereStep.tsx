@@ -26,8 +26,8 @@ import type { ClusterVerdict } from "@/modules/placement/types"
  *
  * The derived value is pre-selected and unticking it is allowed. That direction matters:
  * the shape implies the requirement, so the common case needs no thought, and the case
- * the derivation cannot see, a pipeline-parallel replica somebody still wants inside one
- * rack for latency, is a tick instead of an edit after the fact.
+ * the derivation cannot see (a pipeline-parallel replica somebody still wants inside one
+ * rack for latency) is a tick instead of an edit after the fact.
  *
  * An unchanged box sends the derived answer, because there is now one column and it is
  * not nullable: the workload's serving block carries the requirement outright, so what
@@ -72,8 +72,8 @@ function FabricChoice({
  *
  * The three modes are the k8s ones and they mean the same things. `auto` lets placement
  * decide, which is rule 3 and the only mode that should ever be common. `constrain`
- * narrows the set placement chooses from and still runs it, quota and topology and all:
- * a `nodeSelector`. `pin` skips placement entirely and is never checked for capacity,
+ * narrows the set placement chooses from and still runs it, quota and topology and all,
+ * like a `nodeSelector`. `pin` skips placement entirely and is never checked for capacity,
  * which is `nodeName`, and it is labeled with that cost instead of presented as a
  * peer of the other two.
  *
@@ -356,12 +356,12 @@ export function WhereStep({
 /**
  * The plane's own answer, for a configuration that does not exist yet.
  *
- * `verdicts` carry the losing clusters' reasoning too, and it is shown, not
+ * `verdicts` carry the losing clusters' reasoning too, and it is shown instead of
  * summarized: "6 free h100 in the largest nvlink domain, 8 asked for" is a next action
  * and "no capacity" is not.
  *
  * The decision comes back under the workload id `wkl_preview` and that id is
- * not rendered: nothing was created, and a link to it is a 404.
+ * intentionally not rendered: nothing was created, and a link to it is a 404.
  */
 function RealVerdict({
   loading,

@@ -155,8 +155,8 @@ export function NewRunDialog({
 
   /**
    * Derived, not corrected in an effect. A harness that does not grade
-   * at the level currently selected, a probe suite when `workload` was picked
-   * for a ramp, reads as its first declared level immediately, instead of
+   * at the level currently selected (a probe suite when `workload` was picked
+   * for a ramp) reads as its first declared level immediately, instead of
    * rendering one frame of an impossible request and then rewriting itself.
    */
   const effectiveLevel = levels.includes(level) ? level : levels[0]

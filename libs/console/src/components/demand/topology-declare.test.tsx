@@ -61,8 +61,8 @@ describe("declaring the split", () => {
   })
 
   it("says what a ratio that does not divide the fleet will strand", () => {
-    // Four nodes cannot express 1:2 at TP8. Nothing refuses it, not the
-    // declaration, not placement, so this line is the only warning there is.
+    // Four nodes cannot express 1:2 at TP8. Nothing refuses it (not the
+    // declaration, not placement), so this line is the only warning there is.
     render(
       <TopologyChoice
         roles={ROLES}

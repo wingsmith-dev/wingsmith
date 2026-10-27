@@ -62,8 +62,8 @@ function surfaceValue(key: SurfaceScalar, surface: EndpointSurface) {
 }
 
 /**
- * A term's name. What the gateway actually does with it, the note on its
- * enforcement entry, is the hover affordance, because eight paragraphs of
+ * A term's name. What the gateway actually does with it (the note on its
+ * enforcement entry) is the hover affordance, because eight paragraphs of
  * small print read as none.
  */
 function SurfaceTerm({
@@ -100,7 +100,7 @@ function SurfaceTerm({
  * look like a term somebody sold to a customer.
  *
  * The request policy is its own card: a rule has a scope, a subject and terms
- * of its own, and it answers a different question, not what this name
+ * of its own, and it answers a different question: not what this name
  * exposes, but what the gateway will do to a request on the way through.
  */
 export function EndpointSurfaceCard({

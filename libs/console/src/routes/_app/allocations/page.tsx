@@ -37,8 +37,8 @@ const BOARD_KEYS = [
  * Clicking the background puts the inspector down.
  *
  * Opt-out, not opt-in: anything that means something to click carries
- * `data-keeps-selection` and everything else, card padding, the gaps between
- * fabric rows, the space beside a short row, is background. The alternative is
+ * `data-keeps-selection`, and everything else (card padding, the gaps between
+ * fabric rows, the space beside a short row) is background. The alternative is
  * a handler on every leaf that stops propagation, which is the same rule spread
  * over thirty places and forgotten in one.
  */
@@ -52,9 +52,9 @@ function clearOnBackground(select: (selection: null) => void) {
 
 /**
  * The board: every device the fleet holds, nested the way capacity actually
- * nests (region, cluster, fabric, device, slice) painted by what holds it.
+ * nests (region, cluster, fabric, device, slice), painted by what holds it.
  *
- * Two things happen here and they are the same screen. Reading the
+ * Two things happen here and they are intentionally the same screen. Reading the
  * board answers "where is everything right now"; the sandbox answers "what if it
  * were somewhere else", by laying a plan over the observed allocations and
  * repainting from the result. Nothing in the sandbox is ever sent: allocations
@@ -94,8 +94,8 @@ export function AllocationsPage() {
   }, [mode, arm])
 
   /**
-   * Escape puts the brick down, then clears the selection. Two presses rather
-   * than one because a brick in hand changes what clicking the board does, and
+   * Escape puts the brick down, then clears the selection. Two presses instead
+   * of one because a brick in hand changes what clicking the board does, and
    * that is the state worth being able to leave first.
    */
   useEffect(() => {

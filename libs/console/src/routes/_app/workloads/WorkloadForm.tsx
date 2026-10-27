@@ -38,7 +38,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 /**
- * What to run, and how much of it, never where.
+ * What to run, and how much of it. Never where.
  *
  * There is no cluster to choose here, because choosing one is placement's job:
  * the form declares a total and the clusters the workload may use, and the
@@ -471,7 +471,7 @@ export function WorkloadForm({
           value={engineRuntimeVersion}
           onChange={setEngineRuntimeVersion}
           placeholder="latest"
-          hint="A tag of the Dynamo runtime the engine runs in (1.4.1) and never the engine's own version. vLLM's numbers are 0.x and pinning one here resolves to an image nobody publishes."
+          hint="A tag of the Dynamo runtime the engine runs in (1.4.1), never the engine's own version. vLLM's numbers are 0.x and pinning one here resolves to an image nobody publishes."
         />
         <TextField
           label="Engine runtime image"

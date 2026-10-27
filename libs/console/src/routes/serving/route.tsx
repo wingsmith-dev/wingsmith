@@ -19,8 +19,8 @@ import { RefreshButton } from "./RefreshButton"
 
 /**
  * The tenant's own view of what it is served. Its own shell, not a page inside
- * the console: everything in that shell, the sidebar, the cluster chrome, the
- * fleet reads on every route, belongs to the operator, and a tenant is not a visitor to
+ * the console: everything in that shell (the sidebar, the cluster chrome, the
+ * fleet reads on every route) belongs to the operator, and a tenant is not a visitor to
  * it with fewer links.
  *
  * An admin is redirected out, not shown an empty view. The read behind

@@ -4,9 +4,9 @@ import type { MetricsQuery } from "./api"
  * The spans a chart can be read over, and what each one asks the store for.
  *
  * Three numbers move together and they are not independent. `span` is how far
- * back the curve reaches, `step` is how coarse each point is, an hour of 5m
+ * back the curve reaches, `step` is how coarse each point is (an hour of 5m
  * points and a week of 5m points are the same picture and very different
- * queries, and `window` is the rate and quantile lookback, which must not be
+ * queries), and `window` is the rate and quantile lookback, which must not be
  * finer than the step or the curve draws spikes between the points that carry
  * them.
  */

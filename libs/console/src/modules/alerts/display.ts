@@ -114,7 +114,7 @@ function compareSpecificity(a: AlertThreshold, b: AlertThreshold): number {
  * Which threshold actually applies to one subject, and what it beat.
  *
  * `ignored` is the reason this exists on a screen. A disabled override is not a
- * candidate, the reactor only loads enabled rows, so the fleet default is
+ * candidate (the reactor only loads enabled rows), so the fleet default is
  * what fires, and an operator who cannot see that will raise the number on the
  * row that is switched off.
  */

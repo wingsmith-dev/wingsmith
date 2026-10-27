@@ -86,7 +86,7 @@ export function useCreateTenant() {
 
 /**
  * Carries the tenant's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane, not silently overwriting it.
+ * stale read is rejected by the plane instead of silently overwriting it.
  */
 export function useUpdateTenant() {
   const client = useQueryClient()
@@ -162,7 +162,7 @@ export function useCreateProject() {
 
 /**
  * Carries the project's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane, not silently overwriting it.
+ * stale read is rejected by the plane instead of silently overwriting it.
  */
 export function useUpdateProject() {
   const client = useQueryClient()

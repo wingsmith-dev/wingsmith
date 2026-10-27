@@ -41,7 +41,7 @@ const HEALTH_RING: Record<ClusterHealth, string> = {
  *
  * `onboarding` is asked first, and from {@link clusterStage} so the card and the
  * detail page cannot disagree. A cluster that has never connected also reports
- * `reachable: false`, the plane has no sync row to say otherwise, so testing
+ * `reachable: false` (the plane has no sync row to say otherwise), so testing
  * reachability first calls a cluster nobody has installed yet a fault, and
  * offers to explain a last-known state that does not exist.
  */

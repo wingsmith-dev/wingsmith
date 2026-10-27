@@ -285,7 +285,7 @@ const SPECS: ClusterSpec[] = [
  * Values are the contract's, not invented ones: the fixture exists so the
  * console can be worked on without a plane, and a fixture that disagrees with
  * the contract makes a broken console look right. `rtx-6000-ada-48gb-pcie`
- * carries no devices: hardware we could take delivery of but do not
+ * intentionally carries no devices: hardware we could take delivery of but do not
  * own is half of what the catalog is for.
  */
 const CATALOG: Omit<DeviceClass, "inventory">[] = [
@@ -774,7 +774,7 @@ export const projects: Project[] = [
  * fitment matrix does the plane's arithmetic and a made-up shape would put the wrong
  * card at the top of a table somebody is learning to read.
  *
- * `bge-m3-embed` has none, but does record the source it came from.
+ * `bge-m3-embed` intentionally has none, but does record the source it came from.
  * That is the shape of the artifact `POST /artifacts/:ref/refresh` exists for: one
  * registered before the plane extracted shapes, sizable only to a weights floor, and
  * one re-read away from a priced context window. The console has to render the floor
@@ -1213,9 +1213,9 @@ export const deployments: Deployment[] = [
      *
      * Declared 1 prefill : 2 decode over two groups, so six processes are
      * wanted. Four decode are up and one prefill is, which makes the achieved
-     * quotient 1:4 against a declared 1:2; legitimately disagreeing, because
-     * the roles come up at different speeds and the quotient is derived rather
-     * than stored. The scalars stay the group rollup and are right, less
+     * quotient 1:4 against a declared 1:2. The two legitimately disagree, because
+     * the roles come up at different speeds and the quotient is derived instead
+     * of stored. The scalars stay the group rollup and are right, less
      * precisely.
      */
     id: uid("dep_"),
@@ -1618,7 +1618,7 @@ interface Commitment {
   workload: string
   project: number
   count: number
-  /** How far into each node's free devices to start. Leaves gaps. */
+  /** How far into each node's free devices to start. Leaves gaps by design. */
   offset?: number
   /** Hold MIG slices, not whole cards. */
   slices?: boolean
@@ -2317,7 +2317,7 @@ export const discoveredWorkloads: DiscoveredWorkload[] = [
 
 /**
  * Two runs against the same deployment at different concurrencies, plus one
- * that failed. Shaped like AIPerf's export, not like
+ * that failed. Intentionally shaped like AIPerf's export and not like
  * anything this console defines: the summary is stored verbatim, and a fixture
  * that used a tidy invented schema would make the generic renderer look better
  * than it is against a real harness.

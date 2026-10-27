@@ -15,7 +15,7 @@ export const HATCH =
  * are being claimed, not held. The cells are indicative and the count in
  * the tally is exact; the hover text on every one of them says which is which.
  *
- * Its swatch is drawn twice: a cell and a bar. The cell is what to
+ * Its swatch is intentionally drawn twice, as a cell and as a bar. The cell is what to
  * look for on the board; the bar is the same fact on a cluster's utilization
  * strip, where a promise is a proportion of capacity instead of a square.
  */
@@ -60,7 +60,7 @@ export function Legend() {
 }
 
 /**
- * One key. `bar`, when given, is a second swatch drawn beside the cell, for the
+ * One key. `bar`, when given, is a second swatch drawn beside the cell for the
  * one state that appears both as a device and as a share of a utilization strip.
  */
 function Item({

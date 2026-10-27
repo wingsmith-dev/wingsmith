@@ -55,12 +55,12 @@ import { Verdicts } from "./Verdicts"
  * A **workload** is a commitment: it has a scale, spread rules and replicas
  * already holding devices, and it carries its own serving block, so the shape is
  * read straight off it. An **artifact** sits one step further back and answers a
- * different question, fitment says which cards could hold these weights at all,
+ * different question (fitment says which cards could hold these weights at all),
  * so its rows arrive here as candidate shapes, not as placements.
  *
  * Where the answer comes from matters and is labeled. A brick the plane can be
- * asked about, a declared workload, or any shape once somebody says which project
- * to charge, gets an authoritative verdict: only the plane sees quota, priority,
+ * asked about (a declared workload, or any shape once somebody says which project
+ * to charge) gets an authoritative verdict: only the plane sees quota, priority,
  * policy, residency and what would have to be preempted. Everything else is the
  * board's own arithmetic over devices and fabrics, marked `est.` because it can be
  * right about hardware and wrong about admission. Where the two disagree the plane
@@ -441,9 +441,9 @@ function BrickRow({
  *
  * This is the sizing question, not the placement one: which cards could hold
  * these weights at the window they publish, and how many of them. The plane says
- * so itself, a fit is not a promise a replica can be placed, because contiguity
- * inside a topology domain decides that, so these rows are shapes to try on the
- * board, and, once a project is named, ones the plane will rule on directly.
+ * so itself: a fit is not a promise a replica can be placed, because contiguity
+ * inside a topology domain decides that. So these rows are shapes to try on the
+ * board and, once a project is named, ones the plane will rule on directly.
  */
 function ArtifactShapes({
   project,
@@ -532,7 +532,7 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
     device_class: fit.device_class,
     device_count: fit.device_count,
     /**
-     * The fit says how the replica is laid out, so this is read, not
+     * The fit says how the replica is laid out, so this is read instead of
      * guessed: tensor-parallel ranks share a node's interconnect, and pipeline
      * stages cross the backend fabric between nodes. A replica spanning nodes is
      * a normal answer for a large model, not a degraded one, so `node_count`

@@ -1,8 +1,8 @@
 import { OPERATION_TYPES, type OperationType } from "./types"
 
 /**
- * What is known about the object an operation would act on. Structural rather
- * than typed against a domain object: the registry lives in machinery and must
+ * What is known about the object an operation would act on. Structural instead
+ * of typed against a domain object: the registry lives in machinery and must
  * not learn what a node is.
  */
 export interface OperationContext {
@@ -44,7 +44,7 @@ export interface OperationDefinition {
 }
 
 /**
- * Every operation type, derived from `OPERATION_TYPES`, not listed a
+ * Every operation type, derived from `OPERATION_TYPES` instead of listed a
  * second time. A new entry there surfaces here on its own with a label read off
  * the verb and no predicate: the accurate default for an operation whose state
  * rule nobody has written yet.

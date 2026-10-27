@@ -9,8 +9,8 @@ import { useId } from "react"
  * A closed set picked as chips, optionally with the order kept.
  *
  * `ordered` is not decoration. `output_length_params` answers two questions with
- * one list, membership is which fields are accepted, position is which one wins
- * when a caller sends two, and a set of checkboxes can only answer the first.
+ * one list: membership is which fields are accepted, and position is which one wins
+ * when a caller sends two. A set of checkboxes can only answer the first.
  */
 export function ChoiceSetField({
   label,

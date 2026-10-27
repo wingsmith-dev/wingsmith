@@ -73,8 +73,8 @@ export function Chart({
 /**
  * Where the console draws the line on an availability figure.
  *
- * The measurement carries no threshold of its own, whether 99.4% is an outage
- * is a claim somebody made, and the plane declines to make it. The
+ * The measurement carries no threshold of its own. Whether 99.4% is an outage
+ * is a claim somebody made, and the plane intentionally declines to make it. The
  * two numbers here are this console's reading color and nothing else; they are
  * not an SLO and no acceptance term is checked against them.
  */
@@ -89,7 +89,7 @@ export function availabilityTone(percent: number | null): StatTone {
  *
  * A day the store answered nothing is drawn hollow, not red. An endpoint
  * nobody called, and an endpoint the gateway's metrics port was never scraped
- * for, were not unavailable, and a strip that says they were is the one thing
+ * for, were not unavailable. A strip that says they were is the one thing
  * this cell must never do.
  *
  * The cells divide the width they are given, because `availabilityDays` always
@@ -128,8 +128,8 @@ export function AvailabilityBar({ days }: { days: AvailabilityDay[] }) {
  * somebody is looking at this page.
  *
  * The strip below it stays fixed at fourteen days and says so. It is the other
- * question (not what this name is doing, but how it has behaved) which is why
- * it sits above the log, not in the stat strip.
+ * question (not what this name is doing, but how it has behaved), which is why
+ * it sits above the log instead of in the stat strip.
  *
  * Both are `100 - failure_ratio`, counted over requests and not over time: this
  * is the share of calls the front door answered, and an endpoint nobody called

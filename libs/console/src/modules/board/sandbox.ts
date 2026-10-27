@@ -209,8 +209,8 @@ export function fitOnTarget(
  * A live allocation as a brick, so relocating one is the same operation as
  * placing one.
  *
- * Its topology requirement is not on the allocation, the plane keeps that on
- * the workload, so it is read off where the allocation actually
+ * Its topology requirement is not on the allocation (the plane keeps that on
+ * the workload), so it is read off where the allocation actually
  * sits: everything in one fabric is treated as a gang that has to stay in one.
  * That is a guess, and it is the conservative one.
  */
@@ -318,8 +318,8 @@ interface Floor {
  *
  * Replicas are placed one at a time against a working copy of the assignments,
  * so replica four cannot be handed devices replica two already took. What it
- * does not know is everything placement weighs beyond capacity, quota,
- * priority, preemption, policy, residency, so a plan that fits here is a
+ * does not know is everything placement weighs beyond capacity (quota,
+ * priority, preemption, policy, residency), so a plan that fits here is a
  * statement about the fleet's shape and not a prediction of admission.
  */
 export function planPlacement(
@@ -377,11 +377,11 @@ export function planPlacement(
 /**
  * The plane's decision, turned into devices.
  *
- * Cluster selection is global and device selection is local, rule 3, and this
+ * Cluster selection is global and device selection is local (rule 3), and this
  * is that seam. The plane has already said which clusters and how many replicas
  * each, weighing quota, priority, policy and preemption, none of which the board
  * can see; all that is left is choosing which devices inside those clusters the
- * bricks would sit on, which is the one part the plane does not
+ * bricks would sit on, which is the one part the plane intentionally does not
  * decide.
  *
  * A share the board cannot satisfy is reported, not moved elsewhere.
@@ -620,7 +620,7 @@ function candidates(
 /**
  * The tightest fabric a gang still fits in.
  *
- * Best fit, not first fit: dropping an eight-device gang
+ * Best fit instead of first fit, and that is intentional: dropping an eight-device gang
  * into a sixteen-free fabric when an eight-free one would have taken it destroys
  * the only place the next sixteen-device job could have gone.
  */

@@ -49,7 +49,7 @@ export function scaleUnit(kind: string): string {
  * Whether a workload may hold a share on more than one cluster.
  *
  * A property of the kind, not a field. A gang's ranks are co-scheduled, so a
- * split gang is broken, not degraded and placement rejects it outright,
+ * split gang is broken, not degraded, and placement rejects it outright,
  * which is why the form hides fan-out for one instead of letting it be asked for.
  */
 export function splittable(kind: string): boolean {
@@ -78,9 +78,9 @@ export function formatParameters(count: number | null): string {
 /**
  * The source this artifact can be re-read from, or null.
  *
- * Mirrors the plane's own precedence, `metadata.huggingface_id` first, then an
- * `hf://` location with its revision dropped, so the refresh button is disabled
- * exactly when the plane would refuse. Deciding that here, not by trying the
+ * Mirrors the plane's own precedence (`metadata.huggingface_id` first, then an
+ * `hf://` location with its revision dropped), so the refresh button is disabled
+ * exactly when the plane would refuse. Deciding that here instead of by trying the
  * call means the person is not offered an action that can only fail.
  */
 export function artifactSource(artifact: Artifact): string | null {
@@ -99,7 +99,7 @@ export function artifactSource(artifact: Artifact): string | null {
  *
  * The plane returns dotted field names (`metadata.shape`), which are the accurate
  * answer and not a sentence. The `metadata.` prefix carries no information at this
- * point, everything derived from a config lives there, so it is dropped.
+ * point (everything derived from a config lives there), so it is dropped.
  */
 export function refreshSummary(changed: string[]): string {
   if (changed.length === 0)
@@ -121,8 +121,8 @@ export function parallelismLabel(p: {
  * The steps a deployment passes through between being declared and serving, and
  * which one an observed `(phase, reason)` places it at.
  *
- * The reasons are the operator's closed set (`MESSAGES.md`). They are mapped here,
- * not rendered raw because a person watching a deployment come up wants to
+ * The reasons are the operator's closed set (`MESSAGES.md`). They are mapped here
+ * instead of rendered raw because a person watching a deployment come up wants to
  * know how far along it is, and `WeightsNotResident` answers that only if you
  * already know what the operator does in what order.
  */
@@ -191,7 +191,7 @@ export function lifecycleStepFor(
 /**
  * How a `reason` reads to somebody who has not read the operator's source.
  *
- * Falls back to the reason itself, which is not "Unknown": the raw
+ * Falls back to the reason itself, which is intentionally not "Unknown": the raw
  * name is what they will search the operator logs for.
  */
 const REASON_TEXT: Record<string, string> = {
@@ -310,7 +310,7 @@ function operational(
  * Where one deployment is in its lifecycle.
  *
  * Only an observed `failed` is a failure. The operator sends `last_error_code`
- * for waits that clear on their own too (an unschedulable pod, a crash loop)
+ * for waits that clear on their own too (an unschedulable pod, a crash loop),
  * and reading every error code as fatal showed deployments that were still
  * loading their weights as failed.
  *
@@ -530,7 +530,7 @@ export function servingOverrides(
     const effective = derived[flag]
     if (ignored === undefined || effective === undefined) continue
     if (ignored === effective) continue
-    // Two caps name one flag, and the collision is with the flag, not
+    // Two caps name one flag, and the collision is with the flag and not
     // with either field. Reporting it twice would read as two conflicts.
     if (reported.has(flag)) continue
     reported.add(flag)

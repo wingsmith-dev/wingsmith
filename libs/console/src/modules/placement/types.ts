@@ -1,6 +1,6 @@
 /**
- * `POST /v1/placement/preview` and `POST /v1/placement/expand`, the plane's own
- * answer to "where would this go", asked without creating anything, and
+ * `POST /v1/placement/preview` and `POST /v1/placement/expand` (the plane's own
+ * answer to "where would this go", asked without creating anything), and
  * `GET /v1/placement/reservations`, which answers "what is about to arrive here".
  *
  * These are the authority and the console's arithmetic is not. The board can see
@@ -86,7 +86,7 @@ export interface ClusterVerdict {
   domain_free_devices: number
   largest_domain_free_devices: number
   fit_slack: number
-  /** Null when no quota is declared for the project, not the same as zero. */
+  /** Null when no quota is declared for the project, which is not the same as zero. */
   quota_headroom: number | null
   preemption: PreemptionPlan | null
 }
@@ -150,7 +150,7 @@ export interface PlacementShapeRequest {
  * A placement question asked without creating anything.
  *
  * Exactly one of `workload` and `shape`, and the pair is the point: `workload` asks
- * about something that exists, `shape` asks about something that does not, which is
+ * about something that exists and `shape` asks about something that does not, which is
  * the question a create form has, where the person is choosing a fit and wants the
  * verdict before they commit, not after. Naming both, or neither, is a `400`.
  *

@@ -25,8 +25,8 @@ import { MetricTile } from "./metric-tile"
 
 function Empty({ reason }: { reason: string }) {
   /**
-   * Unmeasured is a state, not a failure, and it is one the operator can fix,
-   * so it says which knob, instead of showing an empty chart that reads as an
+   * Unmeasured is a state, not a failure, and it is one the operator can fix.
+   * So it names the knob instead of showing an empty chart that reads as an
    * idle fleet.
    */
   return (

@@ -109,7 +109,7 @@ export function Verdicts({
 
 /**
  * `reserved` and `available` appear only when something is owed, and when they
- * do they sit between `free` and everything else, because they are the step
+ * do, they sit between `free` and everything else, because they are the step
  * that turns the observed number into the one the decision was made on. A
  * refusal reading "8 free" beside "8 needed" is a decision that looks wrong
  * until the six devices already promised to somebody else are on the same line.

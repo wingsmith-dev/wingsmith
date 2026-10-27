@@ -50,8 +50,8 @@ export interface BenchmarkProvenance {
  * same running process. It keeps answering after the workload has been renamed,
  * rescaled or deleted, which the recipe rollup this replaces could not.
  *
- * An unknown digest is a zero count and not a 404, "how much measurement stands
- * behind this configuration" has "none" as an answer, so it is safe to ask about
+ * An unknown digest is a zero count and not a 404 ("how much measurement stands
+ * behind this configuration" has "none" as an answer), so it is safe to ask about
  * anything. `peak_output_tokens_per_second` is null when no graded run carried a
  * reading, which is a named absence and not a zero. Held-in-plane offline
  * measurement, never live serving telemetry.
@@ -95,7 +95,7 @@ export interface BenchmarkHarness {
  * Observed, and so read-only everywhere: there is no update and no delete on
  * the wire, and this console offers no affordance that suggests otherwise.
  *
- * `summary` is `unknown`. It is the harness's own export, stored and
+ * `summary` is typed `unknown` intentionally. It is the harness's own export, stored and
  * served verbatim, and typing it here would be this console asserting it knows
  * a shape the plane refuses to normalize by design. Anything that reads it
  * has to cope with not recognizing it.
@@ -274,7 +274,7 @@ export interface BenchmarkReading {
  * Open to ids this console does not know: the map is served, and a version of
  * the plane that resolves one more number should not have to wait for a console
  * release. An id absent from the map is the same fact as one whose value is
- * null, nothing was read, and `reading()` is how both are asked.
+ * null (nothing was read), and `reading()` is how both are asked.
  */
 export interface BenchmarkCurveReadings {
   [id: string]: BenchmarkReading | undefined
@@ -288,7 +288,7 @@ export interface BenchmarkCurveReadings {
  * position and `step_value` is the x axis.
  *
  * A step whose run is still open carries its phase and all-null readings, which
- * is what lets a running ramp draw itself in progressively, not appear
+ * is what lets a running ramp draw itself in progressively instead of appearing
  * whole at the end.
  */
 export interface BenchmarkCurvePoint {
@@ -306,8 +306,8 @@ export interface BenchmarkCurvePoint {
  * Where the curve turned, derived at read against the pinned criteria version
  * and stored nowhere.
  *
- * Always an object, never null. `found` is false for two different reasons,
- * every step stayed under the threshold, or too few steps succeeded to say,
+ * Always an object, never null. `found` is false for two different reasons
+ * (every step stayed under the threshold, or too few steps succeeded to say),
  * and `reason` is the only thing that tells them apart, so nothing in this
  * console renders the absence of a knee without it.
  */

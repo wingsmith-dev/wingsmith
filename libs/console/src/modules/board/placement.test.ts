@@ -6,7 +6,7 @@ import type { Assignments, Board } from "./types"
 
 /**
  * A three-cluster fleet across three regions, every cluster holding whole
- * eight-device fabrics of the same class. Uniform: the rules under
+ * eight-device fabrics of the same class. Uniform by design: the rules under
  * test are about how replicas are spread across clusters, so anything that made
  * one cluster the obvious answer would hide which rule did the choosing.
  */

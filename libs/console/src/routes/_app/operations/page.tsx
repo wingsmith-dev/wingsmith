@@ -27,7 +27,7 @@ import { useState } from "react"
 
 /**
  * The imperative surface. Drain, cordon, reset, warm, roll and upgrade all live
- * here, not as flags hiding on the objects they act upon: an operation
+ * here instead of as flags hiding on the objects they act upon: an operation
  * has an actor, a reason, attempts and a lifecycle, and a status field has none
  * of those. Beside them, the event feed: everything that happened, whether we
  * asked for it or not.

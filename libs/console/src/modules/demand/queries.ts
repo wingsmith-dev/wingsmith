@@ -67,8 +67,8 @@ export function useArtifact(ref: string) {
 }
 
 /**
- * One artifact's dependants, workloads and downstream artifacts, counted at
- * read time by the plane, not stored on the object.
+ * One artifact's dependants (workloads and downstream artifacts), counted at
+ * read time by the plane instead of stored on the object.
  */
 export function useArtifactUsage(ref: string) {
   return useQuery({
@@ -208,7 +208,7 @@ export function useCreateArtifact() {
 
 /**
  * Carries the artifact's `revision` as `If-Match`, so an edit written against a
- * stale read is rejected by the plane, not silently overwriting it.
+ * stale read is rejected by the plane instead of silently overwriting it.
  */
 export function useUpdateArtifact() {
   const client = useQueryClient()
@@ -270,7 +270,7 @@ export function useArtifactBaselines(ref: string) {
 /**
  * The phases a workload or deployment has stopped moving in.
  *
- * `degraded` is absent: it is what a rolling update and a crash-looping replica
+ * `degraded` is intentionally absent: it is what a rolling update and a crash-looping replica
  * both look like, and both are mid-flight.
  */
 const SETTLED_PHASES = new Set(["running", "failed"])
@@ -412,7 +412,7 @@ export function useDeployments(filters: DeploymentFilters = {}) {
  * One deployment, polled while it is still coming up and left alone once it is not.
  *
  * Without the interval the page reads once and then sits on a cache for as long as it is open,
- * which is exactly the window somebody watching a deploy is looking at it, so a deployment that
+ * which is exactly the window somebody watching a deploy is looking at it. A deployment that
  * reached `Serving` a minute ago still showed the `Applied` it was fetched at, and the only way
  * to see the truth was a browser reload. The manual refresh in the header covers the rest of the
  * page; this covers the part that moves on its own.

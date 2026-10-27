@@ -64,8 +64,8 @@ function footprintFromSearch(
 /**
  * The chosen shape, and the fitment row it came from.
  *
- * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy,
- * not from a row clicked here. The six numbers are the whole of the footprint,
+ * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy
+ * instead of from a row clicked here. The six numbers are the whole of the footprint,
  * but the fleet counts alongside them are not in the link, so the Where step says less.
  */
 interface How {
@@ -131,10 +131,10 @@ export function NewWorkloadPage() {
     setOverrides((current) => ({ ...current, ...patch }))
   /**
    * `context_length` is the one override the topology step also writes, and that is
-   * deliberate instead of a leak.
+   * deliberate, not a leak.
    *
-   * The window is asked about twice, the fitment table sizes against it, the Params
-   * step declares it, and it was two pieces of state that met nowhere: picking 800k
+   * The window is asked about twice (the fitment table sizes against it, the Params
+   * step declares it), and it was two pieces of state that met nowhere: picking 800k
    * in the table left Params describing whatever the last clicked row happened to
    * say, and `derivedServingRequest` then submitted the stale one. It is one value,
    * so it is one field, and `overrides` is where a stated window already lived.
@@ -217,8 +217,8 @@ export function NewWorkloadPage() {
   /**
    * Not asked when there is nothing to ask.
    *
-   * The plane requires a project, quota is keyed (project, cluster, device class), so
-   * there is no such thing as a workload without one, but a field with a single
+   * The plane requires a project (quota is keyed by project, cluster and device class, so
+   * there is no such thing as a workload without one), but a field with a single
    * possible value is not a question, it is a formality. One project answers itself and
    * the field does not render; several and it does, unselected, because silently
    * charging a guess to the wrong project's quota is worse than one more click.
@@ -277,7 +277,7 @@ export function NewWorkloadPage() {
       const workload = await createWorkload.mutateAsync({
         serving: {
           ...request,
-          /* Omitted entirely when aggregated, not sent as `"aggregated"`
+          /* Omitted entirely when aggregated instead of sent as `"aggregated"`
              with an empty role list: absent and empty must not both be sayable
              about a thing with one meaning, and the digest depends on the key
              not being there. */
@@ -310,7 +310,7 @@ export function NewWorkloadPage() {
         // for the mode that means them, so switching modes cannot leave one behind.
         allowed_regions: where.mode === "region" ? where.regions : [],
         allowed_clusters: where.mode === "clusters" ? where.allowed : [],
-        // Absent: every workload carries one and the project's default
+        // Intentionally absent: every workload carries one and the project's default
         // answers it. Repeating it here is how defaults drift.
         min_scale: replicas ?? 1,
         max_scale: replicas ?? 1,
@@ -364,7 +364,7 @@ export function NewWorkloadPage() {
         <Step
           index={2}
           title="Topology"
-          hint="The shape of the devices, which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
+          hint="The shape of the devices: which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
           ready={!!artifact}
           open={open === 2}
           onReopen={() => setOpen(2)}

@@ -44,7 +44,7 @@ export const ON_EXCEED_MEANING: Record<OnExceed, string> = {
 
 /**
  * Grouped digits in en-US, and never compacted. The console is English-only, so
- * the locale is pinned, not taken from the runtime, and "10M" would hide
+ * the locale is pinned instead of taken from the runtime, and "10M" would hide
  * whether 10,500,000 was what somebody sold.
  */
 const GROUPED = new Intl.NumberFormat("en-US")
@@ -90,8 +90,8 @@ export const COMMITTED_LIMITS = [
 
 /**
  * Whether the row names no limit at all. Every axis uncommitted has the same
- * effect as having no row, the gateway limits nothing, and an operator
- * reading a table of commitments should be told that, not left to
+ * effect as having no row (the gateway limits nothing), and an operator
+ * reading a table of commitments should be told that instead of being left to
  * notice five blanks in a row.
  */
 export function commitsNothing(quota: ServingQuota): boolean {

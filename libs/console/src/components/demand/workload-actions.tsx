@@ -220,8 +220,8 @@ export function DrainWorkloadDialog({
  * been half-rolled for twenty minutes" would have no answer.
  *
  * The new group count is asked for and never inherited. A workload at three
- * replicas means three aggregated replicas today and would mean three GROUPS,
- * seventy-two devices at 1:2 and TP8, the moment the topology flips.
+ * replicas means three aggregated replicas today and would mean three GROUPS
+ * (seventy-two devices at 1:2 and TP8) the moment the topology flips.
  * Reinterpreting a live number by a factor of three is the mistake this form
  * exists to make impossible, so a flip that does not say how many groups it
  * wants is rejected, not defaulted.

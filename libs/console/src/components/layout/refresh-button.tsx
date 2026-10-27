@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils"
  *
  * A page is not one query. The deployment screen alone holds its declared state, its observed
  * replicas, its event log, its operations, its benchmark runs and its metric panels, each with
- * its own cache entry and its own idea of when to poll, so "refresh" has to name the set rather
- * than a single key, and reloading the browser to get all of them costs the router state and the
+ * its own cache entry and its own idea of when to poll, so "refresh" has to name the set instead
+ * of a single key, and reloading the browser to get all of them costs the router state and the
  * open tab.
  *
  * `keys` are matched as prefixes, which is what makes them stable: `["metrics"]` reaches every

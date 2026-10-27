@@ -41,7 +41,7 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
  * Where a workload actually ended up, one row per cluster.
  *
  * This table is what replaced "Cluster" as a field on a workload. A workload
- * names no cluster, it names a total and the clusters it may use, so the
+ * names no cluster (it names a total and the clusters it may use), so the
  * cluster question has as many answers as placement found, and the accurate place
  * for them is a list under the spec instead of a single field pretending there
  * is one. Region rides along because "asia and europe" is how the ask was
@@ -136,7 +136,7 @@ function columns(
        * does not.
        *
        * A group count against a scalar ready count is two numbers that are not
-       * comparable (`2/1` on a 1:2 group is decode pods over groups) so the
+       * comparable (`2/1` on a 1:2 group is decode pods over groups), so the
        * moment roles arrive they replace the pair instead of sitting beside it.
        * The group total stays underneath, which is what the unit in the header
        * names.

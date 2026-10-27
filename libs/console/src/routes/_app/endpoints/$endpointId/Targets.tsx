@@ -18,7 +18,7 @@ import type {
  * and this says so instead of showing green.
  *
  * `enabled` is a separate reading and stays separate: declared and observed are
- * two different kinds of thing, and a name somebody turned off is
+ * two different kinds of thing, and a name somebody chose to turn off is
  * not a fault.
  */
 export function servingHealth(

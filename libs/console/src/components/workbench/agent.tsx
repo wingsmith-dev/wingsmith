@@ -16,8 +16,8 @@ import { useMemo, useState } from "react"
 /**
  * Whether a real client can drive the model through a whole task.
  *
- * The claim is not shape and not accuracy: it is that an ordinary agent loop,
- * many turns, tools called and answered, a long context that grows, completes.
+ * The claim is not shape and not accuracy: it is that an ordinary agent loop
+ * (many turns, tools called and answered, a long context that grows) completes.
  * It catches what neither of the other two kinds does, because both of those
  * ask one request at a time and the failures here are failures of the sequence:
  * a stream truncated inside tool-call arguments, `tool_choice=required` quietly

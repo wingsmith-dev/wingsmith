@@ -6,8 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 /**
  * Renders a component under the providers the app supplies at its root.
  *
- * Components reach for these through context, not props, a tooltip
- * without its provider throws, so a test that rendered them bare would be
+ * Components reach for these through context instead of props (a tooltip
+ * without its provider throws), so a test that rendered them bare would be
  * testing something the app never mounts.
  */
 export function render(

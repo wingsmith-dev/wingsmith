@@ -16,7 +16,7 @@ export interface AlertSubject {
 /**
  * Where the alert is in its life, which is a different axis from severity.
  * `pending` is true but not yet for long enough to be worth telling anyone, and
- * is visible here and notified nowhere.
+ * is intentionally visible here and notified nowhere.
  */
 export type AlertState = "pending" | "firing" | "acknowledged" | "resolved"
 

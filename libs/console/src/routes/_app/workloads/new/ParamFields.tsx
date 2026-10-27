@@ -234,8 +234,8 @@ export function Proposed({
   const upstream = proposal.upstream ?? null
   const at = servingProvenance(proposal, artifact?.upstream, overrides)
   // Only what has no field of its own below. Everything else is attributed under the
-  // input it filled, where the attribution sits beside the value it explains rather
-  // than in a list the reader has to match up by name.
+  // input it filled, where the attribution sits beside the value it explains instead
+  // of in a list the reader has to match up by name.
   const seeded = Object.entries(at).filter(
     ([field, from]) => from !== "derived" && !FIELD_ATTRIBUTED.has(field)
   )

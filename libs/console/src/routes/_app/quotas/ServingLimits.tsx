@@ -78,7 +78,7 @@ export function Committed({
 
 /**
  * Whether the gateway refuses on this commitment or only counts it. Shadow mode
- * is the loudest thing on the screen: an operator who believes a
+ * is intentionally the loudest thing on the screen: an operator who believes a
  * limit is live when it is not has sold a guarantee nothing upholds.
  */
 export function EnforcementBadge({ enforced }: { enforced: boolean }) {

@@ -138,8 +138,8 @@ export function RoleReadinessLine({
  * so an added prefill worker cannot cold-start the cache the others are using.
  *
  * So there is no confirmation on this path and there must not be one. This is
- * the action we expect somebody to take often, it is the point of the
- * feature, and a confirmation here would flatten the distinction the panel
+ * the action we expect somebody to take often (it is the point of the
+ * feature), and a confirmation here would flatten the distinction the panel
  * below is built to draw.
  */
 function RatioControl({
@@ -318,7 +318,7 @@ function Stepper({
  * teaches people to skip the line it sits on.
  *
  * The first sentence is whether the model serves, because that is the whole
- * decision. Rolling happens in place, one worker at a time within a role, so
+ * decision. Rolling happens in place (one worker at a time within a role), so
  * a role with two or more workers keeps one up and the model runs slower, while
  * a role with exactly one goes to zero, and a decode worker with no prefill peer
  * has nothing to decode from. Those are not two shades of the same warning; they
@@ -340,7 +340,7 @@ function RollCost({ cost }: { cost: RolloutCost }) {
         <p className="font-medium">
           The model stops serving for the whole reload. There is one{" "}
           {cost.roleAtRisk} worker, and while it reloads there is no{" "}
-          {cost.roleAtRisk} process at all: every request fails, instead of
+          {cost.roleAtRisk} process at all: every request fails instead of
           running slower.
         </p>
       )}
@@ -562,8 +562,8 @@ function RoleConfigPanel({ workload }: { workload: Workload }) {
  *
  * Two zones, and the split between them is the argument: the ratio is free and
  * lives behind one click, the configuration is destructive and lives behind a
- * lock. Putting them in one panel is deliberate, they are both "what the roles
- * are", and somebody looking for one will find the other, but they must not
+ * lock. Putting them in one panel is deliberate: they are both "what the roles
+ * are", and somebody looking for one will find the other. They still must not
  * look like one control.
  */
 export function RolesPanel({

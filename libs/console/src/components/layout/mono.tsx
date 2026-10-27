@@ -98,7 +98,7 @@ type BlockLanguage = "yaml" | "shell"
 
 /**
  * A tiny, dependency-free highlighter for the two languages the console shows
- * in blocks: `values.yaml` and `helm`/`kubectl` commands. Not a
+ * in blocks: `values.yaml` and `helm`/`kubectl` commands. Intentionally not a
  * general parser: it colors the few token classes that make these snippets
  * readable (comments, keys, values; commands, flags) and leaves the rest plain.
  */

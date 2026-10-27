@@ -33,8 +33,8 @@ const NONE = "__none__"
 
 /**
  * Promotion is the one decision here that produces declared state, so it asks for
- * the two things the plane cannot infer, which weights these are, and who owns
- * it, and nothing else. How the workload is served is read off what is running
+ * the two things the plane cannot infer (which weights these are, and who owns
+ * it) and nothing else. How the workload is served is read off what is running
  * instead of picked from a list: there is no catalog of serving configurations
  * to pick from, and the cluster's own spec is a better answer than a person
  * matching one by eye.
@@ -140,7 +140,7 @@ export function PromoteDialog({
           <div className="space-y-1.5 rounded-md border bg-muted/30 p-3">
             <p className="font-mono text-2xs text-muted-foreground">
               {artifact
-                ? "the serving block is read off what this cluster is running, only the weights are declared"
+                ? "the serving block is read off what this cluster is running; only the weights are declared"
                 : "no weights identified yet: register them from the reading first"}
             </p>
             <p className="font-mono text-2xs break-all text-muted-foreground">

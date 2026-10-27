@@ -35,8 +35,8 @@ import { toast } from "sonner"
  *
  * `image` is the one field not built from that table. It is left empty to mean
  * "whatever the harness is pinned to", with the pin shown as the placeholder, so
- * the run follows the plane's default unless somebody types over it:
- * a run started from here should not be pinned to whatever the pin happened to
+ * the run follows the plane's default unless somebody chooses to type over it.
+ * A run started from here should not be pinned to whatever the pin happened to
  * be on the day this dialog was opened.
  */
 export function NewBenchmarkDialog({

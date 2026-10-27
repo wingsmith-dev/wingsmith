@@ -134,8 +134,8 @@ export interface BoardCluster {
    * What is on its way here, per deployment.
    *
    * The exact list, and the authority for every reserved number on the screen.
-   * The cells painted from it are chosen here and are indicative, the cluster
-   * has not said which accelerators it will bind, so where the two disagree,
+   * The cells painted from it are chosen here and are indicative (the cluster
+   * has not said which accelerators it will bind), so where the two disagree,
    * this is the one that is true and the painting is the one that is a guess.
    */
   reservations: Reservation[]
@@ -165,7 +165,7 @@ export interface Board {
  * different questions, and the board answers the second one.
  *
  * `device_count` is one replica's shape and `replicas` is how many of them are
- * wanted. Those are separate numbers instead of a total, because
+ * wanted. Those are intentionally separate numbers instead of a total, because
  * every rule that decides where a workload lands applies per replica: a gang
  * either fits inside one fabric or it does not, and forty-eight devices spread
  * across six fabrics is a satisfied workload while one forty-eight-device
@@ -283,8 +283,8 @@ export interface Fit {
 }
 
 /**
- * What a plan did to the fleet's shape. Counted over the whole board rather
- * than the clusters a plan touched, because packing one cluster tighter at the
+ * What a plan did to the fleet's shape. Counted over the whole board instead
+ * of the clusters a plan touched, because packing one cluster tighter at the
  * cost of another is the thing worth seeing.
  */
 export interface BoardMetrics {
@@ -305,8 +305,8 @@ export interface BoardMetrics {
  * `allocation` is the layer between a device and a fabric, and it is the one a
  * person clicking a colored cell almost always means: the question is "what is
  * running here", and the answer is a set of devices committed together, not the
- * one square under the pointer. A device is still reachable, a second click on
- * the same cell narrows to it, but it is the deliberate step, not the default.
+ * one square under the pointer. A device is still reachable (a second click on
+ * the same cell narrows to it), but it is the deliberate step, not the default.
  */
 export type Selection =
   | { kind: "allocation"; allocation: string }

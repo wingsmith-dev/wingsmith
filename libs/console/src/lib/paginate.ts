@@ -59,7 +59,7 @@ export const MAX_PAGES = 40
  * A drained collection. `truncated` is set when the page cap stopped the drain with
  * a cursor still pending, so a caller counting the collection can say its number is
  * a floor instead of presenting it as the total. The flag is an own enumerable
- * property: it makes React Query treat the array as non-plain and skip
+ * property by design: it makes React Query treat the array as non-plain and skip
  * structural sharing, which would otherwise copy the items into a fresh array and
  * drop the flag.
  */
