@@ -445,6 +445,13 @@ conformance-diff run="":
 conformance-test *args:
     @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m pytest tests/ -q {{args}}
 
+# The probes through the real gateway, built from this checkout, against a stub engine, diffed
+# against the same stub asked directly. Fails on an error, a leak, or a difference that
+# libs/conformance/tests/gateway-differences.txt does not accept (scripts/conformance-gateway.sh).
+# Run the probes through a locally built gateway and diff it against the engine it fronts
+conformance-gateway:
+    scripts/conformance-gateway.sh
+
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
 # Helm's crds/ dir is a plain copy, never templated — kept in step by hand when the CRDs change.

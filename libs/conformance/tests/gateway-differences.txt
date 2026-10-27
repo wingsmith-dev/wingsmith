@@ -1,0 +1,17 @@
+# Differences scripts/conformance-gateway.sh accepts between the gateway and the engine it fronts,
+# one hgrconform difference label per line, each with the reason it is expected. Anything not
+# listed fails the check, and an entry that stops occurring is reported so it can be dropped.
+
+# The gateway's catalog says which output modality each model serves.
+basics.models.model_fields
+
+# The gateway routes by model, so a request without one is refused 400 missing_model before any
+# engine sees it; the stub answers 404.
+errors.required_fields.statuses
+
+# The stub answers 404 on /v1/responses. An engine 404 behind the gateway means it does not answer
+# to the served name the gateway rewrote, so the gateway reports it as its own 502 (errors.go).
+protocol.surfaces.responses
+
+# The gateway enforces the provider limit of four stop sequences; the stub takes any number.
+sampling.acceptance.acceptance

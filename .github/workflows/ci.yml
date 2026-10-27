@@ -337,6 +337,29 @@ jobs:
       - run: uv tool install "rust-just==$JUST_VERSION"
       - run: just transit-smoke
 
+  # The conformance probes through the gateway built from this checkout, on its public listener
+  # with a tenant key, against a stub engine, diffed against the same stub asked directly.
+  conformance-gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/**/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-dependency-glob: libs/conformance/uv.lock
+      - run: uv tool install "rust-just==$JUST_VERSION"
+      - run: uv sync --locked
+        working-directory: libs/conformance
+      - run: just conformance-gateway
+
   # Against a real API server and garbage collector, so only after merge and on demand: a kind
   # cluster is the slowest thing here and a pull request learns the same from the unit suites.
   e2e:

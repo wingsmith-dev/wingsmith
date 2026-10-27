@@ -48,6 +48,9 @@ QUIRK = os.environ.get("QUIRK", "none")
 SEED = int(os.environ.get("SEED", "0"))
 NOISY = QUIRK == "noisy"
 LEAKY = QUIRK == "leaky"
+# OPEN=1 serves without checking Authorization, the way an engine behind a gateway
+# does: the gateway checks the caller's key and does not forward it.
+OPEN = os.environ.get("OPEN") == "1"
 MODEL = "gpt-oss-120b"
 MAX_BODY = 32 * 1024 * 1024
 N = [SEED]
@@ -239,7 +242,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(raw or b"{}")
         auth = self.headers.get("Authorization", "")
 
-        if not auth.startswith("Bearer ") or "invalid" in auth:
+        if not OPEN and (not auth.startswith("Bearer ") or "invalid" in auth):
             return self._send(401, error("invalid api key", "authentication_error", "invalid_api_key"))
         if self.path == "/v1/responses":
             return self._send(404, error("unsupported"))
@@ -252,6 +255,8 @@ class Handler(BaseHTTPRequestHandler):
     def _chat(self, body):
         if "messages" not in body:
             return self._send(400, error("messages is required", code="missing_field"))
+        if not body["messages"]:
+            return self._send(400, error("messages must not be empty", code="invalid_value"))
         if body.get("model") != MODEL:
             message = "unknown model on hangar-gateway upstream vllm-0" if LEAKY else "unknown model"
             return self._send(404, error(message, code="model_not_found"))

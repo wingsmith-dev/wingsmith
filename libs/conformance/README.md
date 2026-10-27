@@ -118,6 +118,18 @@ reported, if any probe raises, or if any is skipped. It also runs the probes aga
 `leaky` stub with planted defects and checks that each one is found. That is a
 regression test on the rules above, and it is the check to run after writing a probe.
 
+```sh
+just conformance-gateway
+```
+
+runs the probes through the real gateway instead. It builds the gateway and agent from
+the checkout, holds the path open with `hgrtransit path` in front of a stub, calls it on
+the gateway's public listener with a tenant key, and diffs the result against a second
+stub asked directly. Both stubs are deterministic, so every difference is something the
+gateway changed. It fails when a probe errors, when an error body or header names a leak
+needle, or when a difference turns up that `tests/gateway-differences.txt` does not
+accept with a reason. CI runs it on every change.
+
 ## What is here, and what is deliberately not
 
 | Probes | What they ask |
@@ -173,7 +185,9 @@ reference on something benign. What that needs, and does not have yet, is an acc
 run stored per target, an alarm on differences that are *new* against it, and
 accepting a difference as an explicit act that leaves a record. Runs are already
 written timestamped per target under the results directory, and `hgrconform diff`
-re-diffs a stored run without touching the endpoint.
+re-diffs a stored run without touching the endpoint. The gateway check above is the
+one target with that shape today, because its reference is a stub that never changes:
+its accepted differences are a committed file, and a new one fails CI.
 
 Two more things to know before trusting a diff:
 
