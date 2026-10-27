@@ -157,6 +157,60 @@ jobs:
           # shellcheck disable=SC2086 # one word per node id
           just test-db $IDS
 
+  # The CLI's transport against a real plane on an empty database: every collection answers,
+  # errors carry a code. The corpus-dependent cases skip, since nothing is seeded.
+  cli-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hangar
+          POSTGRES_PASSWORD: hangar
+          POSTGRES_DB: hangar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hangar -d hangar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
+      HANGAR_APP_ENV: local
+      HANGAR_ADMIN_AUTH: disabled
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/cli/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-dependency-glob: libs/plane/uv.lock
+      - run: uv sync --locked
+        working-directory: libs/plane
+      - name: start the plane
+        working-directory: libs/plane
+        run: |
+          uv run alembic upgrade head
+          uv run hangar-api --host 127.0.0.1 --port 8000 >"$RUNNER_TEMP/api.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8000/health; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/api.log"; exit 1
+      - name: live client tests
+        working-directory: libs/cli
+        env:
+          HANGAR_TEST_SERVER: http://127.0.0.1:8000
+        run: go test -count=1 -run Live -v ./internal/api/
+
   console:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
