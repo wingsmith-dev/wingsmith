@@ -86,6 +86,15 @@ export function OverviewPage() {
         })
       : undefined
 
+  const attentionSources = [
+    clusters,
+    nodes,
+    devices,
+    deployments,
+    endpoints,
+    discovered,
+  ]
+
   const attentionLoading =
     clusters.isLoading ||
     devices.isLoading ||
@@ -176,6 +185,8 @@ export function OverviewPage() {
           items={attention}
           isLoading={attentionLoading}
           error={clusters.error ?? deployments.error ?? endpoints.error}
+          clusterCount={clusters.data?.length}
+          incomplete={attentionSources.some((query) => query.error)}
         />
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

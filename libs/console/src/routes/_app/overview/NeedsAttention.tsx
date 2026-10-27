@@ -30,10 +30,16 @@ export function NeedsAttention({
   items,
   isLoading,
   error,
+  clusterCount,
+  incomplete,
 }: {
   items: AttentionItem[] | undefined
   isLoading: boolean
   error: unknown
+  /** Registered clusters, or undefined when the cluster list has not loaded. */
+  clusterCount: number | undefined
+  /** A source query failed, so the list may be missing that source's rows. */
+  incomplete: boolean
 }) {
   const [filter, setFilter] = React.useState<Filter>("all")
 
@@ -42,6 +48,13 @@ export function NeedsAttention({
   const health = all.filter((item) => item.group === "health")
   const shown =
     filter === "discovered" ? discovered : filter === "health" ? health : all
+  // The all-clear is a claim about the whole fleet, so it needs every source
+  // loaded and at least one cluster to be true of.
+  const allClear =
+    filter === "all" &&
+    !incomplete &&
+    clusterCount !== undefined &&
+    clusterCount > 0
 
   return (
     <Panel
@@ -69,13 +82,22 @@ export function NeedsAttention({
         />
       }
     >
+      {incomplete && (
+        <p role="status" className="text-2xs text-warning">
+          Some of the fleet failed to load, so this list may be incomplete.
+        </p>
+      )}
       {shown.length === 0 ? (
         <PanelEmpty>
-          <span className="inline-flex items-center gap-2">
-            <IconCheck className="size-4 text-success" />
-            Nothing to decide. Every cluster reports in and every endpoint
-            serves.
-          </span>
+          {allClear ? (
+            <span className="inline-flex items-center gap-2">
+              <IconCheck className="size-4 text-success" />
+              Nothing to decide. Every cluster reports in and every endpoint
+              serves.
+            </span>
+          ) : (
+            emptyCopy(filter, clusterCount)
+          )}
         </PanelEmpty>
       ) : (
         <div className="divide-y">
@@ -119,4 +141,11 @@ export function NeedsAttention({
       )}
     </Panel>
   )
+}
+
+function emptyCopy(filter: Filter, clusterCount: number | undefined): string {
+  if (filter === "discovered") return "No discovered workloads."
+  if (filter === "health") return "No health issues listed."
+  if (clusterCount === 0) return "No clusters registered."
+  return "Nothing listed."
 }
