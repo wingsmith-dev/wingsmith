@@ -2,7 +2,11 @@
 
 The service owns no transaction, and that is not an oversight. Placement returns a
 decision; committing anything on the strength of one belongs to whichever module
-asked — today the deployment service, which is already inside its own write.
+asked: the workload service, which takes `locks.lock_placement` for the device
+class before it reads the snapshot and writes the deployments in that same
+transaction, so two writers cannot both spend the devices or quota one snapshot
+showed free. A caller that only reads a decision, as the preview routes and the
+reactor's would-it-place-more check do, needs no lock.
 
 Responses are the decision structs from `decision.py` rather than copies of them.
 They were designed as the explanation an operator reads, and mirroring them into
