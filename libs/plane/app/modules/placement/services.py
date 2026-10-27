@@ -61,9 +61,9 @@ class ShapeSource(Protocol):
     """Anything that can state a device shape: a `Workload`, or a bare preview request.
 
     A structural type instead of a union because the two share nothing else and
-    have no common base worth inventing. They agree on these six names, the
+    have no common base worth inventing. They agree on these six names (the
     preview request is spelled with the workload's column names precisely so that
-    one builder reads either without translating, and that agreement is the whole
+    one builder reads either without translating), and that agreement is the whole
     contract.
     """
 
@@ -105,12 +105,12 @@ class PlacementService:
         can hold a quarter of it.
 
         The single-domain requirement, though, does not multiply. It is a property
-        of one replica's collective, the replicas do not talk to each other over
+        of one replica's collective: the replicas do not talk to each other over
         NVLink, so requiring all thirty-two in one NVLink domain would reject
         clusters that can run the deployment perfectly well.
 
-        `atomic` is set because this call places one indivisible unit, one share,
-        already sized by the expansion, and a share lands in one cluster whole or
+        `atomic` is set because this call places one indivisible unit (one share,
+        already sized by the expansion), and a share lands in one cluster whole or
         not at all. Splitting is a decision taken above this, in `expand()`.
 
         The topology requirement is the shape's unless the caller states its own.
@@ -147,8 +147,8 @@ class PlacementService:
 
         This is the call that turns "run gpt-20b on asia and europe" into shares.
         It resolves the workload's project and priority, reads capacity once, and
-        hands both to the pure expansion; persisting the shares, creating,
-        resizing and removing the per-cluster deployments, belongs to whoever
+        hands both to the pure expansion; persisting the shares (creating,
+        resizing and removing the per-cluster deployments) belongs to whoever
         asked, inside its own write, exactly as `decide()` does.
 
         A gang that fits in no single cluster raises. Its ranks are co-scheduled, so
@@ -241,13 +241,13 @@ class PlacementService:
 
         Two forms, one answer. `workload` asks about a shape that exists and hands
         the engine that workload's own uid. `shape` asks about one that does not
-        exist yet, the create-form question, and hands the engine `PREVIEW_UID`,
+        exist yet (the create-form question) and hands the engine `PREVIEW_UID`,
         because nothing is being created and inventing a plausible `wkl_...` would
         put a reference in a decision that resolves to nothing.
 
         Project, priority and replica count are taken from the request in both
-        forms, not off any row. That is what makes this a question, what
-        would this shape cost for that project, at that priority, at that scale,
+        forms, not off any row. That is what makes this a question (what
+        would this shape cost for that project, at that priority, at that scale)
         as against a report of what a workload already has.
         """
         if (data.workload is None) == (data.shape is None):

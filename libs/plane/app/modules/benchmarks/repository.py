@@ -40,8 +40,8 @@ class BenchmarkRepository:
     def _base(self) -> Select:
         """Every join is outer, because an endpoint-level run has neither of the two that were not.
 
-        A run against a public name has no deployment and no cluster, that is
-        the point of the level, so an inner join on either would make those
+        A run against a public name has no deployment and no cluster (that is
+        the point of the level), so an inner join on either would make those
         runs invisible to the list they belong in.
         """
         return (
@@ -166,7 +166,7 @@ class BenchmarkRepository:
         """The endpoint a reference names, and everything currently enabled behind it.
 
         Plural rows for one endpoint: the endpoint repeats and each row carries
-        one upstream. The run itself is singular, a request to the public name
+        one upstream. The run itself is singular: a request to the public name
         is routed by weight and measures whatever the gateway chose, so these
         rows become the request's coverage snapshot, not N runs.
         """

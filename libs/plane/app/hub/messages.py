@@ -332,7 +332,7 @@ class TopologyObserved(Struct):
 class WorkloadSpec(Struct):
     """How a discovered workload was told to serve, verbatim from its own cluster.
 
-    Uninterpreted. `args` arrives as the list the container was given
+    Intentionally uninterpreted. `args` arrives as the list the container was given
     and stays that way through ingestion; reading `--tensor-parallel-size` as
     parallelism happens in `modules/discovered/derive.py`, so that improving the
     reading is a plane deploy instead of an operator roll across the fleet.
@@ -444,9 +444,9 @@ class RoleSpec(Struct):
     """One role of a disaggregated deployment: what makes its process different, and no counts.
 
     The split between this and `DeploymentDesired.role_replicas` is `serving_digest`'s own split
-    made structural. What is here decides what the process *is*, prefill runs
-    `--max-num-batched-tokens` 32768 against decode's 2048, and is inside the digest. How many of
-    each there are is scale, travels beside `min_replicas`, and is outside it.
+    made structural. What is here decides what the process *is* (prefill runs
+    `--max-num-batched-tokens` 32768 against decode's 2048) and is inside the digest. How many of
+    each there are is scale, travels beside `min_replicas`, and is kept outside it.
     """
 
     role: Literal["prefill", "decode"]
@@ -458,7 +458,7 @@ class RouterSpec(Struct, omit_defaults=True):
     """How a deployment's own frontend routes between its workers. Every field optional.
 
     Each field is one `DYN_ROUTER_*` variable on the frontend, and an absent field renders no
-    variable, so Dynamo's own default stands, except `mode`, whose absence the operator renders as
+    variable, so Dynamo's own default stands. The exception is `mode`, whose absence the operator renders as
     `kv`, which is what it rendered before this block existed. A typed block instead of an
     environment passthrough: the plane validates every value against what Dynamo accepts before it
     is sent.
@@ -491,7 +491,7 @@ class ServingSpec(Struct):
     in which a deployment waited forever for a recipe it was never sent. Inlined,
     a deployment is renderable the moment its artifact has landed.
 
-    The device shape is absent, and that rule is unchanged. It
+    The device shape is intentionally absent, and that rule is unchanged. It
     reaches the cluster on the deployment's `placement`, derived from these same
     fields; two copies of one fact on one wire is two chances to disagree.
 
@@ -511,7 +511,7 @@ class ServingSpec(Struct):
     """A tag of the Dynamo runtime the engine runs in (`1.4.1`) never the engine's version.
 
     The two count in different sequences: the vLLM inside `vllm-runtime:1.4.1` is on
-    `0.28.0`. The engine's own version is on no frame at all, which build NVIDIA
+    `0.28.0`. The engine's own version is on no frame at all: which build NVIDIA
     compiled in is a property of that image, and the cluster does not report it.
     """
     engine_runtime_image: str | None
@@ -607,7 +607,7 @@ class DeploymentDesired(Struct):
     re-derive it against anything else. `min_replicas` is what is rendered;
     `max_replicas` is a ceiling for an autoscaler that does not exist yet.
 
-    There is no workload id here and no total-versus-share field of
+    There is intentionally no workload id here and no total-versus-share field of
     any kind. Nothing in a cluster ever needs to know it is one of several.
 
     `served_model_name` is the model id an API client sends, already resolved: the
@@ -759,7 +759,7 @@ class DeploymentObserved(Struct):
     The scalars stay the group rollup, so a plane reading only those is right and
     merely coarse. The precision is what the split is for: a 1P:2D group with two
     ready decode workers and no prefill is `2 of 3`, which reads as a shortfall
-    that will resolve itself, where in fact nothing is serving, a decode worker
+    that will resolve itself, where in fact nothing is serving: a decode worker
     with no prefill peer has nothing to decode from, and no arrangement of the
     totals can say so.
 
@@ -952,8 +952,8 @@ class BenchmarkObserved(Struct):
     has yet had cause to design. It is stored verbatim and `harness_version` is
     what makes two of them comparable.
 
-    `artifacts_uri` is where the per-request records went. They are telemetry,
-    high volume, append-only, never joined, so they go from the cluster to
+    `artifacts_uri` is where the per-request records went. They are telemetry
+    (high volume, append-only, never joined), so they go from the cluster to
     object storage directly and only the reference travels this stream.
     """
 

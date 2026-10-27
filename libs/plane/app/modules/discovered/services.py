@@ -279,8 +279,8 @@ class DiscoveredWorkloadService:
 
         A read instead of a POST because it is one: the same sighting derives the
         same draft every time, and nothing about asking the question changes the
-        answer. What a person does with the draft, edit it, promote with it, throw
-        it away, happens on `promote`, so there is one path that declares a serving
+        answer. What a person does with the draft (edit it, promote with it, throw
+        it away) happens on `promote`, so there is one path that declares a serving
         configuration instead of two that must agree.
         """
         return await self._draft(await self._one(ref, cluster=cluster))

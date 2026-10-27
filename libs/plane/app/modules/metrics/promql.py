@@ -1,7 +1,7 @@
 """One backend's dialect: what Hangar's metrics are called in Prometheus.
 
-Everything Prometheus-shaped lives here, the series names, the label names, the
-expression each metric is answered by, keyed by the Hangar name in
+Everything Prometheus-shaped lives here (the series names, the label names, the
+expression each metric is answered by), keyed by the Hangar name in
 `registry.py`. Nothing else in the module renders PromQL.
 
 **Candidates, not a name.** An expression carries its source series in
@@ -9,8 +9,8 @@ preference order instead of one hardcoded name, because upstream renames and
 we find out by a panel going blank. `vllm:time_per_output_token_seconds` became
 `vllm:inter_token_latency_seconds` and `vllm:gpu_cache_usage_perc` became
 `vllm:kv_cache_usage_perc`; both are still listed, first, so a cluster that has
-not been upgraded keeps answering. Names DCGM does not emit by default,
-`DCGM_FI_DEV_CLOCK_THROTTLE_REASONS`, the ECC aggregates, stay listed for the
+not been upgraded keeps answering. Names DCGM does not emit by default
+(`DCGM_FI_DEV_CLOCK_THROTTLE_REASONS`, the ECC aggregates) stay listed for the
 same reason in the other direction: the panel reads "no data" until the
 exporter's field csv is extended, and then it works with no code change.
 
@@ -134,7 +134,7 @@ of them, and `cached_input` is a subset of `input` instead of a sibling."""
 
 LIVE = 'origin="live"'
 """Every gateway query carries it. The conformance suite sends
-malformed requests at a live endpoint, so counting its probes would manufacture
+intentionally malformed requests at a live endpoint, so counting its probes would manufacture
 the availability breach they exist to detect."""
 
 FAILED = AVAILABILITY_2026_1.failed_matcher
@@ -179,8 +179,8 @@ def _failure_ratio(group: str, objective: Objective = AVAILABILITY_2026_1) -> st
     Two different shapes of nothing meet in this one expression and a plain
     division confuses both of them.
 
-    A healthy endpoint emits no failed-outcome series at all, the gateway only
-    creates a child series once that outcome happens, and `sum` over an empty
+    A healthy endpoint emits no failed-outcome series at all (the gateway only
+    creates a child series once that outcome happens), and `sum` over an empty
     vector is empty, not zero, so the division would vanish exactly when
     everything works and would only produce a number once something broke. The
     numerator is therefore unioned with a zeroed copy of the denominator, which
@@ -358,8 +358,8 @@ def device_class_values(name: str) -> tuple[str, ...]:
 def selector(scope: Scope) -> str:
     """The label matchers for one scope, cluster first and never absent.
 
-    A scope whose source has no cluster label, a Prometheus that only holds one
-    cluster's data, yields no cluster matcher, which is correct there and only
+    A scope whose source has no cluster label (a Prometheus that only holds one
+    cluster's data) yields no cluster matcher, which is correct there and only
     there.
     """
     parts: list[str] = []
@@ -378,8 +378,8 @@ def selector(scope: Scope) -> str:
 def render(metric: Metric, series: str, where: str, window: str, by: str = "") -> str:
     """The PromQL that answers one metric out of one candidate series.
 
-    A scope that narrows nothing, the whole served surface, which is a real
-    question, renders an empty `$SELECTOR`, and a matcher list may not begin with
+    A scope that narrows nothing (the whole served surface, which is a real
+    question) renders an empty `$SELECTOR`, and a matcher list may not begin with
     the comma that leaves behind. It is dropped here, not by making every
     template carry a conditional.
     """

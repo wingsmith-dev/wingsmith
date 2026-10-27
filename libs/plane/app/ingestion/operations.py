@@ -3,8 +3,8 @@
 Beside `desired.py`, not inside it, and the distance is the point. That
 module renders the resync snapshot, and everything a snapshot carries is
 prunable by definition: what is absent from a complete snapshot is what the
-cluster stops running. An operation is the third kind of thing, imperative, long-running, and usually half-done by the time a session drops,
-so folding it into that stream would make a drain that is already evicting pods
+cluster stops running. An operation is the third kind of thing: imperative, long-running, and usually half-done by the time a session drops.
+Folding it into that stream would make a drain that is already evicting pods
 cancellable by a reconnect. Keeping the renderer in its own file means there is
 no query shape in which an operation can accidentally end up inside
 `stream_desired`.
@@ -96,8 +96,8 @@ async def _render(
 
     An operation the plane has asked to stop renders as `operation.cancel` and
     never again as `operation.desired`. One row therefore has two renderings and
-    this is where they part, which keeps every caller, the live hint, the replay
-    of open operations on reconnect, sending the right one without knowing there
+    this is where they part, which keeps every caller (the live hint, the replay
+    of open operations on reconnect) sending the right one without knowing there
     are two. Re-sending the instruction to a cluster that was told to abandon it
     is the failure this ordering exists to prevent, and a reconnect is exactly
     when it would happen.
@@ -148,8 +148,8 @@ async def _target_uid(db: AsyncSession, operation: Operation) -> str | None:
     """The public id of whatever the operation points at.
 
     `target_id` is a primary key in one of six tables and `target_type` is the
-    only thing that says which, so the table is recovered from the kind rather
-    than from the value.
+    only thing that says which, so the table is recovered from the kind,
+    not from the value.
     """
     prefix = next((p for p, kind in TARGET_KINDS.items() if kind == operation.target_type), None)
     model = TARGET_TABLES.get(prefix) if prefix is not None else None

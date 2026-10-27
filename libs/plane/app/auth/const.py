@@ -39,7 +39,7 @@ be confused."""
 REMOTE_WRITE_BCRYPT_ROUNDS = 8
 """Cost factor for the bcrypt verifier the metrics write ingress checks.
 
-Below the library's default of 12. The credential is a 256-bit
+Intentionally below the library's default of 12. The credential is a 256-bit
 machine-generated token, so an attacker holding the hash gains nothing from a
 slower KDF: there is no dictionary to walk and no human-chosen password to
 recover. What the cost does buy is CPU spent on Traefik for *every* remote-write

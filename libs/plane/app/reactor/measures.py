@@ -1,6 +1,6 @@
 """Fetching the numbers a metric rule is judged on, so that the judging stays pure.
 
-`rules.py` is free of I/O and this file is the reason it can stay that
+`rules.py` is intentionally free of I/O and this file is the reason it can stay that
 way: everything that has to talk to a measurement store lives here, and what crosses
 back into `rules` is a plain float or nothing at all.
 

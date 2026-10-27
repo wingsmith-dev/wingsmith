@@ -7,7 +7,7 @@ at 2K tokens and far outside it at 100K, and the average says neither. One
 AIPerf invocation measures one load point, so a swept request is N runs and the
 re-aggregation is a group-by over its own children.
 
-**The boundaries are literals here and are duplicated.** They belong
+**The boundaries are literals here and are intentionally duplicated.** They belong
 to a frozen criteria version and to the gateway's Go constant, and to nothing
 else. A shared constant in the metric registry, editable by anybody adding a
 metric, would let an edit silently rewrite what a two-year-old verdict meant.
@@ -125,7 +125,7 @@ def sample(run: Any) -> Sample:
 def reaggregate(samples: list[Sample]) -> list[BandReport]:
     """Groups a request's runs into bands, newest boundaries first.
 
-    Discarded runs, a `warmup` mode's single low-concurrency pass, are excluded
+    Discarded runs (a `warmup` mode's single low-concurrency pass) are excluded
     outright, not reported empty. They were never a measurement, and a
     band whose only member is a warm-up would otherwise claim one.
 

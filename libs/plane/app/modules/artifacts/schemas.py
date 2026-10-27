@@ -27,7 +27,7 @@ class ArtifactUpstreamSchema(Struct):
     somebody signed, against a scratchpad. Nothing here reaches a cluster and
     nothing here is checked: a wrong value changes only what we told somebody.
 
-    `reasoning` and `tool_calling` are tri-state. Null is "the
+    `reasoning` and `tool_calling` are intentionally tri-state. Null is "the
     publisher did not say", which is not `false`: a workload may still claim the
     capability on the strength of an engine recipe that names a parser for it,
     and collapsing the two would turn silence into a denial that blocks it.
@@ -226,23 +226,23 @@ class ArtifactFitSchema(Struct):
     same as `devices_allocatable` being low, which waiting fixes. This one is fixed by
     buying cards.
 
-    `layouts` is the rest of the answer. The fields above are the recommendation, the
-    fewest cards carrying the full window, and `layouts` carries every count on this
+    `layouts` is the rest of the answer. The fields above are the recommendation (the
+    fewest cards carrying the full window), and `layouts` carries every count on this
     class that serves, so a caller can trade context for cards without asking a second
     question. The recommended count is one of them.
 
     `possible` is the half of `fits` a caller may refuse over, and the split matters
     because the two halves have opposite failure costs. `possible` false is arithmetic:
     the weights do not sit on the cards, or the attention heads do not divide across the
-    tensor group. `fits` false with `possible` true is the estimate speaking, the window
-    and the batch, sized against a flat envelope, and that is advice. A console that
+    tensor group. `fits` false with `possible` true is the estimate speaking (the window
+    and the batch, sized against a flat envelope), and that is advice. A console that
     refused over it would eventually refuse a shape that serves, which is a model nobody
     can deploy and nothing to argue against; being wrong the other way is a worker that
     fails to start and says why.
 
     `kv_counted` false means the artifact published no attention shape, so
     `required_gb` is the weights and nothing else and `context_length` is zero. That
-    row is a floor, the true requirement is strictly larger, and rendering it as a
+    row is a floor: the true requirement is strictly larger, and rendering it as a
     full sizing would promise a window nobody costed.
     """
 

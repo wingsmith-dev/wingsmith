@@ -133,7 +133,7 @@ class ServingQuotaSchema(Struct):
     enforced once something does.
 
     Every field here is declared. There is no `usage`, and there is
-    no observed sibling of the shape `QuotaSchema.usage` has: a device quota's
+    intentionally no observed sibling of the shape `QuotaSchema.usage` has: a device quota's
     usage is a join this database owns, while a serving quota's usage is measured
     per request in the gateway and never crosses into the control plane.
     """

@@ -25,7 +25,7 @@ replicas or eight ranks is unreadable, so the unit travels with them.
 PHASE_ORDER = ("pending", "admitted", "placed", "running", "succeeded")
 """Admission phases from least to most advanced, for the workload rollup.
 
-`failed` is absent: it is not a point on this line. One failed
+`failed` is intentionally absent: it is not a point on this line. One failed
 deployment makes the workload failed regardless of how far the others got, which
 is a different rule from "the least advanced wins" and is applied before it.
 """

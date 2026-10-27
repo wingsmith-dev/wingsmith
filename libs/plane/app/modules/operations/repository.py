@@ -150,8 +150,8 @@ class OperationRepository:
         """Operations are addressed by id only.
 
         `libs/packages/contract/API.md` §3 lets a path segment be an id *or* a name where the
-        object has a unique name. An operation has none, "the drain" is not a
-        thing anybody can name twice, so there is nothing here to resolve
+        object has a unique name. An operation has none ("the drain" is not a
+        thing anybody can name twice), so there is nothing here to resolve
         against and the id is the only reference.
         """
         return self._base().where(Operation.uid == ref)

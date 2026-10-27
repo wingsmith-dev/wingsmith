@@ -46,7 +46,7 @@ DESIRED = DatabaseDesiredSource()
 
 CLAIMS = DatabaseClaimStore()
 """Durable single-writer ownership per `cluster_id` (ADR 0005). Shared across pods via Postgres,
-unlike `REGISTRY`, which is not shared.
+unlike `REGISTRY`, which by design is not shared.
 """
 
 STANDING = DatabaseStanding()
@@ -55,7 +55,7 @@ STANDING = DatabaseStanding()
 LIVE = LiveSessions()
 """Connections this process can push declared state to right now, keyed by cluster.
 
-Separate from `REGISTRY`: that one holds sessions that outlive their
+Kept separate from `REGISTRY` by design: that one holds sessions that outlive their
 connection, this one holds the objects that have one. See `app.hub.dispatch`.
 """
 

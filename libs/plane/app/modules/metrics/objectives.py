@@ -87,8 +87,8 @@ AVAILABILITY_2026_1 = Objective(
 """The definition every quota has carried since quotas existed.
 
 `rate_limited` is not a failure because a 429 issued to an identified caller over
-its own declared limit is the standard's carve-out, while `shed`, the same status,
-issued by the gateway to protect itself, is. `canceled` is out of both sets: a
+its own declared limit is the standard's carve-out, while `shed` (the same status,
+issued by the gateway to protect itself) is. `canceled` is out of both sets: a
 caller that hung up took its own request away.
 """
 

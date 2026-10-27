@@ -154,8 +154,8 @@ def served_model(workload: Workload, artifact: Artifact) -> str:
     question for different reasons: metrics and benchmarks narrow a series by it,
     endpoints put it on the routing table so the gateway can rewrite an inbound
     `model` to it, and the desired-state builder sends it to the cluster. It is
-    machinery, the one place that knows how a serving configuration becomes the
-    string an engine answers to, and a module that owned it would have the others
+    machinery (the one place that knows how a serving configuration becomes the
+    string an engine answers to), and a module that owned it would have the others
     importing across the domain to reach it.
     """
     args = {flag_name(key): value for key, value in (workload.engine_args or {}).items()}
@@ -174,8 +174,8 @@ def declared_served_model(workload: Workload, artifact: Artifact) -> str:
     would only give the same value twice and a chance for the two to disagree.
 
     The workload's name remains the floor, for an artifact registered before slugs existed or one
-    whose locations say nothing resolvable. It is a bad answer and it is meant to look like one,
-    it is a workload's name where a model id belongs, but it is a string, and returning empty
+    whose locations say nothing resolvable. It is a bad answer and it is meant to look like one:
+    it is a workload's name where a model id belongs. But it is a string, and returning empty
     here renders an engine with `--served-model-name ` and a frontend that registers nothing.
     """
     return (artifact.slug or "").strip() or str(workload.name)
@@ -272,7 +272,7 @@ TOPOLOGY_FLAGS = frozenset({"disaggregation-mode", "kv-transfer-config"})
 `DERIVED_FLAGS` is the same statement about the fields a person filled in; these two are
 derived from `serving_topology` and the role instead, which is a decision nobody typed and
 therefore one nobody may contradict from `engine_args`. `kv-transfer-config` is the same
-string on both roles, the transfer mechanism is a property of the topology, not of the role,
+string on both roles (the transfer mechanism is a property of the topology, not of the role),
 and `disaggregation-mode` is the role itself, so a value for either arriving from a role's
 own arguments is a second answer to a question already settled.
 """
@@ -477,11 +477,11 @@ still the digest of the same configuration after it.
 Read in this order and hashed with the artifact, which is the one field not named
 here because it is an identity instead of a column value.
 
-What is absent is the point of the field. `imported_args` is
+What is intentionally absent is the point of the field. `imported_args` is
 observed: it was read off somebody else's running process and is never rendered,
 so two workloads that differ only there ask for the same engine. `capabilities`
-is asserted and never reaches a cluster. `served_model_name` is a name rather
-than a footprint: the same engine under two names is one configuration served
+is asserted and never reaches a cluster. `served_model_name` is a name, not
+a footprint: the same engine under two names is one configuration served
 twice, which is exactly the canary case the recipe's sharing existed for. Scale,
 placement, priority and labels are not properties of the configuration at all.
 """
@@ -588,11 +588,11 @@ def declared_router(stored: dict | None) -> dict[str, Any]:
 def _role_config(role: WorkloadRole) -> dict[str, Any]:
     """One role as the digest sees it: what it configures, never how many of it there are.
 
-    `max_batch_tokens` and `engine_args` decide what the process is, prefill runs
+    `max_batch_tokens` and `engine_args` decide what the process is: prefill runs
     `--max-num-batched-tokens 32768` against decode's 2048, a sixteenfold difference in how much
-    work one engine step does, so they belong in a hash whose subject is "what process runs".
+    work one engine step does. That is why they belong in a hash whose subject is "what process runs".
 
-    `weight` is absent, and the reason is identity, not restarts.
+    `weight` is intentionally absent, and the reason is identity, not restarts.
     `ops_benchmark_run.serving_digest` names the configuration a measurement was taken against,
     and `DIGEST_FIELDS` is explicit that "a run whose digest no longer matches any workload has
     lost the only link back to what it measured". A weight in this hash would orphan every

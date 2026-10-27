@@ -113,8 +113,8 @@ async def desired_object(
     once something is already serving the wrong thing. So this narrows the same
     query the snapshot runs instead of standing a second renderer beside it.
 
-    Absence is an answer, not a failure. A deployment that is gone, deleted, or
-    disabled, or moved to another cluster, renders as `deployment.deleted`,
+    Absence is an answer, not a failure. A deployment that is gone (deleted, or
+    disabled, or moved to another cluster) renders as `deployment.deleted`,
     because from the cluster's side those are one fact: stop running this. The
     generation is the caller's, since there is no row left to read it from.
 
@@ -157,8 +157,8 @@ async def desired_frames(
 
     So a hint about a deployment resolves to its dependency chain, in the same
     order and from the same queries the snapshot uses. Re-sending an object the
-    cluster already has is free, the stream is full-object and idempotent by
-    construction (PROTOCOL §6), and is the cheap side of the trade against a
+    cluster already has is free (the stream is full-object and idempotent by
+    construction, PROTOCOL §6) and is the cheap side of the trade against a
     deployment stranded until the next reconnect.
 
     The chain is one hop shorter than it was. A deployment used to name a recipe
@@ -169,7 +169,7 @@ async def desired_frames(
     there is nothing left to arrive out of order.
 
     A `deployment.deleted` carries the warm set after it, and only the warm set.
-    The artifact frame is not withdrawn: an artifact is a
+    The artifact frame is intentionally not withdrawn: an artifact is a
     description of some weights and describing them costs a cluster nothing, so
     there is no frame that unsays one and no reason to want one. The warm set is
     different: it is the statement that this cluster *must hold* those weights,
@@ -296,7 +296,7 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
     Inlined on the deployment, not sent as an object of its own; the
     reasoning lives on `ServingSpec` in `app.hub.messages`.
 
-    The device shape is not here. It reaches the cluster on the
+    The device shape is intentionally not here. It reaches the cluster on the
     deployment's `placement`, derived from these same columns, and putting it in
     both places would be two copies of one fact on one wire.
 
@@ -390,8 +390,8 @@ def _role_replicas(deployment: Deployment, roles: Sequence[WorkloadRole]) -> dic
     **The plane multiplies and the operator never does.** Under a disaggregated topology
     `min_replicas` counts groups, and a group is the per-role weights taken together, so a role's
     worker count is `min_replicas x weight`. The operator is forbidden this arithmetic by its own
-    contract, `Replicas()` says it "renders exactly the number it is sent, and must never sum,
-    scale, or re-derive it against anything else", and that invariant is currently absolute and
+    contract: `Replicas()` says it "renders exactly the number it is sent, and must never sum,
+    scale, or re-derive it against anything else". That invariant is currently absolute and
     cheap to check. Spending it to save one map on a frame the plane already sends would be a bad
     trade, and it is the kind of exception that is never the last one.
 

@@ -1,6 +1,6 @@
 """The canonical device-class dictionary, read from `libs/packages/contract/devices.json`.
 
-A card is named in at least two dialects that will never agree, GPU Feature
+A card is named in at least two dialects that will never agree: GPU Feature
 Discovery publishes `NVIDIA-H100-80GB-HBM3` on a node label and the DCGM
 exporter publishes `NVIDIA H100 80GB HBM3` on a Prometheus label, and neither
 is ours. So the naming is: one table in `libs/packages/contract/`, read by this module and by

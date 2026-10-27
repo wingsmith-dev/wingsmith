@@ -24,8 +24,8 @@ class AlertSchema(Struct):
     `state` and `severity` are two different axes and neither substitutes for the
     other. Severity is how bad it is; state is where it is in its life: `pending`
     (true, not yet for long enough to be worth telling anyone), `firing`,
-    `acknowledged`, `resolved`. A pending alert is visible here and
-    not notified anywhere.
+    `acknowledged`, `resolved`. A pending alert is intentionally visible here and
+    intentionally not notified anywhere.
 
     `for_seconds` is not returned, because it is a property of the rule, not
     of this occurrence; `first_seen_at` and `fired_at` together say everything a
@@ -90,14 +90,14 @@ class MetricRuleSchema(Struct):
 class AlertThresholdSchema(Struct):
     """A number this plane has committed to, and the rule that watches it.
 
-    `subject.id` of null is the fleet default for that rule, one row that covers
-    every subject of its type, and a row naming a subject overrides it for that
+    `subject.id` of null is the fleet default for that rule (one row that covers
+    every subject of its type), and a row naming a subject overrides it for that
     subject alone.
 
     `lookback`, `for_seconds` and `severity` are returned exactly as declared,
     null included, because null here means "whatever the rule says" and
     substituting the rule's own value would make a row look like it had pinned
-    something it left alone. `/v1/alert-rules` carries the defaults.
+    something it intentionally left alone. `/v1/alert-rules` carries the defaults.
     """
 
     id: str
@@ -118,7 +118,7 @@ class AlertThresholdSchema(Struct):
 
 
 class AlertThresholdCreateRequest(Struct):
-    """`comparison` is absent. Which way a metric is wrong is not declarable."""
+    """`comparison` is intentionally absent. Which way a metric is wrong is not declarable."""
 
     rule: str
     value: float

@@ -109,7 +109,7 @@ AIPERF_0_4 = Adapter(
         # `output_token_throughput` is not a fallback here and never becomes one: a serving
         # GPU's aggregate rate clears a per-stream floor under every possible condition, so a
         # check that could reach it would be a check that can never fail. It is a number worth
-        # drawing all the same, flattening aggregate throughput is what a knee looks like,
+        # drawing all the same (flattening aggregate throughput is what a knee looks like),
         # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
@@ -230,8 +230,8 @@ def failures(summary: dict | None) -> list[dict]:
     """The enumerated probe failures a conformance summary carries.
 
     A list instead of a count because the required/advisory split is per entry
-    and the verdict grades only the required ones. The full per-probe record,
-    every probe, passing and failing, with its latency, is telemetry and lives
+    and the verdict grades only the required ones. The full per-probe record
+    (every probe, passing and failing, with its latency) is telemetry and lives
     behind `artifacts_uri`, never here.
     """
     listed = (summary or {}).get("failures")
@@ -243,8 +243,8 @@ def failures(summary: dict | None) -> list[dict]:
 def dataset_scores(summary: dict | None) -> dict[str, tuple[str, float]]:
     """Every `dataset -> (metric, score)` an accuracy summary reports.
 
-    Entries that do not carry a numeric score are dropped, not defaulted,
-    which leaves the dataset looking absent, and an absent dataset is graded
+    Entries that do not carry a numeric score are dropped, not defaulted.
+    That leaves the dataset looking absent, and an absent dataset is graded
     `not_applicable`, not passed, which is the safe direction.
 
     Two producers land here. The plan-doc shape `{results: {<dataset>: {metric, score}}}`

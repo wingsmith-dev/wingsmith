@@ -1,6 +1,6 @@
 """What Hangar measures, named the Hangar way and nothing else.
 
-`libs/packages/contract/API.md` §5 keeps telemetry out of the hub: capacity is
+`libs/packages/contract/API.md` §5 keeps telemetry out of the hub by design: capacity is
 state and occupancy is measurement, and the two travel by different roads. This
 module is the vocabulary of the measurement road: `gpu.utilization`,
 `inference.ttft`, what unit each is in, and how a set of them collapses into one
@@ -47,8 +47,8 @@ clusters it landed in, so no store is ever asked about a workload.
 
 `endpoint` is the one dimension a store does know under its own name, because the
 hop that emits it is the hop that resolved the endpoint: it is a plane uid on the
-gateway's series. `serving` narrows by nothing at all, it is every request the
-front door answered, and exists as a word so that an answer about the whole
+gateway's series. `serving` narrows by nothing at all: it is every request the
+front door answered, and it exists as a word so that an answer about the whole
 served surface says which question it answered.
 
 `fleet` is the `cluster` dimension widened to every cluster one store holds, and
@@ -127,7 +127,7 @@ Two throughput numbers are registered and they are different measurements, not t
 spellings of one. `output_tokens_per_second` sums across every replica in scope and
 therefore rises with scale; `output_tokens_per_stream` is what a single caller
 experiences and is scale-invariant. An acceptance floor of "30 tokens/second" means
-the second, thirty aggregate tokens a second on a serving GPU would be a fault,
+the second: thirty aggregate tokens a second on a serving GPU would be a fault,
 and reading the wrong one gives a check that passes under every condition.
 
 `ttft_p50`, `ttft_p90`, `tpot_p50` and the three `_p99` entries sit beside the p95
@@ -138,8 +138,8 @@ in its own right: a tail read off the p95 next to it would be a number nothing
 measured, which is worse than a cell that says it was not measured.
 
 There is no failure-rate metric here and its absence is deliberate. A request that
-never reached the cluster, refused at the front door, routed nowhere, timed out
-upstream, emits nothing an engine exporter can count, so a ratio built from these
+never reached the cluster (refused at the front door, routed nowhere, timed out
+upstream) emits nothing an engine exporter can count, so a ratio built from these
 series reports a fully-broken cluster as "no traffic", not as an outage. The
 number an availability claim rests on has to come from the hop that saw the request.
 """

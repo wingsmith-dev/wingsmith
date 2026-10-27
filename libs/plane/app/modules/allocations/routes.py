@@ -1,8 +1,8 @@
 """Allocations: observed, read-only.
 
 `GET` list and `GET` one, and nothing else. An allocation is decided by placement
-and reported by the cluster, so `POST /v1/allocations` is a category error rather
-than a missing feature: capacity is released when a workload ends, not when a
+and reported by the cluster, so `POST /v1/allocations` is a category error,
+not a missing feature: capacity is released when a workload ends, not when a
 client deletes a row.
 
 `?device=dev_...` answers "which allocation holds this device right now" straight

@@ -37,9 +37,9 @@ class DeploymentStatusSchema(Struct):
     """What the cluster reports the deployment is doing, and why.
 
     `phase` is where it is; `reason` and `message` are what is holding it there.
-    Most of a deployment's life before it serves is spent waiting on an ordering,
-    the weights have to be resident, a node has to advertise enough accelerators,
-    an image has to pull, and every one of those is an expected state
+    Most of a deployment's life before it serves is spent waiting on an ordering
+    (the weights have to be resident, a node has to advertise enough accelerators,
+    an image has to pull), and every one of those is an expected state
     instead of an error. They are kept apart from `last_error` for that reason:
     an error is a thing that went wrong and should be read as one, and folding a
     normal wait into it makes both unreadable.
@@ -68,7 +68,7 @@ class DeploymentStatusSchema(Struct):
     roles: list[DeploymentRoleObservedSchema] | None = None
     """The four scalars above split by role, and absent unless the deployment has roles.
 
-    Additive: the scalars stay the group rollup and are not replaced, so a
+    Additive by design: the scalars stay the group rollup and are not replaced, so a
     client that ignores this field reads the same correct totals it always did. What it
     cannot read is which role is short, which for a 1P:2D group is the only thing worth
     watching during a rollout: two ready decode workers and no prefill is `2 of 3`, a

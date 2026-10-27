@@ -15,7 +15,7 @@ from app.core.filters import ref_ids
 class ComponentRepository:
     """Reads the declared component and its observed status as one row.
 
-    The two are joined, not lazy-loaded because every question worth
+    The two are joined, not lazy-loaded, because every question worth
     asking about a component (is it behind, is it healthy) is a question about
     the pair, and a `selectinload` per row to answer it is a second query for
     data the same join already has.

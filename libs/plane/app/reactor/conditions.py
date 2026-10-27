@@ -50,8 +50,8 @@ LIVE_PHASES = ("active", "draining")
 """Phases a cluster is expected to be carrying work in.
 
 `pending` is excluded because a cluster that has been enrolled and not yet
-connected is not an incident, it is a Tuesday; `disabled` because someone turned
-it off. Alerting on either is how an alerting system gets muted.
+connected is not an incident, it is a Tuesday; `disabled` because someone chose to
+turn it off. Alerting on either is how an alerting system gets muted.
 """
 
 
@@ -87,7 +87,7 @@ async def unreachable_clusters(db: AsyncSession) -> list[AlertIntent]:
 async def empty_clusters(db: AsyncSession) -> list[AlertIntent]:
     """Connected clusters reporting no devices: the spot-node case.
 
-    Scoped to reachable clusters. An unreachable cluster also has no
+    Scoped to reachable clusters by design. An unreachable cluster also has no
     fresh inventory, and reporting both would mean two alerts for one problem with
     the less useful of them naming the wrong cause.
     """
@@ -207,8 +207,8 @@ async def declared_thresholds(db: AsyncSession) -> list[Threshold]:
     float is an error in Python and a rounding decision in Postgres.
 
     Read inside a savepoint, and a table this cannot read is not fatal. A tick is
-    one transaction, every condition, every event it drains and every notified
-    marker it moves, and in Postgres one failed statement aborts all of it. A
+    one transaction (every condition, every event it drains and every notified
+    marker it moves), and in Postgres one failed statement aborts all of it. A
     plane whose migration has not been applied yet would therefore lose its entire
     alerting pass because of the least important query in it, which is exactly
     backwards: the cluster that went away still needs someone told about it.
@@ -246,7 +246,7 @@ async def deployment_subjects(db: AsyncSession) -> list[tuple[MetricSubject, dic
     """Deployments a metric rule can be asked about, with the labels that tune them.
 
     Enabled and wanting replicas, for the same reason `behind_deployments` scopes
-    that way: a deployment scaled to zero is serving nothing, and every
+    that way: a deployment scaled to zero is intentionally serving nothing, and every
     serving metric about it is legitimately empty.
 
     The labels are the workload's, which is where `tuning` says the knob lives.
@@ -288,7 +288,7 @@ async def metric_thresholds(db: AsyncSession, reader: MetricReader) -> list[Aler
     commitments made, not to the size of the fleet, which is the argument
     for a table of thresholds over a table of rules.
 
-    Reading and judging are separate. This function decides which
+    Reading and judging are kept separate by design. This function decides which
     questions to ask and `reader` answers them; `rules.metric_breach` then decides
     what the answer means and has never heard of a metrics backend. A reading with
     no value produces no alert and no resolution either way: an unmeasurable

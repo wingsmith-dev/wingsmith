@@ -134,8 +134,8 @@ class PlacementDecision(Verdict):
 class Share(Verdict):
     """One cluster's slice of a workload's total scale.
 
-    `replicas` is counted in the workload's own unit, replicas for a service, ranks
-    for a gang, completions for a task, and is always whole. It is this cluster's
+    `replicas` is counted in the workload's own unit (replicas for a service, ranks
+    for a gang, completions for a task) and is always whole. It is this cluster's
     share and never the total; summing a share against a total is always a bug.
     """
 

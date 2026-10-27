@@ -95,9 +95,9 @@ class UpstreamDeployment(Struct):
 class UpstreamRecipe(Struct):
     """Serving parameters somebody upstream has run, attributed to them.
 
-    Kept apart from `ServingDefaults`. That struct is the plane's own
+    Kept apart from `ServingDefaults` by design. That struct is the plane's own
     arithmetic over `config.json`, and this is a third party's measurement of a
-    different question, not "what do these weights need" but "what did this
+    different question: not "what do these weights need" but "what did this
     configuration do when we served it". Merging the two would produce a draft
     where no field can say where its number came from, and the numbers do not
     always agree.
@@ -169,7 +169,7 @@ class UpstreamRecipe(Struct):
 class ResolvedArtifact(Struct):
     """A source manifest read as an artifact, ready to be registered.
 
-    The field names overlap `discovered.derive.ArtifactDraft`: both
+    The field names intentionally overlap `discovered.derive.ArtifactDraft`: both
     answer "what artifact is this", and two drafts naming the same fact differently
     is how a console ends up with two ways to register one set of weights.
 
@@ -456,10 +456,10 @@ that is a thing to look at before the workload is submitted.
 It was 2.0, and 2.0 is wide enough to hide the error it exists to catch.
 DeepSeek-V4-Pro sized every one of its 1.65 T parameters at the fp8 its
 `quantization_config` names, ignoring the `expert_dtype: fp4` that holds 94% of
-them, and came out at 1,537 GB against a published 960 GB. A ratio of 1.6, a
+them, and came out at 1,537 GB against a published 960 GB. A ratio of 1.6 is a
 whole extra H200 node, and the guard rail let it through without a word.
 
-The accurate gap between the two questions is the KV cache and the activation peak,
+The real gap between the two questions is the KV cache and the activation peak,
 which on a model this size are under a tenth of the total. A quarter is loose
 enough for that and tight enough that a misread precision cannot sit inside it.
 """
@@ -476,8 +476,8 @@ def upstream_recipe(
     nothing about the rest. It produces no note, because "nobody upstream has
     published a recipe for this" is not a remark about the weights.
 
-    The lookup takes the slug as typed. A slug that is a requantized variant,
-    `RedHatAI/...-FP8-dynamic`, resolves to the family recipe *and* to the
+    The lookup takes the slug as typed. A slug that is a requantized variant
+    (`RedHatAI/...-FP8-dynamic`) resolves to the family recipe *and* to the
     variant inside it, so the precision is read, not guessed.
     """
     match = vllm_recipes.lookup(model.slug)

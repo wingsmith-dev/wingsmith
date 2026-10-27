@@ -36,8 +36,8 @@ def _revision(policy: Policy) -> str:
 def check_cluster_lists(allowed: list[str], denied: list[str]) -> None:
     """A cluster on both lists is a policy that cannot be evaluated.
 
-    Allow and deny are not opposite ends of one axis, an empty allow-list means
-    "no opinion", so the only genuinely contradictory input is naming the same
+    Allow and deny are not opposite ends of one axis (an empty allow-list means
+    "no opinion"), so the only genuinely contradictory input is naming the same
     cluster twice, and it has to be refused, not resolved by precedence
     nobody wrote down.
     """

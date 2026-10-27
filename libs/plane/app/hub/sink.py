@@ -2,7 +2,7 @@
 
 The session owns framing, resume and backpressure; it owns no storage. Every decoded inbound
 frame is handed to a `Sink`, and every outbound resync stream is drawn from a `DesiredSource`.
-Both are narrow: the session must be exercisable end to end with no database.
+Both are narrow by design: the session must be exercisable end to end with no database.
 
 The failure contract is the protocol's, not Python's: a `Sink` method that raises means the frame
 was **not** durably applied, so the session withholds the acknowledgement and the operator replays
@@ -75,8 +75,8 @@ class Sink(Protocol):
     ) -> None:
         """Closes a snapshot.
 
-        `complete` is essential: a truncated snapshot must leave local state untouched rather
-        than be read as an authoritative empty set (MESSAGES.md, Resync).
+        `complete` is essential: a truncated snapshot must leave local state untouched,
+        not be read as an authoritative empty set (MESSAGES.md, Resync).
         """
         ...
 

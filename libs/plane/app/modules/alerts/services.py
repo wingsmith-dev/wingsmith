@@ -33,7 +33,7 @@ from .repository import AlertThresholdRepository
 
 
 class AlertService:
-    """Read, acknowledge, resolve. No create and no delete.
+    """Read, acknowledge, resolve. No create and no delete, by design.
 
     Alerts are derived by the reactor, so nothing declares one; acknowledgement is the one
     human input. Resolving is how an alert ends, and there is no delete, so the record of an
@@ -215,7 +215,7 @@ def _for_seconds(value: int) -> int:
 class AlertThresholdService:
     """Declared state, fully writable: the half of alerting a person owns.
 
-    The opposite of `AlertService` next door, and so: an alert is
+    The opposite of `AlertService` next door, by design: an alert is
     derived and cannot be created, a threshold is a commitment and cannot be
     anything else. The number, the window and the scope are declared here; the
     predicate that watches them is compiled into `app/reactor/rules.py` and is

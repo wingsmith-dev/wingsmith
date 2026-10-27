@@ -223,7 +223,7 @@ class WorkloadChange:
     """What a workload write did before it is committed: the result to report and the clusters to wake.
 
     The write methods that return one flush and never commit, so a caller that records
-    something about the change, an operation closing as succeeded, commits both in
+    something about the change (an operation closing as succeeded) commits both in
     one transaction and then calls `WorkloadService.announce`.
     """
 
@@ -282,7 +282,7 @@ class WorkloadService:
     ) -> None:
         """Files what the plane just did, in the caller's transaction.
 
-        Before the caller's `commit()`: the event and the write it
+        Runs before the caller's `commit()` by design: the event and the write it
         describes are one fact. The timeline is keyed by deployment because that is
         where a cluster's own account of the same object is filed, and a reader
         chasing a stuck workload should not have to consult two timelines.
@@ -312,9 +312,9 @@ class WorkloadService:
         """Files what the plane did to the workload itself, in the caller's transaction.
 
         The deployment timeline can only begin once there is a deployment, which is
-        after placement has already answered. Everything before that, the request
+        after placement has already answered. Everything before that (the request
         arriving, the clusters that were considered, the reason each one was ruled
-        out, happens to the workload and has nowhere else to be filed.
+        out) happens to the workload and has nowhere else to be filed.
 
         `moment` is passed by a caller that is filing several events for one call, so
         that the story reads in the order it happened, not in the order the
@@ -742,8 +742,8 @@ class WorkloadService:
 
         Read-only over observed state: the allocation, its devices, and the nodes
         they sit on are all written by ingestion, and nothing here writes. Only
-        membership and placement are reported, device counts, node occupancy, and
-        the per-replica assignment, never any serving telemetry about them.
+        membership and placement are reported (device counts, node occupancy, and
+        the per-replica assignment), never any serving telemetry about them.
         """
         row = await self._one(ref, project)
         workload = row[0]
@@ -847,7 +847,7 @@ class WorkloadService:
         placement raises instead of returning half of one.
 
         `extra_policies` exists for exactly one caller: `create`, whose workload has no
-        primary key yet, the column is `server_default`, so nothing can be attached to
+        primary key yet (the column is `server_default`), so nothing can be attached to
         it and `_policies` has nothing to find. The constraint the caller declared is
         handed to the expansion directly and persisted as a real Policy in the same
         write, so this is the only expansion in the object's life that needs it. Every
@@ -1134,9 +1134,9 @@ class WorkloadService:
         either leave them behind or replace every running copy. A patch restating the
         current name is accepted.
 
-        A serving change that moves what one unit needs from placement, device class,
+        A serving change that moves what one unit needs from placement (device class,
         count or memory floor, tensor degree, topology domain, or the role weights of a
-        disaggregated group, is placed again in this same write. If the new shape
+        disaggregated group) is placed again in this same write. If the new shape
         places fewer units than are placed now, the patch is refused and nothing
         changes. Flipping between aggregated and disaggregated is `workload.reshape`,
         because the unit the scale numbers count changes with it.
@@ -1251,8 +1251,8 @@ class WorkloadService:
         that "which clusters is this on" stays answerable by looking at the rows.
 
         The generation is bumped only when the share actually moved. Re-expanding a
-        workload that landed on the same split is common, anything that touches the
-        workload re-derives it, and making every one of those a new generation would
+        workload that landed on the same split is common (anything that touches the
+        workload re-derives it), and making every one of those a new generation would
         have clusters restarting replicas to arrive where they already are.
 
         Flushes and never commits: the caller decides what else lands in the same write.
@@ -1425,8 +1425,8 @@ class WorkloadService:
         success the moment the plane accepted the intent.
 
         **The new count is named and never inherited.** A workload at `desired 3` means three
-        aggregated replicas today and would mean three *groups*, seventy-two devices at 1:2 and
-        TP8, the moment the topology flips. The unit under the number changes, so the number is
+        aggregated replicas today and would mean three *groups* (seventy-two devices at 1:2 and
+        TP8) the moment the topology flips. The unit under the number changes, so the number is
         re-stated: a flip that does not say how many it wants is refused, not defaulted. The
         bounds follow the same argument and default to the count, not to what they were,
         because carrying them forward is the same reinterpretation one field over.

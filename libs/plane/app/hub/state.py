@@ -4,8 +4,8 @@ A session is the unit resume counts within: sequence numbers in both directions 
 without it (PROTOCOL §4). The hub therefore keeps a `SessionState` keyed by `session_id` across
 reconnects, holding the inbound cursor, the outbound counter, and the outbound replay buffer.
 
-This is in-process. The *operator's* cursor must be durable, it lives beside the
-CRDs, but the hub's copy is recoverable: a hub that lost its state answers `full_resync`, which
+This is intentionally in-process. The *operator's* cursor must be durable (it lives beside the
+CRDs), but the hub's copy is recoverable: a hub that lost its state answers `full_resync`, which
 is the correct, if expensive, answer.
 """
 
@@ -33,7 +33,7 @@ def new_id() -> str:
 class ReplayBuffer:
     """Frames sent but not yet released by the peer's `ack`.
 
-    Bounded. Overflow is not survivable by dropping, hub → operator must never drop desired
+    Bounded. Overflow is not survivable by dropping: hub → operator must never drop desired
     state (PROTOCOL §6), so `add` reports the overflow and the caller closes the connection.
     """
 

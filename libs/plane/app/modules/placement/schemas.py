@@ -25,8 +25,8 @@ class PlacementShapeRequest(Struct):
 class PlacementPreviewRequest(Struct):
     """A placement question asked without creating anything.
 
-    The same inputs a deployment supplies, what to run, who for, and at what
-    priority, because a preview that took a different shape from the real call
+    The same inputs a deployment supplies (what to run, who for, and at what
+    priority), because a preview that took a different shape from the real call
     would be a second scheduler to keep in step.
 
     Exactly one of `workload` and `shape` says what to place, and the pair is the

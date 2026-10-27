@@ -26,8 +26,8 @@ from app.core.filters import ref_ids
 RUNNING_PHASES = ("starting", "ready", "draining")
 """The observed phases in which a replica's process is actually up.
 
-`running` is not one of the phases a cluster reports, the wire enum is
-`pending | starting | ready | draining | terminated | failed`, so counting rows
+`running` is not one of the phases a cluster reports (the wire enum is
+`pending | starting | ready | draining | terminated | failed`), so counting rows
 equal to the string would have counted nothing, forever. A replica that is
 draining is still serving what it already accepted, which is why it is here and
 `terminated` is not.

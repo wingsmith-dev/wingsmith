@@ -6,13 +6,13 @@ to an htpasswd file in a different repository so the cluster's metrics agent cou
 authenticate to the central store's write ingress. A per-cluster manual step is the
 one thing the enrolment flow cannot have.
 
-So the plane is the source of that file. It already mints the credential, the
-enrolment token, and it already knows the fleet, which is exactly the pair of
+So the plane is the source of that file. It already mints the credential (the
+enrolment token), and it already knows the fleet, which is exactly the pair of
 facts the file is made of. One line per cluster holding a bcrypt verifier:
 
     <cluster-name>:<bcrypt-hash>
 
-This runs in the reactor, not at mint time. Mint time is a single
+This runs in the reactor, not at mint time, by design. Mint time is a single
 HTTP request that must not fail because the API server was briefly unavailable, and
 the file is a function of the whole fleet, not of one cluster: a
 reconciliation, not an event. The reactor's lease already makes exactly one process
@@ -85,8 +85,8 @@ def _announce(reason: str) -> None:
 async def reconcile(db: AsyncSession, store: SecretStore | None = None) -> bool:
     """Brings the write ingress's htpasswd in line with the registry.
 
-    Returns whether a write happened. The unchanged case is the common one, the
-    fleet changes when a cluster is registered or rotates a token, which is rarely,
+    Returns whether a write happened. The unchanged case is the common one (the
+    fleet changes when a cluster is registered or rotates a token, which is rarely),
     so the current value is read and compared first. Patching a Secret every tick
     would churn its `resourceVersion` and, with it, anything watching the object.
 

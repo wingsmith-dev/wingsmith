@@ -50,7 +50,7 @@ ROLES = frozenset({"primary", "canary", "fallback"})
 SERVING_PHASES = frozenset({"active"})
 """The cluster phases that may carry inference traffic.
 
-`pending` has never been enrolled, `draining` is being emptied and
+`pending` has never been enrolled, `draining` is being intentionally emptied and
 `disabled` is out of service: sending requests to any of them is the plane
 contradicting the intent somebody declared. Stated here, not imported from
 the clusters module for the same reason `PLACEABLE_PHASES` is stated in
@@ -60,8 +60,8 @@ the clusters module for the same reason `PLACEABLE_PHASES` is stated in
 def check_targets(targets: list[EndpointTargetRequest]) -> None:
     """Rejects a target set that could not route.
 
-    Two deployments cannot appear twice, the table's unique constraint says so
-    and an integrity error at commit time names neither of them, and a set of
+    Two deployments cannot appear twice (the table's unique constraint says so
+    and an integrity error at commit time names neither of them), and a set of
     enabled targets whose weights sum to zero is an endpoint that accepts traffic
     and sends it nowhere, which reads as an outage, not as configuration.
     """
@@ -99,7 +99,7 @@ def public_model(endpoint: Endpoint) -> str:
 def alias_names(endpoint: Endpoint) -> list[str]:
     """The other public ids this endpoint answers to, sorted.
 
-    Sorted, not left in insertion order because the set is what matters and the order is
+    Sorted, not left in insertion order, because the set is what matters and the order is
     not a fact anybody declared: it also goes into the resolved table's revision, which must not
     move because two rows came back the other way round.
     """
@@ -456,7 +456,7 @@ def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
 def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
     """Whether one request could match both scopes. An omitted term matches everything.
 
-    `when_present` is not read here. Two rules guarded on different
+    `when_present` is intentionally not read here. Two rules guarded on different
     paths still both fire on a request that carries both of them, so a differing
     condition narrows nothing for this question: treating it as though it did
     would let exactly the conflict this function exists to refuse through.
@@ -483,8 +483,8 @@ def _alias_term(alias: str) -> str:
     """One alias, as it enters the revision's content hash.
 
     Prefixed, because `_served` hashes a *set* and an alias is very often a string already in it.
-    Renaming an endpoint means publishing the engine's own name as the alias, `moonshotai/kimi-k3`
-    aliased onto `kimi-k3`, where that is exactly what the artifact's slug already resolves to, so
+    Renaming an endpoint means publishing the engine's own name as the alias (`moonshotai/kimi-k3`
+    aliased onto `kimi-k3`), where that is exactly what the artifact's slug already resolves to, so
     folding the bare string in makes the one change that matters invisible. Nothing else moves on
     an alias-only update, so the gateway keeps its `If-None-Match`, gets a `304`, and 404s the name
     a client was just told to use.
@@ -684,8 +684,8 @@ class EndpointService:
         symmetric case of a slug moved onto somebody else's alias.
 
         It has to be a refusal and not a preference, because the gateway resolves a duplicate key
-        by keeping whichever binding it indexed first. That is the right behaviour there, order-
-        dependent routing is worse than a loud misconfiguration, but it means the plane is the
+        by keeping whichever binding it indexed first. That is the right behaviour there (order-
+        dependent routing is worse than a loud misconfiguration), but it means the plane is the
         only place the ambiguity can actually be prevented.
         """
         owner = await self.repo.get_alias_owner(slug)
@@ -710,7 +710,7 @@ class EndpointService:
 
         # Defaulted from the weights behind the first target, then from the endpoint's own name.
         #
-        # The default is the point of the field instead of a convenience. An endpoint in front of
+        # The default is the reason for the field, not a convenience. An endpoint in front of
         # one model answers to that model's name, and requiring a caller to type it is how the
         # public id and the id the engine registered come to differ, which is not a visible
         # failure but a 404 from inside the cluster, with the deployment healthy and the tunnel
@@ -855,8 +855,8 @@ class EndpointService:
         A client calling the endpoint by its public name would be asking the
         frontend for a model it does not have, so the gateway rewrites it.
 
-        That resolution goes into the revision as content, the workload's
-        `serving_digest` and the resolved name itself, not as a stamp
+        That resolution goes into the revision as content (the workload's
+        `serving_digest` and the resolved name itself), not as a stamp
         taken off the row it was read from. It used to be the recipe's
         `updated_at`, and a stamp is a proxy for the question that is wrong in
         both directions: it moved when a recipe was renamed or when a field that

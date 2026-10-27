@@ -46,7 +46,7 @@ SEVERITY_ORDER = {INFO: 0, WARNING: 1, ERROR: 2, CRITICAL: 3}
 def at_least(severity: str, floor: str) -> bool:
     """Whether `severity` clears `floor`. Unknown severities are treated as the floor's equal.
 
-    Permissive: an unrecognised severity arriving from a cluster is a
+    Permissive by design: an unrecognised severity arriving from a cluster is a
     contract drift worth seeing, and dropping it silently is the one response that
     guarantees nobody ever notices.
     """
@@ -110,8 +110,8 @@ ALERTING_EVENTS = {
 }
 """Event types that open an alert regardless of the severity the writer chose.
 
-An override instead of a filter. Severity is set by whoever wrote the event,
-the operator, for most of these, and `node.left` arriving as a `warning` is a
+An override instead of a filter. Severity is set by whoever wrote the event
+(the operator, for most of these), and `node.left` arriving as a `warning` is a
 defensible call from inside a cluster that reschedules around it and the wrong
 call for a single-node cluster whose only GPU just went away. Anything not named
 here still alerts if it arrives at `error` or above, so this list is where a
@@ -415,9 +415,9 @@ METRIC_RULES: dict[str, MetricRule] = {
 """Every metric-backed rule, by name. The registry of predicates a threshold row may name.
 
 Eight of these read the serving engine and two read the cards. **None of them reads
-an availability, failure-rate or error-ratio series, and that is a decision rather
-than an omission.** A request that never reached the cluster, refused at the front
-door, routed nowhere, timed out upstream, emits nothing an engine exporter can
+an availability, failure-rate or error-ratio series, and that is a decision,
+not an omission.** A request that never reached the cluster (refused at the front
+door, routed nowhere, timed out upstream) emits nothing an engine exporter can
 count, so a ratio built out of these series reports a fully-broken cluster as "no
 traffic", not as an outage, and the alert that matters most is the one
 guaranteed not to fire. Availability has to be measured at the hop that saw the
@@ -440,8 +440,8 @@ class Threshold:
     caller converts. Rules compare and format plain floats, which is what keeps
     them exercisable from a test that has never opened a session.
 
-    `subject_uid` of None is the fleet default for its rule, one row that covers
-    every subject of that type, and a row naming a subject overrides it for that
+    `subject_uid` of None is the fleet default for its rule (one row that covers
+    every subject of that type), and a row naming a subject overrides it for that
     subject alone.
     """
 

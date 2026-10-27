@@ -2,8 +2,8 @@
 
 The hub is the one process that knows whether a cluster was actually told
 something. The API knows what was asked for and ingestion knows what the cluster
-concluded; between the two there is a gap, desired state written, cluster
-silent, and until something wrote this down, that gap was indistinguishable
+concluded; between the two there is a gap (desired state written, cluster
+silent), and until something wrote this down, that gap was indistinguishable
 from a hub that never delivered at all.
 """
 

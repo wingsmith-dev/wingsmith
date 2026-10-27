@@ -300,13 +300,13 @@ def _served_weights(
 
     `openai/gpt-oss-20b` carries its served safetensors shards at the root and two more
     full copies of the same parameters under `original/` and `metal/`. Counting all three
-    trebles `size_bytes`, and, the reason this is not merely cosmetic, puts them in the
+    trebles `size_bytes` and (the reason this is not merely cosmetic) puts them in the
     digest, so re-uploading the Metal build would change the identity of weights that did
     not change. Sidecars are a packaging detail of the repository, not of the model.
 
     Root-level files win when there are any, because that is where a transformers-style
-    repo puts what it serves. A repo that keeps its only weights in a subdirectory, a
-    GGUF conversion, most often, has no root-level files to prefer, so everything counts
+    repo puts what it serves. A repo that keeps its only weights in a subdirectory (a
+    GGUF conversion, most often) has no root-level files to prefer, so everything counts
     and nothing is dropped.
     """
     weights.sort(key=lambda w: w.path)

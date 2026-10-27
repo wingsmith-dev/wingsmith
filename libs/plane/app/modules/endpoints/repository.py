@@ -52,7 +52,7 @@ class EndpointRepository:
     def serving_artifact_query(self, artifact: str) -> Select:
         """The endpoints whose targets serve one artifact.
 
-        Two hops, target to deployment to workload, expressed as a subquery so
+        Two hops (target to deployment to workload), expressed as a subquery so
         that filtering by model stays one round trip instead of a fan-out over
         every endpoint's target list. The artifact is the workload's: a
         deployment is that workload on one cluster and names no artifact of its
@@ -110,7 +110,7 @@ class EndpointRepository:
     def resolved_query(self, ref: str | None = None) -> Select:
         """Endpoints joined out to the addresses their targets sit behind.
 
-        An outer join all the way down: a target whose cluster has
+        An outer join all the way down, by design: a target whose cluster has
         declared no serving address still has to come back, because the caller
         has to be able to tell a misconfigured endpoint from an absent one.
         Filtering happens above, where it can say why.
@@ -132,8 +132,8 @@ class EndpointRepository:
         The workload also carries `serving_digest`, which is what the resolution's
         revision is versioned by; see `_revision_of`.
 
-        `Project` and `Tenant` are the last two entities, joined inward rather
-        than out: `Endpoint.project_id` and `Project.tenant_id` are both NOT
+        `Project` and `Tenant` are the last two entities, joined inward,
+        not out: `Endpoint.project_id` and `Project.tenant_id` are both NOT
         NULL and 1:1, so, like the workload and artifact hops, they multiply
         no rows. They carry `tenant_id` onto the resolved endpoint, which is
         what lets the gateway answer only for the tenant a request belongs to

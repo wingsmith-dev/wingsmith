@@ -2,12 +2,12 @@
 
 Every hub process listens, and every hub process sees every notification. One of
 them holds the claim on the named cluster (ADR 0005) and therefore has a live
-session to push down, two, for at most one ownership poll after a displacement,
-and the displaced one's writes are refused, and the rest look the cluster up in
+session to push down (two, for at most one ownership poll after a displacement,
+and the displaced one's writes are refused), and the rest look the cluster up in
 their own in-process index, find nothing, and drop the hint on the floor. That is the whole of the
-fan-out design, no routing table, no directory, no second consensus problem
-beside the claim table, and it works because a notification is a wakeup rather
-than a message, so ignoring one costs nothing.
+fan-out design: no routing table, no directory, no second consensus problem
+beside the claim table. It works because a notification is a wakeup, not
+a message, so ignoring one costs nothing.
 
 What gets sent is never the notification's content. The hint names an object; the
 renderer re-reads it out of Postgres and sends what the database says now, which
@@ -57,9 +57,9 @@ class Dispatchable(Protocol):
 class LiveSessions:
     """The sessions this process can actually push to right now, keyed by `cluster_id`.
 
-    A second index instead of a field on `SessionRegistry`. The
-    registry holds `SessionState`, cursors and a replay buffer keyed by
-    `session_id`, and its whole reason to exist is that it *outlives* the
+    Intentionally a second index instead of a field on `SessionRegistry`. The
+    registry holds `SessionState` (cursors and a replay buffer keyed by
+    `session_id`), and its whole reason to exist is that it *outlives* the
     connection, so a resumable session sits in it with no socket attached. Live
     dispatch wants the opposite set: the connections that exist this instant, and
     the object that can write to one. Merging them would put a live object with a
@@ -324,7 +324,7 @@ async def listen_loop(
     would be a session nothing else can use, checked out forever.
 
     Reconnects are unremarkable for the same reason a dropped notification is.
-    Notifications that arrive while this loop is between connections are gone,
+    Notifications that arrive while this loop is between connections are gone:
     Postgres has nobody to hand them to, and the clusters they concerned keep
     running what they last knew until the next resync corrects them. That is why
     the loop simply waits and reconnects instead of trying to replay the window it

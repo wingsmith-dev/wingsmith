@@ -86,8 +86,8 @@ def check_footprint(**fields: int | None) -> None:
 def check_floor(device_class: str, device_memory_mib_min: int) -> None:
     """Rejects a per-device memory floor the declared device class cannot meet.
 
-    A device class *is* a memory figure, `h100-80gb-sxm` and `h100-80gb-pcie` are
-    separate entries of the table for exactly this reason, so a class and a floor
+    A device class *is* a memory figure (`h100-80gb-sxm` and `h100-80gb-pcie` are
+    separate entries of the table for exactly this reason), so a class and a floor
     are two statements about the same quantity and they can contradict each other.
     When they do, placement filters every device of that class out before it looks
     at whether any are free, reports `no_such_device_class`, and the workload
@@ -129,12 +129,12 @@ def check_shape(
 ) -> None:
     """Rejects a shape that cannot be placed.
 
-    `context_length` is None where the engine has no such thing, a diffusion model on omni,
+    `context_length` is None where the engine has no such thing (a diffusion model on omni)
     and is then not checked.
 
     Two rules, both from heterogeneity being a scheduling constraint instead of
-    an enrolment detail. A shape without a device class is not a shape, you
-    cannot tensor-parallel across an A100 and an H100, and a device count that
+    an enrolment detail. A shape without a device class is not a shape (you
+    cannot tensor-parallel across an A100 and an H100), and a device count that
     is not a whole multiple of tensor × pipeline parallelism describes a layout
     no scheduler can lay down.
     """
@@ -244,8 +244,8 @@ def check_topology(serving_topology: str, roles: Sequence[WorkloadRole], engine:
     groups, which reinterprets a live scale number to say the same thing.
 
     Per-role capacity is not checked separately, because there is nothing separate to check. The
-    two roles share `device_class`, `device_count` and `tensor_parallel`, the recipe's whole
-    delta is six arguments, so `check_capacity` on the workload already answers for both. A
+    two roles share `device_class`, `device_count` and `tensor_parallel` (the recipe's whole
+    delta is six arguments), so `check_capacity` on the workload already answers for both. A
     second call with identical inputs would be a check that cannot fail differently.
 
     Whether a group is expressible in whole nodes is not checked either. It cannot be:
@@ -615,8 +615,8 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
 def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, gang_size: int) -> None:
     """Rejects totals that contradict each other, or a gang that pretends to a range.
 
-    Zero is a legitimate floor, a workload scaled to nothing is parked, not
-    deleted, so for a splittable kind the only rules are non-negativity and the
+    Zero is a legitimate floor (a workload scaled to nothing is parked, not
+    deleted), so for a splittable kind the only rules are non-negativity and the
     ordering of the three numbers.
 
     A gang is different in kind and not just in degree: its ranks are co-scheduled,

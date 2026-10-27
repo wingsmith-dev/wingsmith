@@ -56,7 +56,7 @@ class Settings:
     """
 
     HUB_SESSION_TTL_SECONDS: int = 600
-    """How long an idle `SessionState`, cursors and replay buffer, survives with no
+    """How long an idle `SessionState` (cursors and replay buffer) survives with no
     connection attached before the reaper drops it. Sized well past a rolling restart
     (PROTOCOL §4's buffer is sized the same way) so a routine redeploy never reaps a
     session an operator is about to resume; a cluster gone for longer than this pays a
@@ -151,8 +151,8 @@ class Settings:
     Off by default because it is the one thing the plane does that reaches outside
     its own namespace, and because it is inert without a service account to
     authenticate with. Enabled without `REMOTE_WRITE_AUTH_NAMESPACE`, or with no
-    in-cluster credential (local dev, tests), the pass logs once and does nothing,
-    never a crash loop.
+    in-cluster credential (local dev, tests), the pass logs once and does nothing;
+    it never crash-loops.
     """
 
     REMOTE_WRITE_AUTH_NAMESPACE: str = ""
@@ -297,7 +297,7 @@ class Settings:
 
     Empty renders no pull secret at all, which is right when those images are
     public or sit in a registry the nodes already authenticate to. Set it, with the
-    username and token below, when they are private, otherwise a registered
+    username and token below, when they are private; otherwise a registered
     cluster is handed values that install cleanly and cannot pull."""
 
     IMAGE_PULL_SECRET_REGISTRY: str = "ghcr.io"
@@ -332,14 +332,14 @@ class Settings:
     setup values.
 
     One address, however many replicas the gateway runs. Coverage does have to be
-    complete, the tunnel pool is in-process, so a gateway replica can only answer
-    for a cluster whose tunnel it is itself holding, but the replica count rides
+    complete (the tunnel pool is in-process, so a gateway replica can only answer
+    for a cluster whose tunnel it is itself holding), but the replica count rides
     the handshake, so an agent given this one name redials it until it has found
     them all. Naming the replicas here instead would mean that scaling the gateway
     is an edit to the values of every cluster in the fleet.
 
-    This is the plane's own deployment fact, the public tunnel name of the
-    gateway's StatefulSet, which is why it is configuration here and not a
+    This is the plane's own deployment fact (the public tunnel name of the
+    gateway's StatefulSet), which is why it is configuration here and not a
     column. Empty renders the agent block as a blank with an example,
     because a cluster cannot be handed an address the plane does not know, and
     because values that install and serve nothing beat values that do not
@@ -353,7 +353,7 @@ class Settings:
 
     SETUP_CHART_VERSION: str = ""
     """Chart version the setup instructions pin (`helm upgrade --version`). The
-    chart version is the compatibility unit, its `appVersion` names the operator
+    chart version is the compatibility unit: its `appVersion` names the operator
     image, so an install records exactly what it ran. Empty omits `--version`
     and takes whatever the registry resolves as latest, which is fine for dev but
     should be pinned in a deployment."""

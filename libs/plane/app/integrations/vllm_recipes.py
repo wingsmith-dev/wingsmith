@@ -329,11 +329,11 @@ class RecipeMatch:
         """The TP size the corpus would render for this node shape.
 
         Their precedence, kept in their order: `variant.tp`, then
-        `strategy_overrides.single_node_tp.tp`, either one a bare number or a map
-        keyed by GPU id, generation, brand or `default`, and then an auto-fit from
+        `strategy_overrides.single_node_tp.tp` (either one a bare number or a map
+        keyed by GPU id, generation, brand or `default`), and then an auto-fit from
         the published memory floor.
 
-        The auto-fit is binary: one device when the weights fit on
+        The auto-fit is intentionally binary: one device when the weights fit on
         one, the whole node when they do not. Half a node is skipped because it
         leaves devices idle without buying the latency that would justify it. A
         declared size is clamped to the node, since a recipe naming eight cannot

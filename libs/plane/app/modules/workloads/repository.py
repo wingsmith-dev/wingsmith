@@ -38,8 +38,8 @@ from app.core.filters import ref_ids
 RUNNING_PHASES = ("starting", "ready", "draining")
 """The observed phases in which a replica's process is actually up.
 
-`running` is not one of the phases a cluster reports, the wire enum is
-`pending | starting | ready | draining | terminated | failed`, so counting rows
+`running` is not one of the phases a cluster reports (the wire enum is
+`pending | starting | ready | draining | terminated | failed`), so counting rows
 equal to the string would have counted nothing, forever. A replica that is
 draining is still serving what it already accepted, which is why it is here and
 `terminated` is not.
@@ -60,8 +60,8 @@ class WorkloadRepository:
 
     The artifact is `selectinload`ed, not joined and selected beside its own
     labels, because the read needs the entity and not a column of it: the served
-    model name and the serving digest are both resolved from the whole object, see
-    `app.core.serving`, and a label per field they read is one more thing to keep in
+    model name and the serving digest are both resolved from the whole object (see
+    `app.core.serving`), and a label per field they read is one more thing to keep in
     step every time that order changes.
     """
 
@@ -85,8 +85,8 @@ class WorkloadRepository:
     def placement_query(self, workload_id) -> Select:
         """Every live device a workload currently holds, with node and replica.
 
-        Scoped to live allocations and live members, `released_at IS NULL` on
-        both, because placement is where the workload is now, not where it has
+        Scoped to live allocations and live members (`released_at IS NULL` on
+        both), because placement is where the workload is now, not where it has
         been. One row per held device, joined out to the node it sits on and the
         replica the allocation serves, so the rollup is assembled in one round
         trip instead of one per allocation.
@@ -334,8 +334,8 @@ class WorkloadRepository:
 
         A read already carries the entity through `selectinload`, but an update
         arrives at the row through `_one` and then has to re-check the device shape
-        against the weights before it writes: this fetches it once, by key, rather
-        than depending on how the caller got here.
+        against the weights before it writes: this fetches it once, by key,
+        instead of depending on how the caller got here.
         """
         return await self.db.get(Artifact, workload.artifact_id)
 

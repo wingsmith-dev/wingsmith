@@ -76,8 +76,8 @@ What is left is what was checked against the running containers' own `--help`:
 worker takes both. sglang keeps its entries because sglang's server is the program
 its operator runs.
 
-Tool-call parsing under Dynamo is the chat processor's job, `--dyn-chat-processor`
-on the frontend, whose Rust preprocessor derives the parser from the model, and
+Tool-call parsing under Dynamo is the chat processor's job (`--dyn-chat-processor`
+on the frontend, whose Rust preprocessor derives the parser from the model), and
 wiring it is a separate change against Dynamo's own configuration instead of one
 more row here. The field stays on the workload and records the intent. Where nothing
 renders it, `hashed_serving` leaves it out of `serving_digest`, so setting it neither
@@ -153,7 +153,7 @@ instead of a completed configuration. See `SERVING_FLAGS`.
 
 `--enable-multimodal` meets the rule: it is declared in
 `dynamo.vllm.backend_args.DynamoVllmArgGroup` as `DYN_VLLM_ENABLE_MULTIMODAL`, and its
-own help says what happens without it, *"if not set, none of the multimodal components
+own help says what happens without it: *"if not set, none of the multimodal components
 can be used"*. So `--limit-mm-per-prompt` alone is a cap on a path that is switched off,
 which is what shipped: a workload declaring `image` in `capabilities.input_modalities`
 recorded the claim, rendered the cap, and served a text-only worker.
@@ -210,8 +210,8 @@ def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str
     Separate from `serving_args` because the precedence is the other way round. A
     typed field beats `engine_args`, since it is the value the plane can validate and
     display. A companion flag does not: it is inferred, not declared, so a
-    workload that spells it out by hand, for an engine build that wants a value there,
-    or to hold a flag this table gets wrong, keeps what it wrote.
+    workload that spells it out by hand (for an engine build that wants a value there,
+    or to hold a flag this table gets wrong) keeps what it wrote.
     """
     implied = SERVING_IMPLIED_FLAGS.get(engine.strip().lower(), {})
     args: dict[str, str] = {}
@@ -244,7 +244,7 @@ def resolve_engine_runtime_image(engine: str, engine_runtime_version: str, decla
     The engine picks the repository and the runtime version is the tag, because a
     Dynamo runtime image is exactly those two things: `vllm-runtime` is the build
     with vLLM and `dynamo.vllm` in it, and `1.4.1` is which Dynamo release. The
-    engine's own version appears nowhere and cannot, which vLLM sits inside
+    engine's own version appears nowhere and cannot: which vLLM sits inside
     `vllm-runtime:1.4.1` is NVIDIA's business and is not on any wire here.
 
     A declared image is returned untouched: pinning an exact image is the whole
@@ -581,8 +581,8 @@ def apply_serving(
 ) -> None:
     """Writes a validated serving configuration onto a workload, digest included.
 
-    The digest is computed from the row after the columns have landed on it rather
-    than from the request, so what is hashed is what was stored: a coercion the
+    The digest is computed from the row after the columns have landed on it,
+    not from the request, so what is hashed is what was stored: a coercion the
     write performs and the hash did not see would be a digest that names a
     configuration nobody is running.
 
@@ -605,8 +605,8 @@ def serving_snapshot(workload: Workload, artifact: Artifact, roles: Sequence[Wor
     """A stored workload's serving configuration as the patch that would restate it.
 
     `serving_request` reads the workload back as the request that would have *created* it, which
-    carries one field a patch may not: `artifact`. The weights are not patchable, repointing a
-    workload at other weights makes every deployment expanded from it mean something else, so
+    carries one field a patch may not: `artifact`. The weights are not patchable (repointing a
+    workload at other weights makes every deployment expanded from it mean something else), so
     the snapshot a revision keeps is that reading minus the artifact, and the artifact is
     recorded beside it instead.
 

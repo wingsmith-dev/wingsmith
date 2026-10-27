@@ -1,7 +1,7 @@
 """The placement function itself: pure, synchronous, and total.
 
-It never raises for an unplaceable workload, an unplaceable workload is an
-answer, not an error, and it never touches anything but its two arguments.
+It never raises for an unplaceable workload, because an unplaceable workload is an
+answer, not an error. It never touches anything but its two arguments either.
 """
 
 import logging
@@ -46,7 +46,7 @@ UNBOUNDED = 1 << 30
 def place(request: PlacementRequest, snapshot: CapacitySnapshot) -> PlacementDecision:
     """Choose the cluster a workload goes to, or explain why none will do.
 
-    Device selection is absent: which accelerators inside the winning
+    Device selection is intentionally absent: which accelerators inside the winning
     cluster get used is a hot, local decision made by the in-cluster scheduler
     with node state at millisecond scale. This picks the cluster.
     """
@@ -676,7 +676,7 @@ def _burn(
     that refuses it the moment the earlier deployment binds, which is the bounce this
     whole mechanism exists to stop.
 
-    Units that need no fabric are not charged to one. They spread, so
+    Units that need no fabric are intentionally not charged to one. They spread, so
     they come off the cluster total in `_Supply` instead; charging them here as well
     would spend the same devices twice and empty a cluster with room to spare.
 
@@ -906,8 +906,8 @@ def _capacity(demand: WorkloadDemand, verdicts: tuple[ClusterVerdict, ...]) -> d
     cluster's own reasons, instead of writing a deployment nothing will run.
 
     A candidate is a feasible verdict, and its ceiling is the lower of how many units
-    its free devices hold, net of what the cluster owes deployments that have not
-    bound yet, packed into topology domains and nodes the way `_fit` packs one, and
+    its free devices hold (net of what the cluster owes deployments that have not
+    bound yet, packed into topology domains and nodes the way `_fit` packs one) and
     what the project has left under quota in that cluster.
     """
     unit = max(demand.unit_device_count, 1)
@@ -978,8 +978,8 @@ def _assign_floors(
 ) -> int:
     """Per-cluster minimums, honoured before anything is ranked.
 
-    A floor that cannot be met is not an error, the shortfall stays in the remainder
-    and shows up as the deployment's admission reason, and floors that add up to more
+    A floor that cannot be met is not an error (the shortfall stays in the remainder
+    and shows up as the deployment's admission reason), and floors that add up to more
     than the total are honoured in cluster-name order until the total runs out, because
     silently scaling them down would answer a question the operator did not ask.
     """

@@ -1,6 +1,6 @@
 """The harnesses this plane knows how to point at a serving surface.
 
-One entry per harness, and an entry is small: the levels it makes
+One entry per harness, and an entry is small by design: the levels it makes
 sense at, the parameters it accepts, their defaults, and the wire name the
 operator dispatches on. What a harness *produces* is not described here at all:
 results are stored in whatever shape the tool emits, and a schema for them would
@@ -67,8 +67,8 @@ class Parameter(NamedTuple):
     """One knob a harness accepts, and what it is when nobody sets it.
 
     `levels` narrows a knob to a subset of the harness's own. Empty means every
-    level the harness declares. A knob that only means something at one level,
-    exercising a failover order, which needs a second target to fail over to,
+    level the harness declares. A knob that only means something at one level
+    (exercising a failover order, which needs a second target to fail over to)
     is refused elsewhere, not quietly ignored.
     """
 
@@ -179,7 +179,7 @@ CONFORMANCE = Harness(
     ),
 )
 """Not a load generator. A fixed, bounded catalogue of requests, most of them
-malformed, asserting on the response *shape*: which protocols answer,
+intentionally malformed, asserting on the response *shape*: which protocols answer,
 whether thinking mode and streaming behave as the workload declares, whether structured
 output and tool calls come back in the documented envelope, and whether an error is the
 error we promised. Its output is naturally boolean per probe.
@@ -450,8 +450,8 @@ def wire_parameters(
     the other side would not read.
 
     `model` is the served model name the run asks for, resolved from the deployment's
-    workload and artifact. It is not a harness parameter, the harness has no default
-    for it because there is no default model, but the operator keys everything it
+    workload and artifact. It is not a harness parameter (the harness has no default
+    for it because there is no default model), but the operator keys everything it
     renders off it (`parameters["model"]` at the top of `BenchmarkJob`), so it travels
     inside the same map, not beside it.
 

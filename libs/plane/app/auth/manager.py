@@ -126,8 +126,8 @@ class AuthManager:
     def mint_tenant_api_key() -> tuple[str, str]:
         """Mints a gateway inference key: `(plaintext, sha256_hex)`.
 
-        Same shape and reasoning as `mint_tenant_token`, high-entropy,
-        fast-hashed, shown once, under `TENANT_API_KEY_PREFIX` so the two
+        Same shape and reasoning as `mint_tenant_token` (high-entropy,
+        fast-hashed, shown once), under `TENANT_API_KEY_PREFIX` so the two
         credential kinds can never resolve against the wrong table.
         """
         key = f"{TENANT_API_KEY_PREFIX}.{secrets.token_urlsafe(32)}"
@@ -218,7 +218,7 @@ class AuthManager:
 
         A second verifier over the same credential, minted alongside the sha256
         the hub compares. Traefik's `basicAuth` middleware can only check a
-        crypt-style hash, and the hub needs an indexed lookup, neither hash
+        crypt-style hash, and the hub needs an indexed lookup; neither hash
         can serve both, so both are stored and the plaintext still exists only
         at mint time.
         """
@@ -371,8 +371,8 @@ class AuthManager:
         Returns `None` on any malformed, tampered, unsigned-for, expired or
         superseded token instead of raising, so `resolve_principal` can try it
         as one option among several credential kinds. A payload that is not
-        exactly the current shape, an unknown kind, a missing field, the older
-        colon-separated form, is refused, never upgraded. Whether the session
+        exactly the current shape (an unknown kind, a missing field, the older
+        colon-separated form) is refused, never upgraded. Whether the session
         has since been revoked is a database question the guard asks next.
         """
         parts = token.split(".")

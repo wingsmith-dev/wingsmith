@@ -99,7 +99,7 @@ EVENT_SEVERITY = {
 class MalformedObservation(Exception):
     """A frame that can never be applied, however many times it is replayed.
 
-    Distinct from an ordinary failure. The protocol has no negative
+    Intentionally distinct from an ordinary failure. The protocol has no negative
     acknowledgement, so the only way to refuse a frame is to withhold the ack and
     be sent it again, which is right for a transient failure and a wedged stream
     for a permanent one. See PROTOCOL.md 6b.
@@ -109,8 +109,8 @@ class MalformedObservation(Exception):
 class UnknownCluster(Exception):
     """A frame arrived for, or a snapshot was asked of, a cluster with no registry entry.
 
-    Raised, not ignored on both sides of the seam. Ingestion may not create a
-    cluster, clusters are declared, and acknowledging its state would silently
+    Raised, not ignored, on both sides of the seam. Ingestion may not create a
+    cluster (clusters are declared), and acknowledging its state would silently
     discard it. A snapshot of a cluster that does not exist is not an empty snapshot:
     sent as one, complete, it tells the operator the plane declares nothing there,
     and the operator deletes everything it manages.
@@ -173,7 +173,7 @@ def _device_ref(cluster_id: UUID, device_uid: str):
 def _device_class_ref(cluster_id: UUID, device_uids: list[str]):
     """The class of the devices an allocation holds, read back, not restated.
 
-    A gang is homogeneous by construction, the scheduler cannot commit an H100
+    A gang is homogeneous by construction: the scheduler cannot commit an H100
     and an A100 to one replica, so the first device answers for all of them.
     """
     return (
@@ -223,21 +223,21 @@ def node_condition(payload: NodeObserved) -> str:
 def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
     """Writes one observed node.
 
-    `runtime_version` is on the wire and not written: `Node` has no
+    `runtime_version` is on the wire and intentionally not written: `Node` has no
     orchestrator- or runtime-specific version column, because the plane does not
     know a cluster is Kubernetes.
 
-    The machine's shape, instance type, cloud, zone, region, cores, memory,
-    architecture, os image, is written only when the frame carries it. An older
+    The machine's shape (instance type, cloud, zone, region, cores, memory,
+    architecture, os image) is written only when the frame carries it. An older
     operator omits these fields entirely, and an upsert that wrote them as nulls
     would erase what a newer one had already supplied every time an old agent
     reconnected.
 
     For the scalars an empty string and a zero stand in for absent, which costs
     nothing real: a node with no architecture and a node with zero cores are both
-    nodes nobody has described yet. `taints` cannot borrow that trick, an empty
+    nodes nobody has described yet. `taints` cannot borrow that trick: an empty
     taint list is a fact, and a node that has just had its last taint removed
-    must be able to say so, so it defaults to None on the wire and is written
+    must be able to say so. It therefore defaults to None on the wire and is written
     only when the key was actually present.
     """
     values: dict[str, Any] = {
@@ -414,12 +414,12 @@ ADMISSION_PHASE_FOR_OBSERVED = {
 The two enums overlap in spelling and not in meaning, which is why the mapping is
 written out, not passed through. Admission is about how far through the
 scheduler the work got; the observed phase is about what the cluster is doing
-with it. So `degraded` maps to `running`, a deployment missing one of four
-replicas is running, just badly, and admission has no opinion on health, while
+with it. So `degraded` maps to `running` (a deployment missing one of four
+replicas is running, just badly, and admission has no opinion on health), while
 an observed `pending` maps to `placed`, not back to `pending`, because
 placement already chose a cluster and waiting for weights does not un-choose it.
 
-`terminating` is absent. A deployment being torn down is between
+`terminating` is intentionally absent. A deployment being torn down is between
 phases, not in a new one, and the delete that follows is what ends it.
 """
 
@@ -475,8 +475,8 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
     `name` is the cluster-local name and the natural key the upsert conflicts on;
     `uid` is the `rep_` handle other frames cross-reference it by, and is frozen
     so a replica re-reported after a reconnect keeps the identity it was first
-    given. The devices it holds are not written here, a replica's commitment is
-    an `Allocation`, which `allocation.observed` carries, and `engine` is not
+    given. The devices it holds are not written here (a replica's commitment is
+    an `Allocation`, which `allocation.observed` carries), and `engine` is not
     stored because it is the workload's, not the replica's; `engine_runtime_version` and
     `serving_digest` are, because those are the ones that lag during a rollout.
     """
@@ -1136,8 +1136,8 @@ def deployment_lifecycle(
     """Records something the plane itself did to a deployment.
 
     The other half of the same timeline. `deployment_progressed` covers what the
-    cluster concluded; this covers what an operator of the product asked for,
-    created, scaled, dispatched, deleted, so that a single query answers "what
+    cluster concluded; this covers what an operator of the product asked for
+    (created, scaled, dispatched, deleted), so that a single query answers "what
     happened to this deployment" without the reader having to know that the two
     facts have different writers.
     """
@@ -1272,7 +1272,7 @@ def insert_prune_events(cluster_id: UUID, removed: list[tuple[str, str, str]], m
 def prune_deployment_replicas(cluster_id: UUID, deployment_id: UUID, keep: list[str]) -> Delete:
     """Forgets replicas one cluster no longer reports for one deployment.
 
-    Not a resync prune and narrower than one: `deployment.observed`
+    Not a resync prune, and intentionally narrower than one: `deployment.observed`
     names the whole replica set of a single deployment on a single cluster every
     time it is sent, so absence from that list is evidence about that deployment
     alone and nothing else. A truncated snapshot cannot cost anything here the

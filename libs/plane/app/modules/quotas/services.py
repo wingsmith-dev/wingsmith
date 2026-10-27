@@ -262,7 +262,7 @@ POSITIVE_LIMITS = (
 DIVISIBLE_LIMITS = ("committed_rpm", "committed_tpm", "max_concurrent_requests", "burst_rpm")
 """The limits that are a fleet budget and therefore divide.
 
-`max_output_tokens` is not among them: it is a ceiling on what one
+`max_output_tokens` is intentionally not among them: it is a ceiling on what one
 request may ask for, not an allowance spent over a minute, and a fleet of four
 that let each replica accept a quarter of the sold context would be refusing
 every caller. `ramp_up_seconds` and `queue_timeout_ms` are durations for the same
@@ -274,8 +274,8 @@ def replica_share(limit: int | None, replicas: int, index: int) -> int | None:
     """One replica's slice of a fleet-wide limit, under `divided`.
 
     Largest remainder instead of `limit // replicas`: the floor alone throws away
-    `limit % replicas` of what was sold on every uneven split, 1,000 rpm across
-    three replicas would enforce 999, and the ceiling over-admits by as much. The
+    `limit % replicas` of what was sold on every uneven split (1,000 rpm across
+    three replicas would enforce 999), and the ceiling over-admits by as much. The
     remainder goes to the lowest-numbered replicas, so the shares sum to exactly
     the declared limit at any replica count, and one index always gets the same
     slice, which is what keeps a restart from handing a pod a different share.
@@ -293,8 +293,8 @@ def replica_share(limit: int | None, replicas: int, index: int) -> int | None:
 def check_fleet(replicas: int, index: int) -> None:
     """Rejects a fleet a share cannot be taken of.
 
-    The plane never discovers the replica count on its own, doing so would put a
-    Kubernetes client on the inference path, so it arrives from the caller and is
+    The plane never discovers the replica count on its own (doing so would put a
+    Kubernetes client on the inference path), so it arrives from the caller and is
     checked here, not trusted.
     """
     if replicas < 1:
@@ -348,8 +348,8 @@ def declared_limits(quota: ServingQuota) -> ResolvedLimitsSchema:
 def effective_limits(quota: ServingQuota, replicas: int = 1, index: int = 0) -> ResolvedLimitsSchema:
     """The share of the declared limits the replica at `index` would hold, once `limit_scope` is applied.
 
-    Under `per_replica` this is the declared set unchanged, that is what the mode
-    means, and the arithmetic below is skipped, not run with a divisor of
+    Under `per_replica` this is the declared set unchanged (that is what the mode
+    means), and the arithmetic below is skipped, not run with a divisor of
     one, so the two modes cannot converge by accident at a single replica.
     """
     if quota.limit_scope != "divided":

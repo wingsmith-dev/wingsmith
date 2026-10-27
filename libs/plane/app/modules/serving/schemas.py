@@ -18,7 +18,7 @@ class ServedModelSchema(Struct):
 
     `state` is derived and has three values. `serving` means at least one replica
     behind this name is ready. `degraded` means the name is live but nothing behind
-    it is ready right now. `paused` means somebody turned it off,
+    it is ready right now. `paused` means somebody chose to turn it off,
     which is a different thing from broken, and the only one of the three that is
     not an incident.
     """

@@ -271,7 +271,7 @@ async def drain_events(
     """Matches events from `cursor` forward, returning the new cursor.
 
     The cursor advances to the last row *examined*, not the last row that produced
-    an alert, otherwise a quiet stretch of uninteresting events would be walked
+    an alert; otherwise a quiet stretch of uninteresting events would be walked
     again on every tick forever. It advances in the same transaction as the alerts
     those events opened, so a crash replays the batch instead of skipping it, and
     `apply_event` is idempotent precisely to make that replay harmless.

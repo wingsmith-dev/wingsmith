@@ -45,7 +45,7 @@ class ArtifactRepository:
     def get_query(self, ref: str) -> Select:
         """An id or a name, per the contract. Prefixes are the client's problem.
 
-        An artifact name is not unique, two quantizations of one base model are
+        An artifact name is not unique: two quantizations of one base model are
         routinely named the same, so a name resolves to the oldest match. Only
         the digest and the uid identify an artifact exactly.
         """

@@ -96,8 +96,8 @@ an exhausted budget used to answer with a bare 429 that a gateway could not
 tell from an outage, so a token that had just been rotated out kept working
 for as long as the gateway's cache grace lasted.
 
-Twenty is well above what a healthy agent produces, verification happens once
-per tunnel, at connection setup, and far below what guessing a 256-bit token
+Twenty is well above what a healthy agent produces (verification happens once
+per tunnel, at connection setup) and far below what guessing a 256-bit token
 needs. Spent only by failures and consulted only on the failure path, after the
 lookup, so a valid token is never refused by it, and a refusal that is
 throttled still carries the verdict (`unknown_token`) in its detail.
@@ -132,7 +132,7 @@ only thing that reliably bumps it is the periodic resync, currently 15 minutes
 slow one. A threshold below the resync interval would mark every healthy idle
 cluster stale, which is worse than the silence it is meant to catch: an
 indicator that cries wolf on a working fleet is one nobody reads when it is
-right. Heartbeats are not counted: `last_seen_at` tracks those,
+right. Heartbeats are intentionally not counted: `last_seen_at` tracks those,
 and a live socket carrying no observations is precisely the state this reports."""
 
 
@@ -569,8 +569,8 @@ class ClusterService:
     def _render_setup(self, cluster: Cluster, hub_url: str, enrolment_token: str | None) -> ClusterSetupSchema:
         """Builds the setup payload for a cluster, with or without a fresh token.
 
-        The values file carries the plane-filled identity, cluster id, hub URL,
-        region, operator image, and the fleet's one metrics write endpoint, plus
+        The values file carries the plane-filled identity (cluster id, hub URL,
+        region, operator image, and the fleet's one metrics write endpoint), plus
         a commented skeleton of the cluster's own infra facts (pool labels,
         storage class, HF token, registry token, serving) for the operator to
         edit in place. It is one downloadable file, not a merge. Helm pulls the

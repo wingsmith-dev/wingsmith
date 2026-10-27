@@ -43,7 +43,7 @@ MANAGED = "managed"
 AUTHORITIES = frozenset({OBSERVED, MANAGED})
 """Who owns a deployment, and the only two answers there are.
 
-Binary. A deployment with some fields enforced and others left to drift
+Binary by design. A deployment with some fields enforced and others left to drift
 cannot be reasoned about at the moment somebody needs to, so the object answers in
 one word (ADR 0009).
 """
@@ -149,7 +149,7 @@ class DeploymentService:
     ) -> None:
         """Files what the plane just did to a deployment, in the caller's transaction.
 
-        Before the caller's `commit()`. The event and the write it
+        Runs before the caller's `commit()` by design. The event and the write it
         describes are one fact, and committing them separately would allow the
         pair where a deployment exists and nothing records it being asked for:
         the exact gap that made a deployment's first minutes unreadable.
@@ -180,7 +180,7 @@ class DeploymentService:
         Every caller of this is on the far side of its own `commit()`, and that
         ordering is the contract: the hub answers the hint by re-reading the row,
         so announcing first would race the reader against a transaction that has
-        not landed. Missing the wakeup entirely costs latency and nothing else,
+        not landed. Missing the wakeup entirely costs latency and nothing else:
         the next full resync carries the same state, which is why this never
         stands between the caller and its response.
         """

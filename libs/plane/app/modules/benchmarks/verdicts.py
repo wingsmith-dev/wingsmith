@@ -57,7 +57,7 @@ class Check(NamedTuple):
 class Verdict(NamedTuple):
     """The rollup of a run's checks under one criteria version.
 
-    Unforgiving: any `fail` makes the verdict `fail`; otherwise any
+    Unforgiving by design: any `fail` makes the verdict `fail`; otherwise any
     `inconclusive` makes it `inconclusive`; otherwise `pass`. A run with no
     applicable checks at all is `inconclusive`, because nothing was measured.
     """
@@ -100,8 +100,8 @@ ACCEPTANCE_2026_1 = Criteria(
     ttft=(
         TtftTarget("lt6k", 5_000.0, 2_000.0, 2_000.0),
         # Transcribed as given. This row is internally odd: its average ceiling sits above its
-        # P50 by 1.5s, implying a tail the P90 has already excluded. Copied faithfully rather
-        # than corrected: a frozen criteria entry is a record of what was published.
+        # P50 by 1.5s, implying a tail the P90 has already excluded. Copied faithfully,
+        # not corrected: a frozen criteria entry is a record of what was published.
         TtftTarget("6k_16k", 5_000.0, 2_500.0, 4_000.0),
         TtftTarget("16k_32k", 8_000.0, 4_000.0, 6_000.0),
         TtftTarget("32k_64k", 15_000.0, 8_000.0, 8_000.0),

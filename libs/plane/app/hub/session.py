@@ -557,7 +557,7 @@ class OperatorSession:
     async def _replay_open_operations(self) -> None:
         """Re-sends every operation this cluster has not finished, on session start and on every resync.
 
-        Outside the resync stream, and not counted in its `stream.end`:
+        Intentionally outside the resync stream, and not counted in its `stream.end`:
         a snapshot is authoritative over what it omits, so an operation inside one
         would become prunable, and pruning a drain that is already evicting pods
         would cancel work half done. The frames go down as ordinary
@@ -568,7 +568,7 @@ class OperatorSession:
         acknowledged; it says nothing about an operation created while nothing was
         connected, or whose notification was lost while the session was up. This
         is what closes that gap. Re-sending one the operator is already running is
-        safe, it drops a redelivery of an operation in flight, and is the
+        safe (it drops a redelivery of an operation in flight) and is the
         intended recovery path.
 
         A source that cannot answer must not cost the connection: the operator is
@@ -781,7 +781,7 @@ class OperatorSession:
     async def _ownership_loop(self) -> None:
         """Polls this session's own claim row and self-evicts the moment it no longer wins.
 
-        Nothing pushes a displaced session a notification, it may be mid-stream on a
+        Nothing pushes a displaced session a notification: it may be mid-stream on a
         different pod than the one that displaced it, so it has to ask (ADR 0005).
 
         The same poll asks whether the cluster may still hold a session at all. A

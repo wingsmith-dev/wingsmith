@@ -150,8 +150,8 @@ class ClusterHeadroomSchema(Struct):
     A device is free when it is allocatable *and* no live allocation holds it:
     `allocatable` says the accelerator is claimable at all, which is a different
     claim from unclaimed. `largest_contiguous_block` is the biggest set of free
-    devices sharing a single topology domain, what a job that wants one fabric
-    can actually get, and is not the same as `free_devices`, which is every free
+    devices sharing a single topology domain (what a job that wants one fabric
+    can actually get), and is not the same as `free_devices`, which is every free
     device regardless of where it sits. `whole_nodes_free` counts nodes on which
     every device is free, the unit a node-granular workload cares about.
     """
@@ -165,7 +165,7 @@ class ClusterRollupSchema(Struct):
     """A cluster's observed footprint in aggregate, for the list and card views.
 
     Every field is derived at read time and nothing is stored. `devices_allocatable`
-    is the free count, allocatable and held by no live allocation, and
+    is the free count (allocatable and held by no live allocation), and
     `devices_allocated` is `devices_total - devices_allocatable` instead of a
     counted column, because a device is either free or spoken for and a second
     count is a second thing that can disagree with it. `pool_count` and

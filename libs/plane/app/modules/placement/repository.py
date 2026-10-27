@@ -91,7 +91,7 @@ class PlacementRepository:
     ) -> CapacitySnapshot:
         """Everything placement is allowed to look at, for one project and device class.
 
-        Narrowed to the device class. A control plane that snapshots
+        Narrowed to the device class by design. A control plane that snapshots
         every accelerator it owns to place one deployment reads the whole fleet
         for an answer that could only ever have concerned one slice of it.
 
@@ -229,7 +229,7 @@ class PlacementRepository:
         cluster that only ever had room for one.
 
         Derived from the deployment, not stored beside it. `declared` is what
-        this cluster's share costs, its replicas times the workload's device shape,
+        this cluster's share costs (its replicas times the workload's device shape),
         and `observed` is what ingestion has confirmed. A reservation is the
         difference, which means it needs no lifetime of its own: it appears when the
         deployment is written, shrinks as allocations arrive, and reaches zero
@@ -237,8 +237,8 @@ class PlacementRepository:
         its reservation with it because there was never a second row to leave behind.
 
         `max(0, ...)` and not a bare subtraction, because a cluster is entitled to
-        report more devices than the share asked for, a rollout with both the old
-        and new replicas alive holds two sets at once, and a negative reservation
+        report more devices than the share asked for (a rollout with both the old
+        and new replicas alive holds two sets at once), and a negative reservation
         would then hand back capacity that is genuinely in use.
 
         Narrowed to the device class the same way `_devices` is: a promise of H100s
@@ -412,7 +412,7 @@ class PlacementRepository:
         """The project's quota rows, each carrying the draw that applies to its own scope.
 
         The declared half is a row and the observed half is a sum over live
-        allocations, and they are joined here, not stored together because
+        allocations, and they are joined here, not stored together, because
         they have different writers: a quota is intent, an allocation is what a
         cluster reported.
         """

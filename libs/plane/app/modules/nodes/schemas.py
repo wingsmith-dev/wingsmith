@@ -6,8 +6,8 @@ from app.core.schemas import Struct
 class NodeConditionSchema(Struct):
     """One observed node condition as the cluster reported it.
 
-    Generic health signals (memory or disk pressure, network availability) kept in full rather
-    than reduced to the single `condition` summary. The plane does not interpret `type`; it is
+    Generic health signals (memory or disk pressure, network availability) kept in full,
+    not reduced to the single `condition` summary. The plane does not interpret `type`; it is
     whatever the cluster named the signal.
     """
 

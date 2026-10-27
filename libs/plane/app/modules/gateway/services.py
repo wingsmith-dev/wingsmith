@@ -64,8 +64,8 @@ class GatewayService:
         and checks a key without reading that flag: left in, a switched-off
         tenant kept serving. Out, its host is unknown and its keys match nothing.
 
-        Its stamp still feeds the revision, as a revoked key's does, see
-        `GatewayTenantSchema`, so disabling or re-enabling a tenant is never
+        Its stamp still feeds the revision, as a revoked key's does (see
+        `GatewayTenantSchema`), so disabling or re-enabling a tenant is never
         missed behind a `304`.
         """
         tenants = await self.repo.tenants()

@@ -17,7 +17,7 @@ class ShapeSchema(Struct):
     tensor-parallel-8 configuration means nothing spread across an A100 and an
     H100, so a count without a class is not a shape.
 
-    The topology pair sits here, not beside the scale numbers because it is
+    The topology pair sits here, not beside the scale numbers, because it is
     a property of one replica's layout, the same way the counts are. It used to be
     declared twice, once on the recipe and once as a nullable override on the
     workload, and with one object there is one answer.
@@ -69,8 +69,8 @@ class ReasoningSchema(Struct):
 class DiffusionSchema(Struct):
     """What a vLLM-Omni worker reads from its stage-config file instead of its command line.
 
-    Two fields because only two vary per model. The operator writes the rest of the file,
-    one stage, the devices the pod holds, the executor, and the Dynamo omni CLI refuses
+    Two fields because only two vary per model. The operator writes the rest of the file
+    (one stage, the devices the pod holds, the executor), and the Dynamo omni CLI refuses
     `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`
     exists because omni defaults every model to 50 inference steps, which is wrong for every
     distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.
@@ -84,8 +84,8 @@ class ServingSchema(Struct):
     """What the served API does, as the engine will actually be told to behave.
 
     Every field renders to a flag or a rendered value. Honouring any of it means
-    a replica restart, which is why it lives beside `cache` on the workload rather
-    than on the endpoint. Before it existed all of this went into `engine_args`,
+    a replica restart, which is why it lives beside `cache` on the workload,
+    not on the endpoint. Before it existed all of this went into `engine_args`,
     where the plane could neither validate it nor say what it had asked for.
 
     Every default is the behaviour of a workload that says nothing, so the block is
@@ -117,8 +117,8 @@ class CapabilitiesSchema(Struct):
     The same split as `engine_args` against `imported_args`, one level up: nothing
     here becomes a flag or reaches a cluster, because a cluster has no use for a
     claim about itself. The plane checks these against the workload's own
-    declarations and against nothing else, it holds no table of what an engine
-    can do, so a block that is internally consistent and entirely false is
+    declarations and against nothing else (it holds no table of what an engine
+    can do), so a block that is internally consistent and entirely false is
     accepted, stored, and falsified by the first conformance run.
 
     `asserted_by` / `asserted_at` / `source_uri` are the provenance triple, spelled
@@ -146,7 +146,7 @@ class ResourcesSchema(Struct):
 
 
 class OverlaySchema(Struct):
-    """Overrides for what the plane does not model, inside an allowlist.
+    """Overrides for what the plane intentionally does not model, inside an allowlist.
 
     `pod_spec` merges over the rendered pod with strategic-merge semantics;
     `dynamo` merges over the rendered graph deployment, where maps merge and
@@ -197,8 +197,8 @@ class RoleSchema(Struct):
     mechanism belongs to the topology, not to either role. A schema giving each role a full
     copy of the serving block would be charging for a difference that does not exist.
 
-    `weight` is scale and the other two are configuration, and that split is essential rather
-    than tidy: the weights are outside `serving_digest` and the other two are inside
+    `weight` is scale and the other two are configuration, and that split is essential,
+    not tidy: the weights are outside `serving_digest` and the other two are inside
     it. See `app.core.serving.serving_digest`.
     """
 
@@ -338,8 +338,8 @@ class WorkloadServingUpdate(Struct):
 
     The sub-blocks replace whole. `parallelism`, `cache`, `shape`, `resources`,
     `serving`, `capabilities` and `router` are groups whose fields are meaningless apart, so
-    a patch that named half of one would leave the rest at its defaults rather
-    than at what was stored, and the caller could not tell which it got. Sending a
+    a patch that named half of one would leave the rest at its defaults,
+    not at what was stored, and the caller could not tell which it got. Sending a
     block means stating it.
     """
 
@@ -521,7 +521,7 @@ class WorkloadPlacementNodeSchema(Struct):
     """One node a workload's live devices currently sit on, with its occupancy.
 
     `device_count` is how many of the node's devices this workload holds right
-    now, the node's slot occupancy from the workload's point of view, derived
+    now (the node's slot occupancy from the workload's point of view), derived
     from the live allocation rows, not declared anywhere.
     """
 
@@ -600,7 +600,7 @@ class WorkloadCreateRequest(Struct):
     the region is a first-class field instead of a cluster list somebody has to keep up
     to date as the fleet grows.
 
-    They are here, not left to `POST /policies` because placement expands inside
+    They are here, not left to `POST /policies`, because placement expands inside
     `create`: a policy attached after the response has already missed the decision it
     was meant to constrain. What is created *is* a Policy, named after the workload and
     attached to it, so the constraint is discoverable, editable and enforced on every
@@ -670,8 +670,8 @@ class WorkloadUpdateRequest(Struct):
     note: str | None | UnsetType = UNSET
     """Why this change, written at the moment somebody still knows.
 
-    It lands on the revision this patch files. A patch that files none, one carrying only a
-    note, or one that arrives at the configuration already in force, puts it on the revision
+    It lands on the revision this patch files. A patch that files none (one carrying only a
+    note, or one that arrives at the configuration already in force) puts it on the revision
     currently in force instead, so a note is never silently dropped and commenting on what is
     running needs no separate call.
 

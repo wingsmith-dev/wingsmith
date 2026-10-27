@@ -162,8 +162,8 @@ class ServingQuotaRoutes(Controller):
 
         `If-None-Match` makes the steady state a `304`, which is what polling this
         on a timer should cost. The revision covers the fleet as well as the rows,
-        so a caller that comes back with a different `replicas` is answered rather
-        than told nothing changed.
+        so a caller that comes back with a different `replicas` is answered,
+        not told nothing changed.
         """
         table = await svc.resolved(
             endpoint=endpoint,

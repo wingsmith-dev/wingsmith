@@ -139,7 +139,7 @@ def endpoint_clause(ref: str):
     alone returned an empty timeline for an endpoint that was visibly failing.
 
     Only the deployments its targets name, and only their replicas. The
-    workload behind a target is not walked: a target is a share of
+    workload behind a target is intentionally not walked: a target is a share of
     traffic sent to one deployment, and the other clusters the same workload
     landed on are not this endpoint's story even though they serve the same
     weights. The endpoint's own subject stays in the clause so that a writer
@@ -205,7 +205,7 @@ class EventRepository:
         by the cluster, so it is neither unique nor monotonic across clusters,
         and a cursor on it would skip or repeat rows whenever two events shared a
         timestamp or a clock stepped backwards. `seq` is assigned on insert, is
-        unique, and is the same key `app/core/pagination` already encodes, only
+        unique, and is the same key `app/core/pagination` already encodes; only
         the direction of the comparison changes, which is why this needs no
         cursor format of its own.
         """

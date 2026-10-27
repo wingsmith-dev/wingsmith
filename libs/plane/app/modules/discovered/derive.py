@@ -6,7 +6,7 @@ takes, what NVIDIA's runtime images are called, and what Dynamo writes into its 
 A cluster serving something else produces a draft with fewer fields filled and a note
 saying so, which is the accurate outcome: a wrong guess is worse than a blank.
 
-It lives in the plane instead of the operator. Rule 2 says the operator is the
+It lives in the plane, not the operator, by design. Rule 2 says the operator is the
 only thing that knows Kubernetes; it does not say the operator is the thing that knows
 vLLM. Keeping engine knowledge here means a better reading ships as a plane deploy instead
 of a roll across every cluster in the fleet.

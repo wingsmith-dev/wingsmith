@@ -13,7 +13,7 @@ class BenchmarkProvenanceSchema(Struct):
 
     `serving_digest` is what the run is about, and it is the one field here that
     cannot go stale by construction: it is the content of the configuration
-    instead of a handle on it. The pair it replaced, a recipe id and a version,
+    instead of a handle on it. The pair it replaced (a recipe id and a version)
     named a row that could be edited under the run.
 
     Every field is nullable-or-empty because an endpoint-level run has none of
@@ -137,8 +137,8 @@ class BenchmarkCurvePointSchema(Struct):
     aggregate rate clears a per-stream floor under every possible condition and
     a check that could reach it would be a check that can never fail.
 
-    A discarded run is still a point, flagged, not dropped, a warm-up is
-    part of what was run, and it is excluded from the knee. A run still open is
+    A discarded run is still a point, flagged and not dropped (a warm-up is
+    part of what was run), and it is excluded from the knee. A run still open is
     a point too, with null readings, so the console can draw a partial curve
     while the ramp is still climbing.
     """
@@ -181,7 +181,7 @@ class BenchmarkCurveSchema(Struct):
     Nothing here is stored. The curve and the knee are derived at read against
     the criteria version the request was created under, exactly as the verdict
     is, because a stored knee cannot answer the question a criteria revision
-    immediately raises, where would the elbow have been under the new rules.
+    immediately raises: where would the elbow have been under the new rules.
 
     `serving_digest` is the configuration the curve is about, and it is null
     when the request's runs did not all measure the same one: a curve drawn
@@ -293,8 +293,8 @@ class BenchmarkRunCreateRequest(Struct):
     sub-resource of one of the several things it can be filtered by.
 
     `parameters` is whatever the named harness accepts. Anything omitted takes
-    the harness default, and anything it does not accept is a 400 here rather
-    than a job that fails in a cluster ten minutes from now.
+    the harness default, and anything it does not accept is a 400 here,
+    not a job that fails in a cluster ten minutes from now.
 
     `image` overrides the pinned harness image for this run alone. Omitted, the
     run takes the harness default, which is what almost every run should do:
@@ -332,8 +332,8 @@ class BenchmarkRequestCreateRequest(Struct):
     table that has since moved is a verdict that quietly changed its mind.
 
     `tier` is the service class the buyer assigned, L1 or L2. It is not derivable
-    from anything this plane holds and an unstated one is `inconclusive` rather
-    than the lenient branch.
+    from anything this plane holds and an unstated one is `inconclusive`,
+    not the lenient branch.
 
     `mode` is the shape of the runs, and `steps` are the load points a stepped
     one walks: concurrencies for a `ramp`, prompt lengths for a `sweep`. A
@@ -364,8 +364,8 @@ class ServingBenchmarkSummarySchema(Struct):
     produce the same running process, so a number taken against one of them is a
     number about the other; rolling up per workload would split one population in
     two and report each half as the peak. It also survives what a workload does
-    not (renaming, rescaling, deletion) because the digest is content rather
-    than identity, and a run keeps naming the configuration it measured after the
+    not (renaming, rescaling, deletion) because the digest is content,
+    not identity, and a run keeps naming the configuration it measured after the
     row that asked for it has gone. This is what the recipe rollup was reaching
     for when it keyed on a mutable recipe id and version.
 

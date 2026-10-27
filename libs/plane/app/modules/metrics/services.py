@@ -18,12 +18,12 @@ The three scoping joins, and how much each can be trusted:
   from ride along on the deployment. When they are there the join is exact, and
   two deployments of one model no longer read as one.
 
-  When they are not, a deployment the plane declared, whose worker hash Dynamo
-  has not minted yet, it falls back to `model_name`, which is the served model
+  When they are not (a deployment the plane declared, whose worker hash Dynamo
+  has not minted yet), it falls back to `model_name`, which is the served model
   and not the deployment. `Workload.engine_args["served-model-name"]` names it
   first, and then the artifact's stored slug, which is the repository a model is
-  fetched from, `google/gemma-4-31B-it` against a `model_name` of
-  `gemma-4-31b-it`, and so selects nothing on its own.
+  fetched from (`google/gemma-4-31B-it` against a `model_name` of
+  `gemma-4-31b-it`), and so selects nothing on its own.
 
   Both are reported to the client as scope `deployment`; which one answered is
   visible in the selector, not the schema.
@@ -530,8 +530,8 @@ class MetricsService:
         """The workload a reference names, with the artifact behind it.
 
         A name is unique only within its project, so a bare one can name several
-        workloads; that is a 400 listing the projects it could have meant rather
-        than a guess, exactly as `GET /v1/workloads/{ref}` answers it.
+        workloads; that is a 400 listing the projects it could have meant,
+        not a guess, exactly as `GET /v1/workloads/{ref}` answers it.
         """
         query = (
             select(Workload, Artifact)
@@ -558,7 +558,7 @@ class MetricsService:
     async def _held_devices(self, workload_id: UUID) -> dict[UUID, tuple[str, ...]]:
         """The device UUIDs a workload holds right now, per cluster.
 
-        Live on both halves, the allocation and the membership, because this is
+        Live on both halves (the allocation and the membership) because this is
         what the workload occupies now, not what it has occupied. A cluster with
         nothing live is absent from the mapping, not present with an empty
         tuple: an empty device matcher selects the whole fleet.
@@ -774,7 +774,7 @@ class MetricsService:
     ) -> MetricsSchema:
         """One endpoint as the front door saw it, which is the only place it is visible.
 
-        An endpoint is a plane-only object, it never reaches a cluster, so no
+        An endpoint is a plane-only object (it never reaches a cluster), so no
         cluster can be asked about one, and the answer carries `cluster: null`.
         The join is exact: `hangar_endpoint` is the uid, stamped by the hop that
         resolved it.
@@ -931,11 +931,11 @@ class MetricsService:
     ) -> MetricsSchema:
         """One tenant's traffic at the front door, summed over the endpoints it owns.
 
-        The gateway's series carry no tenant label, `hangar_endpoint` is the
-        finest identity on them, so a tenant is not a dimension of the
+        The gateway's series carry no tenant label (`hangar_endpoint` is the
+        finest identity on them), so a tenant is not a dimension of the
         measurement here. It is a set of endpoint uids resolved in the plane,
-        matched in one selector, which is why this is a read of its own rather
-        than a filter a client could apply to `serving`.
+        matched in one selector, which is why this is a read of its own,
+        not a filter a client could apply to `serving`.
 
         Every uid goes into a single matcher. A total assembled from a page of
         endpoints is a total of that page and moves when somebody pages, the same
@@ -985,7 +985,7 @@ class MetricsService:
     ) -> MetricsSchema:
         """Every request the front door answered, with one breakdown row per endpoint.
 
-        Narrowed by nothing: a total assembled by adding up a page
+        Intentionally narrowed by nothing: a total assembled by adding up a page
         of endpoints is a total of that page, and it moves when somebody pages.
         The breakdown keeps every endpoint's own figure beside it.
 

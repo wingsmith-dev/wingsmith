@@ -63,7 +63,7 @@ OPERATION_TYPE = "deployment.benchmark"
 A benchmark is imperative, long-running and able to fail, which is the third kind
 of thing and already has machinery: phases, a deadline, cancellation, and replay
 to a cluster that reconnected mid-run. Building a second lifecycle beside it would
-be building all of that again, worse. What `Operation` cannot hold is the result,
+be building all of that again, worse. What `Operation` cannot hold is the result:
 its `result` is a flat string map on the wire and a harness emits nested JSON, so
 the run is its own object and the operation is how it gets done.
 
@@ -142,8 +142,8 @@ class BenchmarkService:
     One transaction for all of them, because a run with no operation is a
     measurement nothing will ever take, an operation with no run is a result with
     nowhere to land, and a run with no request is a band of a sweep that cannot be
-    re-aggregated with the others. Everything after creation, phase, summary, the
-    timestamps, is ingestion's, applied from `benchmark.observed`. The verdict is
+    re-aggregated with the others. Everything after creation (phase, summary, the
+    timestamps) is ingestion's, applied from `benchmark.observed`. The verdict is
     neither writer's: it is derived at read against the criteria version the request
     recorded.
     """
@@ -692,7 +692,7 @@ def _homogeneous(coverage: list[dict]) -> bool:
     """True when every entry agrees on artifact and serving configuration.
 
     An accuracy verdict over a heterogeneous coverage is not attributable at
-    all, two upstreams running different quantizations produce one score
+    all: two upstreams running different quantizations produce one score
     belonging to neither, so this boolean is what turns that into a stated
     `inconclusive` instead of a number a reader is left to misuse.
 

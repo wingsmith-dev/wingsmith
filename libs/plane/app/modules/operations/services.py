@@ -69,14 +69,14 @@ PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.reshap
 """Operations the plane carries out itself, instead of handing to a cluster.
 
 A workload spans clusters, so there is no single agent to dispatch these to. What
-they actually change is declared state the plane owns, the per-cluster shares,
+they actually change is declared state the plane owns (the per-cluster shares),
 and the clusters converge on that afterwards through the ordinary `deployment.desired`
-path. They are still operations, not field writes because they are imperative
+path. They are still operations, not field writes, because they are imperative
 and they can fail: a scale-up that no cluster has the quota for fails here, with a
 reason, instead of silently sitting in a spec nobody can satisfy.
 
 They reach a terminal phase inside the request that created them. The plane's half is
-synchronous, re-expansion either finds room or does not, and how far the clusters
+synchronous (re-expansion either finds room or does not), and how far the clusters
 have got with the result is a question the deployments already answer.
 """
 
@@ -84,8 +84,8 @@ have got with the result is a question the deployments already answer.
 def workload_parameters(type_name: str, parameters: dict) -> object | None:
     """Decodes a plane-executed operation's parameters into their typed struct, or refuses them.
 
-    Done at creation so a malformed parameter block is a 400 on the request rather
-    than an operation recorded and then failed.
+    Done at creation so a malformed parameter block is a 400 on the request,
+    not an operation recorded and then failed.
     """
     from app.modules.workloads.services import OPERATION_PARAMETERS
 
@@ -154,8 +154,8 @@ class OperationService:
         reader against a write that has not landed.
 
         Missing the wakeup costs latency and nothing else. Unlike declared state,
-        what repairs it is not a resync, an operation is outside
-        that snapshot, but the replay of open operations the session performs
+        what repairs it is not a resync (an operation is intentionally outside
+        that snapshot) but the replay of open operations the session performs
         when the cluster next connects.
         """
         await self.notifier.changed(
@@ -254,8 +254,8 @@ class OperationService:
     async def _resolve(self, data: OperationCreateRequest, cluster: Cluster | None) -> Row:
         """The one row a target reference names, or an error saying which way it failed.
 
-        A `kind:name` reference can match more than one row, a node name is
-        unique inside a cluster and nowhere above it, and the request already
+        A `kind:name` reference can match more than one row (a node name is
+        unique inside a cluster and nowhere above it), and the request already
         carries the field that separates them, so a named cluster narrows the
         match before it is called ambiguous. What it must never do is pick one:
         draining an arbitrary machine of two that share a name is worse than
@@ -380,7 +380,7 @@ class OperationService:
         record of a scale that never landed, are both worse than either outcome on
         its own. Clusters are woken only after that commit.
 
-        A refusal from placement, no cluster with the quota, nowhere the shape fits,
+        A refusal from placement (no cluster with the quota, nowhere the shape fits)
         is the operation failing, not the request being malformed. The change is
         rolled back and the operation alone is committed as `failed` with the reason,
         which is what a caller polling this is waiting for.
@@ -435,7 +435,7 @@ class OperationService:
         if operation.phase == PENDING:
             operation.phase = "cancelled"
             operation.finished_at = operation.cancel_requested_at
-            # This path never reaches a cluster, the operation was still pending, so nothing was
+            # This path never reaches a cluster (the operation was still pending), so nothing was
             # ever told to do it, which means nothing downstream will report on whatever the
             # operation was carrying. A benchmark run is the case that has its own row to leave
             # open, and it is left open for ever unless the cancellation is carried across here.

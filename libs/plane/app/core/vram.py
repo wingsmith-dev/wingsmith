@@ -3,8 +3,8 @@
 Estimation of how much GPU memory a model needs to serve, broken into the four
 buckets that actually drive the number: weights, KV cache, a flat runtime
 overhead, and the framework's pre-allocation headroom. On top of that, :func:`fit`
-answers the question a person actually asks, *can this run on an H100, and how
-many*, and :func:`fitment` answers it for every card we know about at once.
+answers the question a person actually asks (*can this run on an H100, and how
+many*), and :func:`fitment` answers it for every card we know about at once.
 
 This lives in ``core``, not in ``modules/workloads`` because it is not about
 workloads. A workload is one caller: it declares a device shape and this module says
@@ -54,8 +54,8 @@ _KV_BYTES = 2.0
 _DEFAULT_GPU_MEMORY_UTILIZATION = 0.9
 """vLLM's default ``--gpu-memory-utilization``: only ~90% of a card is usable.
 
-The single envelope. Everything a serving process holds, weights, KV cache, activation
-peak, CUDA context, comes out from under this, which is why nothing here is grossed up
+The single envelope. Everything a serving process holds (weights, KV cache, activation
+peak, CUDA context) comes out from under this, which is why nothing here is grossed up
 by a second overhead factor on top of it. Doing both was worth about twenty percent, and
 twenty percent is a card count.
 """
@@ -70,7 +70,7 @@ per GPU and grows with how many GPUs a replica uses, independent of model size.
 _ACTIVATION_TENSORS = 4
 """Simultaneously-live intermediates of one batch, as a coarse multiplier.
 
-A round number and not a derivation. vLLM sizes the real peak by running a
+Intentionally a round number and not a derivation. vLLM sizes the real peak by running a
 profiling forward pass, and nothing analytic is going to match that: large-vocabulary
 logits during chunked prefill can spike well past this. The goal is to stop being wrong
 by a card count, not to reimplement an engine's memory planner, and the first deployment
@@ -374,8 +374,8 @@ def _latent_rank(eff: dict) -> int | None:
     """The compressed KV latent width, under either spelling a repo uses for it.
 
     ``kv_lora_rank`` is DeepSeek's own name and is what V3, R1 and GLM publish.
-    Transformers 4.57 writes the same tensor as ordinary attention fields instead,
-    a single KV head whose ``head_dim`` *is* the whole latent, and emits no
+    Transformers 4.57 writes the same tensor as ordinary attention fields instead
+    (a single KV head whose ``head_dim`` *is* the whole latent) and emits no
     ``kv_lora_rank`` at all. DeepSeek-V4-Pro is written that second way.
 
     Reading only the first name dropped V4-Pro into the standard branch and sized its
@@ -593,7 +593,7 @@ def estimate_vram(
     both double-counted the same headroom twice.
 
     Args:
-        total_params: Total parameter count (use total, not active, even MoE
+        total_params: Total parameter count (use total, not active: even MoE
             keeps every expert resident in VRAM).
         shape: Attention shape from :func:`extract_shape` (KV-cache sizing).
         quantization: Weight quantization scheme; see :data:`BYTES_PER_PARAM`.
@@ -769,7 +769,7 @@ ceiling: a replica spans nodes over the backend fabric whenever it needs to.
 """
 
 MAX_DEVICES = 512
-"""A runaway bound on a fit, far above any layout worth proposing.
+"""A runaway bound on a fit, intentionally far above any layout worth proposing.
 
 Not a claim that 512 devices is servable. It exists so a fit against an absurd
 artifact terminates instead of walking powers of two forever, and it is set where it
@@ -851,7 +851,7 @@ class Sizing:
     from a stored artifact without reaching back to HuggingFace for anything.
 
     ``shape`` is optional, and that is the difference between a partial answer and no
-    answer. The attention shape is needed for one thing, sizing the KV cache, and
+    answer. The attention shape is needed for one thing (sizing the KV cache), and
     the parameter count alone still settles how much has to be resident, which is the
     half with no fudge factor in it. An artifact that publishes a size but no config
     can still be told which cards are too small; refusing to fit it at all would be
@@ -900,19 +900,19 @@ class Fit:
     fit" is not. ``reason`` is a sentence for a person, always populated.
 
     ``reduced`` marks a fit that had to cut the context window below what was
-    asked. It is not folded into ``fits``: serving a 131k model at 32k
+    asked. It is intentionally not folded into ``fits``: serving a 131k model at 32k
     is a real option someone may take knowingly, and a view that showed it as a
     failure would hide the cheapest card that works.
 
     ``kv_counted`` is false when the artifact published no attention shape, so
-    ``required_gb`` is the weights and nothing else. Such a fit is a floor rather
-    than an estimate, the real figure is strictly larger, and a caller that
+    ``required_gb`` is the weights and nothing else. Such a fit is a floor, not
+    an estimate: the real figure is strictly larger, and a caller that
     presented it as a full sizing would be promising a window nobody costed.
     ``context_length`` is zero on those, because no window was priced.
 
     ``possible`` is the certain half of ``fits``, and the two are different questions
-    with different consequences. ``possible`` is arithmetic, the weights sit on the
-    cards, the heads divide across the tensor group, and a caller may refuse over it.
+    with different consequences. ``possible`` is arithmetic (the weights sit on the
+    cards, the heads divide across the tensor group), and a caller may refuse over it.
     ``fits`` adds the estimated half, the window and the batch, and a caller that
     refuses over *that* eventually refuses a configuration that serves: a row can be
     ``possible`` and not ``fits``, and it is the one somebody with an argument should
@@ -1340,8 +1340,8 @@ def shape_metadata(shape: ModelShape) -> dict:
     """The attention shape as it is persisted on an artifact.
 
     Sizing an artifact after registration has to work without the network. The
-    derived scalars an artifact already carries, context length, quantization,
-    parameter count, are not enough to size a KV cache, so the shape itself is
+    derived scalars an artifact already carries (context length, quantization,
+    parameter count) are not enough to size a KV cache, so the shape itself is
     written down at resolve time and read back by :func:`sizing_of`.
     """
     return {name: getattr(shape, name) for name in SHAPE_FIELDS}
@@ -1360,8 +1360,8 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
     artifact adopted by watching a cluster serve weights nobody resolved.
 
     A stored shape from before the sliding-window fields existed reads back as full
-    attention, which is the safe direction, it over-states the cache instead of
-    under-stating it, but for an interleaved model it over-states it by a lot, and
+    attention, which is the safe direction (it over-states the cache instead of
+    under-stating it), but for an interleaved model it over-states it by a lot, and
     re-reading the source is what corrects the record.
     """
     if not parameter_count:

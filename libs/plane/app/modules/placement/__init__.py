@@ -1,14 +1,14 @@
-"""Placement, which cluster a workload goes to.
+"""Placement: which cluster a workload goes to.
 
-A pure function over observed state: it takes a workload's
+Intentionally a pure function over observed state: it takes a workload's
 requirements plus a snapshot of capacity and returns a decision. It performs no
 I/O, opens no session, and imports nothing from `app.db` or `app.api`, so it is
 testable without a cluster and without a database.
 
 Callers read the snapshot, call in, and persist the result themselves.
 
-The purity rule is about `engine.py`, `snapshot.py` and `decision.py`, the three
-this file re-exports, not about the directory. `repository.py` and `services.py`
+The purity rule is about `engine.py`, `snapshot.py` and `decision.py` (the three
+this file re-exports), not about the directory. `repository.py` and `services.py`
 sit beside them because placement has the usual module layout (see
 `app/modules/__init__.py` for it and its exceptions), and they are the callers:
 they do the reading, and none of the three imports them back. Nothing in this package's public surface touches a session.

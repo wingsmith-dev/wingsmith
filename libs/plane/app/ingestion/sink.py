@@ -7,7 +7,7 @@ write path in the system, and the API would be the thing that noticed.
 
 Raising is the whole error contract. `OperatorSession` withholds the
 acknowledgement for any frame whose sink call raised and the operator replays
-it, so a method here either commits or raises, never logs and returns, which
+it, so a method here either commits or raises; it never logs and returns, which
 would acknowledge state that was never written.
 """
 
@@ -97,8 +97,8 @@ DEMAND_SCOPES = frozenset({"demand", "all"})
 def _roles(roles: Any) -> tuple:
     """The per-role counts as a comparable tuple, from either the stored row or the frame.
 
-    One function for both sides because they are the same fact in two shapes, a list of dicts
-    read back out of JSONB, and a list of Structs decoded off the wire, and comparing them
+    One function for both sides because they are the same fact in two shapes (a list of dicts
+    read back out of JSONB, and a list of Structs decoded off the wire), and comparing them
     directly would be true only by accident.
     """
     out = []
@@ -114,7 +114,7 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
     """Whether this frame says anything the last one did not.
 
     The operator already suppresses a report identical to its own previous one,
-    but that memory is per process and does not survive a restart or a failover,
+    but that memory is per process and does not survive a restart or a failover:
     after either, the first frame for every deployment restates whatever was
     already true. Comparing against the stored row instead is what keeps a hub
     reconnect from filing a page of events that record nothing having happened.
@@ -157,8 +157,8 @@ def _regressed(before, payload) -> bool:
     The operator suppresses a stage it has already sent, but that memory is per
     process: a restart, a failover or a fresh hub session leaves it empty, and the
     next pass replays `Accepted` and `Rendering` for a deployment that has been
-    serving for a week. The frames are not wrong, they are what the loop does on
-    its first pass, they are simply about a moment that has passed.
+    serving for a week. The frames are not wrong: they are what the loop does on
+    its first pass. They are simply about a moment that has passed.
 
     Applied blindly they cost more than a noisy timeline. The status row is
     last-writer-wins, so a replayed `pending` overwrites `running 1/1` and the
@@ -168,7 +168,7 @@ def _regressed(before, payload) -> bool:
     What makes a frame stale is its reason, not its phase. A stage is true once
     per instruction and the operator walks the set once per generation, so a
     stage arriving for a generation already placed is stale by definition. A
-    `pending` that names a *state*, `NoSchedulableCapacity`, `WeightsNotResident`,
+    `pending` that names a *state* (`NoSchedulableCapacity`, `WeightsNotResident`)
     is a fact about now, and the generation cannot move to tell it apart from a
     replay: nothing was redeployed. Judging those two alike is what let a cluster
     that lost its nodes report `NoSchedulableCapacity` every fifteen seconds for
@@ -308,7 +308,7 @@ class DatabaseSink:
     async def _deployment(self, db: AsyncSession, cluster_id: UUID, uid: str) -> tuple[UUID, UUID] | None:
         """`(deployment_id, workload_id)` for a declared deployment in this cluster.
 
-        Scoped to the cluster: a frame naming a deployment that lives
+        Intentionally scoped to the cluster: a frame naming a deployment that lives
         somewhere else is not a deployment this stream may write about.
         """
         result = await db.execute(
@@ -330,8 +330,8 @@ class DatabaseSink:
         frees it for the next allocation under the partial unique index.
 
         A frame naming a deployment or project the plane does not have is accepted
-        and dropped, not replayed. Ingestion may not create either one, both are
-        declared, and withholding the ack would wedge the stream behind a frame
+        and dropped, not replayed. Ingestion may not create either one (both are
+        declared), and withholding the ack would wedge the stream behind a frame
         that can never be applied.
 
         A frame naming no accelerators is a release and takes the other path
@@ -484,7 +484,7 @@ class DatabaseSink:
                     )
                     return None
                 # Read, then file, then overwrite. The status row is last-writer-wins, so the
-                # transition only exists in the gap between the read and the upsert, after it
+                # transition only exists in the gap between the read and the upsert; after it
                 # there is nothing left to compare against.
                 before = (await db.execute(statements.deployment_status_before(deployment[0]))).first()
                 if _regressed(before, payload):
@@ -521,8 +521,8 @@ class DatabaseSink:
                             len(payload.replica_ids),
                         )
                 # Admission moves with it, on this deployment alone. A workload has one of these
-                # per cluster and they do not agree, one region can be running while another sits
-                # queued on quota, so the phase is written here and the workload only takes the
+                # per cluster and they do not agree (one region can be running while another sits
+                # queued on quota), so the phase is written here and the workload only takes the
                 # rollup that is genuinely global: when the first of its clusters started.
                 advance = statements.advance_admission_phase(deployment[0], payload)
                 if advance is not None:
@@ -844,8 +844,8 @@ class DatabaseSink:
 
         Fenced on the claim when a session is named: liveness is the one fact a
         displaced session is most likely to get wrong, because its last act is to
-        report the cluster it no longer serves as gone. Skipped silently rather
-        than raised: the session is closing either way.
+        report the cluster it no longer serves as gone. Skipped silently,
+        not raised: the session is closing either way.
 
         Also writes whatever `_stamp` is still holding for the cluster, so the tail of
         a burst reaches the row within one liveness interval of its last frame.
@@ -899,7 +899,7 @@ class DatabaseDesiredSource:
         A session replays these on connect because an operation created while the
         cluster was offline has nothing else to carry it: the notification that
         would have dispatched it live found no session, and the resync that
-        repairs declared state does not cover operations.
+        repairs declared state does not cover operations, by design.
         """
         from app.ingestion.operations import open_operations
 

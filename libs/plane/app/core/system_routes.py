@@ -7,7 +7,7 @@ So the plane reports its own effective configuration.
 
 **The exposed set is an allowlist and must stay one.** Every field below is
 named by hand in a `Struct` and copied across in `effective_config`. There is no
-`asdict(settings)` here and there is no denylist of suspicious
+`asdict(settings)` here and there is intentionally no denylist of suspicious
 names: a denylist means the next credential anyone adds to `Settings` is public
 the moment it is committed, and nobody would notice until it was in a screenshot.
 Adding a field here is one line and a decision; forgetting to add one costs
@@ -16,7 +16,7 @@ nothing.
 Three rules follow from that:
 
 - A credential is never a value, only a boolean. `gateway_service_token_set`
-  says whether the gateway's token is configured and nothing else, not a prefix, not a
+  says whether the gateway's token is configured and nothing else: not a prefix, not a
   length, not a digest. Any of those three narrow a search for the real thing.
 - `DATABASE_URL` is reported in parts, never as a string. The driver, host, port
   and database name are what tell an operator the plane is pointed at the wrong

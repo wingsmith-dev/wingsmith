@@ -10,8 +10,8 @@ empty instead of an error, which `services` maps to `None` and the console
 renders as an em dash.
 
 **A sum never unions.** `or` is a set union, so if two candidates were ever
-populated at once, an upgrade window where an engine emits both the old and the
-new name, a union under a `sum` would add the same tokens twice. A silently
+populated at once (an upgrade window where an engine emits both the old and the
+new name), a union under a `sum` would add the same tokens twice. A silently
 doubled token rate is the worst failure this module can have, so a summed metric
 with more than one candidate probes them in order and uses the first that has
 any series at all, instead of trusting the shape of the union. Averages and

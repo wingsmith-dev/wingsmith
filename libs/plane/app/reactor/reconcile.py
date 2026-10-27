@@ -70,7 +70,7 @@ CADENCE = Cadence()
 def short_workloads():
     """Workloads the plane manages that hold fewer replicas across their deployments than they ask for.
 
-    Paused workloads are left alone, their shortfall is the point, and so is any
+    Paused workloads are left alone (their shortfall is the point), and so is any
     workload with a deployment the plane did not create, because an adopted one's
     shape is the cluster's and re-expanding it would re-place something already
     running.

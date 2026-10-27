@@ -16,8 +16,8 @@ so a rotated token can be recognised when it is presented again.
   session the winner just rotated is left alone.
 - Rotation never extends the session: every row inherits the first row's expiry,
   so `REFRESH_TTL_SECONDS` is an absolute lifetime, not a sliding one.
-- A session is bound to the credential that opened it, the admin password's
-  generation, or the tenant token, so changing the one ends the other.
+- A session is bound to the credential that opened it (the admin password's
+  generation, or the tenant token), so changing the one ends the other.
 - `session_is_live` is what the API guard asks on every request a session token
   makes, so logout and revocation take effect on the next request, not
   when the access token expires.

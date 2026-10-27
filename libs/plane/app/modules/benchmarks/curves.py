@@ -40,7 +40,7 @@ INPUT_TOKENS_MEAN = "input_tokens_mean"
 STEP_FIELDS: dict[str, str] = {"ramp": CONCURRENCY, "sweep": INPUT_TOKENS_MEAN}
 """Which declared parameter a stepped mode walks, duplicated from the expansion.
 
-Two copies and for `buckets.py`'s reason: the expansion's table says
+Two copies, intentionally, and for `buckets.py`'s reason: the expansion's table says
 what a request was created against, and a read sharing the constant would follow
 it silently if somebody added a mode. A test holds the two equal.
 """
@@ -107,13 +107,13 @@ class Value(NamedTuple):
 class Point(NamedTuple):
     """One run of a request, reduced to what a curve needs of it.
 
-    A discarded run stays on the curve instead of being dropped, a warm-up is
-    part of what was run and the console says so, and is excluded from the
+    A discarded run stays on the curve instead of being dropped (a warm-up is
+    part of what was run and the console says so), and is excluded from the
     knee. An open run is here too, with every reading null, so a curve can be
     drawn while the ramp is still climbing.
 
-    `serving_digest` is what the run measured, and it is on the point rather
-    than only on the response because the knee needs it: a request whose steps
+    `serving_digest` is what the run measured, and it is on the point,
+    not only on the response because the knee needs it: a request whose steps
     landed on two configurations still has one graded run per step, and a
     crossing read across them would be attributed to a machine that never ran.
     """

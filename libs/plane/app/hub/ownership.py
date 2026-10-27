@@ -110,8 +110,8 @@ class ClusterClaimService:
         """The one identity a cluster is claimed under, whatever identity it arrived as.
 
         This is what makes the claim mean anything. A cluster answers to both its
-        uid and its name, `cluster_ref_clause` accepts either everywhere else in
-        the plane, and an operator is configured by hand, so which of the two it
+        uid and its name (`cluster_ref_clause` accepts either everywhere else in
+        the plane), and an operator is configured by hand, so which of the two it
         introduces itself with is a deployment detail. Keyed by the raw string,
         one cluster whose two operators were configured differently gets two rows
         that never conflict, and both hubs conclude they hold the claim: the
@@ -142,7 +142,7 @@ class ClusterClaimService:
 class ClaimStore(Protocol):
     """The seam `OperatorSession` claims and checks ownership through.
 
-    Narrow, matching `app.hub.sink.Sink`: a session must be exercisable
+    Narrow by design, matching `app.hub.sink.Sink`: a session must be exercisable
     end to end with no database, so tests use `MemoryClaimStore` in its place.
     """
 

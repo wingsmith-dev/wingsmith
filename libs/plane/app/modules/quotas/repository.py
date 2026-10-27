@@ -214,7 +214,7 @@ class ServingQuotaRepository:
     def workload_endpoints_query(self, ref: str) -> Select:
         """The endpoints a workload's traffic is admitted through.
 
-        Two hops, target to deployment to workload, as a subquery, so resolving
+        Two hops (target to deployment to workload), as a subquery, so resolving
         by workload stays one round trip instead of a fan-out. A workload can sit
         behind more than one endpoint and each of those carries its own
         commitment; this returns the set, and the caller reports them separately.

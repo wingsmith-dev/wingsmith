@@ -2,7 +2,7 @@
 
 The ask this answers is "let us adjust what alerts without shipping code", and the
 tempting shape for it is a `monitoring_label` column on the workload. That column is
-not here: `labels` is already a `JSONB` dict on `Workload`,
+intentionally not here: `labels` is already a `JSONB` dict on `Workload`,
 `Cluster`, `Pool`, `Node`, `Endpoint` and `DiscoveredWorkload`, already declared,
 already editable through `PATCH` and already rendered in the console. A dedicated
 column would be a second place to say the same thing, needing its own migration,

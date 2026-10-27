@@ -1,7 +1,7 @@
 """The serving view: what one tenant is being served, and nothing else.
 
-`/v1/serving` is the only surface a tenant credential can reach,
-`app.core.context` refuses one everywhere else, which makes the module's
+`/v1/serving` is the only surface a tenant credential can reach
+(`app.core.context` refuses one everywhere else), which makes the module's
 boundary the security boundary. Two rules follow, and both are essential,
 not tidiness:
 

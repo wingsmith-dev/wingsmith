@@ -160,7 +160,7 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
 }
 """Arguments the corpus publishes that this module does not adopt, and why.
 
-Data, not prose so that the next person to widen `ADOPTED_FLAGS` has to
+Data, not prose, so that the next person to widen `ADOPTED_FLAGS` has to
 read the reason the flag was left out and disagree with it in writing. Nothing
 reads this map at run time; the tests read it, and so does anybody wondering why
 their recipe's flag did not arrive.

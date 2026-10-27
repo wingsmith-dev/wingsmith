@@ -53,8 +53,8 @@ def follows_operation(operation_uid: str, phase: str, error: str | None = None) 
     """Carries an operation's terminal phase onto the run it was carrying out.
 
     Matched through `operation_id`, not by passing the run down, because
-    the caller that cancels an operation has no reason to know a run exists,
-    most operations have none, and the caller in ingestion is holding a wire
+    the caller that cancels an operation has no reason to know a run exists
+    (most operations have none), and the caller in ingestion is holding a wire
     payload that names only the operation.
     """
     message = error or DEFAULT_MESSAGES.get(phase)

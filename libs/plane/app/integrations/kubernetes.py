@@ -1,13 +1,13 @@
 """The narrowest possible Kubernetes client: read a Secret key, patch a Secret key.
 
 The plane is not a Kubernetes controller and must not start looking like one. It
-knows nothing about Deployments, rule 2 of the project guide, and the operator is
+knows nothing about Deployments (rule 2 of the project guide), and the operator is
 the only thing that talks to a cluster's API. This module is the single exception,
 and it exists for exactly one object: the htpasswd Secret behind the central
 metrics store's write ingress, which lives in the plane's *own* cluster and which
 the plane is now the source of (ADR 0012).
 
-Hand-rolled over `httpx` instead of adding `kubernetes-asyncio`. The
+Intentionally hand-rolled over `httpx` instead of adding `kubernetes-asyncio`. The
 whole surface is two verbs on one resource kind; a generated client would bring a
 model hierarchy, a watch implementation and a discovery cache for that.
 

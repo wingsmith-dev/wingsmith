@@ -113,7 +113,7 @@ class RuleSchema(Struct):
     somebody is writing the policy, not on a request already in flight.
 
     A rule is data and never an expression. This is read on every request, and it
-    is also the thing somebody reads across a negotiating table, neither
+    is also the thing somebody reads across a negotiating table; neither
     survives a small language.
     """
 
@@ -138,7 +138,7 @@ class PolicySchema(Struct):
     sale, and a provider is sometimes stricter than the engine we run: Moonshot
     answers 400 to any `temperature` but 1, where an ordinary OpenAI-compatible
     server accepts the whole range. Conforming means refusing a request the engine
-    would happily serve, and sometimes it means the opposite, filling in a field
+    would happily serve, and sometimes it means the opposite: filling in a field
     the provider treats as having a default so that the engine reads what the
     provider's own frontend would have.
 
@@ -186,8 +186,8 @@ class EndpointSchema(Struct):
     """The stable public name clients call. Global and plane-only.
 
     There is no cluster on this object at any depth. An endpoint spans clusters
-    by construction, that is what the weighted target set and the failover order
-    are for, and it never syncs to one, so a cluster reference here would be a
+    by construction (that is what the weighted target set and the failover order
+    are for), and it never syncs to one, so a cluster reference here would be a
     field with no writer and no meaning.
     """
 
@@ -248,7 +248,7 @@ class EndpointCreateRequest(Struct):
 class EndpointUpdateRequest(Struct):
     """A partial update. An absent field is untouched; an explicit null clears.
 
-    `name` and `project` are absent by design. The name is the internal handle,
+    `name` and `project` are absent by design. The name is the internal handle:
     it is in URLs, in metrics labels and in every link the console holds, and an
     endpoint exists so that deployments can be replaced without anyone noticing.
     `slug` is what clients actually send and it *is* patchable, which is the
@@ -367,9 +367,9 @@ class ResolvedEndpointSchema(Struct):
 class ResolvedTableSchema(Struct):
     """Every enabled endpoint, resolved. The whole routing table in one read.
 
-    `revision` covers everything the table was built from, endpoints, their
+    `revision` covers everything the table was built from (endpoints, their
     targets, the deployments behind them and the serving addresses of the
-    clusters those sit on, so a caller that polls can send it back as
+    clusters those sit on), so a caller that polls can send it back as
     `If-None-Match` and get a `304` for as long as none of the four have moved.
     """
 

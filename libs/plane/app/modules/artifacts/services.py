@@ -415,8 +415,8 @@ class ArtifactService:
         """Re-reads a registered artifact's own source and updates what is derived from it.
 
         The case this exists for: the plane learns to extract something it did not
-        extract before, an attention shape, a native quantization, an active parameter
-        count, and every artifact registered until then is missing it. Without this
+        extract before (an attention shape, a native quantization, an active parameter
+        count), and every artifact registered until then is missing it. Without this
         route the only way to record it is to delete the artifact and register it again,
         which breaks every workload that names it, or to `PATCH` the metadata by hand,
         which is a person retyping what the plane can read.

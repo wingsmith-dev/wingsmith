@@ -113,7 +113,7 @@ class ReservedUnit(Snap):
 class ClusterSnapshot(Snap):
     """One cluster's placement-relevant surface: what it is, and what it holds free.
 
-    `phase` and `reachable` are kept apart. Phase is declared: we say
+    `phase` and `reachable` are kept apart by design. Phase is declared: we say
     a cluster is draining. Reachable is observed: the agent either has a live
     session or it does not. A cluster can be perfectly reachable and still not a
     placement target, and it can be declared active while nothing is listening.
