@@ -1262,3 +1262,23 @@ async def test_a_policy_named_like_a_workload_does_not_block_its_constraint(sess
     async with sessions() as db:
         workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
     assert [d.cluster_name for d in workload.deployments] == ["asia"]
+
+
+async def test_adapter_references_resolve_in_order_in_one_lookup(sessions) -> None:
+    from app.modules.workloads.repository import WorkloadRepository
+
+    await seed_demand(sessions)
+    async with sessions.begin() as db:
+        for name, digest in (("lora-a", "sha256:a1"), ("lora-b", "sha256:b1"), ("lora-b", "sha256:b2")):
+            await db.execute(
+                text("insert into demand_artifact (uid, digest, name, kind) values (:uid, :digest, :name, 'weights')"),
+                {"uid": ids.new_uid(ids.ARTIFACT), "digest": digest, "name": name},
+            )
+    base = (await fetch(sessions, "select uid from demand_artifact where name = 'llama-70b'"))[0][0]
+
+    async with sessions() as db:
+        repo = WorkloadRepository(db)
+        found = await repo.artifacts_by_ref([base, "lora-a", "missing"])
+        assert [a.name for a in found] == ["llama-70b", "lora-a"]
+        with pytest.raises(Invalid, match="lora-b"):
+            await repo.artifacts_by_ref(["lora-a", "lora-b"])

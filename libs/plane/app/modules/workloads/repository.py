@@ -293,9 +293,27 @@ class WorkloadRepository:
         return {row.id: row.uid for row in result.all()}
 
     async def artifacts_by_ref(self, refs: builtins.list[str]) -> builtins.list[Artifact]:
+        """The artifacts a list of references names, in the order given, in one query.
+
+        A reference that names nothing is left out, so the caller can tell which were
+        missing; a name two artifacts share is refused, as `artifact_by_ref` refuses it.
+        """
+        if not refs:
+            return []
+        uids = [ref for ref in refs if is_uid(ref)]
+        names = [ref for ref in refs if not is_uid(ref)]
+        rows = (
+            await self.db.execute(select(Artifact).where(Artifact.uid.in_(uids) | Artifact.name.in_(names)))
+        ).scalars()
+        by_ref: dict[str, list[Artifact]] = {}
+        for artifact in rows:
+            if artifact.uid in uids:
+                by_ref.setdefault(artifact.uid, []).append(artifact)
+            if artifact.name in names:
+                by_ref.setdefault(artifact.name, []).append(artifact)
         found: list[Artifact] = []
         for ref in refs:
-            artifact = await self.artifact_by_ref(ref)
+            artifact = at_most_one(by_ref.get(ref, []), "artifact", ref)
             if artifact is not None:
                 found.append(artifact)
         return found
