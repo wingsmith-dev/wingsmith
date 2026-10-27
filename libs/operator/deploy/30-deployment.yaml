@@ -54,6 +54,9 @@ spec:
             requests:
               cpu: 50m
               memory: 96Mi
+            # An observation pass keeps only pods holding GPUs. A synthetic probe put its
+            # peak heap near 30Mi at 128 nodes and near 220Mi at 1000 nodes with 7500 GPU
+            # pods, so raise this limit past a few hundred GPU nodes.
             limits:
               cpu: 500m
               memory: 256Mi

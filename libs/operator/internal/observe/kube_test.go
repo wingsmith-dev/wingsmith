@@ -337,3 +337,39 @@ func TestCountDisagreementStaysAWarning(t *testing.T) {
 		t.Fatalf("gfd/dcgm disagreement produced warnings %v, want exactly one", w)
 	}
 }
+
+// Observation keeps only the pods holding accelerators, without their managed fields, so a large
+// cluster's other pods are not held in memory for the length of a pass.
+func TestListAllKeepsOnlyPodsHoldingDevices(t *testing.T) {
+	pod := func(name string, gpus int64, phase corev1.PodPhase) *corev1.Pod {
+		p := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: name,
+				ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kubelet", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1",
+					FieldsType: "FieldsV1", FieldsV1: &metav1.FieldsV1{Raw: []byte(`{"f:spec":{}}`)}}}},
+			Spec:   corev1.PodSpec{NodeName: "gpu-0", Containers: []corev1.Container{{Name: "main"}}},
+			Status: corev1.PodStatus{Phase: phase},
+		}
+		if gpus > 0 {
+			p.Spec.Containers[0].Resources.Limits = corev1.ResourceList{
+				resourceGPU: *resource.NewQuantity(gpus, resource.DecimalSI),
+			}
+		}
+		return p
+	}
+	c := fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithRuntimeObjects(
+		pod("serving", 8, corev1.PodRunning),
+		pod("sidecar", 0, corev1.PodRunning),
+		pod("finished", 8, corev1.PodSucceeded),
+	).Build()
+
+	var pods corev1.PodList
+	if err := listAll(context.Background(), c, &pods, holdsDevices); err != nil {
+		t.Fatal(err)
+	}
+	if len(pods.Items) != 1 || pods.Items[0].Name != "serving" {
+		t.Fatalf("kept %d pods, want only the running one holding devices", len(pods.Items))
+	}
+	if pods.Items[0].ManagedFields != nil {
+		t.Errorf("kept pod still carries managed fields")
+	}
+}

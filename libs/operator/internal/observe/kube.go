@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -92,11 +93,14 @@ var _ Discoverer = (*KubeDiscoverer)(nil)
 // type, so placement next to the call site keeps the grant traceable to its use.
 func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 	var nodes corev1.NodeList
-	if err := listAll(ctx, k.Client, &nodes); err != nil {
+	if err := listAll(ctx, k.Client, &nodes, nil); err != nil {
 		return Snapshot{}, fmt.Errorf("list nodes: %w", err)
 	}
+	// Only pods holding accelerators are kept, a page at a time. They are all that workload
+	// discovery and allocation read, and a large cluster's other pods would otherwise sit in
+	// memory whole.
 	var pods corev1.PodList
-	if err := listAll(ctx, k.Client, &pods); err != nil {
+	if err := listAll(ctx, k.Client, &pods, holdsDevices); err != nil {
 		return Snapshot{}, fmt.Errorf("list pods: %w", err)
 	}
 	workloads, err := k.discoverWorkloads(ctx, &pods)
@@ -147,8 +151,9 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 // server's work per request, bounded on a large cluster.
 const listPageSize = 500
 
-// listAll fills list from every page of a LIST.
-func listAll(ctx context.Context, c client.Reader, list client.ObjectList, opts ...client.ListOption) error {
+// listAll fills list from every page of a LIST, keeping only the objects keep accepts when it is
+// set. Filtering per page bounds memory by one page plus what is kept, not by the whole cluster.
+func listAll(ctx context.Context, c client.Reader, list client.ObjectList, keep func(runtime.Object) bool, opts ...client.ListOption) error {
 	var items []runtime.Object
 	token := ""
 	for {
@@ -164,12 +169,33 @@ func listAll(ctx context.Context, c client.Reader, list client.ObjectList, opts 
 		if err != nil {
 			return err
 		}
-		items = append(items, got...)
+		if keep == nil {
+			items = append(items, got...)
+		} else {
+			// Copied, because an extracted item points into its page's array and holding one
+			// would keep the whole page alive. Managed fields are often the bulk of an object
+			// and nothing here reads them.
+			for _, item := range got {
+				if !keep(item) {
+					continue
+				}
+				if o, ok := item.(metav1.Object); ok {
+					o.SetManagedFields(nil)
+				}
+				items = append(items, item.DeepCopyObject())
+			}
+		}
 		if token = page.GetContinue(); token == "" {
 			break
 		}
 	}
 	return apimeta.SetList(list, items)
+}
+
+// holdsDevices keeps a pod that still holds accelerators.
+func holdsDevices(obj runtime.Object) bool {
+	p, ok := obj.(*corev1.Pod)
+	return ok && schedulable(p) && podDevices(p) > 0
 }
 
 // allocatedByNode counts accelerators committed to work, from the cluster's own scheduling

@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
 )
@@ -105,7 +106,7 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 		return nil, nil
 	}
 
-	controllers, err := k.controllers(ctx)
+	controllers, err := k.controllers(ctx, usage)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +155,23 @@ type controller struct {
 	spec        *WorkloadSpec
 }
 
-func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]controller, error) {
+// controllers reads the Deployments and StatefulSets behind the workloads in usage. Others are
+// dropped page by page, since only a workload already seen holding accelerators is reported.
+func (k *KubeDiscoverer) controllers(ctx context.Context, usage map[workloadKey]*podUsage) (map[workloadKey]controller, error) {
 	out := map[workloadKey]controller{}
+	wanted := func(kind string) func(runtime.Object) bool {
+		return func(obj runtime.Object) bool {
+			o, ok := obj.(metav1.Object)
+			if !ok {
+				return false
+			}
+			_, seen := usage[workloadKey{Namespace: o.GetNamespace(), Kind: kind, Name: o.GetName()}]
+			return seen
+		}
+	}
 
 	var deployments appsv1.DeploymentList
-	if err := listAll(ctx, k.Client, &deployments); err != nil {
+	if err := listAll(ctx, k.Client, &deployments, wanted(kindDeployment)); err != nil {
 		return nil, fmt.Errorf("list deployments: %w", err)
 	}
 	for i := range deployments.Items {
@@ -183,7 +196,7 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 	}
 
 	var sets appsv1.StatefulSetList
-	if err := listAll(ctx, k.Client, &sets); err != nil {
+	if err := listAll(ctx, k.Client, &sets, wanted(kindStatefulSet)); err != nil {
 		return nil, fmt.Errorf("list statefulsets: %w", err)
 	}
 	for i := range sets.Items {

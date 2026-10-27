@@ -85,7 +85,7 @@ func (p *pagedNodes) List(_ context.Context, list client.ObjectList, opts ...cli
 func TestListAllFollowsContinueTokens(t *testing.T) {
 	reader := &pagedNodes{names: []string{"a", "b", "c", "d", "e"}}
 	var nodes corev1.NodeList
-	if err := listAll(context.Background(), reader, &nodes); err != nil {
+	if err := listAll(context.Background(), reader, &nodes, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(nodes.Items) != 5 || nodes.Items[4].Name != "e" {
