@@ -38,11 +38,6 @@ import { toast } from "sonner"
  * the run follows the plane's default unless somebody deliberately types over it
  * — a run started from here should not be pinned to whatever the pin happened to
  * be on the day this dialog was opened.
- *
- * `extra` is rendered as a plain text field and sent verbatim. It is the escape
- * hatch for the long tail of flags, and it is deliberately not validated —
- * enumerating everything a harness accepts, in three languages, is the thing
- * this design is avoiding.
  */
 export function NewBenchmarkDialog({
   deployment,
@@ -162,14 +157,7 @@ export function NewBenchmarkDialog({
           {selected && (
             <div className="grid gap-3 sm:grid-cols-2">
               {selected.parameters.map((parameter) => (
-                <div
-                  key={parameter.name}
-                  className={
-                    parameter.name === "extra"
-                      ? "space-y-1.5 sm:col-span-2"
-                      : "space-y-1.5"
-                  }
-                >
+                <div key={parameter.name} className="space-y-1.5">
                   <Label
                     htmlFor={`bm-${parameter.name}`}
                     className="font-mono text-2xs"

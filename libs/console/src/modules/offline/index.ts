@@ -1074,13 +1074,6 @@ const HARNESSES: BenchmarkHarness[] = [
         description: "Requests sent and discarded before measuring.",
         levels: [],
       },
-      {
-        name: "extra",
-        type: "str",
-        default: "",
-        description: "Extra flags, appended verbatim to the command line.",
-        levels: [],
-      },
     ],
   },
 ]

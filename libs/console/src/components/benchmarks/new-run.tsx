@@ -40,11 +40,7 @@ import type {
   BenchmarkParameter,
   BenchmarkTier,
 } from "@/modules/benchmarks/types"
-import {
-  fetchDeployments,
-  fetchEndpoints,
-  fetchWorkloads,
-} from "@/modules/demand/api"
+import { fetchDeployments, fetchWorkloads } from "@/modules/demand/api"
 import { IconChevronRight } from "@tabler/icons-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
@@ -53,11 +49,11 @@ import { toast } from "sonner"
 const NO_TIER = "__none__"
 
 /**
- * The three collections a request can be aimed at, drained one at a time.
+ * The collections a request can be aimed at, drained one at a time.
  *
  * Only the selected level's collection is fetched: opening this dialog should
- * not walk every deployment, workload and endpoint in the fleet to fill in two
- * lists nobody is going to look at.
+ * not walk every deployment and workload in the fleet to fill in a list nobody
+ * is going to look at.
  */
 function useTargetOptions(level: BenchmarkLevel) {
   const deployments = useAllPages(
@@ -70,11 +66,6 @@ function useTargetOptions(level: BenchmarkLevel) {
     (cursor) => fetchWorkloads({}, cursor, 200),
     { enabled: level === "workload" }
   )
-  const endpoints = useAllPages(
-    ["endpoints", "options"],
-    (cursor) => fetchEndpoints({}, cursor, 200),
-    { enabled: level === "endpoint" }
-  )
 
   return useMemo(() => {
     if (level === "workload")
@@ -82,16 +73,11 @@ function useTargetOptions(level: BenchmarkLevel) {
         value: workload.id,
         label: workload.name,
       }))
-    if (level === "endpoint")
-      return (endpoints.data ?? []).map((endpoint) => ({
-        value: endpoint.id,
-        label: endpoint.name,
-      }))
     return (deployments.data ?? []).map((deployment) => ({
       value: deployment.id,
       label: `${deployment.name} · ${deployment.cluster_id}`,
     }))
-  }, [level, deployments.data, workloads.data, endpoints.data])
+  }, [level, deployments.data, workloads.data])
 }
 
 /** `1000, 8000, 24000` — the load points a stepped mode walks, in order. */
@@ -341,14 +327,7 @@ export function NewRunDialog({
             {parameters.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {parameters.map((parameter) => (
-                  <div
-                    key={parameter.name}
-                    className={
-                      parameter.name === "extra"
-                        ? "space-y-1.5 sm:col-span-2"
-                        : "space-y-1.5"
-                    }
-                  >
+                  <div key={parameter.name} className="space-y-1.5">
                     <Label
                       htmlFor={`req-${parameter.name}`}
                       className="font-mono text-2xs"

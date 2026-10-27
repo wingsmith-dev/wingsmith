@@ -112,11 +112,12 @@ export const LEVEL_CLAIM: Record<BenchmarkLevel, string> = {
   endpoint: "what a caller gets through the public name",
 }
 
-export const BENCHMARK_LEVELS: BenchmarkLevel[] = [
-  "deployment",
-  "workload",
-  "endpoint",
-]
+/**
+ * The levels a run can be requested at. The plane refuses endpoint-level
+ * requests until something executes them, so the form never offers one even
+ * when a harness declares no levels of its own.
+ */
+export const BENCHMARK_LEVELS: BenchmarkLevel[] = ["deployment", "workload"]
 
 export const BENCHMARK_MODES: BenchmarkMode[] = [
   "single",
