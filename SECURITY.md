@@ -98,3 +98,13 @@ These are known and documented rather than fixed. Take them into account when yo
   network.
 - **Human access is a single admin role.** Anyone with the admin password can do everything. Roles,
   scopes and SSO are on the [roadmap](docs/roadmap.md), not built.
+- **One enrolment token serves three uses.** A cluster's token authenticates its operator to the
+  hub, its agent to the gateway and, unless the chart is given other metrics credentials, its
+  metrics agent to `remote_write`. Whoever reads it from any of those pods can open a hub session
+  for that cluster. Per-purpose credentials are on the [roadmap](docs/roadmap.md).
+- **The console's refresh token is readable by page script.** It is kept in session storage, so
+  script injected into the console could read it and mint sessions until it is revoked. An
+  `HttpOnly` cookie is on the [roadmap](docs/roadmap.md).
+- **The plane's `/metrics` needs no credential.** It is served on the api port beside the API.
+  Refuse it at the ingress and scrape the pods directly, as the
+  [deployment guide](docs/operations/deploy-plane.md#networking) says.
