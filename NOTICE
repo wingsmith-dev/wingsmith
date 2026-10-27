@@ -14,6 +14,44 @@ libs/plane/tests/data/aiperf-0.12.0-profile-export.json is a verbatim copy of
 tests/unit/plot/fixtures/qwen_concurrency1/profile_export_aiperf.json from
 AIPerf v0.12.0.
 
+This product includes data derived from the vLLM recipes project
+(https://github.com/vllm-project/recipes), licensed under the Apache License
+2.0. libs/plane/app/integrations/data/vllm-recipes.json is generated from the
+recipe files of that repository at commit
+4bcc18970689ffefe33173642f85df7821864f2d by dev/refresh_vllm_recipes.py.
+
+This product includes data derived from NVIDIA Dynamo
+(https://github.com/ai-dynamo/dynamo), Copyright NVIDIA CORPORATION &
+AFFILIATES, licensed under the Apache License 2.0.
+libs/plane/app/integrations/data/dynamo-recipes.json is generated from the
+recipes/ directory of that repository at commit
+165d854ba6b18df8f0bebfebe20e7e29b062b1b2 by dev/refresh_dynamo_recipes.py.
+
+This product includes user interface components generated with shadcn/ui
+(https://github.com/shadcn-ui/ui). The files under
+libs/console/src/components/ui/ started from its generated components and are
+used under the MIT License:
+
+  Copyright (c) 2023 shadcn
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
 Third-party dependencies with notice or source obligations
 ----------------------------------------------------------
 Most dependencies are under permissive licenses (MIT, BSD, Apache-2.0, ISC).
@@ -38,3 +76,16 @@ Used only at build time, not shipped in any image or bundle:
 - lightningcss (MPL-2.0), the console's CSS compiler.
 - caniuse-lite (CC-BY-4.0), browser support data from caniuse.com, read
   during the console build.
+
+Bundled in the published cluster-setup chart:
+
+The chart package carries these Helm charts unmodified as subchart archives,
+each under the Apache License 2.0 and with any headers it ships kept:
+
+- dcgm-exporter 4.8.3 (https://github.com/NVIDIA/dcgm-exporter),
+  Copyright NVIDIA CORPORATION.
+- dynamo-platform 1.4.1 (https://github.com/ai-dynamo/dynamo, published at
+  oci://nvcr.io/nvidia/ai-dynamo), Copyright NVIDIA CORPORATION & AFFILIATES.
+  It in turn bundles dynamo-operator, grove-charts and kai-scheduler (NVIDIA),
+  nats (https://github.com/nats-io/k8s, The NATS Authors) and etcd with its
+  common library chart (https://github.com/bitnami/charts, Broadcom, Inc.).
