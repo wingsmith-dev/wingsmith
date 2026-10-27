@@ -420,7 +420,7 @@ def test_the_workloads_name_is_the_floor_and_never_an_empty_string():
     assert served_model(a_fit(), Artifact(name="gemma", slug="")) == "gemma-4-31b-it-fp8-tp2-32k"
 
 
-def test_an_empty_served_model_name_falls_through_rather_than_selecting_nothing():
+def test_empty_served_model_name_falls_through():
     workload = a_fit(engine_args={"served_model_name": ""})
     assert served_model(workload, GEMMA) == "google/gemma-4-31b-it"
 

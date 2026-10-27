@@ -207,7 +207,7 @@ async def test_the_draft_carries_the_upstream_recipe_attributed_to_its_source():
     assert "h200" in draft.upstream.verified_hardware
 
 
-async def test_weights_the_corpus_does_not_cover_resolve_without_it_and_without_a_remark():
+async def test_uncovered_weights_resolve_without_corpus_or_remark():
     """A miss is the ordinary case — the corpus covers a few hundred repos, the Hub a million."""
     model = hf_model(slug="acme/not-in-the-corpus")
 

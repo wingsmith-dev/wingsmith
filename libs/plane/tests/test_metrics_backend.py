@@ -171,7 +171,7 @@ async def test_a_summed_metric_falls_through_to_the_second_spelling():
     assert "DCGM_FI_DEV_ECC_DBE_VOL_TOTAL" in issued[0]
 
 
-async def test_a_summed_metric_with_neither_spelling_populated_asks_a_well_formed_query():
+async def test_summed_metric_without_either_spelling_asks_valid_query():
     """None populated: the last candidate is used so the query returns a clean empty."""
     client = StubClient()
     got = await backend(client).samples(request(ECC))

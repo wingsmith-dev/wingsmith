@@ -715,7 +715,7 @@ async def test_an_artifact_with_no_source_cannot_be_refreshed():
     assert "no source to re-read" in caught.value.message
 
 
-async def test_a_source_that_now_resolves_to_other_bytes_is_a_new_artifact_not_an_edit():
+async def test_source_resolving_to_other_bytes_is_a_new_artifact():
     """Applying a new size over this digest would describe weights nobody can fetch."""
     artifact = registered(digest="sha256:" + "0" * 64, parameter_count=1)
     with pytest.raises(Conflict) as caught:
@@ -726,7 +726,7 @@ async def test_a_source_that_now_resolves_to_other_bytes_is_a_new_artifact_not_a
     assert artifact.metadata_["shape"] is None
 
 
-async def test_a_moved_source_points_at_the_artifact_that_already_holds_the_new_bytes():
+async def test_moved_source_points_at_artifact_holding_new_bytes():
     artifact = registered(digest="sha256:" + "0" * 64)
     svc = refresh_service(artifact, existing_digest=hf_model().digest)
     with pytest.raises(Conflict) as caught:
@@ -1153,7 +1153,7 @@ async def test_a_fitment_fits_the_fleet_by_default_and_carries_what_we_have_of_i
     assert fit.label == "NVIDIA H100 80GB SXM"
 
 
-async def test_a_row_carries_the_other_counts_that_serve_and_not_only_the_recommendation():
+async def test_row_carries_every_serving_count_not_only_the_recommendation():
     """Half a node and the whole node are both deployable; the row offers both."""
     result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
 

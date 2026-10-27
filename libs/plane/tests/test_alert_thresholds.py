@@ -218,7 +218,7 @@ def test_a_row_scoped_to_another_subject_does_not_leak_onto_this_one():
     assert rules.resolve_threshold(declared, TTFT, DEPLOYMENT.uid) is None
 
 
-def test_an_undimensioned_row_wins_over_a_dimensioned_sibling_deterministically():
+def test_undimensioned_row_wins_over_dimensioned_sibling():
     plain = threshold(value=2.0)
     narrowed = threshold(value=4.0, dimensions={"input_bucket": "32k_64k"})
     assert rules.resolve_threshold([narrowed, plain], TTFT, DEPLOYMENT.uid) is plain

@@ -410,7 +410,7 @@ def test_the_same_model_fits_on_small_cards_by_needing_more_of_them():
     assert hopper.device_count < l4.device_count == 8
 
 
-def test_a_fit_crosses_nodes_because_the_backend_fabric_carries_pipeline_stages():
+def test_fit_crosses_nodes_over_the_backend_fabric():
     """The old ceiling made every model larger than one chassis of VRAM unservable."""
     sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 70_000_000_000)
     wide = fit(sizing, klass("l4-24gb-pcie"), Intent(context_length=8192, devices_per_node=8))
@@ -733,12 +733,12 @@ def test_the_fixed_reserve_is_per_device_so_it_grows_with_the_layout():
     assert usable_gb(card, 4) - usable_gb(card, 2) == pytest.approx(usable_gb(card, 2))
 
 
-def test_a_card_smaller_than_the_reserve_offers_nothing_rather_than_owing_memory():
+def test_card_smaller_than_reserve_offers_nothing():
     assert usable_gb(512, 1) == 0.0
     assert usable_gb(0, 8) == 0.0
 
 
-def test_hidden_size_is_declared_where_it_can_be_and_reconstructed_where_it_cannot():
+def test_hidden_size_is_declared_or_reconstructed():
     """The heads-times-head-dim identity does not hold for MLA, which has no head_dim."""
     assert hidden_size_of(extract_shape(llama_config())) == 4096
 

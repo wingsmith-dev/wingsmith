@@ -107,7 +107,7 @@ def an_artifact(slug: str = GLM) -> Artifact:
 # --------------------------------------------------------------------------- the regression
 
 
-def test_glm_53_flash_at_a_million_tokens_gets_a_max_num_seqs_the_engine_will_accept():
+def test_glm_53_flash_at_1m_tokens_gets_an_accepted_max_num_seqs():
     """The whole reason this exists: a cluster crash-looped at CUDA graph capture.
 
     The engine refuses when `max_num_seqs` exceeds the Mamba cache blocks that fit,
@@ -257,7 +257,7 @@ def test_the_snapshot_records_which_commit_it_came_from(corpus):
     assert len(corpus) > 0
 
 
-def test_the_snapshot_holds_the_whole_argument_list_and_not_only_what_is_adopted(corpus):
+def test_snapshot_holds_the_whole_argument_list(corpus):
     """Widening the allow-list has to be a code change, never a re-capture.
 
     Keeping the evidence means the decision about a flag is made where the reasons

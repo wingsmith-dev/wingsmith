@@ -400,7 +400,7 @@ def test_served_model_is_the_artifacts_slug():
     assert served_model(FakeWorkload(""), FakeArtifact("Qwen3.8 27B", "qwen/qwen3.8-27b")) == "qwen/qwen3.8-27b"
 
 
-def test_served_model_falls_back_to_the_workload_name_when_the_artifact_has_no_slug():
+def test_served_model_falls_back_to_workload_name_without_slug():
     """A bad answer that is meant to look like one, for an artifact registered before slugs.
 
     It is a workload's name where a model id belongs, which reads wrong on the routing table and

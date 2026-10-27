@@ -94,7 +94,7 @@ def test_architecture_filters_a_vendor_generation():
     assert catalog([H100, L4], {}, architecture="turing") == []
 
 
-def test_inventory_counts_are_carried_apart_rather_than_rolled_into_a_health_ratio():
+def test_inventory_counts_are_not_rolled_into_a_health_ratio():
     item = schema("l4-24gb-pcie", L4, (8, 7, 6, 1, 2, ["sfo-2", "iad-1"]))
     assert (item.inventory.devices, item.inventory.healthy, item.inventory.allocatable) == (8, 7, 6)
     assert item.inventory.allocated == 1
@@ -124,7 +124,7 @@ def test_inventory_query_groups_by_class_rather_than_listing_devices(repo):
     assert "count(" in statement
 
 
-def test_allocated_is_counted_from_holds_rather_than_inferred_from_the_free_count(repo):
+def test_allocated_is_counted_from_holds_not_free_count(repo):
     """Free and held are separate predicates, so neither implies the other."""
     statement = sql(repo.query())
     assert "bind_allocation_device" in statement

@@ -273,7 +273,7 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
-async def test_a_cluster_with_a_pinned_workload_and_its_deployment_refuses_to_be_deleted(db: AsyncSession) -> None:
+async def test_cluster_with_pinned_workload_refuses_delete(db: AsyncSession) -> None:
     """The holds query against real rows: force skips If-Match, never the drain."""
     cluster, _, _, _ = await a_deployment(db)
     service = ClusterService(db)
@@ -284,7 +284,7 @@ async def test_a_cluster_with_a_pinned_workload_and_its_deployment_refuses_to_be
     assert (await service.get(cluster.id)).id == cluster.id
 
 
-async def test_a_registered_cluster_is_labelled_for_the_metrics_store_by_its_own_name(db: AsyncSession) -> None:
+async def test_registered_cluster_is_labelled_by_its_own_name(db: AsyncSession) -> None:
     """The chart stamps `external_labels.cluster` from the same name (ADR 0011)."""
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
@@ -336,7 +336,7 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     assert later.enrolment_token_set is True
 
 
-async def test_enrolment_token_also_stores_a_bcrypt_verifier_and_rotation_replaces_both(
+async def test_enrolment_token_stores_bcrypt_verifier_and_rotation_replaces_both(
     db: AsyncSession,
     monkeypatch,
 ) -> None:
@@ -805,7 +805,7 @@ async def test_a_write_that_is_not_serving_configuration_files_nothing(db: Async
     assert [r.number for r in (await WorkloadService(db).revisions(workload.id)).items] == [1]
 
 
-async def test_a_workload_older_than_its_history_files_the_configuration_it_was_running(
+async def test_workload_older_than_history_files_its_running_config(
     db: AsyncSession,
 ) -> None:
     """The pre-image seed. Without it the edit somebody wants to undo is the unrecorded one."""
@@ -1221,7 +1221,7 @@ async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSess
     assert from_dispatch == from_resync[0]
 
 
-async def test_live_dispatch_sends_the_dependencies_a_deployment_cannot_reconcile_without(
+async def test_live_dispatch_sends_a_deployments_dependencies(
     db: AsyncSession,
 ) -> None:
     """The chain is one hop shorter than it was, and the remaining hops still matter.
@@ -1523,7 +1523,7 @@ async def test_draining_a_cluster_takes_its_upstream_out_of_the_table(db: AsyncS
     assert [u.cluster_id for u in (await endpoints.resolved()).endpoints[0].upstreams] == [cluster_a.id]
 
 
-async def test_a_deployment_that_is_not_running_still_appears_for_the_gateway_to_judge(db: AsyncSession) -> None:
+async def test_deployment_not_running_still_appears_for_gateway(db: AsyncSession) -> None:
     """Admission phase is passed through, not filtered on.
 
     Whether a deployment is running is observed and can lag what the cluster is
@@ -2210,7 +2210,7 @@ async def test_an_alias_reaches_the_resolved_table_however_it_was_declared(db: A
     assert cleared.revision != added.revision
 
 
-async def test_an_alias_moves_the_revision_even_when_an_engine_already_answers_to_that_name(
+async def test_alias_moves_revision_when_engine_already_has_the_name(
     db: AsyncSession,
 ) -> None:
     """The case this feature is *for*, and the one the revision missed.
