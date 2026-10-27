@@ -21,6 +21,7 @@ from app.core.ids import new_uid
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
+from app.ingestion import statements
 from app.core.schemas import ListResponse
 from app.core.throttle import FailureBudget
 from app.utils.schemas import Struct
@@ -650,6 +651,9 @@ class ClusterService:
         immediately: a hub session opened with it is closed within one ownership
         poll (`HUB_OWNERSHIP_CHECK_SECONDS`), and it can open no new one.
 
+        Audited both ways: a `cluster.enrolment_token_issued` or `_rotated` event on
+        the cluster's timeline, written in the same commit, and a warning log line.
+
         Two hashes, one credential. `token_hash` is the sha256 the hub looks the
         token up by and compares in constant time; `remote_write_hash` is a
         bcrypt verifier over the same string, which is the only shape Traefik's
@@ -665,10 +669,21 @@ class ClusterService:
             raise NotFound(f"no cluster {ref!r}")
         hub_url = _hub_url()
 
+        event = "enrolment_token_rotated" if cluster.token_hash else "enrolment_token_issued"
         token, token_hash = AuthManager.mint_enrolment_token()
         cluster.token_hash = token_hash
         cluster.remote_write_hash = AuthManager.hash_remote_write_token(token)
+        await self.db.execute(
+            statements.cluster_lifecycle(
+                cluster.id,
+                event,
+                f"cluster {cluster.name} was given a new enrolment token; any earlier one stopped working",
+                {"cluster_id": cluster.uid},
+                dt.datetime.now(dt.UTC),
+            )
+        )
         await self.db.commit()
+        logger.warning("cluster.%s cluster=%s", event, cluster.uid)
         await self.db.refresh(cluster)
         return self._render_setup(cluster, hub_url, enrolment_token=token)
 

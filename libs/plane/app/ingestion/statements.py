@@ -1153,6 +1153,13 @@ def deployment_lifecycle(
     )
 
 
+def cluster_lifecycle(cluster_id: UUID, event: str, message: str, details: dict[str, str], occurred_at: Any) -> Insert:
+    """Records something the plane itself did to a cluster's registration, on that cluster's timeline."""
+    return _insert_event(
+        cluster_id, f"cluster.{event}", "warning", "cluster", cluster_id, message, details, occurred_at
+    )
+
+
 def workload_lifecycle(
     workload_id: UUID,
     workload_uid: str,

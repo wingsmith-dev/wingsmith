@@ -335,6 +335,14 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     assert later.enrolment_token is None
     assert later.enrolment_token_set is True
 
+    audited = await db.execute(
+        text("SELECT type, details->>'cluster_id' FROM ops_event WHERE subject_type = 'cluster' ORDER BY seq")
+    )
+    assert audited.all() == [
+        ("cluster.enrolment_token_issued", created.id),
+        ("cluster.enrolment_token_rotated", created.id),
+    ]
+
 
 async def test_enrolment_token_stores_bcrypt_verifier_and_rotation_replaces_both(
     db: AsyncSession,
