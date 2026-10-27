@@ -365,9 +365,11 @@ apply by hand, are in [CHANGELOG.md](CHANGELOG.md).
 
 ### Upgrading
 
-Run the plane and this chart from the same Hangar release. The hub does not
-check versions when an operator connects yet, so a plane and operator from
-different releases are not refused, only unsupported. To upgrade a cluster:
+Run the plane and this chart from the same Hangar release. When an operator
+connects, the hub refuses one from another major release line and admits any
+minor or patch release within its own line, plus builds from source (a version
+like `dev` or a commit). It also refuses frames in an envelope version it does
+not read. A mixed-minor pair is admitted but not tested. To upgrade a cluster:
 
 1. Read the release's entry in the changelog, and apply its CRDs first if it
    says they changed (see [CRDs](#crds)).
