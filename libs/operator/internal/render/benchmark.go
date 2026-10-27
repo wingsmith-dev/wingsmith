@@ -60,23 +60,6 @@ type BenchmarkOptions struct {
 	TokenSecret string
 }
 
-// ignoredBenchmarkParameters are parameters the plane may send that this operator does not run:
-// the command line is built here from typed parameters, and the version and report locations
-// are the harness's own.
-var ignoredBenchmarkParameters = []string{"command", "report_glob", "version_command"}
-
-// IgnoredBenchmarkParameters names the parameters in a request that the job will not use, so
-// the run's result can say a supplied command line was replaced rather than run.
-func IgnoredBenchmarkParameters(parameters map[string]string) []string {
-	var out []string
-	for _, key := range ignoredBenchmarkParameters {
-		if strings.TrimSpace(parameters[key]) != "" {
-			out = append(out, key)
-		}
-	}
-	return out
-}
-
 // Defaults for a load generator's request. Deliberately modest: no CPU limit is set anywhere
 // here, so this is a scheduling floor a run bursts above, and a floor set higher than a cluster's
 // spare capacity is a run that never starts.

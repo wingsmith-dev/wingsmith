@@ -432,13 +432,3 @@ func TestBenchmarkCarriesNoTokenUnlessConfigured(t *testing.T) {
 		t.Errorf("envFrom = %+v, want the configured secret", from)
 	}
 }
-
-func TestIgnoredBenchmarkParametersNamesWhatTheJobDoesNotRun(t *testing.T) {
-	got := IgnoredBenchmarkParameters(map[string]string{"command": "evalscope eval", "version_command": "", "model": "m"})
-	if strings.Join(got, ",") != "command" {
-		t.Errorf("ignored = %v, want [command]", got)
-	}
-	if got := IgnoredBenchmarkParameters(benchParams(nil)); len(got) != 0 {
-		t.Errorf("ignored = %v for an ordinary aiperf request, want none", got)
-	}
-}
