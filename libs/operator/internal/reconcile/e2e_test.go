@@ -542,7 +542,7 @@ func TestE2EAnUndecodablePayloadFailsWithoutRetrying(t *testing.T) {
 	if out.Status.Phase != "Failed" {
 		t.Errorf("phase = %q, want Failed", out.Status.Phase)
 	}
-	if result.RequeueAfter != 0 || result.Requeue {
+	if result != (ctrl.Result{}) {
 		t.Error("a payload that does not decode was queued for another attempt")
 	}
 	if !l.reports.sawReason("PayloadUndecodable") {

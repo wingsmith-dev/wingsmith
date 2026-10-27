@@ -256,7 +256,7 @@ func TestAnUndecodableWarmSetFailsWithoutRetrying(t *testing.T) {
 	if cond.Status != metav1.ConditionFalse || cond.Reason != "PayloadUndecodable" {
 		t.Fatalf("condition = %s/%s, want False/PayloadUndecodable", cond.Status, cond.Reason)
 	}
-	if result.Requeue || result.RequeueAfter != 0 {
+	if result != (ctrl.Result{}) {
 		t.Error("an undecodable payload was scheduled for a retry that cannot help")
 	}
 }
