@@ -4,6 +4,7 @@ from litestar import Litestar
 from app.auth import AuthRoutes
 from app.api.spa import ConsoleRoutes
 from app.api.spa import has_console
+from app.api.metrics import PrometheusRoutes
 from app.core.routes import HealthRoutes
 from app.core.system_routes import SystemRoutes
 from app.modules.fleet.routes import FleetRoutes
@@ -80,7 +81,7 @@ V1_ROUTES = [
 
 def init_app(app: Litestar) -> Litestar:
     """Registers every controller. Modules are added to `V1_ROUTES` as they land."""
-    app.register(Router(path="", route_handlers=[HealthRoutes]))
+    app.register(Router(path="", route_handlers=[HealthRoutes, PrometheusRoutes]))
     app.register(Router(path="/v1", route_handlers=[AuthRoutes, SystemRoutes, *V1_ROUTES]))
     # Registered last and only when the image carries a build: the console is a
     # catch-all, and an image built without one should 404 rather than answer

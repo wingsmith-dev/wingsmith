@@ -47,12 +47,14 @@ and the response is indistinguishable from a correctly filtered one. A silently 
 a lie the caller cannot detect. The accepted set is derived
 from the matched handler's own signature at request time, under each parameter's wire name, so
 aliases (`?class=`), repeated params (`?label=k=v&label=...`), and new filters need no registration
-anywhere. `/health` and the OpenAPI routes are exempt.
+anywhere. `/health`, `/metrics` and the OpenAPI routes are exempt.
 
 ## 2. Identity and scope
 
 - `Authorization: Bearer <token>` — required everywhere under `/v1` except the three `/v1/auth`
-  verbs below. `/health` and the OpenAPI routes are outside `/v1` and need no credential.
+  verbs below. `/health`, `/metrics` (the API process's own Prometheus series, listed in
+  [`libs/plane/METRICS.md`](../../plane/METRICS.md)) and the OpenAPI routes are outside `/v1` and need
+  no credential.
 - `X-Hangar-Project` is not part of the API. The plane does not scope requests by project, CORS
   does not allow the header, and neither `hgr` nor the console sends it.
 

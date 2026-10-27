@@ -12,6 +12,7 @@ from app.api import routes
 from app.auth import AuthManager
 from app.utils import logs
 from app.config import settings
+from app.api.metrics import http_metrics
 from app.core.params import reject_unknown_params
 from app.core.context import authenticate
 from app.core.context import request_context
@@ -108,6 +109,7 @@ def create_app() -> Litestar:
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
         guards=[authenticate],
+        middleware=[http_metrics],
         response_headers=SECURITY_HEADERS,
         dependencies={"context": Provide(request_context)},
     )

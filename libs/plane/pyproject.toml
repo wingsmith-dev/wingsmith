@@ -21,6 +21,7 @@ dependencies = [
   "rich==13.9.4",
   "bcrypt==4.3.0",
   "pyyaml==6.0.3",
+  "prometheus-client==0.21.1",
 ]
 
 [project.scripts]
