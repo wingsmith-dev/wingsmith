@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
+import { useMemo } from "react"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   annotateWorkloadRevision,
@@ -129,24 +130,20 @@ export function useDerivedArtifacts(baseArtifact: string) {
 /**
  * The distinct quantizations declared for each artifact, read from the workloads
  * serving it. Quantization is a serving property, not an artifact one, so the list
- * column fans out one workload read per artifact and collapses the set per id.
+ * column groups one drained workload read by artifact instead of asking the plane
+ * once per row. It shares its cache entry with `useWorkloadOptions`.
  */
 export function useArtifactQuantizations(ids: string[]) {
-  const results = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["workloads", "by-artifact", id],
-      queryFn: () => fetchWorkloads({ artifact: id }, undefined, 200),
-      enabled: !!id,
-    })),
-  })
-  const byId = new Map<string, string[]>()
-  results.forEach((result, index) => {
-    const quants = (result.data?.items ?? [])
-      .map((workload) => workload.serving.quantization)
-      .filter((q): q is string => !!q)
-    byId.set(ids[index], [...new Set(quants)])
-  })
-  return byId
+  const workloads = useWorkloadOptions()
+  return useMemo(() => {
+    const sets = new Map(ids.map((id) => [id, new Set<string>()]))
+    for (const workload of workloads.data ?? []) {
+      const quantization = workload.serving.quantization
+      if (quantization)
+        sets.get(workload.serving.artifact_id)?.add(quantization)
+    }
+    return new Map([...sets].map(([id, set]) => [id, [...set]]))
+  }, [ids, workloads.data])
 }
 
 /** Every artifact, drained — workloads and adapter lists reference them by id. */
