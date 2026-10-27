@@ -412,9 +412,10 @@ running, so the tunnels already open keep serving.
 - **A path that is not on the list.** Only a `POST` to `/v1/chat/completions`, `/v1/completions`,
   `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/images/generations`, `/v1/images/edits`,
   `/v1/videos`, `/v1/videos/stream`, `/v1/audio/transcriptions`, `/v1/audio/translations` or
-  `/v1/audio/speech` is forwarded (`forwardedPaths` in `modality.go`), plus `GET /v1/models`, which
-  is answered here. Anything else is `404 unsupported_path` before the body is read: an engine
-  frontend serves admin, debug and metrics routes too, and none of them are a caller's to reach.
+  `/v1/audio/speech` is forwarded (`tunnel.Forwarded` in `libs/packages/tunnel/paths.go`, which the
+  agent checks too), plus `GET /v1/models`, which is answered here. Anything else is
+  `404 unsupported_path` before the body is read: an engine frontend serves admin, debug and metrics
+  routes too, and none of them are a caller's to reach.
   That includes vLLM's `/tokenize`, which `vllm bench serve` calls; through the gateway that call
   gets a 404 and the benchmark carries on with a warning.
   Any non-`POST` to `/v1/videos` or `/v1/videos/*` is a `404 unsupported_path` saying generation is
