@@ -37,7 +37,7 @@ RUN pnpm run build
 FROM console-${CONSOLE} AS console
 
 FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS build
-COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 /uv /uvx /bin/
 WORKDIR /src
 
 ENV UV_COMPILE_BYTECODE=1 \
