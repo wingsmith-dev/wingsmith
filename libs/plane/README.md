@@ -61,6 +61,9 @@ uv run python -m app.hub            # operator hub on :8001
 `--check` on either process builds it, runs its lifecycle, and exits — enough to prove wiring
 without binding a long-lived listener.
 
+The api process serves its own Prometheus series at `GET /metrics`, unauthenticated; the hub and reactor have
+none yet. [`METRICS.md`](METRICS.md) lists the series and how to scrape them.
+
 ### Scaling the hub
 
 The hub runs N replicas under Kubernetes. Per
