@@ -44,10 +44,7 @@ func TestSyntheticPathEndToEnd(t *testing.T) {
 	if stage.Tunnels == nil {
 		t.Fatalf("could not read the gateway's tunnel gauge; %d configured", stage.ConfiguredTunnels)
 	}
-	// Not an equality check: the tunnel pool sets the gauge from a count taken
-	// after it releases its lock, so two tunnels adopted at once can leave it
-	// one low until the next open or close.
-	if *stage.Tunnels < 1 || *stage.Tunnels > stage.ConfiguredTunnels {
+	if *stage.Tunnels != stage.ConfiguredTunnels {
 		t.Fatalf("gateway held %d tunnels of %d configured", *stage.Tunnels, stage.ConfiguredTunnels)
 	}
 }
