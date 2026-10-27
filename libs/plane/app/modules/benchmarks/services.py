@@ -478,8 +478,19 @@ class BenchmarkService:
         with an empty snapshot, because a request to a public name is routed by
         weight across every enabled upstream and a run attributed to one of them
         would be a confident wrong attribution rather than an honest absent one.
+
+        Endpoint-level requests are refused for now, after the harness and level
+        checks so the error says the more specific thing first. Nothing executes
+        them: a cluster's benchmark job never dials out to a public name, and the
+        executor that would own that surface is roadmap. Recorded, they sat
+        `pending` for ever, which reads as a stuck cluster.
         """
         harness = harnesses.resolve(data.harness, data.level)
+        if data.level == harnesses.ENDPOINT:
+            raise Invalid(
+                "endpoint-level benchmark runs are not supported yet: nothing executes them",
+                {"level": data.level, "supported": [harnesses.DEPLOYMENT, harnesses.WORKLOAD]},
+            )
         parameters = harnesses.normalise(harness, data.parameters or {}, data.level)
         image = harnesses.resolve_image(harness, data.image)
         criteria = verdicts.resolve_criteria(data.criteria)
@@ -550,12 +561,8 @@ class BenchmarkService:
         An endpoint-level run gets no operation. The operator's benchmark job
         reaches its own cluster's inference endpoint and never dials out, which
         is the rule that keeps the data plane off this one — so a run against a
-        public name is not an errand any cluster can be handed. It is recorded
-        pending for the executor that owns the public surface.
-
-        TODO: dispatch endpoint-level runs once the probe runner exists. Until
-        then they sit pending, which is visible, rather than being refused,
-        which would take conformance away from the level it belongs at.
+        public name is not an errand any cluster can be handed. `create_request`
+        refuses that level until an executor for the public surface exists.
         """
         data, target, endpoint = plan.data, slot.target, plan.endpoint
         resolved = dict(plan.parameters)

@@ -721,6 +721,14 @@ async def test_harness_at_an_ungraded_level_is_refused():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("harness", ["conformance", "evalscope"])
+async def test_an_endpoint_level_request_is_refused_until_something_executes_it(harness):
+    """Recorded, it would sit pending for ever: no cluster's job dials out to a public name."""
+    with pytest.raises(Invalid, match="not supported yet"):
+        await BenchmarkService(db=None).create_request(request(level="endpoint", harness=harness, target="end_x"))
+
+
+@pytest.mark.asyncio
 async def test_an_unknown_criteria_version_is_refused_before_the_database():
     with pytest.raises(Invalid):
         await BenchmarkService(db=None).create_request(request(criteria="acceptance-2027.1"))
