@@ -10,9 +10,22 @@ import { describe, expect, it } from "vitest"
  * An interface is matched by the schema its doc comment names first
  * (`` `ClusterSchema` — ...``), or by its own name when the document defines it.
  * Console types may omit fields; they may not invent them.
+ *
+ * A response field the console types as required and non-null must not be
+ * nullable in the schema either. That is what lets a page read
+ * `workload.labels` without a `?? {}` guard: the type is the plane's promise,
+ * and this keeps it one.
  */
+type Property = {
+  type?: string | string[]
+  anyOf?: Property[]
+  oneOf?: Property[]
+}
+
 const documents = import.meta.glob<{
-  components: { schemas: Record<string, { properties?: object }> }
+  components: {
+    schemas: Record<string, { properties?: Record<string, Property> }>
+  }
 }>("../../packages/contract/openapi.json", { eager: true, import: "default" })
 
 const sources = import.meta.glob<string>("./modules/*/types.ts", {
@@ -44,6 +57,13 @@ function docName(
 }
 
 const document = Object.values(documents)[0]
+
+function nullable(property: Property): boolean {
+  const type = property.type
+  if (type === "null" || (Array.isArray(type) && type.includes("null")))
+    return true
+  return (property.anyOf ?? property.oneOf ?? []).some(nullable)
+}
 
 describe.skipIf(!document)("console types against openapi.json", () => {
   it("declares no field the plane's schema lacks", () => {
@@ -77,8 +97,21 @@ describe.skipIf(!document)("console types against openapi.json", () => {
         for (const member of node.members) {
           if (!member.name) continue
           const field = member.name.getText(source).replace(/"/g, "")
-          if (!(field in schema.properties))
+          const property = schema.properties[field]
+          if (!(field in schema.properties)) {
             problems.push(`${module}/${own}.${field} is not in ${named}`)
+            continue
+          }
+          if (
+            ts.isPropertySignature(member) &&
+            !member.questionToken &&
+            !/Request$/.test(named) &&
+            !/\bnull\b/.test(member.type?.getText(source) ?? "") &&
+            nullable(property)
+          )
+            problems.push(
+              `${module}/${own}.${field} is typed non-null, but ${named} allows null`
+            )
         }
       }
     }
