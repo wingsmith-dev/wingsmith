@@ -25,11 +25,18 @@ RATIO = "ratio"
 
 
 class Field(NamedTuple):
-    """One number an adapter knows how to find, and what it is measured in."""
+    """One number an adapter knows how to find, and what it is measured in.
+
+    `absent` is the value of a field the harness leaves out, or writes as null,
+    instead of reporting zero. It applies only when the summary is a non-empty
+    object, so a run with no summary still reads as a miss and not as zero
+    failures. Same rule as `hgrbench.metrics.Field`.
+    """
 
     id: str
     path: tuple[str, ...]
     unit: str
+    absent: float | None = None
 
 
 class Adapter(NamedTuple):
@@ -106,7 +113,8 @@ AIPERF_0_4 = Adapter(
         # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
-        Field(ERROR_COUNT, ("error_request_count", "avg"), COUNT),
+        # AIPerf leaves the key out, or writes null, when no request failed.
+        Field(ERROR_COUNT, ("error_request_count", "avg"), COUNT, absent=0.0),
     ),
     display=(
         Field(TTFT_P95, ("time_to_first_token", "p95"), MILLISECONDS),
@@ -207,9 +215,12 @@ def show(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
 def _resolve(field: Field, summary: dict | None) -> Reading:
     cursor: Any = summary or {}
     for step in field.path:
-        if not isinstance(cursor, dict) or step not in cursor:
+        if isinstance(cursor, dict):
+            cursor = cursor.get(step)
+        elif cursor is not None:
             return Reading(None, field.unit, ".".join(field.path))
-        cursor = cursor[step]
+    if cursor is None and field.absent is not None and isinstance(summary, dict) and summary:
+        return Reading(field.absent, field.unit, None)
     if isinstance(cursor, bool) or not isinstance(cursor, (int, float)):
         return Reading(None, field.unit, ".".join(field.path))
     return Reading(float(cursor), field.unit, None)

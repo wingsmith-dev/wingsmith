@@ -565,6 +565,16 @@ def test_aiperf_errors_are_the_failed_request_count():
     assert read.value == 3
 
 
+def test_an_aiperf_export_with_no_error_key_had_no_errors():
+    """AIPerf leaves the key out when nothing failed; only a missing summary is a miss."""
+    adapter = summaries.adapter_for("aiperf", "0.12.0")
+    clean = aiperf_summary(requests=100)
+    clean.pop("error_request_count", None)
+    assert summaries.read(adapter, clean, summaries.ERROR_COUNT) == summaries.Reading(0.0, summaries.COUNT, None)
+    assert summaries.read(adapter, {}, summaries.ERROR_COUNT).missing == "error_request_count.avg"
+    assert summaries.read(adapter, None, summaries.ERROR_COUNT).missing == "error_request_count.avg"
+
+
 # Verbatim upstream export: ai-dynamo/aiperf (Apache-2.0) at v0.12.0,
 # tests/unit/plot/fixtures/qwen_concurrency1/profile_export_aiperf.json.
 RECORDED_AIPERF = Path(__file__).parent / "data" / "aiperf-0.12.0-profile-export.json"
@@ -578,8 +588,8 @@ def test_the_aiperf_adapter_reads_a_recorded_export():
     assert summaries.read(adapter, summary, summaries.TTFT_P90).value == pytest.approx(32.5407818)
     assert summaries.read(adapter, summary, summaries.TTFT_AVG).value == pytest.approx(30.814987671875)
     assert summaries.read(adapter, summary, summaries.OUTPUT_SPEED_PER_STREAM).value == pytest.approx(54.9676321)
-    # AIPerf writes a null error count on a clean run.
-    assert summaries.read(adapter, summary, summaries.ERROR_COUNT).value is None
+    # AIPerf writes a null error count on a clean run, which is zero failures.
+    assert summaries.read(adapter, summary, summaries.ERROR_COUNT) == summaries.Reading(0.0, summaries.COUNT, None)
 
     sample = buckets.Sample("bmk_1", "aiperf", "0.12.0", 2000, False, summary)
     report = buckets.reaggregate([sample])[0]
