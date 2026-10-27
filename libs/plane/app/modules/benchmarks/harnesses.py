@@ -9,9 +9,10 @@ read yet. What one *means* is `summaries.py`, per version.
 
 Parameters are declared rather than passed through blind because the console
 renders a form from them and because a typo in a flag name should be a 400 here,
-not a job that fails inside a cluster ten minutes later. `extra` is the escape
-hatch for the long tail of flags nobody wants enumerated, and it is the caller's
-problem if what they put in it is wrong.
+not a job that fails inside a cluster ten minutes later. There is no free-form
+flag or command-line parameter: the operator builds each harness's argv itself
+from these typed values and refuses a run that carries text for a shell, so a
+knob that is not declared here is not one a run can turn.
 
 The level is not a free choice per run. A harness that emits per-dataset scores
 has nothing to say about one cluster's time-to-first-token, and a probe suite
@@ -20,7 +21,6 @@ property of the harness and asking for one it does not declare is refused here,
 the same way an unknown knob is.
 """
 
-import json
 import math
 
 from typing import Any
@@ -131,7 +131,6 @@ AIPERF = Harness(
         Parameter("endpoint_type", str, "chat", "AIPerf endpoint type: chat, completions, embeddings."),
         Parameter("streaming", bool, True, "Measure TTFT and ITL, which needs a streamed response."),
         Parameter("warmup_request_count", int, 10, "Requests sent and discarded before measuring."),
-        Parameter("extra", str, "", "Extra flags, appended verbatim to the command line."),
     ),
 )
 
@@ -162,7 +161,6 @@ CONFORMANCE = Harness(
             "Exercise the endpoint's failover order.",
             levels=(ENDPOINT,),
         ),
-        Parameter("extra", str, "", "Extra flags, appended verbatim to the command line."),
     ),
 )
 """Not a load generator. A fixed, bounded catalogue of requests — most of them
@@ -207,15 +205,6 @@ EVALSCOPE = Harness(
         Parameter("judge_credential_id", str, "", "Credential *reference* the executor redeems. Never a secret."),
         Parameter("judge_temperature", float, 0.0, "Decoding temperature for the grader."),
         Parameter("judge_max_output_tokens", int, 4096, "Generation cap for the grader."),
-        Parameter(
-            "command",
-            str,
-            "",
-            "Full command line, run verbatim. Empty composes one from the other parameters. "
-            "Use $HANGAR_BENCHMARK_ENDPOINT and $HANGAR_BENCHMARK_MODEL as placeholders for the "
-            "cluster-local facts the operator fills in.",
-        ),
-        Parameter("extra", str, "", "Extra flags, appended verbatim to the command line."),
     ),
 )
 """Judged evaluation needs a model to grade, and this plane **has no opinion about which
@@ -404,6 +393,8 @@ def resolve_image(harness: Harness, supplied: str | None) -> str:
     """The image a run will pull: the caller's, else the harness default.
 
     Only the reference's shape is checked; a missing image surfaces as a pull failure on the run.
+    An override is still bounded by the cluster: the operator renders only images listed in its
+    `HANGAR_BENCHMARK_IMAGES` and fails any other run, so naming one here does not put it there.
     A harness whose image setting is unset is refused unless the caller names an image.
     """
     image = (supplied or "").strip()
@@ -454,117 +445,6 @@ def wire_parameters(
         flattened["model"] = model
     for key, value in parameters.items():
         flattened[key] = "true" if value is True else "false" if value is False else str(value)
-    if harness.name == EVALSCOPE.name:
-        # A caller-supplied `command` wins over composition whole, because the CLI it should
-        # match is the pinned image's and only the caller can know a new flag exists before
-        # this plane has been redeployed to name it. `$HANGAR_BENCHMARK_ENDPOINT` and
-        # `$HANGAR_BENCHMARK_MODEL` are the two holes the operator substitutes at render; the
-        # model hole carries the HF repo id rather than the served name, because the request
-        # body is what the frontend resolves against and the frontend answers to the repo id.
-        supplied = str(parameters.get("command") or "").strip()
-        if endpoint_model and endpoint_model != model:
-            flattened["endpoint_model"] = endpoint_model
-        if supplied:
-            flattened["command"] = supplied
-        else:
-            flattened["command"] = _evalscope_command(parameters, endpoint_model or model or "")
-        flattened["version_command"] = "evalscope --version"
-        # EvalScope 1.11 prints a human table on stdout and a per-dataset JSON file at
-        # `<work-dir>/reports/<model>/<dataset>.json`. The operator's generic wrapper reads
-        # them back off disk via this glob, merges them, and frames the merged report between
-        # the sentinels. The wrapper's stdout fallback stays for harnesses that print natively.
-        flattened["report_glob"] = "/benchmark-artifacts/reports/*/*.json"
+    if harness.name == EVALSCOPE.name and endpoint_model and endpoint_model != model:
+        flattened["endpoint_model"] = endpoint_model
     return flattened
-
-
-def _evalscope_command(parameters: dict, model: str) -> str:
-    """The shell line the operator's generic case runs for an evalscope run.
-
-    Lives here rather than in the operator because evalscope's CLI is a property of the harness
-    the plane pinned, not of the thing that schedules it. A new evalscope release changes this
-    function and nothing in `render/benchmark.go`. The operator renders the line verbatim — no
-    re-quoting, no flag assembly — which is what keeps the generic case generic.
-
-    Every value is shell-quoted on the way in, because every one is attacker-adjacent by the
-    time it reaches a pod: a dataset id, a base URL and a model name all originate as strings
-    somebody typed. `--limit 0` and `repeats 1` are still emitted rather than omitted, because
-    they are the harness's own defaults and naming them makes the command line the record of
-    what was asked for.
-    """
-    args: list[str] = ["evalscope", "eval"]
-    args += ["--model", _shell(model)]
-    # The endpoint under test is a cluster-local fact the plane does not hold: the operator's
-    # renderer exports it as $HANGAR_BENCHMARK_ENDPOINT before it runs this line, exactly the way
-    # aiperfArgs receives it as an argument. EvalScope's openai_api eval-type builds its client
-    # with this as `base_url`, which the OpenAI SDK expects to include `/v1` — a bare host is a
-    # 404 on a path the SDK doesn't know to prefix. The judge's base URL is different — it is
-    # harness configuration, and it travels in the parameters like everything else.
-    args += ["--api-url", '"$HANGAR_BENCHMARK_ENDPOINT/v1"']
-    # EvalScope against a remote OpenAI-compatible surface is `openai_api`; setting this
-    # explicitly keeps the auto-inference from having a say on a URL shape it was not built
-    # around.
-    args += ["--eval-type", "openai_api"]
-    # No timestamp dir: the operator's wrapper finds the run's output by name, and a
-    # timestamped subdir makes the newest the only one that matters.
-    args += ["--no-timestamp"]
-    args += ["--work-dir", "/benchmark-artifacts"]
-
-    datasets = str(parameters.get("datasets") or "").strip()
-    if datasets:
-        # EvalScope's `--datasets` is a space-separated list, not a comma-joined string.
-        args += ["--datasets"] + [_shell(name) for name in datasets.split(",") if name.strip()]
-    limit = int(parameters.get("limit") or 0)
-    if limit > 0:
-        args += ["--limit", str(limit)]
-    args += ["--seed", str(int(parameters.get("seed") or 0))]
-    repeats = int(parameters.get("repeats") or 1)
-    if repeats != 1:
-        args += ["--repeats", str(repeats)]
-
-    # Decoding and shots are harness-side names for what EvalScope keeps inside two JSON
-    # bags: `--generation-config` for sampling and `--dataset-args` for per-dataset knobs
-    # like `few_shot`. Concurrency and dataset revision are not CLI flags at 1.11.1;
-    # concurrency lives at the batch level and revision is a dataset-args property.
-    generation_config = {
-        "temperature": float(parameters.get("temperature") or 0.0),
-        "top_p": float(parameters.get("top_p") or 1.0),
-        "max_tokens": int(parameters.get("max_output_tokens") or 32768),
-    }
-    args += ["--generation-config", _shell(json.dumps(generation_config, separators=(",", ":")))]
-    dataset_args: dict[str, dict] = {}
-    few_shot = int(parameters.get("few_shot") or 0)
-    revision = str(parameters.get("dataset_revision") or "").strip()
-    if few_shot or revision:
-        for name in (d for d in datasets.split(",") if d.strip()):
-            entry: dict = {}
-            if few_shot:
-                entry["few_shot_num"] = few_shot
-            if revision:
-                entry["revision"] = revision
-            dataset_args[name] = entry
-        args += ["--dataset-args", _shell(json.dumps(dataset_args, separators=(",", ":")))]
-
-    # The judge is one typed JSON object at 1.11.1, not a spread of flags. `judge_credential_id`
-    # is redeemed at dispatch time by the endpoint-level executor; at deployment and workload
-    # levels the field never arrives here (`check_judge` refuses it), and a judge the cluster
-    # reaches authenticates by being cluster-local.
-    base_url = str(parameters.get("judge_base_url") or "").strip()
-    judge_model = str(parameters.get("judge_model") or "").strip()
-    if base_url and judge_model:
-        judge = {
-            "base_url": base_url,
-            "model": judge_model,
-            "temperature": float(parameters.get("judge_temperature") or 0.0),
-            "max_tokens": int(parameters.get("judge_max_output_tokens") or 4096),
-        }
-        args += ["--judge", _shell(json.dumps(judge, separators=(",", ":")))]
-
-    extra = str(parameters.get("extra") or "").strip()
-    if extra:
-        args.append(extra)
-    return " ".join(args)
-
-
-def _shell(value: str) -> str:
-    """Single-quote a value for the shell the operator will run it under."""
-    return "'" + value.replace("'", "'\\''") + "'"

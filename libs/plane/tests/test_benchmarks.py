@@ -159,74 +159,25 @@ def test_the_overridden_image_is_what_reaches_the_wire():
     assert flattened["image"] == override
 
 
-def test_evalscope_wire_carries_a_verbatim_command():
-    """The operator's generic case is generic because the command line is composed here."""
+def test_evalscope_wire_carries_typed_parameters_and_no_command_line():
+    """The operator builds EvalScope's argv from these values; a composed line would only be ignored."""
     resolved = harnesses.normalise(
         harnesses.EVALSCOPE,
         {"datasets": "mmlu_pro,gpqa_diamond", "limit": 500, "temperature": 0.0},
         harnesses.DEPLOYMENT,
     )
     flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "Qwen/Qwen3-32B")
-    command = flattened["command"]
-    assert command.startswith("evalscope eval")
-    assert "--model 'Qwen/Qwen3-32B'" in command
-    # EvalScope's --datasets is a space-separated list at 1.11.1, not a comma-joined string.
-    assert "--datasets 'mmlu_pro' 'gpqa_diamond'" in command
-    assert "--limit 500" in command
-    assert "--eval-type openai_api" in command
-    # The endpoint is a cluster-local fact and the operator's renderer fills it in.
-    # EvalScope treats --api-url as an OpenAI SDK base_url, which expects /v1.
-    assert '"$HANGAR_BENCHMARK_ENDPOINT/v1"' in command
-    assert flattened["version_command"] == "evalscope --version"
+    assert flattened["datasets"] == "mmlu_pro,gpqa_diamond"
+    assert flattened["limit"] == "500"
+    assert not {"command", "version_command", "report_glob"} & flattened.keys()
 
 
-def test_evalscope_packaging_decoding_into_generation_config_json():
-    resolved = harnesses.normalise(
-        harnesses.EVALSCOPE,
-        {"temperature": 0.7, "top_p": 0.95, "max_output_tokens": 8192},
-        harnesses.DEPLOYMENT,
-    )
-    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
-    command = flattened["command"]
-    assert "--generation-config" in command
-    assert '"temperature":0.7' in command
-    assert '"top_p":0.95' in command
-    assert '"max_tokens":8192' in command
-
-
-def test_evalscope_omits_the_judge_flags_when_no_judge_is_set():
-    flattened = harnesses.wire_parameters(
-        harnesses.EVALSCOPE, harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT), None, "m"
-    )
-    assert "--judge" not in flattened["command"]
-
-
-def test_evalscope_includes_the_judge_as_one_json_object():
-    resolved = harnesses.normalise(
-        harnesses.EVALSCOPE,
-        {"judge_base_url": "http://judge:8000/v1", "judge_model": "grader"},
-        harnesses.DEPLOYMENT,
-    )
-    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
-    command = flattened["command"]
-    assert "--judge" in command
-    assert '"base_url":"http://judge:8000/v1"' in command
-    assert '"model":"grader"' in command
-
-
-def test_evalscope_a_supplied_command_wins_over_composition_whole():
-    """A new flag must not need a plane deploy."""
-    resolved = harnesses.normalise(
-        harnesses.EVALSCOPE,
-        {
-            "datasets": "mmlu_pro",
-            "command": "evalscope eval --model $HANGAR_BENCHMARK_MODEL --api-url $HANGAR_BENCHMARK_ENDPOINT/v1 --datasets mmlu_pro --eval-type openai_api --some-new-flag from-1.12",
-        },
-        harnesses.DEPLOYMENT,
-    )
-    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
-    assert flattened["command"].endswith("--some-new-flag from-1.12")
-    assert "$HANGAR_BENCHMARK_ENDPOINT" in flattened["command"]
+@pytest.mark.parametrize("harness", sorted(harnesses.HARNESSES))
+@pytest.mark.parametrize("name", ["extra", "command"])
+def test_free_form_command_text_is_refused_at_creation(harness, name):
+    """The operator refuses or drops it inside the cluster; here it is a 400 before anything is recorded."""
+    with pytest.raises(Invalid):
+        harnesses.normalise(harnesses.HARNESSES[harness], {name: "--anything"})
 
 
 def test_evalscope_endpoint_model_is_separate():
@@ -252,14 +203,6 @@ def test_evalscope_endpoint_model_is_omitted_when_identical():
         endpoint_model="m",
     )
     assert "endpoint_model" not in flattened
-
-
-def test_evalscope_endpoints_go_through_shell_quoting():
-    """A parameter is attacker-adjacent by the time it reaches a shell; quoting is not optional."""
-    resolved = harnesses.normalise(harnesses.EVALSCOPE, {"datasets": "mmlu_pro"}, harnesses.DEPLOYMENT)
-    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "a'; rm -rf /; echo '")
-    assert "rm -rf /" in flattened["command"]
-    assert "'\\''" in flattened["command"]
 
 
 # ---------------------------------------------------------------- the operation behind a run
