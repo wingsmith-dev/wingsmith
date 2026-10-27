@@ -585,15 +585,16 @@ chart-lint:
     uv run --no-project --quiet --with pyyaml --with pytest pytest {{_chart}}/tests -q -p no:cacheprovider
 
 # Subcharts (dcgm-exporter, dynamo-platform) pull anonymously; only the push needs a login
-# (`helm registry login`). Chart.yaml's version is the release; a tag overrides appVersion, which
-# names the operator image.
+# (`helm registry login`). Chart.yaml's version is the release, and its appVersion, the image tag
+# the chart defaults to, must equal it: a release publishes images at its own version and no other
+# tag, so any other appVersion installs images that do not exist.
 #
 # What is pushed is the committed chart, not the directory: it is packaged from `git archive`, so a
 # values file kept beside it and ignored by git cannot ride along. Before that the whole tree goes
 # through scripts/check-leaks.sh (which reads a denylist; see its header), the chart directory must
 # match HEAD, and a version already in the registry is refused rather than overwritten.
-# Package the committed chart and push it to the OCI registry  [tag]
-chart-push tag="":
+# Package the committed chart and push it to the OCI registry
+chart-push:
     #!/usr/bin/env bash
     set -euo pipefail
     scripts/check-leaks.sh tree
@@ -604,15 +605,13 @@ chart-push tag="":
     git archive --format=tar HEAD {{_chart}} | tar -x -C "$work"
     chart="$work/{{_chart}}"
     helm dependency build "$chart"
-    args=()
-    [ -n "{{tag}}" ] && args+=(--app-version "{{tag}}")
-    helm package "$chart" ${args[@]+"${args[@]}"} -d "$work/out"
+    helm package "$chart" -d "$work/out"
     pkg="$(ls "$work"/out/cluster-setup-*.tgz)"
     meta="$(helm show chart "$pkg")"
     version="$(awk '/^version:/ {print $2}' <<<"$meta")"
     app="$(awk '/^appVersion:/ {print $2}' <<<"$meta" | tr -d "\"'")"
-    if [ -z "$app" ] || [ "$app" = latest ]; then
-      echo "error: appVersion is '${app}'; pass the operator image tag: just chart-push <tag>" >&2
+    if [ "$app" != "$version" ]; then
+      echo "error: Chart.yaml has appVersion '${app}' and version '${version}'; they must be equal" >&2
       exit 1
     fi
     {{_guards}} chart-unpublished "{{chart_oci}}/cluster-setup" "$version"
