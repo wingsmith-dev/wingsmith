@@ -30,8 +30,9 @@ type Config struct {
 	Gateway string
 
 	// EnrolmentToken is the per-cluster bearer token presented on dial. It is the same
-	// credential the operator uses, delivered by the chart into the same Secret — TLS carries
-	// confidentiality, this carries identity, and there is no CA and no mTLS.
+	// credential the operator uses, delivered by the chart into the same Secret. TLS carries
+	// confidentiality and proves the gateway's identity (against TLSCAFile when set); this token
+	// is the agent's identity. The agent presents no client certificate, so there is no mTLS.
 	EnrolmentToken string
 
 	// ConnsPerGateway is how many tunnels to hold to each gateway replica.
