@@ -237,7 +237,7 @@ def test_setup_values_keep_a_numeric_looking_tag_a_string():
 
 def test_setup_values_skip_an_image_with_no_tag():
     """`registry:5000/operator` has a port, not a tag."""
-    assert "operator:" not in _setup_values(values(operator_image="registry:5000/operator"))
+    assert "image" not in yaml.safe_load(_setup_values(values(operator_image="registry:5000/operator")))["operator"]
 
 
 def test_setup_values_register_a_cluster_that_reconciles():
@@ -267,7 +267,19 @@ def test_setup_values_leave_the_agent_off_for_the_first_install():
 
 def test_setup_values_omit_image_when_unset():
     out = _setup_values(values())
-    assert "operator:" not in out
+    assert "image" not in yaml.safe_load(out)["operator"]
+
+
+def test_setup_values_say_what_a_managed_cluster_runs():
+    """readOnly false carries out every operation, so an allowedOperations list there would mislead."""
+    parsed = yaml.safe_load(_setup_values(values(operator_image="ghcr.io/x/operator:sha7")))
+    assert "allowedOperations" not in parsed["cluster"]
+    assert parsed["operator"] == {
+        "image": {"repository": "ghcr.io/x/operator", "tag": "sha7"},
+        "images": {"allowedPrefixes": []},
+        "benchmark": {"images": []},
+    }
+    assert parsed["pools"]["cacheTaintKey"] == ""
 
 
 def test_setup_values_fold_in_the_enrolment_token_only_when_given():

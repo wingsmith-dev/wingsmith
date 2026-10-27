@@ -307,7 +307,9 @@ def _setup_values(values: SetupValues) -> str:
     """The full editable values file for the chart, as YAML text.
 
     The top block is filled by the plane — cluster identity, `region`, `readOnly`,
-    the pinned operator image, and (at mint only) the enrolment token. `region` and
+    and (at mint only) the enrolment token. The pinned operator image goes in the
+    one `operator:` block below the divider, beside the image allowlists the
+    cluster owner fills in, because a second `operator:` mapping would shadow the first. `region` and
     `readOnly` sit there rather than below the divider because they must share the
     one `cluster:` key; a second mapping would silently shadow the identity it
     carries. Below a divider is the cluster's own infra facts left blank with a
@@ -351,6 +353,12 @@ def _setup_values(values: SetupValues) -> str:
         "# is the working setting: a read-only operator enrols, reports, stays healthy",
         "# and quietly applies nothing. Set true to park a cluster as an observer; the",
         "# plane will say so on its sync card.",
+        "#",
+        "# A managed cluster (readOnly false) carries out every operation the plane",
+        "# sends: cordon, drain, and benchmark, which runs a harness image from",
+        "# `operator.benchmark.images` below as a Job in the workload namespace. To",
+        "# allow only some of them, set readOnly true and list the ones to keep as",
+        '# `allowedOperations`, e.g. "benchmark"; that list is ignored otherwise.',
         *_dump(
             {
                 "cluster": {
@@ -358,14 +366,16 @@ def _setup_values(values: SetupValues) -> str:
                     "hubUrl": values.hub_url,
                     "region": values.region,
                     "readOnly": False,
-                    "allowedOperations": "benchmark",
                 }
             }
         ),
     ]
+    operator: dict = {}
     operator_image = _image(values.operator_image) if values.operator_image else None
     if operator_image:
-        lines += _dump({"operator": {"image": operator_image}})
+        operator["image"] = operator_image
+    operator["images"] = {"allowedPrefixes": []}
+    operator["benchmark"] = {"images": []}
     if values.gateway:
         agent: dict = {"enabled": False, "gateway": {"address": values.gateway}}
         agent_image = _image(values.agent_image) if values.agent_image else None
@@ -450,7 +460,9 @@ def _setup_values(values: SetupValues) -> str:
         "# gpuValue gpu (the pool holding the GPU nodes), cacheValue system (the pool",
         "# prefetch jobs run on). `cacheValue` must name a pool that exists, or the",
         "# model-prefetch jobs stay Pending.",
-        *_dump({"pools": {"labelKey": "", "gpuValue": "", "cacheValue": ""}}),
+        "# `cacheTaintKey` is optional: the taint on the cache pool that prefetch jobs",
+        "# must tolerate. Empty takes the operator's default, hangar.dev/cache.",
+        *_dump({"pools": {"labelKey": "", "gpuValue": "", "cacheValue": "", "cacheTaintKey": ""}}),
         "",
         "# The shared model-weight cache. Must be a ReadWriteMany class, e.g. an",
         "# EFS-backed one: a default class is usually RWO and breaks the shared mount.",
@@ -460,6 +472,13 @@ def _setup_values(values: SetupValues) -> str:
         "# hf-token-secret optionally, so leaving this off costs nothing until a model",
         "# needs it; flip `create` and fill `value` then.",
         *_dump({"hfToken": {"create": False, "value": ""}}),
+        "",
+        "# Which images the plane may have this cluster run. Empty `allowedPrefixes`",
+        "# allows any engine, frontend or prefetch image; list registries or repos,",
+        "# e.g. nvcr.io/nvidia/ai-dynamo, to refuse the rest. Empty benchmark `images`",
+        "# keeps the operator's default, the harness images the plane pins."
+        + (" `image` is pinned by the plane; leave it." if operator_image else ""),
+        *_dump({"operator": operator}),
     ]
     if values.pull_secret_name and not values.pull_secret_token:
         lines += [
