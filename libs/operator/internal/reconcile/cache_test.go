@@ -218,7 +218,7 @@ func TestAWarmSetKeepsTheDownloadsItStillNames(t *testing.T) {
 }
 
 // TestAWarmSetIsPartiallyDispatched: one fetchable entry gets its job even while another waits,
-// instead of the whole set stalling on its slowest member.
+// so the whole set does not stall on its slowest member.
 func TestAWarmSetIsPartiallyDispatched(t *testing.T) {
 	const otherArtifact = "art_01j9x2kkkkkkkkkkkkkkkkkkkk"
 	cache := declared(t, "cache", testCacheID, warmSet(
@@ -274,8 +274,8 @@ func lastCache(t *testing.T, r *recordingReporter, artifactID string) wire.Cache
 }
 
 // TestAStalledWarmSetEntrySaysWhyItIsStalled is the gap that let a workload hang indefinitely with
-// no explanation anywhere the plane could read. The operator knew the download would never start,
-// there is no image to start it with, and kept that entirely to itself, reporting a bare `absent`
+// no explanation anywhere the plane could read. The operator knew the download would never start
+// (there is no image to start it with) and kept that entirely to itself, reporting a bare `absent`
 // that is indistinguishable from a download about to begin.
 func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
 	dep := testDeploymentDesired()
@@ -299,7 +299,7 @@ func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
 	}
 }
 
-// TestAnUndeclaredArtifactSaysSo: the other stalled entry, and a different action: this one
+// TestAnUndeclaredArtifactSaysSo covers the other stalled entry, which needs a different action: it
 // resolves on its own when the frame arrives, so it must not read like the one that never does.
 func TestAnUndeclaredArtifactSaysSo(t *testing.T) {
 	rep := &recordingReporter{}
@@ -374,7 +374,7 @@ func legacyPrefetch(status batchv1.JobStatus) *batchv1.Job {
 // TestAPrefetchUnderTheOldNameIsStillFound is the migration this rename had to survive. Every job
 // already running on every cluster was named before the model led the name, and a lookup that
 // rebuilt the string would have seen none of them: this reconcile would have started a second pull
-// into the same shared cache, the concurrent download the job exists to prevent, while reporting
+// into the same shared cache (the concurrent download the job exists to prevent) while reporting
 // the weights it was already holding as absent.
 func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
 	existing := legacyPrefetch(batchv1.JobStatus{Active: 1})
@@ -593,7 +593,7 @@ func conditionReason(res *v1alpha1.SyncedResource) string {
 
 // TestADispatchedWarmSetAsksToBeCalledAgain is the deadlock the resync closes. The controller is
 // otherwise driven purely by watches, so a warm set that had dispatched every download returned no
-// requeue and nothing woke it again, and a Job removed outside of a warm-set change took its own
+// requeue and nothing woke it again; a Job removed outside of a warm-set change took its own
 // wake-up with it.
 func TestADispatchedWarmSetAsksToBeCalledAgain(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))

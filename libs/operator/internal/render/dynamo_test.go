@@ -265,7 +265,7 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 	if strings.Contains(joined, "@6cee5e") {
 		t.Errorf("the pin leaked into the model id: %s", joined)
 	}
-	// The path has already resolved the revision, its last segment is the commit, so sending
+	// The path has already resolved the revision (its last segment is the commit), so sending
 	// --revision as well says the same thing twice and lets an engine disagree with itself.
 	if strings.Contains(joined, "--revision") {
 		t.Errorf("--revision alongside a resolved path: %s", joined)
@@ -378,7 +378,7 @@ func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
 // Every component this renderer emits has to fit `componentNameBudget`, which is the contract that
 // replaced a bound derived from the components themselves.
 //
-// The direction matters and is the point. The old `maxWorkloadName` was `63 - max(suffixes)`,
+// The direction is what matters here. The old `maxWorkloadName` was `63 - max(suffixes)`,
 // so adding a longer component shortened the bound and silently renamed deployments that had
 // nothing to do with it: a rename being a delete, a recreate and a weight reload. Now the number
 // is fixed and the components are held to it, so the same mistake is this test failing with the
@@ -805,7 +805,7 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 }
 
 // Dynamo names each DynamoComponentDeployment `<graph>-<component>-<hash>`, where the hash covers
-// the whole component pod template: labels included. So the set below is not bookkeeping: it is
+// the whole component pod template, labels included. So the set below is not bookkeeping: it is
 // an input to a name, and changing it renames every component in the fleet, which Dynamo answers
 // by abandoning the running one and starting a replacement that reloads the model's weights.
 //
@@ -1244,8 +1244,8 @@ func TestTheFrontendRoutesByKVWhateverTheTopology(t *testing.T) {
 	}
 }
 
-// A one-replica deployment is rendered the same way. The KV router with a single
-// registered worker picks the only candidate, the choice round-robin would have made, so there
+// A one-replica deployment is rendered the same way, by design. The KV router with a single
+// registered worker picks the only candidate (the choice round-robin would have made), so there
 // is nothing to gain from a `Replicas > 1` gate and a moving autoscaler count to lose to it.
 func TestTheFrontendRoutesByKVEvenAtOneReplica(t *testing.T) {
 	in := testInputs()
@@ -1467,8 +1467,8 @@ func TestWorkerProbesDoNotKillASaturatedWorker(t *testing.T) {
 
 // The offload tier is off unless a workload asks for it, and asking for it must not change decode.
 //
-// Both halves matter. The first is what makes the tier measurable, the same fleet renders with and
-// without it from a workload edit, and the second is the asymmetry the tier is built on: prefill
+// Both halves matter. The first is what makes the tier measurable (the same fleet renders with and
+// without it from a workload edit), and the second is the asymmetry the tier is built on: prefill
 // is the only role whose cache can be hit, so decode offloading would spend host bandwidth writing
 // blocks nothing reads.
 func TestHostOffloadTierIsOptInAndPrefillOnly(t *testing.T) {

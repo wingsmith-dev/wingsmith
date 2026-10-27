@@ -72,8 +72,8 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 // conclusion the paragraph below reaches for the ordinary case, reached one status earlier.
 //
 // Pruning happens on observing the supersession, not on observing the new pod fail to schedule.
-// The tempting alternative, hold the old one until the new one is Pending on insufficient
-// accelerators, reads the scheduler's refusal as the trigger, which makes correctness depend on
+// The tempting alternative (hold the old one until the new one is Pending on insufficient
+// accelerators) reads the scheduler's refusal as the trigger, which makes correctness depend on
 // a message string, only ever fires in the deadlock case, and leaves every non-saturated cluster
 // running a second copy of the model into the same global Dynamo namespace, where the frontend
 // can route to it. There is no blue/green to protect here: the plane declares one deployment at
@@ -246,7 +246,7 @@ func currentComponents(graph *unstructured.Unstructured) map[string]bool {
 // Per component, and that is the whole of it. One floor across the graph was the conservative
 // reading while a graph held one component, and it becomes a floor that prunes nothing the moment
 // a graph holds two: a component nobody edits keeps the object it was created with, so its
-// creation time, the graph's own birth, becomes a floor no superseded object can be older than.
+// creation time (the graph's own birth) becomes a floor no superseded object can be older than.
 // Every candidate is then skipped, silently and forever, which is the accumulation this whole
 // function exists to stop. Timestamps here are second-granularity, so even the first generation
 // ties instead of passing.

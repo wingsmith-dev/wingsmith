@@ -121,7 +121,7 @@ func gpuNode(name string, devices int64, ready bool) *corev1.Node {
 }
 
 // completedPrefetch is the download this cluster has already finished, labelled the way the render
-// labels it, which is how every lookup finds it, the name being only a rendering.
+// labels it. That is how every lookup finds it; the name is only a rendering.
 func completedPrefetch() *batchv1.Job {
 	art := testArtifactDesired()
 	return &batchv1.Job{
@@ -370,7 +370,7 @@ func TestWhatIsRunningIsReportedAndNotOnlyWhatWasApplied(t *testing.T) {
 
 // Kubernetes' pod phases and the contract's replica phases overlap enough to be mistaken for each
 // other and disagree on the two that matter. Emitting the Kubernetes spelling had the plane reject
-// every replica frame as an invalid enum value, which is indistinguishable, from the console,
+// every replica frame as an invalid enum value, which, from the console, is indistinguishable
 // from a deployment with no replicas at all.
 func TestAReplicaPhaseIsAlwaysOneTheContractDefines(t *testing.T) {
 	// MESSAGES.md, and the `Literal` the plane decodes against.
@@ -595,8 +595,8 @@ func TestAnArtifactIsHeldWithoutClusterWork(t *testing.T) {
 }
 
 // A cluster whose nodes advertise no accelerators is indistinguishable, from the scheduler's side,
-// from a cluster where the device plugin was never installed. Both must be said out loud rather
-// than left as pods pending forever.
+// from a cluster where the device plugin was never installed. Both must be said out loud and not
+// left as pods pending forever.
 func TestDeploymentWaitsWhenNoNodeCanHoldAReplica(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
@@ -625,7 +625,7 @@ func TestCapacityIsCountedPerNodeNotClusterWide(t *testing.T) {
 }
 
 // A drain in progress is when this matters most: the accelerators are still allocatable and still
-// reported, and counting them would promise capacity that is being removed.
+// reported, and counting them would promise capacity that somebody is in the middle of removing.
 func TestCordonedNodesDoNotCountAsCapacity(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
@@ -651,8 +651,8 @@ func TestNodesOutsideThePlacementSelectorAreNotCounted(t *testing.T) {
 }
 
 // TestObservedDeploymentIsNeverApplied is the gate ADR 0009 turns on. Everything a managed
-// deployment needs in order to render is present here, artifact, resident weights, a node with
-// room, so if anything is written it is the authority mark that failed and not a missing input.
+// deployment needs in order to render is present here (artifact, resident weights, a node with
+// room), so if anything is written it is the authority mark that failed and not a missing input.
 func TestObservedDeploymentIsNeverApplied(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	dep.Spec.Authority = v1alpha1.AuthorityObserved
@@ -781,8 +781,8 @@ func TestAnObjectLabelledForAnotherDeploymentIsLeftAlone(t *testing.T) {
 //
 // Dynamo stamps the graph label on every pod it derives, so a graph holding a frontend beside its
 // worker offers both to the same lookup. Counting the frontend would report a deployment as
-// serving the moment two pods holding no weights went ready, while the worker is still forty
-// minutes from its first token, and the plane marks a deployment ready off exactly this count.
+// serving the moment two pods holding no weights went ready (while the worker is still forty
+// minutes from its first token), and the plane marks a deployment ready off exactly this count.
 func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
@@ -967,8 +967,8 @@ func TestAReadyFrontendLeavesTheDeploymentServing(t *testing.T) {
 	}
 }
 
-// A frontend nobody can place is not fatal, a node joining fixes it with nothing about the
-// deployment having changed, but it is still a model nothing can reach, so the deployment must
+// A frontend nobody can place is not fatal (a node joining fixes it with nothing about the
+// deployment having changed), but it is still a model nothing can reach, so the deployment must
 // not read `running` for as long as it lasts. This is the case the counts alone get wrong in the
 // other direction: every worker ready, and degraded is the accurate word.
 func TestAFrontendNobodyCanPlaceLeavesTheDeploymentDegraded(t *testing.T) {
@@ -993,10 +993,10 @@ func TestAFrontendNobodyCanPlaceLeavesTheDeploymentDegraded(t *testing.T) {
 }
 
 // A frontend still coming up is a shortfall and not a diagnosis, and the two answers are kept
-// apart.
+// apart by design.
 //
 // `degraded`, because until a frontend is ready nothing can reach the model however many workers
-// are, and `degraded` is what a rolling update passes through, not a failure. It costs nothing
+// are. `degraded` is also what a rolling update passes through, not a failure. It costs nothing
 // to say so: the gateway orders candidates by readiness and never removes the last one, so a
 // deployment with one upstream still takes traffic while it says this, and one with two prefers
 // the upstream that can actually answer.
@@ -1028,7 +1028,7 @@ func TestAFrontendStillComingUpIsDegradedAndNotADiagnosis(t *testing.T) {
 // every reconcile of an existing deployment is refused, requeued, and refused again, and the only
 // thing anywhere that says so is the same log line repeating.
 //
-// The remedy is a human's, deleting the graph reloads the weights, so what this pins is that the
+// The remedy is a human's (deleting the graph reloads the weights), so what this pins is that the
 // operator stops, says which object and which command, and reports it instead of retrying.
 func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 	scheme := clientgoscheme.Scheme
@@ -1249,8 +1249,8 @@ func TestADeclaredChangeStillReachesTheCluster(t *testing.T) {
 }
 
 // TestARunningDeploymentDoesNotRegressWhenAGateFails: the gates admit a new apply. Once the graph
-// is running from this declaration, losing the artifact's declared copy or the only usable node,
-// a drain cordons it, must not turn the deployment back into Waiting.
+// is running from this declaration, losing the artifact's declared copy or the only usable node
+// (a drain cordons it) must not turn the deployment back into Waiting.
 func TestARunningDeploymentDoesNotRegressWhenAGateFails(t *testing.T) {
 	scheme := clientgoscheme.Scheme
 	if err := v1alpha1.AddToScheme(scheme); err != nil {

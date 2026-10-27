@@ -189,7 +189,7 @@ func TestFullResync(t *testing.T) {
 }
 
 // TestLossyForcesFreshSession is PROTOCOL §4: a sender that cannot serve as a resume base is
-// given a new session, not allowed to pretend.
+// given a new session instead of being allowed to pretend.
 func TestLossyForcesFreshSession(t *testing.T) {
 	h := startHub(t, "--desired-count", "0")
 	store := newFileStore(t)
@@ -314,7 +314,7 @@ func TestGapClosesAndDuplicateDoesNot(t *testing.T) {
 }
 
 // TestLiveness is PROTOCOL §5: the application-level heartbeat holds the session open, and
-// silence past the deadline is what tears it down: at both ends.
+// silence past the deadline is what tears it down at both ends.
 func TestLiveness(t *testing.T) {
 	t.Run("heartbeat holds the session", func(t *testing.T) {
 		h := startHub(t, "--desired-count", "0", "--ping-interval", "0.1", "--liveness-timeout", "1")

@@ -65,8 +65,8 @@ const loopDrainTimeout = 5 * time.Second
 
 // A frame the handler rejects is retried in place before the session gives up on it.
 //
-// In place, because a rejection is usually transient, an API server that timed out, a conflict,
-// an object still being torn down, and waiting a moment is cheaper than a reconnect. Bounded,
+// In place, because a rejection is usually transient (an API server that timed out, a conflict,
+// an object still being torn down), and waiting a moment is cheaper than a reconnect. Bounded,
 // because a frame that keeps failing holds every later frame behind it, and ending the session is
 // what makes the hub replay it from the durable cursor on the next resume.
 const (
@@ -100,7 +100,7 @@ func (f HandlerFunc) Resync(context.Context) error { return nil }
 // Cursor is the durable resume position: which session it counts within, how far the operator has
 // contiguously and durably processed, and whether this side can still reproduce its own stream.
 //
-// Lossy travels with the cursor, not beside it because it is the answer to the same
+// Lossy travels with the cursor, not beside it, because it is the answer to the same
 // question: a lossy cursor is not a resume point, and the two must never be read apart.
 type Cursor struct {
 	SessionID string
@@ -418,10 +418,10 @@ func (c *Client) session(ctx context.Context) error {
 
 // awaitLoops gives the session's goroutines a bounded chance to leave before the caller redials.
 //
-// Bounded, and that bound is the point. Joined unconditionally, one slow apply becomes an
-// outage that logs nothing: every signal a stalled session has, the error, the "hub session
+// Bounded, and the bound is what matters. Joined unconditionally, one slow apply becomes an
+// outage that logs nothing: every signal a stalled session has (the error, the "hub session
 // ended" line, the backoff, the reconnect, and the deferred `connected = false` that readiness is
-// read from, is downstream of this wait, so a reader stuck inside a Kubernetes call suppresses
+// read from) is downstream of this wait, so a reader stuck inside a Kubernetes call suppresses
 // all of them at once while the pod goes on reporting Ready.
 //
 // The connection is already severed by the caller, so a goroutine that outlives this cannot write
@@ -539,8 +539,8 @@ type inbound struct {
 // readLoop processes inbound frames strictly in order: a duplicate is dropped, a gap closes the
 // connection instead of being accepted as a hole.
 //
-// It reads, orders, and answers pings, and does nothing else. Everything that touches Kubernetes,
-// applying a frame, checkpointing a cursor, happens on applyLoop, because this goroutine sitting
+// It reads, orders, and answers pings, and does nothing else. Everything that touches Kubernetes
+// (applying a frame, checkpointing a cursor) happens on applyLoop, because this goroutine sitting
 // inside conn.Read is the only thing that makes the library emit a pong. Doing an apply inline, or
 // waiting for the applier to take a frame, stops the pongs for as long as that takes, and the hub
 // closes a session that has not ponged within 20 seconds.
@@ -579,7 +579,7 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply *inbo
 			handle = false
 		}
 
-		// Ordering is decided here, not at the applier so that a gap still ends the session
+		// Ordering is decided here, not at the applier, so that a gap still ends the session
 		// at the moment it arrives. Arrival order is what this cursor tracks, and it is cheap; the
 		// applied position is the applier's, and it is not.
 		fresh, err := c.accept(e)
@@ -604,8 +604,8 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply *inbo
 // the next resume replays from the last checkpoint, which is the recoverable direction.
 //
 // On a fresh session the handler's Resync runs here first, before any frame is applied, so the
-// snapshot the hub streams lands in the epoch Resync opens. It runs after the handshake rather
-// than inside it, under a deadline of its own, with the writer already draining the queue and the
+// snapshot the hub streams lands in the epoch Resync opens. It runs after the handshake, not
+// inside it, under a deadline of its own, with the writer already draining the queue and the
 // reader still answering the hub: the handshake allows ten seconds, a writer that has not started
 // leaves every frame the resync produces sitting in the queue, and the hub's snapshot arrives
 // while this runs and waits in the backlog.
@@ -757,7 +757,7 @@ func (c *Client) advance(ctx context.Context, seq uint64) error {
 	return c.queue.Push(&outbound{env: ack, subject: ""})
 }
 
-// writeLoop is the only writer. It assigns sequence numbers here, not at Send so that a
+// writeLoop is the only writer. It assigns sequence numbers here, not at Send, so that a
 // frame the queue discarded never consumed one, and stamps the current ack on every frame so an
 // acknowledgement rides out on whatever is leaving anyway.
 func (c *Client) writeLoop(ctx context.Context, conn *websocket.Conn) error {
@@ -897,8 +897,8 @@ type panicError struct {
 func (p *panicError) Error() string { return fmt.Sprintf("panic: %v", p.value) }
 
 // safeHandle calls the handler chain with a recovery boundary. A panic there is a bug in code the
-// client does not own, a nil deref, a slice out of range, a panic surfaced from the Kubernetes
-// client, and must degrade one frame, not take down the whole operator process.
+// client does not own (a nil deref, a slice out of range, a panic surfaced from the Kubernetes
+// client) and must degrade one frame instead of taking down the whole operator process.
 func (c *Client) safeHandle(ctx context.Context, e *Envelope) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

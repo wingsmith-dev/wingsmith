@@ -28,7 +28,7 @@ type SyncedResourceSpec struct {
 	// verify and write nothing to the cluster; managed means render and converge. Empty reads as
 	// observed, so an object from a plane that predates the field is never managed by accident.
 	//
-	// This is the gate, and it is not the presence of Adopt. Where an object came
+	// This is the gate; the presence of Adopt is not, by design. Where an object came
 	// from is a historical fact; whether this operator may act on it is a decision the plane
 	// makes and can reverse (ADR 0009).
 	// +kubebuilder:validation:Enum=observed;managed
@@ -40,14 +40,14 @@ type SyncedResourceSpec struct {
 	// place instead of applying a rendered spec over it, and only while the live object still
 	// digests to SpecFingerprint.
 	//
-	// Both fields are on the durable copy, not read out of the payload each time because
+	// Both fields are on the durable copy, not read out of the payload each time, because
 	// they are safety gates. A gate that depends on parsing the domain schema is a gate that
 	// opens when the parse fails.
 	// +optional
 	Adopt *AdoptRef `json:"adopt,omitempty"`
 }
 
-// Authority values. Observed is the zero value: nothing acquires management by omission.
+// Authority values. Observed is the zero value so that nothing acquires management by omission.
 const (
 	AuthorityObserved = "observed"
 	AuthorityManaged  = "managed"
@@ -89,8 +89,8 @@ type SyncedResourceStatus struct {
 // +kubebuilder:printcolumn:name="Revision",type=integer,JSONPath=`.spec.revision`
 // +kubebuilder:printcolumn:name="Observed",type=integer,JSONPath=`.status.observedRevision`
 
-// SyncedResource is one declared object from the plane, a deployment, an artifact, a cache or a
-// cluster component, held in the cluster so the operator keeps reconciling it through a
+// SyncedResource is one declared object from the plane (a deployment, an artifact, a cache or a
+// cluster component), held in the cluster so the operator keeps reconciling it through a
 // control-plane outage.
 type SyncedResource struct {
 	metav1.TypeMeta   `json:",inline"`

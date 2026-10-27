@@ -41,7 +41,7 @@ const (
 	labelInstanceBeta = "beta.kubernetes.io/instance-type"
 
 	// annotationDeviceUUIDs carries the node's accelerator UUIDs in index order. Device UUIDs
-	// are not published as labels, a label value cannot hold eight of them, and Kubernetes
+	// are not published as labels (a label value cannot hold eight of them), and Kubernetes
 	// does not expose them at all, so identity comes from the DCGM exporter (ADR 0007). This
 	// annotation is retained as an override for a cluster that runs no DCGM; absent both,
 	// devices are keyed by node and index, which is stable for as long as the hardware does
@@ -88,7 +88,7 @@ var _ Discoverer = (*KubeDiscoverer)(nil)
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Discover implements Discoverer. KubeDiscoverer is not a controller-runtime reconciler, but the
-// RBAC markers live here, not on a Reconcile method because this is the only place that
+// RBAC markers live here, not on a Reconcile method, because this is the only place that
 // issues the List calls they authorize; controller-gen aggregates markers by package, not by
 // type, so placement next to the call site keeps the grant traceable to its use.
 func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
@@ -271,7 +271,7 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 // When the two disagree on the count, GFD wins and the disagreement is logged with both numbers:
 // DCGM entries beyond the GFD count are dropped, and GFD slots DCGM did not name fall through to
 // the annotation and then to a synthetic id. Neither view is discarded silently. If GFD says
-// nothing at all, no gpu.count label, DCGM's count is used, so a cluster without GFD still
+// nothing at all (no gpu.count label), DCGM's count is used, so a cluster without GFD still
 // yields inventory.
 //
 // The two fallbacks log at different levels because they answer different questions. A

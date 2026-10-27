@@ -15,7 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// Fingerprint digests what a workload is running, and not how much of it.
+// Fingerprint digests what a workload is running and, by design, not how much of it.
 //
 // The pod template alone goes in: image, command, args, environment, resources, mounts. Replica
 // count, status and the nodes it landed on stay out. That boundary is the whole value of the

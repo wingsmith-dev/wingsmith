@@ -10,9 +10,9 @@ import (
 	"testing"
 )
 
-// fixtureDir is a symlink to libs/packages/contract/fixtures. It is package-local: Go's test
-// result cache only tracks files opened inside the package directory, so a corpus referenced by
-// a relative path outside the module would let a stale PASS survive a fixture edit.
+// fixtureDir is a symlink to libs/packages/contract/fixtures. It is package-local by design: Go's
+// test result cache only tracks files opened inside the package directory, so a corpus referenced
+// by a relative path outside the module would let a stale PASS survive a fixture edit.
 const fixtureDir = "fixtures"
 
 func fixturePaths(t *testing.T) []string {
@@ -237,7 +237,7 @@ func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
 		t.Fatalf("frontend_image = %q", *dep.Serving.FrontendImage)
 	}
 	// A pointer, so that a plane too old to send the field is distinguishable from one that
-	// sent nothing.
+	// chose to send nothing.
 	var absent DeploymentDesired
 	if err := json.Unmarshal([]byte(`{"deployment_id":"dep_1","serving":{}}`), &absent); err != nil {
 		t.Fatalf("decode: %v", err)

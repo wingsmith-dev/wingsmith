@@ -23,7 +23,7 @@ import (
 // The workload holding a card is spelled two different ways depending on who scraped the exporter,
 // and both have to be read. Scraped through Prometheus, the scraper stamps its own `pod` and
 // `namespace` on every series and the exporter's own values are renamed out of the collision to
-// `exported_pod` / `exported_namespace`. Scraped directly, which is what this operator does, no
+// `exported_pod` / `exported_namespace`. Scraped directly, as this operator does, no
 // collision happens, nothing is renamed, and the workload is in plain `pod` / `namespace`.
 //
 // Reading only the `exported_` spelling is why the binding was empty on every real cluster: the
@@ -228,8 +228,8 @@ func (s *DCGMSource) targets(ctx context.Context) []string {
 }
 
 // parseServiceHost reads `<service>.<namespace>.svc[.cluster.local]`, the only host shape that
-// names something with pods behind it. Anything else, an address, an external name, a Prometheus
-// federate URL, is a single target and is left alone.
+// names something with pods behind it. Anything else (an address, an external name, a Prometheus
+// federate URL) is a single target and is left alone.
 func parseServiceHost(host string) (service, namespace string, ok bool) {
 	parts := strings.Split(strings.TrimSuffix(host, "."), ".")
 	if len(parts) < 3 || parts[2] != "svc" {
@@ -268,7 +268,7 @@ func parseSelector(spec, service string) (map[string]string, error) {
 
 // ParseDCGM reads a Prometheus text exposition into a device inventory.
 //
-// It is not a full exposition parser: every series the exporter emits carries the
+// It does not try to be a full exposition parser: every series the exporter emits carries the
 // same identity labels, so the first line mentioning a UUID settles that device and the rest are
 // only consulted for a workload binding the first line happened not to carry.
 func ParseDCGM(body string) *DCGMInventory {

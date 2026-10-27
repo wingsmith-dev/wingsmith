@@ -20,7 +20,7 @@ import (
 // This operator neither renders nor owns it, and reads it for one reason: it is where the Dynamo
 // operator writes down that it could not do what the graph asked. The graph's own Ready condition
 // names the child and stops there, so a diagnosis that reads only the graph reports "some
-// resources are not ready", the fact you already had, instead of what went wrong.
+// resources are not ready" (the fact you already had) instead of what went wrong.
 var componentGVK = schema.GroupVersionKind{
 	Group:   render.GVK.Group,
 	Version: render.GVK.Version,
@@ -30,8 +30,8 @@ var componentGVK = schema.GroupVersionKind{
 // stallAfter is how long a deployment may hold at zero ready replicas before the silence is
 // reported as a failure in its own right.
 //
-// The window is generous. Everything with a name of its own, a rejected spec, an image
-// that will not pull, a pod nothing can schedule, is reported the moment it is seen, and this
+// The window is generous by design. Everything with a name of its own (a rejected spec, an image
+// that will not pull, a pod nothing can schedule) is reported the moment it is seen, and this
 // catches only what none of those explain: a graph applied cleanly, no pod, no complaint from
 // anybody. Weights are already resident before the apply, so what remains is loading a model off
 // local disk into device memory, which is minutes, not tens of them.
@@ -97,8 +97,8 @@ func (r *SyncedResourceReconciler) diagnose(
 // rejectedBy reads the conditions of the objects Dynamo derived from the graph, and of the graph
 // itself, for one that is false because something refused it.
 //
-// The children are read before the parent. A parent's condition summarises, "some resources are
-// not ready", naming the child, and the child holds the sentence that says why, which for the
+// The children are read before the parent. A parent's condition summarises ("some resources are
+// not ready", naming the child), and the child holds the sentence that says why, which for the
 // workload this was written for was `must be no more than 63 bytes`. Reporting the summary would
 // have left the same investigation to do, one level further down.
 func (r *SyncedResourceReconciler) rejectedBy(ctx context.Context, name string) *trouble {
@@ -132,7 +132,7 @@ func (r *SyncedResourceReconciler) rejectedBy(ctx context.Context, name string) 
 // progressReasons are the condition reasons that mean the object is still working, as opposed to
 // having given up. A false condition carrying one of them is not a diagnosis.
 //
-// Everything else is treated as trouble. A closed list of failures would have to
+// Everything else is treated as trouble, by design. A closed list of failures would have to
 // enumerate what a controller this operator does not own might one day write, and being silent
 // about an unrecognised failure is the exact behaviour being fixed here.
 var progressReasons = map[string]bool{
@@ -266,8 +266,8 @@ var waitingReasons = map[string]string{
 // maxLastWords bounds how much of a dead container's output travels.
 //
 // The message reaches an event row and a status field, and a Python traceback is longer than
-// either wants. The tail is the part that matters, argparse writes its usage first and its
-// complaint last, so this trims the front and keeps the end.
+// either wants. The tail is the part that matters (argparse writes its usage first and its
+// complaint last), so this trims the front and keeps the end.
 const maxLastWords = 800
 
 // lastWords is what the container printed before it exited, trimmed to something a timeline can
@@ -371,7 +371,7 @@ func containerTrouble(pod *corev1.Pod) *trouble {
 // reported as a crash loop. So Running pods are left out, and the stall is about the rest: one
 // replica loading, or serving, must not hide another that never left Pending.
 //
-// With a replica already serving the deployment is degraded, not failed, so a stuck pod
+// With a replica already serving, the deployment is degraded, not failed, so a stuck pod
 // there is reported without failing it: under the `Progressing` reason its phase already implies,
 // with the pod named in the message.
 func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, pods []corev1.Pod, out rollout) *trouble {

@@ -33,7 +33,7 @@ import (
 
 // SyncedResourceReconciler converges the durable local copy of declared state onto the cluster.
 //
-// One controller over one CRD instead of one per domain kind. The kinds are not independent,
+// One controller over one CRD instead of one per domain kind. The kinds are not independent:
 // a deployment cannot render without its artifact and those weights already being resident, so
 // splitting them into separate controllers would buy separation and immediately spend it on
 // cross-controller lookups for the same objects.
@@ -102,7 +102,7 @@ type Capabilities interface {
 // multinodeEnabled says whether this cluster can render a replica that spans machines.
 //
 // Observation first, configuration as an override that can only widen. Detection is the accurate
-// answer, the CRDs are either served or they are not, and it keeps working when somebody
+// answer (the CRDs are either served or they are not), and it keeps working when somebody
 // installs a backend without touching this operator's values. The configured flag stays because
 // detection matches on group name, so a backend named something unanticipated can still be
 // asserted by hand; it cannot turn the capability off, because a cluster that demonstrably has a
@@ -153,8 +153,8 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// the cluster object and not the desired state describing it.
 	//
 	// Observed is the closed direction and it is checked by value, not by absence: an empty
-	// Authority is observed, so a plane that predates the field, or a payload that failed to
-	// decode into one, writes nothing to this cluster. Managed is the only value that opens the
+	// Authority is observed, so a plane that predates the field (or a payload that failed to
+	// decode into one) writes nothing to this cluster. Managed is the only value that opens the
 	// gate, and it has to be said out loud (ADR 0009).
 	//
 	// An adopted object takes the adoption path whatever its authority. Managed authority over an
@@ -186,8 +186,8 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	case "component":
 		// Cluster-level dependencies: GPU operator, device plugin, storage, ingress. Driving
 		// these to a declared version is a Helm release instead of an object to apply, which
-		// is long-running and failable in a way an apply is not. It is not done
-		// here yet.
+		// is long-running and failable in a way an apply is not. This loop leaves it
+		// alone for now.
 		return r.observed(ctx, &res)
 	default:
 		return r.fail(ctx, &res, "UnknownKind", fmt.Sprintf("no reconciler for kind %q", res.Spec.Kind))
@@ -214,8 +214,8 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 // came from without anything having to poll for it.
 //
 // By label, not by ownership. Both rendered kinds live in the workload namespace and the
-// declared copies live in this operator's own, and controller-runtime's ownership handler, like
-// the garbage collector it mirrors, resolves an owner within the dependent's namespace. Owning
+// declared copies live in this operator's own, and controller-runtime's ownership handler (like
+// the garbage collector it mirrors) resolves an owner within the dependent's namespace. Owning
 // them across that boundary linked nothing in this direction and actively destroyed the objects
 // in the other.
 //
@@ -320,7 +320,7 @@ func deploymentPodEvents() predicate.Funcs {
 
 // podStatusKey is the part of a pod that deployment observation reads.
 //
-// Container messages are absent. Kubelet rewrites the backoff sentence as attempts
+// Container messages are left out by design. Kubelet rewrites the backoff sentence as attempts
 // accumulate, but the waiting reason is the state transition and is what diagnose.go maps onto the
 // wire's closed set. Including the message would send the same failure repeatedly with a new
 // countdown.
@@ -405,7 +405,7 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 	// Requeued on the same floor a managed deployment gets, and for a stronger reason. Neither
 	// watch below can ever wake an adopted object: `declaredFor` maps back from the owner labels
 	// this operator's render stamps, and an adopted object was put there by something else and
-	// carries none, nor is it the rendered kind being watched. So without a requeue the
+	// carries none; nor is it the rendered kind being watched. So without a requeue the
 	// fingerprint check, which is the whole reason this path exists, runs once at startup and
 	// then never again, and a workload that drifts afterwards is never noticed.
 	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil

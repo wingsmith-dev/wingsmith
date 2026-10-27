@@ -1,8 +1,8 @@
 // Package devices resolves a vendor's product string into a hangar device class.
 //
 // The dictionary itself is libs/packages/contract/devices.json, read by both the operator and the plane, because
-// the two dialects a card is named in, the GPU Feature Discovery node label and the DCGM
-// exporter's modelName, never agree with each other and neither is ours. table.json is a copy of
+// the two dialects a card is named in (the GPU Feature Discovery node label and the DCGM
+// exporter's modelName) never agree with each other and neither is ours. table.json is a copy of
 // the contract file so the binary carries it; a test fails if the two drift.
 package devices
 
@@ -93,8 +93,8 @@ func Parse(raw []byte) (*Table, error) {
 // ByClass finds a class by its own identifier, not by a vendor alias.
 //
 // The alias index answers "what is this card called", which is the question discovery asks. This
-// answers "what is a card of this class", which is what a node that states its class outright,
-// through the device-class label, leaves to be filled in.
+// answers "what is a card of this class", which is what a node that states its class outright
+// through the device-class label leaves to be filled in.
 func (t *Table) ByClass(class string) (Class, bool) {
 	if t == nil || class == "" {
 		return Class{}, false

@@ -219,8 +219,8 @@ func TestNameToIDInvertsResourceName(t *testing.T) {
 	}
 }
 
-// A session the hub could not resume is one where the dedupe's assumption, that a skipped frame
-// was delivered, does not hold: the hub prunes what it had and expects it restated.
+// A session the hub could not resume is one where the dedupe's assumption (that a skipped frame
+// was delivered) does not hold: the hub prunes what it had and expects it restated.
 func TestAFreshSessionForgetsWhatWasReported(t *testing.T) {
 	rep := &recordingReporter{}
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())

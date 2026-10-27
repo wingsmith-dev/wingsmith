@@ -146,8 +146,8 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 }
 
 // Zero replicas is a frontend that exists and serves nothing, which reads as healthy everywhere
-// and is reachable by nothing. Turning the frontend off is its own setting, so say so, not
-// quietly substitute the default for what somebody wrote.
+// and is reachable by nothing. Turning the frontend off is its own setting, so say so instead of
+// quietly substituting the default for what somebody wrote.
 func TestZeroFrontendReplicasIsRefusedRatherThanDefaulted(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
 	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")

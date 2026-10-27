@@ -22,7 +22,7 @@ const (
 	// what they already own.
 	//
 	// Two keys because the deployment id is only on what a deployment renders, while
-	// `managed-by` is on everything this operator writes (a prefetch job, a benchmark run)
+	// `managed-by` is on everything this operator writes (a prefetch job, a benchmark run),
 	// none of which is a workload anybody discovered.
 	labelManaged   = "hangar.dev/deployment-id"
 	labelManagedBy = "hangar.dev/managed-by"
@@ -245,8 +245,8 @@ func workloadKeyFor(p *corev1.Pod) workloadKey {
 	return workloadKey{Namespace: p.Namespace, Kind: kind, Name: name}
 }
 
-// schedulable is whether a pod still holds what it was given. A pod that has finished, succeeded
-// or failed, has released its accelerators and is not part of anything running.
+// schedulable is whether a pod still holds what it was given. A pod that has finished (succeeded
+// or failed) has released its accelerators and is not part of anything running.
 func schedulable(p *corev1.Pod) bool {
 	if p.Spec.NodeName == "" {
 		return false
@@ -451,7 +451,7 @@ func commandShape(command []string) []string {
 
 // envNames lists what the container expects to find in its environment, names only.
 //
-// The values are absent and must stay that way. `envFrom` a secret is how a serving
+// The values are left out by design and must stay that way. `envFrom` a secret is how a serving
 // pod is given a HuggingFace token or a registry credential, and a discovery pass that shipped
 // values would copy every one of them into the control plane's database, where nothing needs them
 // and a backup would carry them further still. A name is enough to tell a reader what the

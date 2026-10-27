@@ -132,8 +132,8 @@ func TestPodTroubleIsReadFromTheWaitingReasonNotThePhase(t *testing.T) {
 
 // The crash the whole evening turned on, and the one line that would have ended it in seconds.
 //
-// `CrashLoopBackOff` carries the kubelet's account of the loop, "back-off restarting failed
-// container", which is identical for every crash-looping container ever and says nothing about
+// `CrashLoopBackOff` carries the kubelet's account of the loop ("back-off restarting failed
+// container"), which is identical for every crash-looping container ever and says nothing about
 // the fault. The process's own last words named the argument. They reach `lastState` only because
 // the renderer asks for `FallbackToLogsOnError`, and they reach the plane only because this reads
 // them.

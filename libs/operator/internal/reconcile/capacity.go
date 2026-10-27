@@ -370,7 +370,7 @@ func devicePluginHint(largest int64) string {
 //
 // Cordoned nodes are excluded. A drain in progress is exactly when this check matters most: the
 // accelerators are still allocatable and still reported, and treating them as available would
-// promise capacity that is being taken away.
+// promise capacity that somebody is in the middle of taking away.
 func nodeUsable(node *corev1.Node) bool {
 	if node.Spec.Unschedulable {
 		return false

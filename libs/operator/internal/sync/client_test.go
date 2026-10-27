@@ -602,7 +602,7 @@ func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
 //
 // The session's goroutines used to be joined before the session could report anything, so a handler
 // blocked on an unresponsive API server held up the error, the log line, the backoff, the redial,
-// and the deferred flag that readiness is read from: all at once. The pod stayed Ready and the
+// and the deferred flag that readiness is read from, all at once. The pod stayed Ready and the
 // operator stayed silently disconnected. This handler ignores its context, which
 // is the shape that caused it: a call that does not honour cancellation cannot be waited out.
 func TestAWedgedApplyStillRedials(t *testing.T) {
@@ -656,8 +656,8 @@ func (s *stallingHandler) Resync(context.Context) error { return nil }
 func (s *stallingHandler) release() { s.closeOnce.Do(func() { close(s.released) }) }
 
 // TestLossyHelloAfterReplayOverflow: once the buffer has discarded an unacknowledged frame this
-// side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so, not
-// ask for a resume it cannot honour.
+// side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so instead of
+// asking for a resume it cannot honour.
 func TestLossyHelloAfterReplayOverflow(t *testing.T) {
 	h := newFakeHub(t)
 	h.setWithholdAck(true)
@@ -712,8 +712,8 @@ func TestBackpressureReplacesTheSameSubject(t *testing.T) {
 }
 
 // TestBackpressureNeverEvictsAStreamOrAReport fills the queue past its soft bound with the frames
-// that used to be evicted from the head, a stream's opener and terminator, its correlated frames,
-// and an operation's terminal report, and checks every one of them is still sent, in order.
+// that used to be evicted from the head (a stream's opener and terminator, its correlated frames,
+// and an operation's terminal report) and checks every one of them is still sent, in order.
 func TestBackpressureNeverEvictsAStreamOrAReport(t *testing.T) {
 	q := newSendQueue(2)
 	push := func(typ MessageType, subject, replyTo string) {

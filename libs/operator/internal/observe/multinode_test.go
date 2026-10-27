@@ -55,8 +55,8 @@ func TestDiscoveryGroupsIsEmptyWhenUnset(t *testing.T) {
 	}
 }
 
-// The reconcile loop reads this holder on its own clock, so an unpublished one must be false,
-// not panic or report a capability nothing observed.
+// The reconcile loop reads this holder on its own clock, so an unpublished one must read false
+// instead of panicking or reporting a capability nothing observed.
 func TestCapabilityDefaultsToIncapable(t *testing.T) {
 	var unset *Capability
 	if unset.Multinode() {

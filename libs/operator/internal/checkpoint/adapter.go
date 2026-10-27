@@ -8,8 +8,8 @@ import (
 
 // Adapter presents a Store as the sync client's Checkpointer.
 //
-// The two carry the same three facts, session, contiguous applied seq, and whether this side can
-// still reproduce its own stream, so the adaptation is a rename instead of a translation. The
+// The two carry the same three facts (session, contiguous applied seq, and whether this side can
+// still reproduce its own stream), so the adaptation is a rename instead of a translation. The
 // lossy flag in particular is passed through, not folded into an empty cursor: the client
 // declares it in hello, and a hub that is told the truth can hand back a fresh session instead of
 // inferring one from a suspiciously blank resume.

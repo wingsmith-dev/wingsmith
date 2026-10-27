@@ -85,7 +85,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 
 // SetupWithManager registers every controller this operator runs and returns the reconciler.
 //
-// The reconciler is returned, not kept private because it reports upward as well as
+// The reconciler is returned instead of kept private, because it reports upward as well as
 // reconciling downward, and the sync client it reports through does not exist yet at this point:
 // it takes the store and the observer as its own options. Binding after construction is how the
 // observe loop resolves the same cycle.

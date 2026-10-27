@@ -275,8 +275,8 @@ func TestOnlyAcceleratorPodsAreDrained(t *testing.T) {
 // ------------------------------------------------------------------ the benchmark lane
 
 // A ramp arrives as one operation per step, all of them within a second of each other. Run
-// concurrently they measure each other, every point on the curve carries the load of every other
-// point, so the lane runs them in turn, and these tests are about that turn-taking.
+// concurrently, they measure each other (every point on the curve carries the load of every other
+// point), so the lane runs them in turn, and these tests are about that turn-taking.
 
 func stepBenchmarkID(n int) string {
 	return fmt.Sprintf("bmr_01j9x2step%08d", n)
@@ -294,7 +294,7 @@ func stepOperation(n int) wire.OperationDesired {
 }
 
 // stepObjects are the job and pod a step would find had it created them, already finished. Being
-// adopted, not created is what keeps these runs fast; the turn-taking under test is the
+// adopted instead of created is what keeps these runs fast; the turn-taking under test is the
 // same either way.
 func stepObjects(n int) []client.Object {
 	id := stepBenchmarkID(n)
@@ -445,7 +445,7 @@ func TestARampRunsItsStepsOneAtATimeAndInOrder(t *testing.T) {
 		submit(t, e, stepOperation(n))
 	}
 	// The stream reader must not be held behind a measurement. Handle that waited for the lane
-	// would take the whole ramp, six steps of 30ms, so anything under 50ms is decisively an
+	// would take the whole ramp (six steps of 30ms), so anything under 50ms is decisively an
 	// acceptance instead of a wait, with room for a loaded machine.
 	if held := time.Since(accepted); held > 50*time.Millisecond {
 		t.Errorf("Handle held the sync stream for %s; enqueuing must not wait for the lane", held)
@@ -670,7 +670,7 @@ func TestAReplayOfAQueuedBenchmarkIsDropped(t *testing.T) {
 }
 
 // TestAStepRunningAtShutdownIsReportedRetryable. The lane's context is the running step's, so
-// stopping the operator stops the measurement, and a measurement this operator abandoned is not
+// stopping the operator stops the measurement. A measurement this operator abandoned is not
 // one the cluster cannot make. Reported as an ordinary execution failure it would be a ramp step
 // nobody ever asks for again.
 func TestAStepRunningAtShutdownIsReportedRetryable(t *testing.T) {
@@ -812,8 +812,8 @@ func TestACancellationFromTheHubStopsAQueuedStep(t *testing.T) {
 
 // TestACancellationForSomethingAlreadyOverIsNotAnError covers the ordinary race.
 //
-// The operation finishes a moment before the withdrawal lands, which is the common case rather
-// than an edge one: a cancellation is a round trip and the work does not pause for it. Reporting a
+// The operation finishes a moment before the withdrawal lands, which is the common case and
+// not an edge one: a cancellation is a round trip and the work does not pause for it. Reporting a
 // phase here would overwrite the conclusion that actually happened with a guess about it.
 func TestACancellationForSomethingAlreadyOverIsNotAnError(t *testing.T) {
 	probe := &laneProbe{}

@@ -116,7 +116,7 @@ func New(o *Observer) *Observer {
 // Since reports how long ago a discovery last completed, and whether one ever has.
 //
 // Exposed so the readiness probe can fail on a loop that has stopped observing. A wedged loop is
-// invisible from outside the process, it neither exits nor logs, so something has to ask.
+// invisible from outside the process (it neither exits nor logs), so something has to ask.
 func (o *Observer) Since(now time.Time) (time.Duration, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -177,7 +177,7 @@ func (o *Observer) Run(ctx context.Context) error {
 
 // discover runs one discovery under Timeout.
 //
-// The deadline is the point: every discoverer this has ever had reaches the network, and a
+// The deadline is why this exists: every discoverer this has ever had reaches the network, and a
 // read with no bound is a loop with no bound.
 func (o *Observer) discover(ctx context.Context) (Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
@@ -236,7 +236,7 @@ func (o *Observer) Resync(ctx context.Context) error {
 	// A snapshot is only complete if it came from a discovery that worked. Saying otherwise is
 	// not a white lie: `complete` is the sole permission the plane needs to delete everything
 	// absent from the stream, so a failed discovery that still claimed completeness would prune
-	// this cluster's entire inventory, and before the loop has ever seen anything, the
+	// this cluster's entire inventory. Before the loop has ever seen anything, the
 	// projection is empty and that is exactly what would happen.
 	complete := err == nil && seen
 	if !complete && !seen {

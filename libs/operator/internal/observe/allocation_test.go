@@ -14,7 +14,7 @@ DCGM_FI_DEV_GPU_UTIL{gpu="2",UUID="GPU-cccc",modelName="NVIDIA RTX PRO 6000",Hos
 
 // TestParseDCGMReadsAPlainPodLabelWhenNothingWasRenamed: reading only `exported_pod` is why the
 // binding was empty on every real cluster: that spelling appears only when a scraper has already
-// claimed the plain name, which is the exception instead of the rule.
+// claimed the plain name, which is the exception, not the rule.
 func TestParseDCGMReadsAPlainPodLabelWhenNothingWasRenamed(t *testing.T) {
 	got := ParseDCGM(directScrape).forNode("node-a", nil)
 	if len(got) != 3 {

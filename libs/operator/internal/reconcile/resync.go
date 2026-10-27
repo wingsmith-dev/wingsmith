@@ -18,7 +18,7 @@ const demandScope = "demand"
 
 // StreamingReporter is a Reporter that can also open a correlated stream.
 //
-// Separate from Reporter, not folded into it because only one caller needs it, and widening
+// Separate from Reporter instead of folded into it, because only one caller needs it, and widening
 // the interface every reporting path takes would make a test double implement a resync to report a
 // single conclusion. The sync client satisfies both; anything that does not simply never resyncs.
 type StreamingReporter interface {
@@ -87,8 +87,8 @@ func (r *SyncedResourceReconciler) ResyncDemand(ctx context.Context) error {
 // RunDemandResync streams the snapshot on an interval, for as long as the operator is running.
 //
 // On a timer, not only on a fresh session, because a session is the wrong trigger and the
-// only one this had at first. The hub resumes a stream whenever it can, `full_resync: false` is
-// the normal reconnect, so hanging the repair off a fresh session means it runs almost never, and
+// only one this had at first. The hub resumes a stream whenever it can (`full_resync: false` is
+// the normal reconnect), so hanging the repair off a fresh session means it runs almost never, and
 // never on any schedule. Drift that nothing is looking for is drift that stays.
 //
 // The same interval the observer restates the supply side on, for the same reason: this is the
@@ -96,7 +96,7 @@ func (r *SyncedResourceReconciler) ResyncDemand(ctx context.Context) error {
 // cluster instead of two.
 //
 // A failed snapshot is logged and waited out, not returned. It costs a stale row until the
-// next tick, which is the cheap half of the trade this whole file is built around, and killing the
+// next tick, which is the cheap half of the trade this whole file is built around. Killing the
 // operator over a report it could not send would stop it reconciling anything.
 func (r *SyncedResourceReconciler) RunDemandResync(ctx context.Context, every time.Duration) error {
 	if every <= 0 {
@@ -122,8 +122,8 @@ func (r *SyncedResourceReconciler) RunDemandResync(ctx context.Context, every ti
 // about a deployment the plane knows: reading pods directly would have to guess which of them the
 // plane models, and the ones it guessed wrong about would be streamed as replicas of nothing.
 //
-// One deployment failing does not abandon the others. Their frames are still worth sending, the
-// upserts they carry are useful on their own, and it is only the permission to delete that is
+// One deployment failing does not abandon the others. Their frames are still worth sending (the
+// upserts they carry are useful on their own), and it is only the permission to delete that is
 // withdrawn, which is what the false return is.
 func (r *SyncedResourceReconciler) demandSnapshot(
 	ctx context.Context,

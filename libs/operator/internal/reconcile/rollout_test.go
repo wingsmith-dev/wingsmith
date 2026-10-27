@@ -21,8 +21,8 @@ import (
 //
 // The arithmetic is what hides it: a 1P:2D group with two ready decode workers and no prefill has
 // two of three workers ready, which is a shortfall like any other and reads as degraded on its way
-// up. It is not on its way up, a decode worker with no prefill peer has nothing to decode from,
-// so nothing is serving at all, and without `roleShort` the totals cannot tell the two apart.
+// up. It is not on its way up: a decode worker with no prefill peer has nothing to decode from,
+// so nothing is serving at all. Without `roleShort` the totals cannot tell the two apart.
 func TestARoleThatIsShortIsDegradedEvenWhenTheTotalsWouldNotSaySo(t *testing.T) {
 	full := rollout{desired: 3, ready: 3}
 	if got := full.phase(); got != phaseRunning {

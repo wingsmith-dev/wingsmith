@@ -217,7 +217,7 @@ func sourced(id, uri string) wire.ArtifactDesired {
 	return wire.ArtifactDesired{ArtifactID: id, Sources: []wire.ArtifactSource{{URI: uri}}}
 }
 
-// TestAPrefetchJobNameLeadsWithTheModel is the point of the shape: a `kubectl get jobs` in
+// TestAPrefetchJobNameLeadsWithTheModel is what the shape is for: a `kubectl get jobs` in
 // the workload namespace has to read as who is downloading, not as a column of opaque ids.
 func TestAPrefetchJobNameLeadsWithTheModel(t *testing.T) {
 	cases := []struct {
@@ -335,7 +335,7 @@ func TestAnArtifactWithNoModelIsNotLabelledWithNothing(t *testing.T) {
 	}
 }
 
-// TestARunningPrefetchSaysHowFarItHasGot. The bars stay off, they bury the one line worth reading,
+// TestARunningPrefetchSaysHowFarItHasGot. The bars stay off (they bury the one line worth reading),
 // but a job that prints nothing for forty minutes cannot be told from a stuck one.
 func TestARunningPrefetchSaysHowFarItHasGot(t *testing.T) {
 	for _, art := range []wire.ArtifactDesired{hfArtifact(), sourced("art_custom", "s3://weights/custom/model.bin")} {
@@ -384,7 +384,7 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-// The figures this replaced, four CPUs and eight gigabytes, were larger than an m7i.large has
+// The figures this replaced (four CPUs and eight gigabytes) were larger than an m7i.large has
 // allocatable at all, so the job could not be placed on a system node however many were added.
 func TestAPrefetchAsksForLittleEnoughToBePlaced(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{Namespace: "dynamo"})
@@ -475,7 +475,7 @@ func TestSplitHFRef(t *testing.T) {
 
 // The ceiling must not follow the request down. It did, and a large model was OOM killed part-way
 // through: pages written to the shared NFS volume are charged to the cgroup until EFS writeback
-// takes them, and that backlog is far larger than anything the job holds.
+// takes them, and that backlog is far larger than anything the job means to hold.
 func TestTheMemoryCeilingIsNotDerivedFromTheRequest(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{PrefetchMemory: "1Gi"})
 	if err != nil {
@@ -498,7 +498,7 @@ func TestACeilingBelowTheRequestIsRefused(t *testing.T) {
 }
 
 // The download runs the engine image, so a private engine registry has to be reachable from the
-// prefetch job too, without this the pull fails while the credential sits unused in the same
+// prefetch job too. Without this the pull fails while the credential sits unused in the same
 // namespace, and nothing in the event says which of the two is missing.
 func TestThePrefetchJobTakesTheEnginePullSecrets(t *testing.T) {
 	opts := testOptions()

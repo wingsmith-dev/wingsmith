@@ -76,9 +76,9 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.stage(res, dep, "Accepted", fmt.Sprintf("reconciling revision %d", res.Spec.Revision))
 
 	// The gates below admit a new apply and nothing else. A deployment already running from this
-	// declaration is past them, and re-checking it on every pass turned a transient answer, an
+	// declaration is past them, and re-checking it on every pass turned a transient answer (an
 	// artifact read that failed, a node cordoned for a drain, the deployment's own pods holding
-	// the accelerators the capacity check counts, into a running deployment reported as Waiting.
+	// the accelerators the capacity check counts) into a running deployment reported as Waiting.
 	live, err := r.runningAsDeclared(ctx, dep)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -126,7 +126,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// A replica the check could only place across machines, on a cluster that cannot run one.
 	// Rendering it anyway produces a single pod holding a fraction of the devices the engine was
 	// told to expect, which starts and then hangs in collective initialisation with nothing
-	// saying why, so this waits, and names the thing that has to be installed.
+	// saying why. So this waits and names the thing that has to be installed.
 	if placed.NodesPerReplica > 1 && !r.multinodeEnabled() {
 		return r.wait(ctx, res, "MultinodeNotEnabled", fmt.Sprintf(
 			"one replica needs %d nodes of %d accelerators and no leader-worker backend was found "+
@@ -166,8 +166,8 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// Nothing is written when what is running was already built from these inputs. The apply
 	// below is otherwise unconditional, and an unconditional apply makes every change to the
 	// renderer a fleet-wide reload: Dynamo hashes a component's whole pod template to name the
-	// DynamoComponentDeployment it creates, so a single byte of difference, even a label nothing
-	// reads, abandons the running worker and starts a new one. Every model reloads its weights,
+	// DynamoComponentDeployment it creates, so a single byte of difference (even a label nothing
+	// reads) abandons the running worker and starts a new one. Every model reloads its weights,
 	// and on a saturated cluster that deadlocks: the new pod cannot schedule until the old one
 	// releases the accelerators it is still holding.
 	//
@@ -319,7 +319,7 @@ func (r *SyncedResourceReconciler) renderIsCurrent(
 // declaration's generation and serving digest, and nil when there is none or it was built from
 // something else.
 //
-// The layout is not compared. It is the capacity check's answer, and asking the
+// The layout is kept out of the comparison. It is the capacity check's answer, and asking the
 // question again of a deployment that is running is what this exists to stop: a different answer
 // would move a serving model for no change anybody declared.
 func (r *SyncedResourceReconciler) runningAsDeclared(
@@ -607,10 +607,10 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 // repeats for as long as the deployment exists: a log full of one line, a deployment that never
 // changes, and nothing anywhere saying that the remedy is to recreate the graph.
 //
-// It is not recreated here. The graph holds the running worker, so deleting it is a
-// full reload of the weights, tens of minutes on the hardware this runs on, and an operator that
+// It is not recreated here, by design. The graph holds the running worker, so deleting it is a
+// full reload of the weights (tens of minutes on the hardware this runs on), and an operator that
 // did that on its own would take a serving model down as a side effect of a configuration flag
-// somebody flipped. Saying so and stopping is the accurate half.
+// somebody flipped. Saying so and stopping is as far as this code should go.
 //
 // Matched on the webhook's own words, which is fragile and is the lesser fragility: the string is
 // someone else's and may change, and if it does this returns false and the behaviour is exactly
@@ -624,8 +624,8 @@ func immutableTopology(err error) bool {
 
 // clusterRejected reports whether the cluster refused this object in a way a retry cannot fix.
 //
-// `Invalid`, `Forbidden` and `BadRequest` are the API server, or an admission webhook in front of
-// it, saying the object is wrong, which it will still be on the next pass. Returning those as a
+// `Invalid`, `Forbidden` and `BadRequest` are the API server (or an admission webhook in front of
+// it) saying the object is wrong, which it will still be on the next pass. Returning those as a
 // controller-runtime error requeues them with backoff for ever and tells the plane nothing: the
 // deployment sits at `Rendering`, the reason is a log line in a cluster somebody would have to go
 // and read, and the console shows a workload that was dispatched and then stopped having a story.

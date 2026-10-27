@@ -38,8 +38,8 @@ const cacheResync = 5 * time.Minute
 
 // reconcileCache makes the cluster's declared warm-set resident.
 //
-// Fetching is driven by the warm-set, not by any deployment, and that inversion is the
-// whole point. Weights are per-cluster and deployments are many, so a fetch owned by a deployment
+// Fetching is driven by the warm-set, not by any deployment, and that inversion is what
+// matters. Weights are per-cluster and deployments are many, so a fetch owned by a deployment
 // would run once per deployment of the same model, race with its siblings over a shared
 // filesystem, and leave the second deployment of a model paying the first one's cost again. Here
 // an artifact is fetched because the cluster should hold it, and a deployment only ever reads the
@@ -172,8 +172,8 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, owner *v1a
 // declare.
 //
 // "Not in my warm set" is not the same as "nothing asks for it", and treating the two as one has a
-// cluster tearing up its own work. A renamed warm set, say from `cache-clu-<cluster id>` to the
-// cluster's name, leaves two SyncedResources of kind cache, each holding a different set. A prune
+// cluster tearing up its own work. A renamed warm set (say from `cache-clu-<cluster id>` to the
+// cluster's name) leaves two SyncedResources of kind cache, each holding a different set. A prune
 // that listed every Job in the workload namespace and deleted the ones its own set did not name
 // would have the stale object delete the live object's downloads and the live object recreate
 // them, once every reconcile. A model in the middle of a multi-hundred-gigabyte pull would never
@@ -213,14 +213,14 @@ func (r *SyncedResourceReconciler) prefetchIsPrunable(ctx context.Context, owner
 //
 // A bound and not a retry loop, because the two failures behind this are opposite and only one of
 // them is worth repeating. A download killed with the node under it should start again: nothing
-// about the artifact is wrong. A download of weights that cannot be fetched at all, a repository
-// that has moved, a gated one nobody holds the token for, fails identically every time, and an
+// about the artifact is wrong. A download of weights that cannot be fetched at all (a repository
+// that has moved, a gated one nobody holds the token for) fails identically every time, and an
 // unbounded retry there is this cluster pulling on somebody else's registry for ever, at whatever
 // fraction of a large model it reaches before dying.
 //
 // Four instead of one, because the Job already spends its own BackoffLimit on the transient case:
 // reaching here means three pod attempts have already failed, so what this counts is whole
-// downloads lost, and the loss that motivated it, a node going NotReady, takes every attempt on
+// downloads lost, and the loss that motivated it (a node going NotReady) takes every attempt on
 // that node with it at once.
 const maxPrefetchAttempts = 4
 
@@ -419,7 +419,7 @@ func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID 
 //
 // Read from the prefetch Job, which is the same source the deployment path gates on. A count kept
 // alongside it would be a second copy of a fact the API server already holds, and the two would
-// disagree the first time a Job was deleted by hand, so residency has one reading here, whoever
+// disagree the first time a Job was deleted by hand. So residency has one reading here, whoever
 // is asking.
 //
 // Reported at the cluster tier with no per-node rows, because the fetch lands on one shared

@@ -190,7 +190,7 @@ type Layout struct {
 
 // Fingerprint is the layout as one comparable string: nodes, devices per node, and the fabric.
 //
-// Spelled, not hashed because it is stamped on the object as an annotation and a person
+// Spelled, not hashed, because it is stamped on the object as an annotation and a person
 // reading `2x8/nvlink-domain/ab12` learns something a sha256 would not have told them.
 func (l Layout) Fingerprint() string {
 	return fmt.Sprintf("%dx%d/%s", l.NodesPerReplica, l.DevicesPerNode, l.Domain)
@@ -838,7 +838,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 
 	// Tensor-parallel workers exchange activations over shared memory. The container default of
 	// 64MB is far too small, and the failure is a NCCL or bus error at startup that never names
-	// /dev/shm as the cause, so it is sized here, not left to be rediscovered.
+	// /dev/shm as the cause, so it is sized here and not left to be rediscovered.
 	shm := resource.MustParse("16Gi")
 	liveness, readiness := workerProbes()
 
@@ -881,7 +881,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
 				// fixed seed the frontend and the workers hash identical blocks differently
-				// and every cache hit is missed: silently, as a performance loss.
+				// and every cache hit is missed, silently, as a performance loss.
 				{Name: "PYTHONHASHSEED", Value: "0"},
 			}...),
 			EnvFrom: []corev1.EnvFromSource{{
@@ -1500,8 +1500,8 @@ func publishesKVEvents(in Inputs, role workerRole) bool {
 	if role.Role == "decode" {
 		return false
 	}
-	// A prefill role's cache is on regardless of the workload's answer, see the exemption
-	// `engineArgs` applies below, so only the aggregated worker consults the setting.
+	// A prefill role's cache is on regardless of the workload's answer (see the exemption
+	// `engineArgs` applies below), so only the aggregated worker consults the setting.
 	return role.Role == "prefill" || in.Deployment.Serving.PrefixCacheEnabled
 }
 

@@ -258,7 +258,7 @@ func TestABenchmarkWithNoPodFailsRatherThanReportingNothing(t *testing.T) {
 	if !ok {
 		t.Fatal("no benchmark frame")
 	}
-	// The specific reason, no pod, is logged as a warning and does not reach the frame; the
+	// The specific reason (no pod) is logged as a warning and does not reach the frame; the
 	// plane is told only that nothing was found. See TestAReadFailureOnTheLogIsReported.
 	if bench.Phase != "failed" || !strings.Contains(bench.Error, "wrote no result") {
 		t.Errorf("a run whose log is unreachable must say so: %+v", bench)

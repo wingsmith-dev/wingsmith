@@ -15,7 +15,7 @@ type Check func() error
 // Server exposes /healthz and /readyz.
 //
 // Liveness is unconditional: a partitioned operator is still healthy, because the
-// whole point of the outbound-agent architecture is that the cluster keeps working when the
+// outbound-agent architecture exists so that the cluster keeps working when the
 // control plane is unreachable. Readiness carries the stream state instead.
 type Server struct {
 	srv    *http.Server

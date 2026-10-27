@@ -112,7 +112,7 @@ type Node struct {
 	// the labels that identify it are raw cluster labels and never survive into Labels, which is
 	// filtered down to what the plane is meant to see.
 	//
-	// Per node, not per cluster for the same reason Cloud is: it is read off the machine,
+	// Per node, not per cluster, for the same reason Cloud is: it is read off the machine,
 	// and a cluster mid-migration genuinely has two answers. The cluster-wide value is the
 	// plurality of these.
 	Distribution string
@@ -124,7 +124,7 @@ type Node struct {
 // Workload is one workload found already running in the cluster that the plane did not put there.
 //
 // It is recorded as a sighting and never as a deployment. The plane has declared nothing about
-// this object, so there is no declared-versus-running difference for anything to reconcile, which
+// this object, so there is no declared-versus-running difference for anything to reconcile. That
 // is the point: adopting a model that is already serving must not move a byte of it out of VRAM.
 type Workload struct {
 	Namespace         string
@@ -154,7 +154,7 @@ type Workload struct {
 // WorkloadSpec is what one container was told to do, as its own cluster records it.
 //
 // Environment variables appear here by name and never by value. A serving pod's environment holds
-// registry credentials and HuggingFace tokens, `envFrom` a secret is the ordinary way to run one,
+// registry credentials and HuggingFace tokens (`envFrom` a secret is the ordinary way to run one),
 // and the control plane has no business storing them. The names are enough to tell a reader
 // what the workload expects to find.
 type WorkloadSpec struct {

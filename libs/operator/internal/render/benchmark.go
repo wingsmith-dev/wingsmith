@@ -60,7 +60,7 @@ type BenchmarkOptions struct {
 	TokenSecret string
 }
 
-// Defaults for a load generator's request. Modest: no CPU limit is set anywhere
+// Defaults for a load generator's request. Modest by design: no CPU limit is set anywhere
 // here, so this is a scheduling floor a run bursts above, and a floor set higher than a cluster's
 // spare capacity is a run that never starts.
 const (
@@ -70,10 +70,10 @@ const (
 
 // aiperfScript runs the harness and then hands its export back through the log.
 //
-// Written as a shell wrapper, not as the container's argv because three things have to
+// Written as a shell wrapper, not as the container's argv, because three things have to
 // happen in one container and only the first is the harness: run it, find the export it wrote
 // under a directory whose name it chooses, and frame that file so the operator can lift it out of
-// the log. `set -o pipefail` is absent: sh has no such option, and the exit status
+// the log. `set -o pipefail` is left out: sh has no such option, and the exit status
 // that matters is aiperf's, which is captured before anything else runs.
 //
 // The export is emitted even when the harness exits non-zero. A run that hit its deadline after
@@ -98,7 +98,7 @@ exit ${rc:-0}
 // at `/busybox/sh`. `/bin/sh` is the reflex and it fails the pod before the harness runs, with a
 // runc error about a missing file instead of anything naming the image. Left unqualified, the
 // runtime resolves it against the image's own PATH, which is where an image that moved its shell
-// says so, so this works for the distroless layout and for an ordinary one without the operator
+// says so. This works for the distroless layout and for an ordinary one without the operator
 // having to know which it was handed.
 const benchmarkShell = "sh"
 
@@ -140,7 +140,7 @@ const sharedCacheDir = "/models/hf"
 // The shared cache is mounted read-only, and huggingface_hub does not treat a cache it cannot
 // write as a cache: asked for a repository it does not already hold, it creates the repository
 // directory before it checks anything, and the run dies on `[Errno 30] Read-only file system`,
-// not on a missing file. Which is exactly what happened on the cluster whose cache held
+// not on a missing file. That is exactly what happened on the cluster whose cache held
 // three other models and not this one.
 //
 // So the choice is made before the harness starts, on whether the shared cache already holds the
@@ -355,7 +355,7 @@ func BenchmarkJobName(benchmarkID string) string {
 // aiperfArgs turns the plane's parameter map into AIPerf's command line.
 //
 // Only flags the plane declared are emitted. A zero is not the same as an absent value for the
-// stddev knobs, asking for zero spread is a real request, so they are always written, while
+// stddev knobs (asking for zero spread is a real request), so they are always written, while
 // warmup is omitted at zero because AIPerf's own default there is what "no warmup" means.
 //
 // `--tokenizer` is emitted only when the plane resolved one. AIPerf otherwise defaults it to

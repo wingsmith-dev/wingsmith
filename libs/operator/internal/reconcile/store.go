@@ -22,8 +22,8 @@ import (
 )
 
 // desiredState is one declared object lifted out of its `<noun>.desired` frame: the identity the
-// local copy is keyed by, and the payload verbatim. The payload is stored as it arrived rather
-// than re-encoded, because the CRD is a durable copy of what the hub said, not this operator's
+// local copy is keyed by, and the payload verbatim. The payload is stored as it arrived and
+// not re-encoded, because the CRD is a durable copy of what the hub said, not this operator's
 // reading of it.
 type desiredState struct {
 	Kind      string
@@ -38,8 +38,8 @@ type desiredState struct {
 // resyncEpoch accumulates a full-resync snapshot as it streams in.
 //
 // It exists only in memory and only between Resync and the matching stream.end. That is
-// deliberate: the epoch is the authority for pruning, so losing it, to a crash, a disconnect, or
-// a truncated stream, can only ever result in no prune, never in a prune against a partial view.
+// deliberate: the epoch is the authority for pruning, so losing it (to a crash, a disconnect, or
+// a truncated stream) can only ever result in no prune, never in a prune against a partial view.
 //
 // A failed apply is held against the frame's sequence number instead of the whole epoch, because
 // the sync client retries a rejected frame in place: one that fails and then applies leaves the

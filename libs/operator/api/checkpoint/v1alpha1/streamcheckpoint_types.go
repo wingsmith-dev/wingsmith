@@ -6,7 +6,7 @@ import (
 
 // StreamCheckpointSpec is the durable resume cursor for the operator's hub stream.
 //
-// It is held in spec, not status because it is written by the sync loop and read by
+// It is held in spec, not status, because it is written by the sync loop and read by
 // nothing else: it is neither declared state from the plane nor observed state from the cluster,
 // and a single spec write keeps the three fields mutually consistent in one atomic update.
 type StreamCheckpointSpec struct {
@@ -22,7 +22,7 @@ type StreamCheckpointSpec struct {
 	AppliedSeq int64 `json:"appliedSeq"`
 
 	// Lossy records that the local replay buffer discarded an unacknowledged frame. Once set,
-	// the operator must ask for a fresh session, not claim it can resume, and the flag
+	// the operator must ask for a fresh session instead of claiming it can resume, and the flag
 	// survives a restart so that a crash cannot launder it away.
 	// +optional
 	Lossy bool `json:"lossy,omitempty"`

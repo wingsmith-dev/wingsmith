@@ -11,7 +11,7 @@
 //
 // The lesson is narrow and worth stating: a fake API server is a fine model of the API and no
 // model at all of the controllers behind it. Anything whose correctness depends on what
-// Kubernetes *does* to an object after it is written, garbage collection, finalizers, defaulting,
+// Kubernetes *does* to an object after it is written (garbage collection, finalizers, defaulting)
 // has to be tested somewhere the controller-manager is running.
 //
 // Run with `just e2e`, or: go test -tags e2e ./internal/reconcile/ -run E2E -v
@@ -50,9 +50,9 @@ import (
 
 // settleFor is how long a rendered object is watched before it is called survived.
 //
-// The garbage collector acts within a couple of seconds, the reproduction of this bug on a
-// local cluster deleted a cross-namespace dependent in under five, so this is generous on
-// purpose. A test that asserted the object existed immediately after the apply would have
+// The garbage collector acts within a couple of seconds (the reproduction of this bug on a
+// local cluster deleted a cross-namespace dependent in under five), so this is generous by
+// design. A test that asserted the object existed immediately after the apply would have
 // passed against the broken code too, which is the whole failure being guarded against.
 const settleFor = 20 * time.Second
 
@@ -384,8 +384,8 @@ func TestE2EARenderedDeploymentSurvivesTheGarbageCollector(t *testing.T) {
 	if got := readyCondition(t, out).Reason; got != "Applied" {
 		t.Fatalf("reason = %q (%s), want Applied", got, readyCondition(t, out).Message)
 	}
-	// Nothing is serving in this cluster, there is no Dynamo operator to turn the graph into
-	// pods, so a rollout that has not filled in is watched at the rollout's pace, not the
+	// Nothing is serving in this cluster (there is no Dynamo operator to turn the graph into
+	// pods), so a rollout that has not filled in is watched at the rollout's pace, not the
 	// drift floor's.
 	if result.RequeueAfter != waitForDependency {
 		t.Errorf("RequeueAfter = %s, want %s while nothing is ready", result.RequeueAfter, waitForDependency)

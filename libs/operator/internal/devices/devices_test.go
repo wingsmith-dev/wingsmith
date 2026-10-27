@@ -94,7 +94,7 @@ func TestFallthroughIsWarnedOnce(t *testing.T) {
 	}
 }
 
-// TestTheTwoDialectsConvergeOnOneClass is the point of the table: a card named with hyphens
+// TestTheTwoDialectsConvergeOnOneClass is what the table is for: a card named with hyphens
 // on a node label and with spaces on a Prometheus label must not become two classes that placement
 // then refuses to pool.
 func TestTheTwoDialectsConvergeOnOneClass(t *testing.T) {

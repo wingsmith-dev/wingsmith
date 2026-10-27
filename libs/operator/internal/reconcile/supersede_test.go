@@ -253,8 +253,8 @@ func TestPruneSupersededWithoutAGraphIsNotAnError(t *testing.T) {
 // A component nobody edits must not become a floor that stops every other component being pruned.
 //
 // The floor is per component for this reason alone. One floor across the graph was harmless while
-// a graph held one component: adding a second, a frontend, created with the graph and never
-// edited since, pins the earliest current creation at the graph's own birth, and every
+// a graph held one component: adding a second (a frontend, created with the graph and never
+// edited since) pins the earliest current creation at the graph's own birth, and every
 // superseded worker is younger than that. The prune then finds nothing to do, silently and
 // forever, and the abandoned generation keeps its accelerators.
 func TestPruneSupersededIsNotBlockedByALongLivedSecondComponent(t *testing.T) {

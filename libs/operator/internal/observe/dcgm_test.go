@@ -121,7 +121,7 @@ func TestScrapeFailsSoftly(t *testing.T) {
 	}
 }
 
-// TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass is the point of the change: the id
+// TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass is what the change is for: the id
 // the plane stores for a device must be the id the metrics store knows it by.
 func TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass(t *testing.T) {
 	node := gpuNode(fixtureNode, map[string]string{

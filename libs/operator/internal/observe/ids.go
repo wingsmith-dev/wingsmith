@@ -66,8 +66,8 @@ func ReplicaID(clusterID, namespace, name string) string {
 
 // AllocationID is the id this cluster gives one replica's hold on a set of accelerators.
 //
-// Keyed by the pod, not by the devices. Which cards a replica holds can change under it, a device
-// is reset, a card falls off the bus and the pod is rescheduled onto others, and keying on the set
+// Keyed by the pod, not by the devices. Which cards a replica holds can change under it (a device
+// is reset, a card falls off the bus and the pod is rescheduled onto others), and keying on the set
 // would make every such change a new allocation instead of a change to the one that exists. What
 // ends an allocation is the replica going away, so the replica's natural key is the allocation's.
 //

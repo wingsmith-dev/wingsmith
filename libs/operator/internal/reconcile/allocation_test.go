@@ -77,7 +77,7 @@ func TestAReplicaWithNoKnownBindingReportsNoAllocation(t *testing.T) {
 }
 
 // TestNoDeviceIndexReportsNoAllocations: a loop that cannot read the exporters does not know what
-// anything is holding, and must say nothing, not say zero.
+// anything is holding, and must say nothing instead of saying zero.
 func TestNoDeviceIndexReportsNoAllocations(t *testing.T) {
 	r := allocatingReconciler(nil)
 	out := r.rolloutFrom([]corev1.Pod{gpuPod("gemma-decode-0", "node-a")}, testDeploymentDesired(), 1, "", "")

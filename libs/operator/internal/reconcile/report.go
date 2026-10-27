@@ -22,7 +22,7 @@ const (
 
 // Reporter is the upward half of the reconcile loop: what this operator decided, sent to the hub.
 //
-// The same shape the observe loop's Sender has, and not the same object. The observer
+// The same shape the observe loop's Sender has, but a separate object by design. The observer
 // reports what the cluster is; this reports what the operator did about it, which is a different
 // fact with a different writer even though both travel the same stream.
 type Reporter interface {
@@ -47,7 +47,7 @@ const (
 	phaseDegraded = "degraded"
 	phaseRunning  = "running"
 	phaseFailed   = "failed"
-	// Reported only by teardown, and outside the plane's admission mapping: it
+	// Reported only by teardown, and outside the plane's admission mapping by design: it
 	// says what is running here and claims nothing about how far through the scheduler the
 	// deployment got, which is still true of a deployment that is merely paused.
 	phaseTerminating = "terminating"
@@ -110,11 +110,11 @@ type reportKey struct {
 // applies the same rule to nodes for the same reason (PROTOCOL §6): the stream is full-object and
 // at-least-once, so a repeat is not wrong, only wasteful.
 //
-// Only deployments are reported. An artifact has no observed counterpart, the cluster holds it,
-// it does not do anything with it, and a cache's residency is reported by the cache
+// Only deployments are reported. An artifact has no observed counterpart (the cluster holds it but
+// does not do anything with it), and a cache's residency is reported by the cache
 // path, from what is on disk, not from what a reconcile concluded.
 //
-// A failure to send is swallowed. The frame is a progress report, and losing one must
+// A failure to send is swallowed by design. The frame is a progress report, and losing one must
 // never turn a reconcile that otherwise succeeded into a retry: the next pass restates it, and the
 // next resync restates it whether or not anything changed.
 func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, reason, message string) {
@@ -136,7 +136,7 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 		return
 	}
 
-	// ReplicaIDs is left nil. This frame is a conclusion about a write and never
+	// ReplicaIDs is left nil by design. This frame is a conclusion about a write and never
 	// reads the pods, so it is not entitled to say which replicas exist; an empty set here
 	// would tell the plane to delete every replica of a deployment that is merely waiting.
 	r.send(reporter, id, wire.DeploymentObserved{
@@ -351,8 +351,8 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 		key.errorCode = payload.LastError.Code
 	}
 	// A frame that makes no claim about replicas inherits the last one's, so it compares on
-	// the fields it actually carries. Without this the two senders alternate, `report` with
-	// no set, `reportRollout` with one, each looks like news against the other's key, and the
+	// the fields it actually carries. Without this the two senders alternate (`report` with
+	// no set, `reportRollout` with one). Each looks like news against the other's key, and the
 	// pair re-sends on every pass forever, which is the exact loop the key exists to stop.
 	if payload.ReplicaIDs == nil {
 		key.replicas = r.lastReported(id).replicas
@@ -498,7 +498,7 @@ func (h *reportingHandler) Handle(ctx context.Context, e *syncpkg.Envelope) erro
 // Resync implements sync.Handler.
 //
 // Forgetting is not enough on its own and never was. It makes the next pass restate every
-// deployment this cluster still has, which repairs a stale value, but says nothing about a
+// deployment this cluster still has, which repairs a stale value but says nothing about a
 // deployment it no longer has, and that is the row the plane cannot otherwise collect. The
 // snapshot is the half that can shrink the plane's picture as well as correct it.
 func (h *reportingHandler) Resync(ctx context.Context) error {

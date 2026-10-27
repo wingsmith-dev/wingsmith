@@ -101,8 +101,8 @@ func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
 }
 
 // Detection is what enables multi-node, not the configured flag: a cluster that reports a
-// leader-worker backend renders one even though nothing set multinode.enabled. This is the whole
-// point of observing the capability: installing Grove is enough, on its own.
+// leader-worker backend renders one even though nothing set multinode.enabled. That is what
+// observing the capability is for: installing Grove is enough, on its own.
 func TestMultinodeIsEnabledByObservingABackend(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())

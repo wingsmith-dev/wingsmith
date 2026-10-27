@@ -110,9 +110,9 @@ func run() error {
 		return fmt.Errorf("build checkpoint client: %w", err)
 	}
 	// Discovery is how the observation loop learns whether a leader-worker backend is installed.
-	// Built here from the same rest config, not inside the discoverer so that a cluster
-	// this operator cannot even reach discovery on fails at startup, where it is visible, rather
-	// than degrading to "no multi-node backend" on every tick.
+	// Built here from the same rest config, not inside the discoverer, so that a cluster
+	// this operator cannot even reach discovery on fails at startup, where it is visible, and
+	// does not degrade to "no multi-node backend" on every tick.
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restCfg)
 	if err != nil {
 		return fmt.Errorf("build discovery client: %w", err)
@@ -202,8 +202,8 @@ func run() error {
 
 	observer.Bind(client)
 	executor.Bind(client)
-	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains,
-	// New starts it, but a SIGTERM would stop the process with steps still queued and nothing
+	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains
+	// (New starts it), but a SIGTERM would stop the process with steps still queued and nothing
 	// said about them, leaving the plane waiting for points on a curve this operator will never
 	// measure. Start makes the shutdown report them refused and retryable instead.
 	executor.Start(ctx)

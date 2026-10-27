@@ -76,7 +76,7 @@ type Frame struct {
 
 // Decode parses a frame and decodes its payload into the type registered for its Type.
 //
-// An unregistered type is an error the caller logs and drops, not treats as fatal, per
+// An unregistered type is an error the caller logs and drops instead of treating as fatal, per
 // PROTOCOL §2.
 func Decode(data []byte) (*Frame, error) {
 	var env Envelope

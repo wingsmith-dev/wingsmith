@@ -92,7 +92,7 @@ type Executor struct {
 
 	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
 	// scheduling conventions, and the endpoint the load is aimed at. Both are per-cluster facts
-	// the plane does not declare.
+	// the plane does not declare, by design.
 	Render    render.Options
 	Benchmark render.BenchmarkOptions
 
@@ -195,7 +195,7 @@ func (e *Executor) laneClosing() bool {
 
 // serve runs queued benchmarks one at a time, in the order they arrived.
 //
-// One worker and no more is the point. A ramp is a sequence of steps at rising concurrency,
+// One worker and no more is why the lane exists. A ramp is a sequence of steps at rising concurrency,
 // and steps that overlap measure each other: every point on the curve carries the load of every
 // other point, so the knee the ramp exists to find is not in the numbers at all. Every other kind
 // keeps its goroutine per operation: a drain waiting behind a twenty-minute benchmark would be a
@@ -235,8 +235,8 @@ func (e *Executor) abandon() {
 
 // serveOne runs one queued benchmark, unless it was cancelled while it waited.
 //
-// A step whose context went with the lane's was not cancelled by anybody, the operator is
-// stopping, and saying so is the difference between a step that can be asked for again and one
+// A step whose context went with the lane's was not cancelled by anybody (the operator is
+// stopping), and saying so is the difference between a step that can be asked for again and one
 // somebody has to work out was never really refused.
 func (e *Executor) serveOne(work queued) {
 	if work.ctx.Err() == nil {
@@ -428,8 +428,8 @@ func (e *Executor) remember(id string, frame wire.OperationObserved) {
 // claim reports whether this operation is ours to start.
 //
 // The stream is at-least-once, so the same operation arrives again after any resume. Running a
-// drain twice concurrently is not idempotent in the way re-applying declared state is, the second
-// pass would report progress against evictions the first is still making, so a replay of
+// drain twice concurrently is not idempotent in the way re-applying declared state is: the second
+// pass would report progress against evictions the first is still making. So a replay of
 // something already in flight is dropped, not started.
 func (e *Executor) claim(id string) bool {
 	e.mu.Lock()
@@ -469,7 +469,7 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 	case err != nil && ctx.Err() == context.Canceled:
 		// The work did not fail; it was stopped. Reported as an ordinary execution failure it
 		// would read as a measurement this cluster cannot make, and a ramp step nobody asks
-		// for again, so it carries the reason it was stopped for, and whether asking again
+		// for again. So it carries the reason it was stopped for, and whether asking again
 		// is worth anything.
 		code, retryable := "cancelled", false
 		reason := fmt.Errorf("the operation was cancelled while it ran")
@@ -795,8 +795,8 @@ func (e *Executor) evict(ctx context.Context, pod *corev1.Pod, grace int) error 
 // node resolves an operation's target to the node it names.
 //
 // Observed ids are one-way derivations of a natural key (ADR 0002), so the way back is to re-mint
-// the id for every node and look for the match. Deriving instead of storing is the point of
-// that decision: there is no side table to disagree with the cluster, and a restarted operator
+// the id for every node and look for the match. Deriving instead of storing is what
+// that decision buys: there is no side table to disagree with the cluster, and a restarted operator
 // resolves the same id to the same node.
 func (e *Executor) node(ctx context.Context, target wire.OperationTarget) (*corev1.Node, error) {
 	if target.Kind != "node" {
@@ -889,8 +889,8 @@ func succeeded(op wire.OperationDesired, started, completed time.Time, result ma
 // failed reports a conclusion, not a request to try again.
 //
 // Retryable is false for everything this executor gives up on. Whether a drain that hit a
-// disruption budget should be retried is a decision about the fleet, another cluster may have
-// taken the load by now, or the maintenance window may have closed, and that decision belongs
+// disruption budget should be retried is a decision about the fleet (another cluster may have
+// taken the load by now, or the maintenance window may have closed), and that decision belongs
 // where the fleet is visible, which is not here.
 func failed(op wire.OperationDesired, started, completed time.Time, result map[string]string, err error) wire.OperationObserved {
 	return wire.OperationObserved{
@@ -924,7 +924,7 @@ func refused(op wire.OperationDesired, when time.Time, code string, retryable bo
 
 // stopped is a conclusion reached because this operator ended the work, not because the work
 // ended. It keeps StartedAt and whatever the operation had measured so far, because the run did
-// begin: the difference from `refused`, which reports something that never started at all.
+// begin. That is the difference from `refused`, which reports something that never started at all.
 func stopped(op wire.OperationDesired, started, completed time.Time, result map[string]string, code string, retryable bool, err error) wire.OperationObserved {
 	return wire.OperationObserved{
 		OperationID: op.OperationID,

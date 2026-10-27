@@ -11,7 +11,7 @@ import (
 )
 
 // desiredTypes are the hub -> operator frames that declare state this store keeps a durable local
-// copy of, and prunes against a snapshot. Operations are absent: an operation is
+// copy of, and prunes against a snapshot. Operations are left out by design: an operation is
 // imperative and failable, not a declaration, and pruning one because a snapshot omitted it would
 // cancel work that is still running.
 var desiredTypes = map[syncpkg.MessageType]struct{}{

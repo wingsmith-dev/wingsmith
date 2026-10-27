@@ -59,7 +59,7 @@ type rollout struct {
 	// than it asked for, even where the totals happen to add up.
 	//
 	// Separate from the counts because the totals cannot express it. Two ready decode workers
-	// and no prefill in a 1P:2D group is two of three; a shortfall that reads as degraded and
+	// and no prefill in a 1P:2D group is two of three: a shortfall that reads as degraded and
 	// would be expected to resolve itself, where in fact nothing is serving at all and the
 	// arithmetic is what hides it. Always false for an aggregated deployment, which has one
 	// role and for which `ready < desired` already says everything.
@@ -165,7 +165,7 @@ func (r rollout) message() string {
 // A disaggregated deployment is counted per role and the roles are summed. An uncounted role is a
 // role that can be entirely absent while the deployment reports every replica ready.
 //
-// Per role and not in aggregate, and the difference is the point. A 1P:2D group with two
+// Per role and not in aggregate, because the difference matters. A 1P:2D group with two
 // ready decode workers and no prefill has two of three workers ready: a shortfall, which reads
 // as degraded and would resolve on its own if it were one. It is not one: nothing is serving,
 // because a decode worker with no prefill peer has nothing to decode from. So `rolesShort` is
@@ -225,14 +225,14 @@ func (r *SyncedResourceReconciler) observeRollout(
 // frontendTrouble is why this deployment's own frontend is not serving.
 //
 // It exists because nothing else in this operator would ever say so. `diagnose` is called only on
-// a shortfall of ready workers, and the frontend is not one of those, so a cluster
+// a shortfall of ready workers, and the frontend is by design not one of those, so a cluster
 // rendering one frontend per model can have every worker ready, every count complete, and a
 // frontend that never started, and the plane is told `running · Serving` for a deployment the
 // agent cannot route to. That is the same silence the renderer's overlay refusal exists to stop,
 // one layer further on: there the frontend is deleted before it is applied, here it is applied and
 // never comes up, and both leave a healthy-looking deployment reachable by nothing.
 //
-// A frontend image is not always NVIDIA's, a patched build can live in a private registry, and
+// A frontend image is not always NVIDIA's (a patched build can live in a private registry), and
 // a private pull with no credential in the workload namespace is an ImagePullBackOff for ever, on
 // a pod nothing else here reads.
 //
@@ -316,8 +316,8 @@ func (r *SyncedResourceReconciler) frontendState(
 // Same fact as `observeRollout` and a different way of finding it, because the link this operator
 // relies on for its own objects does not exist here. `observeRollout` selects on the graph
 // deployment name Dynamo stamps on the pods it derives, which only holds for a workload this
-// operator rendered. An adopted object is whatever was already running, a plain Deployment or
-// StatefulSet, put there by something that never heard of this operator, so the only selector
+// operator rendered. An adopted object is whatever was already running (a plain Deployment or
+// StatefulSet, put there by something that never heard of this operator), so the only selector
 // guaranteed to find its pods is the one the object carries itself.
 //
 // Reading it is what makes an adopted deployment visible at all: nothing else on the adopted path
@@ -452,8 +452,8 @@ func replicaCount(replicas *int32) int {
 // rolloutFrom turns a set of pods into the counts and replica frames the plane is sent.
 //
 // Shared by the rendered and the adopted paths, which disagree only on how the pods were found and
-// on whether there is a serving block behind them. Everything after that, what counts as ready, what a
-// terminating pod does to the totals, how a pod maps onto the replica enum, is one rule, and
+// on whether there is a serving block behind them. Everything after that (what counts as ready,
+// what a terminating pod does to the totals, how a pod maps onto the replica enum) is one rule, and
 // keeping it one function is what stops the adopted path from drifting into a second answer.
 func (r *SyncedResourceReconciler) rolloutFrom(
 	pods []corev1.Pod,
@@ -548,8 +548,8 @@ func podReady(pod *corev1.Pod) bool {
 // gigabytes of weights into VRAM, and reporting it as ready would tell the plane a replica is
 // serving when nothing can reach it yet.
 //
-// The enum is the contract's, `pending | starting | ready | draining | terminated | failed`
-// (MESSAGES.md), and not Kubernetes'. They overlap enough to be mistaken for each other and
+// The enum is the contract's (`pending | starting | ready | draining | terminated | failed`
+// in MESSAGES.md) and not Kubernetes'. They overlap enough to be mistaken for each other and
 // disagree on the two that matter: a pod's `Running` is the contract's `ready`, and a pod's
 // `Succeeded` is the contract's `terminated`. Emitting the Kubernetes spelling had the plane
 // reject every replica frame from this loop as an invalid enum value.

@@ -14,7 +14,7 @@
 //   - Recording is ordered after applying. A crash between the two therefore loses the record,
 //     not the application: the operator resumes slightly behind and the hub replays frames that
 //     were already applied. That direction is the safe one because applying desired state is
-//     idempotent and re-applying converges, whereas the opposite failure, recording first,
+//     idempotent and re-applying converges, whereas the opposite order (recording first)
 //     would silently skip a frame and leave the cluster permanently wrong with no signal.
 package checkpoint
 

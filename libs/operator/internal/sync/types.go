@@ -49,7 +49,7 @@ const (
 // time, so a newer one does not supersede an older one.
 const eventSuffix = ".event"
 
-// isEvent reports whether a frame is an event, which the send queue drops, not replaces.
+// isEvent reports whether a frame is an event, which the send queue drops instead of replacing.
 func isEvent(t MessageType) bool { return strings.HasSuffix(t, eventSuffix) }
 
 // timestampLayout is the only accepted timestamp form on the wire: RFC 3339, UTC, milliseconds.

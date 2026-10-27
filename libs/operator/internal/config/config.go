@@ -396,7 +396,7 @@ func (c *Config) validate() error {
 	}
 	// Zero would render a frontend that exists and serves nothing, which is a deployment
 	// reachable by nothing and healthy in every reading of it. Turning the frontend off is
-	// HANGAR_FRONTEND_ENABLED and not a replica count, so say so, not quietly substitute
+	// HANGAR_FRONTEND_ENABLED and not a replica count, so say so instead of quietly substituting
 	// the default for what somebody wrote.
 	if c.FrontendEnabled && c.FrontendReplicas < 1 {
 		return fmt.Errorf("HANGAR_FRONTEND_REPLICAS must be at least 1; set HANGAR_FRONTEND_ENABLED=false to render no frontend")

@@ -39,7 +39,7 @@ func (t *tee) Handle(ctx context.Context, e *syncpkg.Envelope) error {
 
 // Resync implements sync.Handler.
 //
-// Nothing happens here. A fresh session means the hub could not honour the resume
+// Nothing happens here, by design. A fresh session means the hub could not honour the resume
 // point, so declared state is re-sent whole, but an operation already running in this process is
 // unaffected by that, and cancelling it to await a re-send would abandon work half-done for the
 // sake of a protocol event that says nothing about it.

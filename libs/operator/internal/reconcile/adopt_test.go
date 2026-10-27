@@ -264,8 +264,8 @@ func TestAnAdoptedRolloutCountsOnlyReadyPods(t *testing.T) {
 	}
 }
 
-// TestAnAdoptedWorkloadIsRequeued: neither watch can wake an adopted object, it carries none of
-// the owner labels `declaredFor` maps back from, so without a requeue the fingerprint check runs
+// TestAnAdoptedWorkloadIsRequeued: neither watch can wake an adopted object (it carries none of
+// the owner labels `declaredFor` maps back from), so without a requeue the fingerprint check runs
 // once at startup and a workload that drifts afterwards is never noticed.
 func TestAnAdoptedWorkloadIsRequeued(t *testing.T) {
 	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 1)

@@ -32,7 +32,7 @@ const benchmarkPoll = 5 * time.Second
 const logTailCap = 64 * 1024
 
 // tailBytes returns the last n bytes of s, snapped to a newline so the first visible line is
-// whole. Empty input returns empty instead of a sentinel, the field is omitempty on the wire.
+// whole. Empty input returns empty instead of a sentinel, as the field is omitempty on the wire.
 func tailBytes(s string, n int) string {
 	if len(s) <= n {
 		return s

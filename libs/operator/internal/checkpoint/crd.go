@@ -79,7 +79,7 @@ func (s *CRDStore) Load(ctx context.Context) (State, error) {
 }
 
 // Save validates the advance and writes it. The write is a full read-modify-write against the
-// live object so that a second writer, a stray operator replica, collides on resourceVersion
+// live object so that a second writer (a stray operator replica) collides on resourceVersion
 // instead of silently overwriting a further-ahead cursor.
 func (s *CRDStore) Save(ctx context.Context, next State) error {
 	s.mu.Lock()

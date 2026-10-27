@@ -39,8 +39,8 @@ const (
 
 // What one download asks the scheduler for, when the cluster does not say.
 //
-// Small. Pulling weights is bound by the link and by the write to the shared volume,
-// not by cores, and the earlier figures, four CPUs and eight gigabytes, were large enough that
+// Small by design. Pulling weights is bound by the link and by the write to the shared volume,
+// not by cores, and the earlier figures (four CPUs and eight gigabytes) were large enough that
 // the job could not be placed on an ordinary node at all. A cluster with a dedicated cache pool
 // can raise them; a cluster running this beside its system workloads should not have to.
 // The ceiling is not derived from the request. What a download needs reserved and
@@ -71,16 +71,16 @@ const minModelSegment = 4
 // progressScript prints one line of download progress on a timer, and is prepended to every fetch
 // strategy so that a running job says something before it is finished.
 //
-// A line instead of a bar. HF_HUB_DISABLE_PROGRESS_BARS stays set for the reason it was set, a
+// A line instead of a bar. HF_HUB_DISABLE_PROGRESS_BARS stays set for the reason it was set (a
 // carriage-returned bar renders in `kubectl logs` as thousands of lines that bury the one worth
-// reading, but the job that resulted said nothing at all for the forty minutes of a large pull,
+// reading), but the job that resulted said nothing at all for the forty minutes of a large pull,
 // and a silent job is indistinguishable from a stuck one. That question, not the byte count, is
 // what somebody tailing the log is actually asking.
 //
 // Bytes are measured on disk under the directory the fetch writes into, not taken from a
 // hook inside the client library: it is the same number the volume will hold at the end, one
 // implementation serves both strategies, and it costs a directory walk every interval instead of a
-// dependency on huggingface_hub's internals. lstat, not stat because a HuggingFace snapshot
+// dependency on huggingface_hub's internals. lstat, not stat, because a HuggingFace snapshot
 // is symlinks into a blob store under the same root, and following them would count every file
 // twice.
 //
@@ -116,8 +116,8 @@ def _watch(path):
 //
 // Progress is watched on the repo's own directory under the hub cache and not on HF_HOME, because
 // HF_HOME is the shared volume every artifact lands in: two warm-set entries fetch at once, and a
-// count over the root would report each job the other's bytes. The path is reconstructed rather
-// than asked for, since snapshot_download only returns it once there is nothing left to report.
+// count over the root would report each job the other's bytes. The path is reconstructed, not
+// asked for, since snapshot_download only returns it once there is nothing left to report.
 const hfScript = progressScript + `from huggingface_hub import snapshot_download
 try:
     from huggingface_hub.constants import HF_HUB_CACHE as hub
@@ -171,9 +171,9 @@ print("cached at", dest, flush=True)
 // cluster's warm-set, so an artifact is fetched because it should be present here, whether or
 // not anything serves it yet. A second deployment of the same weights then costs nothing and reads
 // residency as a precondition instead of doing the work again. The image is passed in, not
-// derived because it must be the same runtime image the workers run, a different huggingface_hub
+// derived, because it must be the same runtime image the workers run: a different huggingface_hub
 // version lays the cache out differently and the workers would silently re-download what this job
-// just fetched, and that is the caller's fact to know, not this function's.
+// just fetched. That is the caller's fact to know, not this function's.
 func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1.Job, error) {
 	if image == "" {
 		return nil, fmt.Errorf("artifact %s has no image to fetch with", art.ArtifactID)
@@ -202,8 +202,8 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 			Annotations: prefetchAnnotations(art),
 		},
 		Spec: batchv1.JobSpec{
-			// A failed pull is nearly always transient, a rate limit or a dropped
-			// connection, so it retries instead of waiting for a human.
+			// A failed pull is nearly always transient (a rate limit or a dropped
+			// connection), so it retries instead of waiting for a human.
 			BackoffLimit: ptr(int32(3)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -213,8 +213,8 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyOnFailure,
 					// The same credential the workers pull with. This job runs the
-					// engine image by design, it must lay the cache out the way the
-					// workers read it, so a private engine image is private here too,
+					// engine image by design (it must lay the cache out the way the
+					// workers read it), so a private engine image is private here too,
 					// and without this the download fails on the pull with no clue
 					// that the credential exists one namespace over.
 					ImagePullSecrets:             imagePullSecrets(opts.EnginePullSecrets),
@@ -362,10 +362,10 @@ func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 //
 // Keyed on the artifact id instead of the deployment, because the download is per set of
 // weights: two deployments over one artifact want the same job, and the second reconcile must find
-// the first one's, not start a competing pull.
+// the first one's instead of starting a competing pull.
 //
-// The model leads the name only so that a `kubectl get jobs` reads as who is downloading rather
-// than as a list of opaque ids. It is decoration in front of the key, not part of it, which is why
+// The model leads the name only so that a `kubectl get jobs` reads as who is downloading and
+// not as a list of opaque ids. It is decoration in front of the key, not part of it, which is why
 // the truncation cuts the model and never the id when 63 bytes bite, and why an artifact whose
 // sources name no model keeps the bare `prefetch-<id>` shape instead of growing a placeholder.
 //
@@ -420,7 +420,7 @@ func PrefetchAttemptName(art wire.ArtifactDesired, attempt int) string {
 // name into the pod's selector labels too: a difference the API server would then reject on any
 // later apply of an immutable template.
 //
-// The model is a label, not only a name segment because a label survives what a name cannot:
+// The model is a label, not only a name segment, because a label survives what a name cannot:
 // it is present in full on an artifact whose slug was truncated out of the name, and `kubectl get
 // jobs -L hangar.dev/model` reads it back without parsing anything.
 func prefetchLabels(art wire.ArtifactDesired) map[string]string {
