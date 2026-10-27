@@ -9,8 +9,8 @@ Two profiles matter to us and the difference is a safety question:
 - `kind=concurrent` with `--override 'profile.streams' 1,2,4,8` runs one benchmark
   per rung of a ladder we chose. Bounded, predictable, safe against a live endpoint.
 - `kind=sweep,sweep_size=N` self-calibrates instead: benchmark 1 is serial,
-  benchmark 2 is `throughput` — deliberately unbounded, `max_concurrency` defaulting
-  to 512 — and the remaining rates are `linspace` between the two rates *this*
+  benchmark 2 is `throughput`, unbounded, `max_concurrency` defaulting
+  to 512, and the remaining rates are `linspace` between the two rates *this*
   server actually achieved. It adapts per model, which is genuinely better data, and
   its second leg is an overload by construction. No plan key reaches it: only the
   explicit ladder is wired, and wiring the sweep would need its own `--hard` gate and
@@ -21,17 +21,17 @@ The CLI was rewritten in 0.7. `guidellm benchmark` does not exist, and neither d
 setting is a composite `--<group> kind=<name>,key=value`. Anything written against
 the older surface fails outright, which is at least a loud failure.
 
-Three traps are handled here rather than discovered again:
+Three traps are handled here, not discovered again:
 
 - `validate_backend` defaults to true and issues `GET /health` with
   `raise_for_status`. Our gateway answers 400 there with a token and 401 without,
-  so the default aborts every run with a message about not being able to connect —
+  so the default aborts every run with a message about not being able to connect,
   which reads like a network fault and is not one.
 - `--constraint kind=max_requests,count=N` is **per benchmark**, not per run. A
   four-rung ladder with `count=20` sends 80 requests.
 - There is no header flag and no environment variable for the key. `api_key=` is
   the only route, so the run goes through a shell inside the container and the
-  token is expanded there — never in our argv.
+  token is expanded there, never in our argv.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ EXPORT = "benchmarks.json"
 def command(cell: Cell, ctx: Context) -> Invocation:
     """One GuideLLM run at one operating point.
 
-    A single point rather than a ladder, so that this harness sits in the same
+    A single point instead of a ladder, so that this harness sits in the same
     matrix as the other two and the comparison at a given concurrency is a
     comparison. The ladder-in-one-process mode is what `sweep_command` is for.
 
@@ -87,11 +87,11 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
     """One run that walks a concurrency ladder, one benchmark per rung.
 
     This is GuideLLM earning its place: N load points, one process, one file, one
-    tokenizer load, and the endpoint sees a single continuous client rather than N
+    tokenizer load, and the endpoint sees a single continuous client, not N
     cold starts. The rungs are ours, so nothing here overloads by design.
 
-    The request budget is per rung, not per run — `max_requests` is a per-benchmark
-    constraint — so a four-rung ladder at 20 requests sends 80. Stating it here
+    The request budget is per rung, not per run, `max_requests` is a per-benchmark
+    constraint, so a four-rung ladder at 20 requests sends 80. Stating it here
     because the arithmetic is the difference between a polite suite and a surprise.
     """
     rungs = ",".join(str(rung) for rung in spec.ladder)
@@ -176,7 +176,7 @@ def _strategy(benchmark: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 def read(cell: Cell, ctx: Context) -> list[Emission]:
     """Every benchmark in the file, one emission each.
 
-    The load point is read from what the harness recorded rather than from what the
+    The load point is read from what the harness recorded, not from what the
     cell asked for. In a ladder or a sweep they are not the same thing, and in a
     sweep the rate was chosen by the tool at runtime.
     """
@@ -220,7 +220,7 @@ HARNESS = Harness(
     sweep_read=sweep_read,
     notes=(
         "Its `sweep` profile self-calibrates between the serial and the saturated rate, and its "
-        "second leg is a deliberate overload — hence the explicit ladder by default.",
+        "second leg is a deliberate overload, hence the explicit ladder by default.",
         "Reads only the `successful` split of every metric, so a latency here never averages in "
         "the requests that failed.",
     ),

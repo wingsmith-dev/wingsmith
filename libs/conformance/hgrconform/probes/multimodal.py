@@ -1,12 +1,12 @@
 """Multimodal input: whether an image content part is accepted, and whether it is understood.
 
-The image is built here rather than read from a fixture, so that the probe carries no
+The image is built here, not read from a fixture, so that the probe carries no
 state a run could lose and no file two endpoints could be given different versions of.
 A solid-colour PNG is enough: the question is whether the endpoint
 looked at the pixels, and a colour is the smallest answer that cannot be produced by
 guessing from the prompt alone.
 
-The audio and video probes ask a smaller question on purpose. Transcription quality is
+The audio and video probes ask a smaller question. Transcription quality is
 not comparable between two endpoints without a corpus; what is comparable is whether the
 content part is routed at all, and what the endpoint says when it declines. So a single
 malformed part goes in, and the status and the error shape come out. What a real clip
@@ -87,12 +87,12 @@ def _error_shape(response: Any) -> dict[str, Any]:
 # and dislikes four zero bytes both answer 400, the statuses match, and the run
 # reports agreement between an endpoint that can serve video and one that cannot.
 # What separates them is *why* they declined, and that is observable without
-# shipping a real video as a fixture — which is the other reason to do it this way,
+# shipping a real video as a fixture, which is the other reason to do it this way,
 # since a fixture is state a run can lose and two endpoints can be given different
 # versions of.
 #
 # These are message shapes, not vendor branches: no needle names a vendor, and an
-# endpoint matching none of them collapses to `other` rather than being guessed at.
+# endpoint matching none of them collapses to `other` instead of being guessed at.
 CAPPED = ("at most 0", "may be provided", "limit_mm", "limit-mm", "not enabled", "does not support")
 PAYLOAD = ("invalid", "prepare", "decode", "corrupt", "unsupported", "failed to load", "truncated")
 UNKNOWN_PART = ("deserialize", "did not match any variant", "unknown variant", "unexpected field")
@@ -103,7 +103,7 @@ def _refusal_kind(response: Any) -> str:
 
     `modality_capped` is the endpoint saying it was configured to accept none of this
     modality; `payload_rejected` is the endpoint saying it tried and the bytes were
-    bad — which is proof that a route exists. Those two are the whole finding, and a
+    bad, which is proof that a route exists. Those two are the whole finding, and a
     status code cannot tell them apart.
     """
     if response.ok:
@@ -134,10 +134,10 @@ def image(session: Session) -> dict[str, Any]:
 
     `status` answers whether the content-part shape was accepted; `colour_recognised`
     answers whether the pixels reached the model. Only the first is compared. Whether
-    the model named the colour is one sample of its judgement, and two honest runs of
+    the model named the colour is one sample of its judgement, and two correct runs of
     one model disagree on a single sample often enough that a diff on it reports
     noise; it is kept as evidence for a person reading the run. The recognition test
-    matches a family of words rather than one, so the evidence is about whether the
+    matches a family of words instead of one, so the evidence is about whether the
     image arrived and not which synonym the model reached for.
     """
     body = session.body(
@@ -179,9 +179,9 @@ def image(session: Session) -> dict[str, Any]:
 def audio(session: Session) -> dict[str, Any]:
     """What the endpoint does with `input_audio`, not what it hears.
 
-    The payload is deliberately not a real recording. An endpoint that has no audio
+    The payload is not a real recording. An endpoint that has no audio
     route rejects the part before decoding it, and an endpoint that has one rejects the
-    data instead — those are different statuses and different error types, which is the
+    data instead: those are different statuses and different error types, which is the
     whole observation.
     """
     body = session.body(
@@ -255,7 +255,7 @@ REMOTE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transpar
 @probe(
     id="multimodal.remote_url",
     title="Whether a content part may name a URL the endpoint has to fetch",
-    requirement="Image input by URL rather than by value",
+    requirement="Image input by URL, not by value",
     compare=("status", "refusal_kind", "error_shape", "error_type"),
     requires=("image",),
 )
@@ -263,16 +263,16 @@ def remote_url(session: Session) -> dict[str, Any]:
     """The same image part as `multimodal.image`, by reference instead of by value.
 
     Two endpoints can both accept images and disagree completely here, because
-    fetching a URL the caller chose is an egress decision rather than a modelling one
-    — the endpoint becomes an HTTP client pointed at an address a stranger supplied.
+    fetching a URL the caller chose is an egress decision instead of a modelling one:
+    the endpoint becomes an HTTP client pointed at an address a stranger supplied.
     Declining is a legitimate answer and the common one. What a consistency
     requirement reaches is the *manner* of declining, so the status and
     the refusal kind are compared and the message is not: a caller migrating between
     two endpoints writes their retry against a status code.
 
-    The URL is deliberately a stable one on a third-party host. A probe that served
+    The URL is a stable one on a third-party host. A probe that served
     the image from somewhere we control would be measuring our own egress rules
-    rather than the endpoint's.
+    instead of the endpoint's.
     """
     body = session.body(
         max_tokens=16,

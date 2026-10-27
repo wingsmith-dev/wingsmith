@@ -2,12 +2,12 @@
 
 A probe is four things: an id, what it checks in plain words, the keys on which its
 observation is compared against a reference endpoint, and a function that takes a
-session and returns a flat dictionary of what it saw. Nothing else — no assertion,
+session and returns a flat dictionary of what it saw. Nothing else: no assertion,
 no threshold, no opinion about where results go.
 
 The `requires` field is the only place a probe may decline to run. It names a
 capability the profile must claim, so that an endpoint which never promised audio
-input is recorded as `skipped` rather than as a failure, and so that a diff against
+input is recorded as `skipped`, not as a failure, and so that a diff against
 a reference does not report a difference between two things neither side supports.
 """
 
@@ -26,7 +26,7 @@ class Skip(Exception):
     """Raised by a probe that cannot ask its question against this profile.
 
     A skip is not a failure and not a pass. It is the runner recording that the
-    question did not apply — the profile claims no audio input, or declares no
+    question did not apply: the profile claims no audio input, or declares no
     context window for the overflow probe to overshoot. Comparison treats two skips
     as agreement and a skip against an observation as a difference, which is right:
     if the original provider answers a question ours declines, that is the finding.
@@ -127,7 +127,7 @@ _LOADED = False
 def load() -> None:
     """Import every module in this package, which is what puts its probes in the registry.
 
-    Discovered rather than listed. A hardcoded import list is one file that every
+    Discovered, not listed. A hardcoded import list is one file that every
     new probe has to edit, which makes adding probes in parallel a merge conflict
     and makes forgetting one a probe that silently never runs.
     """

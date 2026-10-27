@@ -4,7 +4,7 @@ A harness's result is stored exactly as the tool emitted it, and normalisation
 happens only through an explicit map that says *for this harness, between these
 versions, the P90 time-to-first-token is at this path, in these units*. No fuzzy
 search, no shared output schema, and a path that does not resolve is a named miss
-rather than a silent zero.
+instead of a silent zero.
 
 The plane's benchmarks module reads AIPerf with the same idea, in
 `libs/plane/app/modules/benchmarks/summaries.py`. The two are separate copies on
@@ -22,7 +22,7 @@ contract, and nothing but review keeps the two copies to it:
 
 `tests/test_metrics.py` pins the paths read here against a fixture of each
 harness's export, two of them captured from AIPerf itself, so a drift on this side
-fails a test rather than a chart. Nothing pins the plane's copy from here.
+fails a test instead of a chart. Nothing pins the plane's copy from here.
 
 Three facts about these three harnesses make the map non-trivial, and each is why
 `Field` carries what it carries:
@@ -34,14 +34,14 @@ Three facts about these three harnesses make the map non-trivial, and each is wh
   failed. Its `error_summary` beside it is a list of error *types*, so its length
   is not a request count. `absent` says what a missing path means for a field that
   a harness leaves out when it is zero.
-- Each harness splits its metrics differently — GuideLLM by outcome
+- Each harness splits its metrics differently: GuideLLM by outcome
   (successful/errored/incomplete/total), vLLM by percentile in a flat key. Reading
   GuideLLM's `.total` where we meant `.successful` would quietly mix failed
   requests into a latency figure, so every path here names `.successful`.
 
 `DERIVED` is the deliberate exception to path-reading. Two numbers that matter for
-a load curve are not in every export — per-stream output speed, and the input
-length actually achieved — and computing them from two fields that *are* there
+a load curve are not in every export, per-stream output speed, and the input
+length actually achieved, and computing them from two fields that *are* there
 beats leaving a hole in the comparison. A derived value is recorded as derived and
 the report labels it, because a computed number and a measured one are not the
 same claim.
@@ -66,9 +66,9 @@ SECONDS_TO_MS = 1000.0
 class Field(NamedTuple):
     """One number an adapter knows how to find, and what it is measured in.
 
-    `absent` is the value of a field the harness omits rather than reports as
+    `absent` is the value of a field the harness omits, not reports as
     zero. It applies only when the export itself is an object, so an unreadable
-    export still reads as a miss rather than as zero failures.
+    export still reads as a miss, not as zero failures.
     """
 
     id: str
@@ -83,7 +83,7 @@ class Adapter(NamedTuple):
 
     `max_version` is exclusive and `None` means open-ended. A run whose version
     falls outside every range for its harness is not read with a map written for a
-    different one — the readings are missing, which is the whole reason the range
+    different one: the readings are missing, which is the whole reason the range
     is recorded.
     """
 
@@ -210,7 +210,7 @@ AIPERF_0_4 = Adapter(
     ),
 )
 """AIPerf's export. Every statistic hangs off the metric name as a sibling of `avg`,
-including the ones that only have an `avg` — `request_throughput` is a rate over the
+including the ones that only have an `avg`: `request_throughput` is a rate over the
 whole run and has no percentiles, so reading `avg` there reads the only number there
 is. Failures are `error_summary`, a list, hence the one `length` field in the table.
 """
@@ -239,7 +239,7 @@ VLLM_BENCH_0_28 = Adapter(
 )
 """`vllm bench serve`'s flat JSON: one level, keys built as `{stat}_{metric}_ms`.
 
-Which of them exist is a function of the flags — `--percentile-metrics` decides
+Which of them exist is a function of the flags: `--percentile-metrics` decides
 whether `e2el` appears at all and `--metric-percentiles` decides which percentiles
 do. The runner always passes both explicitly, so this map is not aspirational; a
 hand-run export made without them will show these ids as missing, which is the
@@ -282,10 +282,10 @@ GUIDELLM_0_7 = Adapter(
 
 Every timing is split four ways by outcome and this map always takes `successful`,
 so a run with failures reports a latency for the requests that worked and a
-non-zero `request.errors` beside it, rather than one number that silently averages
+non-zero `request.errors` beside it, instead of one number that silently averages
 the two. `request_latency` is the one field in seconds; `scale` is why the id still
 means milliseconds. The version range closes at 0.8.0 because 0.7 was itself a
-rewrite of the CLI and the result schema carries a `metadata.version` of its own —
+rewrite of the CLI and the result schema carries a `metadata.version` of its own:
 the next such rewrite should be a new entry here, not a surprise in a chart.
 """
 
@@ -293,7 +293,7 @@ the next such rewrite should be a new entry here, not a surprise in a chart.
 VLLM_SWEEP_0_28 = VLLM_BENCH_0_28._replace(harness="vllm-sweep")
 """The sweep writes `vllm bench serve`'s own result files, one per combination.
 
-A separate entry rather than an alias because `harness` is half of what makes two
+A separate entry instead of an alias because `harness` is half of what makes two
 runs comparable: the sweep injects its own flags into the bench command, so a
 number from it and a number from a hand-driven `vllm-bench` cell were produced
 under different conditions even though the file format is identical.
@@ -308,9 +308,9 @@ ADAPTERS: dict[str, tuple[Adapter, ...]] = {
 }
 """Every harness the local runner can read.
 
-A harness with no entry still runs and its raw export is still stored — it just
+A harness with no entry still runs and its raw export is still stored: it just
 contributes nothing to the cross-harness comparison, and the report says so by
-name rather than by omission.
+name, not by omission.
 """
 
 
@@ -331,14 +331,14 @@ DERIVED: dict[str, Formula] = {
 
 Applied only when the direct path is missing, and recorded as derived so the report
 can mark the number. Per-stream output speed is the one that matters most for a
-load curve — it is what a single caller feels as the deployment fills up, and the
+load curve: it is what a single caller feels as the deployment fills up, and the
 aggregate throughput it is so easily confused with rises while it falls.
 
 `1000 / itl.avg` is the decode rate one stream sustains between tokens. It is not
 identical to AIPerf's measured `output_token_throughput_per_user`, which divides a
 request's output tokens by its whole duration and so carries the prefill wait. The
 two agree to a few percent at long output lengths and diverge at short ones; the
-report labels the derived one rather than pretending they are the same measurement.
+report labels the derived one instead of pretending they are the same measurement.
 """
 
 _TOTALS: dict[str, str] = {
@@ -348,9 +348,9 @@ _TOTALS: dict[str, str] = {
 """Harness keys holding a run total where we want a per-request mean.
 
 Only `vllm-bench` needs this, and its own gotcha is the reason to bother: the
-random dataset's realised input length exceeds what was asked for, so the honest
+random dataset's realised input length exceeds what was asked for, so the accurate
 input length for a cross-harness comparison is the one it reports having sent,
-divided by the requests that completed — never the flag value.
+divided by the requests that completed, never the flag value.
 """
 
 
@@ -404,7 +404,7 @@ def read(harness: str, version: str, summary: Any) -> dict[str, Reading]:
     """Every canonical field this harness's export can answer, resolved.
 
     A field the map declares but the export does not hold is present in the result
-    with a `missing` path rather than absent, so a report can say which harness
+    with a `missing` path, not absent, so a report can say which harness
     could not answer which question instead of quietly comparing a subset.
     """
     adapter = adapter_for(harness, version)
@@ -426,7 +426,7 @@ def derive(summary: Any, readings: dict[str, float]) -> dict[str, tuple[float, s
     """Fields computed from other fields, for the harnesses that do not report them.
 
     Returns `{field id: (value, how)}`, where `how` is the formula, so the caller
-    records what it did rather than presenting a computed number as a measured one.
+    records what it did instead of presenting a computed number as a measured one.
     Never overwrites a direct reading.
     """
     out: dict[str, tuple[float, str]] = {}

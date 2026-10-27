@@ -7,9 +7,9 @@ conformance run. So the burst is small, fixed, and made of the cheapest requests
 profile allows.
 
 Nothing counted here is comparable except as a shape. Which requests succeeded, how
-many, and how fast, all differ between two honest runs against one endpoint. What
+many, and how fast, all differ between two correct runs against one endpoint. What
 does not differ is whether the endpoint throttles at all, which rate-limit headers it
-publishes, and whether it says when to retry — so those are what the diff sees, and
+publishes, and whether it says when to retry, so those are what the diff sees, and
 the rest is evidence.
 """
 
@@ -45,8 +45,8 @@ def _rate_limit_headers(headers: dict[str, str]) -> list[str]:
 def _status_classes(statuses: list[int]) -> list[str]:
     """The kinds of answer the burst met, not the codes themselves.
 
-    An exact code set drifts for reasons that are not policy — one run catches a
-    transient 503, another a 502 from a proxy in front of the same endpoint — and a
+    An exact code set drifts for reasons that are not policy, one run catches a
+    transient 503, another a 502 from a proxy in front of the same endpoint, and a
     diff on that is noise. Whether the burst met success, refusal, or server error
     is the comparable answer; the raw codes stay in `observed` as evidence.
     """

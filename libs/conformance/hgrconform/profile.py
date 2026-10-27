@@ -2,11 +2,11 @@
 
 Every piece of vendor knowledge in this package lives here. A probe that needs to
 know how a particular vendor spells thinking mode, or where it puts the cached
-token count, reads it from the profile — it never branches on a vendor name. That
+token count, reads it from the profile: it never branches on a vendor name. That
 is the whole reason a probe written for one model keeps working for the next one.
 
 A profile is committed TOML for the same reason a benchmark plan is: what got
-checked, and against what, should be reviewable in a diff rather than recoverable
+checked, and against what, should be reviewable in a diff, not recoverable
 from somebody's shell history.
 """
 
@@ -41,7 +41,7 @@ class Thinking:
     it and `preamble()` exists beside it. gpt-oss is the case: vLLM's own recipe sets
     reasoning effort with `{"role": "system", "content": "Reasoning: high"}` and
     accepts no parameter for it, so a probe that sends `reasoning_effort` gets a 200
-    and changes nothing — the quietest way to record an endpoint as conforming to a
+    and changes nothing: the quietest way to record an endpoint as conforming to a
     contract it never saw.
     """
 
@@ -88,7 +88,7 @@ class Paths:
     Dotted paths into the response body. The pattern, and the reason for it, is the
     same as the per-harness field maps in `hgrbench.metrics`: a value read through a
     declared path is traceable, and a path that does not resolve is a named miss
-    rather than a silent zero.
+    instead of a silent zero.
     """
 
     cached_tokens: str = "usage.prompt_tokens_details.cached_tokens"
@@ -106,14 +106,14 @@ class Profile:
 
     `extra_body` is merged into every request this endpoint is sent, under whatever
     the probe set itself. It exists for the fields that select *which server* answers
-    rather than what is asked of it, and a broker is the case: a broker can serve one
+    instead of what is asked of it, and a broker is the case: a broker can serve one
     model id from many upstreams and pick per request, so an unpinned reference is
     not the model's original provider but whichever re-host it chose that second.
     That is vendor knowledge of the purest kind, which is why it is a profile field
     and not something a probe could ever be allowed to know.
 
     `routes` is the same idea for the URL. A probe names a surface by its canonical
-    path — `/v1/messages` is the Anthropic surface, everywhere, by definition — and
+    path (`/v1/messages` is the Anthropic surface, everywhere, by definition) and
     the profile says where this vendor happens to mount it. A provider that serves
     it from `/anthropic/v1/messages` answers 404 at the canonical path; without the
     rewrite the run records "this endpoint has no Anthropic surface", which is both

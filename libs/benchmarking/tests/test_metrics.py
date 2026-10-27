@@ -4,7 +4,7 @@ Two kinds of fixture. The `captured` ones are real AIPerf 0.12.0 exports, record
 against `fixtures/failing_stub.py` with only the local artifact directory and port
 rewritten: one run of 20 requests in which every fourth failed, and one in which
 nothing did. They pin every AIPerf path this package reads, and the one fact a
-hand-written file can only assume — that `error_request_count` is absent, not zero,
+hand-written file can only assume: that `error_request_count` is absent, not zero,
 on a clean run.
 
 The `with-failures` ones are written by hand, one per harness, each a run of 100

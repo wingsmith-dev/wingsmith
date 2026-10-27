@@ -1,7 +1,7 @@
 """Authentication: what an endpoint does when the credential is wrong or missing.
 
-Short, and entirely generic — there is no model-shaped question in here. It is
-kept as three separate observations rather than one pass or fail because there
+Short, and entirely generic: there is no model-shaped question in here. It is
+kept as three separate observations instead of one pass or fail because there
 are three cases, and an endpoint that rejects all of them with the same status code
 as the original provider is the thing being checked.
 """

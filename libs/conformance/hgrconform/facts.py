@@ -1,8 +1,8 @@
 """What one probe observed, and the evidence that it observed it.
 
 A fact carries no verdict. `observed` is a flat dictionary of small comparable
-values — a status code, a field path, a boolean, a count — and that flatness is
-load-bearing: comparison against a reference endpoint is a key-by-key diff of two
+values (a status code, a field path, a boolean, a count) and that flatness is
+essential: comparison against a reference endpoint is a key-by-key diff of two
 of these, so anything nested is something the diff cannot explain.
 
 The reason a probe does not decide pass or fail is that almost every question

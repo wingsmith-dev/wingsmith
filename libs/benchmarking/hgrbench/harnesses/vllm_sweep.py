@@ -1,4 +1,4 @@
-"""`vllm bench sweep serve` — upstream's parameter sweep, pointed at a server we do not own.
+"""`vllm bench sweep serve`: upstream's parameter sweep, pointed at a server we do not own.
 
 The sweep was built to launch one vLLM server per parameter combination, and on the
 face of it that puts it out of reach: we have no GPU, and the endpoint is a Dynamo
@@ -13,8 +13,8 @@ goes to the real endpoint. `--after-bench-cmd "true"` is the second half of the
 trick: left to itself, `after_bench()` POSTs `/reset_prefix_cache` at whatever it
 launched and raises `NotImplementedError` when that is not a vLLM.
 
-What this buys over looping `vllm-bench` ourselves — which is what the matrix
-already does — is upstream's own artifacts: `summary.json` per combination,
+What this buys over looping `vllm-bench` ourselves, which is what the matrix
+already does, is upstream's own artifacts: `summary.json` per combination,
 `summary.csv` over the whole experiment, and `sweep plot`. When somebody asks
 whether our numbers match what vLLM's own tooling reports, this is the harness that
 answers, because it *is* vLLM's own tooling.
@@ -76,7 +76,7 @@ def bench_params(spec: SweepSpec) -> dict[str, dict[str, Any]]:
 def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
     """One sweep over the whole ladder for one model.
 
-    The bench command is a string the sweep appends its own flags to — it adds
+    The bench command is a string the sweep appends its own flags to: it adds
     `--percentile-metrics ttft,tpot,itl,e2el --save-result --result-dir <dir>
     --result-filename run=N.json`, plus one `--<key> <value>` per matrix entry. So
     this side must not pass any of those, and must pass everything else.
@@ -133,9 +133,9 @@ def _rung_of(name: str, spec: SweepSpec) -> int:
 def sweep_read(ctx: Context, spec: SweepSpec) -> list[Emission]:
     """One emission per run of per combination the sweep executed.
 
-    `summary.json` is a JSON *list* — one element per `--num-runs` repetition, each
+    `summary.json` is a JSON *list*: one element per `--num-runs` repetition, each
     the same flat schema `vllm bench serve` writes on its own. Every element becomes
-    its own emission rather than being averaged here, because the repetitions are
+    its own emission instead of being averaged here, because the repetitions are
     exactly the evidence for how much of a difference between two numbers is noise,
     and an average destroys it. The runner keeps them apart by `run_number`.
     """
@@ -195,6 +195,6 @@ HARNESS = Harness(
         "Reachable only because upstream addresses the server it launches and the server it "
         "benchmarks separately: a fake local health endpoint satisfies the probe.",
         "Writes upstream's own summary.csv and can render upstream's own plots, which is the "
-        "point of using it rather than looping vllm-bench.",
+        "point of using it instead of looping vllm-bench.",
     ),
 )

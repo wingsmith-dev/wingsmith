@@ -16,7 +16,7 @@ Two source trees, one runtime tree:
 | Dir | Committed | What |
 |---|---|---|
 | `upstream/` | yes, verbatim | fetched by `vendor.sh`; vLLM's code under Apache-2.0, headers intact, with vLLM's `LICENSE` beside it |
-| `stubs/` | yes | `vllm.{logger,tokenizers,inputs,lora,multimodal,transformers_utils,utils}` — the part that is not reproducible |
+| `stubs/` | yes | `vllm.{logger,tokenizers,inputs,lora,multimodal,transformers_utils,utils}`: the part that is not reproducible |
 
 The Dockerfile COPYs both into `/bench`, so the split is visible in the repo and invisible at runtime.
 
@@ -55,7 +55,7 @@ is compiled from `requirements.in`; the command to regenerate it is at the top o
 Two entrypoints. The default one is the single-point load generator; the sweep is reached by
 overriding the entrypoint.
 
-**Single point** — `vllm bench serve`:
+**Single point**: `vllm bench serve`:
 
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \
@@ -77,10 +77,10 @@ python /bench/main.py \
 default entrypoint is `python /bench/main.py`.
 
 Flags this gateway requires: `--backend openai-chat --endpoint /v1/chat/completions`, and `--model`
-with the *served* name — omitting it crashes with `KeyError: 'root'`, because the gateway's
+with the *served* name; omitting it crashes with `KeyError: 'root'`, because the gateway's
 `/v1/models` has no `root` field. `--tokenizer` takes the HF repo id.
 
-**Sweep** — `vllm bench sweep {serve,serve_workload,plot,plot_pareto}`:
+**Sweep**: `vllm bench sweep {serve,serve_workload,plot,plot_pareto}`:
 
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \
@@ -95,7 +95,7 @@ docker run --rm -e TOK -e HF_HOME=/hf \
 
 `sweep serve` requires `--serve-cmd`, and probes `GET /health` on the host and port it parses out of
 that string before every run. We are benchmarking something we did not start, so point `--serve-cmd`
-at `fakehealth.py` — a stdlib server that answers 200 to any GET or POST — and point the bench
+at `fakehealth.py`, a stdlib server that answers 200 to any GET or POST, and point the bench
 command's `--base-url` at the real gateway. Pass `--after-bench-cmd "true"` as well, or
 `after_bench()` POSTs `/reset_prefix_cache` at the fake server and raises
 `NotImplementedError: No implementation of reset_caches`.
@@ -122,7 +122,7 @@ results/exp1/summary.csv                  every run, one row each
 
 ## Driving it from Python
 
-- **The exit code is not the result.** `vllm bench serve` exits 0 even when every request failed —
+- **The exit code is not the result.** `vllm bench serve` exits 0 even when every request failed:
   it warns `All requests failed` and returns a result dict anyway. Read `completed` and `failed` out
   of the JSON. `sweep serve` does propagate a non-zero exit when the bench command itself fails.
 - Metrics reach the filesystem only with `--save-result`; without it they are stdout tables. The
@@ -131,7 +131,7 @@ results/exp1/summary.csv                  every run, one row each
   Desktop they appear as the host user.
 - `summary.csv` is written by pandas at runtime, and the sweep imports pandas eagerly enough that
   `run_combs` dies at `pd.DataFrame.from_records` without it. It is in the image. `plot` and
-  `plot_pareto` additionally need matplotlib and seaborn; also in the image. No scipy — nothing
+  `plot_pareto` additionally need matplotlib and seaborn; also in the image. No scipy: nothing
   vendored here imports it.
 - The sweep echoes the whole bench command to stdout, including `--header "Authorization=Bearer …"`.
   Do not log its output anywhere the token should not be.

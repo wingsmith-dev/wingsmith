@@ -2,7 +2,7 @@ name = "deep"
 description = "Both models, four harnesses, five load points, three repeats, both ladders, and the saturation search."
 
 # The numbers you would quote. Budget two hours and run it when nobody minds the
-# endpoint being busy — the saturation search at the end deliberately pushes until
+# endpoint being busy: the saturation search at the end pushes until
 # the SLA breaks, and `--hard` is required to let it.
 #
 # Three repeats is not caution, it is the point: on a shared endpoint the run-to-run
@@ -54,7 +54,7 @@ requests = 120
 
 # The ladders each harness walks in one process. Both of the ones that can: vLLM's
 # own sweep for its summary and plot artifacts, GuideLLM for a single continuous
-# client climbing the rungs rather than N cold starts.
+# client climbing the rungs, not N cold starts.
 [sweep]
 enabled = true
 harnesses = ["vllm-sweep", "guidellm"]

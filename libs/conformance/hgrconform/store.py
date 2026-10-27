@@ -2,7 +2,7 @@
 
 One directory per run, one subdirectory per endpoint holding every exchange exactly
 as it happened, and one `run.json` at the top that is the only file anything else
-reads. `run.json` is written after every probe rather than at the end, so a run
+reads. `run.json` is written after every probe, not at the end, so a run
 interrupted halfway still has the probes it finished and a report that renders them.
 
 The same reasoning as the benchmark store: a normalised observation nobody can

@@ -2,7 +2,7 @@
 
 `test_noisy_twins_agree` is the one that matters. It runs the whole probe set against
 two endpoints that are conforming, identical in behaviour, and different in every way
-that does not matter — token counts, response ids, chunk counts, trailing whitespace,
+that does not matter: token counts, response ids, chunk counts, trailing whitespace,
 and the model's own single-sample decisions. A probe that puts any of those in its
 `compare` tuple shows up here as a difference, and that is a defect: against real
 endpoints the same probe would report a difference on every run and the report would
@@ -83,7 +83,7 @@ def _profile(name: str, url: str) -> Profile:
     """The stub, described the way a committed profile describes a real endpoint.
 
     It claims everything the stub serves, because a probe that `requires` a capability
-    the profile does not claim is skipped rather than run, which would leave it out of
+    the profile does not claim is skipped, not run, which would leave it out of
     the self-check entirely.
     """
     return Profile(
@@ -144,7 +144,7 @@ def test_every_probe_runs_and_none_raises(tmp_path, stub):
 
 
 def test_noisy_twins_agree(tmp_path, stub):
-    """Two honest endpoints differ only where a probe compares something it should not."""
+    """Two accurate endpoints differ only where a probe compares something it should not."""
     store = _run(tmp_path, _profile("noisy-a", stub("noisy", seed=7)), _profile("noisy-b", stub("noisy", seed=1000)))
 
     unexpected = _differences(store)

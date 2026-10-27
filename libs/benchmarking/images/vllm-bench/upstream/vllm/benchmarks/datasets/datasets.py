@@ -4550,7 +4550,7 @@ class BFCLDataset(HuggingFaceDataset):
     https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard
 
     BFCL ships one JSON-lines file per category at the repo root (e.g.
-    ``BFCL_v3_simple.json``, ``BFCL_v3_live_simple.json``) rather than a
+    ``BFCL_v3_simple.json``, ``BFCL_v3_live_simple.json``) instead of a
     single HuggingFace split. Each record has ``{id, question, function}``
     where ``function`` uses a non-OpenAI schema dialect (``"type": "dict"``).
 
@@ -4663,7 +4663,7 @@ class BFCLDataset(HuggingFaceDataset):
         # Round-robin interleave so that when --disable-shuffle is set,
         # taking the first num_requests rows still yields balanced category
         # coverage. When shuffle is on (the default) this ordering is
-        # randomized away, which is fine — the subsequent random sample is
+        # randomized away, which is fine: the subsequent random sample is
         # already balanced in expectation.
         interleaved: list[dict] = []
         max_len = max((len(rows) for rows in per_category_rows), default=0)
@@ -4684,7 +4684,7 @@ class BFCLDataset(HuggingFaceDataset):
             functions = row.get("function")
             if not question or not functions:
                 continue
-            # BFCL question is list[list[dict]] — outer is turns. Use the
+            # BFCL question is list[list[dict]]: outer is turns. Use the
             # first turn only; skip multi-turn categories in this loader.
             if not isinstance(question, list) or not question:
                 continue
@@ -4699,7 +4699,7 @@ class BFCLDataset(HuggingFaceDataset):
 
             # Best-effort prompt length for percentile bucketing. Pass tools=
             # so modern chat templates (Llama 3.1+, Qwen, gpt-oss harmony,
-            # Hermes) render the tool schemas — without this, the estimate
+            # Hermes) render the tool schemas, without this, the estimate
             # misses a significant chunk of the true input for BFCL traffic.
             # Older tokenizers reject the kwarg; fall back to tools-free.
             try:
@@ -4714,7 +4714,7 @@ class BFCLDataset(HuggingFaceDataset):
                     messages, tokenize=False, add_generation_prompt=True
                 )
             except Exception as e:
-                # Unexpected template failure — prompt_len will fall back to a
+                # Unexpected template failure: prompt_len will fall back to a
                 # plain-text concatenation. Log so the degraded estimate is
                 # visible instead of silently skewing latency buckets.
                 logger.warning(

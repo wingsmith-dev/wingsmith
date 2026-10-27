@@ -46,7 +46,7 @@ def test_the_page_carries_no_raw_markup_from_the_suite(tmp_path: Path) -> None:
 
     assert "<img" not in page
     assert page.count("</script>") == 2
-    assert "<title>hgrbench — &lt;/script&gt;" in page
+    assert "<title>hgrbench: &lt;/script&gt;" in page
 
 
 def test_every_template_escapes_suite_strings(tmp_path: Path) -> None:

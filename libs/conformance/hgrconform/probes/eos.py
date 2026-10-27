@@ -1,4 +1,4 @@
-"""EOS suppression during reasoning, asked as a rate rather than as a single answer.
+"""EOS suppression during reasoning, asked as a rate, not as a single answer.
 
 A reasoning model can emit the end-of-sequence token while it is still thinking. The
 request then ends with `finish_reason: stop` and an empty `content`, which is a valid
@@ -6,18 +6,18 @@ response by the letter of the schema and useless by any other measure. Providers
 suppress it. One request cannot see this, so the probe sends many and records how
 often it happened.
 
-The rate itself is not comparable — two runs of fifty samples never agree on a float
-— so the compared key is the bucket the rate falls in. The raw rate, the counts, the
+The rate itself is not comparable, two runs of fifty samples never agree on a float,
+so the compared key is the bucket the rate falls in. The raw rate, the counts, the
 finish reasons and the sample size stay in the observation as evidence.
 
 The buckets are only as fine as the sample allows, and no coarser than one sample
 must never cross. Zero is not a bucket of its own: an endpoint that suppresses EOS
 well still lets one through now and then, and "never in this run" against "once in
-this run" is a coin toss between two honest endpoints, not a difference between
+this run" is a coin toss between two correct endpoints, not a difference between
 them. The lowest bucket therefore runs from zero up to `RARE_BELOW`, and
 `MIN_SAMPLES` keeps `1/n` at or under half of that line, so it takes at least two
 empty samples to leave it. Every bucket stays reachable at that size, and a smaller
-override is raised to it rather than honoured.
+override is raised to it, not honoured.
 
 Samples run concurrently, because serial execution of even the reduced default makes
 this probe unusable. That is safe: `Session` locks the step that writes evidence,
@@ -75,7 +75,7 @@ def _bucket(count: int, total: int) -> str:
     """The bucket a count falls in, kept apart from the case where nothing was sampled.
 
     Dividing by a floor of one turns "every request failed" into a rate of zero, and
-    a rate of zero reads as "this endpoint never suppressed EOS" — a clean answer
+    a rate of zero reads as "this endpoint never suppressed EOS": a clean answer
     manufactured out of no evidence, indistinguishable in a diff from an endpoint
     that genuinely never did it. No successful sample is its own bucket.
 
@@ -94,7 +94,7 @@ def _bucket(count: int, total: int) -> str:
 @probe(
     id="eos.suppression",
     title="How often a reasoning request returns `finish_reason: stop` with empty content",
-    requirement="An end-of-sequence token emitted while reasoning is suppressed rather than ending the response empty",
+    requirement="An end-of-sequence token emitted while reasoning is suppressed instead of ending the response empty",
     compare=("empty_content_bucket", "empty_stop_bucket"),
     heavy=True,
 )
@@ -103,12 +103,12 @@ def suppression(session: Session) -> dict[str, Any]:
 
     Two things are counted apart. `empty_content` is any successful response with no
     text at all; `empty_stop` narrows that to the ones that also claimed `stop`, which
-    is the shape the requirement describes — a truncation or a content filter arriving
+    is the shape the requirement describes: a truncation or a content filter arriving
     as an empty body is a different defect and says so through its own finish reason.
 
     Only the buckets are compared, and neither of them separates none from one.
     Whether any sample at all came back empty, and the set of finish reasons seen,
-    both turn on a single rare event in a run of fifty, so two honest endpoints
+    both turn on a single rare event in a run of fifty, so two correct endpoints
     disagree on them by chance; they stay in the observation as evidence.
     """
     thinking = session.profile.thinking

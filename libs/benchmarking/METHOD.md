@@ -18,7 +18,7 @@ the person running the tooling, written to be model-, engine- and topology-indep
 Point 4 is where a global constant does the most damage. There is no universal
 threshold: noise is a property of a deployment and a metric, it has to be measured from
 repeats that **cross a reload** of the serving workers, and until it has been, no
-difference can honestly be called real or null.
+difference can accurately be called real or null.
 
 ## Steps, sorted by what they actually cost
 
@@ -29,10 +29,10 @@ load. Sort by that, not by device count.
 
 | step | costs | answers |
 |---|---|---|
-| **0 — arithmetic** | seconds | Working set against cache capacity, session ceiling, batch-budget utilisation. Read capacity from the engine's own configuration rather than modelling it. |
-| **1 — no reload** | one cell | Anything the client or the router controls: concurrency, request shape, request count, routing policy, arrival rate. Ask every question of this kind against the current fleet before rolling it. |
-| **2 — one reload** | a load plus a cell | Any engine flag or image change. This is the real unit of cost, and an experiment queue should be ordered around it. |
-| **3 — a curve** | hours | Ladders and saturation searches, once step 0 has said where the cliff should be. |
+| **0: arithmetic** | seconds | Working set against cache capacity, session ceiling, batch-budget utilisation. Read capacity from the engine's own configuration instead of modelling it. |
+| **1, no reload** | one cell | Anything the client or the router controls: concurrency, request shape, request count, routing policy, arrival rate. Ask every question of this kind against the current fleet before rolling it. |
+| **2: one reload** | a load plus a cell | Any engine flag or image change. This is the real unit of cost, and an experiment queue should be ordered around it. |
+| **3: a curve** | hours | Ladders and saturation searches, once step 0 has said where the cliff should be. |
 
 Fewer devices is worth asking for and does not always answer the question. When
 capacity scales with worker count and capacity is the binding constraint, a one-node
@@ -52,7 +52,7 @@ run recorded, that run is evidence about a fleet that no longer exists.
 ## Windowing: the telemetry dump is not the run
 
 When server-side metrics are read beside a run, pin the analysis window to the run
-rather than inferring it from the file. Load generators record their own start and end
+instead of inferring it from the file. Load generators record their own start and end
 times, so the intersection is exact. A window found by matching request counts, or by
 picking the longest active stretch of a dump, is a guess about which benchmark it was,
 and a number from it should be labelled as one.
@@ -120,5 +120,5 @@ These do **not** transfer and belong in notes about one deployment:
   does for grouped-query attention, and does not for MLA-style attention, where the
   latent cache is replicated. Reading capacity from the engine makes this irrelevant.
 - Disaggregated prefill and decode exist only in some deployments. Detect roles from
-  behaviour rather than from pod names, so an aggregated fleet reads correctly even when
+  behaviour, not from pod names, so an aggregated fleet reads correctly even when
   its pods are named as though it were not.

@@ -69,11 +69,11 @@ def parameters(session: Session) -> dict[str, Any]:
     requires=(),
 )
 def context_overflow(session: Session) -> dict[str, Any]:
-    """Deliberately overshoots the declared window, and records how the endpoint says no.
+    """Overshoots the declared window, and records how the endpoint says no.
 
     The profile's `context_window` is a claim, so the prompt is built from it and the
     observation includes what was actually sent. Where the profile makes no claim the
-    probe skips rather than guessing, because a guess that happens to fit the window
+    probe skips instead of guessing, because a guess that happens to fit the window
     records a successful completion and looks like agreement.
     """
     window = session.profile.context_window

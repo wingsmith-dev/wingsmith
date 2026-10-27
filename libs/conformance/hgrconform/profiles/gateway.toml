@@ -16,7 +16,7 @@ modalities = ["text"]
 protocols = ["chat_completions"]
 
 # What a caller must never see in an error body. These are the names of everything
-# between the gateway and the engine — if any of them reaches a 4xx body, that is a
+# between the gateway and the engine, if any of them reaches a 4xx body, that is a
 # finding today and it needs no reference endpoint to establish. Add the names your own
 # infrastructure goes by here, and to the gateway's HANGAR_GATEWAY_REDACT_NAMES.
 leak_needles = [
@@ -31,7 +31,7 @@ leak_needles = [
 # gpt-oss carries reasoning effort in the system prompt, not in a parameter. vLLM's
 # own recipe for this model sets it with {"role": "system", "content": "Reasoning:
 # high"} and documents no flag for it, so an endpoint sent `reasoning_effort` returns
-# 200 and ignores it — which would record as conforming to a contract it never saw.
+# 200 and ignores it, which would record as conforming to a contract it never saw.
 #   https://github.com/vllm-project/recipes/blob/main/models/openai/gpt-oss-20b.yaml
 [thinking]
 syntax = "system_prompt"

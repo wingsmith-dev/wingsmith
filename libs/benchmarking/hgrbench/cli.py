@@ -1,4 +1,4 @@
-"""`hgrbench` — run a benchmark plan locally and render what it found.
+"""`hgrbench`: run a benchmark plan locally and render what it found.
 
 Four verbs:
 
@@ -7,7 +7,7 @@ Four verbs:
     hgrbench harnesses         what this runner can drive, and what each is for
     hgrbench plans             the plans shipped with hgrbench
 
-`run` is deliberately hard to point somewhere by accident: the endpoint, the
+`run` is hard to point somewhere by accident: the endpoint, the
 models, the load points and the ladders all come from a plan file that is committed
 and reviewable, not from flags. What the flags do is narrow a plan (`--harness`,
 `--model`), show it without running it (`--dry-run`), and unlock the one stage that

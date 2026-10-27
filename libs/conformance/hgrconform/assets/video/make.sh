@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerates the clips the video probes send. Committed beside them so that a clip
-# is a reviewable recipe rather than an opaque binary: one red square moving left to
+# is a reviewable recipe instead of an opaque binary: one red square moving left to
 # right across black, varied along one axis at a time around the 320x240, 4 fps, 4 s
 # base. Needs an ffmpeg with libx264; set FFMPEG to use a particular one.
 set -euo pipefail

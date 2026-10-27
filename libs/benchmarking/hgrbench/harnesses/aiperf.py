@@ -2,7 +2,7 @@
 
 Closed-loop and concurrency-first: it holds N requests in flight and reports the
 distribution. One invocation is one operating point, which is why a load curve
-here is a loop over cells rather than a flag.
+here is a loop over cells instead of a flag.
 
 The image is the one `libs/plane/app/modules/benchmarks/harnesses.py` pins, on
 purpose. A local finding that cannot be reproduced by the cluster path is a local
@@ -40,7 +40,7 @@ def command(cell: Cell, ctx: Context) -> Invocation:
 
     `ignore_eos` is set so that the generation length is the one asked for. It makes
     the comparison across harnesses and models fair and it makes the question
-    unnatural, which is a trade the report states rather than hides.
+    unnatural, which is a trade the report states, not hides.
     """
     args = [
         "aiperf profile",
@@ -88,7 +88,7 @@ HARNESS = Harness(
     notes=(
         "The same image and version the plane's benchmarks module pins, so a local "
         "number and a cluster number are the same measurement.",
-        "Its amd64 variant hangs under emulation on Apple silicon — the digest pin is "
+        "Its amd64 variant hangs under emulation on Apple silicon: the digest pin is "
         "not an optimisation, it is the difference between running and not.",
     ),
 )

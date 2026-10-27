@@ -4,7 +4,7 @@ The vendor verifier this replaces asserted `prompt_tokens` against a constant wr
 down per case. A constant is a claim about one tokenizer at one moment, and it is wrong
 the day the model is retrained. The question worth asking is parity: two endpoints
 serving the same model must tokenize the same bytes into the same number of tokens, so
-the counts themselves are the comparable value here, unusually — a difference is exactly
+the counts themselves are the comparable value here, unusually: a difference is exactly
 the defect and needs no threshold to interpret.
 
 The corpus is fixed and lives in this file so a change to what is asked is a change
@@ -40,7 +40,7 @@ CASES: dict[str, list[dict[str, Any]]] = {
         {"role": "user", "content": "And plus one more?"},
     ],
     "unicode": [
-        {"role": "user", "content": "Repeat this exactly: héllo wörld — 你好世界 🚀🇧🇷 café naïve"},
+        {"role": "user", "content": "Repeat this exactly: héllo wörld; 你好世界 🚀🇧🇷 café naïve"},
     ],
     "code_fence": [
         {
@@ -61,14 +61,14 @@ CASES: dict[str, list[dict[str, Any]]] = {
     compare=("status", "usage_present", "usage_fields", "counts_positive"),
 )
 def usage(session: Session) -> dict[str, Any]:
-    """Whether the usage object exists and carries numbers rather than zeros.
+    """Whether the usage object exists and carries numbers, not zeros.
 
     `counts_positive` is the shape of the answer and not the counts: an endpoint that
     returns the field with every value at zero has satisfied the schema and answered
     nothing, and that is the failure this row is for.
 
-    `stream` is pinned off rather than left out, because an endpoint that streams by
-    default would answer a different question — the location of usage in a stream is
+    `stream` is pinned off, not left out, because an endpoint that streams by
+    default would answer a different question: the location of usage in a stream is
     `streaming.usage_location`, and this row is about the non-streaming body.
     """
     if "chat_completions" not in session.profile.protocols:
@@ -100,7 +100,7 @@ def usage(session: Session) -> dict[str, Any]:
 def prompt_accounting(session: Session) -> dict[str, Any]:
     """The raw prompt counts, which are comparable here because the input is fixed.
 
-    Nothing generated goes into the comparison — the completion is capped at one token
+    Nothing generated goes into the comparison: the completion is capped at one token
     and its count is evidence only, because the model is free to stop where it likes and
     a difference there is not a defect. The prompt is bytes we chose, so a difference
     there is one.

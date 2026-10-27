@@ -1,7 +1,7 @@
 """Which sampling parameters the endpoint accepts, and at which values it stops accepting them.
 
-The verifier this replaces asserts that particular values are rejected — temperature
-above one, `n` above one — because the model it was written for pins them. That is a
+The verifier this replaces asserts that particular values are rejected, temperature
+above one, `n` above one, because the model it was written for pins them. That is a
 vendor policy and not a protocol rule, so asserting it reports a failure against every
 other model. The question that survives the change of model is a parity question:
 for each parameter, at a legal value, at a value outside the documented range, and at
@@ -85,7 +85,7 @@ def acceptance(session: Session) -> dict[str, Any]:
     the policy being compared.
 
     The clamping evidence sits outside `compare` because it is a second-order
-    observation and a noisy one — a model can repeat itself at a high temperature by
+    observation and a noisy one: a model can repeat itself at a high temperature by
     chance on a short completion. It is here because a status of 200 alone cannot
     separate an endpoint that honours `temperature: 5.0` from one that quietly pins
     it, and a caller sees those as different endpoints.

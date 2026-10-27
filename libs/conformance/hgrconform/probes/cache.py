@@ -2,7 +2,7 @@
 
 Caching is invisible from the outside except through one number in `usage`, and
 there is no agreed name for that number. Three spellings exist in the wild, so the
-probe reads all three and records which one answered rather than concluding "no
+probe reads all three and records which one answered instead of concluding "no
 cache" from the absence of the one this profile declared.
 
 The question is asked with two calls that share a long, fixed prefix. Nothing here
@@ -69,15 +69,15 @@ def _answering_path(counts: dict[str, int | None]) -> str:
     ),
 )
 def automatic(session: Session) -> dict[str, Any]:
-    """Two calls over one prefix, described by the shape of the answer rather than its size.
+    """Two calls over one prefix, described by the shape of the answer instead of its size.
 
     A token count differs between two endpoints for reasons that have nothing to do
-    with conformance — a different tokenizer, a different block size, a warm cache
+    with conformance: a different tokenizer, a different block size, a warm cache
     left by an earlier run. What is worth comparing is which field carries
     the answer, whether the endpoint cached without being asked, and whether the
     the count carried a value at all. Those are the comparable keys; the counts
     themselves, and whether the second call's count rose above the first's, are
-    evidence below them — a cache left warm by an earlier run moves that comparison
+    evidence below them: a cache left warm by an earlier run moves that comparison
     without telling us anything about the endpoint.
     """
     declared = session.profile.paths.cached_tokens

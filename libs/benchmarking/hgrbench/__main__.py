@@ -1,4 +1,4 @@
-"""`python3 -m hgrbench` — the same entry point as the installed script."""
+"""`python3 -m hgrbench`: the same entry point as the installed script."""
 
 from hgrbench.cli import main
 

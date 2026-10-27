@@ -2,8 +2,8 @@
 
 The three are the OpenAI Chat Completions API, the OpenAI Responses API and the
 Anthropic Messages API, each answered the way the original model provider answers it.
-Not answering one is a legitimate result — most open-source servers answer only the
-first — so what is recorded is the status code, and the diff decides whether that
+Not answering one is a legitimate result, most open-source servers answer only the
+first, so what is recorded is the status code, and the diff decides whether that
 matches what the provider does.
 """
 
@@ -27,7 +27,7 @@ def surfaces(session: Session) -> dict[str, Any]:
     Sending a chat-completions body to all three would tell us only that two of them
     reject malformed input. Each request here is the minimal valid one for its own
     API, so a 404 means the route is absent and a 400 means the route exists and
-    disagreed with us — a distinction a caller cares about.
+    disagreed with us: a distinction a caller cares about.
     """
     chat = session.post("/v1/chat/completions", session.body(max_tokens=8))
 

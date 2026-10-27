@@ -1,9 +1,9 @@
 """Streaming: whether it is on by default, how it is turned on, and where `usage` lands.
 
 The third of these is the interesting one and the reason the session keeps chunks
-unmerged. What is checked is whether the *location* of the usage field — every chunk,
-or only the last one — matches the original provider, and that is a question about
-the shape of the stream rather than about its contents. A client that accumulates
+unmerged. What is checked is whether the *location* of the usage field, every chunk,
+or only the last one, matches the original provider, and that is a question about
+the shape of the stream, not about its contents. A client that accumulates
 deltas as they arrive has thrown the answer away before it can be asked.
 """
 
@@ -73,9 +73,9 @@ def toggle(session: Session) -> dict[str, Any]:
     ),
 )
 def usage_location(session: Session) -> dict[str, Any]:
-    """Where the usage object appears, described as a position rather than a chunk index.
+    """Where the usage object appears, described as a position instead of a chunk index.
 
-    An index would differ between two endpoints for an uninteresting reason — they
+    An index would differ between two endpoints for an uninteresting reason: they
     generated a different number of tokens. `usage_position` collapses that to the
     three answers that actually differ for a client: nowhere, in the final chunk
     only, or in every chunk.

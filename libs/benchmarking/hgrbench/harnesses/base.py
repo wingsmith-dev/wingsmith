@@ -2,14 +2,14 @@
 
 A harness here is three things: an image, a function that turns one cell into a
 `docker run` argv, and a function that reads back what the tool wrote. Nothing
-else — no metric knowledge (that is `metrics`), no scheduling (that is `runner`),
+else: no metric knowledge (that is `metrics`), no scheduling (that is `runner`),
 no opinion about where results go (that is `store`).
 
 Two rules hold across every harness, and both come from being burned:
 
 **The image is pulled by digest for the host architecture, never by tag.** AIPerf's
 tag is multi-arch and its amd64 variant, under emulation on Apple silicon, starts
-its supervisor process and then never spawns a worker — no output, no CPU, no
+its supervisor process and then never spawns a worker: no output, no CPU, no
 exit, forever. Docker will not swap variants for a tag it already holds, so a tag
 alone cannot express "the one that runs here".
 
@@ -19,11 +19,11 @@ carries its value (`-e HGR_BENCH_TOKEN`, inherited from the docker CLI's own
 environment), so the docker CLI's command line, the commands this runner records
 and its logs never hold the token. The one harness that has no header flag at all
 (GuideLLM) still takes it this way, because its `api_key=` attribute is expanded by
-the in-container shell rather than by ours.
+the in-container shell, not by ours.
 
 That is as far as it goes. The in-container shell expands the variable into the
-argv of the tool it starts — AIPerf's `-H`, GuideLLM's `--backend`, `vllm bench
-serve`'s `--header` and the vLLM sweep's `--bench-cmd` — because none of them takes
+argv of the tool it starts, AIPerf's `-H`, GuideLLM's `--backend`, `vllm bench
+serve`'s `--header` and the vLLM sweep's `--bench-cmd`, because none of them takes
 the token from its environment for every request it sends.
 On a Linux host, where container processes share the host's process table, those
 command lines are visible to anyone who can run `ps` there. Use a token scoped to
@@ -156,7 +156,7 @@ def repository(image: str) -> str:
 def resolve_digest(image: str, arch: str) -> str:
     """The image reference pinned to the digest of this architecture's variant.
 
-    Fails rather than falling back to the tag. A registry that cannot be queried, an
+    Fails instead of falling back to the tag. A registry that cannot be queried, an
     answer that is not a manifest list, or a list without this architecture all mean
     the run would measure an image nobody can name afterwards, and on Apple silicon a
     tag can quietly resolve to an amd64 variant that hangs under emulation. Images
@@ -188,7 +188,7 @@ def recorded_version(found: object, harness: Harness) -> tuple[str, list[str]]:
 
     The field maps are chosen by version, so a missing one cannot be left blank. When
     the export does not record it, the version is the one the pinned image digest was
-    published as, and the measurement carries a note saying so rather than presenting
+    published as, and the measurement carries a note saying so instead of presenting
     an inferred version as a reported one.
     """
     if isinstance(found, str) and found.strip():
@@ -225,11 +225,11 @@ def docker_argv(
 ) -> list[str]:
     """A `docker run` argv with the mounts and environment every harness wants.
 
-    The Hugging Face cache is mounted writable rather than read-only: every one of
+    The Hugging Face cache is mounted writable, not read-only: every one of
     these harnesses needs a tokenizer, and `huggingface_hub` treats a cache it
-    cannot write as no cache at all — asked for a repository it does not hold, it
-    creates the directory before it checks anything and dies on a read-only mount
-    rather than on a missing file.
+    cannot write as no cache at all: asked for a repository it does not hold, it
+    creates the directory before it checks anything and dies on a read-only mount,
+    not on a missing file.
     """
     argv = ["docker", "run", "--rm"]
     if name:
@@ -280,7 +280,7 @@ def quote(value: object) -> str:
 
     Every value interpolated into a harness script goes through this, so a model
     name, tokenizer or URL with a space, a quote or a `$` in it reaches the tool as
-    written. The token is the one thing deliberately left for that shell to expand,
+    written. The token is the one thing left for that shell to expand,
     and it is never passed through here.
     """
     return shlex.quote(str(value))
@@ -309,7 +309,7 @@ def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoin
     """A harness driven through a shell inside the container.
 
     The script is a single argument, unexpanded by our shell, so `$HGR_BENCH_TOKEN`
-    in it is expanded by the container's shell from the environment — which is the
+    in it is expanded by the container's shell from the environment, which is the
     whole point.
     """
     secrets = with_token(ctx)

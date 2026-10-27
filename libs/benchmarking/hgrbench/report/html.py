@@ -2,7 +2,7 @@
 
 The page answers four questions in the order somebody actually asks them:
 
-1. **What does this run say?** A verdict block per model — the load the endpoint
+1. **What does this run say?** A verdict block per model: the load the endpoint
    held, the speed one caller got, the aggregate the deployment reached, and whether
    anything failed. Generated from the measurements, not written by hand.
 2. **How does it behave as load rises?** The load curves, one line per harness, plus
@@ -13,7 +13,7 @@ The page answers four questions in the order somebody actually asks them:
    and every field no harness could answer.
 
 No external assets: the data is embedded and the charts are SVG built in the page.
-A report can be mailed, committed, or opened on a machine with no network — which is
+A report can be mailed, committed, or opened on a machine with no network, which is
 the opposite of the built-in report GuideLLM ships, whose JS and CSS come from a
 versioned URL that will not be there forever.
 """
@@ -44,7 +44,7 @@ def payload(suite: dict[str, Any]) -> dict[str, Any]:
     """The suite, reshaped into what the page draws.
 
     Everything the page needs is computed here or in the page, and nothing is
-    recomputed from the harness exports — the exports stay in the suite file for
+    recomputed from the harness exports: the exports stay in the suite file for
     provenance, and the report reads the normalised readings so that what it shows
     is exactly what the field maps claimed.
     """
@@ -142,7 +142,7 @@ TEMPLATE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hgrbench — __TITLE__</title>
+<title>hgrbench: __TITLE__</title>
 <style>
   :root { color-scheme: light dark; }
   .viz-root {
@@ -339,7 +339,7 @@ function harnessesWith(model, field) {
 }
 
 /* ── header ───────────────────────────────────────────────────────────────── */
-document.getElementById('title').textContent = D.suite.plan + ' — ' + models.join(' · ');
+document.getElementById('title').textContent = D.suite.plan + ': ' + models.join(' · ');
 document.getElementById('subtitle').textContent = D.suite.description;
 const facts = [
   ['Run', D.suite.run_id],
@@ -579,7 +579,7 @@ function agreement() {
   const shown = rows.slice(0, 24);
   const cls = (s) => s > 25 ? 'spread wide' : s > 10 ? 'spread some' : 'spread';
   host.innerHTML = `<h3>Where the harnesses disagree</h3>
-    <p class="note">The same model, the same requests in flight, the same field — measured by different
+    <p class="note">The same model, the same requests in flight, the same field: measured by different
     tools. Spread is the range as a percentage of the mid-point. A wide spread is a finding about the
     tools, not about the endpoint: they build prompts differently, count tokens differently, and define
     inter-token latency differently. ${rows.length > shown.length ? `Showing the ${shown.length} widest of ${rows.length}.` : ''}</p>
@@ -610,7 +610,7 @@ function variance() {
   if (!repeated.length) {
     host.innerHTML = `<h3>One pass each</h3><p class="note">This plan ran every cell once, so there is
       no run-to-run spread to show. Raise <code>repeats</code> in the plan to find out how much of a
-      difference between two numbers is just noise — on a shared production endpoint it is usually more
+      difference between two numbers is just noise: on a shared production endpoint it is usually more
       than people expect.</p>`;
     return;
   }
@@ -679,13 +679,13 @@ function footer() {
         .map(([k, how]) => `${esc(F[k] ? F[k].label : k)} as ${esc(how)}`).join('; ') + '.' : '';
     return `<li><b>${esc(h)}</b> ${esc(entry.versions.join(', '))}.${missing}${derived}</li>`;
   }).join('') + '</ul>');
-  const notes = HARNESSES.flatMap(h => D.harnesses[h].notes.map(n => `<li><b>${esc(h)}</b> — ${esc(n)}</li>`));
+  const notes = HARNESSES.flatMap(h => D.harnesses[h].notes.map(n => `<li><b>${esc(h)}</b>: ${esc(n)}</li>`));
   if (notes.length) parts.push('<h4>What each tool did with the request</h4><ul>' + notes.join('') + '</ul>');
   parts.push(`<h4>Provenance</h4><ul>
     <li>Plan: <code>${esc(D.suite.source)}</code></li>
     <li>Run: <code>${esc(D.suite.run_id)}</code>, ${D.series.length} measurements from ${D.suite.planned_cells} planned cells</li>
     <li>Every harness's own export is kept verbatim in <code>suite.json</code> and beside it, so a
-    correction to a field map is a re-read rather than a re-run.</li></ul>`);
+    correction to a field map is a re-read instead of a re-run.</li></ul>`);
   document.getElementById('footer').innerHTML = parts.join('');
 }
 footer();

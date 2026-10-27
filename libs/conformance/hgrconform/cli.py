@@ -1,4 +1,4 @@
-"""`hgrconform` — ask an endpoint what it does, and whether that matches the one it claims to be.
+"""`hgrconform`: ask an endpoint what it does, and whether that matches the one it claims to be.
 
 Four verbs:
 
@@ -7,9 +7,9 @@ Four verbs:
     hgrconform probes                                  what this knows how to ask
     hgrconform show <run> <probe>                      one probe's evidence, verbatim
 
-`run` takes a committed profile rather than flags, for the same reason the benchmark
+`run` takes a committed profile, not flags, for the same reason the benchmark
 runner takes a plan: what was checked, and against what, should be reviewable in a
-diff rather than recoverable from somebody's shell history.
+diff, not recoverable from somebody's shell history.
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     store = Store(root, Run(run_id=root.name, started_at=stamp.isoformat(), probe_ids=[p.id for p in probes]))
 
     # With a reference, each endpoint is asked about everything either one claims, so a
-    # capability one profile leaves out is observed rather than skipped on that side.
+    # capability one profile leaves out is observed, not skipped on that side.
     claimed: tuple[str, ...] = ()
     if reference:
         claimed = (*target.modalities, *target.protocols, *reference.modalities, *reference.protocols)
@@ -115,8 +115,8 @@ def compare_run(run: Run) -> Comparison:
 
     A probe with a result on one side only is a `not-run` difference, never a silent
     gap: an interrupted run, or a reference that errored before reaching a probe, must
-    not read as agreement. A probe this version no longer defines is listed by id
-    rather than dropped, so an old run read by a newer package still accounts for it.
+    not read as agreement. A probe this version no longer defines is listed by id,
+    not dropped, so an old run read by a newer package still accounts for it.
     """
     if REFERENCE not in run.endpoints:
         raise ValueError("this run has no reference endpoint; re-run with --reference")
@@ -184,9 +184,9 @@ def _print_uncompared(uncompared: list[tuple[registry.Probe, Fact]]) -> None:
     """Show the probes that have no reference to diff against, so they are not invisible.
 
     A probe declares an empty `compare` when the reference endpoint cannot answer its
-    question — `errors.leakage` asks whether our own hostnames appear in an error
+    question: `errors.leakage` asks whether our own hostnames appear in an error
     body, and the original provider will never leak our hostname. Those observations
-    are absolute rather than relative, and dropping them out of the diff without
+    are absolute, not relative, and dropping them out of the diff without
     saying so would hide the one check here that needs no reference at all.
     """
     if not uncompared:
@@ -202,7 +202,7 @@ def _print_uncompared(uncompared: list[tuple[registry.Probe, Fact]]) -> None:
 def _summarise(run: Run) -> None:
     """Print what a single-endpoint run saw, since there is nothing to diff it with."""
     endpoint = run.endpoints[TARGET]
-    print(f"\n{endpoint.profile_name} — no reference endpoint, so these are observations, not verdicts\n")
+    print(f"\n{endpoint.profile_name}: no reference endpoint, so these are observations, not verdicts\n")
     for probe_id in run.probe_ids:
         fact = endpoint.facts.get(probe_id)
         if fact is None:

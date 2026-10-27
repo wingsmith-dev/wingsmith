@@ -4,7 +4,7 @@ Everything a probe does goes through here, for two reasons. The first is evidenc
 every request and every response is written to the run directory before the probe
 sees it, so a finding can be traced to the bytes that produced it. The second is
 that the questions being asked are about the wire itself, and a convenience layer
-would answer them for us — an SDK that returns a parsed object has already decided
+would answer them for us: an SDK that returns a parsed object has already decided
 that a repeated `content` key is one key, which is the exact defect one of the
 requirements asks about.
 
@@ -122,7 +122,7 @@ class Stream:
     """One streaming exchange, kept as the ordered list of chunks it arrived as.
 
     The order and the per-chunk contents are the point. Two of the requirements are
-    about *where* a value appears in a stream rather than whether it appears at all,
+    about *where* a value appears in a stream, not whether it appears at all,
     and a client that folds the chunks into one object as they arrive cannot answer
     either.
     """
@@ -191,8 +191,8 @@ class Session:
     def _with_extra(self, body: dict[str, Any]) -> dict[str, Any]:
         """Merge the profile's `extra_body` underneath what the probe asked for.
 
-        Applied here rather than in `body()` because a probe is free to build its own
-        request — the Anthropic surface and the deliberately malformed ones do — and a
+        Applied here, not in `body()` because a probe is free to build its own
+        request, the Anthropic surface and the malformed ones do, and a
         request that escaped unpinned would be answered by a different server than the
         rest of the run, which is the one thing `extra_body` exists to prevent. The
         probe's own keys win, so this can only add fields, never rewrite the question.
@@ -317,7 +317,7 @@ class Session:
         Locked, because two probes send their requests concurrently and the evidence
         file is named from the length of the list it is about to be appended to. Two
         unsynchronised threads there pick the same name and one silently overwrites
-        the other's evidence — the quietest possible way for this tool to lie. The
+        the other's evidence: the quietest possible way for this tool to lie. The
         lock covers naming, writing and appending as one step; it does not cover the
         request itself, which is the part worth doing in parallel.
         """

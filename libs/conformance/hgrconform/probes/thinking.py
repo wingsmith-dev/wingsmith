@@ -3,8 +3,8 @@
 No two vendors spell any part of this the same way, so every request field comes
 from `profile.thinking.body()` and every read comes from `profile.paths`. What the
 probe contributes is the collapse: the reasoning text itself differs on every call
-and is worthless to a diff, while the *place* it was delivered — a separate
-`reasoning_content` field, `<think>` tags inside `content`, or nowhere at all — is
+and is worthless to a diff, while the *place* it was delivered, a separate
+`reasoning_content` field, `<think>` tags inside `content`, or nowhere at all, is
 the thing two endpoints are asked to agree on.
 
 Streaming is asked separately because it is a separate answer. An endpoint can
@@ -41,7 +41,7 @@ def _request(session: Session, enabled: bool, effort: str = "") -> dict[str, Any
 
     Two endpoints can carry the same switch in two different places: most take
     request fields, and some take a line of system prompt instead. Building the
-    request through both halves means a probe never has to know which — and an
+    request through both halves means a probe never has to know which, and an
     endpoint of the second kind is not silently sent a parameter it ignores, which
     would return 200 and record it as conforming to something it never saw.
     """
@@ -56,7 +56,7 @@ def _request(session: Session, enabled: bool, effort: str = "") -> dict[str, Any
 def _location(reasoning: Any, content: Any) -> str:
     """Where the reasoning was delivered, as one of four words.
 
-    The words are the whole point. A diff over the reasoning text would fail on
+    The words are the point. A diff over the reasoning text would fail on
     every run for a reason nobody cares about; a diff over "reasoning_content"
     against "inline-think-tags" is the finding the requirement is asking for.
     """
@@ -192,7 +192,7 @@ def efforts(session: Session) -> dict[str, Any]:
     """One request per declared level, recorded as a status code and nothing else.
 
     A status code is a shape; the reasoning it produced is not. Whether a higher
-    level thinks harder is a benchmark question and deliberately not asked here.
+    level thinks harder is a benchmark question and not asked here.
     """
     _require_thinking(session)
     levels = session.profile.thinking.efforts
@@ -230,26 +230,26 @@ def template_kwargs(session: Session) -> dict[str, Any]:
     """`chat_template_kwargs.thinking` sent regardless of the dialect the profile declares.
 
     Every other probe in this module builds its request from `profile.thinking`, and
-    that is the rule. This one deliberately does not, and the reason is that the field
+    that is the rule. This one does not, and the reason is that the field
     is not a dialect at all. `thinking.type` is one vendor's parameter, and an
     endpoint that does not speak it is entitled to ignore it. `chat_template_kwargs`
-    is the argument bag the chat template itself reads — it belongs to the model's
-    own template rather than to any vendor's API — so a caller who has ever run this
+    is the argument bag the chat template itself reads, it belongs to the model's
+    own template, not to any vendor's API, so a caller who has ever run this
     model on an open-source server already has it in their code, and will send it
     here whatever the profile says this endpoint prefers. The question of whether it
     arrives is therefore a real question for every endpoint, and asking it only of
     profiles that declare `chat_template` syntax would ask it of nobody.
 
-    That makes this the one probe here expected to *find* a difference rather than
-    confirm agreement, and the difference is a decision rather than a defect. An
+    That makes this the one probe here expected to *find* a difference, not
+    confirm agreement, and the difference is a decision instead of a defect. An
     endpoint may honour the field, or ignore it and think anyway; both are defensible
     and they are not the same product. What is not defensible is not knowing which,
-    or having it change without anyone choosing — which is what this pins.
+    or having it change without anyone choosing, which is what this pins.
 
     `precedence` is the second half, and it matters more than it looks. A caller who
     sends both switches disagreeing has written a contradiction, and the endpoint has
     to resolve it somehow; if two endpoints resolve it differently then code that
-    works against one silently thinks — and bills — against the other. It collapses
+    works against one silently thinks, and bills, against the other. It collapses
     to which of the two spellings won, or `agreed` when the endpoint ignored the
     conflict by ignoring the template field.
     """

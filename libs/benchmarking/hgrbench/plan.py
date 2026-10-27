@@ -1,14 +1,14 @@
 """A suite plan: which models, which harnesses, at which load points, how often.
 
 A plan is TOML because a benchmark plan is a document somebody edits and commits,
-and because `tomllib` is in the standard library — this package has no
+and because `tomllib` is in the standard library: this package has no
 dependencies, which is what lets it run from any checkout without a virtualenv
 of its own.
 
-Expansion is deliberately dumb: the cartesian product of models × harnesses ×
+Expansion is dumb: the cartesian product of models × harnesses ×
 load points × repeats, in a fixed order, with the repeat index part of the cell
 id. Nothing here is clever about scheduling, because there is nothing to be
-clever about — the cells run one at a time (see `runner`), since two load
+clever about: the cells run one at a time (see `runner`), since two load
 generators pointed at one deployment measure each other.
 """
 
@@ -83,7 +83,7 @@ class Load:
 
 @dataclass(frozen=True)
 class Sweep:
-    """A whole load ladder driven by one harness process rather than by this runner.
+    """A whole load ladder driven by one harness process, not by this runner.
 
     Two of the harnesses can do this and it is worth using: one tokenizer load, one
     continuous client, and the endpoint sees one session walking up the ladder
@@ -91,7 +91,7 @@ class Sweep:
     plot artifacts, which is the reason the tool exists.
 
     `num_runs` is repeats *per rung*, inside the harness, which is not the same as
-    the plan's `repeats` — the harness averages them and reports one summary.
+    the plan's `repeats`: the harness averages them and reports one summary.
     """
 
     enabled: bool = False
@@ -106,9 +106,9 @@ class Sweep:
 class SweepSpec:
     """One sweep: one model, one ladder, one harness.
 
-    Carried as its own object because a sweep is not a cell — it is a request for a
+    Carried as its own object because a sweep is not a cell: it is a request for a
     whole curve, and the measurements come back labelled by what the harness
-    actually ran rather than by what was asked for.
+    actually ran, not by what was asked for.
     """
 
     harness: str
@@ -132,7 +132,7 @@ class Knee:
 
     This is the one stage that is allowed to hurt a live endpoint, so it is opt-in
     per plan and again per invocation. `field` is a canonical metric id from
-    `metrics`, `limit` is in that field's unit, and `ladder` is climbed in order —
+    `metrics`, `limit` is in that field's unit, and `ladder` is climbed in order:
     the search stops at the first rung that breaks the SLA or errors, and reports
     the last rung that held.
     """
@@ -178,8 +178,8 @@ class Cell:
     """One measurement: one harness, one model, one load point, one repeat.
 
     The cell id is the directory name its artifacts land in and the key the report
-    joins on, so it has to be stable across runs of the same plan — that is what
-    makes two suite runs comparable rather than merely adjacent.
+    joins on, so it has to be stable across runs of the same plan: that is what
+    makes two suite runs comparable, not merely adjacent.
     """
 
     harness: str
@@ -318,9 +318,9 @@ def expand(plan: Plan) -> list[Cell]:
     """The plan as a flat list of measurements, in the order they will run.
 
     Model outermost, then load point, then harness, then repeat. The order is the
-    one that keeps a comparison honest: the harnesses that share a load point run
-    back to back, so a drift in the endpoint's own condition lands on all of them
-    rather than on whichever one ran last.
+    one that keeps a comparison accurate: the harnesses that share a load point run
+    back to back, so a drift in the endpoint's own condition lands on all of them,
+    not on whichever one ran last.
     """
     cells: list[Cell] = []
     for model in plan.models:
@@ -344,7 +344,7 @@ def expand(plan: Plan) -> list[Cell]:
 def knee_cells(plan: Plan, model: Model) -> list[Cell]:
     """The saturation ladder for one model, as cells the runner can execute.
 
-    Returned whole rather than generated lazily so that `--dry-run` can show the
+    Returned whole, not generated lazily so that `--dry-run` can show the
     ceiling of what the search might do. The runner stops climbing early, and the
     cells it never ran are simply absent from the results.
     """

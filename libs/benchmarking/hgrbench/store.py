@@ -4,8 +4,8 @@ One directory per suite run, one subdirectory per cell holding that harness's
 artifacts exactly as it wrote them, and one `suite.json` at the top that is the
 only file anything else reads. The raw artifacts are kept because a normalised
 number nobody can trace back is a number nobody can defend, and because the field
-maps in `metrics` are the sort of thing that gets a correction later — when it
-does, the fix is to re-read what is already on disk rather than to re-run the
+maps in `metrics` are the sort of thing that gets a correction later, when it
+does, the fix is to re-read what is already on disk, not to re-run the
 endpoint.
 
 `suite.json` is written after every cell, not at the end. A suite that is
@@ -143,7 +143,7 @@ class Store:
     def __init__(self, root: Path, suite: Suite) -> None:
         self.root = root.resolve()
         """Absolute, because these paths become docker bind-mount sources and a
-        relative one is read as a named volume rather than as this directory."""
+        relative one is read as a named volume, not as this directory."""
         self.suite = suite
         self.root.mkdir(parents=True, exist_ok=True)
 
@@ -161,7 +161,7 @@ class Store:
         """A private directory for one ladder run's artifacts.
 
         Separate from `cells/` because a sweep's output is a tree the harness laid
-        out — upstream's own `summary.csv` and per-combination directories — and
+        out, upstream's own `summary.csv` and per-combination directories, and
         flattening it into the per-cell scheme would destroy the thing that makes
         running upstream's tool worth doing.
         """
@@ -178,7 +178,7 @@ class Store:
         """Rewrite `suite.json` whole, so a reader never sees half of one.
 
         Written beside itself and renamed over, which is atomic on one filesystem: an
-        interrupt mid-write leaves the previous complete file rather than a truncated
+        interrupt mid-write leaves the previous complete file instead of a truncated
         one that no report can parse.
         """
         payload = json.dumps(asdict(self.suite), indent=2, default=str)
@@ -190,7 +190,7 @@ class Store:
 def read_suite(path: Path) -> dict[str, Any]:
     """One suite run, as the report reads it.
 
-    Returns the plain payload rather than the dataclasses. A report renders a
+    Returns the plain payload instead of the dataclasses. A report renders a
     suite.json written by an older version of this package, and refusing to read a
     file because a field it does not use has moved would be the wrong trade.
     """

@@ -2,14 +2,14 @@
 
 Everything here is serial and that is the design, not a limitation waiting to be
 lifted. Two load generators pointed at one deployment measure each other, and the
-whole point of a matrix is that the cells are comparable — so they run back to
+whole point of a matrix is that the cells are comparable, so they run back to
 back, with a cooldown between them, and the report can say a difference came from
-the harness rather than from what else was running.
+the harness, not from what else was running.
 
 The saturation search is the one stage that can hurt a live endpoint, so it is
 opt-in twice: `[knee] enabled` in the plan, and `--hard` on the invocation. It
 climbs a ladder, stops at the first rung that breaks the SLA or produces errors,
-and reports the last rung that held. Stopping *at* the breach rather than after it
+and reports the last rung that held. Stopping *at* the breach, not after it
 means the endpoint spends one load point in trouble, not the rest of the ladder.
 """
 
@@ -88,7 +88,7 @@ class Runner:
     def resolve_token(self) -> str:
         """The bearer token, read once from the variable the plan names.
 
-        Once per suite rather than per cell, so a variable changed mid-run cannot
+        Once per suite, not per cell, so a variable changed mid-run cannot
         give two cells of one suite two different identities.
         """
         return os.environ.get(self.plan.endpoint.token_env, "")
@@ -96,7 +96,7 @@ class Runner:
     def probe(self) -> None:
         """One request to the endpoint before spending an hour on it.
 
-        `/v1/models` rather than `/health`: this gateway answers 400 there with a
+        `/v1/models` instead of `/health`: this gateway answers 400 there with a
         token and 401 without one, and a benchmark suite that dies forty minutes in
         because the port-forward was never up is the failure this prevents.
         """
@@ -169,9 +169,9 @@ class Runner:
     def run_cell(self, cell: Cell) -> list[Measurement]:
         """One measurement, start to finish, recorded whatever happens.
 
-        A failed cell is recorded as failed rather than dropped. A suite whose
+        A failed cell is recorded as failed, not dropped. A suite whose
         results are only the cells that worked is a suite that quietly reports the
-        load levels the endpoint could handle and forgets the ones it could not —
+        load levels the endpoint could handle and forgets the ones it could not,
         which is the exact opposite of what a saturation test is for.
         """
         harness = registry.get(cell.harness)
@@ -232,9 +232,9 @@ class Runner:
     def execute(self, invocation: Invocation, log: Path, timeout: int) -> tuple[int, float]:
         """Run one container, writing a log the token cannot leak through as it goes.
 
-        Each line is redacted on its way to the file rather than streamed straight
-        there, because one of these harnesses echoes the whole command it spawns —
-        `--header "Authorization=Bearer <token>"` and all — to its own stdout. A log
+        Each line is redacted on its way to the file, not streamed straight
+        there, because one of these harnesses echoes the whole command it spawns,
+        `--header "Authorization=Bearer <token>"` and all, to its own stdout. A log
         is a file somebody pastes into an issue.
 
         A run that outlives `timeout` has its container killed by name, not just the
@@ -287,7 +287,7 @@ class Runner:
     def grade(self, measurement: Measurement) -> None:
         """Correct a status that the harness's exit code got wrong.
 
-        `vllm bench serve` exits 0 when every single request failed — it returns its
+        `vllm bench serve` exits 0 when every single request failed: it returns its
         result dict either way. So a cell is `ok` only if something was measured, and
         the request count in the export is what says so.
         """
@@ -306,7 +306,7 @@ class Runner:
         A harness that walks a ladder in one process produced several measurements
         from one cell, and they need distinct ids or they overwrite each other in
         every join the report does. The load point comes from what the harness
-        recorded, not from what was asked for — in a self-calibrating sweep those
+        recorded, not from what was asked for: in a self-calibrating sweep those
         differ, and the harness is right. Two points that report the same load are
         told apart by their repeat number.
         """
@@ -373,7 +373,7 @@ class Runner:
         """Every ladder a harness walks in one process.
 
         One invocation produces several measurements, each labelled with the load
-        point the harness says it ran — which in a self-calibrating sweep is a rate
+        point the harness says it ran, which in a self-calibrating sweep is a rate
         the tool chose at runtime and nobody could have written in the plan.
         """
         specs = [spec for spec in sweep_specs(self.plan) if self.sweep_wanted(spec)]
@@ -627,7 +627,7 @@ class Runner:
             self.knee()
         except KeyboardInterrupt:
             self.store.suite.notes.append("interrupted: the cells below are every one that finished")
-            self.say("\ninterrupted — flushing what is on disk")
+            self.say("\ninterrupted: flushing what is on disk")
         finally:
             self.store.suite.finished_at = now()
             self.store.flush()
@@ -638,12 +638,12 @@ def check_cell(cell: Cell) -> None:
     if cell.load.requests <= 0 and cell.load.seconds <= 0:
         raise HarnessError(f"{cell.id}: a load point needs either `requests` or `seconds`")
     if cell.harness in {"aiperf", "vllm-bench"} and cell.load.requests <= 0:
-        raise HarnessError(f"{cell.id}: {cell.harness} counts requests, not seconds — give the load point a `requests`")
+        raise HarnessError(f"{cell.id}: {cell.harness} counts requests, not seconds: give the load point a `requests`")
     if not cell.model.tokenizer:
         raise HarnessError(
             f"{cell.model.name} has no tokenizer. Every one of these harnesses counts tokens "
             "client-side and defaults the tokenizer to the served name, which is not a "
-            "Hugging Face repository — the run dies before it sends a request."
+            "Hugging Face repository: the run dies before it sends a request."
         )
 
 
@@ -694,7 +694,7 @@ def plan_problems(plan: Plan) -> list[str]:
 
 
 def refuse_invalid(plan: Plan) -> None:
-    """Raise with every problem in the plan at once, rather than the first one mid-run."""
+    """Raise with every problem in the plan at once, instead of the first one mid-run."""
     problems = plan_problems(plan)
     if problems:
         raise ValueError(f"{plan.source or plan.name} cannot run:\n  " + "\n  ".join(problems))

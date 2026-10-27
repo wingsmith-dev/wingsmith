@@ -1,6 +1,6 @@
 # A profile is a claim about one endpoint, plus the vendor knowledge no probe is
 # allowed to contain. Copy it per model. The two that matter most are `thinking`
-# and `paths` — they are the reason the probes never branch on a vendor name.
+# and `paths`: they are the reason the probes never branch on a vendor name.
 
 name = "example"
 base_url = "http://localhost:8080"

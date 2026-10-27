@@ -3,7 +3,7 @@
 Almost everything else here is only meaningful against a reference endpoint. This
 is the exception: when a request declares a JSON schema, the response either
 validates against that schema or it does not, and no other endpoint's opinion is
-needed. The observation still carries no verdict — but `schema_valid` is a fact
+needed. The observation still carries no verdict, but `schema_valid` is a fact
 that means something on its own, which is rare in this package.
 """
 
