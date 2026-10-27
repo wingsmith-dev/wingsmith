@@ -18,7 +18,7 @@ the person running the tooling, written to be model-, engine- and topology-indep
 Point 4 is where a global constant does the most damage. There is no universal
 threshold: noise is a property of a deployment and a metric, it has to be measured from
 repeats that **cross a reload** of the serving workers, and until it has been, no
-difference can accurately be called real or null.
+difference can be called real or null with any confidence.
 
 ## Steps, sorted by what they actually cost
 
@@ -30,7 +30,7 @@ load. Sort by that, not by device count.
 | step | costs | answers |
 |---|---|---|
 | **0: arithmetic** | seconds | Working set against cache capacity, session ceiling, batch-budget utilisation. Read capacity from the engine's own configuration instead of modelling it. |
-| **1, no reload** | one cell | Anything the client or the router controls: concurrency, request shape, request count, routing policy, arrival rate. Ask every question of this kind against the current fleet before rolling it. |
+| **1: no reload** | one cell | Anything the client or the router controls: concurrency, request shape, request count, routing policy, arrival rate. Ask every question of this kind against the current fleet before rolling it. |
 | **2: one reload** | a load plus a cell | Any engine flag or image change. This is the real unit of cost, and an experiment queue should be ordered around it. |
 | **3: a curve** | hours | Ladders and saturation searches, once step 0 has said where the cliff should be. |
 

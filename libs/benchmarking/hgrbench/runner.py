@@ -1,15 +1,15 @@
 """Running a plan: one cell at a time, and the saturation search that follows it.
 
 Everything here is serial and that is the design, not a limitation waiting to be
-lifted. Two load generators pointed at one deployment measure each other, and the
-whole point of a matrix is that the cells are comparable, so they run back to
+lifted. Two load generators pointed at one deployment measure each other, and a
+matrix is only useful if its cells are comparable, so they run back to
 back, with a cooldown between them, and the report can say a difference came from
 the harness, not from what else was running.
 
 The saturation search is the one stage that can hurt a live endpoint, so it is
 opt-in twice: `[knee] enabled` in the plan, and `--hard` on the invocation. It
 climbs a ladder, stops at the first rung that breaks the SLA or produces errors,
-and reports the last rung that held. Stopping *at* the breach, not after it
+and reports the last rung that held. Stopping *at* the breach instead of after it
 means the endpoint spends one load point in trouble, not the rest of the ladder.
 """
 
@@ -232,9 +232,9 @@ class Runner:
     def execute(self, invocation: Invocation, log: Path, timeout: int) -> tuple[int, float]:
         """Run one container, writing a log the token cannot leak through as it goes.
 
-        Each line is redacted on its way to the file, not streamed straight
-        there, because one of these harnesses echoes the whole command it spawns,
-        `--header "Authorization=Bearer <token>"` and all, to its own stdout. A log
+        Each line is redacted on its way to the file instead of streamed straight
+        there, because one of these harnesses echoes the whole command it spawns to
+        its own stdout, `--header "Authorization=Bearer <token>"` and all. A log
         is a file somebody pastes into an issue.
 
         A run that outlives `timeout` has its container killed by name, not just the

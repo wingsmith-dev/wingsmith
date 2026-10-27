@@ -19,7 +19,7 @@ for the same reason: the bytes are fixed, and two endpoints serving one model mu
 one clip into the same number of tokens. A difference is the defect, and needs no
 threshold to interpret. Everything generated stays out of `compare`, including the
 collapsed readings of an answer: was the colour named, which way was the motion,
-which item was read first. Each is one sample of the model's judgement, and two correct
+which item was read first. Each is one sample of the model's judgement, and two
 runs of one model disagree on a single sample often enough that comparing it reports
 noise. They stay in the observation as evidence that the frames arrived.
 """
@@ -158,7 +158,7 @@ def _direction(text: str) -> str:
 def _read_order(text: str, first: re.Pattern[str], second: re.Pattern[str]) -> str:
     """Whether the colours were named in the order the items were sent.
 
-    `one` and `none` are kept apart from `reversed`. An endpoint that drops
+    `one` and `none` are intentionally kept apart from `reversed`. An endpoint that drops
     one of two media items reads as `one`, which is a different defect from one that
     delivers both in the wrong order.
     """
@@ -173,8 +173,8 @@ def _read_order(text: str, first: re.Pattern[str], second: re.Pattern[str]) -> s
 def _shape(counts: list[int | None]) -> str:
     """How a token count moves along one axis, in words the diff can compare.
 
-    Two endpoints can disagree on every count and still sample the same way, a
-    constant per-clip overhead does that, and they can agree on the first three
+    Two endpoints can disagree on every count and still sample the same way (a
+    constant per-clip overhead does that), and they can agree on the first three
     counts of an axis and part ways where one of them hits a cap. The run of signs
     separates those: `grows-then-flat` on one side and `grows` on the other is a
     frame or resolution ceiling that only one of them has.
@@ -293,8 +293,8 @@ def order(session: Session) -> dict[str, Any]:
 def tokens(session: Session) -> dict[str, Any]:
     """What the base clip costs, as the difference between two otherwise identical prompts.
 
-    The delta is the clip's own share, its pads, its per-chunk timestamps and media
-    markers, with the chat template's overhead cancelled out, which is what makes it
+    The delta is the clip's own share (its pads, its per-chunk timestamps and media
+    markers) with the chat template's overhead cancelled out, which is what makes it
     readable against a geometry prediction.
     """
     text = _count(session, _ask(COUNT_PROMPT))
@@ -483,7 +483,7 @@ def streaming(session: Session) -> dict[str, Any]:
     A video request spends seconds in preprocessing before the first token, which is
     exactly where a proxy's idle timeout or a frontend that buffers until the encoder
     returns turns a stream into one late chunk. `incremental` asks whether more than
-    one chunk carried generated text, reasoning or content, so a stream that arrived
+    one chunk carried generated text (reasoning or content), so a stream that arrived
     all at once is distinguishable from one that streamed.
     """
     body = session.body(

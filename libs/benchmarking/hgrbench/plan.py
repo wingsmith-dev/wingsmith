@@ -5,7 +5,7 @@ and because `tomllib` is in the standard library: this package has no
 dependencies, which is what lets it run from any checkout without a virtualenv
 of its own.
 
-Expansion is dumb: the cartesian product of models × harnesses ×
+Expansion is intentionally dumb: the cartesian product of models × harnesses ×
 load points × repeats, in a fixed order, with the repeat index part of the cell
 id. Nothing here is clever about scheduling, because there is nothing to be
 clever about: the cells run one at a time (see `runner`), since two load
@@ -318,7 +318,7 @@ def expand(plan: Plan) -> list[Cell]:
     """The plan as a flat list of measurements, in the order they will run.
 
     Model outermost, then load point, then harness, then repeat. The order is the
-    one that keeps a comparison accurate: the harnesses that share a load point run
+    one that keeps a comparison fair: the harnesses that share a load point run
     back to back, so a drift in the endpoint's own condition lands on all of them,
     not on whichever one ran last.
     """
@@ -344,7 +344,7 @@ def expand(plan: Plan) -> list[Cell]:
 def knee_cells(plan: Plan, model: Model) -> list[Cell]:
     """The saturation ladder for one model, as cells the runner can execute.
 
-    Returned whole, not generated lazily so that `--dry-run` can show the
+    Returned whole instead of generated lazily, so that `--dry-run` can show the
     ceiling of what the search might do. The runner stops climbing early, and the
     cells it never ran are simply absent from the results.
     """

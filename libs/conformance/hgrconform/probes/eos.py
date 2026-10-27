@@ -6,14 +6,14 @@ response by the letter of the schema and useless by any other measure. Providers
 suppress it. One request cannot see this, so the probe sends many and records how
 often it happened.
 
-The rate itself is not comparable, two runs of fifty samples never agree on a float,
-so the compared key is the bucket the rate falls in. The raw rate, the counts, the
+The rate itself is not comparable, since two runs of fifty samples never agree on a
+float. The compared key is the bucket the rate falls in. The raw rate, the counts, the
 finish reasons and the sample size stay in the observation as evidence.
 
 The buckets are only as fine as the sample allows, and no coarser than one sample
 must never cross. Zero is not a bucket of its own: an endpoint that suppresses EOS
 well still lets one through now and then, and "never in this run" against "once in
-this run" is a coin toss between two correct endpoints, not a difference between
+this run" is a coin toss between two conforming endpoints, not a difference between
 them. The lowest bucket therefore runs from zero up to `RARE_BELOW`, and
 `MIN_SAMPLES` keeps `1/n` at or under half of that line, so it takes at least two
 empty samples to leave it. Every bucket stays reachable at that size, and a smaller
@@ -108,7 +108,7 @@ def suppression(session: Session) -> dict[str, Any]:
 
     Only the buckets are compared, and neither of them separates none from one.
     Whether any sample at all came back empty, and the set of finish reasons seen,
-    both turn on a single rare event in a run of fifty, so two correct endpoints
+    both turn on a single rare event in a run of fifty, so two conforming endpoints
     disagree on them by chance; they stay in the observation as evidence.
     """
     thinking = session.profile.thinking

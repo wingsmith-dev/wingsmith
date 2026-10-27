@@ -2,7 +2,7 @@
 
 Serial, and not for the reason the benchmark runner is serial. There, two load
 generators against one deployment measure each other; here nothing is being timed,
-and the order only matters because some probes send bad credentials or
+and the order only matters because some probes intentionally send bad credentials or
 oversized prompts, and an endpoint that rate-limits or trips a circuit on those
 would poison a concurrent neighbour.
 

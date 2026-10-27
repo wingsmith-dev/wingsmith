@@ -1,7 +1,7 @@
 """Which sampling parameters the endpoint accepts, and at which values it stops accepting them.
 
-The verifier this replaces asserts that particular values are rejected, temperature
-above one, `n` above one, because the model it was written for pins them. That is a
+The verifier this replaces asserts that particular values are rejected (temperature
+above one, `n` above one) because the model it was written for pins them. That is a
 vendor policy and not a protocol rule, so asserting it reports a failure against every
 other model. The question that survives the change of model is a parity question:
 for each parameter, at a legal value, at a value outside the documented range, and at

@@ -4,7 +4,7 @@ The vendor verifier this replaces asserted `prompt_tokens` against a constant wr
 down per case. A constant is a claim about one tokenizer at one moment, and it is wrong
 the day the model is retrained. The question worth asking is parity: two endpoints
 serving the same model must tokenize the same bytes into the same number of tokens, so
-the counts themselves are the comparable value here, unusually: a difference is exactly
+the counts themselves are the comparable value here, which is unusual: a difference is exactly
 the defect and needs no threshold to interpret.
 
 The corpus is fixed and lives in this file so a change to what is asked is a change
@@ -40,7 +40,7 @@ CASES: dict[str, list[dict[str, Any]]] = {
         {"role": "user", "content": "And plus one more?"},
     ],
     "unicode": [
-        {"role": "user", "content": "Repeat this exactly: héllo wörld; 你好世界 🚀🇧🇷 café naïve"},
+        {"role": "user", "content": "Repeat this exactly: héllo wörld \u2014 你好世界 🚀🇧🇷 café naïve"},
     ],
     "code_fence": [
         {

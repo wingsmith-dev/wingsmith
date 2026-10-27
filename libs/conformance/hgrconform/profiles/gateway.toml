@@ -16,7 +16,7 @@ modalities = ["text"]
 protocols = ["chat_completions"]
 
 # What a caller must never see in an error body. These are the names of everything
-# between the gateway and the engine, if any of them reaches a 4xx body, that is a
+# between the gateway and the engine. If any of them reaches a 4xx body, that is a
 # finding today and it needs no reference endpoint to establish. Add the names your own
 # infrastructure goes by here, and to the gateway's HANGAR_GATEWAY_REDACT_NAMES.
 leak_needles = [

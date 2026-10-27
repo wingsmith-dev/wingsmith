@@ -4,7 +4,7 @@ One directory per suite run, one subdirectory per cell holding that harness's
 artifacts exactly as it wrote them, and one `suite.json` at the top that is the
 only file anything else reads. The raw artifacts are kept because a normalised
 number nobody can trace back is a number nobody can defend, and because the field
-maps in `metrics` are the sort of thing that gets a correction later, when it
+maps in `metrics` are the sort of thing that gets a correction later. When one
 does, the fix is to re-read what is already on disk, not to re-run the
 endpoint.
 
@@ -161,7 +161,7 @@ class Store:
         """A private directory for one ladder run's artifacts.
 
         Separate from `cells/` because a sweep's output is a tree the harness laid
-        out, upstream's own `summary.csv` and per-combination directories, and
+        out (upstream's own `summary.csv` and per-combination directories), and
         flattening it into the per-cell scheme would destroy the thing that makes
         running upstream's tool worth doing.
         """

@@ -6,7 +6,7 @@ description = "Run this project's benchmark harnesses locally against an OpenAI-
 requires-python = ">=3.11"
 dependencies = []
 
-# No dependencies. Plans are TOML and `tomllib` is in the standard
+# No dependencies, by design. Plans are TOML and `tomllib` is in the standard
 # library; the report is a string; the harnesses are containers. That is what lets
 # `python3 -m hgrbench` work from a fresh checkout with no virtualenv, on the laptop
 # of somebody who wanted one number and not an environment.

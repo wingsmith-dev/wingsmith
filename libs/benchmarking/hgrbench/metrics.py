@@ -7,15 +7,15 @@ search, no shared output schema, and a path that does not resolve is a named mis
 instead of a silent zero.
 
 The plane's benchmarks module reads AIPerf with the same idea, in
-`libs/plane/app/modules/benchmarks/summaries.py`. The two are separate copies on
-purpose: this package has no dependencies and runs from a checkout without the
+`libs/plane/app/modules/benchmarks/summaries.py`. The two are separate copies by
+design: this package has no dependencies and runs from a checkout without the
 plane installed, so it cannot import the plane's module. What they share is a
 contract, and nothing but review keeps the two copies to it:
 
 - the field ids (`ttft.p90`, `request.errors`, ...) mean the same number in both
   places, so a local finding and a cluster benchmark can be put in one sentence;
-- the AIPerf paths are the same paths, and a path that a harness leaves out on
-  purpose means the same thing in both. AIPerf writes `error_request_count` only
+- the AIPerf paths are the same paths, and a path that a harness leaves out
+  intentionally means the same thing in both. AIPerf writes `error_request_count` only
   when a request failed, so its absence from an otherwise complete export is zero
   failures, not a missing reading. A copy that reads it as missing reports a gap
   on every clean run, and the two disagree on the same file.
@@ -40,8 +40,8 @@ Three facts about these three harnesses make the map non-trivial, and each is wh
   requests into a latency figure, so every path here names `.successful`.
 
 `DERIVED` is the deliberate exception to path-reading. Two numbers that matter for
-a load curve are not in every export, per-stream output speed, and the input
-length actually achieved, and computing them from two fields that *are* there
+a load curve are not in every export (per-stream output speed, and the input
+length actually achieved), and computing them from two fields that *are* there
 beats leaving a hole in the comparison. A derived value is recorded as derived and
 the report labels it, because a computed number and a measured one are not the
 same claim.
@@ -66,7 +66,7 @@ SECONDS_TO_MS = 1000.0
 class Field(NamedTuple):
     """One number an adapter knows how to find, and what it is measured in.
 
-    `absent` is the value of a field the harness omits, not reports as
+    `absent` is the value of a field the harness omits instead of reporting as
     zero. It applies only when the export itself is an object, so an unreadable
     export still reads as a miss, not as zero failures.
     """
@@ -348,7 +348,7 @@ _TOTALS: dict[str, str] = {
 """Harness keys holding a run total where we want a per-request mean.
 
 Only `vllm-bench` needs this, and its own gotcha is the reason to bother: the
-random dataset's realised input length exceeds what was asked for, so the accurate
+random dataset's realised input length exceeds what was asked for, so the right
 input length for a cross-harness comparison is the one it reports having sent,
 divided by the requests that completed, never the flag value.
 """

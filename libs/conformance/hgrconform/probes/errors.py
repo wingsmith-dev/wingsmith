@@ -1,8 +1,8 @@
 """What an error body says, and whether it says who is really serving the request.
 
 The leak check is the one probe here whose needles come from our side instead of
-the model's: the profile lists the strings that would give us away, our hostnames,
-our project names, the upstream image name, and the probe reports which of them
+the model's: the profile lists the strings that would give us away (our hostnames,
+our project names, the upstream image name) and the probe reports which of them
 appear in an error body. That is why it cannot be a parity check. The original
 provider will never leak our name, so a diff against it is uninformative; what
 matters is the absolute answer.
@@ -67,7 +67,7 @@ def shape(session: Session) -> dict[str, Any]:
     compare=(),
 )
 def leakage(session: Session) -> dict[str, Any]:
-    """Not compared against the reference, see this module's docstring.
+    """Not compared against the reference, by design; see this module's docstring.
 
     The probe set is wider than the errors in its name. A refusal is where a name
     leaks most often and not the only place it can: the catalog is the one response
@@ -77,8 +77,8 @@ def leakage(session: Session) -> dict[str, Any]:
     split across probes, because the finding is the same finding wherever the
     string turns up and a client does not care which probe found it.
 
-    `where` names the request, and `in_headers` says whether it was a header rather
-    than a body: the recorded exchange keeps no response headers, so a header leak
+    `where` names the request, and `in_headers` says whether it was a header and not
+    a body: the recorded exchange keeps no response headers, so a header leak
     would otherwise be a finding nobody could reproduce from the artifact.
     """
     needles = session.profile.leak_needles
@@ -142,8 +142,8 @@ ERROR_CLASSES = (
 def _envelope(response: Any) -> dict[str, Any]:
     """The types of an error envelope's own fields, instead of their values.
 
-    `type` and `code` are compared as *kinds*, is `type` one of the vendor error
-    classes or something else, is `code` a string or a number, because their values
+    `type` and `code` are compared as *kinds* (is `type` one of the vendor error
+    classes or something else, is `code` a string or a number) because their values
     legitimately differ between two endpoints and their types do not. A `code` given
     as the integer 400 is the HTTP status wearing the name of a field the spec
     defines as a string, and a client that switches on it breaks on the endpoint that

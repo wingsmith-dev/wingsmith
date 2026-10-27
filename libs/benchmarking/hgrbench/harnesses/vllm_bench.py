@@ -15,7 +15,7 @@ Three of its flags are not optional in practice, and each one was a failed run
 first:
 
 - `--model` must be passed. Left out, it auto-discovers from `/v1/models` and reads
-  `data[0]["root"]`, which our gateway does not emit; `KeyError: 'root'`.
+  `data[0]["root"]`, which our gateway does not emit, so it fails with `KeyError: 'root'`.
 - `--backend openai-chat` **and** `--endpoint /v1/chat/completions` must agree. The
   defaults are the completions pair, and a mismatch sends chat bodies to the
   completions path where every request fails as a 4xx.
@@ -23,7 +23,7 @@ first:
   percentiles. The defaults are `ttft,tpot,itl` at p99 only, so a default run has no
   median, no p90, and no end-to-end latency at all.
 
-Two keys in its output are not read by `metrics`:
+Two keys in its output are intentionally not read by `metrics`:
 `max_concurrent_requests` and `max_output_tokens_per_s` are computed by binning
 requests into integer-second buckets, which on a short run makes the first equal to
 the request count and can make the second come out *below* the mean.
@@ -47,7 +47,7 @@ from hgrbench.harnesses.base import shell_command
 IMAGE = "hangar/vllm-bench:0.28.0"
 PINNED_VERSION = "0.28.0"
 # Resolved from this file instead of the working directory, so the image builds
-# whichever directory hgrbench runs from. It is outside the package: the
+# whichever directory hgrbench runs from. It is outside the package by design: the
 # vendored sources are not something a wheel should carry, and an install without a
 # checkout says so when it needs the image (`Runner.build`).
 BUILD_CONTEXT = str(Path(__file__).resolve().parents[2] / "images" / "vllm-bench")

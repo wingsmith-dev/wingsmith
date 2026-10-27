@@ -55,7 +55,7 @@ is compiled from `requirements.in`; the command to regenerate it is at the top o
 Two entrypoints. The default one is the single-point load generator; the sweep is reached by
 overriding the entrypoint.
 
-**Single point**: `vllm bench serve`:
+**Single point**, with `vllm bench serve`:
 
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \
@@ -80,7 +80,7 @@ Flags this gateway requires: `--backend openai-chat --endpoint /v1/chat/completi
 with the *served* name; omitting it crashes with `KeyError: 'root'`, because the gateway's
 `/v1/models` has no `root` field. `--tokenizer` takes the HF repo id.
 
-**Sweep**: `vllm bench sweep {serve,serve_workload,plot,plot_pareto}`:
+**Sweep**, with `vllm bench sweep {serve,serve_workload,plot,plot_pareto}`:
 
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \

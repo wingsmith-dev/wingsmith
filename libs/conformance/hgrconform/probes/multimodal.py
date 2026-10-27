@@ -6,7 +6,7 @@ A solid-colour PNG is enough: the question is whether the endpoint
 looked at the pixels, and a colour is the smallest answer that cannot be produced by
 guessing from the prompt alone.
 
-The audio and video probes ask a smaller question. Transcription quality is
+The audio and video probes intentionally ask a smaller question. Transcription quality is
 not comparable between two endpoints without a corpus; what is comparable is whether the
 content part is routed at all, and what the endpoint says when it declines. So a single
 malformed part goes in, and the status and the error shape come out. What a real clip
@@ -134,7 +134,7 @@ def image(session: Session) -> dict[str, Any]:
 
     `status` answers whether the content-part shape was accepted; `colour_recognised`
     answers whether the pixels reached the model. Only the first is compared. Whether
-    the model named the colour is one sample of its judgement, and two correct runs of
+    the model named the colour is one sample of its judgement, and two runs of
     one model disagree on a single sample often enough that a diff on it reports
     noise; it is kept as evidence for a person reading the run. The recognition test
     matches a family of words instead of one, so the evidence is about whether the
@@ -179,7 +179,7 @@ def image(session: Session) -> dict[str, Any]:
 def audio(session: Session) -> dict[str, Any]:
     """What the endpoint does with `input_audio`, not what it hears.
 
-    The payload is not a real recording. An endpoint that has no audio
+    The payload is intentionally not a real recording. An endpoint that has no audio
     route rejects the part before decoding it, and an endpoint that has one rejects the
     data instead: those are different statuses and different error types, which is the
     whole observation.
@@ -270,7 +270,7 @@ def remote_url(session: Session) -> dict[str, Any]:
     the refusal kind are compared and the message is not: a caller migrating between
     two endpoints writes their retry against a status code.
 
-    The URL is a stable one on a third-party host. A probe that served
+    The URL is intentionally a stable one on a third-party host. A probe that served
     the image from somewhere we control would be measuring our own egress rules
     instead of the endpoint's.
     """

@@ -2,24 +2,24 @@
 
 It exists so the probes can be tested without an endpoint, and more importantly so
 the one rule that makes this tool worth running can be tested at all: every key a
-probe compares must collapse variance that two correct endpoints would differ on.
+probe compares must collapse variance that two conforming endpoints would differ on.
 
 Three modes:
 
     QUIRK=none    conforming, and deterministic
-    QUIRK=leaky   three planted defects; it names its own infrastructure in an error
+    QUIRK=leaky   three planted defects: it names its own infrastructure in an error
                   body and a header, puts `usage` in every stream chunk instead of the
                   last, and emits a field its declared JSON schema forbids
-    QUIRK=noisy   conforming, but varies everything two correct endpoints serving one
+    QUIRK=noisy   conforming, but varies everything two conforming endpoints serving one
                   model may vary: ids, completion token counts, chunk counts, trailing
-                  whitespace, and the model's own decisions, whether it calls a tool
+                  whitespace, and the model's own decisions: whether it calls a tool
                   when the choice is left to it, how many, whether it uses a tool
                   result, whether it reads an image or a video correctly, whether
                   it recalls an earlier turn, and whether one reasoning request in
                   a run ends early with an empty answer
 
 `noisy` is the important one. Two `noisy` instances with different seeds are two
-accurate endpoints that agree about everything a diff should care about and agree
+conforming endpoints that agree about everything a diff should care about and agree
 about nothing else. Any difference the runner reports between them is a probe
 comparing something it should not, and that includes a single sample of a model
 decision, which differs between two runs of one model as readily as an id does.

@@ -9,8 +9,8 @@ dependencies = ["httpx>=0.27", "jsonschema>=4.21"]
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
-# Two dependencies and neither is a model SDK. Half of what this asks
-# about is the shape of the wire, whether a JSON object repeats a key, which chunk
+# Two dependencies and neither is a model SDK, by design. Half of what this asks
+# about is the shape of the wire: whether a JSON object repeats a key, which chunk
 # carries `usage`, what a 400 body says about who is really serving the request. An
 # SDK normalises all three away before anything here could look at them.
 
@@ -44,6 +44,6 @@ lines-between-types = 1
 known-first-party = ["hgrconform"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
-# The stub builds its ids with %-formatting; it is a test fixture, not house style.
+# The stub builds its ids with %-formatting intentionally; it is a test fixture, not house style.
 [tool.ruff.lint.per-file-ignores]
 "tests/stub.py" = ["UP031"]

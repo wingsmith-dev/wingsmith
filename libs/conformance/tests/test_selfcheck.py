@@ -83,7 +83,7 @@ def _profile(name: str, url: str) -> Profile:
     """The stub, described the way a committed profile describes a real endpoint.
 
     It claims everything the stub serves, because a probe that `requires` a capability
-    the profile does not claim is skipped, not run, which would leave it out of
+    the profile does not claim is skipped instead of run, which would leave it out of
     the self-check entirely.
     """
     return Profile(
@@ -144,7 +144,7 @@ def test_every_probe_runs_and_none_raises(tmp_path, stub):
 
 
 def test_noisy_twins_agree(tmp_path, stub):
-    """Two accurate endpoints differ only where a probe compares something it should not."""
+    """Two conforming endpoints differ only where a probe compares something it should not."""
     store = _run(tmp_path, _profile("noisy-a", stub("noisy", seed=7)), _profile("noisy-b", stub("noisy", seed=1000)))
 
     unexpected = _differences(store)

@@ -1,17 +1,17 @@
 """Tool calling: the protocol, the round trip, the identity of a call, and the two ways it goes wrong.
 
 Five questions land here, and they are not the same kind of question.
-Protocol and round trip are mechanical, either the endpoint accepts the four
+Protocol and round trip are mechanical: either the endpoint accepts the four
 `tool_choice` modes and reassembles a streamed call correctly, or it does not.
 Parallel calls and hallucination are behavioural, and behaviour varies between two
-accurate runs of the same model.
+runs of the same model.
 
 That difference decides what may be compared. `tool_choice: required` producing no
 call at all is a protocol defect and is comparable. Everything the model decides for
 itself is not: whether it calls a tool under `auto`, how many it calls, whether it
 calls one on small talk or invents one, and whether it used a result it was given.
-Each of those is a single sample of the model's judgement, two correct runs disagree
-on it, and it appears only as evidence.
+Each of those is a single sample of the model's judgement; two runs disagree
+on it, so it appears only as evidence.
 
 What is never compared is the argument text. Two endpoints serving one model will
 phrase `{"city": "Lisbon"}` and `{"city":"Lisbon"}` differently and mean the same
@@ -19,7 +19,7 @@ thing; what matters is that it parsed and that it satisfied the schema we sent.
 
 The identity of a call is the fifth question and the one that needs the most care to
 ask. A tool call id is the only thing pairing a result with the call it answers, so
-it must be unique for as long as the conversation lives, but every probe that looks
+it must be unique for as long as the conversation lives. But every probe that looks
 at a single response sees an id that is unique within that response and learns
 nothing. A parser that restarts its counter at every assistant turn mints
 `get_weather:0` three turns running and passes every mechanical check above while
@@ -111,7 +111,7 @@ def _plain(value: Any) -> Any:
 def _anthropic(tool: dict[str, Any]) -> dict[str, Any]:
     """The same tool declaration in the Messages API's own spelling.
 
-    Translated, not written out a second time, so that the two id probes are
+    Translated instead of written out a second time, so that the two id probes are
     provably asking about one tool and cannot drift into asking about two.
     """
     function = tool["function"]
@@ -150,8 +150,8 @@ def _identity(ids: list[Any], names: tuple[str, ...]) -> dict[str, Any]:
     because a conversation with nothing to pair is not a pairing defect and must not
     diff as one. The shape collapses to a single word where every id agrees and to
     `mixed` where they do not, which is itself a finding: an endpoint that mints one
-    kind of id on the first turn and another kind afterwards is translating rather
-    than generating.
+    kind of id on the first turn and another kind afterwards is translating ids
+    instead of generating them.
     """
     seen = [value for value in ids if isinstance(value, str) and value]
     shapes = {_id_shape(value, names) for value in ids}
@@ -366,7 +366,7 @@ def round_trip(session: Session) -> dict[str, Any]:
     The sentinel is a temperature no model would invent, so `used_result` is a real
     observation instead of a coincidence. It is still the model's answer, one sample
     of it, so it is evidence and not compared; acceptance of the result is. Whether
-    the *first* turn produced a call is not this probe's question, if it did not, the probe records that and stops,
+    the *first* turn produced a call is not this probe's question. If it did not, the probe records that and stops,
     because a round trip with nothing to return is not a failure of the round trip.
 
     One turn can say something about identity even though it cannot say whether ids
@@ -446,7 +446,7 @@ def id_uniqueness(session: Session) -> dict[str, Any]:
     second is a repeat, which a counter that resets per response and a counter that
     is merely low both satisfy. Three shows the pattern.
 
-    The same tool every turn. A conversation that alternates tools would
+    The same tool every turn, by design. A conversation that alternates tools would
     hide a per-tool counter behind two names that never collide with each other, and
     a per-tool counter is the defect this exists to see.
 
@@ -712,7 +712,7 @@ def allowed_tools(session: Session) -> dict[str, Any]:
     Three questions, and only the first two are strongly comparable. Whether the shape
     is accepted at all is mechanical. Whether a call happened under `required` is
     contractual. Whether the call that happened respects the restriction is the point
-    of the feature: recorded as `restricted`, which is true when every call names a
+    of the feature. It is recorded as `restricted`, which is true when every call names a
     tool from the allowed set, and vacuously true when no call was made, so it reads
     only alongside `called`.
 

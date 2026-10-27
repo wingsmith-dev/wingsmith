@@ -3,7 +3,7 @@
 Adding one is two files and one line: a module beside this one that builds a
 command and reads an export, an entry in `metrics.ADAPTERS` naming where its
 numbers are, and a line here. Nothing else in the package is harness-specific,
-which is the point of the table, and it is the same shape as
+which is the point of the table. It is kept the same shape as
 `libs/plane/app/modules/benchmarks/harnesses.py`, so a harness that graduates to
 running inside a cluster is a port instead of a rewrite.
 """

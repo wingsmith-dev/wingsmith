@@ -22,8 +22,8 @@ and its logs never hold the token. The one harness that has no header flag at al
 the in-container shell, not by ours.
 
 That is as far as it goes. The in-container shell expands the variable into the
-argv of the tool it starts, AIPerf's `-H`, GuideLLM's `--backend`, `vllm bench
-serve`'s `--header` and the vLLM sweep's `--bench-cmd`, because none of them takes
+argv of the tool it starts (AIPerf's `-H`, GuideLLM's `--backend`, `vllm bench
+serve`'s `--header` and the vLLM sweep's `--bench-cmd`), because none of them takes
 the token from its environment for every request it sends.
 On a Linux host, where container processes share the host's process table, those
 command lines are visible to anyone who can run `ps` there. Use a token scoped to
@@ -227,7 +227,7 @@ def docker_argv(
 
     The Hugging Face cache is mounted writable, not read-only: every one of
     these harnesses needs a tokenizer, and `huggingface_hub` treats a cache it
-    cannot write as no cache at all: asked for a repository it does not hold, it
+    cannot write as no cache at all. Asked for a repository it does not hold, it
     creates the directory before it checks anything and dies on a read-only mount,
     not on a missing file.
     """
@@ -280,7 +280,7 @@ def quote(value: object) -> str:
 
     Every value interpolated into a harness script goes through this, so a model
     name, tokenizer or URL with a space, a quote or a `$` in it reaches the tool as
-    written. The token is the one thing left for that shell to expand,
+    written. The token is the one thing intentionally left for that shell to expand,
     and it is never passed through here.
     """
     return shlex.quote(str(value))
@@ -309,8 +309,8 @@ def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoin
     """A harness driven through a shell inside the container.
 
     The script is a single argument, unexpanded by our shell, so `$HGR_BENCH_TOKEN`
-    in it is expanded by the container's shell from the environment, which is the
-    whole point.
+    in it is expanded by the container's shell from the environment. That is the
+    reason for going through a shell at all.
     """
     secrets = with_token(ctx)
     name = container_name()

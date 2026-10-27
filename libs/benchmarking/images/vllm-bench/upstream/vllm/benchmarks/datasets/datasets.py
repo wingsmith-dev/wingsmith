@@ -4699,7 +4699,7 @@ class BFCLDataset(HuggingFaceDataset):
 
             # Best-effort prompt length for percentile bucketing. Pass tools=
             # so modern chat templates (Llama 3.1+, Qwen, gpt-oss harmony,
-            # Hermes) render the tool schemas, without this, the estimate
+            # Hermes) render the tool schemas; without this, the estimate
             # misses a significant chunk of the true input for BFCL traffic.
             # Older tokenizers reject the kwarg; fall back to tools-free.
             try:

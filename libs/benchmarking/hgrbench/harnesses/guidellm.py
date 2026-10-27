@@ -9,8 +9,8 @@ Two profiles matter to us and the difference is a safety question:
 - `kind=concurrent` with `--override 'profile.streams' 1,2,4,8` runs one benchmark
   per rung of a ladder we chose. Bounded, predictable, safe against a live endpoint.
 - `kind=sweep,sweep_size=N` self-calibrates instead: benchmark 1 is serial,
-  benchmark 2 is `throughput`, unbounded, `max_concurrency` defaulting
-  to 512, and the remaining rates are `linspace` between the two rates *this*
+  benchmark 2 is `throughput`, unbounded by design (`max_concurrency` defaults
+  to 512), and the remaining rates are `linspace` between the two rates *this*
   server actually achieved. It adapts per model, which is genuinely better data, and
   its second leg is an overload by construction. No plan key reaches it: only the
   explicit ladder is wired, and wiring the sweep would need its own `--hard` gate and
@@ -90,8 +90,8 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
     tokenizer load, and the endpoint sees a single continuous client, not N
     cold starts. The rungs are ours, so nothing here overloads by design.
 
-    The request budget is per rung, not per run, `max_requests` is a per-benchmark
-    constraint, so a four-rung ladder at 20 requests sends 80. Stating it here
+    The request budget is per rung, not per run (`max_requests` is a per-benchmark
+    constraint), so a four-rung ladder at 20 requests sends 80. Stating it here
     because the arithmetic is the difference between a polite suite and a surprise.
     """
     rungs = ",".join(str(rung) for rung in spec.ladder)

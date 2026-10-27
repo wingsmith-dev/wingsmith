@@ -4,8 +4,8 @@ Closed-loop and concurrency-first: it holds N requests in flight and reports the
 distribution. One invocation is one operating point, which is why a load curve
 here is a loop over cells instead of a flag.
 
-The image is the one `libs/plane/app/modules/benchmarks/harnesses.py` pins, on
-purpose. A local finding that cannot be reproduced by the cluster path is a local
+The image is intentionally the one `libs/plane/app/modules/benchmarks/harnesses.py`
+pins. A local finding that cannot be reproduced by the cluster path is a local
 curiosity; the same image at the same version makes it evidence.
 """
 
@@ -40,7 +40,7 @@ def command(cell: Cell, ctx: Context) -> Invocation:
 
     `ignore_eos` is set so that the generation length is the one asked for. It makes
     the comparison across harnesses and models fair and it makes the question
-    unnatural, which is a trade the report states, not hides.
+    unnatural, which is a trade the report states instead of hiding.
     """
     args = [
         "aiperf profile",

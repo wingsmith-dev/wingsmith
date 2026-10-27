@@ -191,8 +191,8 @@ class Session:
     def _with_extra(self, body: dict[str, Any]) -> dict[str, Any]:
         """Merge the profile's `extra_body` underneath what the probe asked for.
 
-        Applied here, not in `body()` because a probe is free to build its own
-        request, the Anthropic surface and the malformed ones do, and a
+        Applied here instead of in `body()`, because a probe is free to build its own
+        request (the Anthropic surface and the intentionally malformed ones do), and a
         request that escaped unpinned would be answered by a different server than the
         rest of the run, which is the one thing `extra_body` exists to prevent. The
         probe's own keys win, so this can only add fields, never rewrite the question.

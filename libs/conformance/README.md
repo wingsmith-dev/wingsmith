@@ -67,7 +67,7 @@ Four rules follow from it:
 
 ## The hard part: what may be compared
 
-A comparable key must collapse variance that two correct endpoints would differ on.
+A comparable key must collapse variance that two conforming endpoints would differ on.
 This is most of the design work in every probe, and getting it wrong makes the tool
 useless in a way that looks like it is working.
 
@@ -88,7 +88,7 @@ The same goes for the model's own decisions. Whether it called a tool when the c
 was left to it, how many it called, whether it named the colour of an image or the
 direction a square moved in a clip, whether it used a tool result, whether it recalled
 a number from an earlier turn: each is one sample
-of the model's judgement, and two correct runs of one model disagree on a single sample
+of the model's judgement, and two runs of one model disagree on a single sample
 often enough that comparing it reports noise. Those readings are kept as evidence for
 a person (`hgrconform show <run> <probe>`) and never compared. Rates are compared only
 as buckets, over enough samples that every bucket can be reached and one stray sample
@@ -106,7 +106,7 @@ the same number of tokens, so there the number *is* the answer.
 serves every surface the probes ask about: image, audio and video parts, a thinking
 switch, streamed tool calls and the Anthropic Messages surface. Its `noisy` mode is
 conforming but varies token counts, ids and chunk counts on every call, and makes the
-model's decisions differently from its twin. Two noisy instances are two correct
+model's decisions differently from its twin. Two noisy instances are two conforming
 endpoints, and
 
 ```sh
@@ -130,7 +130,7 @@ gateway changed. It fails when a probe errors, when an error body or header name
 needle, or when a difference turns up that `tests/gateway-differences.txt` does not
 accept with a reason. CI runs it on every change.
 
-## What is here, and what is not
+## What is here, and what is left out by design
 
 | Probes | What they ask |
 |---|---|
@@ -141,7 +141,7 @@ accept with a reason. CI runs it on every change.
 | `video` | video input with the clips in `hgrconform/assets/video/`: acceptance, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
 | `eos`, `limits` | EOS suppression rate, burst policy |
 
-Not here:
+Left out by design:
 
 - **Accuracy benchmarks** (AIME, MMLU_Pro, SWE-Bench, GPQA…). inspect-ai and EvalScope
   run these. Reimplementing them would be worse and would date faster.
@@ -162,7 +162,7 @@ allowed to know. Three ship in `hgrconform/profiles/`:
 - `example`: the annotated template. Copy it per model.
 - `gateway`: a Hangar gateway's public listener on `127.0.0.1:8080`, with a tenant API
   key in `HANGAR_API_KEY`.
-- `moonshot-kimi-k3`: an example reference profile: a model from its original
+- `moonshot-kimi-k3`: an example reference profile for a model served by its original
   provider, to diff other endpoints serving that model against.
 
 A profile names the variable holding its bearer token in `token_env`
@@ -178,8 +178,8 @@ hostname. Those are reported separately, not diffed, and never silently dropped.
 
 ## Running it unattended
 
-`hgrconform` is meant to be run by hand today. The exit code already works, `diff`
-returns 1 on any difference, but wiring "any difference fails" to a schedule or a
+`hgrconform` is meant to be run by hand today. The exit code already works (`diff`
+returns 1 on any difference), but wiring "any difference fails" to a schedule or a
 deploy gate goes red on the first run, because every endpoint differs from its
 reference on something benign. What that needs, and does not have yet, is an accepted
 run stored per target, an alarm on differences that are *new* against it, and
@@ -216,7 +216,7 @@ def thing(session: Session) -> dict[str, Any]:
     return {"shape_of_the_answer": ..., "raw_value_as_evidence": ...}
 ```
 
-Drop the module in `hgrconform/probes/`: the registry discovers it, there is no list to
+Drop the module in `hgrconform/probes/`: the registry discovers it and there is no list to
 edit. Raise `Skip("reason")` when the profile means the question does not apply; two
 skips compare as agreement. Teach `tests/stub.py` enough to answer it, then run
 `just conformance-test`.

@@ -3,8 +3,8 @@
 No two vendors spell any part of this the same way, so every request field comes
 from `profile.thinking.body()` and every read comes from `profile.paths`. What the
 probe contributes is the collapse: the reasoning text itself differs on every call
-and is worthless to a diff, while the *place* it was delivered, a separate
-`reasoning_content` field, `<think>` tags inside `content`, or nowhere at all, is
+and is worthless to a diff, while the *place* it was delivered (a separate
+`reasoning_content` field, `<think>` tags inside `content`, or nowhere at all) is
 the thing two endpoints are asked to agree on.
 
 Streaming is asked separately because it is a separate answer. An endpoint can
@@ -41,7 +41,7 @@ def _request(session: Session, enabled: bool, effort: str = "") -> dict[str, Any
 
     Two endpoints can carry the same switch in two different places: most take
     request fields, and some take a line of system prompt instead. Building the
-    request through both halves means a probe never has to know which, and an
+    request through both halves means a probe never has to know which, and that an
     endpoint of the second kind is not silently sent a parameter it ignores, which
     would return 200 and record it as conforming to something it never saw.
     """
@@ -120,8 +120,8 @@ def toggle(session: Session) -> dict[str, Any]:
     """Both directions of the switch, because only the pair says the switch works.
 
     An endpoint that ignores the field entirely answers the two requests
-    identically, and `toggle_effective` is that fact stated in one boolean rather
-    than left for a reader to infer from two rows.
+    identically, and `toggle_effective` is that fact stated in one boolean, so a
+    reader does not have to infer it from two rows.
     """
     _require_thinking(session)
     thinking = session.profile.thinking
@@ -192,7 +192,7 @@ def efforts(session: Session) -> dict[str, Any]:
     """One request per declared level, recorded as a status code and nothing else.
 
     A status code is a shape; the reasoning it produced is not. Whether a higher
-    level thinks harder is a benchmark question and not asked here.
+    level thinks harder is a benchmark question and intentionally not asked here.
     """
     _require_thinking(session)
     levels = session.profile.thinking.efforts
@@ -230,18 +230,18 @@ def template_kwargs(session: Session) -> dict[str, Any]:
     """`chat_template_kwargs.thinking` sent regardless of the dialect the profile declares.
 
     Every other probe in this module builds its request from `profile.thinking`, and
-    that is the rule. This one does not, and the reason is that the field
+    that is the rule. This one intentionally does not, and the reason is that the field
     is not a dialect at all. `thinking.type` is one vendor's parameter, and an
     endpoint that does not speak it is entitled to ignore it. `chat_template_kwargs`
-    is the argument bag the chat template itself reads, it belongs to the model's
-    own template, not to any vendor's API, so a caller who has ever run this
+    is the argument bag the chat template itself reads (it belongs to the model's
+    own template, not to any vendor's API), so a caller who has ever run this
     model on an open-source server already has it in their code, and will send it
     here whatever the profile says this endpoint prefers. The question of whether it
     arrives is therefore a real question for every endpoint, and asking it only of
     profiles that declare `chat_template` syntax would ask it of nobody.
 
-    That makes this the one probe here expected to *find* a difference, not
-    confirm agreement, and the difference is a decision instead of a defect. An
+    That makes this the one probe here expected to *find* a difference instead of
+    confirming agreement, and the difference is a decision, not a defect. An
     endpoint may honour the field, or ignore it and think anyway; both are defensible
     and they are not the same product. What is not defensible is not knowing which,
     or having it change without anyone choosing, which is what this pins.

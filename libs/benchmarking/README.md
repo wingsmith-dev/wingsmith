@@ -43,7 +43,7 @@ since it is what the cluster path already runs.
    fails, then stop and report the last rung that held. This is the one stage that
    can degrade a live endpoint, so it is opt-in in the plan **and** needs `--hard`.
 
-Everything is serial. Two load generators against one deployment
+Everything runs serially, by design: two load generators against one deployment
 measure each other.
 
 ## Plans, not flags
@@ -54,13 +54,12 @@ profiles, shipped inside the package so `hgrbench plans` finds them from an inst
 too. Flags only narrow a plan (`--harness`, `--model`), show it (`--dry-run`), or
 unlock the saturation search (`--hard`).
 
-That split is intended: what got measured is then reviewable in a diff, and a
-number in a report can be traced to a document, not to somebody's shell
-history.
+The split exists so that what got measured is reviewable in a diff, and a number
+in a report can be traced to a document instead of to somebody's shell history.
 
 ## How the numbers are made comparable
 
-The same way the plane does it; see
+The same way the plane does it, so that the two agree. See
 [`libs/plane/app/modules/benchmarks/summaries.py`](../plane/app/modules/benchmarks/summaries.py).
 
 - Each harness's export is stored **verbatim**. Nothing is converted on the way in.
@@ -72,8 +71,8 @@ The same way the plane does it; see
   running inside a cluster.
 - A path that does not resolve is a **named miss**, not a silent zero. The report
   says which harness could not answer which question.
-- A value computed, not read is marked as derived, with its formula in the
-  report's footnotes.
+- A value that is computed instead of read is marked as derived, with its formula
+  in the report's footnotes.
 
 A correction to a field map is therefore a re-read of what is already on disk
 (`hgrbench report <run>`), never a re-run against the endpoint.
@@ -109,7 +108,7 @@ shows each harness's own value and the spread between them.
   reads like a network fault and is not one.
 - **GuideLLM's `max_requests` constraint is per benchmark, not per run.** A four-rung
   ladder at 20 requests sends 80.
-- **GuideLLM's `sweep` profile overloads.** Its second leg is
+- **GuideLLM's `sweep` profile overloads by design.** Its second leg is
   `throughput` with `max_concurrency` defaulting to 512: that is how it finds the
   saturation point. Never point a default sweep at production; the ladder here is
   explicit for that reason.
@@ -118,7 +117,7 @@ shows each harness's own value and the spread between them.
 - **Realised input lengths differ per harness.** vLLM's random dataset decodes
   sampled token ids back to text and the chat template inflates the count; GuideLLM
   reports template-inclusive counts. Reported input length is in the table for
-  exactly this reason, never compare against the flag value.
+  exactly this reason; never compare against the flag value.
 - **`max_concurrent_requests` and `max_output_tokens_per_s` in vLLM's output are
   bucketed by integer second.** On a short run the first equals the request count and
   the second can come out below the mean. Neither is read.

@@ -54,7 +54,7 @@ def multi_turn(session: Session) -> dict[str, Any]:
     one five-message conversation into the same number of tokens, and one that drops
     or truncates earlier turns charges fewer. Whether the answer recalls the number
     stated in turn one is kept as evidence and not compared: it is a single sample of
-    the model's own answer, and two correct runs can disagree on it.
+    the model's own answer, and two runs can disagree on it.
     """
     messages = [
         {"role": "user", "content": "Remember the number 4173. Reply with OK."},
