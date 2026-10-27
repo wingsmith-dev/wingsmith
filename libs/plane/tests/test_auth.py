@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 import base64
+import socket
 import asyncio
 
 import pytest
@@ -914,6 +915,16 @@ async def test_resolve_connection_refuses_a_token_that_is_not_enrolment_shaped()
 # --- hub -----------------------------------------------------------------
 
 
+@pytest.fixture
+def hub_port(monkeypatch) -> int:
+    """A port nothing else holds, so a hub left over from another test or run cannot answer instead."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setattr(settings, "HUB_PORT", port)
+    return port
+
+
 async def _until_listening(port: int, server_task: asyncio.Task, timeout: float = 5.0) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
@@ -945,62 +956,58 @@ async def _run_hub_and(port: int, coro):
 
 
 @pytest.mark.asyncio
-async def test_hub_rejects_a_missing_token(monkeypatch):
-    monkeypatch.setattr(settings, "HUB_PORT", 18801)
+async def test_hub_rejects_a_missing_token(hub_port):
 
     async def attempt():
         with pytest.raises(InvalidStatus) as excinfo:
-            async with connect(f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}"):
+            async with connect(f"ws://127.0.0.1:{hub_port}{settings.HUB_PATH}"):
                 pass
         assert excinfo.value.response.status_code == 401
 
-    await _run_hub_and(settings.HUB_PORT, attempt())
+    await _run_hub_and(hub_port, attempt())
 
 
 @pytest.mark.asyncio
-async def test_hub_rejects_a_wrong_token(monkeypatch):
-    monkeypatch.setattr(settings, "HUB_PORT", 18802)
+async def test_hub_rejects_a_wrong_token(hub_port):
 
     async def attempt():
         with pytest.raises(InvalidStatus) as excinfo:
             async with connect(
-                f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}",
+                f"ws://127.0.0.1:{hub_port}{settings.HUB_PATH}",
                 additional_headers={"Authorization": "Bearer wrong-token"},
             ):
                 pass
         assert excinfo.value.response.status_code == 401
 
-    await _run_hub_and(settings.HUB_PORT, attempt())
+    await _run_hub_and(hub_port, attempt())
 
 
 @pytest.mark.asyncio
-async def test_hub_refuses_a_shared_fleet_token_before_the_upgrade(monkeypatch):
-    monkeypatch.setattr(settings, "HUB_PORT", 18803)
+async def test_hub_refuses_a_shared_fleet_token_before_the_upgrade(hub_port):
 
     async def attempt():
         with pytest.raises(InvalidStatus) as excinfo:
             async with connect(
-                f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}",
+                f"ws://127.0.0.1:{hub_port}{settings.HUB_PATH}",
                 additional_headers={"Authorization": "Bearer hangar-local-operator-token"},
             ):
                 pass
         assert excinfo.value.response.status_code == 401
 
-    await _run_hub_and(settings.HUB_PORT, attempt())
+    await _run_hub_and(hub_port, attempt())
 
 
 @pytest.mark.asyncio
-async def test_hub_rejects_bad_tokens_even_when_admin_auth_is_disabled(monkeypatch):
+async def test_hub_rejects_bad_tokens_even_when_admin_auth_is_disabled(monkeypatch, hub_port):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "disabled")
-    monkeypatch.setattr(settings, "HUB_PORT", 18804)
 
     async def attempt():
         with pytest.raises(InvalidStatus) as excinfo:
-            async with connect(f"ws://127.0.0.1:{settings.HUB_PORT}{settings.HUB_PATH}"):
+            async with connect(f"ws://127.0.0.1:{hub_port}{settings.HUB_PATH}"):
                 pass
         assert excinfo.value.response.status_code == 401
 
-    await _run_hub_and(settings.HUB_PORT, attempt())
+    await _run_hub_and(hub_port, attempt())
 
 
 # --- the hash command ----------------------------------------------------
