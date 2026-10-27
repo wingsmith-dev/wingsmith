@@ -232,8 +232,41 @@ type Pool struct {
 	cursor   map[string]uint64
 	closed   bool
 
-	// reportMu orders coverage reports to the Observer. See report.
-	reportMu sync.Mutex
+	// reportLocks orders coverage reports to the Observer, one lock per cluster,
+	// and reportMu guards the map. See report.
+	reportMu    sync.Mutex
+	reportLocks map[string]*reportLock
+}
+
+// reportLock serialises one cluster's coverage reports. refs counts the reports
+// holding or waiting on it, so the entry is dropped once the last one finishes
+// and the map does not grow with every cluster that ever dialled in.
+type reportLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lockReport takes clusterID's report lock and returns its release.
+func (p *Pool) lockReport(clusterID string) func() {
+	p.reportMu.Lock()
+	l := p.reportLocks[clusterID]
+	if l == nil {
+		l = &reportLock{}
+		p.reportLocks[clusterID] = l
+	}
+	l.refs++
+	p.reportMu.Unlock()
+
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		p.reportMu.Lock()
+		l.refs--
+		if l.refs == 0 {
+			delete(p.reportLocks, clusterID)
+		}
+		p.reportMu.Unlock()
+	}
 }
 
 type clusterKey struct{}
@@ -293,6 +326,8 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 		clusters: make(map[string][]*Conn),
 		byConn:   make(map[*http2.ClientConn]*Conn),
 		cursor:   make(map[string]uint64),
+
+		reportLocks: make(map[string]*reportLock),
 	}
 	// Set before the transport is used for anything: http2.Transport resolves
 	// its pool once, on first use, and keeps whatever it found.
@@ -446,20 +481,21 @@ func (p *Pool) forget(conn *Conn) {
 
 // report tells the Observer that a cluster's coverage changed.
 //
-// The count is taken inside reportMu, after the change, and not by the
-// caller. Two adopts that each counted on their own and then reported could
-// reach the Observer in the opposite order, leaving a gauge that is Set to 1
-// while the pool holds 2 until the next change. Serialised like this, the last
-// report always counts every change before it.
+// The count is taken inside the cluster's report lock, after the change, and
+// not by the caller. Two adopts that each counted on their own and then
+// reported could reach the Observer in the opposite order, leaving a gauge that
+// is Set to 1 while the pool holds 2 until the next change. Serialised like
+// this, the last report always counts every change before it.
 //
-// Not under p.mu: counting asks each tunnel's ClientConn for its state, which
-// can wait on a stalled socket write (see snapshotLocked).
+// Not under p.mu, and not under one pool-wide lock either: counting asks each
+// tunnel's ClientConn for its state, which can wait on a stalled socket write
+// (see snapshotLocked). Ordering only matters within one cluster's gauge, so a
+// stalled tunnel holds up reports for its own cluster and no other.
 func (p *Pool) report(clusterID string, opened bool) {
 	if p.cfg.Observer == nil {
 		return
 	}
-	p.reportMu.Lock()
-	defer p.reportMu.Unlock()
+	defer p.lockReport(clusterID)()
 	live := p.Live(clusterID)
 	if opened {
 		p.cfg.Observer.TunnelOpened(clusterID, live)

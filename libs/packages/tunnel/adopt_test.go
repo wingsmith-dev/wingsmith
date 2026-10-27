@@ -162,6 +162,80 @@ func TestTheLastCoverageReportCountsEveryTunnel(t *testing.T) {
 	}
 }
 
+// stallingObserver blocks every report for one cluster until released, standing
+// in for a count that waits on a tunnel's stalled socket write.
+type stallingObserver struct {
+	stall   string
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (o *stallingObserver) wait(clusterID string) {
+	if clusterID != o.stall {
+		return
+	}
+	o.once.Do(func() { close(o.entered) })
+	<-o.release
+}
+
+func (o *stallingObserver) TunnelOpened(clusterID string, _ int) { o.wait(clusterID) }
+func (o *stallingObserver) TunnelClosed(clusterID string, _ int) { o.wait(clusterID) }
+
+// TestAStalledReportHoldsUpOnlyItsOwnCluster pins that coverage reports are
+// ordered per cluster. One pool-wide lock let a stalled tunnel in one cluster
+// delay Adopt, and the listener's handshake slot behind it, for every other.
+func TestAStalledReportHoldsUpOnlyItsOwnCluster(t *testing.T) {
+	t.Parallel()
+
+	observer := &stallingObserver{
+		stall:   "cluster-a",
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	pool := newPool(t, PoolConfig{Observer: observer})
+
+	sides := make(map[string]net.Conn, 2)
+	for _, cluster := range []string{"cluster-a", "cluster-b"} {
+		gatewaySide, connectorSide := socketPair(t)
+		connector := newConnector(t, echoHandler(cluster), Limits{})
+		go func() { _ = connector.Serve(connectorSide) }()
+		sides[cluster] = gatewaySide
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stalled := make(chan error, 1)
+	go func() {
+		_, err := pool.Adopt(ctx, "cluster-a", sides["cluster-a"])
+		stalled <- err
+	}()
+	select {
+	case <-observer.entered:
+	case <-ctx.Done():
+		t.Fatal("cluster-a's report never reached the observer")
+	}
+
+	adopted := make(chan error, 1)
+	go func() {
+		_, err := pool.Adopt(ctx, "cluster-b", sides["cluster-b"])
+		adopted <- err
+	}()
+	select {
+	case err := <-adopted:
+		if err != nil {
+			t.Fatalf("adopt cluster-b: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("adopting cluster-b waited on cluster-a's stalled report")
+	}
+
+	close(observer.release)
+	if err := <-stalled; err != nil {
+		t.Fatalf("adopt cluster-a: %v", err)
+	}
+}
+
 // TestStreamUseIsReportedPerClusterOverItsLiveTunnels pins what the gateway's
 // stream gauges read: the requests open and the limits advertised, summed over
 // the tunnels that can still take a request.
