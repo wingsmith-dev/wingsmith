@@ -1134,7 +1134,6 @@ var fakeHarnesses = []api.BenchmarkHarness{{
 		{Name: "endpoint_type", Type: "str", Default: "chat", Description: "AIPerf endpoint type: chat, completions, embeddings."},
 		{Name: "streaming", Type: "bool", Default: true, Description: "Measure TTFT and ITL, which needs a streamed response."},
 		{Name: "warmup_request_count", Type: "int", Default: 10, Description: "Requests sent and discarded before measuring."},
-		{Name: "extra", Type: "str", Default: "", Description: "Extra flags, appended verbatim to the command line."},
 	},
 }}
 
@@ -1288,10 +1287,13 @@ func (b *Backend) CreateBenchmarkRequest(ctx context.Context, req api.BenchmarkR
 	}
 	level := orElse(req.Level, api.LevelDeployment)
 	switch level {
-	case api.LevelDeployment, api.LevelWorkload, api.LevelEndpoint:
+	case api.LevelDeployment, api.LevelWorkload:
+	case api.LevelEndpoint:
+		return api.BenchmarkRequest{}, errs.New(errs.CodeUsage, "%s-level benchmark runs are not supported yet: nothing executes them", level).
+			WithCause("deployment or workload")
 	default:
 		return api.BenchmarkRequest{}, errs.New(errs.CodeUsage, "unknown level %q", level).
-			WithCause("deployment, workload or endpoint")
+			WithCause("deployment or workload")
 	}
 	harness, baseParams, err := b.resolveHarness(req.Harness, req.Parameters)
 	if err != nil {
@@ -1347,7 +1349,7 @@ func (b *Backend) CreateBenchmarkRequest(ctx context.Context, req api.BenchmarkR
 			Phase:       api.OpPending,
 			CreatedAt:   now,
 		}
-		b.assignTarget(&run, level, req.Target)
+		b.assignTarget(&run, req.Target)
 		b.state.Benchmarks = append([]api.BenchmarkRun{run}, b.state.Benchmarks...)
 		ask.Runs = append(ask.Runs, run.ID)
 	}
@@ -1355,21 +1357,12 @@ func (b *Backend) CreateBenchmarkRequest(ctx context.Context, req api.BenchmarkR
 	return ask, b.persist()
 }
 
-// assignTarget records which object a run measured, off the request's level.
-// A deployment run carries a deployment and its cluster; an endpoint run carries
-// neither, because a call to a public name is routed across every upstream.
-func (b *Backend) assignTarget(run *api.BenchmarkRun, level, target string) {
-	switch level {
-	case api.LevelEndpoint:
-		if e, err := b.Endpoint(context.Background(), target); err == nil {
-			run.EndpointID = &e.ID
-		}
-	default:
-		if d, err := b.Deployment(context.Background(), target); err == nil {
-			id, cluster := d.ID, d.ClusterID
-			run.DeploymentID = &id
-			run.ClusterID = &cluster
-		}
+// assignTarget records the deployment a run measured and its cluster.
+func (b *Backend) assignTarget(run *api.BenchmarkRun, target string) {
+	if d, err := b.Deployment(context.Background(), target); err == nil {
+		id, cluster := d.ID, d.ClusterID
+		run.DeploymentID = &id
+		run.ClusterID = &cluster
 	}
 }
 

@@ -369,14 +369,14 @@ func newBenchmarkRequestCreateCmd(app *App) *cobra.Command {
 		Use:     "create <target>",
 		Aliases: []string{"new"},
 		Short:   "Ask for a measurement at a level, expanded into runs",
-		Long: `Create a benchmark request. The target is a deployment, a workload or an
-endpoint depending on --level, and the plane fans the ask out into one run per
-input-length band.
+		Long: `Create a benchmark request. The target is a deployment or a workload
+depending on --level, and the plane fans the ask out into one run per
+input-length band. Endpoint-level runs are refused until something executes them.
 
 --criteria is left blank to pin whatever standard the plane currently publishes;
 a mode of ramp or sweep walks the --steps load points in order.`,
 		Example: `  hgr benchmark request create dep_01m… --level deployment
-  hgr benchmark request create chat --level endpoint --mode sweep --steps 1000,8000,24000`,
+  hgr benchmark request create wkl_01m… --level workload --mode sweep --steps 1000,8000,24000`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv, err := api.ParseKV(params, "param")
@@ -402,7 +402,7 @@ a mode of ramp or sweep walks the --steps load points in order.`,
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&level, "level", "deployment", "what the target is: deployment|workload|endpoint")
+	fl.StringVar(&level, "level", "deployment", "what the target is: deployment|workload")
 	fl.StringVar(&harness, "harness", "aiperf", "which load generator to run")
 	fl.StringVar(&image, "image", "", "override the harness image for these runs")
 	fl.StringVar(&mode, "mode", "single", "single|warmup|ramp|sweep")
