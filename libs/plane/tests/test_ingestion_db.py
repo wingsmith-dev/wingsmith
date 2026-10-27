@@ -1204,6 +1204,12 @@ async def test_a_workloads_timeline_reaches_the_download_it_is_blocked_on(sessio
     tab showed while a workload sat waiting on weights that were never fetched.
     """
     await seed_warm_artifact(sessions, cluster)
+    # The timeline only reaches artifact events since the workload was created. Reporting the
+    # very millisecond it was created is the edge: the wire drops the microseconds, and neither
+    # the operator's clock nor this process's is the database's.
+    [(created,)] = await fetch(
+        sessions, "SELECT created_at FROM demand_workload WHERE uid = :u", {"u": SEEDED_WORKLOAD}
+    )
     sink = DatabaseSink(sessions)
     await sink.apply_observed(
         observed(
@@ -1213,10 +1219,7 @@ async def test_a_workloads_timeline_reaches_the_download_it_is_blocked_on(sessio
             resident=False,
             nodes=[],
             reason="NoRuntimeImage",
-            # The timeline only reaches artifact events since the workload was created, so the
-            # weights' history from before it does not read as its own. The fixture's timestamp
-            # is a fixed date in the past, which that bound correctly leaves out.
-            observed_at=format_ts(None),
+            observed_at=format_ts(created),
         )
     )
 

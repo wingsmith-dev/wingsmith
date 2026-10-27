@@ -4,6 +4,7 @@ from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
 from sqlalchemy import and_
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,7 +104,9 @@ def workload_clause(ref: str):
     workload never reached is somebody else's timeline. It is also bounded to
     events since the workload was created: the weights outlive every workload that
     loads them, and without the bound a workload minutes old showed the downloads
-    an earlier workload waited on weeks ago.
+    an earlier workload waited on weeks ago. The bound is cut to the millisecond,
+    because that is all a wire timestamp carries: a report from the millisecond the
+    workload was created would otherwise read as older than it.
     """
     deployments = select(Deployment.id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
@@ -111,7 +114,7 @@ def workload_clause(ref: str):
     clusters = (
         select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     )
-    created = select(Workload.created_at).where(Workload.uid == ref).scalar_subquery()
+    created = select(func.date_trunc("milliseconds", Workload.created_at)).where(Workload.uid == ref).scalar_subquery()
     return or_(
         Event.subject_id.in_(subject_subquery(ref)),
         Event.subject_id.in_(deployments),
