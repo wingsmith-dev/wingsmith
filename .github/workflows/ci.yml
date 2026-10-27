@@ -140,14 +140,16 @@ jobs:
           for id in "${ids[@]}"; do deselect+=(--deselect "$id"); done
           echo "ids=${ids[*]}" >>"$GITHUB_OUTPUT"
           echo "deselect=${deselect[*]}" >>"$GITHUB_OUTPUT"
-      # The database fixture fails when it cannot connect, so a missing service fails this
-      # step on its own.
-      - name: database suite
+      # The whole suite, database tests included, so the coverage floor in pyproject.toml is held
+      # against what CI runs. The database fixture fails when it cannot connect, so a missing
+      # service fails this step on its own.
+      - name: full suite with coverage
+        working-directory: libs/plane
         env:
           DESELECT: ${{ steps.quarantine.outputs.deselect }}
         run: |
           # shellcheck disable=SC2086 # one word per pytest argument
-          just test-db $DESELECT
+          uv run pytest -m "" --cov $DESELECT
       - name: quarantined tests (not required)
         if: steps.quarantine.outputs.ids != ''
         continue-on-error: true
