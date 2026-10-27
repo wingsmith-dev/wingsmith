@@ -271,6 +271,9 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if and .Values.monitoring.remoteWrite.bearerToken.existingSecret .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
 {{- fail "monitoring.remoteWrite.bearerToken.existingSecret is set while basicAuth.useEnrolmentToken is true. Pick one: the bearer token replaces basic auth, so set basicAuth.useEnrolmentToken=false to send it, or clear bearerToken.existingSecret to keep presenting the enrolment token." -}}
 {{- end -}}
+{{- if and .Values.monitoring.remoteWrite.bearerToken.existingSecret (or .Values.monitoring.remoteWrite.basicAuth.existing .Values.monitoring.remoteWrite.basicAuth.username .Values.monitoring.remoteWrite.basicAuth.password) -}}
+{{- fail "monitoring.remoteWrite.bearerToken.existingSecret is set alongside a basicAuth credential (existing, username or password). Pick one: the bearer token replaces basic auth, so the agent would send only the token and the basic-auth credential would be ignored in silence. Clear basicAuth.existing, username and password to send the token, or clear bearerToken.existingSecret to use basic auth." -}}
+{{- end -}}
 {{- if and (not .Values.monitoring.remoteWrite.bearerToken.existingSecret) (not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
 {{- fail "monitoring.remoteWrite.basicAuth.useEnrolmentToken is false, so the credential must be supplied: without a username and password the write ingress rejects the agent with 401 on every send, which surfaces only in the agent's own logs. Set both, or basicAuth.existing=true if you created the Secret yourself — or drop useEnrolmentToken back to true and let the enrolment token be the credential." -}}
 {{- end -}}

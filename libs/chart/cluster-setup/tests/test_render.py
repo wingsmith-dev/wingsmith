@@ -235,6 +235,15 @@ def test_bearer_token_with_the_enrolment_token_is_refused(chart):
     assert "useEnrolmentToken=false" in err
 
 
+@pytest.mark.parametrize("basic", [
+    {"monitoring.remoteWrite.basicAuth.existing": True},
+    {"monitoring.remoteWrite.basicAuth.username": "agent", "monitoring.remoteWrite.basicAuth.password": "secret"},
+])
+def test_bearer_token_with_a_basic_auth_credential_is_refused(chart, basic):
+    err = refusal(chart, **MONITORING_ON, **BEARER, **basic)
+    assert "bearerToken.existingSecret" in err and "ignored" in err
+
+
 # ── workload namespace ───────────────────────────────────────────────────────
 
 

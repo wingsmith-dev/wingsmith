@@ -58,7 +58,8 @@ upgrade sources; install fresh.
   own namespace, the release namespace, DNS, the API server and the peers you
   list. Off by default.
 - `monitoring.remoteWrite.bearerToken` sends a bearer token from a Secret you
-  created instead of basic auth, for a receiver that takes one.
+  created instead of basic auth, for a receiver that takes one. Setting it
+  together with any basic-auth credential is refused.
 - `values.schema.json` refuses a value of the wrong type before anything
   renders, such as `cluster.readOnly: "false"` as a string, which the templates
   would read as true.
