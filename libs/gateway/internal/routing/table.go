@@ -68,7 +68,7 @@ type Upstream struct {
 	// through. Empty means the plane had nothing to say, and then the caller's
 	// own string is forwarded untouched.
 	//
-	// It used to be a fit's name (`llama-3-3-70b-instruct-fp8-tp2-32k`) which
+	// It used to be a fit's name (`llama-3-3-70b-instruct-fp8-tp2-32k`), which
 	// put the hardware footprint on the public API surface, so re-fitting a model
 	// at a different tensor degree renamed the model every client codes against.
 	ServedModelName string
@@ -84,9 +84,9 @@ type Upstream struct {
 
 // Reachable reports whether this upstream can take a request at this instant.
 //
-// It is not readiness. Readiness is the plane's observation of a
+// It is intentionally not readiness. Readiness is the plane's observation of a
 // deployment and lags by a sync interval; this is a local fact about this
-// replica, whether there is a live tunnel to the cluster, or an address to dial
+// replica: whether there is a live tunnel to the cluster, or an address to dial
 // instead. An upstream that is not reachable is not a candidate at all, which is
 // what keeps a cluster with neither a tunnel nor an address answering the
 // no-capacity 503 instead of a 502 from a proxy that had nowhere to go.
@@ -158,8 +158,8 @@ func pickKey(u Upstream) string {
 	return u.ClusterID
 }
 
-// next chooses among candidates by smooth weighted round-robin, nginx's
-// algorithm, and it is chosen over walking a cursor across the cumulative
+// next chooses among candidates by smooth weighted round-robin (nginx's
+// algorithm), and it is chosen over walking a cursor across the cumulative
 // weight range because the two agree on the totals and disagree on the order,
 // which is the part that matters.
 //
@@ -214,10 +214,10 @@ func NewRoute(name, strategy string, upstreams ...Upstream) Route {
 // to send traffic to a model that is in fact serving is a worse failure than
 // sending it to one that is not.
 //
-// Weighted picks by round-robin, not at random, so a weight of 5 out of
-// 100 is honoured exactly, not on average, which is the point when
-// a cluster is being ramped up, and it is spread across the cycle, not
-// spent in one run, which is the point of `picker.next`. Failover always picks
+// Weighted picks by round-robin instead of at random, so a weight of 5 out of
+// 100 is honoured exactly and not just on average, which matters most when
+// a cluster is being ramped up. The share is also spread across the cycle instead of
+// spent in one run, which is what `picker.next` is for. Failover always picks
 // the first live upstream in the declared order.
 func (r Route) Pick() (Upstream, error) {
 	candidates := filterReachable(r.Upstreams)
@@ -300,8 +300,8 @@ type ProxyFactory func(target Target) http.Handler
 // now. The tunnel pool implements it.
 //
 // It is read on the request path, so it must be cheap and must not block. It is
-// never written to: reachability is a fact about this process, not observed state:
-// that has exactly one writer and it is the plane's ingestion.
+// never written to: reachability is a fact about this process, not observed state.
+// Observed state has exactly one writer, and it is the plane's ingestion.
 type Reachability interface {
 	Live(clusterID string) int
 }
@@ -339,8 +339,8 @@ type Router struct {
 
 	mu       sync.RWMutex
 	revision string
-	// routes is keyed by every name that reaches a route, the canonical and
-	// each of its aliases, all lowercased, so resolving an alias costs the
+	// routes is keyed by every name that reaches a route (the canonical and
+	// each of its aliases, all lowercased), so resolving an alias costs the
 	// same one lookup as resolving the canonical.
 	routes map[string]Route
 	// canonicals lists the routes' own names, sorted, and is what the catalog
@@ -409,7 +409,7 @@ func (r *Router) Load(ctx context.Context) error {
 
 		// Reported here, not per request. A policy written against a
 		// newer plane is enforced as far as this build reads it, and the part it
-		// cannot read is a conformance gap somebody has to see, once a refresh,
+		// cannot read is a conformance gap somebody has to see once a refresh,
 		// not once a completion.
 		if p := endpoint.Policy; p != nil {
 			switch {
@@ -431,8 +431,8 @@ func (r *Router) Load(ctx context.Context) error {
 		for _, upstream := range order(endpoint) {
 			if upstream.ClusterID == "" {
 				// Nothing can be done with this one: with no address and no
-				// cluster there is no tunnel to look up either. Skipped rather
-				// than failing the refresh, so one bad row does not take every
+				// cluster there is no tunnel to look up either. Skipped instead
+				// of failing the refresh, so one bad row does not take every
 				// other model down with it.
 				slog.Error("gateway: skipping upstream with no cluster",
 					"endpoint", endpoint.Name, "deployment", upstream.DeploymentID)
@@ -699,7 +699,7 @@ type ClusterReach struct {
 //
 // It is what readiness is computed from. A replica holding no tunnel to any
 // cluster in its own table can serve nothing and must say so, and this is the
-// only place both halves of that sentence, the table and the tunnels, are
+// only place both halves of that sentence (the table and the tunnels) are
 // known together.
 func (r *Router) ClusterReach() []ClusterReach {
 	r.mu.RLock()

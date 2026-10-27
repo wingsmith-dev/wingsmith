@@ -1,8 +1,8 @@
 # transit: how far the request path scales, and what stops it
 
 `hgrtransit` measures hangar's data path: **public client → gateway → tunnel → agent → the local
-OpenAI-compatible frontend**. It answers two questions in this order, *where is the bottleneck*
-and *how much can one gateway replica carry*, and it answers them without a GPU, without
+OpenAI-compatible frontend**. It answers two questions, in this order: *where is the bottleneck*
+and *how much can one gateway replica carry*. It answers them without a GPU, without
 Kubernetes, and without a model.
 
 It is not `hgrbench`. That measures an engine on real hardware. This measures the plumbing, with the
@@ -26,7 +26,7 @@ seconds and share a queue with real customers. The default ramp is `1,2,4` and a
 Raising it is a decision, and it should be taken with the same seriousness as pointing a load
 generator at any customer path: pick a low-traffic window, watch the gateway's own
 `hangar_gateway_*` series while it runs, and stop when the endpoint's latency moves. What is always
-safe is the shape of it (one caller, a handful of streams, for twenty seconds) which is enough to
+safe is the shape of it (one caller, a handful of streams, for twenty seconds), which is enough to
 compare production's TTFT distribution against the lab's.
 
 **Numbers that do not compare across environments, and why.**
@@ -65,16 +65,16 @@ guess:
 1. **Per-leg split.** The fake frontend stamps the wall clock when it received a request
    (`transit_received_ns` in the body, and `X-Transit-Received-Ns`, which the gateway's response
    header allowlist drops) and when it wrote each token (`transit_write_ns` in the chunk). One host
-   means one clock, so TTFT decomposes into the inbound leg, gateway parse, routing, tunnel, agent,
-   local proxy, and the return leg. This needed no change to the gateway or the agent.
+   means one clock, so TTFT decomposes into the inbound leg (gateway parse, routing, tunnel, agent,
+   local proxy) and the return leg. This needed no change to the gateway or the agent.
 2. **Per-process cost.** CPU and RSS of the gateway and each agent, polled every second. CPU is the
    process's accumulated user and system time differenced between polls, so each figure is the share
    of a core used in that second; mean and peak are reported per stage. The gateway's own
    `hangar_gateway_tunnels` gauge is read at the end of each stage and printed beside the number of
    tunnels the agents were configured to open.
 3. **Where requests were held.** The frontend's own peak in-flight count against the concurrency
-   offered. Fewer means something between the caller and the frontend held them, stream limits,
-   flow control, or a proxy, and it says so.
+   offered. Fewer means something between the caller and the frontend held them (stream limits,
+   flow control, or a proxy), and it says so.
 4. **Baseline subtraction.** The first stage is also run straight at the frontend, so the whole
    path's cost is a subtraction instead of an assertion.
 
@@ -102,9 +102,9 @@ Every mode writes the whole report and then exits 1 when no stage held the objec
 `transit-smoke` fails a CI job when the path cannot carry its small ramp. `synthetic` builds the
 gateway and agent from the checkout above the working directory; `-repo` points it elsewhere.
 
-The fake plane answers the three routes the plane allows the gateway's service principal,
+The fake plane answers the three routes the plane allows the gateway's service principal:
 `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` (an empty tenant table) and
-`POST /v1/clusters/tunnel-auth`, and the harness starts the gateway with
+`POST /v1/clusters/tunnel-auth`. The harness starts the gateway with
 `HANGAR_GATEWAY_SERVICE_TOKEN` set to the token it accepts. Its wire types are checked against the
 gateway's plane client by `go test`, and `HANGAR_TRANSIT_E2E=1 go test ./internal/lab/` boots the
 real gateway and agent against it.

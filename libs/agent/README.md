@@ -4,7 +4,7 @@ The cluster end of hangar's data plane. One Deployment per GPU cluster, `hangar-
 how an inference request gets into a cluster at all.
 
 It dials **out**. An operator owns every cluster but not always the networks they sit in, so nothing ever
-dials into a GPU cluster, not the gateway, not the plane, not a laptop. The agent opens the
+dials into a GPU cluster: not the gateway, not the plane, not a laptop. The agent opens the
 connection and the request travels back down it.
 
 A cluster runs two hangar processes and this is one of them. The operator operates the cluster: it
@@ -15,7 +15,7 @@ control-plane uptime would be the inference SLA.
 ## The three things it does
 
 1. **Dial and authenticate.** It is given one address and finds every replica behind it. A gateway
-   replica can only serve a cluster it holds a tunnel to, so coverage has to be complete, but each
+   replica can only serve a cluster it holds a tunnel to, so coverage has to be complete. Each
    accepted handshake names the replica that took the dial and says how many there are, so the agent
    redials the one address, keys what it holds by replica, treats a landing on one it already covers
    as ordinary, not as an error, and stops when it has them all. That is why a cluster is
@@ -79,8 +79,8 @@ The gateway's own shutdown is separate and is described in its README.
 
 ## Why it is not part of libs/gateway
 
-Separate module. It runs in a cluster we operate but do not deploy from here, on that
+This is a separate module for a reason. It runs in a cluster we operate but do not deploy from here, on that
 cluster's own `helm upgrade` cadence, while the gateway is a deployment this repository applies
-directly. Different places, different lifecycles, and the compiler enforces the split: this cannot
+directly. Different places, different lifecycles. The compiler enforces the split: this cannot
 reach the routing table or the plane client, and the gateway cannot reach the Kubernetes client this
 needs to find Dynamo. The tunnel module is the only thing the two share.

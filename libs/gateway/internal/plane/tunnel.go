@@ -40,7 +40,7 @@ type tunnelAuthResponse struct {
 
 // VerifyTunnelToken asks the plane which cluster an enrolment token belongs to.
 //
-// It is called once per tunnel (on the dial, never on a request) which is
+// It is called once per tunnel (on the dial, never on a request), which is
 // what keeps the control plane off the data path. A plane that is down means
 // existing tunnels keep serving and only new dials fail, and even those survive
 // while the listener's cache still holds the answer.

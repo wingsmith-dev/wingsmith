@@ -49,7 +49,7 @@ func NewKeypair(certPath, keyPath string) (*Keypair, error) {
 
 // read loads and parses the pair, returning a certificate with Leaf populated.
 //
-// The leaf is parsed here, not left to the TLS stack because the expiry is
+// The leaf is parsed here instead of being left to the TLS stack, because the expiry is
 // what makes a reload legible: both the log line and the metric want it, and a
 // certificate whose leaf is nil can only be described as "a new one".
 func (k *Keypair) read() (*tls.Certificate, error) {
@@ -71,7 +71,7 @@ func (k *Keypair) read() (*tls.Certificate, error) {
 // GetCertificate answers every handshake from the currently loaded pair.
 //
 // Wired as the `tls.Config` callback instead of `Certificates`, which is the
-// whole point: the callback is consulted per handshake, so a swap takes effect on
+// reason for it: the callback is consulted per handshake, so a swap takes effect on
 // the next dial without restarting the listener or dropping the tunnels already
 // held on it.
 func (k *Keypair) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -83,7 +83,7 @@ func (k *Keypair) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error)
 
 // NotAfter reports when the loaded certificate expires.
 //
-// The loaded one, not the one on disk. cert-manager's own metrics
+// Intentionally the loaded one, not the one on disk. cert-manager's own metrics
 // describe the Secret and would look healthy the day after a renewal this process
 // ignored, so the only reading that can catch that is taken from memory.
 func (k *Keypair) NotAfter() time.Time {

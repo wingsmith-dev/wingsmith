@@ -16,12 +16,12 @@ import (
 const keyPrefixLen = 12
 
 // callerIdentity is who the access log says a request was, and it exists
-// separately from `observation`.
+// separately from `observation` for a reason.
 //
 // Identity may not go on `observation` (see observe.go): everything on that
 // struct becomes a metric label, and a key or a tenant on a label is unbounded
-// cardinality. A log line is not a label, it is written once, rotated, and
-// queried by grep, not by PromQL, so the same fact is safe here and
+// cardinality. A log line is not a label: it is written once, rotated, and
+// queried by grep instead of PromQL, so the same fact is safe here and
 // unsafe there. Keeping them in two types is what stops a later change from
 // quietly promoting one into the other.
 //

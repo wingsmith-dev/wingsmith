@@ -443,8 +443,8 @@ func namedFrontend(t *testing.T, name string) (*httptest.Server, *http.Header) {
 
 // The agent is the innermost of three hops arming a response-header timer, and
 // only the smallest of the three is ever observed. A caller that passes nothing
-// must therefore land above the hops outside it, not on a bare zero, which
-// net/http reads as no bound at all, and not on some small local constant.
+// must therefore land above the hops outside it, not on a bare zero (which
+// net/http reads as no bound at all) and not on some small local constant.
 func TestAnUnsetBoundLandsAboveTheHopsOutsideThisOne(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

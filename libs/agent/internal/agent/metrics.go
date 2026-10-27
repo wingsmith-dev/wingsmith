@@ -75,7 +75,7 @@ func NewMetrics() *Metrics {
 		Name: "hangar_agent_dial_failures_total",
 		Help: "Outbound tunnel dials that did not produce a tunnel, per reason.",
 	}, []string{"reason"})
-	// Not a failure and not folded into one. A dial that landed on a replica this
+	// Not a failure, and intentionally not folded into one. A dial that landed on a replica this
 	// agent already covers is the load balancer choosing without knowing what is held, which is
 	// how coverage is reached at all; a rate that never settles is the signal, and that is only
 	// readable if it is its own series.

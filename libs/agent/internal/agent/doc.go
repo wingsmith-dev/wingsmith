@@ -8,7 +8,7 @@
 // internal/dynamo, which finds this cluster's OpenAI-compatible Dynamo frontend
 // Service and forwards to it.
 //
-// It is not the operator, and it is a different binary. A cluster
+// It is not the operator, and it is intentionally a different binary. A cluster
 // runs both: the operator is a leader-elected singleton on the control path, and
 // the agent scales with traffic on the data path. Sharing a process would put
 // control-plane uptime in front of inference.

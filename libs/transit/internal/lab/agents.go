@@ -71,7 +71,7 @@ func (a *agentSet) start(i int) error {
 // churn kills one agent on an interval and starts it again, so a run measures
 // what a caller sees while a tunnel dies underneath it.
 //
-// SIGKILL and not SIGTERM. A drained agent sends GOAWAY and the
+// Intentionally SIGKILL and not SIGTERM. A drained agent sends GOAWAY and the
 // gateway retries what was never processed, which is the case the tunnel package
 // already has tests for; the case with no coverage is the one where a node
 // vanishes and the socket resets with no GOAWAY on it.

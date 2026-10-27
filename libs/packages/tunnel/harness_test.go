@@ -18,7 +18,7 @@ import (
 // socketPair returns the two ends of a loopback TCP connection: the end the
 // gateway accepted, and the end the connector dialled.
 //
-// Loopback TCP, not net.Pipe. net.Pipe is synchronous and
+// Loopback TCP instead of net.Pipe, for a reason. net.Pipe is synchronous and
 // unbuffered, so a write blocks until the far side reads it, which hides the
 // behaviour under test here, where fifty streams are interleaved on one
 // connection and one slow reader must not stall the others.
@@ -115,7 +115,7 @@ func link(t *testing.T, pool *Pool, clusterID string, connector *Connector) *Con
 // killed process as the gateway sees it: the kernel reaped the fd and the FIN is
 // all that is left of the far end.
 //
-// It is a FIN instead of an RST, and the difference matters under
+// It is intentionally a FIN instead of an RST, and the difference matters under
 // load: see silentPeer.vanish. An RST outside the peer's receive window is
 // dropped by its TCP, so a reset connector can leave a gateway that is behind on
 // its reads believing the tunnel is healthy. A FIN is retransmitted until it
@@ -304,8 +304,8 @@ func eventually(t *testing.T, within time.Duration, what string, cond func() boo
 // one PING, and then does exactly what it is told and nothing else.
 //
 // It exists for the three cases a real connector cannot produce on demand: a
-// GOAWAY whose LastStreamID is below every stream the gateway opened, the
-// "received but never processed" case that must be retried, a peer that stops
+// GOAWAY whose LastStreamID is below every stream the gateway opened (the
+// "received but never processed" case that must be retried), a peer that stops
 // answering without closing the socket, and a peer whose socket is torn down
 // with an RST and no readable GOAWAY at all.
 type silentPeer struct {
@@ -351,7 +351,7 @@ func newSilentPeer(t *testing.T, conn net.Conn, maxStreams uint32) *silentPeer {
 // run does the handshake and then answers frames until told to go silent or to
 // send GOAWAY.
 //
-// The handshake is in here, not in the constructor because the gateway
+// The handshake is in here instead of in the constructor, because the gateway
 // writes the client preface from Adopt, which has not been called yet when the
 // peer is built.
 //

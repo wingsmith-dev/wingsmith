@@ -172,7 +172,7 @@ func TestDefaultFillsOnlyWhenTheParentIsPresent(t *testing.T) {
 			`{"model":"m","messages":[]}`,
 		},
 
-		// A caller who wrote something there wrote it. A default is
+		// A caller who wrote something there meant it. A default is
 		// for what they left out.
 		{
 			"a type the caller sent",
@@ -358,7 +358,7 @@ func TestTheReportedViolationDoesNotDependOnTheArrayOrder(t *testing.T) {
 }
 
 // A key is a path into the body and a predicate is a name in a Go registry, and
-// the two never fall back to one another. They share a spelling here:
+// the two never fall back to one another. They share a spelling here intentionally:
 // `tool_choice.named_while_thinking` is a registered predicate and is not a path
 // anything sends, and `thinking.type` is a path and is not a registered rule.
 func TestKeyAndPredicateAreDifferentNamespaces(t *testing.T) {
@@ -629,9 +629,9 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 // Dropping `reasoning_effort` makes it *ignored*, which is one half of the reference provider's
 // contract. The other half is that `thinking.effort` is *honoured*, and the drop
 // does nothing for it. Measured on a live endpoint, asking the model its
-// own effective effort, the vendor suite's `_ask_effort` probe, which reads the
+// own effective effort (the vendor suite's `_ask_effort` probe, which reads the
 // resolved level off the system prompt instead of inferring it from the length
-// of the trace, answers `max` for `thinking.effort=low` sent alone, with no
+// of the trace) answers `max` for `thinking.effort=low` sent alone, with no
 // `reasoning_effort` in the request for any rule to remove. Nothing behind this
 // hop reads `thinking.effort`, so taking the loser away only leaves the engine on
 // its own default, which is `max`. `effort=low` beside `reasoning_effort=max` and
@@ -640,8 +640,8 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 // distribution, which is how it read as a pass.
 //
 // So the term is a copy, not a removal: carry the vendor's field onto the field
-// the engine reads. It subsumes the drop, the caller's `reasoning_effort` is
-// overwritten, so it is ignored, and it closes the half the drop could not.
+// the engine reads. It subsumes the drop (the caller's `reasoning_effort` is
+// overwritten, so it is ignored) and it closes the half the drop could not.
 func TestThinkingEffortIsCarriedOntoTheFieldTheEngineReads(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Route: chatRoute, Key: "reasoning_effort", ValueFrom: "thinking.effort"},

@@ -18,8 +18,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-// availability-2026.1, written out here, not imported, because the whole
-// point of the outcome taxonomy is that the gateway observes and the objective
+// availability-2026.1, written out here instead of imported, because the
+// outcome taxonomy exists so that the gateway observes and the objective
 // interprets. If this ever has to move into the binary to make a test pass, the
 // binary has started deciding what a failure is.
 var (

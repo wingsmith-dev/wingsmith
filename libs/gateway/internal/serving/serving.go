@@ -5,7 +5,7 @@
 // and readiness. The model-to-cluster table it reads is routing's, and the wire
 // into a cluster is libs/packages/tunnel's.
 //
-// It is thin. It identifies a caller's tenant (by listener, and on
+// It is intentionally thin. It identifies a caller's tenant (by listener, and on
 // the public listener by host and key), refuses a disabled tenant and bounds
 // each tenant's load, and does nothing past that: no user identity below the
 // tenant, no metering, no billing: whoever puts a gateway in front of their
@@ -68,7 +68,7 @@ type Config struct {
 	// Metrics, when set, receives one observation per request. Nil means the
 	// handler behaves exactly as it did before there was a /metrics endpoint,
 	// which is what keeps every existing caller of New compiling and every
-	// existing test accurate.
+	// existing test meaningful.
 	Metrics *metrics.Recorder
 	// Probes, when set, recognises the conformance suite's own traffic so it can
 	// be excluded from an availability ratio. Nil means every request is live.
@@ -93,7 +93,7 @@ type Config struct {
 	Limiter *Limiter
 	// AllowUnauthenticatedPublic serves a tenant declaring `auth: none` on the
 	// public zone. Off by default: a public listener that takes requests
-	// without a key is a choice an operator makes, not one a
+	// without a key is a choice an operator makes explicitly, not one a
 	// tenant row makes for them.
 	AllowUnauthenticatedPublic bool
 	// MaxBodyBytes caps one request body. Zero takes DefaultMaxBodyBytes.
@@ -116,7 +116,7 @@ type Config struct {
 
 // New builds the gateway handler.
 //
-// The probes are registered outside everything else: they are what
+// The probes are registered outside everything else for a reason: they are what
 // Kubernetes calls and they must answer without the plane, a table, or a token.
 //
 // They are two probes and not one, because they answer different questions.
@@ -362,7 +362,7 @@ func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.
 // statusRecorder captures the status code for the access log, and the moment
 // the first byte reached the caller for the metrics.
 //
-// It is extended, not wrapped in a second recorder. The
+// It is intentionally extended instead of wrapped in a second recorder. The
 // Unwrap below is what keeps http.ResponseController reaching Flush, and
 // FlushInterval: -1 on the proxy is what makes a stream arrive token by token
 // instead of as one long pause: a wrapper that hides Flush destroys that
@@ -438,7 +438,7 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, writeIdle time.Du
 
 		// Deferred, and the panic is recovered, because httputil.ReverseProxy
 		// reports a failure halfway through copying a response body by panicking
-		// http.ErrAbortHandler, not through ErrorHandler. That panic
+		// http.ErrAbortHandler instead of through ErrorHandler. That panic
 		// unwinds straight past a non-deferred observation, so every stream that
 		// was truncated mid-generation, the exact failure a caller notices most,
 		// was recorded as nothing at all.

@@ -337,8 +337,8 @@ func TestTheLabelIsReadWhereverDynamoPutIt(t *testing.T) {
 
 // TestOneSharedFrontendAnswersEveryDeployment is what lets this ship dark. A
 // cluster running exactly what every cluster runs today has one unlabelled
-// frontend, and every question, with a deployment id, without one, with one
-// nobody has heard of, has to produce the address it produced before there was
+// frontend, and every question (with a deployment id, without one, or with one
+// nobody has heard of) has to produce the address it produced before there was
 // a set at all.
 func TestOneSharedFrontendAnswersEveryDeployment(t *testing.T) {
 	resolver, err := New(Config{Namespace: testNamespace, Services: services(t,
@@ -514,7 +514,7 @@ func TestOneConflictedDeploymentDoesNotStallTheOthers(t *testing.T) {
 // TestAFailedLookupKeepsThePerDeploymentFrontendsToo extends the reason
 // discovery is off the request path to the set. Keeping only the shared address
 // across an API-server outage would silently move every per-model request onto
-// the shared frontend, which answers, with a model-not-found for a model that
+// the shared frontend, which answers with a model-not-found for a model that
 // is running perfectly well.
 func TestAFailedLookupKeepsThePerDeploymentFrontendsToo(t *testing.T) {
 	ctx := context.Background()

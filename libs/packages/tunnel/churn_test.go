@@ -22,7 +22,7 @@ import (
 // shouldRetryRequest lives on http2.Transport.RoundTrip and its sentinels are
 // unexported, so a bare *http2.ClientConn turns every in-flight-but-unprocessed
 // request into a 502 the moment a connector restarts. The peer here announces
-// GOAWAY with LastStreamID 0, "I processed nothing", and then holds the socket
+// GOAWAY with LastStreamID 0 ("I processed nothing") and then holds the socket
 // open the way a draining pod does, which is precisely the case a real connector
 // produces for streams whose headers it had not read when it was told to stop.
 //
@@ -199,8 +199,8 @@ func TestARequestWithoutGetBodyCannotBeRetried(t *testing.T) {
 // forwarded a request it was holding. A completion POST that was forwarded is
 // generating, and billed, on the cluster; sending it again would run it twice.
 // So a non-idempotent request that reached the connector fails as churn and is
-// not resent, while an idempotent one, a safe method, or a POST carrying an
-// Idempotency-Key, is retried down the surviving tunnel exactly once.
+// not resent, while an idempotent one (a safe method, or a POST carrying an
+// Idempotency-Key) is retried down the surviving tunnel exactly once.
 func TestRequestsAConnectorWasKilledHoldingAreNotResent(t *testing.T) {
 	t.Parallel()
 
@@ -435,8 +435,8 @@ func TestAKilledTunnelIsChurnNotAClusterFailure(t *testing.T) {
 // for a few milliseconds the corpse has the fewest streams of any tunnel to the
 // cluster, and a retry that asks for the least-loaded tunnel is handed the thing
 // that just failed it, until the retry budget runs out. That was a real failure
-// under load about once in thirty runs; asserting it through the pick, not
-// through a race is what makes it a test.
+// under load about once in thirty runs; asserting it through the pick instead
+// of through a race is what makes it a test.
 func TestARetryPrefersATunnelThisRequestHasNotTried(t *testing.T) {
 	t.Parallel()
 

@@ -6,7 +6,7 @@
 // with the shape of the control plane, which is the point: the plane can scale its gateway
 // without an edit reaching a single cluster.
 //
-// It is the data plane's cluster-local half and is not the operator, the other hangar
+// It is the data plane's cluster-local half and is intentionally not the operator, the other hangar
 // process a cluster runs: the operator is a leader-elected singleton on the control path, this
 // scales with traffic, and neither shares a process or a connection with the other.
 package main
@@ -61,7 +61,7 @@ func run() error {
 	metrics := agent.NewMetrics()
 	metrics.WatchDiscovery(resolver.DiscoveryAge)
 
-	// BaseContext is not ctx. Cancelling it aborts every handler mid-stream, and
+	// BaseContext is intentionally not ctx. Cancelling it aborts every handler mid-stream, and
 	// SIGTERM has to drain instead: the server's Shutdown sends GOAWAY and lets the streams
 	// already accepted finish, each of which is a generation somebody is reading.
 	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{

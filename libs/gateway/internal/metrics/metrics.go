@@ -7,8 +7,8 @@
 // are the requests that dominate an availability incident, and this hop is the
 // only place in the system that sees every one of them.
 //
-// It is observability and not a ledger. Nothing here is metered or billed,
-// two systems counting tokens is two systems disagreeing about an invoice, and
+// It is observability and not a ledger. Nothing here is metered or billed
+// (two systems counting tokens is two systems disagreeing about an invoice), and
 // nothing here carries an identity. Caller identity, API keys, client IPs and
 // request ids are forbidden on every series in this package: they are unbounded,
 // and putting one in a time series is the same mistake as putting one in a log
@@ -108,7 +108,7 @@ func WithClock(now func() time.Time) Option {
 
 // New builds a Recorder with its own registry.
 //
-// Its own, instead of the default one: the default registry is global state
+// Its own registry instead of the default one: the default registry is global state
 // that any dependency can write to, and the series in here are a contract that
 // a plane query and a frozen acceptance criteria version both read.
 func New(opts ...Option) *Recorder {
@@ -267,7 +267,7 @@ type Sample struct {
 	HaveTTFT bool
 
 	// Usage is what the upstream reported about itself. Absent when the
-	// response carried none, never zero, because zero is a claim and absent
+	// response carried none, and never zero, because zero is a claim and absent
 	// is the truth.
 	InputTokens       int64
 	OutputTokens      int64
@@ -403,9 +403,9 @@ func (r *Recorder) TableUnchanged() {
 
 // TableRefreshFailed records a refresh that did not reach the plane.
 //
-// It does not touch the confirmation time. The gateway keeps
-// serving the table it has, a control-plane outage must not become a data
-// plane outage, and the age gauge going up while this counter goes up is
+// It intentionally does not touch the confirmation time. The gateway keeps
+// serving the table it has (a control-plane outage must not become a data
+// plane outage), and the age gauge going up while this counter goes up is
 // exactly the shape of that state.
 func (r *Recorder) TableRefreshFailed() {
 	r.tableRefreshes.WithLabelValues("error").Inc()

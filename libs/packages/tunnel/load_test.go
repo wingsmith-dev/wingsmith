@@ -137,7 +137,7 @@ func TestConnectorRolloutUnderLoad(t *testing.T) {
 // reset, the GOAWAY that would have said "I processed nothing" is never sent, and
 // x/net's own retry does not recognise the error that arrives instead.
 //
-// What it asserts is narrower than the graceful case, and so. A
+// What it asserts is narrower than the graceful case, and intentionally so. A
 // request the killed connector was holding may already have been forwarded, so
 // it fails as churn instead of being run twice, and a request whose first bytes
 // already reached its caller cannot be retried by anyone. Both are counted and
@@ -333,7 +333,7 @@ func oneCompletion(transport http.RoundTripper, id string) error {
 // patience is how long a load test waits for something it is sure will happen.
 //
 // It is the time left before the test binary's own deadline, less a margin to
-// report in, instead of a fixed wall-clock number. Under -race with every test
+// report in, and not a fixed wall-clock number. Under -race with every test
 // running in parallel a tunnel takes far longer to notice a dead peer than it
 // does alone, and a fixed bound turned that slowness into a failure.
 func patience(t *testing.T) time.Duration {

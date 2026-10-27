@@ -1,9 +1,9 @@
 // Package load drives concurrent OpenAI-compatible completions and reports what
 // the caller experienced.
 //
-// It measures the three things a streaming caller can actually feel, when the
+// It measures the three things a streaming caller can actually feel (when the
 // first token arrived, how evenly the rest arrived, and whether the request
-// finished at all, and, where the far end stamps its own clock, it splits the
+// finished at all) and, where the far end stamps its own clock, it splits the
 // first of those into the leg that went in and the leg that came back. Nothing
 // here knows what it is pointed at: the same generator runs against a fake
 // frontend on a loopback port and against a deployed gateway, which is what
@@ -116,7 +116,7 @@ func NewClient(concurrency int) *http.Client {
 //
 // Closed-loop: each worker holds one request open at a time, so concurrency is
 // the number of requests in flight and never a rate. That is the right model for
-// this system, a caller of an inference API waits for its answer, and it is
+// this system (a caller of an inference API waits for its answer), and it is
 // also the only one under which a saturated hop shows up as latency, not
 // as an unbounded queue in the generator.
 //
@@ -298,8 +298,8 @@ func (c chunk) content() bool {
 
 // readStream times each SSE frame that carries content as it arrives.
 //
-// A frame carrying no content, the role chunk, the usage chunk, the
-// terminator, is not a token and must not enter the inter-token distribution,
+// A frame carrying no content (the role chunk, the usage chunk, the
+// terminator) is not a token and must not enter the inter-token distribution,
 // or every stream would show a fictitious final gap of zero.
 func readStream(body io.Reader, start time.Time, out *Outcome) {
 	scanner := bufio.NewScanner(body)

@@ -148,7 +148,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 
 // spawn starts however many hold loops the current replica count calls for.
 //
-// It only ever adds. Retiring is the workers' own job, see retire, because a worker that is
+// It only ever adds. Retiring is the workers' own job (see retire), because a worker that is
 // mid-tunnel must not be stopped by an arithmetic change, and a slot freed by killing a goroutine
 // that was carrying requests is not a saving.
 func (s *Supervisor) spawn(ctx context.Context, wg *sync.WaitGroup) {
@@ -301,7 +301,7 @@ func (s *Supervisor) retire() bool {
 // maxGatewayReplicas caps the replica count a handshake can ask this agent to cover. Each replica
 // costs ConnsPerGateway goroutines and sockets, and the number arrives from the far end of a network
 // connection; a gateway that reports thousands is misconfigured, and following it would exhaust
-// this pod, not cover anything.
+// this pod without covering anything.
 const maxGatewayReplicas = 64
 
 // observe records what a handshake said about the size of the gateway.
@@ -370,7 +370,7 @@ func (s *Supervisor) claim(id string) (bool, []string) {
 	if s.live[id] >= s.cfg.ConnsPerGateway {
 		return false, nil
 	}
-	// Zero, not absent from here on, so a replica that has been reached and lost reads as a
+	// Zero instead of absent from here on, so a replica that has been reached and lost reads as a
 	// gap and not as one nobody ever heard of.
 	if _, seen := s.live[id]; !seen {
 		s.live[id] = 0
@@ -492,7 +492,7 @@ func (s *Supervisor) Tunnels() int {
 
 // Ready reports whether this agent can carry a request.
 //
-// One tunnel is enough, and the bar is not full coverage. An agent that refused to
+// One tunnel is enough, and the bar is intentionally not full coverage. An agent that refused to
 // be ready until every gateway replica had answered would fail its rollout because one replica was
 // restarting, and it can serve traffic perfectly well down the tunnels it does have. The replicas
 // it is missing are visible as metrics, which is the right place for a partial answer.

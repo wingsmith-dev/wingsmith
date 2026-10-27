@@ -45,7 +45,7 @@ type Upstream struct {
 // that were both sold, which is an authoring mistake and is refused where the
 // policy is written, not resolved here.
 type Rule struct {
-	// Route is the request path this rule is about: "/v1/chat/completions".
+	// Route is the request path this rule is about, such as "/v1/chat/completions".
 	// Empty matches every path.
 	//
 	// It is the whole reason rules are a list instead of a map: a term
@@ -58,7 +58,7 @@ type Rule struct {
 	// WhenPresent narrows a rule to requests that carry another JSON path,
 	// dotted like Key. Empty asks nothing of the body.
 	//
-	// It is a scope and not a term, and it sits here, not beside Drop for
+	// It is a scope and not a term, and it sits here instead of beside Drop for
 	// that reason: "does this rule look at this request at all" is one question,
 	// whether what narrows it is the path the request came in on, the transport
 	// mode, or another field in the body. Putting the condition in the scope
@@ -97,7 +97,7 @@ type Rule struct {
 	// `thinking` and no `thinking` at all are different requests.
 	Drop bool `json:"drop,omitempty"`
 	// Default is the value to write into an absent key before forwarding. It and
-	// Drop are the terms that write, not refuse; neither ever fails a
+	// Drop are the terms that write instead of refusing; neither ever fails a
 	// request.
 	//
 	// It fills the key only when the key's parent container is already in the

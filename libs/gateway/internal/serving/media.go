@@ -102,8 +102,8 @@ type mediaRequest struct {
 	} `json:"nvext"`
 }
 
-// mediaFactsFromRequest reads what a request asked for. A body it cannot read, multipart, as an
-// image edit is, yields the kind alone, and the response scan still counts what came back.
+// mediaFactsFromRequest reads what a request asked for. A body it cannot read (multipart, as an
+// image edit is) yields the kind alone, and the response scan still counts what came back.
 func mediaFactsFromRequest(kind string, body []byte, multipart bool) *mediaFacts {
 	facts := &mediaFacts{kind: kind}
 	if multipart {

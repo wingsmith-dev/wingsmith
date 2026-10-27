@@ -10,8 +10,8 @@ import (
 
 // steeringHeaderPrefix is the serving runtime's own header namespace. Dynamo reads a
 // worker pin, a data-parallel rank, a queue priority, a request id, a session binding
-// and free-form router metadata out of it, `x-dynamo-meta-policy-class` chooses a
-// queue class, and adds names to it between releases, so it is matched as a prefix,
+// and free-form router metadata out of it (`x-dynamo-meta-policy-class` chooses a
+// queue class), and adds names to it between releases, so it is matched as a prefix,
 // not enumerated.
 const steeringHeaderPrefix = "x-dynamo-"
 
@@ -74,7 +74,7 @@ var steeringHints = []string{
 // other tenant with a header they made up.
 //
 // It must run on the inbound headers, before the proxy's Rewrite. Headers this hop
-// stamps itself, the credential map on the outbound leg, are written after it and
+// stamps itself (the credential map on the outbound leg) are written after it and
 // are untouched by it.
 func stripSteeringHeaders(header http.Header) []string {
 	var stripped []string

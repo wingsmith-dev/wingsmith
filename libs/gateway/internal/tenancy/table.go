@@ -202,8 +202,8 @@ func (s *Store) Load(ctx context.Context) error {
 }
 
 // RunResync refreshes the table until the context is cancelled, keeping the
-// last good copy on any failure; the same posture as routing.Router's own
-// RunResync, and for the same reason: a tenant this hop cannot resolve right
+// last good copy on any failure. That is the same posture as routing.Router's own
+// RunResync, for the same reason: a tenant this hop cannot resolve right
 // now must not become a tenant it has forgotten.
 func (s *Store) RunResync(ctx context.Context, every time.Duration) {
 	ticker := time.NewTicker(every)

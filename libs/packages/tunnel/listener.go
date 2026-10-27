@@ -18,8 +18,8 @@ import (
 //
 // Two fields and not one because a cluster is addressable two ways and the two
 // halves of this system reach for different ones. ClusterID is the plane's uid
-// and is what everything downstream keys on, the pool, the routing table, every
-// metric label, because it is the only one that cannot be renamed. ClusterName
+// and is what everything downstream keys on (the pool, the routing table, every
+// metric label) because it is the only one that cannot be renamed. ClusterName
 // is the operator-facing name, and it is what a cluster's own configuration
 // carries: the chart's `cluster.id`, the operator's HANGAR_CLUSTER_ID, the label
 // its metrics are written under. An agent therefore claims the name, and a
@@ -64,8 +64,8 @@ type Verifier interface {
 // Separate from Observer because the pool never sees these: a dial that fails
 // the handshake or the token check is not a tunnel that opened and closed, and
 // folding it into the coverage gauge would make a misconfigured agent look
-// like a flapping one. The reason strings are a closed set, see the Reason
-// constants, because this is a metric label.
+// like a flapping one. The reason strings are a closed set (see the Reason
+// constants) because this is a metric label.
 type DialObserver interface {
 	TunnelDialRejected(reason string)
 }
@@ -140,8 +140,8 @@ const DefaultReverifyInterval = time.Minute
 // has become unreachable.
 //
 // It is what makes a control-plane outage survivable for an agent that is
-// restarted during one. It is bounded rather
-// than infinite because a token that has been revoked has to stop working
+// restarted during one. It is bounded instead
+// of infinite because a token that has been revoked has to stop working
 // eventually, even for new dials during an outage.
 const DefaultCacheGrace = 15 * time.Minute
 
@@ -279,8 +279,8 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 // tunnels that are already adopted: cancelling it stops new dials, and Shutdown
 // is what drains the live ones.
 //
-// An Accept error the network marks temporary, out of file descriptors, a
-// connection reset before it was accepted, is waited out with a backoff, as
+// An Accept error the network marks temporary (out of file descriptors, a
+// connection reset before it was accepted) is waited out with a backoff, as
 // net/http does. Returning on one would take down a listener every agent
 // depends on over a condition that clears by itself.
 //
@@ -522,8 +522,8 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	}
 
 	// The claim is checked, not trusted. An agent holding another cluster's
-	// Secret is a copy-paste away, and the failure it produces, one cluster's
-	// traffic served by another's models, is silent at every other layer.
+	// Secret is a copy-paste away, and the failure it produces (one cluster's
+	// traffic served by another's models) is silent at every other layer.
 	//
 	// Checked against either of the cluster's names, because the one an agent
 	// holds is not a choice it makes: the chart writes `cluster.id` from what the
@@ -570,7 +570,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 // accept is the answer to a dial that authenticated, carrying this replica's
 // identity and the replica count alongside the cluster.
 //
-// The count is normalised here, not at the agent so that the wire never
+// The count is normalised here instead of at the agent, so that the wire never
 // carries a zero that means one: an agent reading Gateways decides how many
 // tunnels to hold, and a gateway that forgot to say is a gateway an agent must
 // not conclude anything from.

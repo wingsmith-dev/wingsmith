@@ -38,7 +38,7 @@ func tunnelTable(clusters ...string) plane.Table {
 	return plane.Table{Revision: "1", Endpoints: []plane.Endpoint{endpoint}}
 }
 
-// TestAnUpstreamWithNoAddressIsRoutedByClusterId is the point of the
+// TestAnUpstreamWithNoAddressIsRoutedByClusterId is the defining case of the
 // tunnel world: nothing sets a serving URL, so the cluster id is the routing key.
 func TestAnUpstreamWithNoAddressIsRoutedByClusterId(t *testing.T) {
 	var targets []Target

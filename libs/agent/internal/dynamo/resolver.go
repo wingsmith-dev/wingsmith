@@ -40,9 +40,9 @@ const componentFrontend = "Frontend"
 // on a Service to key on, and this hop would be back to asking each frontend
 // what models it serves.
 //
-// A frontend Service with no such label is the cluster's shared frontend, the
+// A frontend Service with no such label is the cluster's shared frontend (the
 // one `cluster-setup` installs, which belongs to the cluster and not to any
-// deployment, and it is the fallback for everything this map cannot answer.
+// deployment), and it is the fallback for everything this map cannot answer.
 const DeploymentIDLabel = "hangar.dev/deployment-id"
 
 // defaultPort is Dynamo's frontend port, used when a Service declares several
@@ -50,12 +50,12 @@ const DeploymentIDLabel = "hangar.dev/deployment-id"
 const defaultPort = 8000
 
 // defaultInterval is how often discovery re-asks the cluster. Frontends move
-// when a graph is redeployed, which is a human-paced event, so this is slow on
-// purpose: the address is read on every request and refreshed off the request
+// when a graph is redeployed, which is a human-paced event, so this is intentionally
+// slow: the address is read on every request and refreshed off the request
 // path.
 const defaultInterval = 30 * time.Second
 
-// ErrNoFrontend means no address is known yet. It is distinct from
+// ErrNoFrontend means no address is known yet. It is intentionally distinct from
 // a failure to talk to the API server: the cluster answered, and the answer was
 // that this cluster is not serving anything.
 var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
@@ -366,8 +366,8 @@ func (r *Resolver) Run(ctx context.Context) {
 //
 // Plurality is answerable because the operator renders a frontend into the same
 // graph as its worker and the ownership labels ride onto the Service. Two
-// Services claiming the same key, two shared frontends, or two frontends for
-// one deployment, is still not answerable, and picking one would send traffic
+// Services claiming the same key (two shared frontends, or two frontends for
+// one deployment) is still not answerable, and picking one would send traffic
 // somewhere the caller did not ask for. That key is skipped and reported with
 // ErrAmbiguousFrontend; the rest of the pass stands.
 //
@@ -431,8 +431,8 @@ func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ 
 // not two guesses: the labels are where Dynamo was observed to copy a
 // component's pod-template labels, and the selector is where the same copy
 // would put them if it were derived from the pod template's selector instead.
-// Either placement means the same thing, this Service fronts that deployment's
-// pods and nothing else's, and reading only one of them and being wrong would
+// Either placement means the same thing (this Service fronts that deployment's
+// pods and nothing else's), and reading only one of them and being wrong would
 // send every request to the shared frontend with nothing anywhere reporting a
 // failure. A Service can carry no other deployment's id in either place, so
 // there is no false answer to reach.

@@ -128,8 +128,8 @@ const lostConnSentinel = "http2: client connection lost"
 //
 // EPIPE and ECONNRESET are the whole reason this is separate from the sentinel
 // list. They arrive as *net.OpError, they are what a SIGKILLed or OOMKilled
-// agent produces, the process stops existing and its socket is reset with no
-// GOAWAY on it, and taken at face value they read as a network failure, which
+// agent produces (the process stops existing and its socket is reset with no
+// GOAWAY on it), and taken at face value they read as a network failure, which
 // on this connection would mean the cluster. It cannot: the agent proxies to
 // the cluster inside its own process and reports a cluster that will not answer
 // as a 502 status. A syscall error on this socket only ever means the near end of
@@ -141,7 +141,7 @@ const lostConnSentinel = "http2: client connection lost"
 // and it is the deterministic half of the pair: an RST can be dropped by the
 // peer's TCP if it arrives outside the receive window, a FIN cannot.
 //
-// The named sentinels are here, not only in churnSentinels because these
+// The named sentinels are here and not only in churnSentinels, because these
 // are the endings the pool retries, and canRetryError accepts none of them.
 func isTunnelDeath(err error) bool {
 	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
@@ -161,8 +161,8 @@ func isTunnelDeath(err error) bool {
 
 // Classify says what a failed tunnelled request means.
 //
-// Order matters. A cancelled request often surfaces as a stream error too, the
-// stream is reset because the caller went away, and blaming the tunnel for a
+// Order matters. A cancelled request often surfaces as a stream error too (the
+// stream is reset because the caller went away), and blaming the tunnel for a
 // caller's disconnect would be the same misattribution in the other direction.
 func Classify(err error) Fault {
 	if err == nil {
@@ -191,7 +191,7 @@ func Classify(err error) Fault {
 	// An agent dying and an agent's upstream dying both arrive as
 	// StreamError{INTERNAL_ERROR, received from peer}, so this branch cannot tell
 	// them apart and calls both churn. The additive fix is an HTTP/2 trailer set
-	// by the agent naming the cause, see the matching TODO in agent.go,
+	// by the agent naming the cause (see the matching TODO in agent.go),
 	// read from resp.Trailer on the body-error path, with absence falling back to
 	// exactly what happens here. Until then an agent rollout counts slightly
 	// against serving availability, which is pessimistic but accurate.
@@ -218,7 +218,7 @@ func Classify(err error) Fault {
 }
 
 // isRequestCanceled matches net/http's unexported errRequestCanceled, which
-// x/net copies, not exports.
+// x/net copies instead of exporting.
 func isRequestCanceled(err error) bool {
 	return strings.Contains(err.Error(), "net/http: request canceled")
 }

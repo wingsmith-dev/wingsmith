@@ -79,7 +79,7 @@ func TestTunnelCarriesARequestToTheClusterFrontend(t *testing.T) {
 	}
 }
 
-// A gateway that goes away is the ordinary case, it is a StatefulSet that gets rolled, so the
+// A gateway that goes away is the ordinary case (it is a StatefulSet that gets rolled), so the
 // agent has to come back on its own.
 func TestSupervisorReconnectsAfterTheGatewayDrops(t *testing.T) {
 	server := &blockingServer{}

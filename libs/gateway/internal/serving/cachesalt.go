@@ -13,7 +13,7 @@ import (
 // saltParts are the content parts that carry media, and the field each one
 // carries it in.
 //
-// Not `mediaParts`, which is the refusal rule's list and excludes
+// Intentionally not `mediaParts`, which is the refusal rule's list and excludes
 // `image_url` because the frontend already answers for an image it cannot
 // decode. This list is about identity, not validity, and an image is the
 // modality that needs it most.
@@ -45,8 +45,8 @@ var saltParts = map[string]string{
 // kept; different media means a different salt and the false match is gone.
 //
 // The payload is hashed by value when the request carries bytes and by
-// reference when it carries a URL. A reference is weaker, a URL whose content
-// changes underneath it reuses the wrong blocks, but it is the caller's own
+// reference when it carries a URL. A reference is weaker (a URL whose content
+// changes underneath it reuses the wrong blocks), but it is the caller's own
 // cache coherency, and the alternative is deriving no salt at all and returning
 // silently to the defect this exists to close.
 //
@@ -132,8 +132,8 @@ func promptIdentity(fields map[string]json.RawMessage) (string, bool) {
 // mediaPayloadKey is the bytes a part carries, or the reference it carries.
 //
 // A `data` field is bare base64 and a `url` field is base64 only when the data
-// URL says so; both are decoded so that two spellings of one image, a
-// re-encoding with different padding or case, are one identity. Anything else
+// URL says so; both are decoded so that two spellings of one image (a
+// re-encoding with different padding or case) are one identity. Anything else
 // is a reference and is keyed by the string itself.
 func mediaPayloadKey(field, payload string) string {
 	if field == "data" {
@@ -170,8 +170,8 @@ func writeSegment(digest hash.Hash, value string) {
 //
 // Tenant is the plane's tenant id: the one the public zone resolved from the host,
 // or on the internal zone the tenant that owns the endpoint. Caller is the
-// internal caller's own narrower scope, from `X-Hangar-Cache-Scope`, an internal
-// platform serving many customers through one tenant names the customer there,
+// internal caller's own narrower scope, from `X-Hangar-Cache-Scope` (an internal
+// platform serving many customers through one tenant names the customer there),
 // and is honoured only on the internal zone, whose callers this fleet runs.
 type cacheScope struct {
 	Tenant string
@@ -214,7 +214,7 @@ var cacheSaltPaths = map[string]bool{
 // itself still gets that isolation and can never widen it.
 //
 // It must run after `withoutSteeringHints`, which removes the routing fields a
-// caller put in `nvext`. `cache_salt` is not one of those.
+// caller put in `nvext`. `cache_salt` is intentionally not one of those.
 func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
 	media := hasMediaPart(body)
 	if scope.empty() && !media {
@@ -310,8 +310,8 @@ func saltedHints(hints map[string]json.RawMessage, salt string) ([]byte, error) 
 // brace when there is none. Re-encoding a 4 MB prompt cost about 31 ms a request
 // (BenchmarkCacheSaltLargeText).
 //
-// handled is false for anything this does not take on, a body the scan cannot
-// read, or `nvext` repeated, which the full re-encode collapses to one copy, and
+// handled is false for anything this does not take on (a body the scan cannot
+// read, or `nvext` repeated, which the full re-encode collapses to one copy), and
 // the caller falls back to that re-encode.
 func splicedCacheSalt(body []byte, scope cacheScope) (out []byte, written, handled bool, err error) {
 	open, spans, ok := topLevelValues(body, "nvext")

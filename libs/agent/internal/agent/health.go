@@ -49,9 +49,9 @@ func NewProbeServer(cfg ProbeConfig) *ProbeServer {
 func ProbeHandler(cfg ProbeConfig) http.Handler {
 	mux := http.NewServeMux()
 
-	// Liveness is unconditional. An agent that cannot reach the gateway is not broken, the
-	// gateway may be mid-rollout, or the network between them may be having a bad minute, and
-	// restarting it would throw away the tunnels it does have. Readiness carries that instead.
+	// Liveness is unconditional. An agent that cannot reach the gateway is not broken: the
+	// gateway may be mid-rollout, or the network between them may be having a bad minute.
+	// Restarting it would throw away the tunnels it does have. Readiness carries that instead.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))

@@ -10,10 +10,10 @@ import (
 // Credentials maps a credential id the plane handed out to the headers that
 // redeem it.
 //
-// The plane stores a reference and never the secret, that is the point
-// of the reference, so the material is mounted next to the gateway and looked
+// The plane stores a reference and never the secret (that is what
+// the reference is for), so the material is mounted next to the gateway and looked
 // up here. The file is a JSON object of `{"<credential id>": {"<header>":
-// "<value>"}}`, which is dumb: whatever fronts a cluster's serving
+// "<value>"}}`, which is intentionally dumb: whatever fronts a cluster's serving
 // address (an access service token, a signed header, a shared secret) is
 // somebody else's scheme, and hangar does not need to model it to carry it.
 //

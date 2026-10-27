@@ -3,7 +3,7 @@ package tunnel
 // HeaderDeploymentID names the deployment a request was already routed to, and
 // it is the one piece of routing state that crosses this wire.
 //
-// It is declared here, not in the gateway or in the agent for the same
+// It is declared here instead of in the gateway or the agent, for the same
 // reason the module exists: neither end owns the protocol, and a constant that
 // lived in one of them would make the other an importer of its private
 // vocabulary. Both ends read this file, so neither can rename it alone.

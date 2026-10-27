@@ -71,7 +71,7 @@ type Tenants interface {
 //
 // A closure over a fixed zone instead of something read per request: which
 // socket accepted the connection is a fact about the listener, decided once
-// at construction, and it is not derived from anything a caller
+// at construction, and it is intentionally not derived from anything a caller
 // sends: that is the whole reason it is what the trust decision rests on.
 func stageZone(zone Zone) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
@@ -83,7 +83,7 @@ func stageZone(zone Zone) stage {
 // stageTenantFromHost resolves which tenant a request belongs to, from the
 // `Host` header.
 //
-// Only the public zone resolves a tenant. The internal zone does
+// Only the public zone resolves a tenant. The internal zone intentionally does
 // not, and the consequence is worth stating plainly: an internal caller has no
 // tenant, so it sees every enabled tenant's catalog and stageResolve's
 // cross-tenant check never fires for it. The network boundary is what makes
@@ -253,8 +253,8 @@ func bearerToken(r *http.Request) (string, bool) {
 
 // keyHash is the sha256 hex digest a presented key is looked up by: the
 // same digest the plane stores, so a key is never compared to anything in
-// its plaintext form on this hop or that one. A digest looked up by map key,
-// not compared byte-by-byte against a small fixed set, which is why
+// its plaintext form on this hop or that one. It is a digest looked up by map key
+// instead of compared byte-by-byte against a small fixed set, which is why
 // this needs no constant-time comparison the way the retired shared-token
 // guard's did.
 func keyHash(key string) string {

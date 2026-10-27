@@ -24,8 +24,8 @@ type Target interface {
 //
 // Separate from Target, and optional, because the two are different amounts of
 // knowledge and only one of them requires a cluster. The Resolver satisfies it;
-// a caller that was handed a single address, the endpoint override, a test, an
-// embedder, has one frontend by construction and nothing to choose between, so
+// a caller that was handed a single address (the endpoint override, a test, an
+// embedder) has one frontend by construction and nothing to choose between, so
 // requiring this of every Target would be asking for an answer nobody but
 // discovery can give.
 type DeploymentTarget interface {
@@ -142,8 +142,8 @@ func NewHandler(target Target, headerTimeout time.Duration, opts ...Option) http
 // frontendFor picks the frontend for one request.
 //
 // An empty id is not an error and never a refusal. It is what a gateway that
-// could not name a deployment sends, an older build, an upstream the plane
-// published without one, and the shared frontend is the right answer to it. A
+// could not name a deployment sends (an older build, or an upstream the plane
+// published without one), and the shared frontend is the right answer to it. A
 // Target that cannot answer per deployment is in the same position and gets the
 // same treatment, which is what keeps the endpoint override working: a cluster
 // fronting its models with something Dynamo never labelled has one address and

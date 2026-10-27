@@ -53,7 +53,7 @@ type Connector struct {
 // http2.ConfigureServer is what registers the graceful-shutdown hook that turns
 // Shutdown into a GOAWAY on every live tunnel. Constructing an http2.Server
 // directly skips it, and a rollout would then sever in-flight streams instead
-// of draining them: every one of which is somebody's half-written completion.
+// of draining them, and every one of those is somebody's half-written completion.
 func NewConnector(cfg ConnectorConfig) (*Connector, error) {
 	if cfg.Handler == nil {
 		return nil, errors.New("tunnel: connector needs a handler")
@@ -121,8 +121,8 @@ func (c *Connector) Serve(conn net.Conn) error {
 	// set on the way out of the handler: announced with w.Header().Set("Trailer",
 	// ...) before the first write and filled in afterwards. It is additive, so no
 	// wire break and no protocol version, and the gateway's behaviour when it is
-	// absent is today's behaviour. Deep attribution, OOM against evicted against
-	// crashed, is not this seam's: it is a join against the operator's observed
+	// absent is today's behaviour. Deep attribution (OOM against evicted against
+	// crashed) is not this seam's: it is a join against the operator's observed
 	// state on cluster and deployment, which already exists.
 	c.h2.ServeConn(conn, &http2.ServeConnOpts{
 		Context:    c.baseCtx,

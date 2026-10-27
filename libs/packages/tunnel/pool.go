@@ -73,7 +73,7 @@ var ErrTunnelLimit = errors.New("tunnel: tunnel limit reached")
 
 // DefaultMaxTunnelsPerCluster is how many tunnels one cluster may hold on one
 // gateway replica. An agent holds a couple per replica and a cluster runs a
-// handful of agents, so this is far above any accurate install.
+// handful of agents, so this is far above any legitimate install.
 const DefaultMaxTunnelsPerCluster = 64
 
 // DefaultMaxTunnels is how many tunnels one gateway replica holds in total.
@@ -192,8 +192,8 @@ const InnerHopMargin = time.Minute
 // InnerHopTimeout is the response-header bound for a hop closer to the serving
 // runtime than the one holding budget.
 //
-// The inference path arms this timer three times, the gateway's upstream
-// transport, the tunnel, and the agent's proxy to the local frontend, and only
+// The inference path arms this timer three times (the gateway's upstream
+// transport, the tunnel, and the agent's proxy to the local frontend), and only
 // the smallest of the three is ever observed. That is the whole failure this
 // function exists to prevent: raising one hop and not the others changes nothing
 // a caller can see, because the innermost still fires first and the gateway
@@ -298,7 +298,7 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 		cfg.BodyIdleTimeout = DefaultBodyIdleTimeout
 	}
 
-	// MaxConcurrentStreams is absent. It is a server setting: x/net's
+	// MaxConcurrentStreams is intentionally absent. It is a server setting: x/net's
 	// client advertises ENABLE_PUSH, INITIAL_WINDOW_SIZE, MAX_FRAME_SIZE and
 	// MAX_HEADER_LIST_SIZE and nothing else, and configFromTransport never reads
 	// the value, so setting it here would look like a per-tunnel stream cap and be
@@ -424,7 +424,7 @@ func (p *Pool) Adopt(ctx context.Context, clusterID string, raw net.Conn) (*Conn
 
 // Admit reports whether the pool would adopt one more tunnel to clusterID right
 // now. The listener asks before it accepts a dial, so an agent past the cap is
-// told why, not handed a connection that is closed under it. Adopt asks
+// told why instead of being handed a connection that is closed under it. Adopt asks
 // again, so the answer is advice and not a reservation.
 func (p *Pool) Admit(clusterID string) error {
 	p.mu.Lock()
@@ -854,8 +854,8 @@ func (p *Pool) GetClientConn(r *http.Request, _ string) (*http2.ClientConn, erro
 		return nil, fmt.Errorf("%w %s", ErrNoTunnel, clusterID)
 	}
 
-	// Least-loaded, breaking ties by a rotating cursor. Least-loaded, not
-	// round-robin because streams on a tunnel are long: a completion holds its
+	// Least-loaded, breaking ties by a rotating cursor. Least-loaded instead of
+	// round-robin, because streams on a tunnel are long: a completion holds its
 	// stream for the length of the generation, so "how many are on there now"
 	// is the only load signal that means anything.
 	//

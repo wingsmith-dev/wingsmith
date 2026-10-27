@@ -228,9 +228,9 @@ it is held in code, not in a log pipeline's configuration.
 - **Engine logging** is the operator's half: `--enable-log-requests`, `--enable-log-outputs`,
   `--log-requests` and `--log-requests-level` are refused by the plane on a workload, a role and an
   overlay, and stripped by the operator's renderer under any spelling. So is any log level at which
-  an engine writes request content, SGLang's `--log-level debug`, `DYN_LOG` with a `debug` or
+  an engine writes request content (SGLang's `--log-level debug`, `DYN_LOG` with a `debug` or
   `trace` directive, `VLLM_LOGGING_LEVEL=DEBUG`, `VLLM_DEBUG_LOG_API_SERVER_RESPONSE` and
-  `DYN_LOGGING_CONFIG_PATH`, refused in the plane and dropped from the rendered graph after the
+  `DYN_LOGGING_CONFIG_PATH`), which is refused in the plane and dropped from the rendered graph after the
   overlays merge (`libs/operator/internal/render/retention.go`).
 
 ## Prefix-cache isolation
@@ -325,8 +325,8 @@ to the cluster untouched, so a trace started at the edge continues into the serv
 
 Text usage is the upstream's own `usage` object, read from a 64 KiB tail of the response and
 written as `input_tokens`/`output_tokens` on the `gateway: request` line and
-`hangar_gateway_tokens_total`. Image and video generations have none, Dynamo 1.5.0's image and
-video responses carry no usage the worker could fill, so this hop records raw facts for a
+`hangar_gateway_tokens_total`. Image and video generations have none (Dynamo 1.5.0's image and
+video responses carry no usage the worker could fill), so this hop records raw facts for a
 successful `/v1/images/generations`, `/v1/images/edits`, `/v1/videos`, or `/v1/chat/completions`
 answered by an image model, on the same line and in `hangar_gateway_generated_total{unit}`:
 
@@ -334,7 +334,7 @@ answered by an image model, on the same line and in `hangar_gateway_generated_to
   `data`, or each `"type":"image_url"` part of a chat answer). Nothing is buffered beyond the tail.
 - `size` with `size_source=request|response`: the request's `size`, else the image response's own
   `size` field. No default is assumed, because the engine may apply its own.
-- `video_seconds`, `video_frames`: as the request stated them; `seconds` (string or number), or
+- `video_seconds`, `video_frames`: as the request stated them: `seconds` (string or number), or
   `nvext.num_frames / nvext.fps`, with frames as `seconds * fps` when only those are given.
 - `upstream_ms` (`upstream_seconds` in the series): wall time from the forward to the last response
   byte, the nearest this hop comes to GPU time; `inference_time_s` beside it when the response
@@ -403,8 +403,8 @@ running, so the tunnels already open keep serving.
   is the intended reading: it was our fault before and the number said otherwise.
 - **A request header or `nvext` field that steers the serving runtime.** Deleted before the request
   leaves. Dynamo reads a worker pin, a data-parallel rank, a queue priority, a queue class, a request
-  id and a session binding from a caller's headers, every `x-dynamo-*`, the unprefixed worker and
-  rank aliases, and the agent harness session headers, and from `nvext`. Which worker runs a
+  id and a session binding from a caller's headers (every `x-dynamo-*`, the unprefixed worker and
+  rank aliases, and the agent harness session headers) and from `nvext`. Which worker runs a
   request, and ahead of whom, is not a caller's to choose. A request carrying none of them is
   forwarded as the bytes that arrived. The names are in `steering.go`.
 - **A caller's own credentials.** `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`,

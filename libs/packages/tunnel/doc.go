@@ -6,7 +6,7 @@
 // and hands the caller an http.RoundTripper per cluster. The cluster end is
 // Connector: it serves HTTP/2 on a connection somebody else dialled. Neither
 // binary owns the protocol, so it lives beside the other contracts in
-// libs/packages, not under one binary's internal/, which would have
+// libs/packages instead of under one binary's internal/, which would have
 // made one end the host and the other an importer of the host's module.
 //
 // The dependency rule follows from that: this module depends on http2 and
@@ -24,7 +24,7 @@
 // The agent is not the operator. A cluster runs both: the operator is a
 // leader-elected singleton on the control path, and the agent scales with
 // traffic on the data path. They share neither a process nor a connection,
-// because the data plane never crosses the control plane, if a
+// because the data plane never crosses the control plane: if a
 // request needed the operator's connection, control-plane uptime would become
 // the inference SLA.
 //
@@ -37,8 +37,8 @@
 //     sentinels are unexported. Pool is an http2.ClientConnPool, so the real
 //     Transport.RoundTrip runs and the retry it owns is kept; the pool's job is
 //     to hand the retry a *different* live tunnel to the same cluster. This is
-//     why a cluster holds more than one. An agent that was killed, not
-//     drained never sends the GOAWAY, and the ECONNRESET, EPIPE or EOF that
+//     why a cluster holds more than one. An agent that was killed instead
+//     of drained never sends the GOAWAY, and the ECONNRESET, EPIPE or EOF that
 //     arrives instead says nothing about whether the agent had already
 //     forwarded the request. clusterTransport.RoundTrip resends such a request
 //     only if its headers were never written, or if it is idempotent; a
@@ -88,6 +88,6 @@
 // should preserve the client address or set both limits negative.
 //
 // Reachability is measured here and nowhere else. Observed state has exactly
-// one writer (ingestion, fed by the operator's sync stream) and the gateway
+// one writer (ingestion, fed by the operator's sync stream), and the gateway
 // must not become a second one.
 package tunnel

@@ -294,8 +294,8 @@ var servedBodies = map[string]string{
 	"dynamic_tools.coexist_with_global":  `{"tools":[{"type":"function","function":{"name":"get_stock_price","description":"Get the stock price of a company.","parameters":{"type":"object","properties":{}}}}],"messages":[{"role":"system","content":"","tools":[{"type":"function","function":{"name":"get_weather","description":"Get the weather of a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]},{"role":"user","content":"what is the weather in beijing?"}],"tool_choice":"required"}`,
 }
 
-// genericRefusal is the sentence `denials` answers with. It is repeated here,
-// not imported so that the contrast is visible: the whole reason
+// genericRefusal is the sentence `denials` answers with. It is repeated here
+// instead of imported, so that the contrast is visible: the whole reason
 // `messages.tools` sits in the other registry is that a customer holding a
 // malformed declaration cannot do anything with this sentence.
 const genericRefusal = "The request uses a feature this model does not accept."
@@ -629,7 +629,7 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 // `tools` key and the rule never engages. That is a real property of the
 // protocol instead of a lucky accident, but it is worth a test, because the
 // cost of being wrong is refusing every agentic coding client's request against this
-// endpoint, and a stripper that assumed one protocol's frame shape took this
+// endpoint; a stripper that assumed one protocol's frame shape took this
 // service down once already.
 func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{{Predicate: "messages.tools", Deny: true}}}
@@ -812,8 +812,8 @@ func TestTemperatureIsPinnedPerThinkingMode(t *testing.T) {
 	}
 }
 
-// An absent temperature is not a violation, the minimal request every client
-// starts with must still be served, and a malformed one belongs to the
+// An absent temperature is not a violation (the minimal request every client
+// starts with must still be served), and a malformed one belongs to the
 // upstream, which can say what is wrong with it in its own words.
 func TestTheTemperaturePinDemandsNothingAndDiagnosesNothingItCannotRead(t *testing.T) {
 	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{

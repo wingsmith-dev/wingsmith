@@ -37,7 +37,7 @@ type Config struct {
 
 	// ConnsPerGateway is how many tunnels to hold to each gateway replica.
 	//
-	// More than one, for two reasons. HTTP/2 retries a request the far end says it
+	// Hold more than one, for two reasons. HTTP/2 retries a request the far end says it
 	// never processed, and the gateway can only retry it down a *different* tunnel to the same
 	// cluster, so with one tunnel per replica, an agent rollout turns those retries into 502s on
 	// the replicas that hold only that one. And a single multiplexed connection carrying every
@@ -117,7 +117,7 @@ type Config struct {
 	// request without sending a response header. It is the gateway's number, not this agent's:
 	// the agent's own proxy to the frontend runs at tunnel.InnerHopTimeout of it.
 	//
-	// The same variable name the gateway reads. A non-streamed completion sends no
+	// It is intentionally the same variable name the gateway reads. A non-streamed completion sends no
 	// header until the last token is generated, so on that shape this timer bounds the whole
 	// generation, and because every hop on the path arms one, only the smallest is ever
 	// observed. Raising it at one hop and not the others changes nothing a caller can see, which

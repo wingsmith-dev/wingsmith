@@ -211,7 +211,7 @@ func TestATunnelledRequestKeepsItsBodyReplayable(t *testing.T) {
 }
 
 // headerTimeoutOf reads the bound a proxy's own transport arms, or zero when the
-// transport is not one of ours, which is the tunnelled case, where the pool
+// transport is not one of ours. That is the tunnelled case, where the pool
 // owns the bound instead.
 func headerTimeoutOf(t *testing.T, proxy *httputil.ReverseProxy) time.Duration {
 	t.Helper()

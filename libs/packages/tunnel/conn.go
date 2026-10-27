@@ -30,7 +30,7 @@ type Conn struct {
 
 // Live reports whether this tunnel can take a new request.
 //
-// It is not "the socket is open". A connection that has sent or
+// It is intentionally not "the socket is open". A connection that has sent or
 // received GOAWAY is still readable and still finishing streams, and offering
 // it to a new request is how a rollout produces 502s.
 func (c *Conn) Live() bool {

@@ -16,7 +16,7 @@ import (
 // per-cluster enrolment token, and the gateway answers with the cluster that
 // token resolved to.
 //
-// It is length-prefixed, not line- or HTTP-shaped so that neither end
+// It is length-prefixed instead of line- or HTTP-shaped, so that neither end
 // needs a buffered reader. A bufio.Reader over the raw connection would happily
 // pull the peer's first HTTP/2 bytes into its buffer along with the handshake,
 // and those bytes are then invisible to the http2 code that is handed the
@@ -37,7 +37,7 @@ const (
 //
 // Without it an unauthenticated dial that says nothing holds a goroutine and a
 // file descriptor for as long as it likes, which is the cheapest denial of
-// service there is against a listener that is reachable from
+// service there is against a listener that is intentionally reachable from
 // outside.
 const DefaultHandshakeTimeout = 10 * time.Second
 
@@ -49,7 +49,7 @@ var ErrHandshake = errors.New("tunnel: unreadable handshake")
 // ErrRejected means the token was definitively refused: the plane answered,
 // and the answer was no.
 //
-// The sentinel lives here, not in the package that talks to the plane
+// The sentinel lives here instead of in the package that talks to the plane,
 // because the listener is what has to tell a rejection from a plane it could
 // not reach: a rejection closes the dial, and a plane that is down falls back
 // to what it already knows. Conflating them would either lock every cluster out
@@ -99,8 +99,8 @@ type Accept struct {
 	// ClusterName is the same cluster under the name its own configuration uses,
 	// sent so that an agent can recognise the answer as being about itself.
 	//
-	// An agent claims the name, the chart's `cluster.id` is what the plane
-	// rendered, which is the name, while ClusterID above is the uid, because
+	// An agent claims the name (the chart's `cluster.id` is what the plane
+	// rendered, which is the name), while ClusterID above is the uid, because
 	// that is the identifier the pool and every metric label key on. Without
 	// this field the two halves have nothing in common to compare, and the
 	// agent's own safety check (a Secret holding another cluster's credential)
@@ -113,12 +113,12 @@ type Accept struct {
 	// a tunnel to. It is the pod name, so it is also what the gateway's own logs
 	// say.
 	GatewayID string `json:"gateway_id,omitempty"`
-	// Gateways is how many replicas the gateway is running, and it is here rather
-	// than in an API call.
+	// Gateways is how many replicas the gateway is running, and it travels
+	// in the handshake instead of an API call for a reason.
 	//
-	// An agent has to hold a tunnel to every replica, a replica with no tunnel
+	// An agent has to hold a tunnel to every replica (a replica with no tunnel
 	// to a cluster cannot serve that cluster, and looks healthy from everywhere
-	// else, so it has to know how many there are. Asking the plane for the
+	// else), so it has to know how many there are. Asking the plane for the
 	// number would put the control plane between a cluster and the recovery of
 	// its own data path. Answering it on
 	// the connection the agent has already established costs nothing and cannot

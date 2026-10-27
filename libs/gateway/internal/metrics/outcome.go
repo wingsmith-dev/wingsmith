@@ -4,7 +4,7 @@ import "strconv"
 
 // Outcome is what happened to one request, from a closed set.
 //
-// The set is closed. An operator who can add a member, or redefine
+// The set is closed by design. An operator who can add a member, or redefine
 // one, produces an availability number that is not comparable between two
 // deployments and is therefore unfalsifiable. What an operator declares is
 // which of these sit in the numerator and the denominator of a stated
@@ -93,7 +93,7 @@ func OutcomeFromStatus(status int) Outcome {
 
 // Origin separates real traffic from the conformance suite's probes.
 //
-// The suite sends malformed requests at a live endpoint and
+// The suite sends intentionally malformed requests at a live endpoint and
 // asserts on the error envelopes that come back. Those traverse this hop, and
 // on a low-traffic endpoint one run inside a ten-minute window trivially
 // exceeds a 0.1% budget, so the suite would manufacture the breach it exists

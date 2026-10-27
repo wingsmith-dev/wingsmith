@@ -255,8 +255,8 @@ func appendRef(refs []string, raw json.RawMessage) []string {
 	return refs
 }
 
-// topLevelMediaPaths carry their input media as top-level request fields rather
-// than as content parts.
+// topLevelMediaPaths carry their input media as top-level request fields instead
+// of as content parts.
 var topLevelMediaPaths = map[string]bool{
 	"/v1/images/edits":  true,
 	"/v1/videos":        true,

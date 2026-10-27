@@ -18,7 +18,7 @@ import (
 // timeout survives role reversal.
 //
 // http2.Transport has no ResponseHeaderTimeout field, so the obvious way to
-// build this, construct an http2.Transport and call NewClientConn, silently
+// build this (construct an http2.Transport and call NewClientConn) silently
 // gives a serving runtime unlimited time to say nothing. The pool goes through
 // http2.ConfigureTransports precisely so ClientConn.responseHeaderTimeout finds
 // the net/http Transport's value.
@@ -630,7 +630,7 @@ func TestTheDefaultCoversALongNonStreamedGeneration(t *testing.T) {
 }
 
 // The pool takes the budget it is given and nothing rounds it, because the
-// gateway's two paths into a cluster, the tunnel and a published address, have
+// gateway's two paths into a cluster (the tunnel and a published address) have
 // to present the same wall to a caller.
 func TestThePoolKeepsTheBudgetItIsGiven(t *testing.T) {
 	pool := newPool(t, PoolConfig{ResponseHeaderTimeout: 90 * time.Minute})

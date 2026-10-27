@@ -69,8 +69,8 @@ func TestTheRateLimitRefillsOverTime(t *testing.T) {
 
 // TestAnInternalTenantOverItsCapGetsRateLimited goes through the handler: the
 // tenant on the internal zone is the endpoint's owner, the answer is the
-// existing 429 rate_limited, and it is counted as the caller's limit rather
-// than as this hop shedding.
+// existing 429 rate_limited, and it is counted as the caller's limit instead
+// of as this hop shedding.
 func TestAnInternalTenantOverItsCapGetsRateLimited(t *testing.T) {
 	release := make(chan struct{})
 	entered := make(chan struct{}, 1)

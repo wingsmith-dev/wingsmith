@@ -88,7 +88,7 @@ func TestParseCPUTime(t *testing.T) {
 }
 
 func TestParseProcStat(t *testing.T) {
-	// The command name holds a space and a parenthesis.
+	// The command name holds a space and a parenthesis to exercise the parser.
 	stat := "4242 (gate way) S) R 1 4242 4242 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 8 0 1000 0 0"
 	got, err := parseProcStat(stat)
 	if err != nil || got != 3*time.Second {

@@ -63,8 +63,8 @@ func TestClassify(t *testing.T) {
 // TestTunnelChurnIsInvisibleToTheExistingClassifier is the reason Classify
 // exists, stated as a test, not as a claim in a doc comment.
 //
-// gateway.markProxyError asks two questions, is this context.Canceled, is this
-// a net.Error that timed out, and calls everything else OutcomeUpstreamError,
+// gateway.markProxyError asks two questions (is this context.Canceled, is this
+// a net.Error that timed out) and calls everything else OutcomeUpstreamError,
 // which counts as FAILED and deflates serving availability. Neither http2 error
 // answers either question, so a connector redeploy reads as the cluster being
 // down. If this test ever fails because x/net made GoAwayError a net.Error, the

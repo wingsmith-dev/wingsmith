@@ -10,7 +10,7 @@ import (
 
 // TestATruncatedStreamIsCountedAndStillAborts covers the hole under the
 // mid-stream failure. httputil.ReverseProxy reports a body-copy failure by
-// panicking http.ErrAbortHandler, not through ErrorHandler, so before the
+// panicking http.ErrAbortHandler instead of through ErrorHandler, so before the
 // observation was deferred a generation that died halfway through was recorded as
 // nothing at all: the 200 its headers carried had already gone out.
 //

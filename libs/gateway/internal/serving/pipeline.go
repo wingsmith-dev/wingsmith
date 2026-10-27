@@ -43,8 +43,8 @@ type requestState struct {
 }
 
 // stage is one step of routing a request to an upstream. It returns the
-// request to continue with, a stage may wrap it, as stageParseEnvelope does
-// when it attaches the caller's own bytes for later error rendering, and
+// request to continue with (a stage may wrap it, as stageParseEnvelope does
+// when it attaches the caller's own bytes for later error rendering) and
 // false once it has already written the response, which stops the pipeline.
 type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool)
 
@@ -189,7 +189,7 @@ func stageReadBody(limits bodyLimits) stage {
 //
 // The choice is made once and used twice: here to read it, and after Pick to
 // write the served name back. A multipart body is not a lesser case of a JSON
-// one, there is no object to unmarshal, so the form travels with the
+// one (there is no object to unmarshal), so the form travels with the
 // request instead of being re-derived.
 //
 // The caller's own bytes are attached to the request before either rewrite

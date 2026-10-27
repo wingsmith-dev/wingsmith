@@ -116,7 +116,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 	// the only safe move: carrying on would serve that cluster's traffic from this one's GPUs.
 	//
 	// Either name in the answer counts as agreement. HANGAR_CLUSTER_ID is normally the cluster's
-	// name, the chart writes it from what the plane rendered, while the accept's ClusterID is the
+	// name (the chart writes it from what the plane rendered), while the accept's ClusterID is the
 	// plane's uid, so comparing against that alone refuses every ordinary install. It refuses none
 	// of the dangerous ones: another cluster's credential resolves to a uid *and* a name that are
 	// both somebody else's.
@@ -131,7 +131,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 
 // Peer is which gateway replica a dial landed on, and how many the gateway says it is running.
 //
-// It is a type of this package, not tunnel.Accept so that the supervisor's coverage logic can
+// It is a type of this package instead of tunnel.Accept, so that the supervisor's coverage logic can
 // be tested without building wire frames, and so that the fallbacks for a gateway that did not say
 // live in exactly one place.
 type Peer struct {

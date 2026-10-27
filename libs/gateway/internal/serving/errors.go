@@ -212,7 +212,7 @@ var upstreamFailures = map[int]upstreamFailure{
 // upstreamFallback answers a status the table does not name.
 //
 // A 4xx is passed through as the status that arrived, because the class is the
-// one thing an unrecognised status still says reliably, do not retry this, and
+// one thing an unrecognised status still says reliably (do not retry this), and
 // a 5xx becomes 502 because whatever it was happened behind this hop.
 func upstreamFallback(status int) upstreamFailure {
 	if status < http.StatusInternalServerError {
@@ -260,7 +260,7 @@ func knownRefusalIn(detail string) (string, bool) {
 // replaceErrorResponse substitutes this hop's own error object for whatever an
 // upstream sent.
 //
-// It replaces, not normalises. Wrapping the engine's own object in the
+// It replaces instead of normalising. Wrapping the engine's own object in the
 // OpenAI envelope was enough to make the shape right and not enough to make the
 // content ours: the message, the type and the code were still the engine's, an
 // oversized body was streamed through untouched, and a body that already had an
@@ -350,8 +350,8 @@ func readUpstreamError(resp *http.Response) (string, error) {
 // said.
 //
 // The body is not logged by default, because it is not ours to keep. An engine's
-// validation message quotes the input it rejected, a prompt's opening words, a
-// field value, a tool argument, and a 5xx trace can carry the request it was
+// validation message quotes the input it rejected (a prompt's opening words, a
+// field value, a tool argument), and a 5xx trace can carry the request it was
 // handling. A log line has a retention and an audience nobody agreed to for a
 // caller's content, so the line carries a bounded, content-free summary: the
 // status, the engine's own error type and code when the body is JSON that names
@@ -498,15 +498,15 @@ func upstreamBodiesLogged(ctx context.Context) bool {
 // themselves wrote is reported back to them when the upstream's complaint
 // mentions it, and nothing else is. The output alphabet is therefore fixed
 // strings plus tokens the caller sent us in this very request, which makes a
-// string the caller never wrote impossible to emit, not merely filtered:
-// the eight needles the conformance profiles list are a symptom of that class
+// string the caller never wrote impossible to emit instead of merely filtered.
+// The eight needles the conformance profiles list are a symptom of that class
 // and not the definition of it.
 //
 // knownRefusals is the other consultation and has the same shape: a reason the
 // body mentions selects a fixed message from our own table. When one matches,
 // its message is the answer and no field names are appended.
 //
-// The cost is stated: an engine that names only its own type, as
+// The cost is known and stated: an engine that names only its own type, as
 // serde does for an untagged enum, contributes nothing, and the caller gets the
 // generic sentence. There is nothing in such a message that is ours to say, and
 // it is not kept in the log either (see logUpstreamError).
@@ -613,8 +613,8 @@ var forwardedHeaderPrefixes = []string{"x-ratelimit-", "ratelimit-"}
 // filterResponseHeaders deletes every response header that is not forwarded,
 // and reduces the ones that carry a URL to a path.
 //
-// This is the boundary. Everything behind it, the tunnel's synthetic
-// authority, the agent, the frontend's ClusterIP, the engine, is entitled to
+// This is the boundary. Everything behind it (the tunnel's synthetic
+// authority, the agent, the frontend's ClusterIP, the engine) is entitled to
 // describe itself in a header, and none of that is entitled to leave here.
 func filterResponseHeaders(resp *http.Response) {
 	// Trailers as well as headers. Nothing on the OpenAI surface sends one, so
@@ -646,7 +646,7 @@ func filterResponseHeaders(resp *http.Response) {
 //
 // A redirect is where the address of the thing that answered leaks by
 // construction. Neither proxy on this path rewrites Location, and the authority
-// the frontend sees is the one the agent dialled, a ClusterIP name, so a
+// the frontend sees is the one the agent dialled (a ClusterIP name), so a
 // framework that answers `/v1/models/` with a 307 built from its own Host
 // publishes that name to whoever asked. Reducing the value to a path keeps the
 // redirect working and says nothing about who served it.
@@ -681,7 +681,7 @@ type modelObject struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
 	OwnedBy string `json:"owned_by"`
-	// OutputModality is what the model generates (`text`, `image` or `video`) so a client can
+	// OutputModality is what the model generates (`text`, `image` or `video`), so a client can
 	// tell which of /v1/chat/completions, /v1/images/generations and /v1/videos it answers.
 	// Not an OpenAI field; clients that do not know it ignore it.
 	OutputModality string `json:"output_modality,omitempty"`
@@ -694,7 +694,7 @@ type modelList struct {
 
 // modelOwner is what every model in the catalog is owned by.
 //
-// A constant, and the same one OpenAI returns for its own base
+// A constant, and intentionally the same one OpenAI returns for its own base
 // models. It used to name this project, which put the name of the thing serving
 // the request on the one response a caller can read without sending one. What
 // sits in front of this hop owns the catalog a customer sees; this list exists
@@ -704,7 +704,7 @@ const modelOwner = "system"
 
 // writeModelList answers GET /v1/models from the routing table.
 //
-// Bare: context length, quantization and display names are catalog
+// Intentionally bare: context length, quantization and display names are catalog
 // facts, and hangar serves models instead of describing them. Whatever sits in
 // front of this hop owns its own catalog.
 func writeModelList(w http.ResponseWriter, names []string, kinds map[string]string) {

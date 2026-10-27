@@ -25,7 +25,7 @@ import (
 // The two stamps are what make a measurement attributable, not inferred.
 // A caller that knows when it sent, when the frontend received, when the
 // frontend wrote the first token and when that token arrived can split one
-// number into the inbound leg, gateway plus tunnel plus agent, and the return
+// number into the inbound leg (gateway plus tunnel plus agent) and the return
 // leg, without any change to the gateway or the agent. They are only meaningful
 // where both ends share a clock, which is one host, which is exactly the
 // synthetic mode they exist for. Against a real frontend they are absent and
@@ -83,7 +83,7 @@ func New(profile Profile) *Server {
 // request is the OpenAI body, plus the fields that let one caller in a run ask
 // for a different schedule from everyone else.
 //
-// The overrides are named, not passed as query parameters because the
+// The overrides are named instead of passed as query parameters, because the
 // gateway routes on the body and rewrites it; a parameter on the URL would
 // prove nothing about the path a real completion takes.
 type request struct {

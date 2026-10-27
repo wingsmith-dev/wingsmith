@@ -20,7 +20,7 @@ const usageTailBytes = 64 << 10
 //
 // It is observability and not an invoice. Whoever fronts this gateway meters
 // its own users; two systems counting tokens is two systems disagreeing about
-// what a customer owes, and this one is the one without an
+// what a customer owes, and this one is intentionally the one without an
 // opinion.
 type usageCounts struct {
 	input       int64
@@ -124,8 +124,8 @@ type usagePayload struct {
 // parseUsage finds the last usage object in a response tail.
 //
 // The tail instead of the whole body, so the scan is bounded and a long
-// generation costs the same as a short one. A body this cannot read, one that
-// arrived compressed, or whose usage object is larger than the window, yields
+// generation costs the same as a short one. A body this cannot read (one that
+// arrived compressed, or whose usage object is larger than the window) yields
 // no counts, and no counts means an absent series instead of a zero one.
 func parseUsage(tail []byte) (usageCounts, bool) {
 	needle := []byte(`"usage"`)

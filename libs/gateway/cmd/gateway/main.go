@@ -124,7 +124,7 @@ func main() {
 	// routes this process reads and nowhere else, so it carries no admin or
 	// operator rights on the plane API.
 	planeToken := os.Getenv("HANGAR_GATEWAY_SERVICE_TOKEN")
-	// HANGAR_GATEWAY_PUBLIC_LISTEN is read only from the
+	// HANGAR_GATEWAY_PUBLIC_LISTEN is intentionally read only from the
 	// environment, never a flag; the reason is the same one metricsAddr and
 	// tunnelAddr are read from both: a manifest naming a flag this binary
 	// does not know reaches flag.Parse before main runs and exits 2, which is
@@ -292,8 +292,8 @@ func main() {
 	}()
 
 	// The public listener, off unless HANGAR_GATEWAY_PUBLIC_LISTEN names an
-	// address. A caller here identifies itself by the `Host` it dials rather
-	// than by which port it reached, the internal listener's own proof, so
+	// address. A caller here identifies itself by the `Host` it dials instead
+	// of by which port it reached (the internal listener's own proof), so
 	// every request run through it takes the tenant and key stages the
 	// internal listener's Zone skips (docs/decisions/0016).
 	var publicSrv *http.Server
@@ -342,8 +342,8 @@ func main() {
 	slog.Info("gateway: draining", "grace", grace, "delay", drain.delay, "timeout", drain.requests, "tunnel_timeout", drain.tunnels)
 	time.Sleep(drain.delay)
 
-	// Each request listener gets the whole drain budget, concurrently, rather
-	// than the second one getting whatever the first left over. A request
+	// Each request listener gets the whole drain budget, concurrently, instead
+	// of the second one getting whatever the first left over. A request
 	// still running when the budget ends is cut. The phases are cut from
 	// HANGAR_GATEWAY_SHUTDOWN_GRACE (drain.go), which must match the pod's
 	// terminationGracePeriodSeconds.
@@ -397,7 +397,7 @@ const defaultTunnelAddr = ":8443"
 // tunnelCertReloadEvery is how often the tunnel certificate is re-read from disk.
 //
 // Ten minutes against a renewal window of 30 days. There is no benefit to being
-// quicker, the old certificate stays valid for the whole window, and a slow
+// quicker (the old certificate stays valid for the whole window), and a slow
 // poll keeps a mid-swap read rare, not merely survivable.
 const tunnelCertReloadEvery = 10 * time.Minute
 
@@ -406,7 +406,7 @@ const tunnelCertReloadEvery = 10 * time.Minute
 //
 // The verifier is the plane client, and it is asked once per connection. That is
 // the property to keep: a plane that is down means existing tunnels go on
-// serving, and only a new dial fails, and even a new dial succeeds while the
+// serving, and only a new dial fails. Even a new dial succeeds while the
 // listener's cache still holds an answer for its token.
 //
 // The replica count reported to agents is a number this process is told, not one
@@ -582,7 +582,7 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		// within about a minute, so the poll only has to be far shorter than
 		// the window, not prompt.
 		go keypair.Watch(ctx, tunnelCertReloadEvery, recorder.TunnelCertificateExpiry)
-		// NextProtos is absent. The agent negotiates nothing:
+		// NextProtos is intentionally absent. The agent negotiates nothing:
 		// the handshake on this connection is hangar's own and HTTP/2 starts
 		// after it, so advertising h2 here would invite a TLS stack to hand the
 		// socket to an HTTP/2 client that expects to be the one dialling.

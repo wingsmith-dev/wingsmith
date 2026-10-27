@@ -10,7 +10,7 @@ import (
 
 // rule is one line of the plane's own msgspec output, byte for byte. Every
 // field is written even when it is empty, because msgspec writes the whole
-// struct, so `min` and `max` arrive as null, not absent, `route` and
+// struct, so `min` and `max` arrive as null instead of absent, `route` and
 // `when_present` as "", and `stream` as null. Every one of them must reach this
 // build as "asks nothing": a null min that decoded to 0 would give every pinned
 // parameter a silent floor of zero, and an empty route or condition that did not
@@ -35,7 +35,7 @@ var planeWire = `{"version":2,"rules":[` + strings.Join([]string{
 }, ",") + `]}`
 
 // migratedWire is the same function's output for a policy still stored in the
-// v1 shape, a map of parameters and a list of denial names, which is what
+// v1 shape (a map of parameters and a list of denial names), which is what
 // every endpoint that sold a term before this language existed still holds.
 //
 // The conversion is the plane's, so this side never learns two languages. Note

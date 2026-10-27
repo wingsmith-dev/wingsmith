@@ -201,8 +201,8 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 
 // TestNoUpstreamErrorBodyReachesTheCallerAsItArrived is the whole of the passthrough rule.
 //
-// Every shape an engine can answer with, a bare object, the OpenAI envelope
-// already built, prose, a body over any cap this hop might read under, arrives
+// Every shape an engine can answer with (a bare object, the OpenAI envelope
+// already built, prose, a body over any cap this hop might read under) arrives
 // as one of this hop's own objects. A 4xx engine message may be quoted inside
 // it, sanitised; a 5xx never is; the address of what is behind this hop never is.
 func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {

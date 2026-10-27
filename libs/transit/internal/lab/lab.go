@@ -42,7 +42,7 @@ type Options struct {
 	// Repo is the checkout the gateway and agent are built from.
 	Repo string
 	// Agents is how many agent processes serve the one cluster. More than one is
-	// the real shape, the agent is a Deployment, and it is the only way to ask
+	// the real shape (the agent is a Deployment), and it is the only way to ask
 	// whether a request lands on a tunnel that has room.
 	Agents int
 	// ConnsPerGateway is how many tunnels each agent holds to each replica.
@@ -236,8 +236,8 @@ type LiveOptions struct {
 // The same generator, the same percentiles and the same report shape as the
 // synthetic run, which is the point: a laptop, CI and production produce
 // three reports that can be put beside each other. What it cannot produce is the
-// per-leg split or the per-process cost, the frontend is a real engine and does
-// not stamp its clock, and the gateway is not this process's child, so those
+// per-leg split or the per-process cost (the frontend is a real engine and does
+// not stamp its clock, and the gateway is not this process's child), so those
 // columns are empty, not estimated, and the bottleneck it names is
 // correspondingly coarser.
 func RunLive(ctx context.Context, opts LiveOptions) (*Report, error) {

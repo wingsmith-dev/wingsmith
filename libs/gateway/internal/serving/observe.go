@@ -15,9 +15,9 @@ import (
 
 // observation is what one request turns out to have been.
 //
-// It is assembled as the request travels, the guard knows it was rejected, the
+// It is assembled as the request travels (the guard knows it was rejected, the
 // router knows which endpoint it named and which cluster it went to, the proxy's
-// error handler knows the upstream never answered, and read once at the end.
+// error handler knows the upstream never answered) and read once at the end.
 // It is reached through the request context, not passed down, because the
 // proxy handlers are pooled per upstream and shared across every request to it:
 // per-request state on one of those would be per-request state on a shared
