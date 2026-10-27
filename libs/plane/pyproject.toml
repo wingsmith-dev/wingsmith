@@ -64,8 +64,9 @@ branch = true
 omit = ["app/*/__main__.py"]
 
 [tool.coverage.report]
-# The suite without Postgres measures 76% and the full suite more; a drop below this fails `just cov`.
-fail_under = 74
+# Held against the full suite, database tests included, which CI runs with --cov and which measures
+# 90%. The suite without Postgres measures about 76%, so `just cov` on a machine with no database fails.
+fail_under = 88
 show_missing = true
 skip_covered = false
 exclude_lines = [
