@@ -21,7 +21,7 @@ import type { ClusterVerdict } from "@/modules/placement/types"
  *
  * A separate declaration from which cluster, and it belongs beside it because it is the
  * other half of the same question: the plane chooses the cluster and the constraint
- * travels with the choice, where the cluster's own scheduler honours it against its
+ * travels with the choice, where the cluster's own scheduler honors it against its
  * topology domains. Rule 3, at the two ends it draws.
  *
  * The derived value is pre-selected and unticking it is allowed. That direction matters:
@@ -74,7 +74,7 @@ function FabricChoice({
  * decide, which is rule 3 and the only mode that should ever be common. `constrain`
  * narrows the set placement chooses from and still runs it, quota and topology and all
  * — a `nodeSelector`. `pin` skips placement entirely and is never checked for capacity,
- * which is `nodeName`, and it is labelled with that cost rather than presented as a
+ * which is `nodeName`, and it is labeled with that cost instead of presented as a
  * peer of the other two.
  *
  * Only the first is preselected. A cluster dropdown offered as an ordinary field is how
@@ -357,7 +357,7 @@ export function WhereStep({
  * The plane's own answer, for a configuration that does not exist yet.
  *
  * `verdicts` carry the losing clusters' reasoning too, and it is shown rather than
- * summarised: "6 free h100 in the largest nvlink domain, 8 asked for" is a next action
+ * summarized: "6 free h100 in the largest nvlink domain, 8 asked for" is a next action
  * and "no capacity" is not.
  *
  * The decision comes back under the workload id `wkl_preview` and that id is

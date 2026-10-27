@@ -14,10 +14,10 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * ticks, and a pointer handler, and the dependency would cost more bundle than
  * the whole console spends on charts today.
  *
- * The palette is not chosen here by eye. Series colours come from the caller as
+ * The palette is not chosen here by eye. Series colors come from the caller as
  * CSS custom properties so the light and dark steps swap with the theme rather
  * than one being a filter of the other, and both sets were validated for
- * colour-vision separation against this console's own surfaces before they were
+ * color-vision separation against this console's own surfaces before they were
  * written down — see `SERIES` in `serving-charts.tsx`.
  */
 /**
@@ -89,7 +89,7 @@ function splinePath(points: { x: number; y: number }[]): string {
 export interface ChartSeries {
   key: string
   label: string
-  /** A CSS colour — a `var(--…)` the caller defined, so the theme swap is one place. */
+  /** A CSS color, a `var(--…)` the caller defined, so the theme swap is one place. */
   color: string
   points: MetricSeriesPoint[]
 }

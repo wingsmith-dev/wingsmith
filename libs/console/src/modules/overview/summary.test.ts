@@ -3,7 +3,7 @@ import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment } from "@/modules/demand/types"
 import type { Operation } from "@/modules/machinery/types"
 import type { Device, Pool, SupplyNode } from "@/modules/supply/types"
-import { deriveClusterActionables, summariseDevices } from "./summary"
+import { deriveClusterActionables, summarizeDevices } from "./summary"
 
 const NOW = new Date("2026-08-23T12:00:00Z")
 const MINUTES = 60 * 1000
@@ -123,10 +123,10 @@ afterEach(() => {
 
 // --- rollups ---------------------------------------------------------------
 
-describe("summariseDevices", () => {
+describe("summarizeDevices", () => {
   it("lists impaired devices rather than counting them", () => {
     // One degraded card disappears into "47 of 48 healthy"; the panel exists so it does not.
-    const got = summariseDevices([
+    const got = summarizeDevices([
       ...Array.from({ length: 47 }, (_, i) => device({ id: `dev_${i}` })),
       device({ id: "dev_bad", health: "degraded" }),
     ])
@@ -136,7 +136,7 @@ describe("summariseDevices", () => {
   })
 
   it("counts a throttled but healthy device as impaired", () => {
-    const got = summariseDevices([
+    const got = summarizeDevices([
       device({ id: "dev_hot", throttled: true, throttle_reasons: ["thermal"] }),
     ])
     expect(ids(got.impaired)).toEqual(["dev_hot"])
@@ -144,7 +144,7 @@ describe("summariseDevices", () => {
   })
 
   it("orders health worst first so the loudest thing is at the top", () => {
-    const got = summariseDevices([
+    const got = summarizeDevices([
       device({ id: "a", health: "unknown" }),
       device({ id: "b", health: "healthy" }),
       device({ id: "c", health: "unhealthy" }),
@@ -165,7 +165,7 @@ describe("summariseDevices", () => {
   })
 
   it("groups by class, largest first, and counts healthy within each", () => {
-    const got = summariseDevices([
+    const got = summarizeDevices([
       device({ id: "a", device_class: "h100-80gb-sxm" }),
       device({ id: "b", device_class: "h100-80gb-sxm" }),
       device({ id: "c", device_class: "h100-80gb-sxm", health: "degraded" }),
@@ -179,7 +179,7 @@ describe("summariseDevices", () => {
 
   it("counts allocatable apart from healthy", () => {
     // A healthy card already holding a workload is not spare capacity.
-    const got = summariseDevices([
+    const got = summarizeDevices([
       device({ id: "a", allocatable: true }),
       device({ id: "b", allocatable: false }),
     ])
@@ -188,7 +188,7 @@ describe("summariseDevices", () => {
   })
 
   it("handles an empty fleet", () => {
-    const got = summariseDevices([])
+    const got = summarizeDevices([])
     expect(got).toMatchObject({ total: 0, healthy: 0, allocatable: 0 })
     expect(got.byHealth).toEqual([])
     expect(got.impaired).toEqual([])

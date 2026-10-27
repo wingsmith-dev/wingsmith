@@ -99,7 +99,7 @@ type BlockLanguage = "yaml" | "shell"
 /**
  * A tiny, dependency-free highlighter for the two languages the console shows
  * in blocks: `values.yaml` and `helm`/`kubectl` commands. Deliberately not a
- * general parser — it colours the few token classes that make these snippets
+ * general parser: it colors the few token classes that make these snippets
  * readable (comments, keys, values; commands, flags) and leaves the rest plain.
  */
 function highlightYaml(line: string, key: number): React.ReactNode {
@@ -115,7 +115,7 @@ function highlightYaml(line: string, key: number): React.ReactNode {
   const match = line.match(/^(\s*-?\s*)([\w.\-/]+)(:)(.*)$/)
   if (!match) return line
   const [, indent, name, colon, rest] = match
-  // Split a trailing ` # comment` off the value so it colours separately.
+  // Split a trailing ` # comment` off the value so it colors separately.
   const commentAt = rest.indexOf(" #")
   const val = commentAt >= 0 ? rest.slice(0, commentAt) : rest
   const comment = commentAt >= 0 ? rest.slice(commentAt) : ""
@@ -178,7 +178,7 @@ function highlight(value: string, language: BlockLanguage): React.ReactNode {
  * A multi-line command block with a copy button. Unlike {@link CopyableId} the
  * whole snippet is always shown; the button copies it verbatim so an operator
  * can paste a `kubectl` or `just` line without hand-retyping a cluster name.
- * Pass `language` to colour a `values.yaml` or a shell command; omit it for
+ * Pass `language` to color a `values.yaml` or a shell command; omit it for
  * plain text (a token, an id).
  */
 export function CopyableBlock({

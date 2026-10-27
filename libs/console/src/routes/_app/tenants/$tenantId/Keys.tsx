@@ -29,7 +29,7 @@ import { toast } from "sonner"
 
 /**
  * Mints a key and, once minted, shows the plaintext exactly once — the same
- * shape as a cluster's enrolment token. There is nowhere it could come from
+ * shape as a cluster's enrollment token. There is nowhere it could come from
  * afterwards; only the hash is stored.
  */
 function MintKeyDialog({

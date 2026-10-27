@@ -38,14 +38,14 @@ import {
   TOOL_CALL_PARSERS,
   TOOL_CHOICE_MODES,
   type ServingCapabilities,
-  type ServingBehaviour,
+  type ServingBehavior,
 } from "@/modules/demand/types"
 
 /**
- * The rendered half of a workload's serving behaviour, as typed controls.
+ * The rendered half of a workload's serving behavior, as typed controls.
  *
  * Before these fields existed every one of them went into `engine_args`, where
- * the plane could neither validate them nor say what it had asked for. Honouring
+ * the plane could neither validate them nor say what it had asked for. Honoring
  * any of them means a replica restart, which is why they sit in the serving block.
  */
 export function ServingFields({
@@ -56,15 +56,15 @@ export function ServingFields({
   plain,
 }: {
   engine: string
-  value: ServingBehaviour
-  onChange: (value: ServingBehaviour) => void
+  value: ServingBehavior
+  onChange: (value: ServingBehavior) => void
   engineArgs: Record<string, unknown>
   /** True in the dialog that edits nothing else — see `DeclaredSection`. */
   plain?: boolean
 }) {
-  const set = (patch: Partial<ServingBehaviour>) =>
+  const set = (patch: Partial<ServingBehavior>) =>
     onChange({ ...value, ...patch })
-  const setReasoning = (patch: Partial<ServingBehaviour["reasoning"]>) =>
+  const setReasoning = (patch: Partial<ServingBehavior["reasoning"]>) =>
     onChange({ ...value, reasoning: { ...value.reasoning, ...patch } })
 
   const overrides = servingOverrides(engine, engineArgs, value)
@@ -240,7 +240,7 @@ export function CapabilityFields({
             set({ structured_output_modes })
           }
           options={STRUCTURED_OUTPUT_MODES}
-          hint="Three support levels, not one flag. Valid JSON is not an honoured schema."
+          hint="Three support levels, not one flag. Valid JSON is not an honored schema."
         />
         <ChoiceSetField
           label="Tool choice modes"
@@ -343,11 +343,11 @@ function EditIcon({ label, onClick }: { label: string; onClick: () => void }) {
  * Capabilities and the resolved command line, not a component that draws all
  * three.
  */
-export function ServingBehaviourCard({
+export function ServingBehaviorCard({
   serving,
   onEdit,
 }: {
-  serving: ServingBehaviour
+  serving: ServingBehavior
   onEdit?: () => void
 }) {
   return (

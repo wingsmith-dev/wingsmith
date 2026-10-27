@@ -104,7 +104,7 @@ export interface Curve {
  * metric wobbling between 4.01 and 4.02 draws the same picture as one swinging
  * from zero to a thousand — the right trade for a tile the size of a word, and
  * the wrong one for the page's main chart, where the shape means nothing until
- * somebody can read what it is a shape of. The floor is labelled rather than
+ * somebody can read what it is a shape of. The floor is labeled, not
  * forced to zero, because pinning a latency band to zero flattens every change
  * worth seeing; stating it is what stops the autoscale being a trick.
  *

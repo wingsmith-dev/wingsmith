@@ -30,7 +30,7 @@ function RuleSubject({ rule }: { rule: PolicyRule }) {
 
 /**
  * What one rule says. `deny` refuses and is the only term that can turn a
- * request away, so it alone is coloured; the bounds and rewrites (which never
+ * request away, so it alone is colored; the bounds and rewrites (which never
  * fail a request) stay quiet.
  */
 function RuleTerms({ rule }: { rule: PolicyRule }) {

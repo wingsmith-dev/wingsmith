@@ -9,7 +9,7 @@ import {
   fetchClusterRollups,
   fetchClusters,
   fetchClusterSetup,
-  issueClusterEnrolmentToken,
+  issueClusterEnrollmentToken,
   setClusterServing,
   updateCluster,
   type ClusterFilters,
@@ -118,15 +118,15 @@ export function useClusterSetup(ref: string) {
 }
 
 /**
- * Mints or rotates the cluster's enrolment token. A mutation, not a query: it
+ * Mints or rotates the cluster's enrollment token. A mutation, not a query: it
  * writes, and its result — the plaintext token folded into the values — is shown
  * once and deliberately not cached. On success the setup query is invalidated so
  * a later read reflects `enrolment_token_set`.
  */
-export function useIssueClusterEnrolmentToken() {
+export function useIssueClusterEnrollmentToken() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (ref: string) => issueClusterEnrolmentToken(ref),
+    mutationFn: (ref: string) => issueClusterEnrollmentToken(ref),
     onSuccess: (_data, ref) =>
       client.invalidateQueries({ queryKey: ["clusters", "setup", ref] }),
   })

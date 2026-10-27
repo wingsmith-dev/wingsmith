@@ -32,10 +32,10 @@ import type {
 import { useState } from "react"
 
 /**
- * The scope switch is labelled by the question, not by the filter.
+ * The scope switch is labeled by the question, not by the filter.
  *
  * `fleet` and `catalog` are two different questions that happen to be answered with
- * the same table, and labelling them as a narrow and a wide filter would make the
+ * the same table, and labeling them as a narrow and a wide filter would make the
  * second read as a wider view of the first. It is not: a fit on a class the fleet has
  * none of needs hardware first, and nothing in the second list is deployable today.
  */
@@ -678,7 +678,7 @@ function FitRow({
    * Gating on `fits` would make an estimate the final word on what an operator is
    * allowed to run. It is not the final word and it is not always right: a model with
    * sliding-window layers can be charged a full window on layers that hold a thousand
-   * tokens, and every row that would have served it would be greyed out. The failure modes are not symmetric: a shape the estimate
+   * tokens, and every row that would have served it would be grayed out. The failure modes are not symmetric: a shape the estimate
    * was wrong to allow is a worker that OOMs and says so, and a shape it was wrong to
    * refuse is a model nobody can deploy and no way to find out why.
    *

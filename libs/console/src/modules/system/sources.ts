@@ -31,7 +31,7 @@ export interface SourceCluster {
  * read from the environment: an explicit entry wins, and otherwise the shared
  * store narrowed by the cluster's own `metrics_label`. Counting only the entries
  * would report every normally-configured cluster as unmapped, so the second form
- * is synthesised here — from the same two facts the plane resolves it from.
+ * is synthesized here, from the same two facts the plane resolves it from.
  */
 export function sourceRows(
   sources: MetricsSourceConfig[],

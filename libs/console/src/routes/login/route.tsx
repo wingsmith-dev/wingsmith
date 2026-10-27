@@ -20,7 +20,7 @@ export const Route = createFileRoute("/login")({
  *
  * Only the tenant credential is trimmed. A token is `hgrt1.` and 32 url-safe
  * random bytes, so it can never legitimately carry surrounding whitespace and a
- * pasted one that does is a paste artefact — which otherwise fails the hash
+ * pasted one that does is a paste artifact, which otherwise fails the hash
  * lookup and reports itself as a wrong token. The admin password is not ours to
  * assume that about and is sent exactly as typed.
  */

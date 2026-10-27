@@ -5,7 +5,7 @@ import { gibibytes } from "@/modules/supply/display"
 
 /**
  * The stripe that means "this device is not yours to place on". Faulted and
- * cordoned share the texture and differ in colour, because they are the same
+ * cordoned share the texture and differ in color, because they are the same
  * fact for a placement decision and different facts for the person fixing it.
  */
 const HATCH =
@@ -56,8 +56,8 @@ export function DeviceCell(props: CellProps) {
   const partitioned = cell.slices.length > 0
   /**
    * A reservation is not yours to move. It has no allocation the plane would
-   * recognise — the id on the holder is one this board invented so the cells
-   * could be grouped — so dragging one would put a fabricated allocation into
+   * recognize (the id on the holder is one this board invented so the cells
+   * could be grouped), so dragging one would put a fabricated allocation into
    * the plan and ask the sandbox to relocate something that was never bound.
    */
   const movable = held && held.origin !== "reserved" ? held : null
@@ -145,21 +145,21 @@ function face(cell: BoardDevice): string {
     }
     return "bg-muted/30 ring-1 ring-dashed ring-border ring-inset hover:bg-emerald-500/15 hover:ring-emerald-500/50"
   }
-  const colour = brickColor(cell.holder.workload)
+  const color = brickColor(cell.holder.workload)
   /**
-   * Reserved wears the workload's own colour, because the fact worth seeing is
-   * "*this* workload is arriving *here*" and the colour is what says which
+   * Reserved wears the workload's own color, because the fact worth seeing is
+   * "*this* workload is arriving *here*" and the color is what says which
    * workload. What separates it from a bound cell is weight: a washed-out fill
    * over the free cell's own dashed ring, so it reads as an outline being
    * filled in rather than as something already there. It cannot be mistaken for
-   * free (free carries no colour), for proposed (solid fill, dashed outline
+   * free (free carries no color), for proposed (solid fill, dashed outline
    * inset from the edge), or for cordoned and faulted (both hatched).
    */
   if (cell.holder.origin === "reserved") {
-    return cn(colour.ghost, "ring-dashed ring-1 ring-inset", colour.edge)
+    return cn(color.ghost, "ring-dashed ring-1 ring-inset", color.edge)
   }
   return cn(
-    colour.fill,
+    color.fill,
     cell.holder.origin === "live"
       ? "ring-1 ring-black/10 ring-inset dark:ring-white/10"
       : "outline-2 outline-offset-[-3px] outline-background outline-dashed"

@@ -175,7 +175,7 @@ function BatchRow({
   batch: Batch
   board: Board | undefined
 }) {
-  const colour = brickColor(batch.brick.workload ?? batch.brick.key)
+  const color = brickColor(batch.brick.workload ?? batch.brick.key)
   const clusters = new Set<string>()
   const fabrics: string[] = []
   for (const move of batch.moves) {
@@ -194,7 +194,7 @@ function BatchRow({
     <div className="flex items-start gap-2 rounded-md bg-muted/30 px-1.5 py-1">
       <IconCirclePlus className="mt-0.5 size-3 shrink-0 text-success" />
       <span
-        className={cn("mt-1 size-2 shrink-0 rounded-[2px]", colour.swatch)}
+        className={cn("mt-1 size-2 shrink-0 rounded-[2px]", color.swatch)}
       />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-2xs">
@@ -221,7 +221,7 @@ function MoveRow({ move, board }: { move: Move; board: Board | undefined }) {
     move.kind === "place"
       ? (move.brick.workload ?? move.brick.key)
       : move.holder.workload
-  const colour = brickColor(key)
+  const color = brickColor(key)
 
   const to = move.kind === "release" ? [] : fabricsOf(board, move.devices)
   const from = move.kind === "place" ? [] : fabricsOf(board, move.from)
@@ -238,7 +238,7 @@ function MoveRow({ move, board }: { move: Move; board: Board | undefined }) {
         )}
       </span>
       <span
-        className={cn("mt-1 size-2 shrink-0 rounded-[2px]", colour.swatch)}
+        className={cn("mt-1 size-2 shrink-0 rounded-[2px]", color.swatch)}
       />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-2xs">{label}</span>

@@ -248,7 +248,7 @@ export function useCreateBenchmark() {
   })
 }
 
-/** The levelled ask. It expands into runs on the plane, never here. */
+/** The leveled ask. It expands into runs on the plane, never here. */
 export function useCreateBenchmarkRequest() {
   const client = useQueryClient()
   return useMutation({

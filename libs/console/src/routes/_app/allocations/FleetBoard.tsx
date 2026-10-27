@@ -166,7 +166,7 @@ export function FleetBoard({
   /**
    * One click on a cell, and what it does depends on what is already in hand.
    *
-   * With nothing held, a coloured cell answers the question people actually
+   * With nothing held, a colored cell answers the question people actually
    * arrive with: not "what is this square" but "what is running in here". So the
    * first click takes the whole allocation — every device committed with it
    * lights up, wherever it sits — and only a second click on the same cell

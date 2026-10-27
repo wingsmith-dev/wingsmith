@@ -37,7 +37,7 @@ export interface BenchmarkProvenance {
   deployment_generation: number
   serving_digest: string | null
   engine_args: Record<string, unknown>
-  /** The declared serving behaviour block — which protocols answered, and how. */
+  /** The declared serving behavior block: which protocols answered, and how. */
   serving: Record<string, unknown>
 }
 
@@ -98,7 +98,7 @@ export interface BenchmarkHarness {
  * `summary` is `unknown` on purpose. It is the harness's own export, stored and
  * served verbatim, and typing it here would be this console asserting it knows
  * a shape the plane refuses to normalize by design. Anything that reads it
- * has to cope with not recognising it.
+ * has to cope with not recognizing it.
  *
  * `deployment_id` and `cluster_id` are nullable because an endpoint-level run
  * has neither. `request_id` names the ask it was expanded from, and
@@ -325,7 +325,7 @@ export interface BenchmarkKnee {
  * A stepped request read as one curve, derived now.
  *
  * `step_field` names the parameter the request walked, so the x axis is
- * labelled by the plane rather than hardcoded here: the same read serves a
+ * labeled by the plane instead of hardcoded here: the same read serves a
  * concurrency ramp and an input-length sweep, and a console that assumed
  * concurrency would mislabel half of them.
  */

@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest"
 import { workloads } from "@/modules/offline/data"
 import { servingArgs, workloadOperationalStatus } from "./display"
 
-import type { ServingBehaviour, Workload } from "./types"
+import type { ServingBehavior, Workload } from "./types"
 
-const serving = (over: Partial<ServingBehaviour> = {}): ServingBehaviour =>
+const serving = (over: Partial<ServingBehavior> = {}): ServingBehavior =>
   ({
     reasoning: {
       parser: null,
@@ -19,7 +19,7 @@ const serving = (over: Partial<ServingBehaviour> = {}): ServingBehaviour =>
     max_images_per_request: null,
     max_videos_per_request: null,
     ...over,
-  }) as ServingBehaviour
+  }) as ServingBehavior
 
 describe("modality caps", () => {
   it("renders two caps as one map and not as two flags", () => {

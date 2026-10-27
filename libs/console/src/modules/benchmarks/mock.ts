@@ -76,7 +76,7 @@ const PROBE_CLAIMS: [string, string, string, string][] = [
     "reasoning_content",
     "reasoning_content",
   ],
-  ["tools", "tool_choice=required honoured", "honoured", "honoured"],
+  ["tools", "tool_choice=required honored", "honored", "honored"],
   [
     "tools",
     "parallel tool calls emitted",
@@ -184,7 +184,7 @@ const TASKS = [
   "fix the failing test in the fixture repo",
   "add a flag to the CLI and update its help",
   "rename a symbol across three files",
-  "summarise a 200k-token file and cite line numbers",
+  "summarize a 200k-token file and cite line numbers",
 ] as const
 const FAILURES = [
   "tool_choice=required returned a message with no tool_calls",

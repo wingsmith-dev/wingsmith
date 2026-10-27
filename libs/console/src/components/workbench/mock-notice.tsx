@@ -10,7 +10,7 @@ import { IconFlask2 } from "@tabler/icons-react"
  * before the harnesses that fill them exist, and a layout cannot be judged
  * against an empty state.
  *
- * The exception only holds while it is labelled. Every panel fed by
+ * The exception only holds while it is labeled. Every panel fed by
  * `modules/benchmarks/mock` carries this, and the banner is deleted in the same
  * commit that deletes the fixture it warns about.
  */

@@ -22,7 +22,7 @@ import type { BoardMode } from "./route"
  * What one cell of the board actually is.
  *
  * The board is deliberately terse — a device is 24 pixels — so everything that
- * cannot be a colour lives here: the uuid, the fabric, the health reason, the
+ * cannot be a color lives here: the uuid, the fabric, the health reason, the
  * allocation holding it. In sandbox mode it is also where an allocation is
  * picked up or let go, since those need a name attached and a cell has no room
  * for one.
@@ -543,15 +543,15 @@ function take(
  * to say is that this square is a guess.
  */
 function ReservedBlock({ holder }: { holder: Holder }) {
-  const colour = brickColor(holder.workload)
+  const color = brickColor(holder.workload)
   return (
-    <div className={cn("space-y-2 rounded-md p-2", colour.wash)}>
+    <div className={cn("space-y-2 rounded-md p-2", color.wash)}>
       <div className="flex items-center gap-2">
         <span
           className={cn(
             "ring-dashed size-2.5 shrink-0 rounded-[2px] ring-1 ring-inset",
-            colour.ghost,
-            colour.edge
+            color.ghost,
+            color.edge
           )}
         />
         <span className="min-w-0 flex-1 truncate font-mono text-2xs font-semibold">
@@ -582,13 +582,11 @@ function HolderBlock({
   onPickUp?: () => void
   onRelease?: () => void
 }) {
-  const colour = brickColor(holder.workload)
+  const color = brickColor(holder.workload)
   return (
-    <div className={cn("space-y-2 rounded-md p-2", colour.wash)}>
+    <div className={cn("space-y-2 rounded-md p-2", color.wash)}>
       <div className="flex items-center gap-2">
-        <span
-          className={cn("size-2.5 shrink-0 rounded-[2px]", colour.swatch)}
-        />
+        <span className={cn("size-2.5 shrink-0 rounded-[2px]", color.swatch)} />
         <span className="min-w-0 flex-1 truncate font-mono text-2xs font-semibold">
           {holder.workload_name}
         </span>

@@ -8,12 +8,12 @@ import { sumCurvePoints } from "@/modules/metrics/rollup"
 import type { MetricSeries, MetricSeriesPoint } from "@/modules/metrics/types"
 
 /**
- * The series colours, by the job the colour does.
+ * The series colors, by the job the color does.
  *
  * `CATEGORICAL` is identity — two things that are not more or less of each
  * other, so two hues. `STEP` is one hue light to dark, because p50, p95 and p99
  * are the same measurement at increasing severity and a reader should see that
- * order in the colour rather than have to recall which hue was which.
+ * order in the color instead of having to recall which hue was which.
  *
  * Both are `var()` handles onto the palette in `index.css`, where the light and
  * dark steps live together and where the note on validating them is.
@@ -75,7 +75,7 @@ function ChartPanel({
  * One chart per unit, and not one chart: requests, tokens, seconds and a
  * percentage do not share an axis, and putting any two of them on one pair
  * would need a second y-scale — which makes the crossings of the two lines look
- * like events when they are an artefact of how the scales were chosen.
+ * like events when they are an artifact of how the scales were chosen.
  *
  * Time to first token is split from end-to-end latency for the same reason they
  * are separate rows in an acceptance document: they are quoted against separate

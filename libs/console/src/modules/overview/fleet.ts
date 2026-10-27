@@ -45,7 +45,7 @@ export interface EndpointHealthSummary {
  * endpoints are left out entirely: an endpoint nobody serves from is not a
  * degraded one.
  */
-export function summariseEndpointHealth(
+export function summarizeEndpointHealth(
   endpoints: Endpoint[],
   deployments: Deployment[]
 ): EndpointHealthSummary {

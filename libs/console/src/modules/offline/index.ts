@@ -466,7 +466,7 @@ registerFixtures([
         )
       if (HF_GATED.includes(slug))
         throw new InvalidError(
-          `'${slug}' is gated on HuggingFace and the plane has no accepted licence for it`,
+          `'${slug}' is gated on HuggingFace and the plane has no accepted license for it`,
           { source, token: "HANGAR_HF_TOKEN" }
         )
       const found = HF_FIXTURES[slug]
@@ -614,7 +614,7 @@ collection({
 /**
  * One workload's serving history.
  *
- * Synthesised from the corpus rather than stated beside it, and deliberately one entry per
+ * Synthesized from the corpus instead of stated beside it, and one entry per
  * workload: none of these has been edited, so `created` is the honest whole of their history.
  * Inventing a plausible-looking string of past configurations would make the offline plane read
  * as though it had a past the corpus cannot show the consequences of.
@@ -1669,7 +1669,7 @@ registerFixtures([
 ])
 
 /**
- * An endpoint's SLA report, synthesised. The plane judges the month; this only
+ * An endpoint's SLA report, synthesized. The plane judges the month; this only
  * has to give the card every shape it draws: the first endpoint meets three
  * nines, the second misses them, and the rest declare no objective at all.
  * The running month is measured up to now and says so.

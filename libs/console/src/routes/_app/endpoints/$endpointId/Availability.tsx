@@ -75,7 +75,7 @@ export function Chart({
  *
  * The measurement carries no threshold of its own — whether 99.4% is an outage
  * is a claim somebody made, and the plane deliberately declines to make it. The
- * two numbers here are this console's reading colour and nothing else; they are
+ * two numbers here are this console's reading color and nothing else; they are
  * not an SLO and no acceptance term is checked against them.
  */
 export function availabilityTone(percent: number | null): StatTone {
@@ -94,7 +94,7 @@ export function availabilityTone(percent: number | null): StatTone {
  *
  * The cells divide the width they are given, because `availabilityDays` always
  * returns the full fortnight: the strip is the same shape whatever the store
- * answered, and only the colours change.
+ * answered, and only the colors change.
  */
 export function AvailabilityBar({ days }: { days: AvailabilityDay[] }) {
   return (

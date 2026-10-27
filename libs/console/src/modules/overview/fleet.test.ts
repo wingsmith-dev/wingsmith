@@ -12,7 +12,7 @@ import {
   replicaFootprint,
   staleClusters,
   stuckDeployments,
-  summariseEndpointHealth,
+  summarizeEndpointHealth,
   unschedulableReplicas,
 } from "./fleet"
 
@@ -126,9 +126,9 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe("summariseEndpointHealth", () => {
+describe("summarizeEndpointHealth", () => {
   it("reads an endpoint's health off the deployments its targets name", () => {
-    const summary = summariseEndpointHealth(
+    const summary = summarizeEndpointHealth(
       [
         endpoint({ id: "end_ok", targets: [target("dep_ok")] }),
         endpoint({ id: "end_part", targets: [target("dep_part")] }),
@@ -147,13 +147,13 @@ describe("summariseEndpointHealth", () => {
   })
 
   it("counts an endpoint with nothing to point at as idle, not as down", () => {
-    const summary = summariseEndpointHealth([endpoint({ targets: [] })], [])
+    const summary = summarizeEndpointHealth([endpoint({ targets: [] })], [])
     expect(summary.idle).toBe(1)
     expect(summary.down).toBe(0)
   })
 
   it("leaves disabled endpoints out entirely", () => {
-    const summary = summariseEndpointHealth([endpoint({ enabled: false })], [])
+    const summary = summarizeEndpointHealth([endpoint({ enabled: false })], [])
     expect(summary.rows).toHaveLength(0)
   })
 })
@@ -241,7 +241,7 @@ describe("capacity", () => {
 })
 
 describe("reachability", () => {
-  it("names a cluster that never dialled in as not enrolled rather than stale", () => {
+  it("names a cluster that never dialed in as not enrolled instead of stale", () => {
     const rows = reachabilityRows([
       cluster({
         sync: {

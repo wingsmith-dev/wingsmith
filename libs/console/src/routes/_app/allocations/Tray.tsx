@@ -58,7 +58,7 @@ import { Verdicts } from "./Verdicts"
  * different question — fitment says which cards could hold these weights at all —
  * so its rows arrive here as candidate shapes rather than as placements.
  *
- * Where the answer comes from matters and is labelled. A brick the plane can be
+ * Where the answer comes from matters and is labeled. A brick the plane can be
  * asked about — a declared workload, or any shape once somebody says which project
  * to charge — gets an authoritative verdict: only the plane sees quota, priority,
  * policy, residency and what would have to be preempted. Everything else is the
@@ -224,7 +224,7 @@ function BrickRow({
   const placeMany = useBoardStore((s) => s.placeMany)
 
   const [open, setOpen] = useState(false)
-  const colour = brickColor(brick.workload ?? brick.key)
+  const color = brickColor(brick.workload ?? brick.key)
   /**
    * A declared workload is asked about by name; anything else is asked about by
    * shape, which `POST /placement/preview` now takes. Either way it needs a
@@ -338,9 +338,7 @@ function BrickRow({
         )}
       >
         <IconGripVertical className="size-3 shrink-0 text-muted-foreground" />
-        <span
-          className={cn("size-2.5 shrink-0 rounded-[2px]", colour.swatch)}
-        />
+        <span className={cn("size-2.5 shrink-0 rounded-[2px]", color.swatch)} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-mono text-2xs">
             {brick.label}

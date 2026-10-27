@@ -55,7 +55,7 @@ export function operationColumns(): Column<Operation>[] {
           </StatusLabel>
           {operation.cancel_requested_at && (
             <Badge variant="outline" className="font-mono text-2xs">
-              cancelling
+              canceling
             </Badge>
           )}
         </span>

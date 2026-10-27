@@ -17,7 +17,7 @@ import { emptyCapabilities, emptyServing } from "./display"
 import type {
   Artifact,
   ArtifactUpstream,
-  ServingBehaviour,
+  ServingBehavior,
   ServingCapabilities,
   ServingDefaults,
   ServingFootprint,
@@ -134,7 +134,7 @@ function denied(claim: boolean | null | undefined): boolean {
 }
 
 /**
- * The typed behaviour block a corpus entry implies, minus anything the publisher denied.
+ * The typed behavior block a corpus entry implies, minus anything the publisher denied.
  *
  * Only the parsers, and only when the corpus names one: everything else in the
  * block is a rendered flag nobody upstream has an opinion about, and a default
@@ -146,10 +146,10 @@ function denied(claim: boolean | null | undefined): boolean {
  * wins, because the plane refuses a parser without the capability under it and a
  * request nobody can submit is worse than a flag nobody set.
  */
-export function proposedBehaviour(
+export function proposedBehavior(
   upstream?: UpstreamServing | null,
   claims?: ArtifactUpstream | null
-): ServingBehaviour {
+): ServingBehavior {
   const block = emptyServing()
   if (!upstream) return block
   return {
@@ -167,7 +167,7 @@ export function proposedBehaviour(
 /**
  * What this workload is claimed to do, from the publisher first and the recipe second.
  *
- * The behaviour block and the capability block are one statement in two halves, and
+ * The behavior block and the capability block are one statement in two halves, and
  * the plane rejects a half: a tool call parser is meaningless on a workload that does
  * not claim tool calling. So the claim travels with the parser.
  *
@@ -182,8 +182,8 @@ export function proposedBehaviour(
  * exactly when tool calling is claimed, and an engine that emits tool calls at all
  * accepts the three unnamed modes.
  *
- * The parsers are read off `behaviour` rather than off the corpus, which is what makes
- * a person's override submittable. `proposedBehaviour` has already dropped anything the
+ * The parsers are read off `behavior`, not off the corpus, which is what makes
+ * a person's override submittable. `proposedBehavior` has already dropped anything the
  * publisher denied, so a denial still yields no parser and no claim; but a parser typed
  * into the form by hand arrives here as a parser, and the claim the plane requires
  * under it travels with it. Passing no block reads the corpus's own proposal, which is
@@ -192,10 +192,10 @@ export function proposedBehaviour(
 export function proposedCapabilities(
   upstream?: UpstreamServing | null,
   claims?: ArtifactUpstream | null,
-  behaviour?: ServingBehaviour
+  behavior?: ServingBehavior
 ): ServingCapabilities {
   const block = emptyCapabilities()
-  const effective = behaviour ?? proposedBehaviour(upstream, claims)
+  const effective = behavior ?? proposedBehavior(upstream, claims)
   const tools = claims?.tool_calling === true || !!effective.tool_call_parser
   const reasoning = claims?.reasoning === true || !!effective.reasoning.parser
   const modalities = claims?.input_modalities.length
@@ -312,8 +312,8 @@ export function derivedServingRequest(
   overrides: ServingOverrides = {}
 ): WorkloadServingRequest {
   const { defaults, upstream } = proposal
-  const proposedServing = proposedBehaviour(upstream, artifact.upstream)
-  const serving: ServingBehaviour = {
+  const proposedServing = proposedBehavior(upstream, artifact.upstream)
+  const serving: ServingBehavior = {
     ...proposedServing,
     reasoning: {
       ...proposedServing.reasoning,

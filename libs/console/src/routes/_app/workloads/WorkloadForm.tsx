@@ -43,7 +43,7 @@ import { toast } from "sonner"
  * There is no cluster to choose here, because choosing one is placement's job:
  * the form declares a total and the clusters the workload may use, and the
  * per-cluster table on the detail page is the answer. The one exception is the
- * pin, which is offered last and labelled as what it is — an override that
+ * pin, which is offered last and labeled as what it is: an override that
  * takes the decision away from the scheduler and forces a single cluster.
  *
  * The artifact, the project and the kind are create-only. A workload is weights ×
@@ -152,7 +152,7 @@ export function WorkloadForm({
     serving?.engine_args ?? {}
   )
   const [argsValid, setArgsValid] = useState(true)
-  const [behaviour, setBehaviour] = useState(serving?.serving ?? emptyServing())
+  const [behavior, setBehavior] = useState(serving?.serving ?? emptyServing())
   const [capabilities, setCapabilities] = useState(
     serving?.capabilities ?? emptyCapabilities()
   )
@@ -194,7 +194,7 @@ export function WorkloadForm({
 
   /**
    * The write shape is the read shape, so the groups go back the way they came.
-   * `behaviour` is this form's local name for the block that travels as
+   * `behavior` is this form's local name for the block that travels as
    * `serving`; the key is what the plane hashes into the digest, so only the
    * variable is renamed and never the field.
    */
@@ -231,7 +231,7 @@ export function WorkloadForm({
       memory_mib: memoryMib,
       disk_gib: diskGib,
     },
-    serving: behaviour,
+    serving: behavior,
     capabilities,
   }
 
@@ -620,7 +620,7 @@ export function WorkloadForm({
         label="Engine args"
         value={engineArgs}
         rows={4}
-        hint="The escape hatch for a flag nothing below models. A flag that is modelled below is set there instead."
+        hint="The escape hatch for a flag nothing below models. A flag that is modeled below is set there instead."
         onChange={(value, valid) => {
           setEngineArgs(value ?? {})
           setArgsValid(valid)
@@ -629,8 +629,8 @@ export function WorkloadForm({
 
       <ServingFields
         engine={engine}
-        value={behaviour}
-        onChange={setBehaviour}
+        value={behavior}
+        onChange={setBehavior}
         engineArgs={(engineArgs ?? {}) as Record<string, unknown>}
       />
 

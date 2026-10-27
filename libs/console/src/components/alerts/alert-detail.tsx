@@ -177,7 +177,7 @@ export function AlertDetail({
           {alert.state !== "resolved" && (
             <WriteAction>
               <div className="space-y-2 border-t pt-4">
-                <Label htmlFor={noteId}>Acknowledgement note</Label>
+                <Label htmlFor={noteId}>Acknowledgment note</Label>
                 <Input
                   id={noteId}
                   value={note}

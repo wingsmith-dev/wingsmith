@@ -52,10 +52,10 @@ describe("sourceRows", () => {
 
 describe("sourceRows with a shared store", () => {
   const SHARED = "http://prom.internal:9090"
-  const LABELLED = [{ id: "clu_1", name: "iad-1", metrics_label: "iad-1" }]
+  const LABELED = [{ id: "clu_1", name: "iad-1", metrics_label: "iad-1" }]
 
   it("counts a cluster answered by its own label as mapped", () => {
-    const rows = sourceRows([], LABELLED, SHARED)
+    const rows = sourceRows([], LABELED, SHARED)
     expect(unmappedCount(rows)).toBe(0)
     expect(rows[0].source).toEqual({
       cluster: "iad-1",
@@ -70,12 +70,12 @@ describe("sourceRows with a shared store", () => {
     expect(unmappedCount(rows)).toBe(1)
   })
 
-  it("reports a labelled cluster unmapped when there is no shared store", () => {
-    expect(unmappedCount(sourceRows([], LABELLED, ""))).toBe(1)
+  it("reports a labeled cluster unmapped when there is no shared store", () => {
+    expect(unmappedCount(sourceRows([], LABELED, ""))).toBe(1)
   })
 
   it("lets an explicit entry win over the label", () => {
-    const rows = sourceRows([source("iad-1")], LABELLED, SHARED)
+    const rows = sourceRows([source("iad-1")], LABELED, SHARED)
     expect(rows[0].source?.url).not.toBe(SHARED)
     expect(rows).toHaveLength(1)
   })

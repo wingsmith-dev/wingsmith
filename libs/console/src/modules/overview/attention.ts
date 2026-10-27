@@ -6,10 +6,10 @@ import { clusterStage } from "@/modules/clusters/stage"
 import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment, Endpoint } from "@/modules/demand/types"
 import type { DiscoveredWorkload } from "@/modules/discovered/types"
-import { summariseDevices } from "@/modules/overview/summary"
+import { summarizeDevices } from "@/modules/overview/summary"
 import type { Device, SupplyNode } from "@/modules/supply/types"
 import type { LinkProps } from "@tanstack/react-router"
-import { stuckDeployments, summariseEndpointHealth } from "./fleet"
+import { stuckDeployments, summarizeEndpointHealth } from "./fleet"
 
 /**
  * Which half of the inbox a row belongs to. `discovered` is a resource running
@@ -54,7 +54,7 @@ function endpointItems(
   endpoints: Endpoint[],
   deployments: Deployment[]
 ): AttentionItem[] {
-  return summariseEndpointHealth(endpoints, deployments)
+  return summarizeEndpointHealth(endpoints, deployments)
     .rows.filter((row) => row.health === "down" || row.health === "degraded")
     .map((row) => ({
       id: `endpoint:${row.endpoint.id}`,
@@ -190,7 +190,7 @@ function clusterItems(clusters: Cluster[]): AttentionItem[] {
 }
 
 function deviceItems(devices: Device[]): AttentionItem[] {
-  return summariseDevices(devices).impaired.map((device) => ({
+  return summarizeDevices(devices).impaired.map((device) => ({
     id: `device:${device.id}`,
     group: "health" as const,
     tone:

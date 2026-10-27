@@ -47,7 +47,7 @@ interface Health {
  * nobody has called is not down and is not 100% up — it is unmeasured, and the
  * two must not be spelled the same way.
  *
- * The thresholds are this console's reading colour and nothing else. No
+ * The thresholds are this console's reading color and nothing else. No
  * acceptance term is checked against them.
  */
 function health(

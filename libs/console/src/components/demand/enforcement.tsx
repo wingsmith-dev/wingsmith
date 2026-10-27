@@ -13,7 +13,7 @@ const ENFORCEMENT: Record<
 > = {
   obeyed: {
     label: "obeyed",
-    hint: "Rendered and honoured. Changing it changes what actually runs.",
+    hint: "Rendered and honored. Changing it changes what actually runs.",
     className: "border-emerald-500/40 bg-emerald-500/10 text-success",
   },
   asserted: {

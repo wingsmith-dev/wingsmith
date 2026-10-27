@@ -11,7 +11,7 @@ import { EditButton } from "./EditButton"
  *
  * Carried over from the recipe page, because the question it answers did not go
  * away with the object: `engine_args` is what somebody declared and
- * `resolved_engine_args` is what the typed behaviour block made of it, and the
+ * `resolved_engine_args` is what the typed behavior block made of it, and the
  * only way to tell which value took effect is to see both. One block and a
  * toggle rather than two stacked blocks — they are the same argument list read
  * at two points, so they belong in the same place on the page, and the toggle

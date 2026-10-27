@@ -1,8 +1,8 @@
 /**
- * One colour per workload, held stable by hashing its key.
+ * One color per workload, held stable by hashing its key.
  *
  * The board's whole argument is that you can see the same workload scattered
- * across fabrics, so the colour has to be a property of the workload and not of
+ * across fabrics, so the color has to be a property of the workload and not of
  * where it happens to appear in a list. Emerald, amber and red are missing on
  * purpose: they mean free, cordoned and faulted everywhere else in the console,
  * and a workload wearing one of them would read as a state.
@@ -13,7 +13,7 @@ export interface BrickColor {
   /**
    * The same cell, for capacity promised to this workload but not yet bound to
    * it. Deliberately its own tone rather than an opacity applied to `fill`: it
-   * has to stay clearly the workload's colour against both themes while never
+   * has to stay clearly the workload's color against both themes while never
    * being mistakable for the solid fill beside it.
    */
   ghost: string

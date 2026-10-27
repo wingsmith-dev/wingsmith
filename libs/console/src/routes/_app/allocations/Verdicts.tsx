@@ -6,7 +6,7 @@ import { IconAlertTriangle, IconCheck, IconX } from "@tabler/icons-react"
 /**
  * The plane's reasoning, shown as it came.
  *
- * Every line here is the decision's own text. The console does not summarise a
+ * Every line here is the decision's own text. The console does not summarize a
  * rejection or re-word a message: the plane returns `code`, `message` and the
  * numbers it computed from precisely so that "why not iad-1" has one answer
  * everywhere it is asked, and a console paraphrase is how that stops being true.

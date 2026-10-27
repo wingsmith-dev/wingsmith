@@ -53,7 +53,7 @@ import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
  *
  * On the detail panel it sits beside parallelism because it is the same kind of
  * fact — it decides the footprint. An aggregated workload gets no badge at all
- * rather than a grey one saying so: the overwhelming majority are aggregated,
+ * instead of a gray one saying so: the overwhelming majority are aggregated,
  * and a badge on every one of them stops being a signal.
  */
 export function TopologyBadge({ workload }: { workload: Workload }) {

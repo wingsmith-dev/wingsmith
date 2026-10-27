@@ -8,7 +8,7 @@ import {
   freshnessNote,
   reachabilityRows,
   replicaFootprint,
-  summariseEndpointHealth,
+  summarizeEndpointHealth,
   unschedulableReplicas,
 } from "@/modules/overview/fleet"
 import {
@@ -50,7 +50,7 @@ export function OverviewPage() {
 
   const serving =
     endpoints.data && deployments.data
-      ? summariseEndpointHealth(endpoints.data, deployments.data)
+      ? summarizeEndpointHealth(endpoints.data, deployments.data)
       : undefined
   const footprint = deployments.data && replicaFootprint(deployments.data)
   const allocation = devices.data && allocationTotals(devices.data)

@@ -132,7 +132,7 @@ describe("CopyableId", () => {
     vi.useRealTimers()
   })
 
-  it("honours a requested width", () => {
+  it("honors a requested width", () => {
     withClipboard()
     render(<CopyableId value={FULL} chars={10} />)
     expect(screen.getByText("dev_01j9x2aaaa")).toBeInTheDocument()

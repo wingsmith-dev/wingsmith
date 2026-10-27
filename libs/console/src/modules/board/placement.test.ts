@@ -192,7 +192,7 @@ describe("planPlacement", () => {
     )
   })
 
-  it("honours max_clusters even when spreading", () => {
+  it("honors max_clusters even when spreading", () => {
     const { board, assignments } = fleet()
     const plan = planPlacement(
       board,
@@ -230,7 +230,7 @@ describe("planPlacement", () => {
     expect(plan.unmet).toEqual([])
   })
 
-  it("reports a floor the fleet cannot honour without losing the rest", () => {
+  it("reports a floor the fleet cannot honor without losing the rest", () => {
     const { board, clusters, assignments } = fleet()
     const ams = clusters.find((entry) => entry.name === "ams-1")!
     const plan = planPlacement(
@@ -502,7 +502,7 @@ describe("planning against reserved capacity", () => {
     expect(plan.replicas[0].reason).toContain("none free")
   })
 
-  it("still honours a floor a reservation would have ranked last", () => {
+  it("still honors a floor a reservation would have ranked last", () => {
     const { board, clusters, assignments } = fleet({
       fabrics: { "iad-1": 3, "sjc-1": 2, "ams-1": 2 },
       reserved: { "ams-1": 8 },

@@ -6,7 +6,7 @@ import css from "./index.css?raw"
  * DESIGN.md commits the console to WCAG 2.1 AA text contrast (4.5:1). This
  * measures the theme tokens in index.css on the surfaces text actually sits on,
  * in both themes, and scans the source for the ways around them: fading text
- * with an opacity modifier or `opacity-*`, and raw palette text colours that
+ * with an opacity modifier or `opacity-*`, and raw palette text colors that
  * were never measured.
  */
 const sources = import.meta.glob<string>(
@@ -21,7 +21,7 @@ type Rgb = [number, number, number]
 /** oklch → gamma-encoded sRGB, clipped to gamut the way browsers paint it. */
 function oklch(value: string): Rgb {
   const match = /oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)/.exec(value)
-  if (!match) throw new Error(`not an oklch colour: ${value}`)
+  if (!match) throw new Error(`not an oklch color: ${value}`)
   const l = Number(match[1]) / (match[2] ? 100 : 1)
   const c = Number(match[3])
   const h = (Number(match[4]) * Math.PI) / 180
@@ -135,7 +135,7 @@ function failures(
 }
 
 /** Every `text-{hue}-{shade}` in the source, split by theme. */
-function rawTextColours() {
+function rawTextColors() {
   const light = new Set<string>()
   const dark = new Set<string>()
   const unpaired: string[] = []
@@ -210,8 +210,8 @@ describe("text contrast", () => {
     }
   )
 
-  it("holds 4.5:1 for every raw palette text colour on its surfaces and its own wash", () => {
-    const { light, dark, unpaired } = rawTextColours()
+  it("holds 4.5:1 for every raw palette text color on its surfaces and its own wash", () => {
+    const { light, dark, unpaired } = rawTextColors()
     expect(unpaired).toEqual([])
     const hits: string[] = []
     for (const [name, used] of [
@@ -219,8 +219,8 @@ describe("text contrast", () => {
       ["dark", dark],
     ] as const) {
       const { solid } = surfaces(THEMES[name])
-      for (const colour of used) {
-        const [hue, shade] = colour.split("-")
+      for (const color of used) {
+        const [hue, shade] = color.split("-")
         const wash = palette(hue, "500")
         hits.push(
           ...failures(
@@ -234,7 +234,7 @@ describe("text contrast", () => {
               ),
               [`${hue}-500/10 on card`]: over(wash, 0.1, solid.card),
             },
-            `${name} text-${colour}`
+            `${name} text-${color}`
           )
         )
       }
@@ -249,7 +249,7 @@ describe("text contrast", () => {
     const hits: string[] = []
     for (const [file, text] of Object.entries(sources)) {
       text.split("\n").forEach((line, i) => {
-        if (faded.test(line)) hits.push(`${file}:${i + 1} faded text colour`)
+        if (faded.test(line)) hits.push(`${file}:${i + 1} faded text color`)
         for (const [, variants, amount] of line.matchAll(opacity)) {
           if (amount === "0" || amount === "100") continue
           if (variants.includes("disabled")) continue

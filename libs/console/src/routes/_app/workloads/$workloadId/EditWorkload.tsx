@@ -171,7 +171,7 @@ export function EditDetailsDialog({
  * untouched and no pod is replaced for a change made here.
  *
  * Two things are deliberately absent. Affinity, anti-affinity and placement
- * grouping are not modelled by the plane at all, so neither the panel nor this
+ * grouping are not modeled by the plane at all, so neither the panel nor this
  * dialog shows them — and the pin is create-only, because a
  * pinned workload is never checked for capacity and moving that decision after
  * the fact is a different operation from editing a policy.
@@ -695,7 +695,7 @@ export function EditEngineArgsDialog({
         label="Engine args"
         value={engineArgs}
         rows={6}
-        hint="The escape hatch for a flag nothing models. A flag that is modelled in Engine & hardware is set there instead."
+        hint="The escape hatch for a flag nothing models. A flag that is modeled in Engine & hardware is set there instead."
         onChange={(value, valid) => {
           arm.disarm()
           setEngineArgs(value ?? {})
@@ -731,7 +731,7 @@ export function EditServingDialog({
 }) {
   const { save, pending, error } = useSection(workload, onOpenChange)
   const arm = useArmed(workload)
-  const [behaviour, setBehaviour] = useState(workload.serving.serving)
+  const [behavior, setBehavior] = useState(workload.serving.serving)
 
   return (
     <FormDialog
@@ -745,16 +745,16 @@ export function EditServingDialog({
       pending={pending}
       submitLabel={arm.label}
       onSubmit={() => {
-        if (arm.ready()) save({ serving: { serving: behaviour } }, "Serving")
+        if (arm.ready()) save({ serving: { serving: behavior } }, "Serving")
       }}
     >
       <ServingFields
         plain
         engine={workload.serving.engine}
-        value={behaviour}
+        value={behavior}
         onChange={(value) => {
           arm.disarm()
-          setBehaviour(value)
+          setBehavior(value)
         }}
         engineArgs={workload.serving.engine_args}
       />

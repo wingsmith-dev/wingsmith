@@ -28,7 +28,7 @@ const AWAY =
  * What is running here, in full.
  *
  * The board is a picture and the inspector is a margin note; neither has room
- * for the thing an operator actually wants once they have found the colour they
+ * for the thing an operator actually wants once they have found the color they
  * were looking for — which workload this is, whose it is, when it took these
  * devices, which devices those are, and the way back to the object that asked
  * for them. That is a page's worth of answer for a click on a 24-pixel square,
@@ -84,7 +84,7 @@ function Body({
   cells: BoardDevice[]
 }) {
   /**
-   * Only a holder the plane would recognise is asked about. `proposed` is a
+   * Only a holder the plane would recognize is asked about. `proposed` is a
    * sandbox invention and `reserved` wears an id this board made up so the cells
    * could be grouped — asking about either would be a 404 with a spinner in
    * front of it. Everything those two have to say is already in the holder.
@@ -95,7 +95,7 @@ function Body({
     holder.workload.startsWith("wkl_") ? holder.workload : ""
   )
 
-  const colour = brickColor(holder.workload)
+  const color = brickColor(holder.workload)
   const row = allocation.data
   const cluster = cells[0]?.device.cluster ?? row?.cluster ?? null
   const clusterName = cells[0]?.device.cluster_name ?? row?.cluster_name ?? "—"
@@ -121,9 +121,7 @@ function Body({
     <>
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2 text-sm">
-          <span
-            className={cn("size-3 shrink-0 rounded-[3px]", colour.swatch)}
-          />
+          <span className={cn("size-3 shrink-0 rounded-[3px]", color.swatch)} />
           <span className="min-w-0 truncate">{holder.workload_name}</span>
         </DialogTitle>
         <DialogDescription className="font-mono text-2xs">

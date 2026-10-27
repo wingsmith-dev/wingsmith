@@ -236,7 +236,7 @@ export interface PlacementPlan {
   placed: number
   /** Cluster ids the plan would use, in the order it reached for them. */
   clusters: string[]
-  /** Floors the fleet could not honour, as readable lines. */
+  /** Floors the fleet could not honor, as readable lines. */
   unmet: string[]
 }
 
@@ -303,7 +303,7 @@ export interface BoardMetrics {
  * What the inspector is pointed at.
  *
  * `allocation` is the layer between a device and a fabric, and it is the one a
- * person clicking a coloured cell almost always means: the question is "what is
+ * person clicking a colored cell almost always means: the question is "what is
  * running here", and the answer is a set of devices committed together, not the
  * one square under the pointer. A device is still reachable — a second click on
  * the same cell narrows to it — but it is the deliberate step, not the default.

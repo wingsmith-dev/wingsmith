@@ -337,7 +337,7 @@ export interface PriorityClassUpdateRequest {
 
 /**
  * `PolicyAttachmentSchema`. `subject_id` is the raw polymorphic key and is
- * carried beside `subject` so a deleted subject still serialises with identity.
+ * carried beside `subject` so a deleted subject still serializes with identity.
  */
 export interface PolicyAttachment {
   subject_type: string

@@ -149,7 +149,7 @@ Under `/_app`, for the admin session:
 
 ## Theming
 
-Press **`d`** to toggle dark and light. Colours are OKLch CSS variables in `src/index.css`;
+Press **`d`** to toggle dark and light. Colors are OKLch CSS variables in `src/index.css`;
 see `DESIGN.md` for the tokens and the contrast rules the tests enforce.
 
 ## Adding shadcn components

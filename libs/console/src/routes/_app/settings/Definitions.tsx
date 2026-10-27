@@ -20,7 +20,7 @@ import { IconArrowUpRight } from "@tabler/icons-react"
 import { Link } from "@tanstack/react-router"
 
 /**
- * The shared device-class dictionary, summarised. The full catalog, with the
+ * The shared device-class dictionary, summarized. The full catalog, with the
  * fleet-inventory joins, filters and the unnamed-class alarm, is its own
  * surface at `/device-classes`, reached from the header here.
  */
@@ -129,7 +129,7 @@ function GpuModelRow({ entry }: { entry: DeviceClass }) {
 }
 
 /**
- * The plane's scheduling classes, summarised. The full surface, with create,
+ * The plane's scheduling classes, summarized. The full surface, with create,
  * edit and the total-ordering guard, is its own page at `/priority-classes`,
  * reached from the header here.
  */
@@ -141,7 +141,7 @@ export function PriorityClassesSection() {
     <Panel
       id="priority"
       title="Priority classes"
-      description="scheduling order and preemption behaviour"
+      description="scheduling order and preemption behavior"
       action={
         <Link
           to="/priority-classes"
@@ -214,7 +214,7 @@ function PriorityClassRow({ entry }: { entry: PriorityClass }) {
 }
 
 /**
- * The plane's placement guardrails, summarised. The full surface, with the
+ * The plane's placement guardrails, summarized. The full surface, with the
  * allow/deny lists, rules and subject attachments, is its own page at
  * `/policies`, reached from the header here.
  */

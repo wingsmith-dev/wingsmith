@@ -6,7 +6,7 @@ import type {
   EndpointSurface,
   PolicyRule,
   ServingCapabilities,
-  ServingBehaviour,
+  ServingBehavior,
   Workload,
   WorkloadDeployment,
 } from "./types"
@@ -469,7 +469,7 @@ export interface ServingOverride {
 /** The flags the typed serving block speaks for, on this engine. */
 export function servingArgs(
   engine: string,
-  serving: ServingBehaviour
+  serving: ServingBehavior
 ): Record<string, string> {
   const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
   const args: Record<string, string> = {}
@@ -483,7 +483,7 @@ export function servingArgs(
   }
   const limits = new Map<string, Record<string, number>>()
   for (const [field, modality] of Object.entries(MODALITY_LIMITS)) {
-    const limit = serving[field as keyof ServingBehaviour] as number | null
+    const limit = serving[field as keyof ServingBehavior] as number | null
     if (limit === null || limit === undefined || !flags[field]) continue
     const map = limits.get(flags[field]) ?? {}
     map[modality] = limit
@@ -509,13 +509,13 @@ export function servingArgs(
  *
  * The typed field wins, because it is the one the plane can validate, display
  * and verify. `engine_args` remains the escape hatch for a flag nothing models —
- * but a flag that *is* modelled has one declared home, and silently dropping the
+ * but a flag that *is* modeled has one declared home, and silently dropping the
  * other spelling is how somebody ends up debugging a value they can see.
  */
 export function servingOverrides(
   engine: string,
   engineArgs: Record<string, unknown>,
-  serving: ServingBehaviour
+  serving: ServingBehavior
 ): ServingOverride[] {
   const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
   const derived = servingArgs(engine, serving)
@@ -545,7 +545,7 @@ export function servingOverrides(
 }
 
 /**
- * How much of a declared thing is actually honoured, and by what.
+ * How much of a declared thing is actually honored, and by what.
  *
  * `obeyed` is rendered to the cluster or acted on by the gateway. `asserted` is
  * a claim nothing renders, falsifiable only by a conformance run. `disclosure`
@@ -556,7 +556,7 @@ export type Enforcement = "obeyed" | "asserted" | "disclosure" | "conditional"
 
 export interface SurfaceField {
   enforcement: Enforcement
-  /** What honours it, or what it means where nothing does. */
+  /** What honors it, or what it means where nothing does. */
   note: string
 }
 
@@ -650,10 +650,10 @@ export function formatScore(value: number): string {
 
 /**
  * The blocks a serving configuration that says nothing carries. Every default is
- * the behaviour of an undeclared block, so filling a form with these changes
+ * the behavior of an undeclared block, so filling a form with these changes
  * nothing.
  */
-export function emptyServing(): ServingBehaviour {
+export function emptyServing(): ServingBehavior {
   return {
     reasoning: {
       default_on: false,

@@ -173,7 +173,7 @@ function ModelGroup({ name, devices }: { name: string; devices: Device[] }) {
 
 function ClusterRow({ row }: { row: ClusterRollup }) {
   // "Allocation" is allocated/total from device state — real GPU
-  // utilisation is telemetry and does not flow through the plane.
+  // utilization is telemetry and does not flow through the plane.
   const pct = row.total ? Math.round((row.allocated / row.total) * 100) : 0
   const hot = pct >= 90
   return (

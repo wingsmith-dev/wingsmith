@@ -32,7 +32,7 @@ export function StatRow({
 }
 
 /**
- * One labelled number. The only tile in the console: a page that needs a
+ * One labeled number. The only tile in the console: a page that needs a
  * headline figure uses this rather than a local Card.
  *
  * `detail` sits small beside the value (a denominator), `footnote` on its own

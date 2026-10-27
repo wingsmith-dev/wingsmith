@@ -12,7 +12,7 @@ import { Link } from "@tanstack/react-router"
 /**
  * Three visibly different badges, because the three are different claims.
  *
- * A deployment result and an endpoint result put side by side in one colour
+ * A deployment result and an endpoint result put side by side in one color
  * read as two rows of one table, which is the misreading that ends in somebody
  * averaging them. The tooltip carries what the level actually measures, so the
  * claim is one hover away from every number rather than in a document.

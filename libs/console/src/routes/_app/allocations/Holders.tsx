@@ -15,16 +15,16 @@ interface Held {
 }
 
 /**
- * Everything the board is holding, as a list — the colour key and the index at
+ * Everything the board is holding, as a list: the color key and the index at
  * once.
  *
  * Rolled up per workload rather than per allocation, because a workload with
- * eight replicas is one colour on the board and reading it back as eight rows
+ * eight replicas is one color on the board and reading it back as eight rows
  * would answer a question nobody asked. `fabrics` is what makes a split gang
  * visible: one workload, one cluster, more than one fabric.
  *
  * A workload with capacity reserved appears here too, since it is wearing a
- * colour on the board and this list is that colour's key — but its reserved
+ * color on the board and this list is that color's key, but its reserved
  * cells are counted in their own column and never added to the held total. One
  * of those numbers is what a workload has and the other is what it is owed, and
  * summing them would overstate the fleet by exactly the amount still converging.
@@ -74,7 +74,7 @@ export function Holders({ board }: { board: Board | undefined }) {
   return (
     <ul className="space-y-1">
       {rows.map((row) => {
-        const colour = brickColor(row.holder.workload)
+        const color = brickColor(row.holder.workload)
         const dim = !!highlight && highlight !== row.holder.workload
         return (
           <li
@@ -87,7 +87,7 @@ export function Holders({ board }: { board: Board | undefined }) {
             )}
           >
             <span
-              className={cn("size-2.5 shrink-0 rounded-[2px]", colour.swatch)}
+              className={cn("size-2.5 shrink-0 rounded-[2px]", color.swatch)}
             />
             <span className="min-w-0 flex-1">
               {row.holder.workload.startsWith("wkl_") ? (

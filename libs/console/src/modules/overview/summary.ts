@@ -29,7 +29,7 @@ function rank(health: string): number {
  * throttled accelerator disappears into "47 of 48 healthy", and the whole point
  * of the fleet-health panel is that it does not.
  */
-export function summariseDevices(devices: Device[]): DeviceSummary {
+export function summarizeDevices(devices: Device[]): DeviceSummary {
   const health = new Map<string, number>()
   const classes = new Map<string, { count: number; healthy: number }>()
 
@@ -222,7 +222,7 @@ function poolActionables(pools: Pool[]): Actionable[] {
 }
 
 function deviceActionables(devices: Device[]): Actionable[] {
-  return summariseDevices(devices).impaired.map((device) => ({
+  return summarizeDevices(devices).impaired.map((device) => ({
     id: `device:${device.id}`,
     tone:
       device.health === "unhealthy" ? ("danger" as const) : ("warn" as const),

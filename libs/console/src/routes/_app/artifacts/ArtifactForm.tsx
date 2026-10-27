@@ -81,7 +81,7 @@ export function ArtifactForm({
   const [sizeBytes, setSizeBytes] = useState<number | null>(
     artifact?.size_bytes ?? 0
   )
-  const [licence, setLicence] = useState(artifact?.licence ?? "")
+  const [license, setLicense] = useState(artifact?.licence ?? "")
   const [parameterCount, setParameterCount] = useState<number | null>(
     artifact?.parameter_count ?? null
   )
@@ -108,7 +108,7 @@ export function ArtifactForm({
     kind,
     format: format || null,
     size_bytes: sizeBytes ?? 0,
-    licence: licence || null,
+    licence: license || null,
     parameter_count: parameterCount,
     project: project === UNSET ? null : project,
     metadata: (metadata ?? {}) as Record<string, unknown>,
@@ -142,7 +142,7 @@ export function ArtifactForm({
         setKind(draft.kind)
         setFormat(draft.format ?? "")
         setSizeBytes(draft.size_bytes)
-        setLicence(draft.licence ?? "")
+        setLicense(draft.licence ?? "")
         setParameterCount(draft.parameter_count)
         setMetadata(draft.metadata)
         setLocations(draft.locations)
@@ -283,7 +283,7 @@ export function ArtifactForm({
           onChange={setFormat}
           placeholder="safetensors"
         />
-        <TextField label="Licence" value={licence} onChange={setLicence} />
+        <TextField label="License" value={license} onChange={setLicense} />
         <NumberField
           label="Size"
           value={sizeBytes}
@@ -386,7 +386,7 @@ function ResolveNotes({ notes }: { notes: ResolveNote[] }) {
 /**
  * A repo that does not exist and a repo that exists but is gated are the same
  * HTTP failure to a client and completely different problems to a person: one is
- * a typo, the other is a licence to accept and a token to configure.
+ * a typo, the other is a license to accept and a token to configure.
  */
 function ResolveError({ error }: { error: unknown }) {
   const missing = error instanceof NotFoundError
@@ -396,7 +396,7 @@ function ResolveError({ error }: { error: unknown }) {
       <p className="text-2xs">
         {missing
           ? "No such repo on HuggingFace. Check the owner and name."
-          : "Accept the licence on HuggingFace, then give the plane a token with access."}
+          : "Accept the license on HuggingFace, then give the plane a token with access."}
       </p>
     </div>
   )

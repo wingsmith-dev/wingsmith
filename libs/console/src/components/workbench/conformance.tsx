@@ -15,12 +15,12 @@ import { IconChevronRight, IconRefresh } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 
 /**
- * The acceptance ledger: one row per behavioural claim, and whether it matches.
+ * The acceptance ledger: one row per behavioral claim, and whether it matches.
  *
  * This is a different table from every other one in the console and the
  * difference is deliberate. Density is the feature — fifty rows have to be
  * legible without scrolling past the failure — so a row is one line, the
- * verdict is a colour in a fixed column, and nothing is padded for air.
+ * verdict is a color in a fixed column, and nothing is padded for air.
  *
  * The three outcomes are drawn as three things, never as pass and not-pass.
  * A probe that could not be observed is the one an acceptance document gets
@@ -56,7 +56,7 @@ type Filter = ProbeOutcome | "all"
  *
  * `reference` is the endpoint the diff is against. Without one there is no
  * verdict at all, only a record of what was observed, and the interface says so
- * rather than colouring every row green.
+ * instead of coloring every row green.
  */
 export function ConformanceSuite({
   id,
@@ -160,8 +160,8 @@ function ProbeLedger({
           <div>
             <CardTitle className="text-sm">Claims</CardTitle>
             <p className="mt-1 text-2xs text-muted-foreground">
-              One row per behavioural claim in the standard. Expand a row for
-              the bytes that produced it.
+              One row per behavioral claim in the standard. Expand a row for the
+              bytes that produced it.
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -237,7 +237,7 @@ function LedgerFilter({
  * The re-run button is per row because that is the loop the page exists for:
  * read a difference, change something in another system, re-run that one row,
  * read it again. Twenty times in an evening. Re-running the whole suite to
- * check one claim is the behaviour this replaces.
+ * check one claim is the behavior this replaces.
  */
 function ProbeLine({
   row,

@@ -7,7 +7,7 @@ import {
   derivedWorkloadName,
   footprintOfServing,
   footprintSummary,
-  proposedBehaviour,
+  proposedBehavior,
   proposedCapabilities,
   requiresSingleDomain,
   servingProvenance,
@@ -166,7 +166,7 @@ describe("derivedServingRequest", () => {
       "tensor_parallel",
       "pipeline_parallel",
       "kv_cache_dtype",
-      "behaviour",
+      "behavior",
     ])
       expect(request[flat]).toBeUndefined()
   })
@@ -320,11 +320,11 @@ describe("derivedServingRequest", () => {
   })
 })
 
-describe("proposedBehaviour", () => {
+describe("proposedBehavior", () => {
   it("travels under the key the plane hashes, not a readable local name", () => {
     /**
      * `serving.serving` is not a slip. The column, the digest field list and the
-     * HTTP body all call the behaviour block `serving`, and a third name here
+     * HTTP body all call the behavior block `serving`, and a third name here
      * would typecheck green and decode to undefined in a browser.
      */
     const request = derivedServingRequest(artifact, footprint, {
@@ -334,7 +334,7 @@ describe("proposedBehaviour", () => {
   })
 
   it("carries only the parsers the corpus named", () => {
-    const block = proposedBehaviour(
+    const block = proposedBehavior(
       upstream({ tool_call_parser: "hermes", reasoning_parser: "qwen3" })
     )
     expect(block.tool_call_parser).toBe("hermes")
@@ -343,7 +343,7 @@ describe("proposedBehaviour", () => {
   })
 
   it("is the inert block when nothing upstream names these weights", () => {
-    expect(proposedBehaviour(null)).toEqual(proposedBehaviour(undefined))
+    expect(proposedBehavior(null)).toEqual(proposedBehavior(undefined))
   })
 })
 
@@ -391,7 +391,7 @@ describe("the publisher's claims against the corpus's parsers", () => {
     const denied = claiming({ tool_calling: false })
     const recipe = upstream({ tool_call_parser: "hermes" })
     expect(
-      proposedBehaviour(recipe, denied.upstream).tool_call_parser
+      proposedBehavior(recipe, denied.upstream).tool_call_parser
     ).toBeNull()
     expect(
       proposedCapabilities(recipe, denied.upstream).tool_calling_supported
@@ -401,7 +401,7 @@ describe("the publisher's claims against the corpus's parsers", () => {
   it("reads silence as silence, so a tested parser still travels", () => {
     const silent = claiming({ tool_calling: null })
     const recipe = upstream({ tool_call_parser: "hermes" })
-    expect(proposedBehaviour(recipe, silent.upstream).tool_call_parser).toBe(
+    expect(proposedBehavior(recipe, silent.upstream).tool_call_parser).toBe(
       "hermes"
     )
     expect(
@@ -511,11 +511,11 @@ describe("the decoded serving block", () => {
       expect(serving).toHaveProperty(key)
   })
 
-  it("keeps the behaviour block under `serving`, not a readable alias", () => {
+  it("keeps the behavior block under `serving`, not a readable alias", () => {
     // `serving.serving` is what the column, the digest field list and the HTTP
     // body all call it. Three names for one thing is how they drift apart.
     expect(workloads[0].serving.serving.stream_usage).toBe("final_chunk")
-    expect(workloads[0].serving).not.toHaveProperty("behaviour")
+    expect(workloads[0].serving).not.toHaveProperty("behavior")
   })
 
   it("carries the digest on the workload and not inside the block", () => {
@@ -562,7 +562,7 @@ describe("workloadsMatching", () => {
 })
 
 describe("footprintSummary", () => {
-  it("leads with the count and the label a person recognises", () => {
+  it("leads with the count and the label a person recognizes", () => {
     expect(footprintSummary(footprint, "H100 80GB")).toBe(
       "2 x H100 80GB · tp2 · 32k · fp8"
     )

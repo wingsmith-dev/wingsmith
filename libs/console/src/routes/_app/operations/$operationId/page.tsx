@@ -60,7 +60,7 @@ export function OperationDetailPage() {
                     onSuccess: (next) =>
                       toast.success(
                         next.phase === "cancelled"
-                          ? "Operation cancelled"
+                          ? "Operation canceled"
                           : "Cancellation requested"
                       ),
                     onError: (err) =>
@@ -71,7 +71,7 @@ export function OperationDetailPage() {
                   })
                 }
               >
-                {operation.cancel_requested_at ? "Cancelling…" : "Cancel"}
+                {operation.cancel_requested_at ? "Canceling…" : "Cancel"}
               </Button>
             )}
             <Button asChild variant="outline">

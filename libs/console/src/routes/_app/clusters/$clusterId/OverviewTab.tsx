@@ -313,7 +313,7 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
 
   /**
    * A deployment's serving configuration is a workload fact: resolve
-   * `workload_id` and summarise the block it carries. Absent while the option
+   * `workload_id` and summarize the block it carries. Absent while the option
    * list loads, or if the workload is not (yet) visible.
    */
   const servingName = (workloadId: string): string | null => {

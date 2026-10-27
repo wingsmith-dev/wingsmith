@@ -198,7 +198,7 @@ describe("curveCeiling", () => {
 })
 
 describe("plot geometry", () => {
-  it("centres a single step rather than pinning it to the left edge", () => {
+  it("centers a single step instead of pinning it to the left edge", () => {
     expect(curveX(0, 1, 500)).toBe(250)
   })
 

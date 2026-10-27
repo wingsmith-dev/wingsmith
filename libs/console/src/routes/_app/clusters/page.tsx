@@ -78,7 +78,7 @@ export function ClustersPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Clusters"
-        description="declared enrolment · observed reachability and sync"
+        description="declared enrollment · observed reachability and sync"
         actions={
           <Button onClick={() => setCreating(true)}>Register cluster</Button>
         }

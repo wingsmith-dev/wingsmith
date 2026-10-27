@@ -6,7 +6,7 @@ import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   useClusterSetup,
-  useIssueClusterEnrolmentToken,
+  useIssueClusterEnrollmentToken,
 } from "@/modules/clusters/queries"
 import type { Cluster } from "@/modules/clusters/types"
 import { IconCheck } from "@tabler/icons-react"
@@ -34,7 +34,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   const connected = cluster.sync.state !== "never_connected"
   const serving = cluster.serving !== null
   const setup = useClusterSetup(connected ? "" : cluster.id)
-  const mint = useIssueClusterEnrolmentToken()
+  const mint = useIssueClusterEnrollmentToken()
   // `gh` first: the registry is GitHub's, so an authenticated gh CLI is the
   // common case and the only one that needs no token minted by hand.
   const [loginVia, setLoginVia] = useState<LoginMethod>("gh")
@@ -127,7 +127,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
             {view && (
               <>
                 <div className="space-y-1.5">
-                  <p className="text-2xs font-medium">1. Enrolment token</p>
+                  <p className="text-2xs font-medium">1. Enrollment token</p>
                   {freshToken ? (
                     <>
                       <p className="text-2xs leading-relaxed text-warning">
@@ -156,7 +156,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   ) : (
                     <div className="space-y-1.5">
                       <p className="text-2xs leading-relaxed text-muted-foreground">
-                        Generate this cluster's own enrolment token, the only
+                        Generate this cluster's own enrollment token, the only
                         credential the hub accepts from its operator. It is
                         shown once and baked into the values below.
                       </p>
@@ -167,7 +167,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                       >
                         {mint.isPending
                           ? "Generating…"
-                          : "Generate enrolment token"}
+                          : "Generate enrollment token"}
                       </Button>
                     </div>
                   )}
@@ -195,11 +195,13 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     </Button>
                   </div>
                   <p className="text-2xs leading-relaxed text-muted-foreground">
-                    The top block is filled in{" "}
-                    {freshToken ? "— identity and enrolment token" : ""}. Fill
-                    in the blanks below the divider with this cluster's own
-                    facts — pool labels and the RWX storage class. The HF token
-                    is opt-in; only gated weights need one.
+                    The top block is filled in
+                    {freshToken
+                      ? " with the identity and enrollment token"
+                      : ""}
+                    . Fill in the blanks below the divider with this cluster's
+                    own facts: pool labels and the RWX storage class. The HF
+                    token is opt-in; only gated weights need one.
                   </p>
                   <CopyableBlock value={view.values_yaml} language="yaml" />
                 </div>

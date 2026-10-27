@@ -572,10 +572,10 @@ function DetailsPanel({ artifact }: { artifact: Artifact }) {
               <Dash>{null}</Dash>
             )}
           </Field>
-          <Field label="Licence">
+          <Field label="License">
             <Dash>{artifact.licence}</Dash>
           </Field>
-          <Field label="Upstream licence">
+          <Field label="Upstream license">
             <Dash>{upstream.licence}</Dash>
           </Field>
           <Field label="Project">
@@ -696,7 +696,7 @@ function ActivityPanel({ artifactId }: { artifactId: string }) {
   )
 }
 
-/** The free-form bag. Rendered raw — it is not a modelled surface. */
+/** The free-form bag. Rendered raw: it is not a modeled surface. */
 function MetadataPanel({ artifact }: { artifact: Artifact }) {
   return (
     <Card>

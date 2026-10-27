@@ -53,7 +53,7 @@ export function objectivePercent(report: SlaReport): number | null {
 export type SlaTone = "default" | "ok" | "warn" | "danger"
 
 /**
- * The verdict as a word first and a colour second, so it reads without colour.
+ * The verdict as a word first and a color second, so it reads without color.
  *
  * "No objective" and "Not measured" are different answers: one is a commitment
  * nobody declared, the other a period nothing measured, and neither is a pass.

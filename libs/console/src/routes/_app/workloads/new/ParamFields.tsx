@@ -25,7 +25,7 @@ import { SuggestField } from "@/components/demand/suggest-field"
  * configuration assumes the operator knows the right parameters, and they do not.
  * So the answer is filled in and then attributed: `weights` is the plane's own
  * arithmetic over `config.json`, `upstream` is a third party's tested
- * configuration with a permalink behind it, and anything unlabelled came off the
+ * configuration with a permalink behind it, and anything unlabeled came off the
  * fitment row. A field nobody touches is still right, and it can say why.
  *
  * The identical-configuration line is informational and resolves nothing. Two

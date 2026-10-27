@@ -57,7 +57,7 @@ describe("slaMonths", () => {
 })
 
 describe("the verdict", () => {
-  it("reads as a word, so it never rests on colour alone", () => {
+  it("reads as a word, so it never rests on color alone", () => {
     expect(slaVerdict(report())).toEqual({ label: "Met", tone: "ok" })
     expect(slaVerdict(report({ met: false }))).toEqual({
       label: "Missed",

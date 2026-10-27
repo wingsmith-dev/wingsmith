@@ -8,8 +8,8 @@ import type { Cluster } from "./types"
  * a stage folds both into "what is this cluster's operator, right now, and so
  * what is worth showing a human".
  *
- * - `onboarding` — declared, but the operator has never dialled in. There is no
- *   observed state yet, so the only thing worth showing is how to enrol it.
+ * - `onboarding`: declared, but the operator has never dialed in. There is no
+ *   observed state yet, so the only thing worth showing is how to enroll it.
  * - `live` — enrolled, reachable, reporting. The full operational dashboard.
  * - `degraded` — enrolled once, but the link is now stale, dropped, or the
  *   cluster is unreachable. Last-known observed state still stands; it is just
@@ -52,7 +52,7 @@ export const CLUSTER_STAGE_META: Record<ClusterStage, StageMeta> = {
     label: "Not enrolled",
     tone: "info",
     blurb:
-      "Declared in the plane, waiting for its operator. Install the cluster-setup chart to enrol it — observed state appears once it dials home.",
+      "Declared in the plane, waiting for its operator. Install the cluster-setup chart to enroll it. Observed state appears once it dials home.",
   },
   live: {
     label: "Live",

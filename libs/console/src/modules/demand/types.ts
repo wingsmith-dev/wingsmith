@@ -527,12 +527,12 @@ export interface ServingReasoning {
 /**
  * `ServingSchema` — what the served API does, as the engine is told to do it.
  *
- * Every field renders to a flag or a rendered value, so honouring any of it
+ * Every field renders to a flag or a rendered value, so honoring any of it
  * means a replica restart — which is why it sits in the serving block beside
- * `cache` rather than on the endpoint. Every default is the behaviour of a block
+ * `cache` and not on the endpoint. Every default is the behavior of a block
  * that says nothing, so it is inert until somebody fills it in.
  */
-export interface ServingBehaviour {
+export interface ServingBehavior {
   reasoning: ServingReasoning
   stream_usage: string
   context_overflow: string
@@ -646,11 +646,11 @@ export interface ServingOverlay {
  *
  * `serving` inside `serving` is not a slip and is not a name this console chose.
  * The outer block is the whole configuration; the inner one is the typed
- * API-behaviour group that lands in the `serving` column and is hashed into the
+ * API-behavior group that lands in the `serving` column and is hashed into the
  * digest under that name. Renaming it here for readability would leave the HTTP
  * body, the column and the digest field list each calling one thing something
  * different — and because TypeScript erases, the rename would typecheck green and
- * read `undefined` in a browser. `ServingBehaviour` is the type name; `serving`
+ * read `undefined` in a browser. `ServingBehavior` is the type name; `serving`
  * is the property, because that is what arrives.
  */
 export interface WorkloadServing {
@@ -672,7 +672,7 @@ export interface WorkloadServing {
   context_length: number
   max_batch_tokens: number | null
   cache: ServingCache
-  serving: ServingBehaviour
+  serving: ServingBehavior
   /** Asserted, never rendered, and it never reaches a cluster. */
   capabilities: ServingCapabilities
   /**
@@ -722,7 +722,7 @@ export interface WorkloadServingRequest {
   cache?: ServingCache
   resources?: ServingResources
   overlay?: ServingOverlay
-  serving?: ServingBehaviour
+  serving?: ServingBehavior
   capabilities?: ServingCapabilities
   /**
    * Omitted entirely on an aggregated workload rather than sent with an
@@ -1145,7 +1145,7 @@ export interface EndpointTarget {
  * `EndpointSurfaceSchema` — the terms on which the served API is exposed.
  *
  * Global and read by the gateway; nothing here reaches a cluster. A field
- * belongs here rather than on the workload when honouring it needs no engine flag.
+ * belongs here, not on the workload, when honoring it needs no engine flag.
  *
  * Half of it the gateway acts on and half of it is a disclosure it only reports,
  * which is why `SURFACE_ENFORCEMENT` exists and why nothing in this console

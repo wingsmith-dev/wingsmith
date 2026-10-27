@@ -17,7 +17,7 @@ import { ActivityStream } from "@/components/demand/activity-stream"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import {
   CapabilitiesCard,
-  ServingBehaviourCard,
+  ServingBehaviorCard,
 } from "@/components/demand/serving-config"
 import { RatioDialog, RolesPanel } from "@/components/demand/serving-topology"
 import {
@@ -598,7 +598,7 @@ export function WorkloadDetailPage() {
                     budgetDevices={placement?.gpu_count}
                   />
 
-                  <ServingBehaviourCard
+                  <ServingBehaviorCard
                     serving={workload.serving.serving}
                     onEdit={() => setEditing("serving")}
                   />

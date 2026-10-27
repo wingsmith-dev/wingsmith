@@ -85,7 +85,7 @@ describe("AlertDetail", () => {
   })
 
   // Observed state gets no edit affordance. The only input on the sheet is the
-  // acknowledgement note, which is the one thing about an alert a machine
+  // acknowledgment note, which is the one thing about an alert a machine
   // cannot know — every derived field is text.
   it("offers no way to edit anything the reactor derived", () => {
     open()
@@ -93,7 +93,7 @@ describe("AlertDetail", () => {
     // document rather than the render container.
     const inputs = document.body.querySelectorAll("input")
     expect(inputs.length).toBe(1)
-    expect(screen.getByLabelText("Acknowledgement note")).toBe(inputs[0])
+    expect(screen.getByLabelText("Acknowledgment note")).toBe(inputs[0])
     expect(document.body.querySelectorAll("textarea").length).toBe(0)
   })
 

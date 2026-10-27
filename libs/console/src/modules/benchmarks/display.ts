@@ -37,9 +37,9 @@ export const BENCHMARK_PHASES = [
  * A statistic block as harnesses tend to emit one, if that is what this is.
  *
  * Deliberately a guess and named like one. The plane stores the harness's shape
- * verbatim, so this console recognises the common `{unit, avg, p50, …}` object
+ * verbatim, so this console recognizes the common `{unit, avg, p50, …}` object
  * to render it as a row of percentiles and falls back to raw JSON when it does
- * not — which is the honest behaviour for a field nothing promised the shape of.
+ * not, which is the right behavior for a field nothing promised the shape of.
  */
 export interface StatBlock {
   unit?: string
@@ -168,12 +168,12 @@ const BAND_LABELS: Record<string, string> = {
   unknown: "undeclared",
 }
 
-/** A band label as prose. An unrecognised label is shown as itself, not dropped. */
+/** A band label as prose. An unrecognized label is shown as itself, not dropped. */
 export function bandLabel(band: string): string {
   return BAND_LABELS[band] ?? band
 }
 
-/** Bands in standard order, with anything unrecognised kept at the end. */
+/** Bands in standard order, with anything unrecognized kept at the end. */
 export function orderBands<T extends { band: string }>(bands: T[]): T[] {
   return [...bands].sort((a, b) => {
     const left = BAND_ORDER.indexOf(a.band)
@@ -193,7 +193,7 @@ const VERDICT_TONES: Record<VerdictOutcome, StatusTone> = {
 }
 
 /**
- * `inconclusive` is warned rather than greyed. A missing measurement is not a
+ * `inconclusive` is warned, not grayed. A missing measurement is not a
  * pass and is not nothing — it is the outcome somebody has to go and fix.
  */
 export function verdictTone(outcome: VerdictOutcome): StatusTone {
@@ -250,7 +250,7 @@ export type CurveTone = "primary" | "warn" | "danger" | "muted"
  * rate is the whole reason the mark exists: it clears a per-stream floor under
  * every possible condition, so a check that could read it is a check that can
  * never fail. It is drawn because it is the shape of the trade-off, and it is
- * labelled so that nobody mistakes a picture for an assertion.
+ * labeled so that nobody mistakes a picture for an assertion.
  */
 export interface CurveMetric {
   id: string
@@ -380,7 +380,7 @@ export function curveCeiling(series: CurveSample[][]): number | null {
   return Math.max(...values) * 1.1 || 1
 }
 
-/** Where a step sits across the plot. One step is centred rather than at the edge. */
+/** Where a step sits across the plot. One step is centered, not at the edge. */
 export function curveX(index: number, count: number, width: number): number {
   if (count <= 1) return width / 2
   return (index / (count - 1)) * width

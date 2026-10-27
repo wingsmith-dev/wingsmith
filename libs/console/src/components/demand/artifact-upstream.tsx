@@ -124,10 +124,10 @@ export function UpstreamFields({
           options={STRUCTURED_OUTPUT_MODES}
         />
         <TextField
-          label="Licence as published"
+          label="License as published"
           value={value.licence ?? ""}
-          onChange={(licence) => set({ licence: licence || null })}
-          hint="Deliberately a second copy: a difference from the artifact's own licence is a finding, not a bug."
+          onChange={(license) => set({ licence: license || null })}
+          hint="A second copy: a difference from the artifact's own license is a finding, not a bug."
         />
         <TextField
           label="Released at"

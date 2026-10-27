@@ -174,7 +174,7 @@
     @apply border-border outline-ring/50;
   }
 
-  /* The bar the platform draws is a wide white gutter with a grey slab in it,
+  /* The bar the platform draws is a wide white gutter with a gray slab in it,
        and on a page of hairline borders it reads as a column of chrome. This is
        the same bar at a quarter of the weight: no track, a thin translucent
        thumb inset from the edge, and full opacity only while the pointer is
@@ -220,11 +220,11 @@
   }
 }
 
-/* Data-visualisation palette.
+/* Data-visualization palette.
  *
- * Chart series colours, kept out of the Tailwind token set because they answer a
+ * Chart series colors, kept out of the Tailwind token set because they answer a
  * different question: the tokens above are chrome — surfaces, borders, ink — and
- * these are the data itself. A series colour is chosen for separation between
+ * these are the data itself. A series color is chosen for separation between
  * series, not for contrast against a surface, and the two rules pull apart.
  *
  * Both modes are selected rather than derived. The dark steps are the same hues
@@ -249,7 +249,7 @@
 
 /* The ordinal ramp reverses in dark mode, deliberately.
  *
- * Its job is that the reader sees severity in the colour without consulting the
+ * Its job is that the reader sees severity in the color without consulting the
  * legend, and what carries that is prominence against the surface, not lightness
  * as an absolute. On white the darkest step stands out and p99 takes it; on the
  * dark card the darkest step is the one that disappears, so p99 takes the

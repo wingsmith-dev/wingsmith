@@ -5,7 +5,7 @@ import { StatusDot, StatusLabel, type StatusTone } from "./status-dot"
 const TONES: StatusTone[] = ["ok", "warn", "danger", "info", "neutral"]
 
 describe("StatusDot", () => {
-  it("draws a distinct colour for every tone", () => {
+  it("draws a distinct color for every tone", () => {
     // Two tones that rendered alike would make a warning indistinguishable from a failure.
     const classes = TONES.map((tone) => {
       const { container, unmount } = render(<StatusDot tone={tone} />)
@@ -32,7 +32,7 @@ describe("StatusDot", () => {
 
 describe("StatusLabel", () => {
   it("puts the dot beside its text rather than replacing it", () => {
-    // A colour alone is not readable to everyone; the word is the accessible half.
+    // A color alone is not readable to everyone; the word is the accessible half.
     const { container } = render(
       <StatusLabel tone="danger">unreachable</StatusLabel>
     )

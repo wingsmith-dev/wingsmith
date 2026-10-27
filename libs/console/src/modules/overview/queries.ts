@@ -100,7 +100,7 @@ export function useOpenOperations() {
  * The same drained reads as the fleet tiles, scoped to one cluster. A cluster
  * overview counts its own collections, so every hook here follows the cursor
  * rather than rendering a first page as a total — the one exception is the
- * event feed, which is a recent slice and is labelled as one.
+ * event feed, which is a recent slice and is labeled as one.
  */
 export function useClusterPools(clusterId: string) {
   return useAllPages(["overview", "cluster", clusterId, "pools"], (cursor) =>

@@ -91,7 +91,7 @@ describe("shortenId", () => {
     expect(shortenId("MIG-12345678-1234")).toBe("MIG-123456")
   })
 
-  it("honours the requested width", () => {
+  it("honors the requested width", () => {
     expect(shortenId("dev_01j9x2aaaaaaaa", 4)).toBe("dev_01j9")
     expect(shortenId("dev_01j9x2aaaaaaaa", 10)).toBe("dev_01j9x2aaaa")
   })

@@ -102,7 +102,7 @@ export function ClusterForm({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? "Edit cluster" : "Register cluster"}
-      description="Declared enrolment. Reachability and sync are observed and cannot be set here."
+      description="Declared enrollment. Reachability and sync are observed and cannot be set here."
       error={create.error ?? update.error}
       pending={pending}
       submitLabel={editing ? "Save" : "Register"}
