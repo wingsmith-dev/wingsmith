@@ -4,8 +4,10 @@
 // real gateway and the real agent over the real tunnel, with a fake control
 // plane beside it and a scheduled frontend at the end of it — and is what a
 // laptop and CI run. `live` points the same generator and the same report at a
-// gateway somebody has deployed. `upstream` and `plane` expose the two fakes on
-// their own, for a caller assembling something this tool does not.
+// gateway somebody has deployed. `path` holds the built gateway and agent open
+// in front of a frontend somebody else runs, for a client-side check such as
+// hgrconform. `upstream` and `plane` expose the two fakes on their own, for a
+// caller assembling something this tool does not.
 //
 // The report is the same shape in every mode on purpose: a number from a laptop
 // and a number from production are only worth having together if they are the
@@ -44,6 +46,8 @@ func main() {
 		err = synthetic(ctx, os.Args[2:])
 	case "live":
 		err = live(ctx, os.Args[2:])
+	case "path":
+		err = path(ctx, os.Args[2:])
 	case "upstream":
 		err = frontend(ctx, os.Args[2:])
 	case "plane":
@@ -66,6 +70,7 @@ func usage() {
 
   synthetic   build the path on this host and ramp through it
   live        ramp against a deployed gateway
+  path        hold the gateway and agent open in front of a frontend you run
   upstream    serve the fake OpenAI-compatible frontend on its own
   plane       serve the fake control plane on its own
 
@@ -197,6 +202,48 @@ func live(ctx context.Context, args []string) error {
 		return err
 	}
 	return emit(report, *asJSON)
+}
+
+// path holds the real gateway and agent open in front of a frontend this tool
+// did not start, and prints the gateway's URL once a tunnel is up. Callers use
+// the public listener with HANGAR_API_KEY as their tenant key.
+func path(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("path", flag.ExitOnError)
+	repo := fs.String("repo", "", "the checkout to build the gateway and agent from; empty finds it above the working directory")
+	listen := fs.String("listen", "127.0.0.1:8080", "where the gateway's public listener serves callers, and the tenant host it answers")
+	frontendURL := fs.String("frontend", "", "the OpenAI-compatible server the agent forwards to")
+	model := fs.String("model", "gpt-oss-120b", "the public endpoint name, also handed to the frontend as the served model")
+	verbose := fs.Bool("v", false, "show the gateway's and agent's logs")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *frontendURL == "" {
+		return fmt.Errorf("path needs -frontend")
+	}
+	key := os.Getenv("HANGAR_API_KEY")
+	if key == "" {
+		return fmt.Errorf("path needs HANGAR_API_KEY, the tenant key the gateway will accept")
+	}
+	root := *repo
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if root, err = lab.FindRepo(cwd); err != nil {
+			return err
+		}
+	}
+	return lab.ServePath(ctx, lab.PathOptions{
+		Repo:     root,
+		Listen:   *listen,
+		Key:      key,
+		Frontend: *frontendURL,
+		Model:    *model,
+		Verbose:  *verbose,
+	}, func(url string) {
+		fmt.Fprintf(os.Stderr, "hgrtransit: path ready on %s for model %s\n", url, *model)
+	})
 }
 
 func frontend(ctx context.Context, args []string) error {

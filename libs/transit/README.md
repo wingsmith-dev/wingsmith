@@ -17,6 +17,7 @@ can be put side by side.
 |---|---|---|---|
 | `synthetic` | gateway binary, agent binary, tunnel, both reverse proxies | this host only: child processes it started, temporary ports, no network egress | n/a — it touches nothing shared |
 | `live` | everything, including a real engine | **offered load against a shared serving path** | only at a concurrency somebody has agreed to; see below |
+| `path` | gateway binary, agent binary, tunnel, in front of a frontend you run | this host only | n/a: it touches nothing shared |
 | `upstream` / `plane` | one fake, on its own | a port | yes, it serves nothing of ours |
 
 **`live` against production.** It is a real caller doing real completions, which cost real GPU
@@ -90,6 +91,12 @@ just transit "4,16,64,256,512"     # a ramp of your own
 just transit-smoke                 # the CI shape: short, no baseline, JSON out
 just transit-live https://gateway.example.com my-model
 ```
+
+`hgrtransit path -frontend <url>` builds the same gateway and agent and holds them open in front
+of a frontend you run, with no load of its own. The gateway serves its public listener on
+`-listen` (default `127.0.0.1:8080`) for one tenant whose key is `HANGAR_API_KEY`, and routes
+`-model` (default `gpt-oss-120b`) to the frontend. `just conformance-gateway` uses it to run the
+conformance probes through a real gateway.
 
 Every mode writes the whole report and then exits 1 when no stage held the objective, so
 `transit-smoke` fails a CI job when the path cannot carry its small ramp. `synthetic` builds the

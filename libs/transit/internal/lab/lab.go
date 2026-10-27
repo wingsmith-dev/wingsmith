@@ -18,6 +18,8 @@ package lab
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -109,29 +111,7 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 	}
 	defer func() { _ = frontendSrv.Close() }()
 
-	plane := fakeplane.New(fakeplane.Config{
-		ServiceToken: serviceToken,
-		Clusters:     map[string]fakeplane.Cluster{tunnelToken: {ID: clusterID, Name: clusterName}},
-		Table: fakeplane.Table{
-			Revision: "transit-1",
-			Endpoints: []fakeplane.Endpoint{{
-				ID:              "endpoint-transit",
-				Name:            modelName,
-				Visibility:      "public",
-				RoutingStrategy: "weighted",
-				Upstreams: []fakeplane.Upstream{{
-					DeploymentID:    deploymentID,
-					DeploymentName:  "transit",
-					AdmissionPhase:  "running",
-					ClusterID:       clusterID,
-					ClusterName:     clusterName,
-					ServedModelName: modelName,
-					Weight:          100,
-					Role:            "primary",
-				}},
-			}},
-		},
-	})
+	plane := fakeplane.New(planeConfig(modelName))
 	planeSrv, planeAddr, err := serve(plane.Handler())
 	if err != nil {
 		return nil, err
@@ -142,43 +122,19 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	tunnelPort, err := free()
-	if err != nil {
-		return nil, err
-	}
-	metricsPort, err := free()
-	if err != nil {
-		return nil, err
-	}
-	metricsURL := "http://127.0.0.1:" + strconv.Itoa(metricsPort) + "/metrics"
-
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	gateway := exec.CommandContext(runCtx, gatewayBin,
-		"-listen", "127.0.0.1:"+strconv.Itoa(servingPort),
-		"-plane-url", "http://"+planeAddr,
-		"-tunnel-listen", "127.0.0.1:"+strconv.Itoa(tunnelPort),
-		"-metrics-listen", "127.0.0.1:"+strconv.Itoa(metricsPort),
-		"-gateway-id", "gateway-0",
-		"-gateways", "1",
-		"-resync", "60s",
-	)
-	gateway.Env = append(os.Environ(), "HANGAR_GATEWAY_SERVICE_TOKEN="+serviceToken)
-	pipe(gateway, opts.Verbose, "gateway")
-	if err := gateway.Start(); err != nil {
-		return nil, fmt.Errorf("start the gateway: %w", err)
+	gw, err := startGateway(runCtx, gatewayBin, "127.0.0.1:"+strconv.Itoa(servingPort), planeAddr, opts.Verbose)
+	if err != nil {
+		return nil, err
 	}
-	defer func() { _ = gateway.Process.Kill() }()
-
-	gatewayURL := "http://127.0.0.1:" + strconv.Itoa(servingPort)
-	if err := waitFor(runCtx, gatewayURL+"/healthz", 30*time.Second); err != nil {
-		return nil, fmt.Errorf("the gateway never became live: %w", err)
-	}
+	defer func() { _ = gw.cmd.Process.Kill() }()
+	gateway, gatewayURL, metricsURL, tunnelAddr := gw.cmd, gw.url, gw.metricsURL, gw.tunnelAddr
 
 	agents := newAgentSet(runCtx, agentSpec{
 		binary:     agentBin,
-		gateway:    "127.0.0.1:" + strconv.Itoa(tunnelPort),
+		gateway:    tunnelAddr,
 		frontend:   "http://" + frontendAddr,
 		conns:      opts.ConnsPerGateway,
 		maxStreams: opts.MaxStreams,
@@ -313,6 +269,190 @@ func RunLive(ctx context.Context, opts LiveOptions) (*Report, error) {
 	}
 	report.Verdict(opts.SLO)
 	return report, nil
+}
+
+// planeConfig is the fake plane's one cluster and one public endpoint, served
+// under model and routed to the cluster the agents enrol as.
+func planeConfig(model string) fakeplane.Config {
+	return fakeplane.Config{
+		ServiceToken: serviceToken,
+		Clusters:     map[string]fakeplane.Cluster{tunnelToken: {ID: clusterID, Name: clusterName}},
+		Table: fakeplane.Table{
+			Revision: "transit-1",
+			Endpoints: []fakeplane.Endpoint{{
+				ID:              "endpoint-transit",
+				Name:            model,
+				Visibility:      "public",
+				RoutingStrategy: "weighted",
+				Upstreams: []fakeplane.Upstream{{
+					DeploymentID:    deploymentID,
+					DeploymentName:  "transit",
+					AdmissionPhase:  "running",
+					ClusterID:       clusterID,
+					ClusterName:     clusterName,
+					ServedModelName: model,
+					Weight:          100,
+					Role:            "primary",
+				}},
+			}},
+		},
+	}
+}
+
+// runningGateway is a started gateway process and where it can be reached.
+type runningGateway struct {
+	cmd        *exec.Cmd
+	url        string
+	metricsURL string
+	tunnelAddr string
+}
+
+// startGateway starts the gateway serving on listen against the fake plane at
+// planeAddr, and waits for it to report live. It holds no tunnel yet.
+func startGateway(ctx context.Context, binary, listen, planeAddr string, verbose bool, env ...string) (*runningGateway, error) {
+	tunnelPort, err := free()
+	if err != nil {
+		return nil, err
+	}
+	metricsPort, err := free()
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, binary,
+		"-listen", listen,
+		"-plane-url", "http://"+planeAddr,
+		"-tunnel-listen", "127.0.0.1:"+strconv.Itoa(tunnelPort),
+		"-metrics-listen", "127.0.0.1:"+strconv.Itoa(metricsPort),
+		"-gateway-id", "gateway-0",
+		"-gateways", "1",
+		"-resync", "60s",
+	)
+	cmd.Env = append(os.Environ(), "HANGAR_GATEWAY_SERVICE_TOKEN="+serviceToken)
+	cmd.Env = append(cmd.Env, env...)
+	pipe(cmd, verbose, "gateway")
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start the gateway: %w", err)
+	}
+	gw := &runningGateway{
+		cmd:        cmd,
+		url:        "http://" + listen,
+		metricsURL: "http://127.0.0.1:" + strconv.Itoa(metricsPort) + "/metrics",
+		tunnelAddr: "127.0.0.1:" + strconv.Itoa(tunnelPort),
+	}
+	if err := waitFor(ctx, gw.url+"/healthz", 30*time.Second); err != nil {
+		_ = cmd.Process.Kill()
+		return nil, fmt.Errorf("the gateway never became live: %w", err)
+	}
+	return gw, nil
+}
+
+// PathOptions configures a path held open in front of a frontend somebody
+// else runs.
+type PathOptions struct {
+	// Repo is the checkout the gateway and agent are built from.
+	Repo string
+	// Listen is where the gateway's public listener serves callers. Its
+	// host:port is also the tenant's host, which is how that listener tells
+	// tenants apart.
+	Listen string
+	// Key is the tenant API key the public listener accepts.
+	Key string
+	// Frontend is the OpenAI-compatible server the agent forwards to.
+	Frontend string
+	// Model is the public endpoint name the fake plane routes, and the served
+	// model name it hands the gateway.
+	Model string
+	// Verbose sends the children's logs to this process's stderr.
+	Verbose bool
+}
+
+// pathTenant is the one tenant a held-open path serves.
+const pathTenant = "tenant-transit"
+
+// ServePath builds the gateway and agent, stands the path up in front of
+// opts.Frontend, calls ready with the public listener's URL once a tunnel is
+// held, and keeps it up until ctx ends. Callers reach it the way a direct
+// tenant reaches a deployed gateway: on the public listener, with an API key
+// the gateway checks against the hash the plane hands it. It is how a
+// client-side check such as hgrconform is pointed at a real gateway without a
+// cluster.
+func ServePath(ctx context.Context, opts PathOptions, ready func(url string)) error {
+	if opts.Frontend == "" || opts.Model == "" || opts.Listen == "" || opts.Key == "" {
+		return errors.New("a path needs a frontend, a model, a listen address and a key")
+	}
+	workdir, err := os.MkdirTemp("", "hgrtransit-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(workdir) }()
+
+	gatewayBin, err := build(ctx, opts.Repo, "libs/gateway", "./cmd/gateway", filepath.Join(workdir, "gateway"))
+	if err != nil {
+		return err
+	}
+	agentBin, err := build(ctx, opts.Repo, "libs/agent", "./cmd/agent", filepath.Join(workdir, "agent"))
+	if err != nil {
+		return err
+	}
+
+	sum := sha256.Sum256([]byte(opts.Key))
+	cfg := planeConfig(opts.Model)
+	cfg.Table.Endpoints[0].TenantID = pathTenant
+	cfg.Tenants = fakeplane.TenantTable{
+		Revision: "transit-tenants-1",
+		Tenants: []fakeplane.GatewayTenant{{
+			ID:        pathTenant,
+			Slug:      "transit",
+			Enabled:   true,
+			Ingress:   "public",
+			Auth:      "api_key",
+			Host:      opts.Listen,
+			KeyHashes: []string{hex.EncodeToString(sum[:])},
+		}},
+	}
+	planeSrv, planeAddr, err := serve(fakeplane.New(cfg).Handler())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = planeSrv.Close() }()
+
+	internalPort, err := free()
+	if err != nil {
+		return err
+	}
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	gw, err := startGateway(runCtx, gatewayBin, "127.0.0.1:"+strconv.Itoa(internalPort), planeAddr, opts.Verbose,
+		"HANGAR_GATEWAY_PUBLIC_LISTEN="+opts.Listen)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = gw.cmd.Process.Kill() }()
+
+	agents := newAgentSet(runCtx, agentSpec{
+		binary:   agentBin,
+		gateway:  gw.tunnelAddr,
+		frontend: strings.TrimRight(opts.Frontend, "/"),
+		conns:    1,
+		verbose:  opts.Verbose,
+	})
+	defer agents.stopAll()
+	if err := agents.start(0); err != nil {
+		return err
+	}
+	if err := waitFor(runCtx, gw.url+"/readyz", 60*time.Second); err != nil {
+		return fmt.Errorf("the gateway never held a tunnel: %w", err)
+	}
+	ready("http://" + opts.Listen)
+
+	exited := make(chan error, 1)
+	go func() { exited <- gw.cmd.Wait() }()
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-exited:
+		return fmt.Errorf("the gateway exited: %v", err)
+	}
 }
 
 func streamLimit(n int) string {
