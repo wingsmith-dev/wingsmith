@@ -189,6 +189,28 @@ DCGM is where device identity comes from. What differs per cluster is in
   pod. Fabric workers run privileged with host IPC under `efa` and not under
   `rdma`; `fabric.privileged` overrides that.
 
+## Telemetry
+
+With `monitoring.enabled`, a Prometheus in agent mode scrapes DCGM and Dynamo's
+pods and pushes them with remote write to `monitoring.remoteWrite.url`. Any
+store that accepts Prometheus remote write (Prometheus with
+`--web.enable-remote-write-receiver`, Mimir, VictoriaMetrics, Thanos Receive)
+will do, as long as the plane reads from the same store. Every series carries
+`cluster` (equal to `cluster.id`) and `region` external labels, and the plane
+filters on `cluster`.
+
+The agent authenticates one of three ways:
+
+| setting | sends |
+|---|---|
+| `basicAuth.useEnrolmentToken: true` (default) | basic auth, username `cluster.id`, password the enrolment token; the plane publishes a bcrypt verifier for it to the write ingress (ADR 0012) |
+| `basicAuth.useEnrolmentToken: false` | basic auth from `basicAuth.username`/`password`, or a Secret you made with `basicAuth.existing` |
+| `bearerToken.existingSecret` (with `useEnrolmentToken: false`) | `Authorization: Bearer` with the Secret's `bearerToken.key` |
+
+The `cluster` label is what the agent writes, not something the receiver checks
+against the credential. See [SECURITY.md](../../../SECURITY.md) before sharing one store between
+parties who should not see or overwrite each other's series.
+
 ## The Dynamo subchart
 
 `dynamo-platform` (NVIDIA's chart, pinned at 1.4.1) is on by default because the

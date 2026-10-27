@@ -260,6 +260,13 @@
                 "useEnrolmentToken": { "type": "boolean" },
                 "existing": { "type": "boolean" }
               }
+            },
+            "bearerToken": {
+              "type": "object",
+              "properties": {
+                "existingSecret": { "type": "string" },
+                "key": { "type": "string", "minLength": 1 }
+              }
             }
           }
         },

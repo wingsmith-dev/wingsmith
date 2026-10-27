@@ -69,6 +69,11 @@ data:
         # username is the cluster id, inline because an id is not a secret and a
         # `username_file` would mean generating a file to hold a value already in
         # this document.
+        {{- if .Values.monitoring.remoteWrite.bearerToken.existingSecret }}
+        authorization:
+          type: Bearer
+          credentials_file: /etc/hangar/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
+        {{- else }}
         basic_auth:
         {{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}
           username: {{ .Values.cluster.id | quote }}
@@ -76,6 +81,7 @@ data:
           username_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
         {{- end }}
           password_file: /etc/hangar/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
+        {{- end }}
         queue_config:
           capacity: {{ .Values.monitoring.remoteWrite.queue.capacity }}
           max_shards: {{ .Values.monitoring.remoteWrite.queue.maxShards }}
@@ -197,7 +203,7 @@ spec:
         # A config change is a pod restart. The agent reloads on SIGHUP, but
         # nothing here sends one, so without this the ConfigMap moves and the
         # running agent keeps the old scrape config indefinitely.
-        checksum/config: {{ printf "%s|%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) (toString .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) | sha256sum }}
+        checksum/config: {{ printf "%s|%s|%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) (toString .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) .Values.monitoring.remoteWrite.bearerToken.existingSecret | sha256sum }}
     spec:
       serviceAccountName: hangar-metrics-agent
       {{- with .Values.monitoring.agent.nodeSelector }}
@@ -268,10 +274,10 @@ spec:
         - name: remote-write
           secret:
             secretName: {{ include "cluster-setup.remoteWriteSecret" . }}
-            # Only the keys basic_auth reads, so an enrolment Secret created by
-            # hand with other keys in it does not hand them to this pod too.
+            # Only the keys the credential reads, so an enrolment Secret created
+            # by hand with other keys in it does not hand them to this pod too.
             items:
-              {{- if not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}
+              {{- if not (or .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken .Values.monitoring.remoteWrite.bearerToken.existingSecret) }}
               - key: {{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
                 path: {{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
               {{- end }}

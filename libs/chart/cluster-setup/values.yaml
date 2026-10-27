@@ -605,6 +605,14 @@ monitoring:
       username: ""
       password: ""
       existing: false
+    # A bearer token instead of basic auth, for a receiver that takes one (a
+    # hosted Prometheus, Mimir or VictoriaMetrics behind a token proxy). Name a
+    # Secret in the release namespace you created yourself, and set
+    # `basicAuth.useEnrolmentToken: false`; the agent then sends
+    # `Authorization: Bearer <the key's value>` and no basic auth at all.
+    bearerToken:
+      existingSecret: ""
+      key: token
 
   agent:
     image:

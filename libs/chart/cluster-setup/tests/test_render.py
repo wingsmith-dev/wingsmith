@@ -212,6 +212,29 @@ def test_metrics_agent_mounts_only_the_password_key(chart):
 
 
 
+BEARER = {"monitoring.remoteWrite.basicAuth.useEnrolmentToken": False,
+          "monitoring.remoteWrite.bearerToken.existingSecret": "metrics-token"}
+
+
+def test_bearer_token_replaces_basic_auth(chart):
+    docs = render(chart, **MONITORING_ON, **BEARER)
+    config = yaml.safe_load(get(docs, "ConfigMap", "hangar-metrics-agent")["data"]["prometheus.yml"])
+    (write,) = config["remote_write"]
+    assert "basic_auth" not in write
+    assert write["authorization"] == {"type": "Bearer",
+                                      "credentials_file": "/etc/hangar/remote-write/token"}
+    agent = get(docs, "Deployment", "hangar-metrics-agent")
+    (volume,) = [v for v in agent["spec"]["template"]["spec"]["volumes"] if v["name"] == "remote-write"]
+    assert volume["secret"] == {"secretName": "metrics-token", "items": [{"key": "token", "path": "token"}]}
+    assert find(docs, "Secret", "hangar-metrics-remote-write") is None
+
+
+def test_bearer_token_with_the_enrolment_token_is_refused(chart):
+    err = refusal(chart, **MONITORING_ON,
+                  **{"monitoring.remoteWrite.bearerToken.existingSecret": "metrics-token"})
+    assert "useEnrolmentToken=false" in err
+
+
 # ── workload namespace ───────────────────────────────────────────────────────
 
 

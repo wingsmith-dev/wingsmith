@@ -91,10 +91,13 @@ The Secret the metrics agent mounts for its remote-write password, and the key i
 it that holds it. Under `useEnrolmentToken` (the default) both name the enrolment
 Secret this chart already creates, so the token is written in one place and the
 agent's credential cannot drift from the one the plane verifies; otherwise they
-name the separate basicAuth Secret.
+name the separate basicAuth Secret. With `bearerToken.existingSecret` they name
+that Secret and its token key.
 */}}
 {{- define "cluster-setup.remoteWriteSecret" -}}
-{{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- if .Values.monitoring.remoteWrite.bearerToken.existingSecret -}}
+{{- .Values.monitoring.remoteWrite.bearerToken.existingSecret -}}
+{{- else if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
 {{- .Values.enrolmentToken.existingSecret -}}
 {{- else -}}
 {{- .Values.monitoring.remoteWrite.basicAuth.existingSecret -}}
@@ -102,7 +105,9 @@ name the separate basicAuth Secret.
 {{- end -}}
 
 {{- define "cluster-setup.remoteWritePasswordKey" -}}
-{{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- if .Values.monitoring.remoteWrite.bearerToken.existingSecret -}}
+{{- .Values.monitoring.remoteWrite.bearerToken.key -}}
+{{- else if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
 {{- .Values.enrolmentToken.secretKey -}}
 {{- else -}}
 {{- .Values.monitoring.remoteWrite.basicAuth.passwordKey -}}
@@ -263,7 +268,10 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if and .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken .Values.monitoring.remoteWrite.basicAuth.existing -}}
 {{- fail "monitoring.remoteWrite.basicAuth has both useEnrolmentToken and existing set — pick one. useEnrolmentToken makes the agent read the enrolment Secret, so the Secret you created would be mounted by nothing and ignored in silence. Set useEnrolmentToken=false to use it." -}}
 {{- end -}}
-{{- if and (not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
+{{- if and .Values.monitoring.remoteWrite.bearerToken.existingSecret .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- fail "monitoring.remoteWrite.bearerToken.existingSecret is set while basicAuth.useEnrolmentToken is true. Pick one: the bearer token replaces basic auth, so set basicAuth.useEnrolmentToken=false to send it, or clear bearerToken.existingSecret to keep presenting the enrolment token." -}}
+{{- end -}}
+{{- if and (not .Values.monitoring.remoteWrite.bearerToken.existingSecret) (not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
 {{- fail "monitoring.remoteWrite.basicAuth.useEnrolmentToken is false, so the credential must be supplied: without a username and password the write ingress rejects the agent with 401 on every send, which surfaces only in the agent's own logs. Set both, or basicAuth.existing=true if you created the Secret yourself — or drop useEnrolmentToken back to true and let the enrolment token be the credential." -}}
 {{- end -}}
 {{- end -}}
