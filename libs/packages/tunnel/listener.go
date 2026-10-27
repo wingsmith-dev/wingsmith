@@ -48,8 +48,9 @@ func (i Identity) claims(claimed string) bool {
 // The gateway holds no cluster token material: it has no list of hashes, no
 // database, and nothing to keep in sync with the plane. It asks when a tunnel
 // opens and again every ReverifyInterval while it stays open, and remembers the
-// answer for CacheTTL. That is the whole of the trust model on this listener —
-// TLS for confidentiality, the token for identity, no CA and no mTLS.
+// answer for CacheTTL. That is the whole of the trust model on this listener:
+// TLS for confidentiality and the gateway's identity, the token for the agent's.
+// Agents present no client certificate, so there is no client CA and no mTLS.
 //
 // A Verifier returns ErrRejected only for a definitive no. Anything else is
 // read as "the plane could not be reached", which is a different situation with
