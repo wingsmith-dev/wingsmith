@@ -483,8 +483,7 @@ jobs:
               ;;
             *) echo "nothing added to check on $EVENT" ;;
           esac
-      # Names and history across every tracked file, so text that reached main some other way fails
-      # too. Tree mode leaves the tics to the added-lines step above.
+      # Every check across every tracked file, so text that reached main some other way fails too.
       - name: whole tree
         run: scripts/check-prose.sh tree
 

@@ -94,8 +94,8 @@ for mode in staged range tree; do
   expect pass "$mode" clean libs/x/a.go "// nothing to see"
 done
 
-# Tics are refused in what a change adds, and left alone in the tree while it is cleaned up.
-for mode in staged range; do
+# Tics are refused in what a change adds and across the whole tree.
+for mode in staged range tree; do
   expect refuse "$mode" tic-emdash docs/a.md "One thing $dash then another."
   expect refuse "$mode" tic-phrase libs/x/a.go "// polls $phrase waits"
   expect refuse "$mode" tic-capitalised libs/x/a.py "# Hone""stly, it works"
@@ -104,8 +104,10 @@ for mode in staged range; do
   expect refuse "$mode" emdash-placeholder-and-prose libs/x/a.tsx "const empty = '$dash' $dash see below"
   expect pass "$mode" emdash-in-lockfile libs/console/pnpm-lock.yaml "  note: a $dash b"
   expect pass "$mode" emdash-in-crd libs/operator/deploy/crd/a.yaml "description: a $dash b"
+  expect pass "$mode" emdash-element-placeholder libs/x/a.tsx "  <span className=\"muted\">$dash</span>"
+  expect pass "$mode" emdash-line-placeholder libs/x/a.tsx "        $dash"
+  expect refuse "$mode" emdash-line-start libs/x/a.tsx "        $dash {note}"
 done
-expect pass tree tic-in-tree docs/a.md "One thing $dash then another."
 
 # Without the private denylist the names check is skipped, and says so.
 repo no-denylist libs/x/a.go "// seen on zq9"

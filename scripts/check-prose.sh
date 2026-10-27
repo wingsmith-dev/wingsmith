@@ -14,8 +14,7 @@
 #   history  in a comment or docstring of non-test source, a calendar date or a claim about what
 #            production did. A comment states the invariant; when and where somebody measured it
 #            belongs in the commit that changed it.
-#   tics     the em dash and a few stock phrases (the list is under `tics` below). Only in added
-#            lines: tree mode skips this check while the existing text is cleaned up.
+#   tics     the em dash and a few stock phrases (the list is under `tics` below).
 #
 # A correct hit is allowed in scripts/prose-allowlist.txt (or $HANGAR_PROSE_ALLOWLIST): one
 # extended regex per line, matched against the reported `path:line:text`.
@@ -147,22 +146,22 @@ in_source_comment() {
 } >"$work/hits"
 report history "a date or a production fact in a source comment; keep the invariant, put the history in the commit"
 
-if [ "$mode" != tree ]; then
-  # An em dash standing alone in quotes is a UI placeholder for an empty value, not punctuation.
-  { scan_lines -iE -e "$tics"; scan_lines -F -e "$emdash"; } |
-    GEN="$generated" DASH="$emdash" LONE="[\"'\`]${emdash}[\"'\`]" TICS="$tics" awk '
-      {
-        i = index($0, ":"); path = substr($0, 1, i - 1)
-        rest = substr($0, i + 1); text = substr(rest, index(rest, ":") + 1)
-      }
-      path ~ ENVIRON["GEN"] || seen[$0]++ { next }
-      {
-        bare = text
-        gsub(ENVIRON["LONE"], "", bare)
-        if (index(bare, ENVIRON["DASH"]) || tolower(text) ~ ENVIRON["TICS"]) print
-      }
-    ' >"$work/hits"
-  report tics "em dash or stock phrase; say it plainly"
-fi
+# An em dash standing alone, in quotes, as an element's only text or on a line of its own, is a UI
+# placeholder for an empty value, not punctuation.
+{ scan_lines -iE -e "$tics"; scan_lines -F -e "$emdash"; } |
+  GEN="$generated" DASH="$emdash" LONE="[\"'\`>]${emdash}[\"'\`<]" TICS="$tics" awk '
+    {
+      i = index($0, ":"); path = substr($0, 1, i - 1)
+      rest = substr($0, i + 1); text = substr(rest, index(rest, ":") + 1)
+    }
+    path ~ ENVIRON["GEN"] || seen[$0]++ { next }
+    {
+      bare = text
+      gsub(ENVIRON["LONE"], "", bare)
+      if (bare ~ ("^[[:space:]]*" ENVIRON["DASH"] "[[:space:]]*$")) bare = ""
+      if (index(bare, ENVIRON["DASH"]) || tolower(text) ~ ENVIRON["TICS"]) print
+    }
+  ' >"$work/hits"
+report tics "em dash or stock phrase; say it plainly"
 
 exit "$failed"
