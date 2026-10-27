@@ -5,6 +5,7 @@ worth alerting on and `app.reactor.notify` decides what that looks like in Slack
 and neither needs a session to be wrong in an interesting way.
 """
 
+import asyncio
 import datetime as dt
 
 from app.reactor import rules
@@ -414,3 +415,37 @@ def test_the_repair_pass_runs_on_its_own_slower_clock():
     cadence = Cadence(interval=3600)
     assert cadence.due() is True
     assert cadence.due() is False
+
+
+class SwallowingSessions:
+    """A session factory whose connect turns its cancellation into a driver error."""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+
+    def __call__(self) -> "SwallowingSessions":
+        return self
+
+    async def __aenter__(self) -> None:
+        self.entered.set()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            raise OSError("connection attempt interrupted") from None
+
+    async def __aexit__(self, *exc) -> bool:
+        return False
+
+
+async def test_a_cancellation_the_driver_swallows_still_stops_the_reactor(monkeypatch):
+    from app.config import settings
+    from app.reactor.loop import reactor_loop
+
+    monkeypatch.setattr(settings, "REACTOR_INTERVAL_SECONDS", 0)
+    sessions = SwallowingSessions()
+    task = asyncio.create_task(reactor_loop("test", sessions=sessions))
+    await asyncio.wait_for(sessions.entered.wait(), 1)
+    task.cancel()
+    # Not wait_for: its own cancel on timeout would be swallowed the same way.
+    await asyncio.wait([task], timeout=1)
+    assert task.cancelled()

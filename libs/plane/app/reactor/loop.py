@@ -45,6 +45,7 @@ from app.db.models import Event
 from app.db.models import Cluster
 from app.db.models import ReactorState
 from app.db.models import NotificationChannel
+from app.utils.tasks import cancelled
 
 from . import alerts as alert_store
 from . import notify
@@ -441,5 +442,7 @@ async def reactor_loop(instance: str, sessions: async_sessionmaker[AsyncSession]
         except asyncio.CancelledError:
             raise
         except Exception:
+            if cancelled():
+                raise asyncio.CancelledError from None
             logger.warning("reactor.tick.failed instance=%s", instance, exc_info=True)
         await asyncio.sleep(settings.REACTOR_INTERVAL_SECONDS)

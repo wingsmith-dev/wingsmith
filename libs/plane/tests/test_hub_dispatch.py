@@ -384,3 +384,23 @@ async def test_hints_past_the_bound_are_dropped_rather_than_held() -> None:
     assert dispatcher._queued <= 2
     await dispatcher.close()
     assert dispatcher._queued == 0
+
+
+async def test_a_cancellation_the_driver_swallows_still_stops_the_loop() -> None:
+    started = asyncio.Event()
+
+    async def connect(dsn: str):
+        started.set()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            raise ConnectionError("connection attempt interrupted") from None
+
+    task = asyncio.create_task(
+        listen_loop(LiveSessions(), renderer=FakeRenderer(None), dsn="x", connect=connect, retry_delay=0.0)
+    )
+    await asyncio.wait_for(started.wait(), 1)
+    task.cancel()
+    # Not wait_for: its own cancel on timeout would be swallowed the same way.
+    await asyncio.wait([task], timeout=1)
+    assert task.cancelled()

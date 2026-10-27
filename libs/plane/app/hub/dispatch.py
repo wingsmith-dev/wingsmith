@@ -33,6 +33,7 @@ from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import listen_dsn
 from app.hub.record import record_dispatch
+from app.utils.tasks import cancelled
 from app.ingestion.desired import desired_frames
 from app.ingestion.operations import operation_desired
 
@@ -349,6 +350,8 @@ async def listen_loop(
             except asyncio.CancelledError:
                 raise
             except Exception:
+                if cancelled():
+                    raise asyncio.CancelledError from None
                 logger.warning("hub.dispatch.connection_lost", exc_info=True)
             await asyncio.sleep(retry_delay)
     finally:
