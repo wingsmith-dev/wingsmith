@@ -207,6 +207,34 @@ func TestSettingTheContextWritesToTheCurrentOne(t *testing.T) {
 	}
 }
 
+func TestAnOverrideIsNotSavedButSettingTheContextIs(t *testing.T) {
+	path := tempConfig(t)
+	f, _ := Load(path)
+	f.Override("ap")
+	if err := f.Set("context.server", "https://ap.example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Save(); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := Load(path)
+	if back.CurrentContext != "default" || back.Contexts["ap"].Server != "https://ap.example" {
+		t.Fatalf("after an override and a save: current_context %q, ap %+v; want default kept and ap written",
+			back.CurrentContext, back.Contexts["ap"])
+	}
+
+	back.Override("ap")
+	if err := back.Set("current_context", "eu"); err != nil {
+		t.Fatal(err)
+	}
+	if err := back.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := Load(path); again.CurrentContext != "eu" {
+		t.Errorf("current_context = %q, want the value set explicitly to be saved", again.CurrentContext)
+	}
+}
+
 func TestAnUnknownKeyIsRefused(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
 	err := f.Set("context.servers", "x")

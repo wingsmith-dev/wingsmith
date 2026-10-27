@@ -199,3 +199,28 @@ func TestTheFakeIsSealed(t *testing.T) {
 		t.Errorf("the fake claims a token the context does not have: %s", out)
 	}
 }
+
+// --context picks a context for one command. A command that writes the file,
+// here logout, must not leave that choice behind as the new default.
+func TestAContextOverrideIsNotSavedAsTheDefault(t *testing.T) {
+	cfg := fresh(t)
+	p := &testPlane{}
+	srv := p.serve(t)
+	f, _ := config.Load(cfg)
+	f.SetContext("default", config.Context{Server: srv.URL})
+	f.SetContext("other", config.Context{Server: srv.URL, Token: "hgrs1_other", RefreshToken: "hgrr1_other"})
+	if err := f.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, errOut, code := runWith(t, cfg, "--context", "other", "logout", "-o", "json"); code != 0 {
+		t.Fatalf("logout exit %d: %s", code, errOut)
+	}
+	stored, _ := config.Load(cfg)
+	if stored.CurrentContext != "default" {
+		t.Errorf("current_context = %q after a --context other logout, want default kept", stored.CurrentContext)
+	}
+	if c := stored.Contexts["other"]; c.Token != "" || c.RefreshToken != "" {
+		t.Errorf("logout cleared the wrong context: other is %+v", c)
+	}
+}

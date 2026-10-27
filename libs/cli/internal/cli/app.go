@@ -293,7 +293,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 	a.Cfg = cfg
 
 	if name := firstNonEmpty(g.context, os.Getenv("HANGAR_CONTEXT")); name != "" {
-		cfg.CurrentContext = name
+		cfg.Override(name)
 		if _, ok := cfg.Contexts[name]; !ok && name != "default" {
 			return errs.New(errs.CodeNotFound, "no context named %q", name).
 				WithFix("List contexts", "hgr context ls")

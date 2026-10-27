@@ -156,7 +156,9 @@ func newContextUseCmd(app *App) *cobra.Command {
 				return errs.New(errs.CodeNotFound, "no context named %q", args[0]).
 					WithFix("List contexts", "hgr context ls")
 			}
-			app.Cfg.CurrentContext = args[0]
+			if err := app.Cfg.Set("current_context", args[0]); err != nil {
+				return err
+			}
 			if err := app.Cfg.Save(); err != nil {
 				return err
 			}

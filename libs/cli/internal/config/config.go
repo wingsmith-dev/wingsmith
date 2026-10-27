@@ -37,6 +37,11 @@ type File struct {
 	Fake           bool               `yaml:"fake,omitempty" json:"fake,omitempty"`
 
 	path string
+	// saved is the current_context Save writes, changed only by
+	// Set("current_context"). A --context or HANGAR_CONTEXT for one command
+	// moves CurrentContext but never becomes the default when that command
+	// writes the file.
+	saved string
 }
 
 // Path returns the file the config was loaded from.
@@ -95,7 +100,17 @@ func Load(path string) (*File, error) {
 	if f.CurrentContext == "" {
 		f.CurrentContext = "default"
 	}
+	f.saved = f.CurrentContext
 	return f, nil
+}
+
+// Override makes name the current context for this process only. Save keeps
+// writing the context the file names.
+func (f *File) Override(name string) {
+	if f.saved == "" {
+		f.saved = f.CurrentContext
+	}
+	f.CurrentContext = name
 }
 
 // Save writes the config back to disk, readable by the owner only.
@@ -114,7 +129,11 @@ func (f *File) Save() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot create config directory")
 	}
-	data, err := yaml.Marshal(f)
+	doc := *f
+	if f.saved != "" {
+		doc.CurrentContext = f.saved
+	}
+	data, err := yaml.Marshal(&doc)
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot serialise config")
 	}
@@ -244,6 +263,7 @@ func (f *File) Set(key, value string) error {
 				WithCause("letters, digits, '.', '_' and '-', starting with a letter or digit")
 		}
 		f.CurrentContext = value
+		f.saved = value
 	case "output":
 		if value != "" && ValidateOutput != nil {
 			if err := ValidateOutput(value); err != nil {
