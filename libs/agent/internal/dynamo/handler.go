@@ -78,9 +78,19 @@ const (
 // ship dark: every cluster runs one shared frontend and none renders a
 // per-deployment one yet, so every request falls through to exactly the address
 // it reached before.
+//
+// Only a request tunnel.Forwarded accepts is forwarded; anything else gets 404
+// unsupported_path, the gateway's own answer to it. The gateway refuses those
+// paths first, so one arriving here came from a gateway that did not check, and
+// the frontend's admin, debug and metrics routes stay out of reach either way.
 func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
 	proxy := newReverseProxy(headerTimeout)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !tunnel.Forwarded(r.Method, r.URL.Path) {
+			slog.Warn("frontend: refusing a path that is not forwarded", "method", r.Method, "path", r.URL.Path)
+			writeError(w, http.StatusNotFound, "unsupported_path", r.Method+" "+r.URL.Path+" is not answered here.")
+			return
+		}
 		upstream, err := frontendFor(target, r.Header.Get(tunnel.HeaderDeploymentID))
 		if err != nil {
 			// Not a 502: nothing upstream failed, there is nothing upstream

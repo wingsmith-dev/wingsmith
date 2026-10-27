@@ -65,7 +65,7 @@ func TestTunnelCarriesARequestToTheClusterFrontend(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: pool.RoundTripper(clusterID)}
-	resp, err := client.Get(tunnel.Authority(clusterID).String() + "/v1/chat/completions")
+	resp, err := client.Post(tunnel.Authority(clusterID).String()+"/v1/chat/completions", "application/json", strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatalf("request over the tunnel: %v", err)
 	}

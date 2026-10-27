@@ -544,3 +544,38 @@ func TestForwardedForIsAppendedTo(t *testing.T) {
 		t.Errorf("X-Forwarded-For = %q, want the caller's address kept first", got)
 	}
 }
+
+// TestOnlyForwardedPathsReachTheFrontend pins the agent's own allowlist. The
+// gateway refuses these first; the agent must not depend on that, because a
+// frontend serves metrics, health and admin routes beside inference.
+func TestOnlyForwardedPathsReachTheFrontend(t *testing.T) {
+	var reached []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = append(reached, r.Method+" "+r.URL.Path)
+	}))
+	defer upstream.Close()
+	handler := NewHandler(targetFor(t, upstream), 0)
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/metrics"},
+		{http.MethodGet, "/health"},
+		{http.MethodPost, "/tokenize"},
+		{http.MethodGet, "/v1/chat/completions"},
+		{http.MethodPost, "/v1/chat/completions/../../metrics"},
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(tc.method, tc.path, nil))
+		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), `"code":"unsupported_path"`) {
+			t.Errorf("%s %s = %d %s, want 404 unsupported_path", tc.method, tc.path, recorder.Code, recorder.Body)
+		}
+	}
+	if len(reached) != 0 {
+		t.Fatalf("the frontend was reached by %v", reached)
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{}`)))
+	if recorder.Code != http.StatusOK || len(reached) != 1 {
+		t.Fatalf("POST /v1/embeddings = %d, frontend reached by %v", recorder.Code, reached)
+	}
+}
