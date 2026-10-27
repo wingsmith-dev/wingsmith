@@ -37,13 +37,10 @@ dUUID = text("gen_random_uuid()")
 class Cluster(BaseMixin):
     """A GPU cluster we own and operate, and the root of every observed record.
 
-    The declared half is the registry entry: name, region, phase, and the labels
-    placement matches against. `phase` is declared intent — an operator marks a
-    cluster `draining` — and is deliberately not the same axis as reachability,
-    which is observed and lives on `ClusterSyncState`. There is no address column:
-    the plane never dials a cluster, so a cluster's identity is the credential its
-    agent presents, not a URL the plane could call. The one address a cluster
-    can carry is its data-plane serving address, and it lives on `ClusterServing`.
+    The declared half: name, region, phase and the labels placement matches. `phase` is declared
+    intent (an operator marks a cluster `draining`); reachability is observed and lives on
+    `ClusterSyncState`. There is no address column because the plane never dials a cluster. The
+    data-plane serving address lives on `ClusterServing`.
     """
 
     __tablename__ = "supply_cluster"
@@ -72,7 +69,7 @@ class Cluster(BaseMixin):
     metrics_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     """The `cluster` label this cluster's series carry in the shared metrics store.
     Written by the cluster-setup chart from the cluster id. Null means not observable: metrics report
-    no source rather than querying under an unconfirmed label."""
+    no source instead of querying under an unconfirmed label."""
 
     sync_state: Mapped[ClusterSyncState | None] = relationship(
         "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
@@ -87,32 +84,10 @@ class Cluster(BaseMixin):
 class ClusterSyncState(BaseMixin):
     """The observed half of a cluster: is its agent connected and how current is it.
 
-    Split from `Cluster` because the two have different writers. `Cluster` is
-    written only by the API; this row is written only by ingestion, on every
-    connect, heartbeat, and disconnect. Folding `reachable` into `Cluster.phase`
-    would give one record two writers and make "declared draining" and "observed
-    unreachable" indistinguishable.
-
-    `read_only` is the operator's own posture rather than the cluster's: true means
-    it runs without its reconcile loop and applies nothing the plane declares. It
-    is observed for the same reason the rest of this row is — only the operator
-    knows it — and it is what lets a caller say that a workload placed here will
-    never start, instead of leaving somebody to infer it from a replica count that
-    never moves.
-
-    `multinode` is what the operator found in the cluster's API groups: a
-    leader-worker backend, so Dynamo can render a replica across machines. Observed
-    rather than configured because the CRDs are either served or they are not, and
-    a flag asserting it is a second copy of the same truth that can be wrong in the
-    direction that hangs.
-
-    `distribution`, `cloud` and `observed_region` are what the cluster turned out
-    to be. They live here rather than on `Cluster` for the same reason
-    `reachable` does — they are observed, and writing them onto the registry row
-    would give it a second writer. `observed_region` is deliberately not merged
-    into `Cluster.region`: the declared region is what placement matches policies
-    against, and the two disagreeing is a misconfiguration worth being able to
-    see rather than one silently overwriting the other.
+    Split from `Cluster` because only ingestion writes it. `read_only` is the operator's posture:
+    true means it applies nothing the plane declares, so a workload placed here never starts.
+    `multinode` means the cluster serves a leader-worker backend. `observed_region` is never merged
+    into `Cluster.region`; the two disagreeing is a misconfiguration to surface.
     """
 
     __tablename__ = "supply_cluster_sync_state"
@@ -141,16 +116,9 @@ class ClusterSyncState(BaseMixin):
 class ClusterServing(BaseMixin):
     """Where the data plane reaches a cluster's serving runtime, and with what.
 
-    Deliberately not a column on `Cluster`. The plane still never dials a cluster
-    — this row is configuration the plane stores and hands out, and the gateway is
-    the only thing that ever resolves it into a connection. Keeping it separate
-    keeps the registry row free of an address that would read as one the control
-    plane could use.
-
-    `url` is opaque: a public ingress, an in-cluster service name, anything the
-    gateway can dial. `credential_id` points at whatever the address is fronted
-    by — an access token, a signed header, mTLS material — and is nullable
-    because a private in-cluster address is fronted by nothing.
+    Kept off `Cluster` because the plane never dials it: only the gateway resolves it into a
+    connection. `url` is opaque. `credential_id` is whatever fronts the address, and null when a
+    private in-cluster address is fronted by nothing.
     """
 
     __tablename__ = "supply_cluster_serving"
@@ -169,13 +137,10 @@ class ClusterServing(BaseMixin):
 
 
 class Node(BaseMixin):
-    """A machine observed inside a cluster. Never declared — nodes appear, they are not written.
+    """A machine observed inside a cluster. Never declared: nodes appear, they are not written.
 
-    Attributes here are deliberately generic (os image, kernel, driver, agent
-    version): the plane does not know a cluster is Kubernetes, so no runtime- or
-    orchestrator-specific version field belongs on this table. `cordoned` is an
-    observed boolean rather than a value in a condition enum, because cordoning is
-    something an `Operation` does and draining has a lifecycle of its own.
+    Attributes are generic because the plane does not know a cluster is Kubernetes. `cordoned` is a
+    boolean, since cordoning is done by an `Operation` and draining has its own lifecycle.
     """
 
     __tablename__ = "supply_node"
@@ -216,12 +181,9 @@ class Node(BaseMixin):
 
 
 class TopologyDomain(BaseMixin):
-    """A set of devices that share an interconnect — NVLink, NVSwitch, a PCIe root, or a NUMA node.
+    """A set of devices that share an interconnect: NVLink, NVSwitch, a PCIe root, or a NUMA node.
 
-    First-class rather than a label on `Device` so that "eight devices in one
-    fabric" is a join, not a string comparison. `kind` names what is shared and
-    `parent_id` nests domains, so a NUMA domain can contain PCIe roots which
-    contain NVLink islands.
+    A table so that "eight devices in one fabric" is a join. `parent_id` nests domains.
     """
 
     __tablename__ = "supply_topology_domain"
@@ -256,16 +218,7 @@ class TopologyDomain(BaseMixin):
 
 
 class TopologyDomainNode(BaseMixin):
-    """Which nodes a topology domain spans. One row per node, written by ingestion.
-
-    `topology.observed` has always carried the full `node_ids`, but the domain
-    held a single nullable `node_id` — so a fabric across four machines stored a
-    null and the membership survived only on the wire. A domain with one member
-    and a domain with none were the same row, which made "the domains on this
-    node" a question the database could not answer. This table is that answer,
-    and it replaces the scalar rather than sitting beside it: two spellings of
-    one fact is how they drift apart.
-    """
+    """Which nodes a topology domain spans. One row per node, written by ingestion."""
 
     __tablename__ = "supply_topology_domain_node"
     __table_args__ = (UniqueConstraint("domain_id", "node_id", name="uq_supply_topology_domain_node"),)
@@ -283,13 +236,10 @@ class TopologyDomainNode(BaseMixin):
 
 
 class Device(BaseMixin):
-    """One accelerator. The schedulable unit of the whole system.
+    """One accelerator, the schedulable unit of the system.
 
-    There is no `gpu_count` anywhere above this table, because a count cannot say
-    which of eight GPUs is throttling, which has ECC errors, and which is already
-    committed. Health, ECC and throttle state, memory, and MIG profile live here;
-    utilization, temperature, and power do not — those are telemetry and never
-    enter Postgres.
+    Health, ECC and throttle state, memory and MIG profile live here. Utilization, temperature and
+    power are telemetry and never enter Postgres.
     """
 
     __tablename__ = "supply_device"
@@ -340,10 +290,7 @@ class Device(BaseMixin):
 class Pool(BaseMixin):
     """A declared provisioning spec that carves a homogeneous slice out of a cluster.
 
-    Declared rather than a selector over observed nodes because we own the
-    substrate: min/max are a scaling loop's inputs, not a description. This is the
-    one object in the supply group that breaks if the plane ever manages a cluster
-    it did not provision.
+    min/max are a scaling loop's inputs. This assumes the plane provisioned the cluster.
     """
 
     __tablename__ = "supply_pool"
@@ -376,10 +323,8 @@ class Pool(BaseMixin):
 class Artifact(BaseMixin):
     """Immutable, content-addressed bytes: weights, adapters, datasets, images.
 
-    Identity is the digest, so the same weights registered twice are one row. A
-    fine-tune output, a private customer checkpoint, a quantized derivative, and a
-    LoRA adapter are all artifacts — none of them are catalog entries, and the
-    catalog is deliberately absent from this schema.
+    Identity is the digest, so the same weights registered twice are one row. There is no catalog
+    in this schema; fine-tunes, quantized derivatives and adapters are all artifacts.
     """
 
     __tablename__ = "demand_artifact"
@@ -387,7 +332,7 @@ class Artifact(BaseMixin):
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-    # False when the digest is a reference rather than content — `hf:org/model` for weights we
+    # False when the digest is a reference, not content: `hf:org/model` for weights we
     # adopted by watching a cluster serve them. The row is a real artifact and workloads may point
     # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
@@ -423,8 +368,7 @@ class Artifact(BaseMixin):
 class ArtifactLocation(BaseMixin):
     """Where one artifact's bytes can be fetched from. An artifact may have several.
 
-    Separate from `Artifact` because locations are mutable and plural while the
-    artifact is neither. Credentials are referenced, never inlined.
+    Credentials are referenced, never inlined.
     """
 
     __tablename__ = "demand_artifact_location"
@@ -448,19 +392,9 @@ class ArtifactLocation(BaseMixin):
 class ArtifactBaseline(BaseMixin):
     """The declared quality floor one artifact is held to, one row per dataset and metric.
 
-    Declared, not observed and not derived. Somebody asserts that this checkpoint scores this
-    number on this eval, records where the number came from, and signs it; an acceptance review
-    is then an argument about that assertion rather than about whichever number a harness
-    happened to produce last. A quantized derivative that regresses is only visible against a
-    baseline that was written down before the quantization was run.
-
-    `tolerance_pct` is the per-row slack, separate from the acceptance floor a verdict applies:
-    the floor is a property of the criteria version and is resolved at read, and burying it in a
-    column here would let two artifacts be graded against two silently different standards.
-
-    `source_uri`, `recorded_by` and `recorded_at` are spelled the same as the provenance triple
-    on `Artifact.upstream` on purpose. Two spellings of "who said this and when" is one argument
-    nobody can follow.
+    Asserted by somebody, with its source recorded. `tolerance_pct` is per-row slack; the acceptance
+    floor belongs to the criteria version and is resolved at read. The provenance columns are
+    spelled like the triple on `Artifact.upstream`.
     """
 
     __tablename__ = "demand_artifact_baseline"
@@ -490,45 +424,18 @@ class ArtifactBaseline(BaseMixin):
 class Workload(BaseMixin):
     """What you asked to run, globally. The object a user creates, scales, and deletes.
 
-    A workload is not tied to a cluster. It names an artifact, declares how to serve it, and
-    declares a kind, a priority and TOTAL scale across every cluster it is allowed to use;
-    placement expands it into one `Deployment` per cluster, and each deployment carries that
-    cluster's share of the total. `kind` discriminates `service | task | gang`; only `service` is
-    rendered and run today, and `task` and `gang` are on the roadmap. Nothing below this object
-    branches on `kind`; the operator is the only component entitled to read it, when it decides
-    what Kubernetes object to render.
+    It names an artifact, how to serve it, a kind, a priority and the TOTAL scale; placement
+    expands it into one `Deployment` per cluster carrying that cluster's share. Only `service` runs
+    today (`task` and `gang` are on the roadmap), and only the operator branches on `kind`.
 
-    The serving configuration lives here rather than on a shared recipe object. What sharing a
-    recipe bought, not deploying the same thing twice under two identities, is `serving_digest`.
+    `engine_args` is declared and rendered. `imported_args` is read off a running process by
+    discovery and never rendered, so intent stays distinguishable from capture (ADR 0009).
+    `overlay` passes engine and operator configuration through untouched.
 
-    `engine_args` and `imported_args` are the same shape and different in kind. `engine_args` is
-    declared: somebody asserted it, and it renders onto the command line. `imported_args` is
-    observed: it was read off a running process by the discovery path, it is recorded in full,
-    and it is never rendered. The split is provenance, and provenance is what makes taking
-    management of an adopted workload reviewable — folded into one map there is no way to tell
-    intent from incidental capture, and the first render is a guess about which values somebody
-    meant (ADR 0009).
-
-    `overlay` is the one opaque field on an otherwise fully-modelled object. Engines and the
-    Kubernetes operators that run them carry far more configuration than a control plane wants to
-    mirror field by field, and mirroring it is a losing race against every engine release — so
-    the plane models what it reasons about and passes the rest through untouched.
-
-    `device_class` is required, not optional — you cannot tensor-parallel across an A100 and an
-    H100, so a shape without a class is not a shape. Context length is here rather than on the
-    artifact because it determines the footprint.
-
-    Splittability is a property of `kind`, not a field: `service` may fan out across clusters,
-    while placement keeps a `gang` inside one cluster and one topology domain.
-
-    Admission is per-cluster and therefore lives on `Deployment`, not here. `started_at` and
-    `finished_at` are rollups the plane derives from its deployments, never written by a cluster.
-
-    `cluster_floors` is `{cluster_uid: int}`, a per-cluster minimum share keyed by `clu_...` uid
-    rather than by database id; an unknown uid is ignored, never an error. `pinned_cluster_id` is
-    the deliberate scheduler escape: checked for existence, never for capacity, and it forces a
-    single deployment. `paused` is declared state that placement reads, not an operation status —
-    `workload.pause` is the operation that sets it.
+    `cluster_floors` is `{cluster_uid: int}`; unknown uids are ignored. `pinned_cluster_id` is
+    checked for existence, never capacity, and forces a single deployment. `paused` is declared
+    state that placement reads, set by `workload.pause`. `started_at` and `finished_at` are rollups
+    derived from the deployments.
     """
 
     __tablename__ = "demand_workload"
@@ -622,21 +529,9 @@ class Workload(BaseMixin):
 class WorkloadRole(BaseMixin):
     """One role in a disaggregated workload, and the little that differs about it.
 
-    Two rows for a `disaggregated` workload — `prefill` and `decode` — and none at all for an
-    `aggregated` one, which is the ordinary case and stays exactly as it was.
-
-    **The table is narrow on purpose.** Across NVIDIA's `disagg-gb300-agentic` recipe the two
-    roles differ on six arguments and agree on everything else: same artifact, same TP8, same
-    device class, same context length, same quantization, same `kv-cache-dtype`, and the same
-    `kv-transfer-config` string on both sides — the transfer mechanism is a property of the
-    topology, not of the role. So a role is one weight, one optional `max_batch_tokens`, and an
-    argument map. Giving each role a full copy of the serving block would be paying for a
-    difference that does not exist.
-
-    Why a table rather than a JSON block on `Workload`, which is how `serving` and
-    `prefix_cache_config` live: placement computes a fit against per-role device counts, and a
-    JSON blob that placement reads is a typed column that has not been declared yet. `weight` is
-    reasoned about; `engine_args` is not, which is why it stays a map inside the row.
+    Two rows (`prefill` and `decode`) for a `disaggregated` workload, none for an `aggregated` one.
+    A role is a weight, an optional `max_batch_tokens` and an argument map; everything else is
+    shared with the workload. A table because placement computes fit from per-role device counts.
     """
 
     __tablename__ = "demand_workload_role"
@@ -663,31 +558,13 @@ class WorkloadRole(BaseMixin):
 class WorkloadRevision(BaseMixin):
     """One serving configuration a workload has held, kept as the request that would restate it.
 
-    Declared state, append-only, and written by exactly the writes that move
-    `Workload.serving_digest` — a create, a serving patch, a reshape, and a promotion. Nothing
-    here reaches a cluster and nothing reconciles against it: the workload row is still the only
-    declaration, and this is the record of what that row said before.
+    Append-only, written by every write that moves `Workload.serving_digest`. Nothing reconciles
+    against it. `snapshot` is a `WorkloadServingUpdate` that can be sent straight back to
+    `PATCH /v1/workloads/{ref}`, so a rollback is an ordinary update.
 
-    `snapshot` is a `WorkloadServingUpdate` as msgspec renders it — the patch shape, not the
-    column shape. `serving_request` already reads a stored workload back as "the request that
-    would have created it", and `_apply_serving_patch` already applies a patch onto that and
-    revalidates the whole thing, so what is stored here is that reading minus the one field a
-    patch may not carry: a revision is a body that can be sent straight back to
-    `PATCH /v1/workloads/{ref}`. That is what makes a rollback an ordinary update rather than an
-    operation of its own — there is no restore path to write, no second description of a legal
-    configuration, and a revision that would no longer validate is refused by the same checks
-    that refuse a hand-written one.
-
-    `number` counts from 1 within the workload and never rewinds. Going back to revision 2
-    appends revision 5 carrying revision 2's snapshot, because the history is what happened
-    rather than where the workload can still get to. `BaseMixin.seq` is a global identity
-    column and is not this.
-
-    `serving_digest` is copied off the workload after the write landed, so it names the same
-    configuration that `ops_benchmark_run.serving_digest` and `demand_replica.serving_digest`
-    name. It is deliberately not unique here: a workload edited A to B and back to A has two
-    revisions carrying one digest, which is why a running replica resolves to a *configuration*
-    and never to a revision number.
+    `number` counts from 1 per workload and never rewinds: going back to revision 2 appends a new
+    revision with its snapshot. `serving_digest` is not unique here, since A to B to A gives two
+    revisions with one digest.
     """
 
     __tablename__ = "demand_workload_revision"
@@ -701,7 +578,7 @@ class WorkloadRevision(BaseMixin):
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     serving_digest: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
     artifact_uid: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
-    """The weights this configuration served, as a uid rather than a foreign key so the history
+    """The weights this configuration served, as a uid instead of a foreign key so the history
     survives the artifact's deletion. Outside `snapshot` because weights are not patchable."""
     snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -716,45 +593,19 @@ class WorkloadRevision(BaseMixin):
 class Deployment(BaseMixin):
     """One workload's share on one cluster. The unit the agent obeys.
 
-    A deployment is workload x cluster. What changed is what sits above
-    it: a `Workload` is now its parent rather than its supertype, and one workload has many
-    deployments — one per cluster it was expanded onto. `min_replicas` / `max_replicas` /
-    `desired_replicas` are THIS CLUSTER'S SHARE of the workload total, never the total. Nothing
-    anywhere may sum a share against a total or re-derive one from the other.
+    `min_replicas` / `max_replicas` / `desired_replicas` are THIS CLUSTER'S SHARE of the workload
+    total, never the total; nothing may sum or re-derive one from the other. Admission is
+    per-cluster and lives here. Changes update the row and bump `generation`; a drain or a
+    re-expansion that leaves no share deletes it, which is why the stable name is on `Endpoint`.
+    Placement creates deployments.
 
-    Serving configuration, adapters, overrides, labels and the topology pair live on the workload: they are
-    facts about what was asked for, and a cluster does not get its own answer to them. Admission
-    is per-cluster and lives here, because a workload can be running in one region and queued on
-    quota in another and there is no single phase that is true of both.
+    The `adopted_*` columns are set when the deployment was promoted from a `DiscoveredWorkload`.
+    The operator then takes ownership of the existing object, only while it still digests to
+    `adopted_fingerprint`; a mismatch is refused and reported. Namespace, kind and name are copied at
+    promotion so the adoption outlives the pruned sighting.
 
-    A configuration change, an engine upgrade or a new share updates the row in place and bumps
-    `generation`, which is what the operator re-reads. A drain, or a re-expansion that leaves this
-    cluster with no share, deletes the row. Deployments are therefore not stable handles, which is
-    why the public name lives on `Endpoint` instead. You do not create one: placement creates it
-    when it expands a workload.
-
-    `adopted_workload_uid` is set when this deployment was promoted from a workload that was
-    already running in the cluster (a `DiscoveredWorkload`, unrelated to the parent `Workload`
-    above). It changes what the cluster is being asked to do: the object exists, so the operator
-    takes ownership rather than applying, and only while the live object still digests to
-    `adopted_fingerprint`. A mismatch is refused in the cluster and reported, never converged.
-
-    `adopted_namespace` and `adopted_kind` name that object, and they are copied here at
-    promotion rather than read back off the `DiscoveredWorkload` they came from. The sighting is
-    observed state and the snapshot prunes it the moment a cluster stops mentioning it; the
-    adoption is declared state and outlives that. Deriving the wire's `adopt` block from the
-    sighting made a deployment's declared identity depend on a row that comes and goes, and a
-    prune window was enough to send `adopt: null` to a cluster that then dropped an adopted
-    deployment to one it had nothing to do with — permanently, since nothing re-dispatches when
-    the sighting returns.
-
-    `adopted_name` is stored beside them rather than taken from `name`, because promotion accepts
-    a name and only defaults it to the workload's. A renamed adoption still has to point the
-    operator at the object that actually exists in the cluster.
-
-    `authority` is the one word that answers who owns this: `observed` means the plane records
-    and verifies it and writes nothing to the cluster, `managed` means the plane renders and
-    converges it. It is deliberately not derived from `adopted_workload_uid` (ADR 0009).
+    `authority` is `observed` (record and verify, write nothing) or `managed` (render and converge).
+    It is not derived from `adopted_workload_uid` (ADR 0009).
     """
 
     __tablename__ = "demand_deployment"
@@ -799,24 +650,10 @@ class Deployment(BaseMixin):
 class DeploymentStatus(BaseMixin):
     """Observed: what a deployment is actually doing in its cluster.
 
-    A separate table from `Deployment` for the same reason `ComponentStatus` is
-    separate from `Component` — declared and observed have different writers, and
-    a nullable `phase` column on the declared row would let an API write land on
-    top of a cluster's. The pair read together is what "the deployment is behind"
-    means.
-
-    `reason` and `message` are the cluster's sub-state within `phase`, and are
-    deliberately not `last_error`: waiting for weights to download is neither an
-    error nor a thing that should survive into the next observation the way an
-    error does. `reason` is a closed set the operator owns and this column does
-    not constrain — an unrecognised value is stored and displayed rather than
-    rejected, so a new sub-state does not need a plane deploy to become visible.
-
-    The replica counts here are the cluster's own accounting and are deliberately
-    redundant with the rollup over `demand_replica`. They arrive in one frame and
-    are internally consistent at the instant the cluster took them, which a rollup
-    over rows written by many frames is not; the rollup answers which replicas,
-    this answers how many the cluster thinks there are.
+    Split from `Deployment` because only ingestion writes it. `reason` and `message` are the
+    cluster's sub-state within `phase`, not an error; `reason` is unconstrained so a new operator
+    sub-state shows up without a plane deploy. The replica counts are the cluster's own snapshot
+    from one frame, and complement the rollup over `demand_replica`.
     """
 
     __tablename__ = "demand_deployment_status"
@@ -850,9 +687,8 @@ class DeploymentStatus(BaseMixin):
 class Replica(BaseMixin):
     """One running instance of a deployment, observed. Written only by ingestion.
 
-    Carries readiness and the engine version actually running — which may lag the
-    workload's during a rollout — and the node it landed on. The devices it holds
-    are in `Allocation`, not here, because a gang commits many devices at once.
+    Carries readiness, the engine version actually running (which may lag during a rollout) and the
+    node. Its devices are in `Allocation`.
     """
 
     __tablename__ = "demand_replica"
@@ -891,16 +727,9 @@ class Replica(BaseMixin):
 class DiscoveredWorkload(BaseMixin):
     """A workload found running in a cluster that the plane never declared.
 
-    Observed, and written only by ingestion. Deliberately not a `Deployment`: a
-    deployment is something the plane declared and the cluster obeys, so writing
-    a sighting into that table would manufacture a difference between declared
-    and running state on the spot — and reconciling that difference means
-    restarting a process whose weights are already in VRAM. This table says only
-    "this exists", which is a fact no reconciler can act on.
-
-    `uid` is minted by the cluster from a natural key (ADR 0002), so a sighting
-    pruned on one resync and rediscovered on the next comes back with the same
-    identity — which is what lets an adoption decision outlive it.
+    Observed, written only by ingestion, and never a `Deployment`: declaring it would make a
+    reconciler restart a process that is already serving. `uid` is minted from a natural key
+    (ADR 0002), so a pruned and rediscovered sighting keeps its identity.
     """
 
     __tablename__ = "demand_discovered_workload"
@@ -935,20 +764,8 @@ class DiscoveredWorkload(BaseMixin):
 class WorkloadAdoption(BaseMixin):
     """What we decided about a sighting: track it, or stop showing it.
 
-    A separate row from the sighting because the two have different writers —
-    ingestion owns `DiscoveredWorkload` and only the API writes here. Folding the
-    decision into the observed row would give that table two writers and make an
-    operator's choice something a resync could overwrite.
-
-    Keyed by `workload_uid` rather than a foreign key, for the same reason: the
-    sighting is pruned whenever a snapshot says the workload is gone, and a
-    decision that vanishes with it would have to be made again every time a
-    cluster reconnects mid-snapshot.
-
-    Nothing here is ever streamed to a cluster. Tracking is a decision to watch,
-    not a decision to declare, and there is no `deployment.desired` at the end of
-    it — which is the whole point: adopting five running models must not restart
-    any of them.
+    Written only by the API and keyed by `workload_uid`, so the decision survives the sighting being
+    pruned. Nothing here is streamed to a cluster: adopting a running model must not restart it.
     """
 
     __tablename__ = "demand_workload_adoption"
@@ -969,29 +786,17 @@ class WorkloadAdoption(BaseMixin):
 
 
 class Endpoint(BaseMixin):
-    """The stable public name clients call. Plane-only — it never syncs to a cluster.
+    """The stable public name clients call. Plane-only: it never syncs to a cluster.
 
-    Global where a deployment is per-cluster, and a contract where a deployment comes
-    and goes with placement. Keeping them separate is what allows weighted splits, canaries and
-    renaming without breaking clients; merging them would give one globally unique
-    record N cluster-side writers. `routing_strategy` and `failover_order` are stored
-    and returned, but automatic cross-cluster failover is on the roadmap, not built.
+    Separate from deployments so weighted splits, canaries and renames do not break clients.
+    `routing_strategy` and `failover_order` are stored and returned; cross-cluster failover is on
+    the roadmap.
 
-    `name` is globally unique, which makes this the only child object in the schema
-    that reaches past its parent for uniqueness — `Workload` is unique on
-    `(project_id, name)` and `Project` on `(tenant_id, slug)`. That is deliberate
-    while there is one tenant, because a single namespace makes global and
-    project-scoped the same thing, and it is the cheaper of the two to change
-    later: with no colliding rows the migration is a constraint swap. The scope
-    becomes `(project_id, name)` when a second tenant appears, and the routing key
-    the gateway resolves has to grow the project alongside it — `model` is the only
-    key an OpenAI-compatible client sends, so a name must resolve to exactly one
-    endpoint within whatever scope the caller belongs to.
+    `name` is globally unique while there is one tenant. It becomes `(project_id, name)` when a
+    second tenant appears, and the gateway's routing key has to include the project then.
 
-    Not to be confused with the name the engine answers to. That is `Artifact.slug`, and the
-    gateway rewrites between the two — see `app.core.serving.served_model`. They are equal
-    whenever nobody has asked for an alias, which makes the rewrite a no-op in the ordinary case
-    and a rename in the deliberate one.
+    The name the engine answers to is `Artifact.slug`; the gateway rewrites between the two (see
+    `app.core.serving.served_model`).
     """
 
     __tablename__ = "demand_endpoint"
@@ -1028,24 +833,10 @@ class Endpoint(BaseMixin):
 class EndpointAlias(BaseMixin):
     """An additional public model id that resolves to one endpoint.
 
-    The third of three names, and the only one a caller chooses between. `slug` is the canonical
-    one and every internal record — usage, policy, metrics, logs — is keyed on it;
-    `EndpointTarget.served_model_name` is what one engine answers to. An alias is neither: it is a
-    string a client may type, and the gateway turns it into the canonical before any other stage
-    runs. That is what makes a rename cheap — the old id becomes an alias and nothing downstream
-    is renamed.
-
-    It hangs off the endpoint rather than off the workload or the gateway because the public name
-    a caller types is what an endpoint *is*. The gateway resolves and never defines: it holds no
-    catalog of its own, and an alias reaches it as one more key into the same route.
-
-    `alias` is globally unique, which makes aliases and canonical slugs one namespace. The index
-    only stops two endpoints claiming one alias; the rest of that namespace — an alias equal to
-    some endpoint's slug, or a slug moved onto somebody's alias — is the service's to refuse,
-    because the two live in different tables and no constraint spans them.
-
-    Stored lowercased, and resolved case-insensitively, so `GPT-OSS-20B` and `gpt-oss-20b` are not two
-    routes somebody has to keep in step.
+    The gateway turns an alias into the canonical `slug` before any other stage, so every record
+    stays keyed on the slug and a rename leaves the old id as an alias. `alias` is globally unique;
+    clashes with another endpoint's slug are refused by the service, since no constraint spans the
+    two tables. Stored lowercased and resolved case-insensitively.
     """
 
     __tablename__ = "demand_endpoint_alias"
@@ -1062,13 +853,8 @@ class EndpointAlias(BaseMixin):
 class EndpointTarget(BaseMixin):
     """One deployment behind one endpoint, with a traffic weight.
 
-    The many-to-many between global names and per-cluster deployments. It exists
-    as a table rather than as gateway configuration so that a canary or a
-    weighted split is versioned and auditable like anything else.
-
-    `deployment_id` cascades: when a drain or a re-expansion deletes a deployment,
-    its targets go with it, and nothing retargets the endpoint at the deployment
-    that replaced it. Re-point the endpoint after moving a workload.
+    `deployment_id` cascades, and nothing retargets the endpoint at a replacement deployment:
+    re-point the endpoint after moving a workload.
     """
 
     __tablename__ = "demand_endpoint_target"
@@ -1095,10 +881,8 @@ class EndpointTarget(BaseMixin):
 class WarmSet(BaseMixin):
     """Declared weight-cache intent: which artifacts should be resident on a cluster.
 
-    The declared half of the weight cache. Its observed counterpart is
-    `CacheEntry`, in the machinery group. The KV and prefix caches are unrelated
-    to this and are configuration on `Workload` — collapsing the two would produce
-    an object half desired-state and half runtime.
+    Observed counterpart: `CacheEntry`. KV and prefix caches are unrelated and configured on
+    `Workload`.
     """
 
     __tablename__ = "demand_warm_set"
@@ -1125,11 +909,8 @@ class WarmSet(BaseMixin):
 class Tenant(BaseMixin):
     """The billing and isolation root. Projects hang off it; quota attaches below it.
 
-    `ingress` and `auth` are how the gateway decides who a caller is and whether
-    to believe them (docs/decisions/0016). `ingress` says which listener the tenant's
-    traffic arrives on; `auth` says whether the gateway checks a key on it.
-    `host` is the name that resolves to this tenant, checked against the
-    request's `Host` header — null until a tenant is given one.
+    `ingress` is the listener the tenant's traffic arrives on, `auth` whether the gateway checks a
+    key there, and `host` the name checked against the request's `Host` header (ADR 0016).
     """
 
     __tablename__ = "bind_tenant"
@@ -1154,19 +935,8 @@ class Tenant(BaseMixin):
 class TenantToken(BaseMixin):
     """A console credential that signs in as one tenant, and only as that tenant.
 
-    This is not an inference key. The gateway authenticates the system in front of
-    it and says so in `serving.Guard`; a credential that named a tenant there would
-    turn that hop into a credential store. This one buys a read-only view of what a
-    tenant is being served, and the plane is the only thing that ever resolves it.
-
-    Only the sha256 of the plaintext is stored. The token is high-entropy random, so
-    a fast hash is safe against precomputation and lets a login resolve it with one
-    indexed lookup — the same reasoning as the enrolment token, and the opposite of
-    the admin password, which is human-chosen and therefore bcrypt.
-
-    Many rows per tenant rather than one, for rotation: issue the next, move the
-    reader, revoke the last. `revoked_at` rather than a delete, so a credential that
-    was used has a record that it existed.
+    Not an inference key; only the plane resolves it. Only the sha256 is stored (high-entropy, one
+    indexed lookup). Many per tenant for rotation, revoked instead of deleted.
     """
 
     __tablename__ = "bind_tenant_token"
@@ -1181,8 +951,8 @@ class TenantToken(BaseMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     """Stamped on a successful sign-in, so a token nobody uses can be told from one
-    somebody depends on before it is revoked. Written at most once a minute — see
-    `AuthService.resolve_tenant_token`; a login is not a metric."""
+    somebody depends on before it is revoked. Written at most once a minute (see
+    `AuthService.resolve_tenant_token`); a login is not a metric."""
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tenant: Mapped[Tenant] = relationship("Tenant", lazy="noload")
@@ -1191,14 +961,8 @@ class TenantToken(BaseMixin):
 class TenantAPIKey(BaseMixin):
     """An inference credential, checked by the gateway on a tenant's public listener.
 
-    This is the credential `TenantToken` says it must not become: `TenantToken`
-    signs in to the console, this one calls the gateway. Keeping them as separate
-    tables means revoking a console session can never touch inference traffic and
-    the other way round.
-
-    Only the sha256 of the plaintext is stored, for the same reason as
-    `TenantToken.token_hash`. One tenant, many keys — one per caller, so revoking
-    one caller does not revoke another.
+    Separate from `TenantToken` so console and inference credentials revoke independently. Only the
+    sha256 is stored; one key per caller.
     """
 
     __tablename__ = "bind_tenant_api_key"
@@ -1242,10 +1006,8 @@ class Project(BaseMixin):
 class Quota(BaseMixin):
     """A guaranteed device floor plus a fair share of otherwise-idle capacity.
 
-    Per project, per device class, optionally scoped to one cluster (`cluster_id`
-    null means fleet-wide). Two numbers rather than one cap, because a hard limit
-    leaves capacity idle while someone queues. Reclaiming over-quota capacity by
-    preemption is on the roadmap; today the floor and the share are admission inputs.
+    Per project and device class, optionally scoped to one cluster (`cluster_id` null is
+    fleet-wide). Both numbers are admission inputs; reclaiming by preemption is on the roadmap.
     """
 
     __tablename__ = "bind_quota"
@@ -1259,7 +1021,7 @@ class Quota(BaseMixin):
         ),
     )
     """`cluster_id` is null for a fleet-wide quota, and `NULLS NOT DISTINCT` is what makes a
-    second fleet-wide quota for the same project and class a conflict rather than a second row."""
+    second fleet-wide quota for the same project and class a conflict, not a second row."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -1281,27 +1043,13 @@ class Quota(BaseMixin):
 class ServingQuota(BaseMixin):
     """Committed request rate, token rate and concurrency for one endpoint.
 
-    The second kind of quota, and unrelated to `Quota` above: that one is devices, checked once by
-    placement at admission, and its usage is a join this database owns. This one is traffic,
-    checked on every request by the gateway, and its usage is a measurement the plane never sees.
-    No field is shared and none should be — "over quota" has to keep meaning exactly one thing.
+    Unrelated to `Quota`: this is traffic, enforced per request by the gateway. Every limit is
+    nullable and null means uncommitted, never zero; no row means no rate limit.
 
-    Every limit is nullable and null means uncommitted, never zero. An endpoint with no row here
-    is not rate limited; an endpoint with a row and `committed_rpm` null is committed on tokens and
-    not on requests. Absent is not a limit of nothing.
-
-    `success_rate_objective` is declared and enforced by nothing. It sits here rather than on its
-    own object because a success rate is uninterpretable without the load ceiling it was promised
-    under: 99.9% is a commitment *within committed capacity*, and the committed capacity is the
-    three fields above it. It is a fraction in (0, 1].
-
-    `availability_objective` names an entry of the frozen objectives table, not a metric. The
-    entry decides which outcomes sit in the numerator and the denominator; this row declares the
-    interpretation and can never redefine the capture.
-
-    `enforced` is declared state and not a status: `false` is shadow mode, where the gateway counts
-    and reports but never refuses. Turning it on is a field write that takes effect on the
-    gateway's next resync, not an operation with phases.
+    `success_rate_objective` is a fraction in (0, 1], declared and enforced by nothing, and only
+    meaningful within the committed capacity above it. `availability_objective` names an entry of
+    the frozen objectives table. `enforced` false is shadow mode: the gateway counts but never
+    refuses.
     """
 
     __tablename__ = "bind_serving_quota"
@@ -1338,12 +1086,9 @@ class ServingQuota(BaseMixin):
 class PriorityClass(BaseMixin):
     """What would preempt what. Referenced by every schedulable workload.
 
-    Preemption itself is on the roadmap: placement can name the victims it would evict
-    (`PreemptionPlan`), but nothing evicts them yet. The reference exists now so that
-    turning it on is a policy change rather than a migration across every workload. `value` is unique in the database and not merely checked in
-    the service: two classes at one number make eviction order depend on whatever
-    the planner returns that day, and a service-level check alone loses that race
-    between two concurrent writers.
+    Preemption is on the roadmap: placement can name victims (`PreemptionPlan`) but nothing evicts
+    them. `value` is unique in the database so eviction order is deterministic under concurrent
+    writes.
     """
 
     __tablename__ = "bind_priority_class"
@@ -1362,8 +1107,7 @@ class PriorityClass(BaseMixin):
 class Policy(BaseMixin):
     """A placement constraint: region, residency, device class, allowed clusters.
 
-    Attachable to more than one kind of subject, so the subject reference lives in
-    `PolicyAttachment` rather than as a nullable column per subject type here.
+    Subjects are attached through `PolicyAttachment`.
     """
 
     __tablename__ = "bind_policy"
@@ -1388,14 +1132,10 @@ class Policy(BaseMixin):
 class PolicyAttachment(BaseMixin):
     """Binds a policy to a tenant, project, cluster, endpoint or workload.
 
-    A polymorphic pair of `subject_type` and `subject_id` rather than a nullable
-    foreign key per subject type, because the set of attachable subjects is expected
-    to grow and each addition would otherwise be a column.
-
-    `subject_id` has no foreign key. Instead, an `AFTER DELETE` trigger on each subject
-    table (revision `9d05d968be9c`) deletes the attachments naming the deleted row,
-    cascaded deletes included. A new subject type needs a trigger in a new revision;
-    `tests/test_models.py` checks every type in `app.modules.policies` has one.
+    `subject_id` has no foreign key. An `AFTER DELETE` trigger on each subject table (revision
+    `9d05d968be9c`) deletes the attachments naming the deleted row. A new subject type needs a
+    trigger in a new revision; `tests/test_models.py` checks every type in `app.modules.policies`
+    has one.
     """
 
     __tablename__ = "bind_policy_attachment"
@@ -1414,15 +1154,9 @@ class PolicyAttachment(BaseMixin):
 class Allocation(BaseMixin):
     """Observed: a set of devices committed together to one workload.
 
-    The allocation, not its members, is the unit of commitment — a gang takes all
-    N devices or none, so the atomicity has to live on a row that can be created
-    once. Members are rows in `AllocationDevice`, whose unique constraint on
-    device is what stops two live allocations claiming the same accelerator.
-
-    `workload_id` names the global workload and `deployment_id` names its share in
-    this cluster. A preemption plan reasons about deployments — evicting "a workload" from
-    a cluster means evicting the deployment it has there — so the per-cluster
-    identity is carried alongside the global one.
+    The allocation is the unit of commitment, so a gang takes all N devices or none. The unique
+    constraint on `AllocationDevice.device_id` stops two live allocations claiming one accelerator.
+    `deployment_id` is the workload's share in this cluster, which is what preemption reasons about.
     """
 
     __tablename__ = "bind_allocation"
@@ -1496,9 +1230,8 @@ class AllocationDevice(BaseMixin):
 class Component(BaseMixin):
     """Declared: something we install into a cluster at a version.
 
-    The agent, the serving runtime, exporters, collectors, the cache tier, the
-    gateway — all the same kind of thing. Observability included, deliberately:
-    the moment it gets a bespoke path, the cache tier wants one too.
+    The agent, the serving runtime, exporters, collectors, the cache tier, the gateway and
+    observability all use this one path.
     """
 
     __tablename__ = "ops_component"
@@ -1523,9 +1256,7 @@ class Component(BaseMixin):
 class ComponentStatus(BaseMixin):
     """Observed: what version of a component is actually running, and how the rollout is going.
 
-    A separate table from `Component` rather than a nullable `observed_version`
-    column on it, because declared and observed have different writers. The pair
-    read together is what "component is behind" means.
+    Split from `Component` because only ingestion writes it.
     """
 
     __tablename__ = "ops_component_status"
@@ -1549,19 +1280,10 @@ class ComponentStatus(BaseMixin):
 class Operation(BaseMixin):
     """An imperative, long-running, failable action against some target.
 
-    Drain, cordon, reboot, device reset, cache warm, rolling update, component
-    upgrade — one table with a typed payload rather than a status column on each
-    object acted upon. A status field cannot answer who did this, why, how long
-    it has been stuck, or what happens at the deadline. `target_type` /
-    `target_id` are polymorphic because the set of targets spans four groups, so
-    `target_id` has no foreign key: an operation is a record of what was done and
-    outlives its target, and a `target_id` that no longer resolves is expected.
-
-    `phase` is ingestion's and `cancel_requested_at` is the plane's, disjoint the
-    way `Cluster.phase` and `ClusterSyncState` are: asking a running operation to
-    stop is a request the cluster observes, not a phase the plane may assert on
-    its behalf. `idempotency_key` is a column rather than a key inside `payload`
-    because only a unique index can stop two concurrent retries both inserting.
+    One table with a typed payload for drain, cordon, reboot and the rest. `target_id` has no
+    foreign key: an operation outlives its target. `phase` is ingestion's and `cancel_requested_at`
+    the plane's; cancelling is a request the cluster observes. `idempotency_key` is a column so a
+    unique index can stop concurrent retries.
     """
 
     __tablename__ = "ops_operation"
@@ -1600,22 +1322,10 @@ class Operation(BaseMixin):
 class BenchmarkRequest(BaseMixin):
     """The ask: what was to be measured, at which level, and against which criteria version.
 
-    Declared state, and the parent of every `BenchmarkRun` it expands into. It exists because a
-    run is a single measurement at a single load point and an acceptance claim is not: the
-    standard sets a separate time-to-first-token target for each input-length band, so one request
-    in a sweeping `mode` fans out to one run per band and each run records its own `step_index`.
-    Without a parent row the bands are unrelated numbers and the claim cannot be re-aggregated
-    afterwards from anything.
-
-    `level` says which of the three targets is populated — a run against a deployment measures one
-    cluster's configuration, a run against an endpoint measures what a caller actually gets, and
-    the two are different claims that must not be averaged together. Exactly one target column is
-    non-null, which the check constraint enforces; that `level` agrees with which one is a service
-    check, because the constraint cannot see the string.
-
-    There is no `phase`, no `summary` and no `verdict` here, deliberately. A request is declared, a
-    run's phase is observed, and a verdict is derived at read against a pinned criteria version.
-    Any of the three on this table would be an operation modelled as a status field.
+    Declared, and the parent of the `BenchmarkRun`s it expands into (one per input-length band in a
+    sweeping `mode`). `level` names which target column is set; the check constraint allows at most
+    one, and the service checks they agree. There is no phase, summary or verdict: run phases are
+    observed and verdicts are derived at read.
     """
 
     __tablename__ = "ops_benchmark_request"
@@ -1655,40 +1365,13 @@ class BenchmarkRequest(BaseMixin):
 class BenchmarkRun(BaseMixin):
     """One measurement of one deployment by one harness, and what it measured.
 
-    Declared and observed in the same two halves as everything else. The plane
-    writes the top half once at creation — which deployment, which harness, what
-    load, and the provenance columns that say what was running at the time — and
-    ingestion writes `phase`, `summary`, `artifacts_uri`, `harness_version` and
-    the timestamps from `benchmark.observed` thereafter. Neither writer touches
-    the other's columns after creation.
+    The plane writes the top half once at creation; ingestion writes `phase`, `summary`,
+    `artifacts_uri`, `harness_version` and the timestamps from `benchmark.observed`.
 
-    `image` is what the run actually pulled, resolved at creation from the harness
-    default or from a per-run override. It is a provenance column like the others:
-    the default is a pin that moves between releases of this plane, so a run that
-    did not record its own image could not say afterwards what produced its
-    numbers.
-
-    `summary` is the harness's own output shape, stored verbatim. There is no
-    normalised metric schema here on purpose: comparing AIPerf to vLLM's
-    benchmark script is a question nobody has asked yet, and inventing the union
-    of two result formats before either has been read in anger would fix the
-    wrong shape permanently. What makes the rows comparable is `harness` and
-    `harness_version` — a percentile definition that changed between releases is
-    exactly what a same-tool comparison gets wrong without them.
-
-    The provenance columns are the reason this table is worth keeping. A run
-    without `deployment_generation`, `serving_digest` and `engine_args` is a
-    number with nothing to attribute it to; with them the table is the
-    parameter-tuning record. `serving_digest` is what a run is about, and it
-    replaced a `recipe_id` and `recipe_version` pair that named a mutable row:
-    a digest is the configuration rather than a handle on it, so a run cannot
-    come to describe a configuration nobody measured. `engine_args` is still
-    snapshotted beside it, because a drain or re-expansion deletes the deployment
-    and a run must describe what it measured after that has gone.
-
-    `operation_id` is nullable and `ON DELETE SET NULL`: the operation is how the
-    run was carried out and the run is the record of it, so the record outlives
-    the errand.
+    `image` is what the run pulled, recorded because the default moves between releases. `summary`
+    is the harness's own output, stored verbatim; rows compare by `harness` and `harness_version`.
+    `serving_digest`, `deployment_generation` and the `engine_args` snapshot attribute the number to
+    a configuration after the deployment is gone. `operation_id` is `ON DELETE SET NULL`.
     """
 
     __tablename__ = "ops_benchmark_run"
@@ -1744,14 +1427,9 @@ class BenchmarkRun(BaseMixin):
 class Event(BaseMixin):
     """Observed, append-only: node joined, device degraded, load failed, OOM, preemption.
 
-    State, not telemetry — discrete, low-volume, and worth joining against. Metric
-    streams do not come through here and never enter Postgres.
-
-    `subject_type` / `subject_id` is polymorphic and has no foreign key, on purpose:
-    an event is history and must outlive the node, device or deployment it is about.
-    The table only grows on its own. `app.db.retention` (the image's `prune-events`
-    mode, run on a schedule) deletes events past a retention window once the reactor's
-    `last_event_seq` cursor has passed them.
+    State, not telemetry. `subject_id` has no foreign key so an event outlives its subject.
+    `app.db.retention` (the `prune-events` mode) deletes events past the retention window once the
+    reactor's `last_event_seq` has passed them.
     """
 
     __tablename__ = "ops_event"
@@ -1793,10 +1471,7 @@ class Event(BaseMixin):
 class CacheEntry(BaseMixin):
     """Observed residency of an artifact on a cluster or a specific node.
 
-    Read against the declared `WarmSet` to say whether intent has been met, and
-    read by the router, which can only be cache-aware if it knows where weights
-    actually are. `node_id` is nullable because residency may be a cluster-level
-    tier rather than a local disk.
+    Compared with `WarmSet` and read by the router. `node_id` is null for cluster-level tiers.
     """
 
     __tablename__ = "ops_cache_entry"
@@ -1832,13 +1507,8 @@ class CacheEntry(BaseMixin):
 class Credential(BaseMixin):
     """Declared, scoped secrets: registry pulls, HF tokens, artifact-store access.
 
-    Never cluster-admin — the plane holds no credential that can drive a cluster,
-    which is the whole point of the agent dialling out. The secret material is
-    stored by reference to an external secret store rather than inline.
-
-    `scope_type` / `scope_id` is polymorphic and has no foreign key; `scope_id` is
-    null for a fleet-scoped credential. Deleting the scoped object leaves the
-    credential row, which then applies to nothing until it is revoked or deleted.
+    Never cluster-admin. The secret is a reference to an external store. `scope_id` has no foreign
+    key and is null for a fleet-scoped credential; deleting the scoped object leaves the row.
     """
 
     __tablename__ = "ops_credential"
@@ -1872,14 +1542,8 @@ class Credential(BaseMixin):
 class AuthRefreshToken(BaseMixin):
     """A stored refresh token that survives server restarts and can be revoked.
 
-    Only the sha256 of the plaintext is stored; the plaintext is returned to the
-    client once at login/rotate and never recoverable. `name` is the principal the
-    session runs as (currently always `admin`).
-
-    `replaced_by` makes rotation an auditable chain: a token that has been rotated
-    points at the hash of its successor, which itself may point further. A token
-    with only `revoked_at` was explicitly logged out; one with both was rotated and
-    then the successor's chain was revoked.
+    Only the sha256 is stored. `name` is the principal (currently always `admin`). `replaced_by`
+    chains rotations: only `revoked_at` means logged out, both means rotated and then revoked.
     """
 
     __tablename__ = "auth_refresh_token"
@@ -1906,16 +1570,9 @@ class AuthRefreshToken(BaseMixin):
 class HubClusterClaim(BaseMixin):
     """Which hub session currently owns a cluster's stream (ADR 0005).
 
-    `SessionState` — cursors and the replay buffer — is deliberately in-process and not
-    shared across hub replicas. What must be shared is the single fact that makes sharing
-    it unnecessary: exactly one session may write for a given `cluster_id` at a time. A
-    `hello` claims the row with an atomic upsert that always wins, since a new `hello` is
-    definitionally the newer claim; the session it displaces discovers the loss by polling
-    this row rather than being told, since it may be mid-stream on another pod entirely.
-
-    Keyed by the wire `cluster_id`, not a foreign key into `supply_cluster` — the hub
-    resolves clusters lazily per frame (see `app.ingestion.sink`) and a claim must be
-    takeable before that resolution has ever happened.
+    Exactly one session writes for a `cluster_id` at a time. A `hello` claims the row with an upsert
+    that always wins; the displaced session finds out by polling. Keyed by the wire `cluster_id`, not
+    a foreign key, because clusters are resolved lazily per frame.
     """
 
     __tablename__ = "hub_cluster_claim"
@@ -1940,33 +1597,12 @@ class HubClusterClaim(BaseMixin):
 class Alert(BaseMixin):
     """A condition worth waking someone for, and the record of who has seen it.
 
-    Derived rather than observed: nothing on a cluster reports an alert, and
-    nothing declares one. The reactor writes every column here except the
-    acknowledgement, which is the one field a human writes, and it is the reason
-    this is a table at all — an alert that cannot be acknowledged is a log line.
+    Derived: the reactor writes everything except the acknowledgement. `dedupe_key` is the identity;
+    a re-fire after a resolve reopens the same row.
 
-    `dedupe_key` is the identity. One key is one ongoing problem however many
-    times it is evaluated or re-reported, so a deployment that has been behind
-    for hours is one row with a rising `occurrences`, not a row per
-    tick. It is unique, and a re-fire after a resolve reopens the same row rather
-    than starting a second history of the same fact.
-
-    `state` is a lifecycle, not a severity:
-
-    - `pending` — the condition is true but has not been true for long enough to
-      be worth a notification. This is where flapping goes to die, and where an
-      alert with a `for` window waits. Nothing is sent for a pending alert.
-    - `firing` — true for longer than the rule's window. Notified once on entry.
-    - `acknowledged` — a human has seen it. Still true, still listed, silent.
-    - `resolved` — no longer true. Auto-set for condition-sourced alerts when the
-      evaluator stops seeing them; set by hand for event-sourced ones, which have
-      no way to know that whatever happened has stopped being a problem.
-
-    `source` is what makes that split work. A `condition` alert is level-triggered
-    — the evaluator recomputes the whole firing set every tick, so absence is
-    evidence and auto-resolution is sound. An `event` alert is edge-triggered off
-    a row in `ops_event`, where absence means nothing at all: the event happened,
-    and the log will never say it un-happened.
+    `state` is `pending` (true, not yet for long enough; nothing sent), `firing` (notified once),
+    `acknowledged` (seen, silent) or `resolved`. Condition alerts resolve automatically when the
+    evaluator stops seeing them; event alerts are resolved by hand, since an event never un-happens.
     """
 
     __tablename__ = "ops_alert"
@@ -1988,7 +1624,7 @@ class Alert(BaseMixin):
     )
     subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
     subject_uid: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    """The subject's public id rather than a foreign key, so the alert outlives the row it is about."""
+    """The subject's public id, not a foreign key, so the alert outlives the row it is about."""
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -2013,21 +1649,9 @@ class Alert(BaseMixin):
 class AlertThreshold(BaseMixin):
     """An operator-declared threshold on a named metric. Declared state, written through the API.
 
-    What makes an alert rule data rather than a constant compiled into `app/reactor/rules.py`. A
-    number that only exists in Python cannot be different for one endpoint than for the fleet,
-    cannot be raised at three in the morning without a release, and cannot be shown next to the
-    alert it produced.
-
-    `subject_uid` null is the fleet default for that rule, and a row with a uid overrides it for
-    that subject. That is exactly why the scope index is `NULLS NOT DISTINCT`: under the default
-    rule two NULLs are distinct, so two fleet defaults for one rule would both be admitted and
-    which one the evaluator read would be whichever the planner returned that day.
-
-    `subject_uid` carries no foreign key, the same departure `Alert.subject_uid` makes and for the
-    same reasons: a declared threshold outlives the endpoint or deployment it was written about,
-    and a `gateway` subject has no row in this database to point at at all.
-
-    `lookback` is named `lookback` and not `window` because `WINDOW` is reserved in Postgres.
+    `subject_uid` null is the fleet default for the rule; a uid overrides it. The scope index is
+    `NULLS NOT DISTINCT` so a rule has one fleet default. No foreign key on `subject_uid`. `lookback`
+    because `WINDOW` is reserved in Postgres.
     """
 
     __tablename__ = "ops_alert_threshold"
@@ -2061,14 +1685,8 @@ class AlertThreshold(BaseMixin):
 class NotificationChannel(BaseMixin):
     """Where a firing alert is sent. Declared configuration, written through the API.
 
-    `config` is per-kind and holds the credential: for `slack`, a webhook URL,
-    which is a bearer secret in URL form. It is never returned by the API — the
-    schema sends a redacted hint instead — because a console that displays it
-    turns every screenshot into a credential leak.
-
-    `min_severity` is the filter, and it is per-channel rather than global so that
-    a channel can be added for `critical` only without changing what anything else
-    receives.
+    `config` holds the credential (for `slack`, the webhook URL) and is never returned by the API.
+    `min_severity` filters per channel.
     """
 
     __tablename__ = "ops_notification_channel"
@@ -2085,20 +1703,9 @@ class NotificationChannel(BaseMixin):
 class ReactorState(BaseMixin):
     """The reactor's lease and its cursor, in one row because they are one fact.
 
-    Named rather than keyed by instance: there is one row, `default`, and holding
-    it is what entitles a process to evaluate conditions and notify. Two hubs
-    evaluating at once would each open the same alerts — idempotent, by
-    `dedupe_key` — but would also each send the notification, which is not.
-
-    The lease is a compare-and-swap on `holder` and `lease_expires_at` rather than
-    a Postgres advisory lock, for the same reason `hub_cluster_claim` is a table:
-    a lock is invisible to everything that is not currently holding a connection,
-    and "which process is reacting, and since when" is a question worth being able
-    to answer with a select.
-
-    `last_event_seq` is the cursor into `ops_event.seq`. Events are matched into
-    alerts from there forward, so a reactor that has been down comes back and
-    works through what it missed instead of skipping to now.
+    One row, `default`; holding the lease entitles a process to evaluate and notify. The lease is a
+    compare-and-swap on `holder` and `lease_expires_at` so it is visible to a select.
+    `last_event_seq` is the cursor into `ops_event.seq`, so a reactor that was down catches up.
     """
 
     __tablename__ = "ops_reactor_state"
