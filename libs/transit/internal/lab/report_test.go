@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/load"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/load"
 )
 
 func stage(concurrency, requests, succeeded int, ttftP99 time.Duration) Stage {

@@ -111,18 +111,18 @@ func TestProcessUsageReadsThisProcess(t *testing.T) {
 
 func TestSumGauge(t *testing.T) {
 	exposition := strings.Join([]string{
-		"# HELP hangar_gateway_tunnels Live tunnels.",
-		"# TYPE hangar_gateway_tunnels gauge",
-		`hangar_gateway_tunnels{cluster_id="clu_a"} 2`,
-		`hangar_gateway_tunnels{cluster_id="clu_b"} 3`,
-		`hangar_gateway_tunnels_total 99`,
-		`hangar_gateway_tunnel_coverage{cluster_id="clu_a",cluster="a"} 1`,
+		"# HELP wingsmith_gateway_tunnels Live tunnels.",
+		"# TYPE wingsmith_gateway_tunnels gauge",
+		`wingsmith_gateway_tunnels{cluster_id="clu_a"} 2`,
+		`wingsmith_gateway_tunnels{cluster_id="clu_b"} 3`,
+		`wingsmith_gateway_tunnels_total 99`,
+		`wingsmith_gateway_tunnel_coverage{cluster_id="clu_a",cluster="a"} 1`,
 	}, "\n")
-	total, ok := sumGauge(strings.NewReader(exposition), "hangar_gateway_tunnels")
+	total, ok := sumGauge(strings.NewReader(exposition), "wingsmith_gateway_tunnels")
 	if !ok || total != 5 {
 		t.Fatalf("sumGauge = %v, %v; want 5", total, ok)
 	}
-	if _, ok := sumGauge(strings.NewReader("# TYPE hangar_gateway_tunnels gauge\n"), "hangar_gateway_tunnels"); ok {
+	if _, ok := sumGauge(strings.NewReader("# TYPE wingsmith_gateway_tunnels gauge\n"), "wingsmith_gateway_tunnels"); ok {
 		t.Fatal("no samples should report false")
 	}
 }

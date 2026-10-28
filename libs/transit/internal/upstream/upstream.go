@@ -89,9 +89,9 @@ func New(profile Profile) *Server {
 type request struct {
 	Model  string `json:"model"`
 	Stream bool   `json:"stream"`
-	TTFTMs *int   `json:"hangar_ttft_ms"`
-	ITLMs  *int   `json:"hangar_itl_ms"`
-	Tokens *int   `json:"hangar_tokens"`
+	TTFTMs *int   `json:"wingsmith_ttft_ms"`
+	ITLMs  *int   `json:"wingsmith_itl_ms"`
+	Tokens *int   `json:"wingsmith_tokens"`
 }
 
 // Stats is what the frontend saw, for the report.
@@ -124,7 +124,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"transit","object":"model","owned_by":"hangar"}]}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"transit","object":"model","owned_by":"wingsmith"}]}`))
 	})
 	mux.HandleFunc("POST /v1/chat/completions", s.complete)
 	mux.HandleFunc("POST /v1/completions", s.complete)

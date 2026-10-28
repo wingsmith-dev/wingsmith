@@ -46,16 +46,16 @@ func (a *agentSet) start(i int) error {
 	}
 	cmd := exec.CommandContext(a.ctx, a.spec.binary)
 	cmd.Env = append(os.Environ(),
-		"HANGAR_CLUSTER_ID="+clusterName,
-		"HANGAR_TUNNEL_GATEWAY="+a.spec.gateway,
-		"HANGAR_ENROLMENT_TOKEN="+tunnelToken,
-		"HANGAR_TUNNEL_TLS=false",
-		"HANGAR_INFERENCE_ENDPOINT="+a.spec.frontend,
-		"HANGAR_HEALTH_ADDR=127.0.0.1:"+strconv.Itoa(health),
-		"HANGAR_TUNNEL_CONNS_PER_GATEWAY="+strconv.Itoa(a.spec.conns),
-		"HANGAR_TUNNEL_MAX_CONCURRENT_STREAMS="+strconv.Itoa(a.spec.maxStreams),
-		"HANGAR_LOG_FORMAT=text",
-		"HANGAR_DRAIN_TIMEOUT=10s",
+		"WINGSMITH_CLUSTER_ID="+clusterName,
+		"WINGSMITH_TUNNEL_GATEWAY="+a.spec.gateway,
+		"WINGSMITH_ENROLMENT_TOKEN="+tunnelToken,
+		"WINGSMITH_TUNNEL_TLS=false",
+		"WINGSMITH_INFERENCE_ENDPOINT="+a.spec.frontend,
+		"WINGSMITH_HEALTH_ADDR=127.0.0.1:"+strconv.Itoa(health),
+		"WINGSMITH_TUNNEL_CONNS_PER_GATEWAY="+strconv.Itoa(a.spec.conns),
+		"WINGSMITH_TUNNEL_MAX_CONCURRENT_STREAMS="+strconv.Itoa(a.spec.maxStreams),
+		"WINGSMITH_LOG_FORMAT=text",
+		"WINGSMITH_DRAIN_TIMEOUT=10s",
 	)
 	pipe(cmd, a.spec.verbose, "agent-"+strconv.Itoa(i))
 	if err := cmd.Start(); err != nil {

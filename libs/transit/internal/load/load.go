@@ -26,7 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/upstream"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/upstream"
 )
 
 // Request is one completion, repeated.
@@ -353,13 +353,13 @@ func encode(req Request) ([]byte, error) {
 		fields["stream_options"] = map[string]any{"include_usage": true}
 	}
 	if req.Schedule.TTFT > 0 {
-		fields["hangar_ttft_ms"] = int(req.Schedule.TTFT / time.Millisecond)
+		fields["wingsmith_ttft_ms"] = int(req.Schedule.TTFT / time.Millisecond)
 	}
 	if req.Schedule.ITL > 0 {
-		fields["hangar_itl_ms"] = int(req.Schedule.ITL / time.Millisecond)
+		fields["wingsmith_itl_ms"] = int(req.Schedule.ITL / time.Millisecond)
 	}
 	if req.Schedule.Tokens > 0 {
-		fields["hangar_tokens"] = req.Schedule.Tokens
+		fields["wingsmith_tokens"] = req.Schedule.Tokens
 		fields["max_tokens"] = req.Schedule.Tokens
 	}
 	return json.Marshal(fields)
@@ -372,7 +372,7 @@ func prompt(n int) string {
 	var b strings.Builder
 	b.Grow(n)
 	for b.Len() < n {
-		b.WriteString("hangar transit probe. ")
+		b.WriteString("wingsmith transit probe. ")
 	}
 	return b.String()[:n]
 }

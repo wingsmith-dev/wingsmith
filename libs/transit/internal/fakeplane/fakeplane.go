@@ -113,7 +113,7 @@ type Config struct {
 	// rejection path reachable from a run.
 	Clusters map[string]Cluster
 	// ServiceToken is the bearer the gateway presents, the value it reads from
-	// HANGAR_GATEWAY_SERVICE_TOKEN. Empty accepts anything.
+	// WINGSMITH_GATEWAY_SERVICE_TOKEN. Empty accepts anything.
 	ServiceToken string
 }
 

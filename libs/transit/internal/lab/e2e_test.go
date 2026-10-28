@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/load"
-	"github.com/hangar-dev/hangar/libs/transit/internal/upstream"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/load"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/upstream"
 )
 
 // TestSyntheticPathEndToEnd builds the real gateway and agent from this
 // checkout and runs one short stage through them against the fake plane. It is
 // the test that proves the fake still serves what the gateway needs to start.
-// It compiles two binaries, so it runs only when HANGAR_TRANSIT_E2E is set;
+// It compiles two binaries, so it runs only when WINGSMITH_TRANSIT_E2E is set;
 // `just transit-smoke` is the same check from the command line.
 func TestSyntheticPathEndToEnd(t *testing.T) {
-	if os.Getenv("HANGAR_TRANSIT_E2E") == "" || testing.Short() {
-		t.Skip("set HANGAR_TRANSIT_E2E=1 to build the gateway and agent and run the path")
+	if os.Getenv("WINGSMITH_TRANSIT_E2E") == "" || testing.Short() {
+		t.Skip("set WINGSMITH_TRANSIT_E2E=1 to build the gateway and agent and run the path")
 	}
 	repo, err := FindRepo(".")
 	if err != nil {

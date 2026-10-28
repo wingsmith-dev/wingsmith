@@ -1,4 +1,4 @@
-// Command hgrtransit measures hangar's inference request path.
+// Command wingstransit measures wingsmith's inference request path.
 //
 // One tool, three environments. `synthetic` builds the path on this host (the
 // real gateway and the real agent over the real tunnel, with a fake control
@@ -6,7 +6,7 @@
 // laptop and CI run. `live` points the same generator and the same report at a
 // gateway somebody has deployed. `path` holds the built gateway and agent open
 // in front of a frontend somebody else runs, for a client-side check such as
-// hgrconform. `upstream` and `plane` expose the two fakes on their own, for a
+// wingsconform. `upstream` and `plane` expose the two fakes on their own, for a
 // caller assembling something this tool does not.
 //
 // The report is the same shape in every mode by design: a number from a laptop
@@ -25,10 +25,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/fakeplane"
-	"github.com/hangar-dev/hangar/libs/transit/internal/lab"
-	"github.com/hangar-dev/hangar/libs/transit/internal/load"
-	"github.com/hangar-dev/hangar/libs/transit/internal/upstream"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/fakeplane"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/lab"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/load"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/upstream"
 )
 
 func main() {
@@ -60,13 +60,13 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "hgrtransit:", err)
+		fmt.Fprintln(os.Stderr, "wingstransit:", err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `hgrtransit: measure the gateway → tunnel → agent → frontend path
+	fmt.Fprint(os.Stderr, `wingstransit: measure the gateway → tunnel → agent → frontend path
 
   synthetic   build the path on this host and ramp through it
   live        ramp against a deployed gateway
@@ -184,9 +184,9 @@ func live(ctx context.Context, args []string) error {
 		}
 	}
 
-	token := os.Getenv("HANGAR_API_KEY")
+	token := os.Getenv("WINGSMITH_API_KEY")
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "hgrtransit: HANGAR_API_KEY is unset, sending no credential")
+		fmt.Fprintln(os.Stderr, "wingstransit: WINGSMITH_API_KEY is unset, sending no credential")
 	}
 
 	report, err := lab.RunLive(ctx, lab.LiveOptions{
@@ -206,7 +206,7 @@ func live(ctx context.Context, args []string) error {
 
 // path holds the real gateway and agent open in front of a frontend this tool
 // did not start, and prints the gateway's URL once a tunnel is up. Callers use
-// the public listener with HANGAR_API_KEY as their tenant key.
+// the public listener with WINGSMITH_API_KEY as their tenant key.
 func path(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("path", flag.ExitOnError)
 	repo := fs.String("repo", "", "the checkout to build the gateway and agent from; empty finds it above the working directory")
@@ -220,9 +220,9 @@ func path(ctx context.Context, args []string) error {
 	if *frontendURL == "" {
 		return fmt.Errorf("path needs -frontend")
 	}
-	key := os.Getenv("HANGAR_API_KEY")
+	key := os.Getenv("WINGSMITH_API_KEY")
 	if key == "" {
-		return fmt.Errorf("path needs HANGAR_API_KEY, the tenant key the gateway will accept")
+		return fmt.Errorf("path needs WINGSMITH_API_KEY, the tenant key the gateway will accept")
 	}
 	root := *repo
 	if root == "" {
@@ -242,7 +242,7 @@ func path(ctx context.Context, args []string) error {
 		Model:    *model,
 		Verbose:  *verbose,
 	}, func(url string) {
-		fmt.Fprintf(os.Stderr, "hgrtransit: path ready on %s for model %s\n", url, *model)
+		fmt.Fprintf(os.Stderr, "wingstransit: path ready on %s for model %s\n", url, *model)
 	})
 }
 
@@ -259,7 +259,7 @@ func frontend(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "hgrtransit: fake frontend on %s\n", *addr)
+	fmt.Fprintf(os.Stderr, "wingstransit: fake frontend on %s\n", *addr)
 	return listen(ctx, *addr, upstream.New(profile).Handler())
 }
 
@@ -268,7 +268,7 @@ func plane(ctx context.Context, args []string) error {
 	addr := fs.String("listen", "127.0.0.1:9901", "listen address")
 	cluster := fs.String("cluster", "cluster-transit", "the cluster id every token resolves to")
 	token := fs.String("token", "transit-enrolment-token", "the enrolment token accepted")
-	service := fs.String("service-token", "transit-gateway-service-token", "the bearer the gateway must present (its HANGAR_GATEWAY_SERVICE_TOKEN)")
+	service := fs.String("service-token", "transit-gateway-service-token", "the bearer the gateway must present (its WINGSMITH_GATEWAY_SERVICE_TOKEN)")
 	model := fs.String("model", "transit-model", "the endpoint name served")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -293,7 +293,7 @@ func plane(ctx context.Context, args []string) error {
 			}},
 		},
 	})
-	fmt.Fprintf(os.Stderr, "hgrtransit: fake plane on %s\n", *addr)
+	fmt.Fprintf(os.Stderr, "wingstransit: fake plane on %s\n", *addr)
 	return listen(ctx, *addr, server.Handler())
 }
 

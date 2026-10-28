@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/load"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/load"
 )
 
 // SLO is the condition a capacity number is only true under.
@@ -62,7 +62,7 @@ type Stage struct {
 	// caller and the frontend was holding them.
 	UpstreamPeak int64 `json:"upstream_peak_in_flight"`
 	// Tunnels is how many tunnels the gateway reported holding at the end of
-	// the stage, read from its own hangar_gateway_tunnels gauge; nil when it
+	// the stage, read from its own wingsmith_gateway_tunnels gauge; nil when it
 	// could not be read, which is every live run. ConfiguredTunnels is how many
 	// the agents were asked to open; a gap between the two is tunnels that
 	// never came up or were lost.
@@ -185,7 +185,7 @@ func (r *Report) Err() error {
 
 // WriteText renders the report for a terminal.
 func (r *Report) WriteText(w io.Writer) {
-	fmt.Fprintf(w, "\nhgrtransit: %s mode, %s\n", r.Mode, r.Topology)
+	fmt.Fprintf(w, "\nwingstransit: %s mode, %s\n", r.Mode, r.Topology)
 	fmt.Fprintf(w, "target %s, started %s\n\n", r.Target, r.Started.Format(time.RFC3339))
 
 	fmt.Fprintf(w, "%5s %7s %6s %9s %9s %9s %9s %9s %8s %8s %9s\n",

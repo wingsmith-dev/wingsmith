@@ -32,9 +32,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/fakeplane"
-	"github.com/hangar-dev/hangar/libs/transit/internal/load"
-	"github.com/hangar-dev/hangar/libs/transit/internal/upstream"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/fakeplane"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/load"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/upstream"
 )
 
 // Options configures a synthetic run.
@@ -89,7 +89,7 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 		opts.ConnsPerGateway = 2
 	}
 
-	workdir, err := os.MkdirTemp("", "hgrtransit-")
+	workdir, err := os.MkdirTemp("", "wingstransit-")
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,7 @@ func startGateway(ctx context.Context, binary, listen, planeAddr string, verbose
 		"-gateways", "1",
 		"-resync", "60s",
 	)
-	cmd.Env = append(os.Environ(), "HANGAR_GATEWAY_SERVICE_TOKEN="+serviceToken)
+	cmd.Env = append(os.Environ(), "WINGSMITH_GATEWAY_SERVICE_TOKEN="+serviceToken)
 	cmd.Env = append(cmd.Env, env...)
 	pipe(cmd, verbose, "gateway")
 	if err := cmd.Start(); err != nil {
@@ -374,13 +374,13 @@ const pathTenant = "tenant-transit"
 // held, and keeps it up until ctx ends. Callers reach it the way a direct
 // tenant reaches a deployed gateway: on the public listener, with an API key
 // the gateway checks against the hash the plane hands it. It is how a
-// client-side check such as hgrconform is pointed at a real gateway without a
+// client-side check such as wingsconform is pointed at a real gateway without a
 // cluster.
 func ServePath(ctx context.Context, opts PathOptions, ready func(url string)) error {
 	if opts.Frontend == "" || opts.Model == "" || opts.Listen == "" || opts.Key == "" {
 		return errors.New("a path needs a frontend, a model, a listen address and a key")
 	}
-	workdir, err := os.MkdirTemp("", "hgrtransit-")
+	workdir, err := os.MkdirTemp("", "wingstransit-")
 	if err != nil {
 		return err
 	}
@@ -423,7 +423,7 @@ func ServePath(ctx context.Context, opts PathOptions, ready func(url string)) er
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	gw, err := startGateway(runCtx, gatewayBin, "127.0.0.1:"+strconv.Itoa(internalPort), planeAddr, opts.Verbose,
-		"HANGAR_GATEWAY_PUBLIC_LISTEN="+opts.Listen)
+		"WINGSMITH_GATEWAY_PUBLIC_LISTEN="+opts.Listen)
 	if err != nil {
 		return err
 	}
@@ -492,7 +492,7 @@ func isRepo(dir string) bool {
 }
 
 // liveTunnels reads how many tunnels the gateway holds from its own
-// hangar_gateway_tunnels gauge, summed over clusters, or nil when it cannot.
+// wingsmith_gateway_tunnels gauge, summed over clusters, or nil when it cannot.
 func liveTunnels(ctx context.Context, metricsURL string) *int {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -508,7 +508,7 @@ func liveTunnels(ctx context.Context, metricsURL string) *int {
 	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
-	total, _ := sumGauge(resp.Body, "hangar_gateway_tunnels")
+	total, _ := sumGauge(resp.Body, "wingsmith_gateway_tunnels")
 	held := int(total)
 	return &held
 }

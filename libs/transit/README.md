@@ -1,11 +1,11 @@
 # transit: how far the request path scales, and what stops it
 
-`hgrtransit` measures hangar's data path: **public client → gateway → tunnel → agent → the local
+`wingstransit` measures wingsmith's data path: **public client → gateway → tunnel → agent → the local
 OpenAI-compatible frontend**. It answers two questions, in this order: *where is the bottleneck*
 and *how much can one gateway replica carry*. It answers them without a GPU, without
 Kubernetes, and without a model.
 
-It is not `hgrbench`. That measures an engine on real hardware. This measures the plumbing, with the
+It is not `wingsbench`. That measures an engine on real hardware. This measures the plumbing, with the
 engine replaced by a stopwatch.
 
 ## The three environments, and what each is allowed to prove
@@ -25,7 +25,7 @@ seconds and share a queue with real customers. The default ramp is `1,2,4` and a
 `-max-concurrency 8` is refused outright, so the default posture is a probe instead of a load test.
 Raising it is a decision, and it should be taken with the same seriousness as pointing a load
 generator at any customer path: pick a low-traffic window, watch the gateway's own
-`hangar_gateway_*` series while it runs, and stop when the endpoint's latency moves. What is always
+`wingsmith_gateway_*` series while it runs, and stop when the endpoint's latency moves. What is always
 safe is the shape of it (one caller, a handful of streams, for twenty seconds), which is enough to
 compare production's TTFT distribution against the lab's.
 
@@ -70,7 +70,7 @@ guess:
 2. **Per-process cost.** CPU and RSS of the gateway and each agent, polled every second. CPU is the
    process's accumulated user and system time differenced between polls, so each figure is the share
    of a core used in that second; mean and peak are reported per stage. The gateway's own
-   `hangar_gateway_tunnels` gauge is read at the end of each stage and printed beside the number of
+   `wingsmith_gateway_tunnels` gauge is read at the end of each stage and printed beside the number of
    tunnels the agents were configured to open.
 3. **Where requests were held.** The frontend's own peak in-flight count against the concurrency
    offered. Fewer means something between the caller and the frontend held them (stream limits,
@@ -92,9 +92,9 @@ just transit-smoke                 # the CI shape: short, no baseline, JSON out
 just transit-live https://gateway.example.com my-model
 ```
 
-`hgrtransit path -frontend <url>` builds the same gateway and agent and holds them open in front
+`wingstransit path -frontend <url>` builds the same gateway and agent and holds them open in front
 of a frontend you run, with no load of its own. The gateway serves its public listener on
-`-listen` (default `127.0.0.1:8080`) for one tenant whose key is `HANGAR_API_KEY`, and routes
+`-listen` (default `127.0.0.1:8080`) for one tenant whose key is `WINGSMITH_API_KEY`, and routes
 `-model` (default `gpt-oss-120b`) to the frontend. `just conformance-gateway` uses it to run the
 conformance probes through a real gateway.
 
@@ -105,11 +105,11 @@ gateway and agent from the checkout above the working directory; `-repo` points 
 The fake plane answers the three routes the plane allows the gateway's service principal:
 `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` (an empty tenant table) and
 `POST /v1/clusters/tunnel-auth`. The harness starts the gateway with
-`HANGAR_GATEWAY_SERVICE_TOKEN` set to the token it accepts. Its wire types are checked against the
-gateway's plane client by `go test`, and `HANGAR_TRANSIT_E2E=1 go test ./internal/lab/` boots the
+`WINGSMITH_GATEWAY_SERVICE_TOKEN` set to the token it accepts. Its wire types are checked against the
+gateway's plane client by `go test`, and `WINGSMITH_TRANSIT_E2E=1 go test ./internal/lab/` boots the
 real gateway and agent against it.
 
-`live` sends `HANGAR_API_KEY` as its bearer token: a tenant API key for the endpoint under
+`live` sends `WINGSMITH_API_KEY` as its bearer token: a tenant API key for the endpoint under
 test.
 
 Useful flags on `synthetic`:

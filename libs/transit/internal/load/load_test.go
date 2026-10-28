@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/transit/internal/upstream"
+	"github.com/wingsmith-dev/wingsmith/libs/transit/internal/upstream"
 )
 
 func frontend(t *testing.T, profile upstream.Profile) string {
