@@ -305,7 +305,7 @@ func (e severedError) Unwrap() error { return e.err }
 // oneCompletion sends one streaming completion and reads it to the end.
 func oneCompletion(transport http.RoundTripper, id string) error {
 	req, err := http.NewRequest(http.MethodPost, "https://ignored/v1/chat/completions",
-		strings.NewReader(`{"model":"llama-3-70b","stream":true}`))
+		strings.NewReader(`{"model":"gpt-oss-120b","stream":true}`))
 	if err != nil {
 		return err
 	}

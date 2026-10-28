@@ -16,7 +16,7 @@ func servingDeployment(name string, replicas int32, ready int32, labels map[stri
 			Name:        name,
 			Namespace:   "serving",
 			Labels:      labels,
-			Annotations: map[string]string{annotationModel: "meta-llama/Llama-3.1-70B-Instruct"},
+			Annotations: map[string]string{annotationModel: "openai/gpt-oss-120b"},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -64,9 +64,9 @@ func ownedGPUPod(name, node, rsName, hash string, gpus int64, labels map[string]
 // without ever reading a ReplicaSet.
 func TestDiscoveryFindsWorkloadsThePlaneNeverDeclared(t *testing.T) {
 	d := newKubeDiscoverer(t,
-		servingDeployment("llama-70b-vllm", 2, 2, nil),
-		ownedGPUPod("llama-70b-vllm-7d9f4-aaaaa", "gpu-a", "llama-70b-vllm-7d9f4", "7d9f4", 4, nil),
-		ownedGPUPod("llama-70b-vllm-7d9f4-bbbbb", "gpu-b", "llama-70b-vllm-7d9f4", "7d9f4", 4, nil),
+		servingDeployment("gpt-oss-120b-vllm", 2, 2, nil),
+		ownedGPUPod("gpt-oss-120b-vllm-7d9f4-aaaaa", "gpu-a", "gpt-oss-120b-vllm-7d9f4", "7d9f4", 4, nil),
+		ownedGPUPod("gpt-oss-120b-vllm-7d9f4-bbbbb", "gpu-b", "gpt-oss-120b-vllm-7d9f4", "7d9f4", 4, nil),
 	)
 
 	snapshot, err := d.Discover(context.Background())
@@ -77,7 +77,7 @@ func TestDiscoveryFindsWorkloadsThePlaneNeverDeclared(t *testing.T) {
 		t.Fatalf("want 1 discovered workload, got %d: %+v", len(snapshot.Workloads), snapshot.Workloads)
 	}
 	w := snapshot.Workloads[0]
-	if w.Name != "llama-70b-vllm" || w.Kind != kindDeployment || w.Namespace != "serving" {
+	if w.Name != "gpt-oss-120b-vllm" || w.Kind != kindDeployment || w.Namespace != "serving" {
 		t.Fatalf("wrong identity: %+v", w)
 	}
 	if w.ReplicasDesired != 2 || w.ReplicasReady != 2 {
@@ -86,7 +86,7 @@ func TestDiscoveryFindsWorkloadsThePlaneNeverDeclared(t *testing.T) {
 	if w.DevicesTotal != 8 || w.DevicesPerReplica != 4 {
 		t.Fatalf("want 8 devices over 4 per replica, got %d over %d", w.DevicesTotal, w.DevicesPerReplica)
 	}
-	if w.Model != "meta-llama/Llama-3.1-70B-Instruct" {
+	if w.Model != "openai/gpt-oss-120b" {
 		t.Fatalf("model hint not read: %q", w.Model)
 	}
 	if len(w.Images) != 1 || w.Images[0] != "ghcr.io/acme/vllm:0.9.1" {
@@ -155,12 +155,12 @@ func TestDiscoveryIgnoresWorkloadsHoldingNoDevices(t *testing.T) {
 // TestDiscoveredWorkloadIDsAreStable: the decision to track a workload is stored against this id,
 // so two operators, or one operator across a restart, must derive the same one.
 func TestDiscoveredWorkloadIDsAreStable(t *testing.T) {
-	a := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "llama-70b-vllm")
-	b := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "llama-70b-vllm")
+	a := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
+	b := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
 	if a != b {
 		t.Fatalf("id is not a pure function of the observation: %s != %s", a, b)
 	}
-	if other := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaab", "serving", kindDeployment, "llama-70b-vllm"); other == a {
+	if other := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaab", "serving", kindDeployment, "gpt-oss-120b-vllm"); other == a {
 		t.Fatal("the same workload name in two clusters minted one id")
 	}
 	if len(a) != 30 || a[:4] != workloadPrefix {
@@ -172,7 +172,7 @@ func TestDiscoveredWorkloadIDsAreStable(t *testing.T) {
 // re-sending an unchanged sighting would spend the queue's replacement slots for nothing.
 func TestObserverSendsDiscoveredWorkloadsOnceUntilTheyChange(t *testing.T) {
 	workload := Workload{
-		Namespace: "serving", Name: "llama-70b-vllm", Kind: kindDeployment,
+		Namespace: "serving", Name: "gpt-oss-120b-vllm", Kind: kindDeployment,
 		ReplicasDesired: 2, ReplicasReady: 2, DevicesPerReplica: 4, DevicesTotal: 8,
 		Nodes: []string{"gpu-a"},
 	}

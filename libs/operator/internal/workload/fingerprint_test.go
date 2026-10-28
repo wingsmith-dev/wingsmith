@@ -15,7 +15,7 @@ func podSpec() *corev1.PodSpec {
 			Name:    "server",
 			Image:   "ghcr.io/wingsmith-dev/vllm:0.9.3",
 			Command: []string{"/bin/vllm"},
-			Args:    []string{"--model", "meta-llama/Llama-3.1-8B"},
+			Args:    []string{"--model", "Qwen/Qwen3.5-9B"},
 			Env: []corev1.EnvVar{
 				{Name: "HF_HOME", Value: "/weights"},
 				{Name: "VLLM_LOGGING_LEVEL", Value: "INFO"},
@@ -55,7 +55,7 @@ func TestFingerprintMovesWithWhatIsRunning(t *testing.T) {
 	}{
 		{"image", func(s *corev1.PodSpec) { s.Containers[0].Image = "ghcr.io/wingsmith-dev/vllm:0.9.4" }},
 		{"command", func(s *corev1.PodSpec) { s.Containers[0].Command = []string{"/bin/other"} }},
-		{"args", func(s *corev1.PodSpec) { s.Containers[0].Args = []string{"--model", "meta-llama/Llama-3.1-70B"} }},
+		{"args", func(s *corev1.PodSpec) { s.Containers[0].Args = []string{"--model", "Qwen/Qwen3.8-27B"} }},
 		{"env value", func(s *corev1.PodSpec) { s.Containers[0].Env[0].Value = "/elsewhere" }},
 		{"env added", func(s *corev1.PodSpec) {
 			s.Containers[0].Env = append(s.Containers[0].Env, corev1.EnvVar{Name: "EXTRA", Value: "1"})

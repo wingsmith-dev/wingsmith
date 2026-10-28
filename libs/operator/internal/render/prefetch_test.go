@@ -226,7 +226,7 @@ func TestAPrefetchJobNameLeadsWithTheModel(t *testing.T) {
 	}{
 		{sourced("art_01J9X2", "hf://moonshotai/Kimi-K3"), "kimi-k3-prefetch-art-01j9x2"},
 		{sourced("ART_ABC", "hf://Qwen/Qwen3-8B@main"), "qwen3-8b-prefetch-art-abc"},
-		{sourced("art_01J9X2", "s3://weights/custom/llama.safetensors"), "llama-safetensors-prefetch-art-01j9x2"},
+		{sourced("art_01J9X2", "s3://weights/custom/glm.safetensors"), "glm-safetensors-prefetch-art-01j9x2"},
 	}
 	for _, tc := range cases {
 		if got := PrefetchJobName(tc.art); got != tc.want {
@@ -374,7 +374,7 @@ func TestProgressIsCountedOnlyUnderTheModelBeingFetched(t *testing.T) {
 func TestSlug(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"Kimi-K3", "kimi-k3"},
-		{"Llama-3.1-8B-Instruct.safetensors", "llama-3-1-8b-instruct-safetensors"},
+		{"Qwen3.5-9B.safetensors", "qwen3-5-9b-safetensors"},
 		{"..weird..name..", "weird-name"},
 		{"----", ""},
 	} {

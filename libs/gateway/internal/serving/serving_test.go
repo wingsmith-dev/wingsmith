@@ -432,7 +432,7 @@ func TestCredentialHeadersAreStampedOnTheOutboundLegOnly(t *testing.T) {
 func TestModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 	server, _ := upstreamServer(t)
 	route := routeTo(t, server.URL, nil)
-	route.Upstreams[0].ServedModelName = "llama-3-3-70b-instruct-fp8-tp2-32k"
+	route.Upstreams[0].ServedModelName = "gpt-oss-120b-mxfp4-tp2-32k"
 	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
 
 	rec := httptest.NewRecorder()
@@ -446,7 +446,7 @@ func TestModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &forwarded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if forwarded["model"] != "llama-3-3-70b-instruct-fp8-tp2-32k" {
+	if forwarded["model"] != "gpt-oss-120b-mxfp4-tp2-32k" {
 		t.Fatalf("model = %v, want the served name", forwarded["model"])
 	}
 	if forwarded["stream"] != true {
@@ -505,7 +505,7 @@ func TestWithModelReencodesARepeatedModel(t *testing.T) {
 
 func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 	body := []byte(`{"model":"chat","temperature":0.7,"tools":[{"type":"function"}],"n":2}`)
-	out, err := withModel(body, "llama-tp2")
+	out, err := withModel(body, "gpt-oss-tp2")
 	if err != nil {
 		t.Fatalf("withModel: %v", err)
 	}
@@ -513,7 +513,7 @@ func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 	if err := json.Unmarshal(out, &fields); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if string(fields["model"]) != `"llama-tp2"` {
+	if string(fields["model"]) != `"gpt-oss-tp2"` {
 		t.Fatalf("model = %s", fields["model"])
 	}
 	for key, want := range map[string]string{

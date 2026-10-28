@@ -170,7 +170,7 @@ func TestStreamingArrivesTokenByToken(t *testing.T) {
 // runLockStepStream releases one chunk at a time and refuses to release the next
 // until it has read the last.
 func runLockStepStream(base, id string, gate chan struct{}) error {
-	body := strings.NewReader(`{"model":"llama-3-70b","stream":true}`)
+	body := strings.NewReader(`{"model":"gpt-oss-120b","stream":true}`)
 	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", body)
 	if err != nil {
 		return err

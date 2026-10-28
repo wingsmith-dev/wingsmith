@@ -26,7 +26,7 @@ import (
 const (
 	benchID    = "bmr_01j9x2cccccccccccccccccccc"
 	benchNS    = "dynamo"
-	benchModel = "meta-llama/Llama-3.1-8B"
+	benchModel = "Qwen/Qwen3.5-9B"
 )
 
 // bothRecorder keeps the two frame kinds apart: an operation reports that the errand finished, and

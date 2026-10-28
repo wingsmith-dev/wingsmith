@@ -68,7 +68,7 @@ type Upstream struct {
 	// through. Empty means the plane had nothing to say, and then the caller's
 	// own string is forwarded untouched.
 	//
-	// It used to be a fit's name (`llama-3-3-70b-instruct-fp8-tp2-32k`), which
+	// It used to be a fit's name (`gpt-oss-120b-mxfp4-tp2-32k`), which
 	// put the hardware footprint on the public API surface, so re-fitting a model
 	// at a different tensor degree renamed the model every client codes against.
 	ServedModelName string

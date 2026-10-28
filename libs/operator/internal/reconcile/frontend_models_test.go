@@ -176,7 +176,7 @@ func TestTheProbeReadsTheOpenAIModelList(t *testing.T) {
 		if req.URL.Path != "/v1/models" {
 			t.Errorf("asked for %q", req.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"meta-llama/llama-3.1-70b","object":"model"}]}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"openai/gpt-oss-120b","object":"model"}]}`))
 	}))
 	defer server.Close()
 
@@ -191,7 +191,7 @@ func TestTheProbeReadsTheOpenAIModelList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("serving: %v", err)
 	}
-	if len(ids) != 1 || ids[0] != "meta-llama/llama-3.1-70b" {
+	if len(ids) != 1 || ids[0] != "openai/gpt-oss-120b" {
 		t.Errorf("ids = %v", ids)
 	}
 }

@@ -531,7 +531,7 @@ func PrefetchModel(art wire.ArtifactDesired) string {
 // slug reduces a model name to what a DNS-1123 object name and a label value may both contain.
 //
 // A run of unusable characters collapses to one separator instead of one each, because the input
-// is a repo id or a file name and `Llama-3.1-8B-Instruct.safetensors` should read as a model and
+// is a repo id or a file name and `Qwen3.5-9B.safetensors` should read as a model and
 // not as its own punctuation.
 func slug(name string) string {
 	var b strings.Builder

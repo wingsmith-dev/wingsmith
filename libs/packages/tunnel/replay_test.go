@@ -20,7 +20,7 @@ import (
 func TestReplayableUsesTheBodyTheCallerAlreadyHolds(t *testing.T) {
 	t.Parallel()
 
-	body := []byte(`{"model":"llama-3-70b","messages":[]}`)
+	body := []byte(`{"model":"gpt-oss-120b","messages":[]}`)
 	req := gatewayShapedRequest(t, "/v1/chat/completions", "ignored")
 	Replayable(req, body)
 

@@ -27,7 +27,7 @@ import (
 
 func servingDeployment(image string) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "llama-70b-vllm", Namespace: "serving"},
+		ObjectMeta: metav1.ObjectMeta{Name: "gpt-oss-120b-vllm", Namespace: "serving"},
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "engine", Image: image}}},
@@ -43,7 +43,7 @@ func adoptedResource(f string) *v1alpha1.SyncedResource {
 			Kind:     "deployment",
 			Revision: 1,
 			Adopt: &v1alpha1.AdoptRef{
-				Namespace: "serving", Kind: "deployment", Name: "llama-70b-vllm",
+				Namespace: "serving", Kind: "deployment", Name: "gpt-oss-120b-vllm",
 				SpecFingerprint: f,
 			},
 		},
@@ -162,7 +162,7 @@ func adoptedWithPayload(t *testing.T, f string) *v1alpha1.SyncedResource {
 func selectedDeployment(image string, replicas int32) *appsv1.Deployment {
 	d := servingDeployment(image)
 	d.Spec.Replicas = &replicas
-	d.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "llama-70b-vllm"}}
+	d.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "gpt-oss-120b-vllm"}}
 	return d
 }
 
@@ -175,7 +175,7 @@ func servingPod(name string, ready bool) *corev1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "serving",
-			Labels:    map[string]string{"app": "llama-70b-vllm"},
+			Labels:    map[string]string{"app": "gpt-oss-120b-vllm"},
 		},
 		Spec: corev1.PodSpec{NodeName: "node-a"},
 		Status: corev1.PodStatus{
@@ -226,8 +226,8 @@ func TestAnAdoptedWorkloadReportsWhatItIsRunning(t *testing.T) {
 	digest := workload.Fingerprint(&live.Spec.Template.Spec)
 
 	rep, _ := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
-		servingPod("llama-70b-vllm-a", true),
-		servingPod("llama-70b-vllm-b", true),
+		servingPod("gpt-oss-120b-vllm-a", true),
+		servingPod("gpt-oss-120b-vllm-b", true),
 	)
 
 	got := lastSent(t, rep)
@@ -250,8 +250,8 @@ func TestAnAdoptedRolloutCountsOnlyReadyPods(t *testing.T) {
 	digest := workload.Fingerprint(&live.Spec.Template.Spec)
 
 	rep, _ := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
-		servingPod("llama-70b-vllm-a", true),
-		servingPod("llama-70b-vllm-b", false),
+		servingPod("gpt-oss-120b-vllm-a", true),
+		servingPod("gpt-oss-120b-vllm-b", false),
 	)
 
 	got := lastSent(t, rep)
@@ -272,7 +272,7 @@ func TestAnAdoptedWorkloadIsRequeued(t *testing.T) {
 	digest := workload.Fingerprint(&live.Spec.Template.Spec)
 
 	_, got := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
-		servingPod("llama-70b-vllm-a", true))
+		servingPod("gpt-oss-120b-vllm-a", true))
 
 	if got.RequeueAfter != resyncAfterApply {
 		t.Fatalf("requeued after %v, want %v: a drift check that never runs again is not a check",
@@ -287,7 +287,7 @@ func TestADriftedAdoptedWorkloadIsRequeuedAndNotReported(t *testing.T) {
 	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 1)
 
 	rep, got := reconcileAdoptedWith(t, adoptedWithPayload(t, "sha256:something-else"), live,
-		servingPod("llama-70b-vllm-a", true))
+		servingPod("gpt-oss-120b-vllm-a", true))
 
 	if len(rep.sent) != 0 {
 		t.Fatalf("reported %+v about a drifted workload, want silence", rep.sent)

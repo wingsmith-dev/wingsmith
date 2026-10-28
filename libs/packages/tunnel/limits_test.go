@@ -230,7 +230,7 @@ func TestCancellationReachesTheUpstream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, front.URL+"/v1/chat/completions",
-		strings.NewReader(`{"model":"llama-3-70b","stream":true}`))
+		strings.NewReader(`{"model":"gpt-oss-120b","stream":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}

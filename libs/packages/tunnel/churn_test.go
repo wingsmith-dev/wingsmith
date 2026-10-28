@@ -66,7 +66,7 @@ func TestUnprocessedRequestsAreRetriedOnASiblingTunnel(t *testing.T) {
 	results := make(chan error, inFlight)
 	for i := 0; i < inFlight; i++ {
 		id := fmt.Sprintf("req-%02d", i)
-		req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+		req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"gpt-oss-120b","messages":[]}`)
 		req.Header.Set("X-Request-Id", id)
 		go func() {
 			resp, err := transport.RoundTrip(req)
@@ -154,7 +154,7 @@ func TestARequestWithoutGetBodyCannotBeRetried(t *testing.T) {
 	occupy(survivorConn, 8)
 
 	req, err := http.NewRequest(http.MethodPost, "https://cluster.tunnel.wingsmith.internal/v1/chat/completions",
-		io.NopCloser(strings.NewReader(`{"model":"llama-3-70b"}`)))
+		io.NopCloser(strings.NewReader(`{"model":"gpt-oss-120b"}`)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,10 +217,10 @@ func TestRequestsAConnectorWasKilledHoldingAreNotResent(t *testing.T) {
 		retried bool
 	}{
 		{"a completion POST", func(t *testing.T) *http.Request {
-			return gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+			return gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"gpt-oss-120b","messages":[]}`)
 		}, false},
 		{"a POST with an idempotency key", func(t *testing.T) *http.Request {
-			req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b","messages":[]}`)
+			req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"gpt-oss-120b","messages":[]}`)
 			req.Header.Set("Idempotency-Key", "k")
 			return req
 		}, true},
@@ -449,7 +449,7 @@ func TestARetryPrefersATunnelThisRequestHasNotTried(t *testing.T) {
 	// first is now strictly the least loaded of the two, for every pick.
 	occupy(second, 4)
 
-	req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"llama-3-70b"}`)
+	req := gatewayShapedRequest(t, "/v1/chat/completions", `{"model":"gpt-oss-120b"}`)
 	ctx := context.WithValue(req.Context(), clusterKey{}, "cluster-ap")
 	ctx = context.WithValue(ctx, attemptKey{}, &attempts{})
 	req = req.WithContext(ctx)
@@ -499,7 +499,7 @@ func TestKillingTheOnlyTunnelStillReadsAsChurn(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		resp, err := transport.RoundTrip(gatewayShapedRequest(t, "/v1/chat/completions",
-			`{"model":"llama-3-70b"}`))
+			`{"model":"gpt-oss-120b"}`))
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -574,7 +574,7 @@ func TestAStreamAlreadyReachingTheCallerIsNotRetriedAfterAnAbruptDeath(t *testin
 
 	transport := pool.RoundTripper("cluster-ap")
 	resp, err := transport.RoundTrip(gatewayShapedRequest(t, "/v1/chat/completions",
-		`{"model":"llama-3-70b","stream":true}`))
+		`{"model":"gpt-oss-120b","stream":true}`))
 	if err != nil {
 		t.Fatalf("round trip: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestAStreamAlreadyReachingTheCallerIsNotRetried(t *testing.T) {
 
 	transport := pool.RoundTripper("cluster-ap")
 	req, err := http.NewRequest(http.MethodPost, "https://ignored/v1/chat/completions",
-		strings.NewReader(`{"model":"llama-3-70b","stream":true}`))
+		strings.NewReader(`{"model":"gpt-oss-120b","stream":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +728,7 @@ func TestGracefulConnectorShutdownDrainsInsteadOfSevering(t *testing.T) {
 
 	transport := pool.RoundTripper("cluster-us")
 	req, err := http.NewRequest(http.MethodPost, "https://ignored/v1/chat/completions",
-		strings.NewReader(`{"model":"llama-3-70b"}`))
+		strings.NewReader(`{"model":"gpt-oss-120b"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -773,7 +773,7 @@ func TestGracefulConnectorShutdownDrainsInsteadOfSevering(t *testing.T) {
 func mustRequest(t *testing.T) *http.Request {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, "https://ignored/v1/chat/completions",
-		strings.NewReader(`{"model":"llama-3-70b"}`))
+		strings.NewReader(`{"model":"gpt-oss-120b"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
