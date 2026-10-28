@@ -64,7 +64,7 @@ def _args(values: dict[str, object], required: bool) -> list[str]:
 
 
 def helm(chart: pathlib.Path, values: dict[str, object], required: bool = True,
-         namespace: str = "hangar-system") -> subprocess.CompletedProcess[str]:
+         namespace: str = "wingsmith-system") -> subprocess.CompletedProcess[str]:
     cmd = ["helm", "template", "rel", str(chart), "-n", namespace, *_args(values, required)]
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
@@ -157,7 +157,7 @@ MONITORING_ON = {
 
 def _roll_keys(docs: list[dict]) -> dict[str, str | None]:
     out = {}
-    for name in ("hangar-operator", "hangar-agent"):
+    for name in ("wingsmith-operator", "wingsmith-agent"):
         d = find(docs, "Deployment", name)
         if d is not None:
             out[name] = d["spec"]["template"]["metadata"].get("annotations", {}).get(
@@ -171,7 +171,7 @@ def test_token_annotation_is_not_a_digest_of_the_token(chart):
     token = REQUIRED["enrolmentToken.value"]
     docs = render(chart, **AGENT_ON)
     keys = _roll_keys(docs)
-    assert set(keys) == {"hangar-operator", "hangar-agent"}
+    assert set(keys) == {"wingsmith-operator", "wingsmith-agent"}
     digests = {
         hashlib.sha256(token.encode()).hexdigest(),
         hashlib.sha256(f"enrolment-token:{token}".encode()).hexdigest(),
@@ -194,19 +194,19 @@ def test_token_rotation_rolls_the_operator_and_agent(chart):
 
 def test_existing_secret_renders_no_token_annotation(chart):
     docs = render(chart, **{"enrolmentToken.value": "", "enrolmentToken.existing": True})
-    assert _roll_keys(docs) == {"hangar-operator": None}
+    assert _roll_keys(docs) == {"wingsmith-operator": None}
 
 
 def test_notes_never_point_at_a_fleet_token(chart):
     text = notes(chart, **{"enrolmentToken.value": "", "enrolmentToken.existing": True})
-    assert "HANGAR_OPERATOR_TOKEN" not in text
+    assert "WINGSMITH_OPERATOR_TOKEN" not in text
     assert "/v1/clusters/lint/enrolment-token" in text
-    assert "HANGAR_OPERATOR_TOKEN" not in (chart / "values.yaml").read_text()
+    assert "WINGSMITH_OPERATOR_TOKEN" not in (chart / "values.yaml").read_text()
 
 
 def test_metrics_agent_mounts_only_the_password_key(chart):
     docs = render(chart, **MONITORING_ON)
-    agent = get(docs, "Deployment", "hangar-metrics-agent")
+    agent = get(docs, "Deployment", "wingsmith-metrics-agent")
     (volume,) = [v for v in agent["spec"]["template"]["spec"]["volumes"] if v["name"] == "remote-write"]
     assert volume["secret"]["items"] == [{"key": "enrolment-token", "path": "enrolment-token"}]
 
@@ -218,15 +218,15 @@ BEARER = {"monitoring.remoteWrite.basicAuth.useEnrolmentToken": False,
 
 def test_bearer_token_replaces_basic_auth(chart):
     docs = render(chart, **MONITORING_ON, **BEARER)
-    config = yaml.safe_load(get(docs, "ConfigMap", "hangar-metrics-agent")["data"]["prometheus.yml"])
+    config = yaml.safe_load(get(docs, "ConfigMap", "wingsmith-metrics-agent")["data"]["prometheus.yml"])
     (write,) = config["remote_write"]
     assert "basic_auth" not in write
     assert write["authorization"] == {"type": "Bearer",
-                                      "credentials_file": "/etc/hangar/remote-write/token"}
-    agent = get(docs, "Deployment", "hangar-metrics-agent")
+                                      "credentials_file": "/etc/wingsmith/remote-write/token"}
+    agent = get(docs, "Deployment", "wingsmith-metrics-agent")
     (volume,) = [v for v in agent["spec"]["template"]["spec"]["volumes"] if v["name"] == "remote-write"]
     assert volume["secret"] == {"secretName": "metrics-token", "items": [{"key": "token", "path": "token"}]}
-    assert find(docs, "Secret", "hangar-metrics-remote-write") is None
+    assert find(docs, "Secret", "wingsmith-metrics-remote-write") is None
 
 
 def test_bearer_token_with_the_enrolment_token_is_refused(chart):
@@ -274,11 +274,11 @@ def test_workload_namespace_is_one_value_used_everywhere(chart):
     assert get(docs, "Namespace", "models")
     assert get(docs, "PersistentVolumeClaim", "model-cache", "models")
     assert get(docs, "Secret", "hf-token-secret", "models")
-    assert get(docs, "Role", "hangar-agent", "models")
+    assert get(docs, "Role", "wingsmith-agent", "models")
     assert get(docs, "DynamoGraphDeployment", "inference", "models")
-    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_WORKLOAD_NAMESPACE"] == "models"
-    assert get(docs, "ConfigMap", "hangar-agent")["data"]["HANGAR_WORKLOAD_NAMESPACE"] == "models"
-    scrape = get(docs, "ConfigMap", "hangar-metrics-agent")["data"]["prometheus.yml"]
+    assert get(docs, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_WORKLOAD_NAMESPACE"] == "models"
+    assert get(docs, "ConfigMap", "wingsmith-agent")["data"]["WINGSMITH_WORKLOAD_NAMESPACE"] == "models"
+    scrape = get(docs, "ConfigMap", "wingsmith-metrics-agent")["data"]["prometheus.yml"]
     assert "names: [\"dynamo\"]" not in scrape and "names: [\"models\"]" in scrape
 
 
@@ -298,7 +298,7 @@ def _operator_rules(docs: list[dict]) -> dict[tuple[str, str | None], list[dict]
     bound = set()
     for d in docs:
         if d["kind"] in ("RoleBinding", "ClusterRoleBinding") and any(
-            s.get("name") == "hangar-operator" for s in d["subjects"]
+            s.get("name") == "wingsmith-operator" for s in d["subjects"]
         ):
             ns = d["metadata"].get("namespace")
             bound.add((d["roleRef"]["kind"], d["roleRef"]["name"], ns))
@@ -318,13 +318,13 @@ def test_default_is_read_only_with_no_operations(chart):
     assert values["cluster"]["readOnly"] is True
     assert values["cluster"]["allowedOperations"] == ""
     docs = render(chart)
-    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_ALLOWED_OPERATIONS"] == ""
+    assert get(docs, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_ALLOWED_OPERATIONS"] == ""
 
 
 def test_read_only_renders_no_write_rbac_outside_the_release_namespace(chart):
     roles = _operator_rules(render(chart))
     for (role, ns), rules in roles.items():
-        if ns == "hangar-system":
+        if ns == "wingsmith-system":
             continue
         for rule in rules:
             assert not WRITE_VERBS & set(rule["verbs"]), (role, rule)
@@ -339,17 +339,17 @@ def test_no_cluster_wide_write_and_leases_are_namespaced(chart):
                 assert not writes or set(rule["resources"]) <= {"nodes", "pods/eviction"}, rule
             assert not _grants(rules, "leases", "update")
             assert not _grants(rules, "jobs", "create")
-    assert _grants(roles[("Role/hangar-operator", "hangar-system")], "leases", "update")
-    assert _grants(roles[("Role/hangar-operator", "hangar-system")], "syncedresources", "update")
+    assert _grants(roles[("Role/wingsmith-operator", "wingsmith-system")], "leases", "update")
+    assert _grants(roles[("Role/wingsmith-operator", "wingsmith-system")], "syncedresources", "update")
 
 
 def test_managed_cluster_gets_reconcile_and_every_operation(chart):
     roles = _operator_rules(render(chart, **{"cluster.readOnly": False}))
-    workloads = roles[("Role/hangar-operator", "dynamo")]
+    workloads = roles[("Role/wingsmith-operator", "dynamo")]
     assert _grants(workloads, "dynamographdeployments", "create")
     assert _grants(workloads, "jobs", "create")
     assert _grants(workloads, "pods/log", "get")
-    nodes = roles[("ClusterRole/hangar-operator-nodes", None)]
+    nodes = roles[("ClusterRole/wingsmith-operator-nodes", None)]
     assert _grants(nodes, "nodes", "patch")
     assert _grants(nodes, "pods/eviction", "create")
 
@@ -365,13 +365,13 @@ def test_managed_cluster_gets_reconcile_and_every_operation(chart):
 def test_read_only_operations_add_only_their_own_rbac(chart, allowed, jobs, nodes, eviction):
     docs = render(chart, **{"cluster.allowedOperations": allowed.replace(",", "\\,")})
     roles = _operator_rules(docs)
-    workloads = roles.get(("Role/hangar-operator", "dynamo"), [])
+    workloads = roles.get(("Role/wingsmith-operator", "dynamo"), [])
     assert _grants(workloads, "jobs", "create") is jobs
     assert not _grants(workloads, "dynamographdeployments", "create")
-    node_rules = roles.get(("ClusterRole/hangar-operator-nodes", None), [])
+    node_rules = roles.get(("ClusterRole/wingsmith-operator-nodes", None), [])
     assert _grants(node_rules, "nodes", "patch") is nodes
     assert _grants(node_rules, "pods/eviction", "create") is eviction
-    configured = get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_ALLOWED_OPERATIONS"]
+    configured = get(docs, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_ALLOWED_OPERATIONS"]
     assert configured == ",".join(k.strip() for k in allowed.split(","))
 
 
@@ -400,7 +400,7 @@ def _can_watch(roles, resource: str, namespace: str) -> bool:
         ({}, CACHED_ALWAYS),
         ({"cluster.allowedOperations": "benchmark"}, CACHED_ALWAYS),
         ({"cluster.readOnly": False}, CACHED_ALWAYS + CACHED_RECONCILE),
-        ({"cluster.readOnly": False, "workloadNamespace.name": "hangar-system"},
+        ({"cluster.readOnly": False, "workloadNamespace.name": "wingsmith-system"},
          CACHED_ALWAYS + CACHED_RECONCILE),
     ],
 )
@@ -409,18 +409,18 @@ def test_operator_can_watch_every_cached_type_in_both_namespaces(chart, values, 
     roles = _operator_rules(docs)
     workloads = values.get("workloadNamespace.name", "dynamo")
     for resource in cached:
-        for ns in ("hangar-system", workloads):
+        for ns in ("wingsmith-system", workloads):
             assert _can_watch(roles, resource, ns), (resource, ns)
 
 
 def test_shared_namespace_renders_one_role_and_no_namespace(chart):
-    docs = render(chart, **{"cluster.readOnly": False, "workloadNamespace.name": "hangar-system"})
+    docs = render(chart, **{"cluster.readOnly": False, "workloadNamespace.name": "wingsmith-system"})
     keys = [(d["kind"], d["metadata"].get("namespace"), d["metadata"]["name"])
             for d in docs if "metadata" in d]
     assert len(keys) == len(set(keys)), [k for k in keys if keys.count(k) > 1]
     assert not [d for d in docs if d["kind"] == "Namespace"]
     roles = _operator_rules(docs)
-    own = roles[("Role/hangar-operator", "hangar-system")]
+    own = roles[("Role/wingsmith-operator", "wingsmith-system")]
     assert _grants(own, "leases", "update")
     assert _grants(own, "dynamographdeployments", "create")
 
@@ -429,11 +429,11 @@ def test_unknown_operation_is_refused(chart):
     assert "cordon, drain and benchmark" in refusal(chart, **{"cluster.allowedOperations": "reboot"})
 
 
-def test_rbac_names_the_hangar_dev_group(chart):
+def test_rbac_names_the_wingsmith_dev_group(chart):
     roles = _operator_rules(render(chart))
     groups = {g for rules in roles.values() for r in rules for g in r["apiGroups"]}
-    assert "hangar.dev" in groups
-    assert not any("placeholder" in g or g == "sync.hangar.dev" for g in groups)
+    assert "wingsmith.dev" in groups
+    assert not any("placeholder" in g or g == "sync.wingsmith.dev" for g in groups)
 
 
 # ── versioning ───────────────────────────────────────────────────────────────
@@ -448,7 +448,7 @@ def test_app_version_is_the_chart_version_and_images_default_to_it(chart):
     for dep in meta["dependencies"]:
         assert re.fullmatch(r"\d+\.\d+\.\d+", dep["version"]), dep
     docs = render(chart, **AGENT_ON)
-    for name, c in (("hangar-operator", "operator"), ("hangar-agent", "agent")):
+    for name, c in (("wingsmith-operator", "operator"), ("wingsmith-agent", "agent")):
         spec = container(get(docs, "Deployment", name), c)
         assert spec["image"].endswith(":" + meta["version"])
         assert spec["imagePullPolicy"] == "IfNotPresent"
@@ -479,29 +479,29 @@ def test_plaintext_hub_is_refused_by_default(chart):
 
 def test_allow_insecure_accepts_ws_and_tells_the_operator(chart):
     docs = render(chart, **{"cluster.hubUrl": "ws://plane.local/v1/hub/sync", "hub.allowInsecure": True})
-    data = get(docs, "ConfigMap", "hangar-operator")["data"]
-    assert data["HANGAR_HUB_ALLOW_INSECURE"] == "true"
-    assert "HANGAR_HUB_ALLOW_INSECURE" not in get(render(chart), "ConfigMap", "hangar-operator")["data"]
+    data = get(docs, "ConfigMap", "wingsmith-operator")["data"]
+    assert data["WINGSMITH_HUB_ALLOW_INSECURE"] == "true"
+    assert "WINGSMITH_HUB_ALLOW_INSECURE" not in get(render(chart), "ConfigMap", "wingsmith-operator")["data"]
 
 
 def test_hub_ca_bundle_is_mounted_into_the_operator(chart):
     docs = render(chart, **{"hub.caBundle": PEM})
-    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_HUB_CA_FILE"] == "/etc/hangar/hub-ca/ca.crt"
-    assert get(docs, "ConfigMap", "hangar-hub-ca")["data"]["ca.crt"].startswith("-----BEGIN")
-    op = get(docs, "Deployment", "hangar-operator")
-    assert container(op, "operator")["volumeMounts"][0]["mountPath"] == "/etc/hangar/hub-ca"
-    assert op["spec"]["template"]["spec"]["volumes"][0]["configMap"]["name"] == "hangar-hub-ca"
+    assert get(docs, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_HUB_CA_FILE"] == "/etc/wingsmith/hub-ca/ca.crt"
+    assert get(docs, "ConfigMap", "wingsmith-hub-ca")["data"]["ca.crt"].startswith("-----BEGIN")
+    op = get(docs, "Deployment", "wingsmith-operator")
+    assert container(op, "operator")["volumeMounts"][0]["mountPath"] == "/etc/wingsmith/hub-ca"
+    assert op["spec"]["template"]["spec"]["volumes"][0]["configMap"]["name"] == "wingsmith-hub-ca"
 
 
 def test_tunnel_server_name_and_ca_reach_the_agent(chart):
     docs = render(chart, **{**AGENT_ON, "agent.gateway.serverName": "gw.internal",
                             "agent.gateway.caBundle": PEM})
-    data = get(docs, "ConfigMap", "hangar-agent")["data"]
-    assert data["HANGAR_TUNNEL_SERVER_NAME"] == "gw.internal"
-    assert data["HANGAR_TUNNEL_CA_FILE"] == "/etc/hangar/tunnel-ca/ca.crt"
-    assert get(docs, "ConfigMap", "hangar-tunnel-ca")
-    agent = get(docs, "Deployment", "hangar-agent")
-    assert container(agent, "agent")["volumeMounts"][0]["mountPath"] == "/etc/hangar/tunnel-ca"
+    data = get(docs, "ConfigMap", "wingsmith-agent")["data"]
+    assert data["WINGSMITH_TUNNEL_SERVER_NAME"] == "gw.internal"
+    assert data["WINGSMITH_TUNNEL_CA_FILE"] == "/etc/wingsmith/tunnel-ca/ca.crt"
+    assert get(docs, "ConfigMap", "wingsmith-tunnel-ca")
+    agent = get(docs, "Deployment", "wingsmith-agent")
+    assert container(agent, "agent")["volumeMounts"][0]["mountPath"] == "/etc/wingsmith/tunnel-ca"
 
 
 @pytest.mark.parametrize("grace", [None, 300])
@@ -509,15 +509,15 @@ def test_agent_shutdown_grace_follows_the_pod_grace_period(chart, grace):
     values = AGENT_ON if grace is None else {**AGENT_ON, "agent.terminationGracePeriodSeconds": grace}
     docs = render(chart, **values)
     seconds = grace or 120
-    assert get(docs, "ConfigMap", "hangar-agent")["data"]["HANGAR_SHUTDOWN_GRACE"] == f"{seconds}s"
-    assert get(docs, "Deployment", "hangar-agent")["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == seconds
+    assert get(docs, "ConfigMap", "wingsmith-agent")["data"]["WINGSMITH_SHUTDOWN_GRACE"] == f"{seconds}s"
+    assert get(docs, "Deployment", "wingsmith-agent")["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == seconds
 
 
 # ── pod hardening ────────────────────────────────────────────────────────────
 
 
 def test_metrics_agent_container_is_hardened(chart):
-    agent = get(render(chart, **MONITORING_ON), "Deployment", "hangar-metrics-agent")
+    agent = get(render(chart, **MONITORING_ON), "Deployment", "wingsmith-metrics-agent")
     pod = agent["spec"]["template"]["spec"]
     assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
     sc = container(agent, "prometheus")["securityContext"]
@@ -552,23 +552,23 @@ def _policies(docs):
 def test_network_policies_are_on_by_default(chart):
     policies = _policies(render(chart, **AGENT_ON))
     assert set(policies) == {
-        ("hangar-system", "hangar-operator"),
-        ("hangar-system", "hangar-agent"),
-        ("dynamo", "hangar-inference-frontend"),
-        ("hangar-system", "hangar-nats"),
+        ("wingsmith-system", "wingsmith-operator"),
+        ("wingsmith-system", "wingsmith-agent"),
+        ("dynamo", "wingsmith-inference-frontend"),
+        ("wingsmith-system", "wingsmith-nats"),
     }
     for p in policies.values():
         assert p["spec"]["policyTypes"] == ["Ingress"]
-    frontend = policies[("dynamo", "hangar-inference-frontend")]["spec"]
+    frontend = policies[("dynamo", "wingsmith-inference-frontend")]["spec"]
     assert frontend["podSelector"] == {"matchLabels": {"nvidia.com/dynamo-component": "Frontend"}}
     peers = frontend["ingress"][0]["from"]
     assert {"podSelector": {}} in peers
     release = [p for p in peers if "namespaceSelector" in p][0]
-    assert release["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "hangar-system"}
-    nats = policies[("hangar-system", "hangar-nats")]["spec"]
+    assert release["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "wingsmith-system"}
+    nats = policies[("wingsmith-system", "wingsmith-nats")]["spec"]
     assert nats["podSelector"]["matchLabels"]["app.kubernetes.io/name"] == "nats"
     assert {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "dynamo"}}} in nats["ingress"][0]["from"]
-    operator = policies[("hangar-system", "hangar-operator")]["spec"]
+    operator = policies[("wingsmith-system", "wingsmith-operator")]["spec"]
     assert "from" not in operator["ingress"][0]
     assert {"port": "health", "protocol": "TCP"} in operator["ingress"][0]["ports"]
 
@@ -596,9 +596,9 @@ def test_serving_route_carries_its_middleware_and_needs_a_policy_peer(chart):
     assert "networkPolicy.frontendFrom" in refusal(chart, **values)
     docs = render(chart, **values, **{
         "networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.team": "edge"})
-    route = get(docs, "IngressRoute", "hangar-serving", "dynamo")
+    route = get(docs, "IngressRoute", "wingsmith-serving", "dynamo")
     assert route["spec"]["routes"][0]["middlewares"] == [{"name": "auth", "namespace": "traefik"}]
-    peers = _policies(docs)[("dynamo", "hangar-inference-frontend")]["spec"]["ingress"][0]["from"]
+    peers = _policies(docs)[("dynamo", "wingsmith-inference-frontend")]["spec"]["ingress"][0]["from"]
     assert {"namespaceSelector": {"matchLabels": {"team": "edge"}}} in peers
     render(chart, **SERVING, **{"serving.allowUnauthenticated": True, "networkPolicy.enabled": False})
 
@@ -608,20 +608,20 @@ def test_serving_route_carries_its_middleware_and_needs_a_policy_peer(chart):
 
 def test_operator_metrics_are_on_and_reachable(chart):
     docs = render(chart)
-    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_METRICS_ADDR"] == ":8080"
-    ports = container(get(docs, "Deployment", "hangar-operator"), "operator")["ports"]
+    assert get(docs, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_METRICS_ADDR"] == ":8080"
+    ports = container(get(docs, "Deployment", "wingsmith-operator"), "operator")["ports"]
     assert {"name": "metrics", "containerPort": 8080} in ports
-    policy = _policies(docs)[("hangar-system", "hangar-operator")]["spec"]
+    policy = _policies(docs)[("wingsmith-system", "wingsmith-operator")]["spec"]
     assert {"port": "metrics", "protocol": "TCP"} in policy["ingress"][0]["ports"]
-    assert find(docs, "PodMonitor", "hangar-operator") is None
+    assert find(docs, "PodMonitor", "wingsmith-operator") is None
 
 
 def test_operator_metrics_off_and_pod_monitor(chart):
     off = render(chart, **{"operator.metrics.enabled": False})
-    assert get(off, "ConfigMap", "hangar-operator")["data"]["HANGAR_METRICS_ADDR"] == "0"
+    assert get(off, "ConfigMap", "wingsmith-operator")["data"]["WINGSMITH_METRICS_ADDR"] == "0"
     docs = render(chart, **{"operator.metrics.podMonitor.enabled": True,
                             "operator.metrics.podMonitor.labels.release": "kps"})
-    monitor = get(docs, "PodMonitor", "hangar-operator", "hangar-system")
+    monitor = get(docs, "PodMonitor", "wingsmith-operator", "wingsmith-system")
     assert monitor["metadata"]["labels"]["release"] == "kps"
     assert monitor["spec"]["podMetricsEndpoints"][0]["port"] == "metrics"
 
@@ -634,8 +634,8 @@ def test_shipped_files_name_no_removed_paths_or_deployment_history():
 
     # Internal names are not listed here, since listing them would publish them: the prose
     # guard (scripts/check-prose.sh) checks every tracked file against the private list.
-    banned = re.compile(r"infra/|HANGAR_OPERATOR_TOKEN|placeholder\.hangar|"
-                        r"sync\.hangar\.dev|helm registry login",
+    banned = re.compile(r"infra/|WINGSMITH_OPERATOR_TOKEN|placeholder\.wingsmith|"
+                        r"sync\.wingsmith\.dev|helm registry login",
                         re.IGNORECASE)
     for path in CHART.rglob("*"):
         if path.is_file() and "tests" not in path.parts and path.suffix in (
@@ -649,8 +649,8 @@ def test_frontend_preamble_switch_reaches_both_modes(chart):
     env_vars = {e["name"]: e["value"] for e in get(shared, "DynamoGraphDeployment", "inference")
                 ["spec"]["components"][0]["podTemplate"]["spec"]["containers"][0]["env"]}
     assert env_vars["DYN_STRIP_ANTHROPIC_PREAMBLE"] == "false"
-    data = get(shared, "ConfigMap", "hangar-operator")["data"]
-    assert data["HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE"] == "false"
+    data = get(shared, "ConfigMap", "wingsmith-operator")["data"]
+    assert data["WINGSMITH_FRONTEND_ANTHROPIC_STRIP_PREAMBLE"] == "false"
 
 
 def test_image_digest_pins_the_build(chart):
@@ -658,24 +658,24 @@ def test_image_digest_pins_the_build(chart):
     docs = render(chart, **{**AGENT_ON, "operator.image.digest": digest,
                             "agent.image.repository": "registry.example.com/agent",
                             "agent.image.tag": "custom"})
-    assert container(get(docs, "Deployment", "hangar-operator"), "operator")["image"] == \
-        "ghcr.io/hangar-dev/operator@" + digest
-    assert container(get(docs, "Deployment", "hangar-agent"), "agent")["image"] == \
+    assert container(get(docs, "Deployment", "wingsmith-operator"), "operator")["image"] == \
+        "ghcr.io/wingsmith-dev/operator@" + digest
+    assert container(get(docs, "Deployment", "wingsmith-agent"), "agent")["image"] == \
         "registry.example.com/agent:custom"
     assert "sha256:" in refusal(chart, **{"operator.image.digest": "abc"})
 
 
 def test_image_allowlists_reach_the_operator(chart):
-    data = get(render(chart), "ConfigMap", "hangar-operator")["data"]
-    assert "HANGAR_ALLOWED_IMAGE_PREFIXES" not in data
-    assert "HANGAR_BENCHMARK_IMAGES" not in data
+    data = get(render(chart), "ConfigMap", "wingsmith-operator")["data"]
+    assert "WINGSMITH_ALLOWED_IMAGE_PREFIXES" not in data
+    assert "WINGSMITH_BENCHMARK_IMAGES" not in data
     docs = render(chart, **{
         "operator.images.allowedPrefixes": "{nvcr.io/nvidia/ai-dynamo,registry.example.com/}",
         "operator.benchmark.images": "{registry.example.com/aiperf:1.0}",
     })
-    data = get(docs, "ConfigMap", "hangar-operator")["data"]
-    assert data["HANGAR_ALLOWED_IMAGE_PREFIXES"] == "nvcr.io/nvidia/ai-dynamo,registry.example.com/"
-    assert data["HANGAR_BENCHMARK_IMAGES"] == "registry.example.com/aiperf:1.0"
+    data = get(docs, "ConfigMap", "wingsmith-operator")["data"]
+    assert data["WINGSMITH_ALLOWED_IMAGE_PREFIXES"] == "nvcr.io/nvidia/ai-dynamo,registry.example.com/"
+    assert data["WINGSMITH_BENCHMARK_IMAGES"] == "registry.example.com/aiperf:1.0"
 
 
 @pytest.mark.parametrize("key,value,where", [
@@ -687,7 +687,7 @@ def test_image_allowlists_reach_the_operator(chart):
 def test_schema_refuses_a_wrong_type_before_rendering(chart, key, value, where):
     # A string "false" is truthy to the templates, so readOnly: "false" would
     # grant read-only RBAC to an operator that reconciles.
-    cmd = ["helm", "template", "rel", str(chart), "-n", "hangar-system", *_args({}, True)]
+    cmd = ["helm", "template", "rel", str(chart), "-n", "wingsmith-system", *_args({}, True)]
     cmd += ["--set-json", f"{key}={value}" if value.startswith('"') else f'{key}="{value}"']
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert result.returncode != 0
@@ -702,26 +702,26 @@ def test_schema_accepts_an_unquoted_numeric_cluster_name(chart):
 
 
 def _operator_config(chart, **values):
-    return get(render(chart, **values), "ConfigMap", "hangar-operator")["data"]
+    return get(render(chart, **values), "ConfigMap", "wingsmith-operator")["data"]
 
 
 def test_no_fabric_by_default(chart):
     data = _operator_config(chart)
-    for key in ("HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_PRIVILEGED",
-                "HANGAR_EFA_DEVICES", "HANGAR_GPU_TOLERATION_KEY", "HANGAR_CACHE_TAINT_VALUE",
-                "HANGAR_BENCHMARK_TOKEN_SECRET"):
+    for key in ("WINGSMITH_FABRIC", "WINGSMITH_FABRIC_DEVICES", "WINGSMITH_FABRIC_PRIVILEGED",
+                "WINGSMITH_EFA_DEVICES", "WINGSMITH_GPU_TOLERATION_KEY", "WINGSMITH_CACHE_TAINT_VALUE",
+                "WINGSMITH_BENCHMARK_TOKEN_SECRET"):
         assert key not in data, key
 
 
 def test_fabric_reaches_the_operator_under_its_own_keys(chart):
     data = _operator_config(chart, **{"fabric.type": "efa", "fabric.devices": 4})
-    assert data["HANGAR_FABRIC"] == "efa"
-    assert data["HANGAR_FABRIC_DEVICES"] == "4"
-    assert "HANGAR_FABRIC_PRIVILEGED" not in data
+    assert data["WINGSMITH_FABRIC"] == "efa"
+    assert data["WINGSMITH_FABRIC_DEVICES"] == "4"
+    assert "WINGSMITH_FABRIC_PRIVILEGED" not in data
     data = _operator_config(chart, **{"fabric.type": "rdma", "fabric.devices": 8,
                                       "fabric.resource": "rdma/ib", "fabric.privileged": False})
-    assert (data["HANGAR_FABRIC"], data["HANGAR_FABRIC_RESOURCE"]) == ("rdma", "rdma/ib")
-    assert data["HANGAR_FABRIC_PRIVILEGED"] == "false"
+    assert (data["WINGSMITH_FABRIC"], data["WINGSMITH_FABRIC_RESOURCE"]) == ("rdma", "rdma/ib")
+    assert data["WINGSMITH_FABRIC_PRIVILEGED"] == "false"
 
 
 @pytest.mark.parametrize("values,says", [
@@ -737,17 +737,17 @@ def test_taints_and_benchmark_token_reach_the_operator(chart):
     data = _operator_config(chart, **{
         "pools.gpuTolerationKey": "example.com/gpu", "pools.gpuTolerationValue": "true",
         "pools.cacheTaintValue": "cache", "operator.benchmark.tokenSecret": "hf-token-secret"})
-    assert data["HANGAR_GPU_TOLERATION_KEY"] == "example.com/gpu"
-    assert data["HANGAR_GPU_TOLERATION_VALUE"] == "true"
-    assert data["HANGAR_CACHE_TAINT_VALUE"] == "cache"
-    assert data["HANGAR_BENCHMARK_TOKEN_SECRET"] == "hf-token-secret"
+    assert data["WINGSMITH_GPU_TOLERATION_KEY"] == "example.com/gpu"
+    assert data["WINGSMITH_GPU_TOLERATION_VALUE"] == "true"
+    assert data["WINGSMITH_CACHE_TAINT_VALUE"] == "cache"
+    assert data["WINGSMITH_BENCHMARK_TOKEN_SECRET"] == "hf-token-secret"
 
 
 # ── serving egress ───────────────────────────────────────────────────────────
 
 
 def test_serving_egress_is_off_by_default(chart):
-    assert ("dynamo", "hangar-serving-egress") not in _policies(render(chart))
+    assert ("dynamo", "wingsmith-serving-egress") not in _policies(render(chart))
 
 
 def test_serving_egress_needs_the_api_server(chart):
@@ -760,14 +760,14 @@ def test_serving_egress_admits_only_the_cluster_paths(chart):
         "networkPolicy.servingEgress.apiServer": "{10.0.0.10/32}",
         "networkPolicy.servingEgress.to[0].ipBlock.cidr": "198.51.100.0/24",
     })
-    spec = _policies(docs)[("dynamo", "hangar-serving-egress")]["spec"]
+    spec = _policies(docs)[("dynamo", "wingsmith-serving-egress")]["spec"]
     assert spec["policyTypes"] == ["Egress"]
     assert spec["podSelector"] == {"matchExpressions": [
-        {"key": "hangar.dev/deployment-id", "operator": "Exists"}]}
+        {"key": "wingsmith.dev/deployment-id", "operator": "Exists"}]}
     rules = spec["egress"]
     assert {"to": [{"podSelector": {}}]} in rules
     assert {"to": [{"namespaceSelector": {"matchLabels": {
-        "kubernetes.io/metadata.name": "hangar-system"}}}]} in rules
+        "kubernetes.io/metadata.name": "wingsmith-system"}}}]} in rules
     assert {"ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}]} in rules
     assert {"to": [{"ipBlock": {"cidr": "10.0.0.10/32"}}]} in rules
     assert {"to": [{"ipBlock": {"cidr": "198.51.100.0/24"}}]} in rules

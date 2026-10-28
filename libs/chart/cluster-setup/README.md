@@ -1,14 +1,14 @@
 # cluster-setup
 
 The install that turns a Kubernetes cluster with schedulable GPUs and a
-ReadWriteMany storage class into one the hangar plane can manage. It installs,
+ReadWriteMany storage class into one the wingsmith plane can manage. It installs,
 in one release:
 
 - the workload namespace (`dynamo` by default) and the shared `model-cache` PVC
   the operator mounts by name, both kept on `helm uninstall`;
 - **dcgm-exporter** (subchart): the exporter the operator scrapes for device identity;
 - the **Dynamo platform** (subchart): operator, NATS, and the `DynamoGraphDeployment` CRD;
-- the **hangar operator** and its CRDs, RBAC, config, and Deployment;
+- the **wingsmith operator** and its CRDs, RBAC, config, and Deployment;
 - optionally, the **serving agent**: the cluster's end of the inference tunnel;
 - optionally, the serving `Certificate` + Traefik `IngressRoute`;
 - ingress NetworkPolicies for the operator, agent, inference frontends and NATS,
@@ -22,7 +22,7 @@ root, with Docker and [just](https://github.com/casey/just):
 
 ```sh
 # Where your images go. Your cluster's nodes must be able to pull from it.
-export HANGAR_REGISTRY=registry.example.com/hangar
+export WINGSMITH_REGISTRY=registry.example.com/wingsmith
 
 # Tag the images with the chart's appVersion, so the chart's default tag finds them.
 version=$(sed -n 's/^appVersion: "\(.*\)"/\1/p' libs/chart/cluster-setup/Chart.yaml)
@@ -32,14 +32,14 @@ just push agent "$version"
 # The two subcharts are pulled from their public repositories; no login needed.
 helm dependency build libs/chart/cluster-setup
 
-helm upgrade --install hangar-cluster libs/chart/cluster-setup \
-  --namespace hangar-system --create-namespace \
+helm upgrade --install wingsmith-cluster libs/chart/cluster-setup \
+  --namespace wingsmith-system --create-namespace \
   -f values.<cluster>.local.yaml \
-  --set operator.image.repository="$HANGAR_REGISTRY/operator" \
-  --set agent.image.repository="$HANGAR_REGISTRY/agent"
+  --set operator.image.repository="$WINGSMITH_REGISTRY/operator" \
+  --set agent.image.repository="$WINGSMITH_REGISTRY/agent"
 ```
 
-`just push` builds for `linux/amd64` (`HANGAR_PLATFORM` to change it). If the
+`just push` builds for `linux/amd64` (`WINGSMITH_PLATFORM` to change it). If the
 registry needs a credential to pull, see [Images and pull
 secrets](#images-and-pull-secrets).
 
@@ -139,7 +139,7 @@ agent:
   enabled: true
   replicas: 2
   gateway:
-    address: hangar.example.com:443   # one address, however many replicas the plane runs
+    address: wingsmith.example.com:443   # one address, however many replicas the plane runs
   frontendEndpoint: ""     # empty discovers the Dynamo frontend Service by label
 ```
 
@@ -181,7 +181,7 @@ DCGM is where device identity comes from. What differs per cluster is in
   node label and its values on the GPU pool and on the pool that downloads
   weights. `pools.gpuTolerationKey`/`gpuTolerationValue` and
   `pools.cacheTaintKey`/`cacheTaintValue` name the taints each pool carries.
-  Empty takes the operator's defaults, `nvidia.com/gpu` and `hangar.dev/cache`
+  Empty takes the operator's defaults, `nvidia.com/gpu` and `wingsmith.dev/cache`
   with any value.
 - `fabric.type` is the RDMA fabric workers move KV over: empty for none, `efa`
   for AWS Elastic Fabric Adapter, `rdma` for another RDMA device plugin (which
@@ -233,12 +233,12 @@ mode (`dynamo-platform.dynamo-operator.namespaceRestriction`), but marks it for
 development and testing only, so this chart does not turn it on. If the Dynamo
 platform is already installed on the cluster, or you want to install it
 yourself, set `dynamo-platform.enabled: false` and install a 1.4.x release
-separately; the hangar operator only needs the `DynamoGraphDeployment` CRD and
+separately; the wingsmith operator only needs the `DynamoGraphDeployment` CRD and
 a Dynamo operator reconciling it.
 
 The subchart also brings NATS, which Dynamo's frontends and workers use for
 requests and KV-cache events. NATS has no client authentication here: the
-Dynamo operator hands every pod an unauthenticated URL. The `hangar-nats`
+Dynamo operator hands every pod an unauthenticated URL. The `wingsmith-nats`
 NetworkPolicy is what keeps other namespaces off it, so leave `networkPolicy`
 on unless your CNI does not enforce it.
 
@@ -342,7 +342,7 @@ What the chart does pin:
 
 | component | version |
 |---|---|
-| hangar operator, serving agent | `appVersion` |
+| wingsmith operator, serving agent | `appVersion` |
 | `dynamo-platform` subchart (Dynamo operator, NATS) | 1.4.1 |
 | shared-mode frontend image (`frontend.shared.image.tag`) | 1.4.1, kept equal to the subchart |
 | `dcgm-exporter` subchart | 4.8.3 |
@@ -365,7 +365,7 @@ apply by hand, are in [CHANGELOG.md](CHANGELOG.md).
 
 ### Upgrading
 
-Run the plane and this chart from the same Hangar release. When an operator
+Run the plane and this chart from the same Wingsmith release. When an operator
 connects, the hub refuses one from another major release line and admits any
 minor or patch release within its own line, plus builds from source (a version
 like `dev` or a commit). It also refuses frames in an envelope version it does
@@ -380,12 +380,12 @@ not read. A mixed-minor pair is admitted but not tested. To upgrade a cluster:
 
 ## CRDs
 
-The chart ships two CRDs in `crds/`, both in the `hangar.dev` API group at
+The chart ships two CRDs in `crds/`, both in the `wingsmith.dev` API group at
 `v1alpha1`: `SyncedResource` (the operator's local copy of what the plane
 declared) and `StreamCheckpoint` (its resume cursor on the hub stream). They are
 the operator's own state, not an API for users to write to, and `v1alpha1`
 means what it says: the schema can change between releases without a
-conversion webhook. `hangar.dev` is an interim group name and may change before
+conversion webhook. `wingsmith.dev` is an interim group name and may change before
 a stable release.
 
 Helm installs `crds/` on the first `helm install` and never touches it again: a
@@ -399,7 +399,7 @@ kubectl apply --server-side -f crds/
 
 ## Maintaining
 
-The hangar CRDs in `crds/` are a copy of the source of truth in
+The wingsmith CRDs in `crds/` are a copy of the source of truth in
 `libs/operator/deploy/crd/`, so run `just chart-sync-crds` whenever those
 change. `just chart-lint` renders the chart offline, and `tests/` holds render
 tests for its behaviour:
@@ -408,7 +408,7 @@ tests for its behaviour:
 uv run --no-project --with pyyaml --with pytest pytest libs/chart/cluster-setup/tests
 ```
 
-`just chart-push` packages the chart and pushes it to `HANGAR_CHART_OCI`. The subcharts (`dcgm-exporter`, `dynamo-platform`) pull anonymously: no NGC
+`just chart-push` packages the chart and pushes it to `WINGSMITH_CHART_OCI`. The subcharts (`dcgm-exporter`, `dynamo-platform`) pull anonymously: no NGC
 account is needed. The Dynamo operator applies the `DynamoGraphDeployment` CRD
 from its own image (`upgradeCRD`, on by default), so there is no separate CRD
 chart to vendor.

@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: syncedresources.hangar.dev
+  name: syncedresources.wingsmith.dev
 spec:
-  group: hangar.dev
+  group: wingsmith.dev
   names:
     kind: SyncedResource
     listKind: SyncedResourceList

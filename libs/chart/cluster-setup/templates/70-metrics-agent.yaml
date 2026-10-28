@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: hangar-metrics-agent
+  name: wingsmith-metrics-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -16,7 +16,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Release.Namespace }}-hangar-metrics-agent
+  name: {{ .Release.Namespace }}-wingsmith-metrics-agent
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
@@ -27,22 +27,22 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Namespace }}-hangar-metrics-agent
+  name: {{ .Release.Namespace }}-wingsmith-metrics-agent
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Release.Namespace }}-hangar-metrics-agent
+  name: {{ .Release.Namespace }}-wingsmith-metrics-agent
 subjects:
   - kind: ServiceAccount
-    name: hangar-metrics-agent
+    name: wingsmith-metrics-agent
     namespace: {{ .Release.Namespace }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-metrics-agent
+  name: wingsmith-metrics-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -72,15 +72,15 @@ data:
         {{- if .Values.monitoring.remoteWrite.bearerToken.existingSecret }}
         authorization:
           type: Bearer
-          credentials_file: /etc/hangar/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
+          credentials_file: /etc/wingsmith/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
         {{- else }}
         basic_auth:
         {{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}
           username: {{ .Values.cluster.id | quote }}
         {{- else }}
-          username_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
+          username_file: /etc/wingsmith/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
         {{- end }}
-          password_file: /etc/hangar/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
+          password_file: /etc/wingsmith/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
         {{- end }}
         queue_config:
           capacity: {{ .Values.monitoring.remoteWrite.queue.capacity }}
@@ -95,7 +95,7 @@ data:
       # Per-GPU telemetry. Discovered by the exporter's own pod labels and not
       # through its Service, so every node's exporter is a target instead of
       # whichever pod the ClusterIP picks: the same reason the operator's
-      # HANGAR_DCGM_SELECTOR exists.
+      # WINGSMITH_DCGM_SELECTOR exists.
       - job_name: dcgm-exporter
         kubernetes_sd_configs:
           - role: pod
@@ -181,7 +181,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hangar-metrics-agent
+  name: wingsmith-metrics-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -205,7 +205,7 @@ spec:
         # running agent keeps the old scrape config indefinitely.
         checksum/config: {{ printf "%s|%s|%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) (toString .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) .Values.monitoring.remoteWrite.bearerToken.existingSecret | sha256sum }}
     spec:
-      serviceAccountName: hangar-metrics-agent
+      serviceAccountName: wingsmith-metrics-agent
       {{- with .Values.monitoring.agent.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -263,14 +263,14 @@ spec:
               mountPath: /etc/prometheus
               readOnly: true
             - name: remote-write
-              mountPath: /etc/hangar/remote-write
+              mountPath: /etc/wingsmith/remote-write
               readOnly: true
             - name: wal
               mountPath: /data
       volumes:
         - name: config
           configMap:
-            name: hangar-metrics-agent
+            name: wingsmith-metrics-agent
         - name: remote-write
           secret:
             secretName: {{ include "cluster-setup.remoteWriteSecret" . }}

@@ -12,8 +12,8 @@ upgrade sources; install fresh.
 
 ### Breaking
 
-- The operator's CRDs moved to the `hangar.dev` API group
-  (`syncedresources.hangar.dev`, `streamcheckpoints.hangar.dev`). Helm does not
+- The operator's CRDs moved to the `wingsmith.dev` API group
+  (`syncedresources.wingsmith.dev`, `streamcheckpoints.wingsmith.dev`). Helm does not
   install new CRDs on upgrade: apply `crds/` by hand first.
 - `appVersion` is a release version, not `latest`. The operator and agent
   images default to it, with `pullPolicy: IfNotPresent`.
@@ -38,8 +38,8 @@ upgrade sources; install fresh.
   `frontend.mode`; the chart refuses either with migration instructions.
 - `fabric.devices` alone no longer means EFA. Set `fabric.type: efa` beside it
   (or `rdma` with `fabric.resource`); the chart refuses devices with no type.
-  The operator now gets `HANGAR_FABRIC` and `HANGAR_FABRIC_DEVICES` instead of
-  `HANGAR_EFA_DEVICES`.
+  The operator now gets `WINGSMITH_FABRIC` and `WINGSMITH_FABRIC_DEVICES` instead of
+  `WINGSMITH_EFA_DEVICES`.
 
 ### Added
 
@@ -53,7 +53,7 @@ upgrade sources; install fresh.
   `pools.cacheTaintValue`, for pools tainted differently from the operator's
   defaults.
 - `agent.terminationGracePeriodSeconds` (default 120) sets the agent pod's grace
-  period and its `HANGAR_SHUTDOWN_GRACE` together.
+  period and its `WINGSMITH_SHUTDOWN_GRACE` together.
 - `operator.benchmark.tokenSecret` hands benchmark jobs a Secret's keys as
   environment, for a tokenizer in a gated repository.
 - `networkPolicy.servingEgress` closes egress from the serving pods to their

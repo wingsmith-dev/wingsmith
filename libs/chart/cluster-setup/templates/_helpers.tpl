@@ -43,7 +43,7 @@ for the same reason: sharing the operator's selector would make one Deployment
 adopt the other's pods.
 */}}
 {{- define "cluster-setup.servingAgentSelectorLabels" -}}
-app.kubernetes.io/name: hangar-agent
+app.kubernetes.io/name: wingsmith-agent
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
@@ -82,7 +82,7 @@ a separate workload and sharing a selector would make one Deployment adopt the
 other's pods.
 */}}
 {{- define "cluster-setup.agentSelectorLabels" -}}
-app.kubernetes.io/name: hangar-metrics-agent
+app.kubernetes.io/name: wingsmith-metrics-agent
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
@@ -125,7 +125,7 @@ not in values (a Secret created out of band), which rolls nothing.
 */}}
 {{- define "cluster-setup.enrolmentTokenRollKey" -}}
 {{- with .Values.enrolmentToken.value -}}
-{{- derivePassword 1 "maximum" . (toString $.Values.cluster.id) "enrolment-token.hangar.dev" | sha256sum | trunc 16 -}}
+{{- derivePassword 1 "maximum" . (toString $.Values.cluster.id) "enrolment-token.wingsmith.dev" | sha256sum | trunc 16 -}}
 {{- end -}}
 {{- end -}}
 
@@ -168,11 +168,11 @@ cordon,drain,benchmark
 {{- required "workloadNamespace.name is required" .Values.workloadNamespace.name -}}
 {{- end -}}
 
-{{/* Common labels on hangar-owned objects. */}}
+{{/* Common labels on wingsmith-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
-app.kubernetes.io/name: hangar-operator
+app.kubernetes.io/name: wingsmith-operator
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/part-of: hangar
+app.kubernetes.io/part-of: wingsmith
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 
@@ -183,7 +183,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 {{- if and (not .Values.enrolmentToken.value) (not .Values.enrolmentToken.existing) -}}
 {{- if and .Values.monitoring.enabled .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
-{{- fail "enrolmentToken.value is required, and with monitoring.remoteWrite.basicAuth.useEnrolmentToken it is needed twice over: the operator reads the token from a Secret this chart creates, so without it that pod starts into CreateContainerConfigError, and the metrics agent presents the same token to the central store's write ingress, whose htpasswd the plane filled in when it minted it, so a missing one also means an agent that scrapes fine and is rejected with 401 on every send, visible only in its own logs. Mint the token on the register screen and install from the values.yaml it renders. Set enrolmentToken.existing=true if you created that Secret yourself, or useEnrolmentToken=false with an explicit basicAuth username and password for a store that is not hangar's." -}}
+{{- fail "enrolmentToken.value is required, and with monitoring.remoteWrite.basicAuth.useEnrolmentToken it is needed twice over: the operator reads the token from a Secret this chart creates, so without it that pod starts into CreateContainerConfigError, and the metrics agent presents the same token to the central store's write ingress, whose htpasswd the plane filled in when it minted it, so a missing one also means an agent that scrapes fine and is rejected with 401 on every send, visible only in its own logs. Mint the token on the register screen and install from the values.yaml it renders. Set enrolmentToken.existing=true if you created that Secret yourself, or useEnrolmentToken=false with an explicit basicAuth username and password for a store that is not wingsmith's." -}}
 {{- else -}}
 {{- fail "enrolmentToken.value is required: mint the cluster's token on the register screen and install from the values.yaml it renders. The operator Deployment reads the token from a Secret this chart creates, so without it the pod starts into CreateContainerConfigError. Set enrolmentToken.existing=true only if you created that Secret yourself." -}}
 {{- end -}}
@@ -293,13 +293,13 @@ read-only starts from a complete view.
 - apiGroups: [coordination.k8s.io]
   resources: [leases]
   verbs: [create, get, list, patch, update, watch]
-- apiGroups: [hangar.dev]
+- apiGroups: [wingsmith.dev]
   resources: [syncedresources]
   verbs: [create, delete, get, list, patch, update, watch]
-- apiGroups: [hangar.dev]
+- apiGroups: [wingsmith.dev]
   resources: [syncedresources/status]
   verbs: [get, patch, update]
-- apiGroups: [hangar.dev]
+- apiGroups: [wingsmith.dev]
   resources: [streamcheckpoints]
   verbs: [create, get, list, patch, update, watch]
 {{- end -}}
@@ -361,16 +361,16 @@ benchmark.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ $ns }}
   labels:
     {{- include "cluster-setup.labels" $ | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: hangar-operator
+  name: wingsmith-operator
 subjects:
   - kind: ServiceAccount
-    name: hangar-operator
+    name: wingsmith-operator
     namespace: {{ $.Release.Namespace }}
 {{- end -}}

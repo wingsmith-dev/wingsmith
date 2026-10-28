@@ -58,7 +58,7 @@ hub:
 # Re-minting it on the register screen invalidates the old one everywhere at
 # once; install the new values and the pods that hold it restart.
 enrolmentToken:
-  existingSecret: hangar-operator
+  existingSecret: wingsmith-operator
   secretKey: enrolment-token
   value: ""
   # Opt-out for a hand-driven install where you created `existingSecret` yourself.
@@ -89,7 +89,7 @@ imagePullSecret:
 # prefetch jobs Pending.
 #
 # The taints are optional. Empty takes the operator's defaults: workers tolerate
-# `nvidia.com/gpu` with any value, and prefetch jobs tolerate `hangar.dev/cache`
+# `nvidia.com/gpu` with any value, and prefetch jobs tolerate `wingsmith.dev/cache`
 # with any value. Set a value to tolerate only that value of the key. The
 # operator renders for NVIDIA GPUs only; the GPU resource is `nvidia.com/gpu`
 # whatever the taint is called.
@@ -229,7 +229,7 @@ dcgm:
 
 operator:
   image:
-    repository: ghcr.io/hangar-dev/operator
+    repository: ghcr.io/wingsmith-dev/operator
     # Empty takes the chart's appVersion, so a chart version names one operator
     # build. Set it only to run a build of your own.
     tag: ""
@@ -296,7 +296,7 @@ agent:
   # Two, so a `helm upgrade` does not take this cluster's inference with it.
   replicas: 2
   image:
-    repository: ghcr.io/hangar-dev/agent
+    repository: ghcr.io/wingsmith-dev/agent
     # Empty takes the chart's appVersion, like the operator's.
     tag: ""
     digest: ""
@@ -305,7 +305,7 @@ agent:
     # The gateway's tunnel address as `host:port`; TLS assumed, no scheme. One
     # address however many replicas the gateway runs: the agent learns the rest
     # from the handshake, so scaling it never edits this file.
-    # e.g. hangar.example.com:443
+    # e.g. wingsmith.example.com:443
     address: ""
     # The name to verify the gateway's certificate against, when it differs
     # from the host in `address`. Empty uses that host.
@@ -324,11 +324,11 @@ agent:
   # shape this bounds the whole generation. Every hop on the path (the gateway,
   # the tunnel, this agent) arms the same timer and only the smallest of them is
   # ever observed, so raising this alone does nothing: a cluster that needs longer
-  # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway's
+  # than the default needs WINGSMITH_RESPONSE_HEADER_TIMEOUT raised on the gateway's
   # deployment too, and the same value in both places.
   responseHeaderTimeout: ""
   # How long a terminating pod has to drain, in seconds. Also given to the agent as
-  # HANGAR_SHUTDOWN_GRACE, which it drains for less 5 seconds, so the two cannot
+  # WINGSMITH_SHUTDOWN_GRACE, which it drains for less 5 seconds, so the two cannot
   # drift. Raise it if a generation can outlast the drain.
   terminationGracePeriodSeconds: 120
   # A proxy, not a runtime: it copies bytes and holds streams open. No CPU limit,
@@ -540,7 +540,7 @@ serving:
 # Egress is open by default: the hub, the gateway, the API server and the model
 # registries differ per cluster. `servingEgress` closes it for the serving pods,
 # the workers and per-model frontends the operator renders (every pod carrying
-# `hangar.dev/deployment-id` in the workload namespace). They may then reach only
+# `wingsmith.dev/deployment-id` in the workload namespace). They may then reach only
 # other pods in that namespace, the release namespace (NATS), DNS on port 53, the
 # API server CIDRs in `apiServer` (Dynamo discovers components through the
 # Kubernetes API; read them with `kubectl get endpoints kubernetes`), and the
@@ -598,12 +598,12 @@ monitoring:
     # appears once in a values file and a second copy cannot drift from it, so
     # `username`/`password` are unread while this is true.
     #
-    # `useEnrolmentToken: false` is for a store that is not hangar's: the chart
+    # `useEnrolmentToken: false` is for a store that is not wingsmith's: the chart
     # creates the Secret from `username`/`password` instead, with `existing: true`
     # the further opt-out for one you made yourself. Never commit a credential.
     basicAuth:
       useEnrolmentToken: true
-      existingSecret: hangar-metrics-remote-write
+      existingSecret: wingsmith-metrics-remote-write
       usernameKey: username
       passwordKey: password
       username: ""
@@ -699,7 +699,7 @@ dcgm-exporter:
       memory: 256Mi
 
 # The Dynamo operator + NATS, the bus Dynamo's Frontend and workers use for
-# request/response and KV-cache events; the hangar operator never touches it.
+# request/response and KV-cache events; the wingsmith operator never touches it.
 #
 # The Dynamo operator is a cluster-wide controller with cluster-admin-equivalent
 # RBAC: Secrets in every namespace, ClusterRoles and ClusterRoleBindings, CRDs
@@ -729,7 +729,7 @@ dcgm-exporter:
 # an alpha controller is the wrong coupling. Take the bundle to get a cluster
 # serving multi-node today; move to a separate release when the cluster matters.
 #
-# The hangar operator needs neither key. It discovers the backend by reading the API
+# The wingsmith operator needs neither key. It discovers the backend by reading the API
 # groups the cluster serves and matching `grove` (Grove serves `grove.io` and
 # `scheduler.grove.io`), so the capability appears on the next observation tick after
 # the CRDs land, whatever this file says. These keys install the thing; `multinode.enabled`

@@ -4,14 +4,14 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: hangar-operator
+      app.kubernetes.io/name: wingsmith-operator
   policyTypes: [Ingress]
   ingress:
     - ports:
@@ -26,7 +26,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -44,7 +44,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-inference-frontend
+  name: wingsmith-inference-frontend
   namespace: {{ $workloads }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -64,7 +64,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [hangar-agent, hangar-operator, hangar-metrics-agent, dynamo-operator]
+                values: [wingsmith-agent, wingsmith-operator, wingsmith-metrics-agent, dynamo-operator]
         {{- with .Values.networkPolicy.frontendFrom }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -73,14 +73,14 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-serving-egress
+  name: wingsmith-serving-egress
   namespace: {{ $workloads }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchExpressions:
-      - key: hangar.dev/deployment-id
+      - key: wingsmith.dev/deployment-id
         operator: Exists
   policyTypes: [Egress]
   egress:
@@ -113,7 +113,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-nats
+  name: wingsmith-nats
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}

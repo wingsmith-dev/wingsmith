@@ -1,9 +1,9 @@
 apiVersion: v2
 name: cluster-setup
 description: >-
-  Turns a tier-1 cluster into one the hangar plane can manage: the dynamo
+  Turns a tier-1 cluster into one the wingsmith plane can manage: the dynamo
   namespace and model-weight cache, dcgm-exporter, the Dynamo platform (operator,
-  NATS, the DynamoGraphDeployment CRD), and the hangar operator.
+  NATS, the DynamoGraphDeployment CRD), and the wingsmith operator.
 type: application
 
 # One version for the chart and the images it runs: appVersion is the default
@@ -15,7 +15,7 @@ appVersion: "0.3.0"
 kubeVersion: ">=1.29.0-0"
 
 keywords:
-  - hangar
+  - wingsmith
   - gpu
   - inference
   - dynamo
@@ -35,8 +35,8 @@ dependencies:
     repository: oci://nvcr.io/nvidia/ai-dynamo
     condition: dynamo-platform.enabled
 
-home: https://github.com/hangar-dev/hangar
+home: https://github.com/wingsmith-dev/wingsmith
 sources:
-  - https://github.com/hangar-dev/hangar/tree/main/libs/chart/cluster-setup
+  - https://github.com/wingsmith-dev/wingsmith/tree/main/libs/chart/cluster-setup
 annotations:
   artifacthub.io/license: Apache-2.0

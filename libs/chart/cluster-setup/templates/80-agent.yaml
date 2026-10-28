@@ -21,7 +21,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -42,7 +42,7 @@ imagePullSecrets:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -54,23 +54,23 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ include "cluster-setup.workloadNamespace" . }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: hangar-agent
+  name: wingsmith-agent
 subjects:
   - kind: ServiceAccount
-    name: hangar-agent
+    name: wingsmith-agent
     namespace: {{ .Release.Namespace }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -78,42 +78,42 @@ data:
   # `cluster.id` and nothing derived from it: the gateway matches the token it
   # is presented against the cluster the plane minted it for, and a mismatch here
   # is refused at the handshake, not routed somewhere wrong.
-  HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
-  HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
-  HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
-  HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
+  WINGSMITH_CLUSTER_ID: {{ .Values.cluster.id | quote }}
+  WINGSMITH_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
+  WINGSMITH_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
+  WINGSMITH_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
 
   # One address. The agent redials it until it holds a tunnel to every gateway
   # replica, which it learns about from the handshake; see values.yaml for why
   # the replicas are not named here. Each replica opens
-  # HANGAR_TUNNEL_CONNS_PER_GATEWAY tunnels to each of them, left at the agent's
+  # WINGSMITH_TUNNEL_CONNS_PER_GATEWAY tunnels to each of them, left at the agent's
   # own default.
-  HANGAR_TUNNEL_GATEWAY: {{ include "cluster-setup.gatewayAddress" . | quote }}
+  WINGSMITH_TUNNEL_GATEWAY: {{ include "cluster-setup.gatewayAddress" . | quote }}
   {{- with .Values.agent.gateway.serverName }}
-  HANGAR_TUNNEL_SERVER_NAME: {{ . | quote }}
+  WINGSMITH_TUNNEL_SERVER_NAME: {{ . | quote }}
   {{- end }}
   {{- if .Values.agent.gateway.caBundle }}
-  HANGAR_TUNNEL_CA_FILE: /etc/hangar/tunnel-ca/ca.crt
+  WINGSMITH_TUNNEL_CA_FILE: /etc/wingsmith/tunnel-ca/ca.crt
   {{- end }}
   # Empty means discover the frontend by label. Same variable name and same
   # precedence as the operator's, so a cluster that had to override it there
   # overrides it the same way here.
-  HANGAR_INFERENCE_ENDPOINT: {{ .Values.agent.frontendEndpoint | quote }}
+  WINGSMITH_INFERENCE_ENDPOINT: {{ .Values.agent.frontendEndpoint | quote }}
   # The pod's grace period, so the agent's drain (this less 5s) ends before the kill.
-  HANGAR_SHUTDOWN_GRACE: {{ printf "%ds" (int .Values.agent.terminationGracePeriodSeconds) | quote }}
+  WINGSMITH_SHUTDOWN_GRACE: {{ printf "%ds" (int .Values.agent.terminationGracePeriodSeconds) | quote }}
   {{- with .Values.agent.responseHeaderTimeout }}
   # Raise this and the gateway's together or it buys nothing: the agent is the
   # innermost of three hops arming this timer and the smallest one is the only
   # one a caller ever sees. The agent refuses to start on a value below its own
   # default for the same reason.
-  HANGAR_RESPONSE_HEADER_TIMEOUT: {{ . | quote }}
+  WINGSMITH_RESPONSE_HEADER_TIMEOUT: {{ . | quote }}
   {{- end }}
 {{- with .Values.agent.gateway.caBundle }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-tunnel-ca
+  name: wingsmith-tunnel-ca
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" $ | nindent 4 }}
@@ -124,7 +124,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hangar-agent
+  name: wingsmith-agent
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -158,7 +158,7 @@ spec:
         rollout/enrolment-token: {{ . | quote }}
         {{- end }}
     spec:
-      serviceAccountName: hangar-agent
+      serviceAccountName: wingsmith-agent
       # Preferred, not required: two replicas on one node is a single node drain
       # taking all inference for this cluster, and a cluster with one schedulable
       # system node should still install.
@@ -181,19 +181,19 @@ spec:
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           envFrom:
             - configMapRef:
-                name: hangar-agent
+                name: wingsmith-agent
           env:
             # Identity on the tunnel. The token the plane minted for this cluster,
             # out of the Secret the operator already reads: TLS carries
             # confidentiality, this carries who is calling, and there is no second
             # credential to keep in step with the first.
-            - name: HANGAR_ENROLMENT_TOKEN
+            - name: WINGSMITH_ENROLMENT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.enrolmentToken.existingSecret }}
                   key: {{ .Values.enrolmentToken.secretKey }}
           ports:
-            # HANGAR_HEALTH_ADDR's default. One listener, carrying the two probes
+            # WINGSMITH_HEALTH_ADDR's default. One listener, carrying the two probes
             # and /metrics: the agent has no listener on its data path, so
             # this port is the only thing reachable here at all.
             #
@@ -227,7 +227,7 @@ spec:
           {{- if .Values.agent.gateway.caBundle }}
           volumeMounts:
             - name: tunnel-ca
-              mountPath: /etc/hangar/tunnel-ca
+              mountPath: /etc/wingsmith/tunnel-ca
               readOnly: true
           {{- end }}
           resources:
@@ -239,14 +239,14 @@ spec:
               drop: ["ALL"]
       # Longer than the drain it has to contain: SIGTERM sends GOAWAY on every
       # tunnel and then waits for the streams already open, up to
-      # HANGAR_SHUTDOWN_GRACE (set from this value above) less 5s, and one of those
+      # WINGSMITH_SHUTDOWN_GRACE (set from this value above) less 5s, and one of those
       # is somebody's half-written completion. The operator's 30s is right for a
       # reconciler and would sever generations here.
       {{- if .Values.agent.gateway.caBundle }}
       volumes:
         - name: tunnel-ca
           configMap:
-            name: hangar-tunnel-ca
+            name: wingsmith-tunnel-ca
       {{- end }}
       terminationGracePeriodSeconds: {{ int .Values.agent.terminationGracePeriodSeconds }}
 {{- end }}

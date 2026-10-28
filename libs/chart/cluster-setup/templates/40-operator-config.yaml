@@ -1,78 +1,78 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 data:
-  HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
-  HANGAR_HUB_URL: {{ .Values.cluster.hubUrl | quote }}
+  WINGSMITH_CLUSTER_ID: {{ .Values.cluster.id | quote }}
+  WINGSMITH_HUB_URL: {{ .Values.cluster.hubUrl | quote }}
   {{- if .Values.hub.allowInsecure }}
-  HANGAR_HUB_ALLOW_INSECURE: "true"
+  WINGSMITH_HUB_ALLOW_INSECURE: "true"
   {{- end }}
   {{- if .Values.hub.caBundle }}
-  HANGAR_HUB_CA_FILE: /etc/hangar/hub-ca/ca.crt
+  WINGSMITH_HUB_CA_FILE: /etc/wingsmith/hub-ca/ca.crt
   {{- end }}
-  HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
-  HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
-  HANGAR_NAMESPACE: {{ .Release.Namespace | quote }}
-  HANGAR_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
-  HANGAR_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
+  WINGSMITH_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
+  WINGSMITH_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
+  WINGSMITH_NAMESPACE: {{ .Release.Namespace | quote }}
+  WINGSMITH_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
+  WINGSMITH_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
   # "0" is the operator's own off switch.
-  HANGAR_METRICS_ADDR: {{ ternary (printf ":%v" .Values.operator.metrics.port) "0" .Values.operator.metrics.enabled | quote }}
+  WINGSMITH_METRICS_ADDR: {{ ternary (printf ":%v" .Values.operator.metrics.port) "0" .Values.operator.metrics.enabled | quote }}
 
-  HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
-  HANGAR_ALLOWED_OPERATIONS: {{ include "cluster-setup.allowedOperations" . | quote }}
+  WINGSMITH_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
+  WINGSMITH_ALLOWED_OPERATIONS: {{ include "cluster-setup.allowedOperations" . | quote }}
 
-  HANGAR_POOL_LABEL_KEY: {{ required "pools.labelKey is required: name the label this cluster puts on its node pools. Left empty the operator falls back to its own default key and discovers no pools at all." .Values.pools.labelKey | quote }}
-  HANGAR_GPU_POOL_VALUE: {{ required "pools.gpuValue is required: name the pool holding the GPU nodes." .Values.pools.gpuValue | quote }}
-  HANGAR_CACHE_POOL_VALUE: {{ required "pools.cacheValue is required: name the pool model-prefetch jobs run on. It must be a pool that exists, or the jobs stay Pending." .Values.pools.cacheValue | quote }}
+  WINGSMITH_POOL_LABEL_KEY: {{ required "pools.labelKey is required: name the label this cluster puts on its node pools. Left empty the operator falls back to its own default key and discovers no pools at all." .Values.pools.labelKey | quote }}
+  WINGSMITH_GPU_POOL_VALUE: {{ required "pools.gpuValue is required: name the pool holding the GPU nodes." .Values.pools.gpuValue | quote }}
+  WINGSMITH_CACHE_POOL_VALUE: {{ required "pools.cacheValue is required: name the pool model-prefetch jobs run on. It must be a pool that exists, or the jobs stay Pending." .Values.pools.cacheValue | quote }}
   {{- with .Values.pools.cacheTaintKey }}
-  HANGAR_CACHE_TAINT_KEY: {{ . | quote }}
+  WINGSMITH_CACHE_TAINT_KEY: {{ . | quote }}
   {{- end }}
   {{- with .Values.pools.cacheTaintValue | default "" | toString }}
-  HANGAR_CACHE_TAINT_VALUE: {{ . | quote }}
+  WINGSMITH_CACHE_TAINT_VALUE: {{ . | quote }}
   {{- end }}
   {{- with .Values.pools.gpuTolerationKey }}
-  HANGAR_GPU_TOLERATION_KEY: {{ . | quote }}
+  WINGSMITH_GPU_TOLERATION_KEY: {{ . | quote }}
   {{- end }}
   {{- with .Values.pools.gpuTolerationValue | default "" | toString }}
-  HANGAR_GPU_TOLERATION_VALUE: {{ . | quote }}
+  WINGSMITH_GPU_TOLERATION_VALUE: {{ . | quote }}
   {{- end }}
 
-  HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
+  WINGSMITH_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
   {{- with .Values.modelCache.localDir }}
-  HANGAR_LOCAL_MODEL_CACHE_DIR: {{ . | quote }}
+  WINGSMITH_LOCAL_MODEL_CACHE_DIR: {{ . | quote }}
   {{- end }}
 
-  HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
+  WINGSMITH_MULTINODE: {{ .Values.multinode.enabled | quote }}
 
   {{- with .Values.fabric.type }}
-  HANGAR_FABRIC: {{ . | quote }}
-  HANGAR_FABRIC_DEVICES: {{ $.Values.fabric.devices | quote }}
+  WINGSMITH_FABRIC: {{ . | quote }}
+  WINGSMITH_FABRIC_DEVICES: {{ $.Values.fabric.devices | quote }}
   {{- end }}
   {{- if kindIs "bool" .Values.fabric.privileged }}
-  HANGAR_FABRIC_PRIVILEGED: {{ .Values.fabric.privileged | quote }}
+  WINGSMITH_FABRIC_PRIVILEGED: {{ .Values.fabric.privileged | quote }}
   {{- end }}
   {{- with .Values.fabric.resource }}
-  HANGAR_FABRIC_RESOURCE: {{ . | quote }}
+  WINGSMITH_FABRIC_RESOURCE: {{ . | quote }}
   {{- end }}
   {{- with .Values.fabric.nixlBackends }}
-  HANGAR_NIXL_BACKENDS: {{ join "," . | quote }}
+  WINGSMITH_NIXL_BACKENDS: {{ join "," . | quote }}
   {{- end }}
 
   {{- with .Values.operator.engine.imagePullSecrets }}
-  HANGAR_ENGINE_PULL_SECRETS: {{ join "," . | quote }}
+  WINGSMITH_ENGINE_PULL_SECRETS: {{ join "," . | quote }}
   {{- end }}
   {{- with .Values.operator.images.allowedPrefixes }}
-  HANGAR_ALLOWED_IMAGE_PREFIXES: {{ join "," . | quote }}
+  WINGSMITH_ALLOWED_IMAGE_PREFIXES: {{ join "," . | quote }}
   {{- end }}
   {{- with .Values.operator.benchmark.images }}
-  HANGAR_BENCHMARK_IMAGES: {{ join "," . | quote }}
+  WINGSMITH_BENCHMARK_IMAGES: {{ join "," . | quote }}
   {{- end }}
   {{- with .Values.operator.benchmark.tokenSecret }}
-  HANGAR_BENCHMARK_TOKEN_SECRET: {{ . | quote }}
+  WINGSMITH_BENCHMARK_TOKEN_SECRET: {{ . | quote }}
   {{- end }}
 
   # One frontend per model, rendered by the operator into each model's own graph.
@@ -82,38 +82,38 @@ data:
   #
   # The keys below are read whatever the mode says, and cost nothing when the
   # operator is not rendering frontends: it is the flag above that decides.
-  HANGAR_FRONTEND_ENABLED: {{ eq .Values.frontend.mode "per-model" | quote }}
-  HANGAR_FRONTEND_REPLICAS: {{ .Values.frontend.replicas | quote }}
-  HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.frontend.anthropicApi.enabled | quote }}
-  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.frontend.anthropicApi.stripPreamble | quote }}
-  HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.frontend.perModel.globalDynamoNamespace | quote }}
+  WINGSMITH_FRONTEND_ENABLED: {{ eq .Values.frontend.mode "per-model" | quote }}
+  WINGSMITH_FRONTEND_REPLICAS: {{ .Values.frontend.replicas | quote }}
+  WINGSMITH_FRONTEND_ANTHROPIC_API: {{ .Values.frontend.anthropicApi.enabled | quote }}
+  WINGSMITH_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.frontend.anthropicApi.stripPreamble | quote }}
+  WINGSMITH_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.frontend.perModel.globalDynamoNamespace | quote }}
   {{- with .Values.frontend.perModel.image }}
-  HANGAR_FRONTEND_IMAGE: {{ . | quote }}
+  WINGSMITH_FRONTEND_IMAGE: {{ . | quote }}
   {{- end }}
   {{- with .Values.frontend.imagePullSecrets }}
-  HANGAR_FRONTEND_PULL_SECRETS: {{ join "," . | quote }}
+  WINGSMITH_FRONTEND_PULL_SECRETS: {{ join "," . | quote }}
   {{- end }}
   {{- with .Values.frontend.perModel.resources.requests.cpu }}
-  HANGAR_FRONTEND_CPU: {{ . | quote }}
+  WINGSMITH_FRONTEND_CPU: {{ . | quote }}
   {{- end }}
   {{- with .Values.frontend.perModel.resources.requests.memory }}
-  HANGAR_FRONTEND_MEMORY: {{ . | quote }}
+  WINGSMITH_FRONTEND_MEMORY: {{ . | quote }}
   {{- end }}
   {{- with .Values.frontend.perModel.resources.limits.memory }}
-  HANGAR_FRONTEND_MEMORY_LIMIT: {{ . | quote }}
+  WINGSMITH_FRONTEND_MEMORY_LIMIT: {{ . | quote }}
   {{- end }}
 
-  HANGAR_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
+  WINGSMITH_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
   {{- with (include "cluster-setup.dcgmSelector" .) }}
-  HANGAR_DCGM_SELECTOR: {{ . | quote }}
+  WINGSMITH_DCGM_SELECTOR: {{ . | quote }}
   {{- end }}
-  HANGAR_DCGM_TIMEOUT: {{ .Values.dcgm.timeout | quote }}
+  WINGSMITH_DCGM_TIMEOUT: {{ .Values.dcgm.timeout | quote }}
 {{- with .Values.hub.caBundle }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-hub-ca
+  name: wingsmith-hub-ca
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" $ | nindent 4 }}

@@ -1,4 +1,4 @@
-hangar cluster-setup {{ .Chart.Version }} installed into {{ .Release.Namespace }}.
+wingsmith cluster-setup {{ .Chart.Version }} installed into {{ .Release.Namespace }}.
 
 Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
@@ -17,7 +17,7 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured: agent -> {{ .Values.
    register screen or with POST /v1/clusters/{{ .Values.cluster.id }}/enrolment-token:
 
      kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.enrolmentToken.existingSecret }} \
-       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's hgro1. enrolment token from the console's register screen>
+       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's wso1. enrolment token from the console's register screen>
 {{- end }}
 {{- if not .Values.hfToken.create }}
 
@@ -31,14 +31,14 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured: agent -> {{ .Values.
 ℹ  Telemetry egress is on. Confirm the agent is actually sending, because a
    scraping-but-not-writing agent looks identical to a healthy one from outside:
 
-     kubectl -n {{ .Release.Namespace }} logs deploy/hangar-metrics-agent | grep -i 'remote_write\|401\|403'
+     kubectl -n {{ .Release.Namespace }} logs deploy/wingsmith-metrics-agent | grep -i 'remote_write\|401\|403'
 
    {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}A 401 there means the write ingress holds no verifier for this cluster's
    enrolment token. Re-mint the token instead of looking for a credential to
    fix.{{ else }}A 401 there means this basicAuth pair is not in the write ingress's htpasswd.{{ end }}
 
    Then confirm the plane's store has the label before adding this cluster to
-   HANGAR_METRICS_SOURCES: an entry added early replaces a correct "no metrics
+   WINGSMITH_METRICS_SOURCES: an entry added early replaces a correct "no metrics
    source" with an empty chart that reads as an idle fleet:
 
      /api/v1/label/cluster/values
@@ -57,8 +57,8 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured: agent -> {{ .Values.
    every gateway was reached, because an agent that holds three of four
    tunnels serves whichever gateway pods it got and fails the rest:
 
-     kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-agent
-     kubectl -n {{ .Release.Namespace }} logs deploy/hangar-agent | grep -i tunnel
+     kubectl -n {{ .Release.Namespace }} rollout status deploy/wingsmith-agent
+     kubectl -n {{ .Release.Namespace }} logs deploy/wingsmith-agent | grep -i tunnel
 
    The plane's side of the same question is the gateway's tunnel coverage gauge:
    live tunnels per cluster, measured there and nowhere else, because the gateway
@@ -103,7 +103,7 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured: agent -> {{ .Values.
 
 Watch the operator come up and enrol:
 
-  kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-operator
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/wingsmith-operator
 
 The first handshake promotes the cluster from `pending` to `active` and stamps
 `enrolled_at`, so there is nothing to do here for an install that reached the hub.

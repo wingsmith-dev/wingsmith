@@ -6,7 +6,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -40,7 +40,7 @@ imagePullSecrets:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
@@ -54,16 +54,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: hangar-operator
+  name: wingsmith-operator
 subjects:
   - kind: ServiceAccount
-    name: hangar-operator
+    name: wingsmith-operator
     namespace: {{ .Release.Namespace }}
 ---
 {{- /*
@@ -80,7 +80,7 @@ exits.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -93,7 +93,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
@@ -114,13 +114,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
   namespace: {{ $workloads }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
   # Read only, for the cache's informers in this namespace.
-  - apiGroups: [hangar.dev]
+  - apiGroups: [wingsmith.dev]
     resources: [syncedresources]
     verbs: [get, list, watch]
   {{- with include "cluster-setup.operatorWorkloadRules" . | trim }}{{ . | nindent 2 }}{{ end }}
@@ -135,7 +135,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: hangar-operator-nodes
+  name: wingsmith-operator-nodes
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 rules:
@@ -151,15 +151,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: hangar-operator-nodes
+  name: wingsmith-operator-nodes
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: hangar-operator-nodes
+  name: wingsmith-operator-nodes
 subjects:
   - kind: ServiceAccount
-    name: hangar-operator
+    name: wingsmith-operator
     namespace: {{ .Release.Namespace }}
 {{- end }}
