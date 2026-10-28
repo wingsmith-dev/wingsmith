@@ -102,7 +102,7 @@ def test_the_public_id_is_patchable_and_the_handle_is_not():
     There used to be a third, `display_name`, and a fourth reported on the way out. Four spellings
     of one question is what this asserts is gone.
     """
-    assert EndpointUpdateRequest(slug="acme/llama-70b").to_dict(exclude_unset=True) == {"slug": "acme/llama-70b"}
+    assert EndpointUpdateRequest(slug="acme/gpt-oss-120b").to_dict(exclude_unset=True) == {"slug": "acme/gpt-oss-120b"}
     assert EndpointUpdateRequest().to_dict(exclude_unset=True) == {}
     assert "name" not in EndpointUpdateRequest.__struct_fields__
     assert "display_name" not in EndpointUpdateRequest.__struct_fields__
@@ -194,13 +194,13 @@ def test_revision_is_derived_from_the_last_write():
 
 
 def test_list_query_never_touches_a_cluster_table(repo):
-    text = sql(repo.list_query(limit=10, project="acme", artifact="llama-70b", search="chat"))
+    text = sql(repo.list_query(limit=10, project="acme", artifact="gpt-oss-120b", search="chat"))
     assert "supply_cluster" not in text
     assert "supply_node" not in text
 
 
 def test_list_query_filters_compile_into_one_statement(repo):
-    text = sql(repo.list_query(limit=10, after_seq=41, project="acme", artifact="llama-70b", search="chat"))
+    text = sql(repo.list_query(limit=10, after_seq=41, project="acme", artifact="gpt-oss-120b", search="chat"))
     assert "FROM demand_endpoint JOIN bind_project" in text
     assert "demand_endpoint.seq > " in text
     assert "bind_project.slug = " in text
@@ -215,7 +215,7 @@ def test_artifact_filter_walks_targets_to_deployments_to_workloads_as_a_subquery
     recipe held the artifact; the workload holds it now, so there is nothing left
     between the deployment and the weights it serves.
     """
-    text = sql(repo.list_query(limit=10, artifact="llama-70b"))
+    text = sql(repo.list_query(limit=10, artifact="gpt-oss-120b"))
     assert "demand_endpoint.id IN (SELECT demand_endpoint_target.endpoint_id" in text
     assert "JOIN demand_deployment ON demand_endpoint_target.deployment_id = demand_deployment.id" in text
     assert "JOIN demand_workload ON demand_deployment.workload_id = demand_workload.id" in text
@@ -369,7 +369,7 @@ class FakeWorkload:
 
     def __init__(
         self,
-        name="llama-3-3-70b-instruct-fp8-tp2-32k",
+        name="gpt-oss-120b-mxfp4-tp2-32k",
         engine_args=None,
         served_model_name=None,
         serving_digest=DIGEST,
@@ -387,9 +387,9 @@ class FakeWorkload:
 class FakeArtifact:
     def __init__(
         self,
-        name="meta-llama/Llama-3.3-70B-Instruct",
+        name="openai/gpt-oss-120b",
         digest="sha256:beef",
-        slug="meta-llama/llama-3.3-70b-instruct",
+        slug="openai/gpt-oss-120b",
     ) -> None:
         self.name = name
         self.digest = digest
@@ -492,7 +492,7 @@ async def test_an_upstream_carries_the_name_the_engine_answers_to():
     """
     table = await resolution([tunnelled_row()]).resolved()
     upstream = table.endpoints[0].upstreams[0]
-    assert upstream.served_model_name == "meta-llama/llama-3.3-70b-instruct"
+    assert upstream.served_model_name == "openai/gpt-oss-120b"
     assert upstream.served_model_name != table.endpoints[0].name
 
 
@@ -526,19 +526,19 @@ async def test_the_engines_name_is_the_artifacts_slug_and_the_workload_cannot_ov
     left to override: the string is a fact about the weights.
     """
     row = tunnelled_row(
-        workload=FakeWorkload(served_model_name="acme/llama-70b"),
-        artifact=FakeArtifact(slug="meta-llama/llama-3.3-70b-instruct"),
+        workload=FakeWorkload(served_model_name="acme/gpt-oss-120b"),
+        artifact=FakeArtifact(slug="openai/gpt-oss-120b"),
     )
     table = await resolution([row]).resolved()
-    assert table.endpoints[0].upstreams[0].served_model_name == "meta-llama/llama-3.3-70b-instruct"
+    assert table.endpoints[0].upstreams[0].served_model_name == "openai/gpt-oss-120b"
 
 
 @pytest.mark.asyncio
 async def test_an_explicit_served_model_name_wins_over_the_declared_name():
     """`engine_args` is the operator saying so, and it renders onto the engine."""
-    workload = FakeWorkload(engine_args={"served_model_name": "llama-canary"})
+    workload = FakeWorkload(engine_args={"served_model_name": "gpt-oss-canary"})
     table = await resolution([tunnelled_row(workload=workload)]).resolved()
-    assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
+    assert table.endpoints[0].upstreams[0].served_model_name == "gpt-oss-canary"
 
 
 @pytest.mark.asyncio
@@ -552,12 +552,12 @@ async def test_two_clusters_serving_different_weights_carry_their_own_served_nam
     """
     endpoint = FakeEndpoint()
     rows = [
-        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/llama-fp8")),
-        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/llama-bf16")),
+        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/qwen3.8-27b-fp8")),
+        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/qwen3.8-27b-bf16")),
     ]
     table = await resolution(rows).resolved()
     served = [u.served_model_name for u in table.endpoints[0].upstreams]
-    assert served == ["acme/llama-fp8", "acme/llama-bf16"]
+    assert served == ["acme/qwen3.8-27b-fp8", "acme/qwen3.8-27b-bf16"]
 
 
 @pytest.mark.asyncio
@@ -573,11 +573,11 @@ async def test_renaming_the_served_model_moves_the_revision_the_gateway_polls():
     the gateway would otherwise watch (the endpoint's) has not been touched at all.
     """
     before = await resolution([tunnelled_row()]).resolved()
-    renamed = tunnelled_row(artifact=FakeArtifact(slug="acme/llama-70b"))
+    renamed = tunnelled_row(artifact=FakeArtifact(slug="acme/gpt-oss-120b"))
     assert renamed[6].updated_at is None
     after = await resolution([renamed]).resolved()
     assert after.revision != before.revision
-    assert after.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b"
+    assert after.endpoints[0].upstreams[0].served_model_name == "acme/gpt-oss-120b"
 
 
 @pytest.mark.asyncio
@@ -723,9 +723,9 @@ async def test_the_hyphenated_flag_is_what_overrides_the_served_name():
     Reading only the underscore form meant a correctly-spelled override was
     invisible to the plane while being the name the engine actually answered to.
     """
-    workload = FakeWorkload(engine_args={"served-model-name": "llama-canary"})
+    workload = FakeWorkload(engine_args={"served-model-name": "gpt-oss-canary"})
     table = await resolution([tunnelled_row(workload=workload)]).resolved()
-    assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
+    assert table.endpoints[0].upstreams[0].served_model_name == "gpt-oss-canary"
 
 
 @pytest.mark.asyncio

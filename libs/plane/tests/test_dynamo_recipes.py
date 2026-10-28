@@ -169,8 +169,8 @@ def test_a_declined_flag_is_declined_with_a_reason():
 def test_a_model_the_corpus_does_not_cover_is_left_exactly_as_it_was():
     """Coverage is a couple of dozen models, so a miss is the ordinary case."""
     workload = a_workload(engine_args={"--dtype": "bfloat16"})
-    assert recipe_engine_args(workload, an_artifact("meta-llama/llama-3.1-8b-instruct")) == {}
-    assert resolved_engine_args(workload, an_artifact("meta-llama/llama-3.1-8b-instruct")) == {
+    assert recipe_engine_args(workload, an_artifact("qwen/qwen3.5-9b")) == {}
+    assert resolved_engine_args(workload, an_artifact("qwen/qwen3.5-9b")) == {
         "dtype": "bfloat16",
     }
 

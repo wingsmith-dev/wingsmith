@@ -244,7 +244,7 @@ def _quantization(model_ref: str | None, values: dict[str, str]) -> str | None:
     return None
 
 
-# `Qwen3-32B`, `Llama-3.1-70B-Instruct`, `Mixtral-8x7B`: the parameter count is in the name often
+# `Qwen3-32B`, `gpt-oss-120b`, `Mixtral-8x7B`: the parameter count is in the name often
 # enough to be worth offering, and is a naming convention instead of a fact, so it is carried as a
 # hint a person confirms.
 _PARAMS = re.compile(r"(?:^|[-_./])(?P<count>\d+(?:\.\d+)?)\s*[bB](?:$|[-_./])")

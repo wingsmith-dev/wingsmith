@@ -134,7 +134,7 @@ async def a_project(db: AsyncSession, slug: str = "search"):
     return await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug=slug, name=slug.title()))
 
 
-async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str = "llama"):
+async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str = "gpt-oss"):
     return await ArtifactService(db).create(ArtifactCreateRequest(digest=digest, name=name))
 
 
@@ -211,7 +211,7 @@ async def an_environment(db: AsyncSession):
     return cluster, project, artifact
 
 
-async def a_workload(db: AsyncSession, name: str = "llama-prod", serving=None, **extra):
+async def a_workload(db: AsyncSession, name: str = "gpt-oss-prod", serving=None, **extra):
     """A workload pinned to one cluster, which is the shape every deployment test wants.
 
     Pinning names the cluster, and placement still checks it like any other, so the
@@ -232,7 +232,7 @@ async def a_workload(db: AsyncSession, name: str = "llama-prod", serving=None, *
     return cluster, project, artifact, workload
 
 
-async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
+async def a_deployment(db: AsyncSession, name: str = "gpt-oss-prod", **extra):
     """The one per-cluster copy a pinned workload expands into."""
     cluster, project, artifact, workload = await a_workload(db, name=name, **extra)
     deployment = await DeploymentService(db).get(workload.deployments[0].id)
@@ -607,11 +607,11 @@ async def test_artifacts_lifecycle(db: AsyncSession) -> None:
     created = await service.create(
         ArtifactCreateRequest(
             digest="sha256:aaaa",
-            name="llama",
-            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama")],
+            name="gpt-oss",
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/gpt-oss")],
         )
     )
-    assert [loc.uri for loc in created.locations] == ["s3://weights/llama"]
+    assert [loc.uri for loc in created.locations] == ["s3://weights/gpt-oss"]
 
     assert (await service.get(created.id)).digest == "sha256:aaaa"
     assert (await service.list()).count == 1
@@ -619,20 +619,20 @@ async def test_artifacts_lifecycle(db: AsyncSession) -> None:
     patched = await service.update(
         created.id,
         ArtifactUpdateRequest(
-            name="llama-3",
-            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama-3")],
+            name="gpt-oss-120b",
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/gpt-oss-120b")],
         ),
     )
-    assert patched.name == "llama-3"
-    assert [loc.uri for loc in patched.locations] == ["s3://weights/llama-3"]
+    assert patched.name == "gpt-oss-120b"
+    assert [loc.uri for loc in patched.locations] == ["s3://weights/gpt-oss-120b"]
 
     kept = await service.update(
         created.id,
         ArtifactUpdateRequest(
-            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama-3", region="eu-west-1")]
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/gpt-oss-120b", region="eu-west-1")]
         ),
     )
-    assert [(loc.uri, loc.region) for loc in kept.locations] == [("s3://weights/llama-3", "eu-west-1")]
+    assert [(loc.uri, loc.region) for loc in kept.locations] == [("s3://weights/gpt-oss-120b", "eu-west-1")]
     assert_patched(created, patched)
 
     await service.delete(created.id)
@@ -734,7 +734,7 @@ async def test_a_workload_carries_an_overlay_the_plane_never_reads_inside(db: As
         WorkloadCreateRequest(
             cluster=cluster.id,
             serving=a_serving(artifact.id, overlay=OverlaySchema(pod_spec=pod_spec)),
-            name="llama-overlaid",
+            name="gpt-oss-overlaid",
             project=project.id,
         )
     )
@@ -752,7 +752,7 @@ async def test_a_workload_carries_an_overlay_the_plane_never_reads_inside(db: As
 
     plain = await service.create(
         WorkloadCreateRequest(
-            cluster=cluster.id, serving=a_serving(artifact.id), name="llama-plain", project=project.id
+            cluster=cluster.id, serving=a_serving(artifact.id), name="gpt-oss-plain", project=project.id
         )
     )
     assert (plain.serving.overlay.pod_spec, plain.serving.overlay.dynamo) == ({}, {})
@@ -1422,9 +1422,9 @@ async def test_deployments_lifecycle(db: AsyncSession) -> None:
     cluster, _, _, created = await a_deployment(db)
     service = DeploymentService(db)
     assert created.cluster_id == cluster.id
-    assert created.workload_name == "llama-prod"
+    assert created.workload_name == "gpt-oss-prod"
 
-    assert (await service.get(created.id)).name == "llama-prod"
+    assert (await service.get(created.id)).name == "gpt-oss-prod"
     assert (await service.list()).count == 1
 
     patched = await service.update(created.id, DeploymentUpdateRequest(enabled=False))
@@ -1445,7 +1445,7 @@ async def test_workloads_lifecycle(db: AsyncSession) -> None:
     assert created.scale.unit == "replicas"
     assert created.scale.placed == 1
 
-    assert (await service.get(created.id)).name == "llama-prod"
+    assert (await service.get(created.id)).name == "gpt-oss-prod"
     assert (await service.list()).count == 1
 
     patched = await service.update(created.id, WorkloadUpdateRequest(labels={"tier": "gold"}))
@@ -1980,7 +1980,9 @@ async def test_stale_if_match_conflicts_on_every_module(db: AsyncSession) -> Non
     """The same check for the modules whose `_revision` is its own copy of the helper."""
     cluster, project, artifact = await an_environment(db)
     workload = await WorkloadService(db).create(
-        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="llama-prod", project=project.id)
+        WorkloadCreateRequest(
+            cluster=cluster.id, serving=a_serving(artifact.id), name="gpt-oss-prod", project=project.id
+        )
     )
 
     with pytest.raises(Conflict):
@@ -2139,7 +2141,7 @@ async def test_updating_a_workload_is_recorded_against_every_cluster_it_runs_on(
 
     timeline = await _timeline(db, created.deployments[0].id)
     assert [kind for kind, _ in timeline] == ["deployment.created", "deployment.updated"]
-    assert "llama-prod" in timeline[-1][1]
+    assert "gpt-oss-prod" in timeline[-1][1]
 
 
 async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None:

@@ -421,21 +421,21 @@ async def seed_deployment(sessions, cluster) -> None:
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), a AS (
                   INSERT INTO demand_artifact (uid, digest, name)
-                  VALUES ('art_bench', 'sha256:bench', 'llama-3-70b')
+                  VALUES ('art_bench', 'sha256:bench', 'gpt-oss-120b')
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
                   INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id,
                                                artifact_id, serving_digest, engine, engine_runtime_version,
                                                context_length, device_class, engine_args)
-                  SELECT :workload, 'llama-70b-prod', 'service', p.id, c.id, a.id,
+                  SELECT :workload, 'gpt-oss-120b-prod', 'service', p.id, c.id, a.id,
                          'svg_00000000000000000000000000000000000000000000000000000000000000bc',
                          'vllm', '0.8.4', 8192, 'h100-80gb-sxm',
-                         '{"served_model_name": "llama-70b"}'::jsonb
+                         '{"served_model_name": "gpt-oss-120b"}'::jsonb
                   FROM p, c, a
                   ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
                 )
                 INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, generation)
-                SELECT :deployment, w.id, :cluster, 'llama-70b-prod', 7 FROM w
+                SELECT :deployment, w.id, :cluster, 'gpt-oss-120b-prod', 7 FROM w
                 ON CONFLICT (uid) DO UPDATE SET cluster_id = excluded.cluster_id
                 """
             ),
@@ -449,7 +449,7 @@ async def seed_benchmark(sessions, cluster, phase: str = "pending") -> None:
             text(
                 "INSERT INTO ops_benchmark_run (uid, deployment_id, cluster_id, harness, requested_by,"
                 " model, deployment_generation, phase)"
-                " SELECT :uid, d.id, :cluster, 'aiperf', 'staff', 'llama-70b', 7, :phase"
+                " SELECT :uid, d.id, :cluster, 'aiperf', 'staff', 'gpt-oss-120b', 7, :phase"
                 " FROM demand_deployment d WHERE d.uid = :deployment"
             ),
             {"uid": BENCHMARK, "cluster": cluster, "deployment": DEPLOYMENT, "phase": phase},
@@ -871,7 +871,7 @@ async def test_a_discovered_workload_is_recorded_without_a_deployment(sessions, 
     await sink.apply_observed(observed("workload.discovered"))
 
     rows = await fetch(sessions, "select uid, name, devices_total, model from demand_discovered_workload")
-    assert rows == [(WORKLOAD, "llama-70b-vllm", 8, "meta-llama/Llama-3.1-70B-Instruct")]
+    assert rows == [(WORKLOAD, "gpt-oss-120b-vllm", 8, "openai/gpt-oss-120b")]
     assert await fetch(sessions, "select count(*) from demand_deployment") == [(0,)]
 
 

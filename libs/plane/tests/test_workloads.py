@@ -45,7 +45,7 @@ EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
 def a_serving(**kwargs) -> WorkloadServingRequest:
     """The smallest serving block a create is allowed to carry."""
     fields = {
-        "artifact": "llama-70b",
+        "artifact": "gpt-oss-120b",
         "engine": "vllm",
         "engine_runtime_version": "0.6.0",
         "context_length": 8192,
@@ -126,7 +126,7 @@ def test_the_weights_a_workload_serves_cannot_be_repointed_by_a_patch():
     patch while every other part of the serving block is present.
     """
     with pytest.raises(msgspec.ValidationError, match="artifact"):
-        patch(b'{"artifact": "llama-8b"}', WorkloadServingUpdate)
+        patch(b'{"artifact": "qwen3.5-9b"}', WorkloadServingUpdate)
     data = patch(b'{"engine": "sglang", "shape": {"device_class": "h200"}}', WorkloadServingUpdate)
     assert data.to_dict(exclude_unset=True) == {"engine": "sglang", "shape": ShapeSchema(device_class="h200")}
 
@@ -195,7 +195,7 @@ def test_kv_cache_is_serving_configuration_and_not_the_weight_cache():
     """Per-request attention state, not a declared warm set with observed residency."""
     cache = {"kv_cache_dtype": "fp8", "kv_cache_fraction": 0.9, "prefix_cache_enabled": False}
     assert decode(cache, CacheSchema) == CacheSchema(**cache)
-    for weights in ({"warm_set": ["llama-70b"]}, {"resident": True}):
+    for weights in ({"warm_set": ["gpt-oss-120b"]}, {"resident": True}):
         with pytest.raises(msgspec.ValidationError):
             decode(weights, CacheSchema)
 
@@ -338,9 +338,9 @@ def test_the_weights_are_named_inside_the_serving_block():
     """One place a workload says which weights it serves, and it is where the rest of the
     configuration is. `artifact` is a filter on the list because "which workloads serve
     these weights" is a question, not because the id is declared twice."""
-    assert decode(a_create_body(), WorkloadCreateRequest).serving.artifact == "llama-70b"
+    assert decode(a_create_body(), WorkloadCreateRequest).serving.artifact == "gpt-oss-120b"
     with pytest.raises(msgspec.ValidationError, match="artifact"):
-        decode(a_create_body(artifact="llama-70b"), WorkloadCreateRequest)
+        decode(a_create_body(artifact="gpt-oss-120b"), WorkloadCreateRequest)
 
 
 def test_label_selector_becomes_a_predicate_per_key(repo):
@@ -357,7 +357,7 @@ def test_list_query_filters_compile_into_one_statement(repo):
             after_seq=41,
             project="search",
             kind="service",
-            artifact="llama-70b",
+            artifact="gpt-oss-120b",
             serving_digest="svg_" + "a" * 64,
             device_class="h100",
         )
@@ -391,7 +391,7 @@ def test_list_query_over_fetches_one_row_for_the_cursor(repo):
 
 
 def test_get_query_resolves_a_name_or_an_id(repo):
-    assert "demand_workload.name = " in sql(repo.get_query("llama-prod"))
+    assert "demand_workload.name = " in sql(repo.get_query("gpt-oss-prod"))
     assert "demand_workload.uid = " in sql(repo.get_query("wkl_01j9x2wwwwwwwwwwwwwwwwwwww"))
 
 
@@ -436,7 +436,7 @@ async def test_a_kind_no_operator_renders_is_refused_at_creation(kind):
 
     data = WorkloadCreateRequest(
         serving=WorkloadServingRequest(
-            artifact="llama", engine="vllm", engine_runtime_version="1.0", shape=ShapeSchema(device_class="h100")
+            artifact="gpt-oss", engine="vllm", engine_runtime_version="1.0", shape=ShapeSchema(device_class="h100")
         ),
         name="batch",
         project="core",
@@ -463,10 +463,12 @@ def _integrity(constraint_name):
 def test_a_policy_name_collision_is_reported_as_the_policy_not_the_workload():
     from app.modules.workloads.services import _conflict
 
-    conflict = _conflict(_integrity("bind_policy_name_key"), "llama", "core", "wkl_abc-placement")
+    conflict = _conflict(_integrity("bind_policy_name_key"), "gpt-oss", "core", "wkl_abc-placement")
     assert "policy named 'wkl_abc-placement'" in str(conflict)
-    assert "workload" in str(_conflict(_integrity("uq_demand_workload_project_name"), "llama", "core"))
-    assert "deployment named 'llama'" in str(_conflict(_integrity("uq_demand_deployment_cluster_name"), "llama", None))
+    assert "workload" in str(_conflict(_integrity("uq_demand_workload_project_name"), "gpt-oss", "core"))
+    assert "deployment named 'gpt-oss'" in str(
+        _conflict(_integrity("uq_demand_deployment_cluster_name"), "gpt-oss", None)
+    )
 
 
 def test_the_constraint_name_is_found_in_the_message_when_the_driver_carries_no_attribute():

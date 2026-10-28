@@ -56,7 +56,7 @@ def sql(statement) -> str:
 UPDATES = [
     ("tenant", lambda db: TenantService(db).update("acme", TenantUpdateRequest(name="Acme"), if_match="1")),
     ("cluster", lambda db: ClusterService(db).update("iad-1", ClusterUpdateRequest(region="us"), if_match="1")),
-    ("artifact", lambda db: ArtifactService(db).update("llama", ArtifactUpdateRequest(name="x"), if_match="1")),
+    ("artifact", lambda db: ArtifactService(db).update("gpt-oss", ArtifactUpdateRequest(name="x"), if_match="1")),
     (
         "component",
         lambda db: ComponentService(db).update("agent", ComponentUpdateRequest(desired_version="2"), if_match="1"),

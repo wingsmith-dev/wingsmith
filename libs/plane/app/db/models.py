@@ -337,7 +337,7 @@ class Artifact(BaseMixin):
     # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    """What a person calls these weights. `GPT-OSS 20B`, `Llama 3.1 70B Instruct`. Display only."""
+    """What a person calls these weights. `GPT-OSS 20B`, `Qwen3.8 27B`. Display only."""
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
     """Machine name, lowercase with its organisation: `hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`.
     Derived once from the preferred location. Not unique; identity is the digest."""

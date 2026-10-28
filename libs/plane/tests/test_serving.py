@@ -121,7 +121,7 @@ def a_workload(**kwargs) -> Workload:
     """
     base = {
         "uid": new_uid(WORKLOAD),
-        "name": "llama-vllm",
+        "name": "gpt-oss-vllm",
         "engine": "vllm",
         "engine_runtime_version": "0.6.0",
         "engine_runtime_image": None,
@@ -173,7 +173,7 @@ def a_request(**kwargs) -> WorkloadServingRequest:
 
 def an_artifact(**kwargs) -> Artifact:
     """An Artifact row with a slug no recipe corpus covers, unless a test asks for one."""
-    return Artifact(**({"uid": new_uid(ARTIFACT), "slug": "meta-llama/llama-3.1-8b-instruct"} | kwargs))
+    return Artifact(**({"uid": new_uid(ARTIFACT), "slug": "deepseek-ai/deepseek-v4.1-flash-1017"} | kwargs))
 
 
 def rendered(workload: Workload, artifact: Artifact | None = None):
@@ -260,7 +260,7 @@ def test_a_whole_serving_request_is_checked_at_once():
     different corner of the nested request: the shape from `shape`, the parallel
     layout from `parallelism`, the fraction from `cache`.
     """
-    artifact = Artifact(uid=new_uid(ARTIFACT), name="llama", digest="sha256:beef")
+    artifact = Artifact(uid=new_uid(ARTIFACT), name="gpt-oss", digest="sha256:beef")
     assert check_serving_request(a_request(), artifact) is None
 
     with pytest.raises(Invalid):

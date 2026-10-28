@@ -126,7 +126,7 @@ class Variant:
     """The tested parallelism: a number, or one number per hardware profile.
 
     Both forms are in the corpus and neither is a special case of the other. A
-    Llama 3.3 70B is `{"xeon6": 8}` and nothing elsewhere, which says the tested
+    recipe that says `{"xeon6": 8}` and nothing elsewhere is saying the tested
     size is a property of the node and not of the model.
     """
     extra_args: tuple[str, ...] = ()

@@ -57,10 +57,10 @@ def _seed(cur) -> dict[str, uuid.UUID]:
     ids = {name: uuid.uuid4() for name in ("artifact", "rec_a", "rec_b", "w1", "w2", "w3", "run")}
     cur.execute(
         "INSERT INTO demand_artifact (id, uid, name, kind, digest, format, size_bytes, licence)"
-        " VALUES (%s, 'art_test', 'meta/llama-70b', 'weights', 'sha256:aa', 'safetensors', 1, 'mit')",
+        " VALUES (%s, 'art_test', 'openai/gpt-oss-120b', 'weights', 'sha256:aa', 'safetensors', 1, 'mit')",
         (ids["artifact"],),
     )
-    for key, name, tp in (("rec_a", "llama-tp2", 2), ("rec_b", "llama-tp4", 4)):
+    for key, name, tp in (("rec_a", "gpt-oss-tp2", 2), ("rec_b", "gpt-oss-tp4", 4)):
         cur.execute(
             "INSERT INTO demand_recipe (id, uid, artifact_id, name, version, engine, engine_version,"
             " context_length, device_class, device_count, tensor_parallel, kv_cache_fraction)"
@@ -117,7 +117,7 @@ def _seed(cur) -> dict[str, uuid.UUID]:
     cur.execute(
         "INSERT INTO ops_benchmark_run (id, uid, harness, requested_by, model, deployment_id,"
         " recipe_id, recipe_version)"
-        " VALUES (%s, 'bmr_t', 'aiperf', 'tests', 'meta/llama-70b', %s, %s, 1)",
+        " VALUES (%s, 'bmr_t', 'aiperf', 'tests', 'openai/gpt-oss-120b', %s, %s, 1)",
         (ids["run"], deployment, ids["rec_a"]),
     )
     return ids

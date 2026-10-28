@@ -124,7 +124,7 @@ class HuggingFaceClient:
     ) -> None:
         """`token` falls back to `HF_TOKEN` in settings.
 
-        TODO: gated repos (Llama and friends) need a decision about whose token is
+        TODO: gated repos (licence-gated weights) need a decision about whose token is
         used: a single fleet-wide plane token accepts the licence on behalf of
         every tenant, which is a legal position and not just a config choice.
         """

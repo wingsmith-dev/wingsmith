@@ -92,7 +92,7 @@ async def seed_workload(sessions, cluster: uuid.UUID, ready: int, desired: int =
             text(
                 "INSERT INTO demand_discovered_workload"
                 " (uid, cluster_id, namespace, name, kind, replicas_desired, replicas_ready)"
-                " VALUES (:uid, :cluster, 'serving', 'llama', 'Deployment', :desired, :ready)"
+                " VALUES (:uid, :cluster, 'serving', 'gpt-oss', 'Deployment', :desired, :ready)"
             ),
             {"uid": uid, "cluster": cluster, "desired": desired, "ready": ready},
         )

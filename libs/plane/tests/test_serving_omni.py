@@ -139,7 +139,7 @@ def test_the_wire_carries_the_modality_and_the_stage_configuration():
 
 
 def test_a_chat_frame_carries_neither():
-    wire = _serving(a_workload(), Artifact(uid=new_uid(ARTIFACT), slug="meta-llama/llama-3.1-8b-instruct"))
+    wire = _serving(a_workload(), Artifact(uid=new_uid(ARTIFACT), slug="qwen/qwen3.5-9b"))
     assert wire.output_modality is None
     assert wire.diffusion is None
 

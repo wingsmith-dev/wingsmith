@@ -76,7 +76,7 @@ async def seed_demand(sessions) -> None:
         await db.execute(
             text(
                 "insert into demand_artifact (id, uid, digest, name, kind)"
-                " values (:id, :uid, 'sha256:abc', 'llama-70b', 'weights')"
+                " values (:id, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )
@@ -221,7 +221,7 @@ def serving(**overrides) -> WorkloadServingRequest:
     which is the whole of what naming a recipe used to buy.
     """
     fields = {
-        "artifact": "llama-70b",
+        "artifact": "gpt-oss-120b",
         "engine": "vllm",
         "engine_runtime_version": "0.9.1",
         "context_length": 8192,
@@ -232,7 +232,7 @@ def serving(**overrides) -> WorkloadServingRequest:
 
 
 def create(**overrides) -> WorkloadCreateRequest:
-    fields = {"serving": serving(), "project": "core", "name": "llama-prod"}
+    fields = {"serving": serving(), "project": "core", "name": "gpt-oss-prod"}
     fields.update(overrides)
     return WorkloadCreateRequest(**fields)
 
@@ -287,14 +287,14 @@ async def test_a_preview_names_exactly_one_of_a_workload_and_a_shape(sessions) -
     """Both is two questions and neither is none; either way there is nothing to place."""
     await seed_demand(sessions)
     async with sessions.begin() as db:
-        await seed_workload(db, "llama-70b-vllm", "a")
+        await seed_workload(db, "gpt-oss-120b-vllm", "a")
 
     async with sessions() as db:
         with pytest.raises(Invalid):
             await PlacementService(db).preview(PlacementPreviewRequest(project="core"))
         with pytest.raises(Invalid):
             await PlacementService(db).preview(
-                PlacementPreviewRequest(workload="llama-70b-vllm", shape=four_devices(), project="core")
+                PlacementPreviewRequest(workload="gpt-oss-120b-vllm", shape=four_devices(), project="core")
             )
 
 
@@ -311,12 +311,12 @@ async def test_a_shape_and_the_workload_that_carries_it_get_the_same_answer(sess
     await seed_supply(sessions, "small", devices=4)
     await seed_supply(sessions, "large", devices=8)
     async with sessions.begin() as db:
-        await seed_workload(db, "llama-70b-vllm", "a")
+        await seed_workload(db, "gpt-oss-120b-vllm", "a")
 
     async with sessions() as db:
         svc = PlacementService(db)
         by_shape = await svc.preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
-        by_workload = await svc.preview(PlacementPreviewRequest(workload="llama-70b-vllm", project="core"))
+        by_workload = await svc.preview(PlacementPreviewRequest(workload="gpt-oss-120b-vllm", project="core"))
 
     assert by_shape.request != by_workload.request, "the two forms differ in what the decision is filed under"
     assert (by_shape.placed, by_shape.cluster_name) == (by_workload.placed, by_workload.cluster_name)
@@ -1255,7 +1255,7 @@ async def test_a_policy_named_like_a_workload_does_not_block_its_constraint(sess
     await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
     async with sessions.begin() as db:
         await db.execute(
-            text("insert into bind_policy (uid, name) values (:uid, 'llama-prod-placement')"),
+            text("insert into bind_policy (uid, name) values (:uid, 'gpt-oss-prod-placement')"),
             {"uid": ids.new_uid(ids.POLICY)},
         )
 
@@ -1274,12 +1274,12 @@ async def test_adapter_references_resolve_in_order_in_one_lookup(sessions) -> No
                 text("insert into demand_artifact (uid, digest, name, kind) values (:uid, :digest, :name, 'weights')"),
                 {"uid": ids.new_uid(ids.ARTIFACT), "digest": digest, "name": name},
             )
-    base = (await fetch(sessions, "select uid from demand_artifact where name = 'llama-70b'"))[0][0]
+    base = (await fetch(sessions, "select uid from demand_artifact where name = 'gpt-oss-120b'"))[0][0]
 
     async with sessions() as db:
         repo = WorkloadRepository(db)
         found = await repo.artifacts_by_ref([base, "lora-a", "missing"])
-        assert [a.name for a in found] == ["llama-70b", "lora-a"]
+        assert [a.name for a in found] == ["gpt-oss-120b", "lora-a"]
         with pytest.raises(Invalid, match="lora-b"):
             await repo.artifacts_by_ref(["lora-a", "lora-b"])
 

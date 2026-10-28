@@ -62,12 +62,12 @@ def sql(query) -> str:
     return str(query)
 
 
-def location(uri: str = "s3://weights/llama", scheme: str = "s3", **kwargs) -> ArtifactLocationRequest:
+def location(uri: str = "s3://weights/gpt-oss-120b", scheme: str = "s3", **kwargs) -> ArtifactLocationRequest:
     return ArtifactLocationRequest(uri=uri, scheme=scheme, **kwargs)
 
 
 def test_create_request_defaults_to_weights():
-    data = ArtifactCreateRequest(digest="sha256:abc", name="llama-70b")
+    data = ArtifactCreateRequest(digest="sha256:abc", name="gpt-oss-120b")
     assert data.kind == "weights"
     assert data.size_bytes == 0
     assert data.locations == []
@@ -112,7 +112,7 @@ def test_one_uri_cannot_be_registered_twice_against_one_artifact():
 
 
 def test_several_distinct_locations_are_the_normal_case():
-    assert check_locations([location(), location("gs://weights/llama", "gs")]) is None
+    assert check_locations([location(), location("gs://weights/gpt-oss-120b", "gs")]) is None
 
 
 def test_locations_are_a_child_collection_keyed_by_uri_not_by_id():
@@ -140,8 +140,8 @@ def test_list_query_filters_compile_into_one_statement(repo):
             kind="adapter",
             format="safetensors",
             project="acme",
-            search="llama",
-            labels={"family": "llama"},
+            search="gpt-oss",
+            labels={"family": "gpt-oss"},
         )
     )
     assert "demand_artifact.seq > " in text
@@ -163,7 +163,7 @@ def test_list_query_over_fetches_one_row_for_the_cursor(repo):
 
 
 def test_get_query_resolves_a_name_or_an_id(repo):
-    assert "demand_artifact.name = " in sql(repo.get_query("llama-70b"))
+    assert "demand_artifact.name = " in sql(repo.get_query("gpt-oss-120b"))
     assert "demand_artifact.uid = " in sql(repo.get_query(new_uid(ARTIFACT)))
 
 
@@ -172,7 +172,7 @@ def test_a_prefix_is_not_an_id_and_falls_through_to_a_name(repo):
 
 
 def test_an_ambiguous_name_resolves_to_the_oldest_match(repo):
-    assert "ORDER BY demand_artifact.seq ASC" in sql(repo.get_query("llama-70b"))
+    assert "ORDER BY demand_artifact.seq ASC" in sql(repo.get_query("gpt-oss-120b"))
 
 
 def test_controller_exposes_full_crud():
@@ -195,7 +195,7 @@ def test_controller_exposes_full_crud():
 
 
 def test_base_artifact_filter_selects_the_derived_children(repo):
-    text = sql(repo.list_query(limit=10, base_artifact="llama-70b"))
+    text = sql(repo.list_query(limit=10, base_artifact="gpt-oss-120b"))
     assert "demand_artifact.base_artifact_id IN" in text
 
 
@@ -270,7 +270,7 @@ async def test_delete_refuses_while_a_workload_still_names_the_artifact():
     service._one = one
 
     with pytest.raises(Conflict, match="still referenced by a workload"):
-        await service.delete("llama")
+        await service.delete("gpt-oss-120b")
     assert fake.rolled_back and not fake.committed
 
 
@@ -577,7 +577,7 @@ async def test_an_unknown_model_is_not_found():
 
 async def test_a_gated_model_names_the_token_problem():
     with pytest.raises(Invalid) as caught:
-        await service(hub=FakeHub(error=HuggingFaceGated("gated"))).resolve("meta-llama/Llama-3-70B")
+        await service(hub=FakeHub(error=HuggingFaceGated("gated"))).resolve("acme/gpt-oss-120b-private")
     assert "token" in caught.value.message
     assert caught.value.detail["token"] == "WINGSMITH_HF_TOKEN"
 
@@ -1122,7 +1122,7 @@ def sized_artifact(
     artifact = Artifact(
         uid=new_uid(ARTIFACT),
         digest="sha256:abc",
-        name="llama-70b",
+        name="dense-70b",
         parameter_count=parameter_count,
         created_at=EPOCH,
     )
@@ -1137,7 +1137,7 @@ def fitment_service(artifact=None, fleet=None, domains=None) -> ArtifactService:
 
 
 async def test_a_fitment_fits_the_fleet_by_default_and_carries_what_we_have_of_it():
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest())
     assert result.scope == "fleet"
     assert result.sizable
     assert [item.device_class for item in result.items] == ["h100-80gb-sxm"]
@@ -1155,7 +1155,7 @@ async def test_a_fitment_fits_the_fleet_by_default_and_carries_what_we_have_of_i
 
 async def test_row_carries_every_serving_count_not_only_the_recommendation():
     """Half a node and the whole node are both deployable; the row offers both."""
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest())
 
     fit = result.items[0]
     counts = [layout.device_count for layout in fit.layouts]
@@ -1168,7 +1168,7 @@ async def test_row_carries_every_serving_count_not_only_the_recommendation():
 async def test_a_layout_the_fleet_holds_too_few_cards_for_says_so_on_its_own():
     """A wider layout can be short on a class the recommendation is fine on."""
     fleet = [FleetRow("h100-80gb-sxm", 81559, 2, 2, 1)]
-    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(fleet=fleet).fitment("dense-70b", ArtifactFitmentRequest())
 
     fit = result.items[0]
     assert not fit.supply_short
@@ -1179,7 +1179,7 @@ async def test_a_layout_the_fleet_holds_too_few_cards_for_says_so_on_its_own():
 async def test_a_class_that_fits_nowhere_carries_no_layouts():
     huge = sized_artifact(parameter_count=2_800_000_000_000)
     fleet = [FleetRow("l4-24gb-pcie", 24576, 8, 8, 1)]
-    result = await fitment_service(huge, fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest(max_devices=8))
+    result = await fitment_service(huge, fleet=fleet).fitment("dense-70b", ArtifactFitmentRequest(max_devices=8))
 
     fit = result.items[0]
     assert not fit.fits
@@ -1188,8 +1188,8 @@ async def test_a_class_that_fits_nowhere_carries_no_layouts():
 
 async def test_the_catalog_scope_answers_a_procurement_question_the_fleet_cannot():
     """A class we own none of is a fit worth showing, not a row worth filtering."""
-    fleet = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
-    catalog = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+    fleet = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest())
+    catalog = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog"))
 
     assert len(catalog.items) > len(fleet.items)
     unowned = [item for item in catalog.items if item.devices_total == 0 and item.fits]
@@ -1198,7 +1198,7 @@ async def test_the_catalog_scope_answers_a_procurement_question_the_fleet_cannot
 
 
 async def test_a_fitment_is_ranked_with_the_cheapest_workable_class_first():
-    catalog = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+    catalog = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog"))
     fits = [item for item in catalog.items if item.fits]
     assert catalog.items[0].fits
     assert fits[0].device_count <= fits[-1].device_count
@@ -1206,7 +1206,7 @@ async def test_a_fitment_is_ranked_with_the_cheapest_workable_class_first():
 
 async def test_a_shapeless_artifact_gets_a_matrix_of_floors_not_a_blank_panel():
     """The weights still bound which cards are too small; only the window is uncosted."""
-    result = await fitment_service(sized_artifact(shape=False)).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(sized_artifact(shape=False)).fitment("dense-70b", ArtifactFitmentRequest())
     assert result.sizable
     assert len(result.items) == 1
     assert result.items[0].kv_counted is False
@@ -1218,7 +1218,7 @@ async def test_a_shapeless_artifact_gets_a_matrix_of_floors_not_a_blank_panel():
 async def test_an_artifact_with_no_parameter_count_is_reported_rather_than_refused():
     """Nothing at all can be sized from it, and that is a note instead of an error."""
     artifact = sized_artifact(parameter_count=None)
-    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(artifact).fitment("dense-70b", ArtifactFitmentRequest())
     assert not result.sizable
     assert result.items == []
     assert result.note is not None
@@ -1226,7 +1226,7 @@ async def test_an_artifact_with_no_parameter_count_is_reported_rather_than_refus
 
 
 async def test_a_full_sizing_counts_the_cache_and_says_so():
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest())
     assert all(item.kv_counted for item in result.items)
     assert result.note is None
 
@@ -1234,17 +1234,17 @@ async def test_a_full_sizing_counts_the_cache_and_says_so():
 async def test_the_artifacts_own_context_is_the_default_window():
     """Trimming it here would make more cards look workable by answering another question."""
     artifact = sized_artifact(context_length=131072)
-    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(artifact).fitment("dense-70b", ArtifactFitmentRequest())
     assert result.context_length == 131072
 
-    asked = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest(context_length=8192))
+    asked = await fitment_service(artifact).fitment("dense-70b", ArtifactFitmentRequest(context_length=8192))
     assert asked.context_length == 8192
     assert asked.items[0].device_count <= result.items[0].device_count
 
 
 async def test_quantization_can_be_asked_about_without_registering_anything():
-    heavy = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
-    light = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(quantization="int4"))
+    heavy = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest())
+    light = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(quantization="int4"))
     assert heavy.quantization == "fp16"
     assert light.quantization == "int4"
     assert light.items[0].weights_gb < heavy.items[0].weights_gb
@@ -1254,7 +1254,7 @@ async def test_quantization_can_be_asked_about_without_registering_anything():
 async def test_hardware_the_contract_table_never_named_is_still_fitted():
     """`app.core.devices` slugifies an unknown card; a fit uses what the cluster reported."""
     fleet = [FleetRow("some-new-accelerator-192gb", 196608, 8, 4, 1)]
-    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(fleet=fleet).fitment("dense-70b", ArtifactFitmentRequest())
 
     fit = result.items[0]
     assert fit.device_class == "some-new-accelerator-192gb"
@@ -1268,7 +1268,7 @@ async def test_a_fit_the_fleet_holds_too_few_cards_for_is_marked_short():
     """The 4TB-on-five-cards case: arithmetically a fit, and nothing anyone can run."""
     fleet = [FleetRow("rtx-pro-6000-blackwell", 98304, 5, 5, 1)]
     huge = sized_artifact(parameter_count=2_000_000_000_000)
-    result = await fitment_service(huge, fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(huge, fleet=fleet).fitment("dense-70b", ArtifactFitmentRequest())
 
     fit = result.items[0]
     assert fit.fits
@@ -1282,7 +1282,7 @@ async def test_a_class_we_own_enough_of_outranks_one_we_do_not():
         FleetRow("h100-80gb-sxm", 81559, 1, 1, 1),
         FleetRow("h200-141gb-sxm", 144384, 16, 16, 1),
     ]
-    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(fleet=fleet).fitment("dense-70b", ArtifactFitmentRequest())
 
     assert [item.device_class for item in result.items] == ["h200-141gb-sxm", "h100-80gb-sxm"]
     assert not result.items[0].supply_short
@@ -1291,7 +1291,7 @@ async def test_a_class_we_own_enough_of_outranks_one_we_do_not():
 
 async def test_a_class_we_own_none_of_is_a_purchase_and_not_a_shortfall():
     """Zero total is the procurement answer the catalog scope exists to give."""
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
 
     unowned = [item for item in result.items if item.devices_total == 0]
     assert unowned
@@ -1299,7 +1299,7 @@ async def test_a_class_we_own_none_of_is_a_purchase_and_not_a_shortfall():
 
 
 async def test_an_empty_fleet_says_so_rather_than_returning_an_empty_matrix():
-    result = await fitment_service(fleet=[]).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(fleet=[]).fitment("dense-70b", ArtifactFitmentRequest())
     assert result.sizable
     assert result.items == []
     assert result.note is not None
@@ -1317,13 +1317,13 @@ async def test_an_empty_fleet_says_so_rather_than_returning_an_empty_matrix():
 )
 async def test_a_fitment_refuses_terms_it_cannot_fit_against(request_):
     with pytest.raises(Invalid):
-        await fitment_service().fitment("llama-70b", request_)
+        await fitment_service().fitment("dense-70b", request_)
 
 
 async def test_a_fitment_reads_and_reserves_nothing():
     """A view, not a decision: placement is still the thing that can say no."""
     svc = fitment_service()
-    await svc.fitment("llama-70b", ArtifactFitmentRequest())
+    await svc.fitment("dense-70b", ArtifactFitmentRequest())
     assert not hasattr(svc.repo, "added") or svc.repo.added is None
 
 
@@ -1335,7 +1335,7 @@ async def test_an_artifact_carrying_neither_a_shape_nor_a_window_still_fits():
     panel into a 500 for exactly those.
     """
     artifact = sized_artifact(shape=False, declare_context=False)
-    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+    result = await fitment_service(artifact).fitment("dense-70b", ArtifactFitmentRequest())
 
     assert result.sizable
     assert result.context_length == 8192
@@ -1393,7 +1393,7 @@ async def test_a_stated_node_size_applies_only_where_nothing_was_observed():
 
 async def test_a_fitment_returns_the_ranked_head_and_says_how_many_it_ranked():
     """A wall of nineteen classes buries the answer; a silent cap reads as the whole world."""
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog"))
 
     assert len(result.items) == DEFAULT_FITMENT_LIMIT
     assert result.considered > DEFAULT_FITMENT_LIMIT
@@ -1402,8 +1402,8 @@ async def test_a_fitment_returns_the_ranked_head_and_says_how_many_it_ranked():
 
 async def test_the_head_is_the_best_rows_and_not_the_first_ones_looked_at():
     """Every candidate is fitted and ranked before the cap applies."""
-    capped = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
-    every = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+    capped = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog"))
+    every = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
 
     assert len(every.items) == every.considered == capped.considered
     assert [item.device_class for item in capped.items] == [
@@ -1412,7 +1412,7 @@ async def test_the_head_is_the_best_rows_and_not_the_first_ones_looked_at():
 
 
 async def test_asking_for_everything_is_how_the_rest_is_reached():
-    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+    result = await fitment_service().fitment("dense-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
     assert len(result.items) == result.considered > DEFAULT_FITMENT_LIMIT
 
 

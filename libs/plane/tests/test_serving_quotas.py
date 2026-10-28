@@ -475,7 +475,7 @@ def test_a_withdrawn_commitment_moves_the_revision_even_when_it_was_not_the_newe
 
 def test_the_routing_tables_revision_learned_the_same_lesson():
     later = EPOCH + dt.timedelta(days=1)
-    served = ["acme/llama-70b"]
+    served = ["acme/gpt-oss-120b"]
     assert _revision_of([EPOCH, later], served) != _revision_of([later], served)
     assert _revision_of([], served) == f"0-0-{_served(served)}"
 
@@ -489,16 +489,18 @@ def test_the_revision_moves_when_what_the_engines_answer_to_moves():
     rewrites to a name the engine was never told to answer to.
     """
     stamps = [EPOCH]
-    assert _revision_of(stamps, ["acme/llama-70b"]) != _revision_of(stamps, ["acme/llama-8b"])
+    assert _revision_of(stamps, ["acme/gpt-oss-120b"]) != _revision_of(stamps, ["acme/qwen3.5-9b"])
 
 
 def test_the_revision_depends_on_the_served_set_and_not_on_the_row_order():
     """Two resolutions of one table must agree, however the rows came back."""
     stamps = [EPOCH]
-    one = _revision_of(stamps, ["acme/llama-70b", "acme/llama-8b"])
-    other = _revision_of(stamps, ["acme/llama-8b", "acme/llama-70b"])
+    one = _revision_of(stamps, ["acme/gpt-oss-120b", "acme/qwen3.5-9b"])
+    other = _revision_of(stamps, ["acme/qwen3.5-9b", "acme/gpt-oss-120b"])
     assert one == other
-    assert _revision_of(stamps, ["acme/llama-70b", "acme/llama-70b"]) == _revision_of(stamps, ["acme/llama-70b"])
+    assert _revision_of(stamps, ["acme/gpt-oss-120b", "acme/gpt-oss-120b"]) == _revision_of(
+        stamps, ["acme/gpt-oss-120b"]
+    )
 
 
 def test_a_stamp_prefers_the_last_write_and_survives_a_missing_row():

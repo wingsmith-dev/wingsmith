@@ -45,7 +45,7 @@ def sighting(**overrides) -> WorkloadDiscovered:
         "workload_id": "dsw_01j9x2ffffffffffffffffffff",
         "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
         "namespace": "serving",
-        "name": "llama-70b-vllm",
+        "name": "gpt-oss-120b-vllm",
         "kind": "deployment",
         "images": ["ghcr.io/acme/vllm:0.9.1"],
         "replicas_desired": 2,
@@ -53,9 +53,9 @@ def sighting(**overrides) -> WorkloadDiscovered:
         "devices_per_replica": 4,
         "devices_total": 8,
         "node_ids": ["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"],
-        "labels": {"app": "llama-70b-vllm"},
+        "labels": {"app": "gpt-oss-120b-vllm"},
         "spec_fingerprint": "sha256:9f2c1b7d4e6a08",
-        "model": "meta-llama/Llama-3.1-70B-Instruct",
+        "model": "openai/gpt-oss-120b",
         "observed_at": "2026-08-19T14:02:11.400Z",
     }
     payload.update(overrides)
@@ -74,17 +74,17 @@ def sighted(replicas: int = 3, fingerprint: str = "sha256:abc", deployment_uid: 
     workload = SimpleNamespace(
         uid="dsw_01j9x2ffffffffffffffffffff",
         cluster_id=CLUSTER,
-        name="llama",
+        name="gpt-oss",
         namespace="serving",
         kind="Deployment",
-        model="acme/llama",
+        model="acme/gpt-oss-120b",
         images=["vllm/vllm-openai:v0.8.0"],
         replicas_desired=replicas,
         replicas_ready=replicas,
         devices_per_replica=1,
         devices_total=replicas,
         node_uids=[],
-        labels={"app": "llama"},
+        labels={"app": "gpt-oss"},
         spec={},
         spec_fingerprint=fingerprint,
         first_seen_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
@@ -118,7 +118,7 @@ class SightingRepo:
         self.row = self.row._replace(WorkloadAdoption=adoption)
 
     async def artifact_by_ref(self, ref):
-        return SimpleNamespace(uid="art_1", name="llama")
+        return SimpleNamespace(uid="art_1", name="gpt-oss")
 
     async def project_row(self, ref):
         return SimpleNamespace(id=UUID(int=7), slug="acme", default_priority_class_id=UUID(int=9))
@@ -153,7 +153,7 @@ async def test_tracking_a_workload_declares_nothing(decision) -> None:
     ever be handed.
     """
     svc, repo, db = service_over(sighted())
-    result = await svc.decide("llama", decision, DecisionRequest(project="acme", note="seen"))
+    result = await svc.decide("gpt-oss", decision, DecisionRequest(project="acme", note="seen"))
     assert [d["decision"] for d in repo.decisions] == [decision]
     assert repo.decisions[0]["project_id"] == UUID(int=7)
     assert db.commits == 1
@@ -208,7 +208,7 @@ async def test_a_promotion_adopts_the_scale_it_found(promotion) -> None:
     """
     svc, repo, _ = service_over(sighted(replicas=3))
     request = PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc")
-    assert await svc.promote("llama", request) == "adopted"
+    assert await svc.promote("gpt-oss", request) == "adopted"
     (adopted,) = promotion
     workload, deployment = adopted["workload"], adopted["deployment"]
     assert (workload.min_scale, workload.max_scale, workload.desired_scale) == (3, 3, 3)
@@ -220,12 +220,12 @@ async def test_a_promotion_adopts_the_scale_it_found(promotion) -> None:
 
 async def test_a_promotion_pins_the_digest_it_was_shown(promotion) -> None:
     svc, _, _ = service_over(sighted(fingerprint="sha256:abc"))
-    await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+    await svc.promote("gpt-oss", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
     assert promotion[0]["deployment"].adopted_fingerprint == "sha256:abc"
 
     svc, repo, _ = service_over(sighted(fingerprint="sha256:new"))
     with pytest.raises(Conflict):
-        await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+        await svc.promote("gpt-oss", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
     assert len(promotion) == 1
     assert repo.decisions == []
 
@@ -233,7 +233,7 @@ async def test_a_promotion_pins_the_digest_it_was_shown(promotion) -> None:
 async def test_a_promoted_sighting_is_not_promoted_twice(promotion) -> None:
     svc, _, _ = service_over(sighted(deployment_uid="dep_01j9x2gggggggggggggggggggg"))
     with pytest.raises(Conflict):
-        await svc.promote("llama", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
+        await svc.promote("gpt-oss", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc"))
     assert promotion == []
 
 

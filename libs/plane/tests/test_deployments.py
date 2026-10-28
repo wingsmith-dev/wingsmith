@@ -108,7 +108,7 @@ def test_list_query_filters_compile_into_one_statement(repo):
             limit=10,
             after_seq=41,
             cluster="iad-1",
-            workload="llama-70b-prod",
+            workload="gpt-oss-120b-prod",
             project="acme",
             phase="running",
         )

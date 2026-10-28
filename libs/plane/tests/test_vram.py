@@ -44,7 +44,7 @@ from app.core.devices import DeviceClass
 GIB = 1024**3
 
 
-def llama_config(**kwargs) -> dict:
+def dense_config(**kwargs) -> dict:
     base = {
         "num_hidden_layers": 32,
         "num_attention_heads": 32,
@@ -100,7 +100,7 @@ def deepseek_config(**kwargs) -> dict:
 
 
 def test_a_dense_fp16_model_sizes_at_two_bytes_per_param():
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     estimate = estimate_vram(
         total_params=8_000_000_000,
         shape=shape,
@@ -179,7 +179,7 @@ def test_layer_types_names_every_layer_and_outranks_the_pattern():
 
 def test_a_window_with_no_pattern_is_a_model_where_every_layer_is_local():
     """Mistral's original sliding window: no interleaving, the whole stack is local."""
-    shape = extract_shape(llama_config(sliding_window=4096, max_position_embeddings=32_768))
+    shape = extract_shape(dense_config(sliding_window=4096, max_position_embeddings=32_768))
 
     assert shape.sliding_layers == shape.num_hidden_layers
     assert kv_cache_bytes(shape, 32_768) == pytest.approx(kv_cache_bytes(shape, 4096))
@@ -187,7 +187,7 @@ def test_a_window_with_no_pattern_is_a_model_where_every_layer_is_local():
 
 def test_sliding_window_parameters_a_repo_has_turned_off_are_not_read():
     """Qwen3 ships the fields and does not use them, and reading them anyway halves a real cost."""
-    shape = extract_shape(llama_config(sliding_window=4096, use_sliding_window=False))
+    shape = extract_shape(dense_config(sliding_window=4096, use_sliding_window=False))
 
     assert (shape.sliding_window, shape.sliding_layers) == (None, 0)
     assert kv_cache_bytes(shape, 8192) == pytest.approx(kv_bytes_per_token(shape) * 8192)
@@ -195,7 +195,7 @@ def test_sliding_window_parameters_a_repo_has_turned_off_are_not_read():
 
 def test_full_attention_still_costs_the_whole_sequence_on_every_layer():
     """The ordinary case, unchanged: no window declared means nothing is discounted."""
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
 
     assert kv_cache_bytes(shape, 8192) == pytest.approx(kv_bytes_per_token(shape) * 8192)
 
@@ -238,7 +238,7 @@ def test_fit_context_length_reduces_the_window_when_the_full_one_does_not_fit():
 
 
 def test_fit_context_length_keeps_the_declared_window_when_it_fits():
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     fit = fit_context_length(
         total_params=8_000_000_000,
         shape=shape,
@@ -269,7 +269,7 @@ def test_fit_context_length_reports_the_floor_as_not_fitting():
 def test_quant_from_name_reads_the_repo_suffix():
     assert quant_from_name("zai-org/GLM-4.6-FP8") == "fp8"
     assert quant_from_name("some/Model-AWQ") == "awq"
-    assert quant_from_name("meta-llama/Llama-3.1-8B-Instruct") is None
+    assert quant_from_name("Qwen/Qwen3.5-9B") is None
 
 
 def test_compressed_tensors_declares_bits_not_a_scheme_name():
@@ -346,7 +346,7 @@ def test_active_params_drop_the_unrouted_experts():
     total = 20_900_000_000
     active = derive_active_params(config, total)
     assert active < total
-    assert derive_active_params(llama_config(), total) == total
+    assert derive_active_params(dense_config(), total) == total
 
 
 def test_a_config_without_a_layer_count_has_no_shape():
@@ -356,11 +356,11 @@ def test_a_config_without_a_layer_count_has_no_shape():
 
 
 def test_baseline_caps_the_sizing_context_at_8k():
-    shape = extract_shape(llama_config(max_position_embeddings=1_000_000))
+    shape = extract_shape(dense_config(max_position_embeddings=1_000_000))
     baseline = baseline_min_gpu_memory_gb(total_params=8_000_000_000, shape=shape)
     assert baseline == baseline_min_gpu_memory_gb(
         total_params=8_000_000_000,
-        shape=extract_shape(llama_config(max_position_embeddings=8192)),
+        shape=extract_shape(dense_config(max_position_embeddings=8192)),
     )
 
 
@@ -382,13 +382,13 @@ def klass(name: str) -> DeviceClass:
 
 def test_weight_bytes_are_arithmetic_not_an_estimate():
     """The one number in this module with no fudge factor, so the one worth refusing over."""
-    sizing = sizing_of_config(llama_config(), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(), 70_000_000_000)
     assert weights_gb(sizing) == pytest.approx(70_000_000_000 * 2 / GIB)
 
 
 def test_quantization_changes_what_has_to_be_resident():
-    fp16 = sizing_of_config(llama_config(), 70_000_000_000, "fp16")
-    fp8 = sizing_of_config(llama_config(), 70_000_000_000, "fp8")
+    fp16 = sizing_of_config(dense_config(), 70_000_000_000, "fp16")
+    fp8 = sizing_of_config(dense_config(), 70_000_000_000, "fp8")
     assert weights_gb(fp8) == pytest.approx(weights_gb(fp16) / 2)
 
 
@@ -399,7 +399,7 @@ def test_the_same_model_fits_on_small_cards_by_needing_more_of_them():
     reason nobody serves it that way is interconnect, which is a performance
     judgement this module does not hold and must not smuggle in as a no-fit.
     """
-    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=8192), 70_000_000_000)
     intent = Intent(context_length=8192)
 
     hopper = fit(sizing, klass("h100-80gb-sxm"), intent)
@@ -412,7 +412,7 @@ def test_the_same_model_fits_on_small_cards_by_needing_more_of_them():
 
 def test_fit_crosses_nodes_over_the_backend_fabric():
     """The old ceiling made every model larger than one chassis of VRAM unservable."""
-    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=8192), 70_000_000_000)
     wide = fit(sizing, klass("l4-24gb-pcie"), Intent(context_length=8192, devices_per_node=8))
 
     assert wide.fits
@@ -484,13 +484,13 @@ def test_the_device_ladder_is_powers_of_two_to_a_runaway_bound():
 
 def test_heads_are_checked_against_the_tensor_degree_not_the_device_count():
     """28 heads over 16 devices as tensor-8 by pipeline-2 divides by 8, and 8 is fine."""
-    sizing = sizing_of_config(llama_config(num_attention_heads=32, num_key_value_heads=8), 7_000_000_000)
+    sizing = sizing_of_config(dense_config(num_attention_heads=32, num_key_value_heads=8), 7_000_000_000)
     device = klass("h100-80gb-sxm")
 
     assert impossible(sizing, device, 16, tensor_parallel=8) is None
     assert impossible(sizing, device, 16, tensor_parallel=16) is None
 
-    odd = sizing_of_config(llama_config(num_attention_heads=28, num_key_value_heads=28), 7_000_000_000)
+    odd = sizing_of_config(dense_config(num_attention_heads=28, num_key_value_heads=28), 7_000_000_000)
     assert impossible(odd, device, 16, tensor_parallel=8) is not None
     assert impossible(odd, device, 16, tensor_parallel=4) is None
 
@@ -502,7 +502,7 @@ def test_a_no_fit_still_says_how_far_off_it_was():
     that a fit crosses domains freely, "does not fit" means "does not fit inside the
     ceiling you asked for", and naming the ceiling is the accurate way to say it.
     """
-    sizing = sizing_of_config(llama_config(), 405_000_000_000)
+    sizing = sizing_of_config(dense_config(), 405_000_000_000)
     verdict = fit(sizing, klass("l4-24gb-pcie"), Intent(context_length=8192, max_devices=8))
     assert not verdict.fits
     assert "weights" in verdict.reason
@@ -511,7 +511,7 @@ def test_a_no_fit_still_says_how_far_off_it_was():
 
 def test_attention_heads_that_do_not_divide_are_impossible_at_any_memory():
     """28 heads over 8 devices is a layout no amount of VRAM makes possible."""
-    sizing = sizing_of_config(llama_config(num_attention_heads=28, num_key_value_heads=28), 7_000_000_000)
+    sizing = sizing_of_config(dense_config(num_attention_heads=28, num_key_value_heads=28), 7_000_000_000)
     reason = impossible(sizing, klass("b300-288gb-sxm"), 8, tensor_parallel=8)
     assert reason is not None
     assert "attention heads" in reason
@@ -520,7 +520,7 @@ def test_attention_heads_that_do_not_divide_are_impossible_at_any_memory():
 
 def test_an_unmeasured_device_class_is_not_contradicted():
     """A card the table carries no size for cannot be refused; it can only be unknown."""
-    sizing = sizing_of_config(llama_config(), 405_000_000_000)
+    sizing = sizing_of_config(dense_config(), 405_000_000_000)
     unknown = DeviceClass(
         name="mystery-card",
         label="Mystery Card",
@@ -536,7 +536,7 @@ def test_an_unmeasured_device_class_is_not_contradicted():
 
 def test_impossible_is_silent_about_everything_an_estimate_covers():
     """A shape that holds the weights but no context is advice, never a refusal."""
-    sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=131072), 70_000_000_000)
     device = klass("h100-80gb-sxm")
     assert impossible(sizing, device, 2) is None
     assert not fit_at(sizing, device, Intent(context_length=131072, concurrency=64), 2).fits
@@ -552,7 +552,7 @@ def test_a_truncated_context_is_offered_rather_than_hidden():
 
 def test_the_ladder_offers_every_count_that_serves_and_not_only_the_smallest():
     """The recommendation is one answer; how much of a node to spend is the question."""
-    sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=131072), 70_000_000_000)
     device = klass("h200-141gb-sxm")
     intent = Intent(context_length=131072, devices_per_node=8)
 
@@ -567,7 +567,7 @@ def test_the_ladder_offers_every_count_that_serves_and_not_only_the_smallest():
 
 def test_the_ladder_stops_at_a_node_when_a_replica_fits_inside_one():
     """Widening past the fabric to buy KV cache is a call nothing here can price."""
-    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 13_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=8192), 13_000_000_000)
     device = klass("h200-141gb-sxm")
 
     options = ladder(sizing, device, Intent(context_length=8192, devices_per_node=8))
@@ -575,7 +575,7 @@ def test_the_ladder_stops_at_a_node_when_a_replica_fits_inside_one():
 
 
 def test_the_ladder_reaches_the_recommendation_when_it_spans_several_nodes():
-    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 400_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=8192), 400_000_000_000)
     device = klass("h100-80gb-sxm")
     intent = Intent(context_length=8192, devices_per_node=8)
 
@@ -586,7 +586,7 @@ def test_the_ladder_reaches_the_recommendation_when_it_spans_several_nodes():
 
 def test_the_ladder_keeps_a_trimmed_window_as_a_choice_rather_than_dropping_it():
     """Fewer cards at a shorter window is a trade somebody chooses to make."""
-    sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=131072), 70_000_000_000)
     device = klass("h200-141gb-sxm")
     intent = Intent(context_length=131072, concurrency=32, devices_per_node=8)
 
@@ -600,7 +600,7 @@ def test_the_ladder_keeps_a_trimmed_window_as_a_choice_rather_than_dropping_it()
 
 
 def test_a_class_that_fits_nowhere_offers_no_ladder():
-    sizing = sizing_of_config(llama_config(), 2_800_000_000_000)
+    sizing = sizing_of_config(dense_config(), 2_800_000_000_000)
     device = klass("l4-24gb-pcie")
     intent = Intent(context_length=8192, max_devices=8)
 
@@ -609,7 +609,7 @@ def test_a_class_that_fits_nowhere_offers_no_ladder():
 
 
 def test_fitment_ranks_the_cheapest_workable_class_first():
-    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 13_000_000_000)
+    sizing = sizing_of_config(dense_config(max_position_embeddings=8192), 13_000_000_000)
     results = fitment(sizing, devices.table().classes, Intent(context_length=8192))
 
     assert len(results) == len(devices.table().classes)
@@ -633,7 +633,7 @@ def test_a_stored_artifact_can_be_sized_without_the_network():
 
 def test_only_a_missing_parameter_count_makes_an_artifact_unsizable():
     """A missing shape costs the KV cache, not the whole answer."""
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     assert shape is not None
     full = {"quantization": "fp16", "shape": shape_metadata(shape)}
 
@@ -672,7 +672,7 @@ def test_a_shapeless_artifact_still_says_which_cards_are_too_small():
 
 def test_a_shapeless_fit_is_a_floor_and_never_larger_than_a_real_one():
     """The floor has to sit under the estimate, or it is not a floor."""
-    shape = extract_shape(llama_config(max_position_embeddings=8192))
+    shape = extract_shape(dense_config(max_position_embeddings=8192))
     assert shape is not None
     sized = Sizing(total_params=70_000_000_000, shape=shape, quantization="fp16")
     shapeless = Sizing(total_params=70_000_000_000, shape=None, quantization="fp16")
@@ -691,7 +691,7 @@ def test_impossible_still_refuses_a_shapeless_artifact_that_cannot_be_held():
 
 
 def test_sizing_defaults_to_fp16_when_the_artifact_names_no_quantization():
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     assert shape is not None
     sizing = sizing_of({"shape": shape_metadata(shape)}, 70_000_000_000)
     assert sizing is not None
@@ -700,7 +700,7 @@ def test_sizing_defaults_to_fp16_when_the_artifact_names_no_quantization():
 
 def test_the_envelope_is_applied_once_and_not_compounded():
     """Two discounts on the same headroom was worth twenty percent, and that is a card count."""
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     assert shape is not None
     estimate = estimate_vram(
         total_params=8_000_000_000,
@@ -714,7 +714,7 @@ def test_the_envelope_is_applied_once_and_not_compounded():
 
 def test_activations_scale_with_the_batch_and_not_with_the_weights():
     """The flat fraction this replaced made a 2.8T model reserve a node for CUDA context."""
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     assert shape is not None
     small = estimate_vram(total_params=8_000_000_000, shape=shape, context_length=8192)
     huge = estimate_vram(total_params=2_800_000_000_000, shape=shape, context_length=8192)
@@ -740,7 +740,7 @@ def test_card_smaller_than_reserve_offers_nothing():
 
 def test_hidden_size_is_declared_or_reconstructed():
     """The heads-times-head-dim identity does not hold for MLA, which has no head_dim."""
-    assert hidden_size_of(extract_shape(llama_config())) == 4096
+    assert hidden_size_of(extract_shape(dense_config())) == 4096
 
     reconstructed = ModelShape(
         num_hidden_layers=32,
@@ -918,7 +918,7 @@ def test_a_refusal_names_every_precision_it_charged():
 
 def test_an_artifact_with_no_expert_precision_sizes_exactly_as_it_always_did():
     """The pair is additive. Every single-precision checkpoint is untouched by it."""
-    shape = extract_shape(llama_config())
+    shape = extract_shape(dense_config())
     plain = Sizing(total_params=70_000_000_000, shape=shape, quantization="fp8")
 
     assert weights_gb(plain) == 70_000_000_000 * BYTES_PER_PARAM["fp8"] / GIB
@@ -950,7 +950,7 @@ def test_the_expert_precision_survives_being_written_down_and_read_back():
 
 def test_an_artifact_stored_before_the_expert_fields_existed_still_reads_back():
     """Every artifact already in the catalogue has neither key, and must size as before."""
-    stored = sizing_of({"quantization": "fp8", "shape": shape_metadata(extract_shape(llama_config()))}, 70_000_000_000)
+    stored = sizing_of({"quantization": "fp8", "shape": shape_metadata(extract_shape(dense_config()))}, 70_000_000_000)
 
     assert stored.expert_params is None
     assert stored.expert_quantization is None

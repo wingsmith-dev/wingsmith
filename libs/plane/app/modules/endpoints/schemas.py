@@ -298,7 +298,7 @@ class ResolvedUpstreamSchema(Struct):
     configurations, so there is no single answer to hang one level up. The
     gateway rewrites the inbound `model` to it before forwarding. It is usually
     *not* the endpoint's name: a workload the console derived is named for its
-    configuration (`llama-3-3-70b-instruct-fp8-tp2-32k`), which is an internal
+    configuration (`gpt-oss-120b-mxfp4-tp2-32k`), which is an internal
     detail of the fit that no client should ever have to type or notice changing.
     """
 

@@ -71,7 +71,7 @@ async def seed_demand(sessions) -> None:
         await db.execute(
             text(
                 "insert into demand_artifact (id, uid, digest, name, kind)"
-                " values (:id, :uid, 'sha256:abc', 'llama-70b', 'weights')"
+                " values (:id, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )
@@ -94,7 +94,7 @@ async def sighted(sessions) -> DatabaseSink:
 
 def request(**overrides) -> PromoteRequest:
     fields = {
-        "artifact": "llama-70b",
+        "artifact": "gpt-oss-120b",
         "project": "core",
         "fingerprint": FINGERPRINT,
     }
@@ -112,12 +112,12 @@ async def test_promotion_creates_a_workload_pinned_to_what_is_running(sessions, 
     await sighted(sessions)
 
     async with sessions() as db:
-        workload = await DiscoveredWorkloadService(db, principal="admin").promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db, principal="admin").promote("gpt-oss-120b-vllm", request())
 
-    assert workload.name == "llama-70b-vllm"
+    assert workload.name == "gpt-oss-120b-vllm"
     assert workload.max_clusters == 1
     assert workload.pinned_cluster_id == CLUSTER
-    assert [d.name for d in workload.deployments] == ["llama-70b-vllm"]
+    assert [d.name for d in workload.deployments] == ["gpt-oss-120b-vllm"]
     rows = await fetch(sessions, "select adopted_workload_uid, adopted_fingerprint, generation from demand_deployment")
     assert rows == [("dsw_01j9x2ffffffffffffffffffff", FINGERPRINT, 1)]
 
@@ -132,7 +132,7 @@ async def test_promotion_adopts_the_replica_count_it_found(sessions, cluster) ->
     await sighted(sessions)
 
     async with sessions() as db:
-        workload = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     assert (workload.scale.min, workload.scale.desired, workload.scale.max) == (2, 2, 2)
     share = workload.deployments[0]
@@ -146,7 +146,9 @@ async def test_promotion_is_refused_when_the_workload_changed(sessions, cluster)
 
     async with sessions() as db:
         with pytest.raises(Conflict):
-            await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request(fingerprint="sha256:something-else"))
+            await DiscoveredWorkloadService(db).promote(
+                "gpt-oss-120b-vllm", request(fingerprint="sha256:something-else")
+            )
 
     assert await fetch(sessions, "select count(*) from demand_deployment") == [(0,)]
 
@@ -165,7 +167,7 @@ async def test_promotion_is_refused_without_a_digest_to_pin_to(sessions, cluster
 
     async with sessions() as db:
         with pytest.raises(Invalid):
-            await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+            await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
 
 async def test_a_workload_is_promoted_once(sessions, cluster) -> None:
@@ -173,10 +175,10 @@ async def test_a_workload_is_promoted_once(sessions, cluster) -> None:
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
     async with sessions() as db:
         with pytest.raises(Conflict):
-            await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request(name="llama-again"))
+            await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request(name="gpt-oss-again"))
 
     assert await fetch(sessions, "select count(*) from demand_deployment") == [(1,)]
 
@@ -190,7 +192,7 @@ async def test_a_promoted_deployment_streams_down_as_an_adoption(sessions, clust
     await seed_demand(sessions)
     await sighted(sessions)
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     async with sessions() as db:
         frames = [item async for item in stream_desired(db, CLUSTER, "demand")]
@@ -198,7 +200,7 @@ async def test_a_promoted_deployment_streams_down_as_an_adoption(sessions, clust
     assert len(desired) == 1
     adopt = desired[0].adopt
     assert adopt is not None
-    assert (adopt.namespace, adopt.kind, adopt.name) == ("serving", "deployment", "llama-70b-vllm")
+    assert (adopt.namespace, adopt.kind, adopt.name) == ("serving", "deployment", "gpt-oss-120b-vllm")
     assert adopt.spec_fingerprint == FINGERPRINT
 
 
@@ -215,7 +217,7 @@ async def test_an_adoption_survives_its_sighting_being_pruned(sessions, cluster)
     await seed_demand(sessions)
     await sighted(sessions)
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request(name="renamed-on-purpose"))
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request(name="renamed-on-purpose"))
         await db.execute(text("delete from demand_discovered_workload"))
         await db.commit()
 
@@ -229,7 +231,7 @@ async def test_an_adoption_survives_its_sighting_being_pruned(sessions, cluster)
     assert adopt.spec_fingerprint == FINGERPRINT
     # The live object's name, not the deployment's. Promotion accepts a rename and the
     # operator still has to be pointed at the object that actually exists.
-    assert adopt.name == "llama-70b-vllm"
+    assert adopt.name == "gpt-oss-120b-vllm"
     assert desired[0].name == "renamed-on-purpose"
 
 
@@ -237,7 +239,7 @@ async def test_an_ordinary_deployment_carries_no_adoption(sessions, cluster) -> 
     await seed_demand(sessions)
     await sighted(sessions)
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
         await db.execute(text("update demand_deployment set adopted_workload_uid = null"))
         await db.commit()
 
@@ -253,7 +255,7 @@ async def test_a_promoted_deployment_is_observed_not_managed(sessions, cluster) 
     await sighted(sessions)
 
     async with sessions() as db:
-        workload = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     assert [d.authority for d in workload.deployments] == ["observed"]
 
@@ -269,15 +271,15 @@ async def test_taking_management_needs_the_digest_of_what_is_running(sessions, c
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     async with sessions() as db:
         svc = DeploymentService(db)
         with pytest.raises(Invalid):
-            await svc.set_authority("llama-70b-vllm", DeploymentAuthorityRequest(authority="managed"))
+            await svc.set_authority("gpt-oss-120b-vllm", DeploymentAuthorityRequest(authority="managed"))
         with pytest.raises(Conflict):
             await svc.set_authority(
-                "llama-70b-vllm",
+                "gpt-oss-120b-vllm",
                 DeploymentAuthorityRequest(authority="managed", fingerprint="sha256:not-what-is-running"),
             )
 
@@ -289,17 +291,17 @@ async def test_management_is_taken_and_given_back(sessions, cluster) -> None:
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     async with sessions() as db:
         taken = await DeploymentService(db).set_authority(
-            "llama-70b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
+            "gpt-oss-120b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
         )
     assert taken.authority == "managed"
 
     async with sessions() as db:
         released = await DeploymentService(db).set_authority(
-            "llama-70b-vllm", DeploymentAuthorityRequest(authority="observed")
+            "gpt-oss-120b-vllm", DeploymentAuthorityRequest(authority="observed")
         )
     assert released.authority == "observed", "letting go writes nothing and needs nothing"
 
@@ -310,10 +312,10 @@ async def test_authority_reaches_the_cluster_on_the_desired_stream(sessions, clu
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
     async with sessions() as db:
         await DeploymentService(db).set_authority(
-            "llama-70b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
+            "gpt-oss-120b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
         )
 
     async with sessions() as db:
@@ -330,7 +332,7 @@ async def test_a_dismissed_sighting_leaves_the_list_and_survives_the_next_observ
     sink = await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db, principal="admin").dismiss("llama-70b-vllm", DecisionRequest())
+        await DiscoveredWorkloadService(db, principal="admin").dismiss("gpt-oss-120b-vllm", DecisionRequest())
 
     async with sessions() as db:
         assert (await DiscoveredWorkloadService(db).list()).items == []
@@ -340,7 +342,7 @@ async def test_a_dismissed_sighting_leaves_the_list_and_survives_the_next_observ
         svc = DiscoveredWorkloadService(db)
         assert (await svc.list()).items == [], "an observation does not undo a dismissal"
         listed = (await svc.list(status="dismissed")).items
-    assert [w.name for w in listed] == ["llama-70b-vllm"]
+    assert [w.name for w in listed] == ["gpt-oss-120b-vllm"]
     assert (await fetch(sessions, "select count(*) from demand_discovered_workload"))[0][0] == 1
 
 
@@ -348,13 +350,13 @@ async def test_restoring_puts_it_back_with_no_decision_on_it(sessions, cluster) 
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).dismiss("llama-70b-vllm", DecisionRequest())
+        await DiscoveredWorkloadService(db).dismiss("gpt-oss-120b-vllm", DecisionRequest())
     async with sessions() as db:
-        restored = await DiscoveredWorkloadService(db).restore("llama-70b-vllm")
+        restored = await DiscoveredWorkloadService(db).restore("gpt-oss-120b-vllm")
     assert restored.status == "new"
 
     async with sessions() as db:
-        assert [w.name for w in (await DiscoveredWorkloadService(db).list()).items] == ["llama-70b-vllm"]
+        assert [w.name for w in (await DiscoveredWorkloadService(db).list()).items] == ["gpt-oss-120b-vllm"]
 
 
 async def test_a_promoted_sighting_cannot_be_dismissed(sessions, cluster) -> None:
@@ -362,8 +364,8 @@ async def test_a_promoted_sighting_cannot_be_dismissed(sessions, cluster) -> Non
     await sighted(sessions)
 
     async with sessions() as db:
-        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        await DiscoveredWorkloadService(db).promote("gpt-oss-120b-vllm", request())
 
     async with sessions() as db:
         with pytest.raises(Conflict):
-            await DiscoveredWorkloadService(db).dismiss("llama-70b-vllm", DecisionRequest())
+            await DiscoveredWorkloadService(db).dismiss("gpt-oss-120b-vllm", DecisionRequest())

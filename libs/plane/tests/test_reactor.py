@@ -76,7 +76,7 @@ def test_event_alerts_key_on_the_event_so_two_occurrences_stay_two_alerts():
 
 def test_condition_keys_are_stable_across_evaluations():
     """The same ongoing problem must key identically however often it is evaluated."""
-    args = (None, "us", "dep_1", "llama", 0, 2)
+    args = (None, "us", "dep_1", "gpt-oss", 0, 2)
     assert rules.deployment_behind(*args).dedupe_key == rules.deployment_behind(*args).dedupe_key
     assert (
         rules.deployment_behind(*args).dedupe_key != rules.deployment_behind(None, "us", "dep_2", "x", 0, 2).dedupe_key
@@ -84,16 +84,16 @@ def test_condition_keys_are_stable_across_evaluations():
 
 
 def test_a_deployment_with_nothing_ready_is_worse_than_one_merely_behind():
-    assert rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2).severity == rules.ERROR
-    assert rules.deployment_behind(None, "us", "dep_1", "llama", 1, 2).severity == rules.WARNING
+    assert rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 0, 2).severity == rules.ERROR
+    assert rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 1, 2).severity == rules.WARNING
 
 
 def test_stalled_workload_says_whether_anyone_imported_it():
     """The founding scenario: nobody had promoted it, and that belongs in the message."""
-    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=False)
+    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/gpt-oss", 0, 1, promoted=False)
     assert "not imported" in intent.title
     assert intent.details["promoted"] is False
-    assert rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=True).title.endswith("ready")
+    assert rules.workload_stalled(None, "us", "dsw_1", "serving/gpt-oss", 0, 1, promoted=True).title.endswith("ready")
 
 
 def test_pending_becomes_overdue_only_after_the_window():
@@ -172,20 +172,20 @@ def test_a_typo_in_a_label_is_ignored_rather_than_obeyed_or_raised():
 
 
 def test_an_object_with_no_opinion_leaves_the_intent_exactly_as_it_was():
-    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    intent = rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 0, 2)
     assert tuning.apply(intent, {}) is intent
     assert tuning.apply(intent, None) is intent
     assert tuning.apply(intent, {"team": "inference"}) is intent
 
 
 def test_a_deployment_can_be_muted_from_its_labels():
-    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    intent = rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 0, 2)
     assert tuning.apply(intent, {"wingsmith.dev/alert": "off"}) is None
     assert tuning.apply(intent, {"wingsmith.dev/alert": "on"}) is intent
 
 
 def test_severity_and_window_can_be_overridden_independently():
-    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    intent = rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 0, 2)
     quieter = tuning.apply(intent, {"wingsmith.dev/alert.severity": "warning"})
     assert quieter.severity == rules.WARNING
     assert quieter.for_seconds == intent.for_seconds
@@ -197,7 +197,7 @@ def test_severity_and_window_can_be_overridden_independently():
 
 def test_a_tuned_alert_says_what_tuned_it():
     """Otherwise "why did this fire as a warning" has no answer short of guessing."""
-    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=False)
+    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/gpt-oss", 0, 1, promoted=False)
     tuned = tuning.apply(intent, {"wingsmith.dev/alert.severity": "info", "wingsmith.dev/alert.for": "30m"})
     assert tuned.details["tuned_by"] == {"severity": "info", "for": 1800}
     assert tuned.details["replicas_ready"] == 0
@@ -205,7 +205,7 @@ def test_a_tuned_alert_says_what_tuned_it():
 
 def test_tuning_never_changes_the_identity_of_an_alert():
     """A dedupe key that moved when someone edited a label would fork one problem into two."""
-    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    intent = rules.deployment_behind(None, "us", "dep_1", "gpt-oss", 0, 2)
     tuned = tuning.apply(intent, {"wingsmith.dev/alert.severity": "info"})
     assert tuned.dedupe_key == intent.dedupe_key
 
