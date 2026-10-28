@@ -1,7 +1,7 @@
 <a href="https://wingsmith.dev">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/banner-dark.png">
-    <img alt="Wingsmith: multi-cluster inference. A control plane for serving models across Kubernetes GPU clusters." src=".github/banner-light.png" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/wingsmith-dev/wingsmith/raw/main/.github/banner-dark.png">
+    <img alt="Wingsmith: multi-cluster inference. A control plane for serving models across Kubernetes GPU clusters." src="https://github.com/wingsmith-dev/wingsmith/raw/main/.github/banner-light.png" width="100%">
   </picture>
 </a>
 
