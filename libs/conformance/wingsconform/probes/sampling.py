@@ -19,9 +19,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import probe
 
 
 CASES: dict[str, dict[str, dict[str, Any]]] = {
@@ -131,10 +131,10 @@ def acceptance(session: Session) -> dict[str, Any]:
 )
 def unknown_parameter(session: Session) -> dict[str, Any]:
     """Rejecting an unknown field and ignoring it are both defensible; only the choice is compared."""
-    top_level = session.post("/v1/chat/completions", session.body(max_tokens=8, hgrconform_unknown="x"))
+    top_level = session.post("/v1/chat/completions", session.body(max_tokens=8, wingsconform_unknown="x"))
     nested = session.post(
         "/v1/chat/completions",
-        session.body(max_tokens=8, stream_options={"hgrconform_unknown": True}),
+        session.body(max_tokens=8, stream_options={"wingsconform_unknown": True}),
     )
     return {
         "unknown_status": top_level.status,

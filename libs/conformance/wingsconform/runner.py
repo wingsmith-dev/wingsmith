@@ -16,16 +16,16 @@ from __future__ import annotations
 import time
 import traceback
 
-from hgrconform.facts import ERROR
-from hgrconform.facts import SKIPPED
-from hgrconform.facts import OBSERVED
-from hgrconform.facts import Fact
-from hgrconform.store import Store
-from hgrconform.store import Endpoint
-from hgrconform.profile import Profile
-from hgrconform.session import Session
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import Probe
+from wingsconform.facts import ERROR
+from wingsconform.facts import SKIPPED
+from wingsconform.facts import OBSERVED
+from wingsconform.facts import Fact
+from wingsconform.store import Store
+from wingsconform.store import Endpoint
+from wingsconform.profile import Profile
+from wingsconform.session import Session
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import Probe
 
 
 def run_probes(

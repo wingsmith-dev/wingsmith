@@ -21,8 +21,8 @@ from dataclasses import field
 from dataclasses import dataclass
 
 
-# A Hangar tenant API key, when a profile names no variable of its own.
-DEFAULT_TOKEN_ENV = "HANGAR_API_KEY"
+# A Wingsmith tenant API key, when a profile names no variable of its own.
+DEFAULT_TOKEN_ENV = "WINGSMITH_API_KEY"
 
 THINKING_SYNTAXES = ("none", "kimi", "chat_template", "reasoning_effort", "system_prompt")
 
@@ -86,7 +86,7 @@ class Paths:
     """Where this endpoint puts the values that have no agreed location.
 
     Dotted paths into the response body. The pattern, and the reason for it, is the
-    same as the per-harness field maps in `hgrbench.metrics`: a value read through a
+    same as the per-harness field maps in `wingsbench.metrics`: a value read through a
     declared path is traceable, and a path that does not resolve is a named miss
     instead of a silent zero.
     """

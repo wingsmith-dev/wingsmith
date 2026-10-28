@@ -1,5 +1,5 @@
 # Differences scripts/conformance-gateway.sh accepts between the gateway and the engine it fronts,
-# one hgrconform difference label per line, each with the reason it is expected. Anything not
+# one wingsconform difference label per line, each with the reason it is expected. Anything not
 # listed fails the check, and an entry that stops occurring is reported so it can be dropped.
 
 # The gateway's catalog says which output modality each model serves.

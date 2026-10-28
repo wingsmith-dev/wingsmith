@@ -31,10 +31,10 @@ import os
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import probe
 
 
 SAMPLES = 50
@@ -44,8 +44,8 @@ WORKERS = 8
 RARE_BELOW = 0.05
 OCCASIONAL_BELOW = 0.20
 MIN_SAMPLES = 40
-SAMPLES_ENV = "HGRCONFORM_EOS_SAMPLES"
-WORKERS_ENV = "HGRCONFORM_EOS_WORKERS"
+SAMPLES_ENV = "WINGSCONFORM_EOS_SAMPLES"
+WORKERS_ENV = "WINGSCONFORM_EOS_WORKERS"
 
 PROMPT = (
     "A train leaves station A at 09:00 travelling at 60 km/h. A second train leaves station B, "

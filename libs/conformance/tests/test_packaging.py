@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import hgrconform
+import wingsconform
 
-from hgrconform import cli
-from hgrconform.probes import video
-from hgrconform.profile import load_profile
+from wingsconform import cli
+from wingsconform.probes import video
+from wingsconform.profile import load_profile
 
 
-PACKAGE = Path(hgrconform.__file__).resolve().parent
+PACKAGE = Path(wingsconform.__file__).resolve().parent
 
 
 def test_profiles_ship_inside_the_package() -> None:

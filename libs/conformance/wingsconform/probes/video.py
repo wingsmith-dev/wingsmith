@@ -7,7 +7,7 @@ an image is read in the order it was sent, what the clip costs in prompt tokens 
 how that cost moves with length, frame rate and size, what the endpoint does past its
 limits, and whether all of it streams.
 
-The clips are committed under `hgrconform/assets/video/` beside the `make.sh` that produced them,
+The clips are committed under `wingsconform/assets/video/` beside the `make.sh` that produced them,
 not built here the way `multimodal.image` builds its PNG. An H.264 encoder is
 not something to write by hand, and a recipe in a diff is the next best thing to a
 clip built at run time. Every clip is one red square moving left to right across
@@ -36,17 +36,17 @@ from importlib import resources
 from itertools import pairwise
 from dataclasses import dataclass
 
-from hgrconform.session import Session
-from hgrconform.session import Response
-from hgrconform.session import dig
-from hgrconform.probes.registry import probe
-from hgrconform.probes.multimodal import COLOUR_SYNONYMS
-from hgrconform.probes.multimodal import _png
-from hgrconform.probes.multimodal import _error_shape
-from hgrconform.probes.multimodal import _refusal_kind
+from wingsconform.session import Session
+from wingsconform.session import Response
+from wingsconform.session import dig
+from wingsconform.probes.registry import probe
+from wingsconform.probes.multimodal import COLOUR_SYNONYMS
+from wingsconform.probes.multimodal import _png
+from wingsconform.probes.multimodal import _error_shape
+from wingsconform.probes.multimodal import _refusal_kind
 
 
-ASSETS = Path(resources.files("hgrconform") / "assets" / "video")
+ASSETS = Path(resources.files("wingsconform") / "assets" / "video")
 CHAT = "/v1/chat/completions"
 
 ANSWER_TOKENS = 4096

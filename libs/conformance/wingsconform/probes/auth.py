@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.probes.registry import probe
 
 
 @probe(
@@ -24,9 +24,11 @@ def rejection(session: Session) -> dict[str, Any]:
     body = session.body(max_tokens=8)
     base = {"Content-Type": "application/json"}
 
-    invalid = session.post("/v1/chat/completions", body, headers=base | {"Authorization": "Bearer hgrconform-invalid"})
+    invalid = session.post(
+        "/v1/chat/completions", body, headers=base | {"Authorization": "Bearer wingsconform-invalid"}
+    )
     missing = session.post("/v1/chat/completions", body, headers=base)
-    malformed = session.post("/v1/chat/completions", body, headers=base | {"Authorization": "hgrconform-no-scheme"})
+    malformed = session.post("/v1/chat/completions", body, headers=base | {"Authorization": "wingsconform-no-scheme"})
 
     error = invalid.at("error")
     return {

@@ -28,19 +28,19 @@ from pathlib import Path
 import httpx
 import pytest
 
-from hgrconform.facts import compare
-from hgrconform.store import Run
-from hgrconform.store import Store
-from hgrconform.probes import registry
-from hgrconform.runner import run_probes
-from hgrconform.profile import Profile
-from hgrconform.profile import Thinking
-from hgrconform.probes.eos import MIN_SAMPLES
-from hgrconform.probes.eos import SAMPLES_ENV
+from wingsconform.facts import compare
+from wingsconform.store import Run
+from wingsconform.store import Store
+from wingsconform.probes import registry
+from wingsconform.runner import run_probes
+from wingsconform.profile import Profile
+from wingsconform.profile import Thinking
+from wingsconform.probes.eos import MIN_SAMPLES
+from wingsconform.probes.eos import SAMPLES_ENV
 
 
 STUB = Path(__file__).parent / "stub.py"
-NEEDLES = ("hangar", "vllm")
+NEEDLES = ("wingsmith", "vllm")
 
 
 def _free_port() -> int:
@@ -90,7 +90,7 @@ def _profile(name: str, url: str) -> Profile:
         name=name,
         base_url=url,
         model="gpt-oss-120b",
-        token_env="HGRCONFORM_TEST_TOKEN",
+        token_env="WINGSCONFORM_TEST_TOKEN",
         context_window=4096,
         modalities=("text", "image", "audio", "video"),
         protocols=("chat_completions", "messages"),
@@ -126,7 +126,7 @@ def _differences(store: Store) -> list:
 
 @pytest.fixture(autouse=True)
 def _environment(monkeypatch):
-    monkeypatch.setenv("HGRCONFORM_TEST_TOKEN", "stub")
+    monkeypatch.setenv("WINGSCONFORM_TEST_TOKEN", "stub")
     monkeypatch.setenv(SAMPLES_ENV, str(MIN_SAMPLES))
 
 

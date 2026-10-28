@@ -19,7 +19,7 @@ from importlib import import_module
 from dataclasses import dataclass
 from collections.abc import Callable
 
-from hgrconform.session import Session
+from wingsconform.session import Session
 
 
 class Skip(Exception):

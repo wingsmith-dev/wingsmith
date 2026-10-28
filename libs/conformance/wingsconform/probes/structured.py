@@ -15,8 +15,8 @@ from typing import Any
 
 import jsonschema
 
-from hgrconform.session import Session
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.probes.registry import probe
 
 
 SCHEMA: dict[str, Any] = {

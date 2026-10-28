@@ -1,8 +1,8 @@
 # conformance: what an endpoint does, and whether that matches what it claims to be
 
-`hgrconform` points a set of probes at any OpenAI-compatible endpoint and records what
+`wingsconform` points a set of probes at any OpenAI-compatible endpoint and records what
 it observed. With a second endpoint it diffs the two and reports where they disagree.
-It knows nothing about Hangar's control plane: a Hangar gateway is one endpoint it can
+It knows nothing about Wingsmith's control plane: a Wingsmith gateway is one endpoint it can
 check, and a model provider's own API is another.
 
 ```sh
@@ -13,18 +13,18 @@ just conformance-diff                                        # re-diff the lates
 ```
 
 Outside the repository it installs as a normal package (`pip install ./libs/conformance`)
-and runs as `hgrconform run <profile>`; the committed profiles and video clips ship
+and runs as `wingsconform run <profile>`; the committed profiles and video clips ship
 inside it. The `Dockerfile` here builds the same thing as an image whose entrypoint is
-`hgrconform`:
+`wingsconform`:
 
 ```sh
-docker build -t hgrconform libs/conformance
-docker run --rm -e HANGAR_API_KEY -v "$PWD/results:/work/.local/conformance" hgrconform run example
+docker build -t wingsconform libs/conformance
+docker run --rm -e WINGSMITH_API_KEY -v "$PWD/results:/work/.local/conformance" wingsconform run example
 ```
 
 The plane's benchmarks module names a `conformance` harness image too, but it does not
 drive this one yet: the parameters it offers and the pass/fail summary it reads are not
-what `hgrconform` takes or writes, so run it from the CLI or this image.
+what `wingsconform` takes or writes, so run it from the CLI or this image.
 
 It exists because an endpoint that serves somebody else's model is usually held to one
 sentence: **"consistent with the original model provider."** Not *correct*: consistent.
@@ -50,7 +50,7 @@ Four rules follow from it:
 - **Vendor knowledge lives in the profile, never in a probe.** A probe containing
   `if vendor ==` is a bug. Thinking syntax, the cached-token field path, the claimed
   context window and modalities are all profile fields. Same pattern as the
-  per-harness field maps in [`hgrbench/metrics.py`](../benchmarking/hgrbench/metrics.py),
+  per-harness field maps in [`wingsbench/metrics.py`](../benchmarking/wingsbench/metrics.py),
   and for the same reason.
 - **Every exchange is stored verbatim.** A finding that cannot be traced to bytes is
   one nobody can defend.
@@ -90,7 +90,7 @@ direction a square moved in a clip, whether it used a tool result, whether it re
 a number from an earlier turn: each is one sample
 of the model's judgement, and two runs of one model disagree on a single sample
 often enough that comparing it reports noise. Those readings are kept as evidence for
-a person (`hgrconform show <run> <probe>`) and never compared. Rates are compared only
+a person (`wingsconform show <run> <probe>`) and never compared. Rates are compared only
 as buckets, over enough samples that every bucket can be reached and one stray sample
 cannot cross a bucket line (`eos.suppression`, 50 samples by default and never fewer
 than 40).
@@ -123,7 +123,7 @@ just conformance-gateway
 ```
 
 runs the probes through the real gateway instead. It builds the gateway and agent from
-the checkout, holds the path open with `hgrtransit path` in front of a stub, calls it on
+the checkout, holds the path open with `wingstransit path` in front of a stub, calls it on
 the gateway's public listener with a tenant key, and diffs the result against a second
 stub asked directly. Both stubs are deterministic, so every difference is something the
 gateway changed. It fails when a probe errors, when an error body or header names a leak
@@ -138,7 +138,7 @@ accept with a reason. CI runs it on every change.
 | `streaming`, `length`, `sampling` | streaming and usage location, output caps and reasoning-only exhaustion, parameter acceptance |
 | `structured`, `tools` | `response_format` in three modes, tool-call protocol, round trip, restraint, tool call id uniqueness across turns on both the chat and Messages surfaces |
 | `thinking`, `cache`, `multimodal`, `tokens` | thinking mode, cached tokens, image input, token accounting |
-| `video` | video input with the clips in `hgrconform/assets/video/`: acceptance, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
+| `video` | video input with the clips in `wingsconform/assets/video/`: acceptance, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
 | `eos`, `limits` | EOS suppression rate, burst policy |
 
 Left out by design:
@@ -157,16 +157,16 @@ Left out by design:
 ## Profiles
 
 A profile is committed TOML naming the endpoint and the handful of things no probe is
-allowed to know. Three ship in `hgrconform/profiles/`:
+allowed to know. Three ship in `wingsconform/profiles/`:
 
 - `example`: the annotated template. Copy it per model.
-- `gateway`: a Hangar gateway's public listener on `127.0.0.1:8080`, with a tenant API
-  key in `HANGAR_API_KEY`.
+- `gateway`: a Wingsmith gateway's public listener on `127.0.0.1:8080`, with a tenant API
+  key in `WINGSMITH_API_KEY`.
 - `moonshot-kimi-k3`: an example reference profile for a model served by its original
   provider, to diff other endpoints serving that model against.
 
 A profile names the variable holding its bearer token in `token_env`
-(`HANGAR_API_KEY` when it names none); the token itself is never written to the run
+(`WINGSMITH_API_KEY` when it names none); the token itself is never written to the run
 directory. `run` and `--reference` also take a path to a profile of your own.
 
 ## Probes that need no reference
@@ -178,13 +178,13 @@ hostname. Those are reported separately, not diffed, and never silently dropped.
 
 ## Running it unattended
 
-`hgrconform` is meant to be run by hand today. The exit code already works (`diff`
+`wingsconform` is meant to be run by hand today. The exit code already works (`diff`
 returns 1 on any difference), but wiring "any difference fails" to a schedule or a
 deploy gate goes red on the first run, because every endpoint differs from its
 reference on something benign. What that needs, and does not have yet, is an accepted
 run stored per target, an alarm on differences that are *new* against it, and
 accepting a difference as an explicit act that leaves a record. Runs are already
-written timestamped per target under the results directory, and `hgrconform diff`
+written timestamped per target under the results directory, and `wingsconform diff`
 re-diffs a stored run without touching the endpoint. The gateway check above is the
 one target with that shape today, because its reference is a stub that never changes:
 its accepted differences are a committed file, and a new one fails CI.
@@ -216,7 +216,7 @@ def thing(session: Session) -> dict[str, Any]:
     return {"shape_of_the_answer": ..., "raw_value_as_evidence": ...}
 ```
 
-Drop the module in `hgrconform/probes/`: the registry discovers it and there is no list to
+Drop the module in `wingsconform/probes/`: the registry discovers it and there is no list to
 edit. Raise `Skip("reason")` when the profile means the question does not apply; two
 skips compare as agreement. Teach `tests/stub.py` enough to answer it, then run
 `just conformance-test`.

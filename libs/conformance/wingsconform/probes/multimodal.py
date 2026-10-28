@@ -21,9 +21,9 @@ import struct
 from base64 import b64encode
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import probe
 
 
 STUB = b64encode(b"\x00\x00\x00\x00").decode()

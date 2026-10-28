@@ -1,11 +1,11 @@
-"""`hgrconform`: ask an endpoint what it does, and whether that matches the one it claims to be.
+"""`wingsconform`: ask an endpoint what it does, and whether that matches the one it claims to be.
 
 Four verbs:
 
-    hgrconform run <profile> [--reference <profile>]   ask the questions
-    hgrconform diff [<run>]                            compare a run's two endpoints
-    hgrconform probes                                  what this knows how to ask
-    hgrconform show <run> <probe>                      one probe's evidence, verbatim
+    wingsconform run <profile> [--reference <profile>]   ask the questions
+    wingsconform diff [<run>]                            compare a run's two endpoints
+    wingsconform probes                                  what this knows how to ask
+    wingsconform show <run> <probe>                      one probe's evidence, verbatim
 
 `run` takes a committed profile, not flags, for the same reason the benchmark
 runner takes a plan: what was checked, and against what, should be reviewable in a
@@ -24,20 +24,20 @@ from importlib import resources
 from dataclasses import field
 from dataclasses import dataclass
 
-from hgrconform.facts import Fact
-from hgrconform.facts import Difference
-from hgrconform.facts import compare
-from hgrconform.store import Run
-from hgrconform.store import Store
-from hgrconform.store import read_run
-from hgrconform.store import latest_run
-from hgrconform.probes import registry
-from hgrconform.runner import run_probes
-from hgrconform.profile import load_profile
+from wingsconform.facts import Fact
+from wingsconform.facts import Difference
+from wingsconform.facts import compare
+from wingsconform.store import Run
+from wingsconform.store import Store
+from wingsconform.store import read_run
+from wingsconform.store import latest_run
+from wingsconform.probes import registry
+from wingsconform.runner import run_probes
+from wingsconform.profile import load_profile
 
 
 # Shipped inside the package, so a profile named by its stem resolves from an install too.
-PROFILES_DIR = Path(resources.files("hgrconform") / "profiles")
+PROFILES_DIR = Path(resources.files("wingsconform") / "profiles")
 DEFAULT_RESULTS = Path(".local/conformance")
 TARGET = "target"
 REFERENCE = "reference"
@@ -164,7 +164,7 @@ def _diff(run: Run, verbose: bool) -> int:
     print(f"\n{run.endpoints[TARGET].profile_name} vs {run.endpoints[REFERENCE].profile_name}")
     _print_uncompared(result.uncompared)
     if result.unknown:
-        print("not compared, unknown to this version of hgrconform: " + ", ".join(result.unknown) + "\n")
+        print("not compared, unknown to this version of wingsconform: " + ", ".join(result.unknown) + "\n")
     differences = result.differences
     if not differences:
         print("no differences on the compared keys")
@@ -245,7 +245,7 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="hgrconform", description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="wingsconform", description=__doc__.splitlines()[0])
     parser.add_argument("--results", default=str(DEFAULT_RESULTS), help="where runs are written")
     sub = parser.add_subparsers(dest="command", required=True)
 

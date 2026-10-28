@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import probe
 
 
 LIMIT = 16

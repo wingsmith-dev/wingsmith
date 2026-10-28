@@ -21,9 +21,9 @@ from dataclasses import asdict
 from dataclasses import fields
 from dataclasses import dataclass
 
-from hgrconform.facts import ERROR
-from hgrconform.facts import Fact
-from hgrconform.profile import Profile
+from wingsconform.facts import ERROR
+from wingsconform.facts import Fact
+from wingsconform.profile import Profile
 
 
 RUN_FILE = "run.json"

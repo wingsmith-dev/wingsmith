@@ -19,10 +19,10 @@ import re
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import probe
 
 
 MAX_TOKENS = 256

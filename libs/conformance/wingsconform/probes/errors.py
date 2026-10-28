@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import probe
 
 
 @probe(
@@ -33,7 +33,7 @@ from hgrconform.probes.registry import probe
 )
 def shape(session: Session) -> dict[str, Any]:
     bad_parameter = session.post("/v1/chat/completions", session.body(temperature=9000))
-    unknown_model = session.post("/v1/chat/completions", session.body(model="hgrconform-no-such-model"))
+    unknown_model = session.post("/v1/chat/completions", session.body(model="wingsconform-no-such-model"))
     malformed = session.post("/v1/chat/completions", {"model": session.profile.model})
 
     responses = {
@@ -86,9 +86,9 @@ def leakage(session: Session) -> dict[str, Any]:
         raise Skip("profile declares no leak_needles")
 
     probes_sent = [
-        session.post("/v1/chat/completions", session.body(model="hgrconform-no-such-model")),
+        session.post("/v1/chat/completions", session.body(model="wingsconform-no-such-model")),
         session.post("/v1/chat/completions", {"model": session.profile.model}),
-        session.get("/v1/hgrconform-no-such-route"),
+        session.get("/v1/wingsconform-no-such-route"),
         # The catalog. Answered without an engine and by whichever hop owns the
         # model list, so it is the one response whose every field is written by us.
         session.get("/v1/models"),
@@ -214,7 +214,7 @@ def envelope_types(session: Session) -> dict[str, Any]:
         "pinned": session.body(temperature=9000, max_tokens=8),
         "negative_max_tokens": session.body(max_tokens=-1),
         "bad_logit_bias": session.body(max_tokens=8, logit_bias={"not_a_token_id": "not_a_number"}),
-        "unknown_model": session.body(max_tokens=8, model="hgrconform-no-such-model"),
+        "unknown_model": session.body(max_tokens=8, model="wingsconform-no-such-model"),
     }
 
     statuses: dict[str, int] = {}

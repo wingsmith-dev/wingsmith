@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from hgrconform.profile import Profile
+from wingsconform.profile import Profile
 
 
 CHAT_PATH = "/v1/chat/completions"

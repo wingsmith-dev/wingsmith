@@ -5,12 +5,12 @@ import json
 from typing import Any
 from pathlib import Path
 
-from hgrconform.profile import Profile
-from hgrconform.session import Response
-from hgrconform.probes.tools import id_uniqueness
-from hgrconform.probes.tools import messages_id_uniqueness
-from hgrconform.probes.errors import shape
-from hgrconform.probes.length import parameters
+from wingsconform.profile import Profile
+from wingsconform.session import Response
+from wingsconform.probes.tools import id_uniqueness
+from wingsconform.probes.tools import messages_id_uniqueness
+from wingsconform.probes.errors import shape
+from wingsconform.probes.length import parameters
 
 
 def response(status: int, body: dict[str, Any]) -> Response:
@@ -144,7 +144,7 @@ def test_messages_id_uniqueness_reads_tool_use_blocks() -> None:
 
 
 def test_every_eos_bucket_is_reachable_at_the_minimum_sample_size() -> None:
-    from hgrconform.probes import eos
+    from wingsconform.probes import eos
 
     n = eos.MIN_SAMPLES
     reached = {eos._bucket(count, n) for count in range(n + 1)}
@@ -153,14 +153,14 @@ def test_every_eos_bucket_is_reachable_at_the_minimum_sample_size() -> None:
 
 
 def test_one_empty_sample_never_moves_the_eos_bucket() -> None:
-    from hgrconform.probes import eos
+    from wingsconform.probes import eos
 
     for n in (eos.MIN_SAMPLES, eos.SAMPLES, 200):
         assert eos._bucket(0, n) == eos._bucket(1, n) == "rare"
 
 
 def test_a_small_eos_override_is_raised_to_the_minimum(monkeypatch) -> None:
-    from hgrconform.probes import eos
+    from wingsconform.probes import eos
 
     monkeypatch.setenv(eos.SAMPLES_ENV, "5")
     assert eos.sample_size() == eos.MIN_SAMPLES

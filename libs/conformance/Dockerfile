@@ -1,9 +1,9 @@
-# hgrconform as an image: the CLI, its committed profiles and video clips, and the two
+# wingsconform as an image: the CLI, its committed profiles and video clips, and the two
 # dependencies pinned by uv.lock. Built from this directory:
 #
-#   docker build -t hgrconform libs/conformance
-#   docker run --rm -e HANGAR_API_KEY -v "$PWD/results:/work/.local/conformance" \
-#       hgrconform run example
+#   docker build -t wingsconform libs/conformance
+#   docker run --rm -e WINGSMITH_API_KEY -v "$PWD/results:/work/.local/conformance" \
+#       wingsconform run example
 #
 # Runs are written under /work/.local/conformance, so mount that to keep them. A
 # profile outside the package is given by path; mount it too.
@@ -16,11 +16,11 @@ RUN pip install --no-cache-dir uv==0.9.18
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
-COPY hgrconform ./hgrconform
+COPY wingsconform ./wingsconform
 RUN uv sync --frozen --no-dev --no-editable
 
 ENV PATH=/app/.venv/bin:$PATH
 WORKDIR /work
 RUN chown 65532:65532 /work
 USER 65532:65532
-ENTRYPOINT ["hgrconform"]
+ENTRYPOINT ["wingsconform"]

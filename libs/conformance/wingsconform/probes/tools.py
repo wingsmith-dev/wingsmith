@@ -45,9 +45,9 @@ from typing import Any
 
 import jsonschema
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import probe
 
 
 WEATHER: dict[str, Any] = {

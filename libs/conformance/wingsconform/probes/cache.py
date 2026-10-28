@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrconform.session import Session
-from hgrconform.session import dig
-from hgrconform.probes.registry import Skip
-from hgrconform.probes.registry import probe
+from wingsconform.session import Session
+from wingsconform.session import dig
+from wingsconform.probes.registry import Skip
+from wingsconform.probes.registry import probe
 
 
 KNOWN_PATHS = (
@@ -105,7 +105,7 @@ def automatic(session: Session) -> dict[str, Any]:
         session.body(
             messages=[{"role": "user", "content": f"{prefix}\n\nAnswer with the single word: three."}],
             max_tokens=16,
-            prompt_cache_key="hgrconform-cache-probe",
+            prompt_cache_key="wingsconform-cache-probe",
         ),
     )
 

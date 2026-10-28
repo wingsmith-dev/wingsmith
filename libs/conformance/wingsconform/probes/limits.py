@@ -22,9 +22,9 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait
 
-from hgrconform.session import CHAT_PATH
-from hgrconform.session import Session
-from hgrconform.probes.registry import probe
+from wingsconform.session import CHAT_PATH
+from wingsconform.session import Session
+from wingsconform.probes.registry import probe
 
 
 BURST_REQUESTS = 20

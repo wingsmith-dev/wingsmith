@@ -8,17 +8,17 @@ from pathlib import Path
 
 import pytest
 
-from hgrconform.cli import TARGET
-from hgrconform.cli import REFERENCE
-from hgrconform.cli import compare_run
-from hgrconform.facts import Fact
-from hgrconform.store import Run
-from hgrconform.store import Store
-from hgrconform.store import Endpoint
-from hgrconform.store import read_run
-from hgrconform.probes import registry
-from hgrconform.runner import run_probes
-from hgrconform.profile import Profile
+from wingsconform.cli import TARGET
+from wingsconform.cli import REFERENCE
+from wingsconform.cli import compare_run
+from wingsconform.facts import Fact
+from wingsconform.store import Run
+from wingsconform.store import Store
+from wingsconform.store import Endpoint
+from wingsconform.store import read_run
+from wingsconform.probes import registry
+from wingsconform.runner import run_probes
+from wingsconform.profile import Profile
 
 
 PROBE = "basics.completion"

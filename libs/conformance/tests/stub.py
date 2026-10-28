@@ -217,7 +217,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         if LEAKY:
-            self.send_header("X-Served-By", "hangar-gateway-7f9d")
+            self.send_header("X-Served-By", "wingsmith-gateway-7f9d")
 
     def _send(self, code, obj):
         raw = json.dumps(obj).encode()
@@ -231,7 +231,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/v1/models":
-            owner = "hangar" if LEAKY else "stub"
+            owner = "wingsmith" if LEAKY else "stub"
             return self._send(200, {"object": "list", "data": [{"id": MODEL, "object": "model", "owned_by": owner}]})
         return self._send(404, error("not found", code="404"))
 
@@ -258,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
         if not body["messages"]:
             return self._send(400, error("messages must not be empty", code="invalid_value"))
         if body.get("model") != MODEL:
-            message = "unknown model on hangar-gateway upstream vllm-0" if LEAKY else "unknown model"
+            message = "unknown model on wingsmith-gateway upstream vllm-0" if LEAKY else "unknown model"
             return self._send(404, error(message, code="model_not_found"))
         if isinstance(body.get("temperature"), (int, float)) and body["temperature"] > 2:
             return self._send(400, error("temperature out of range", code="bad_param"))
