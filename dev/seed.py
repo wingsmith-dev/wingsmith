@@ -75,35 +75,73 @@ PROJECTS = [
 
 QUOTAS = [
     # project, device class, cluster (None for any), guaranteed, limit
-    ("acme-research", "h100-80gb-sxm", "eu-west-1a", 8, 16),
-    ("acme-research", "l40s-48gb-pcie", "eu-west-1a", 4, 4),
-    ("acme-serving", "h100-80gb-sxm", "eu-west-1a", 16, 16),
-    ("acme-serving", "h200-141gb-sxm", "us-east-2b", 8, 16),
-    ("acme-batch", "a100-40gb-pcie", None, 4, 4),
+    ("acme-research", "b200-180gb-sxm", "eu-north-1a", 8, 8),
+    ("acme-research", "rtx-pro-6000-96gb-server-edition", "lab-1", 4, 8),
+    ("acme-serving", "b300-288gb-sxm", None, 8, 24),
+    ("acme-serving", "b200-180gb-sxm", None, 8, 32),
+    ("acme-serving", "h200-141gb-sxm", None, 8, 24),
+    ("acme-batch", "rtx-pro-6000-96gb-server-edition", None, 4, 8),
 ]
 
 ARTIFACTS = [
     # name, Hugging Face repository, size in bytes, parameters, licence
-    ("llama-3.1-70b-instruct", "meta-llama/Llama-3.1-70B-Instruct", 141_000_000_000, 70_553_706_496, "llama-3.1"),
-    ("mixtral-8x7b-instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1", 93_000_000_000, 46_702_792_704, "apache-2.0"),
-    ("qwen2.5-7b-instruct", "Qwen/Qwen2.5-7B-Instruct", 15_200_000_000, 7_615_616_512, "apache-2.0"),
+    ("kimi-k3", "moonshotai/Kimi-K3", 1_561_000_000_000, 2_780_000_000_000, "modified-mit"),
+    ("qwen3.8-2.4t-a95b", "Inferact/Qwen3.8-2.4T-A95B-NVFP4", 1_447_000_000_000, 2_400_000_000_000, "other"),
+    ("deepseek-v4-pro", "deepseek-ai/DeepSeek-V4-Pro-0813", 893_000_000_000, 1_600_000_000_000, "mit"),
+    ("glm-5.3", "zai-org/GLM-5.3", 893_000_000_000, 743_000_000_000, "mit"),
+    ("deepseek-v4.1-flash", "deepseek-ai/DeepSeek-V4.1-Flash-1017", 510_000_000_000, 763_000_000_000, "mit"),
+    ("glm-5.3-flash", "zai-org/GLM-5.3-Flash", 328_000_000_000, 321_000_000_000, "mit"),
+    ("gpt-oss-120b", "openai/gpt-oss-120b", 65_000_000_000, 116_800_000_000, "apache-2.0"),
+    ("qwen3.8-27b", "Qwen/Qwen3.8-27B-FP8", 31_000_000_000, 27_800_000_000, "apache-2.0"),
 ]
 
 WORKLOADS = [
-    # name, pinned cluster, artifact, device class, tensor parallel, context, project, priority,
-    # desired, min, max
+    # name, pinned cluster, artifact, device class, tensor parallel, quantization, context, project,
+    # priority, desired, min, max
     #
     # `cluster` left out is the normal case: the plane picks. `qwen-dev` names one, so the
     # declared-cluster path is exercised too, not only the derived one.
-    ("llama-70b-prod", None, "llama-3.1-70b-instruct", "h100-80gb-sxm", 8, 131072, "acme-serving", "standard", 2, 1, 2),
-    ("mixtral-prod", None, "mixtral-8x7b-instruct", "h200-141gb-sxm", 4, 32768, "acme-serving", "standard", 1, 1, 3),
+    ("kimi-k3", None, "kimi-k3", "b300-288gb-sxm", 8, "mxfp4", 262144, "acme-serving", "standard", 1, 1, 2),
+    ("qwen3.8", None, "qwen3.8-2.4t-a95b", "b300-288gb-sxm", 8, "nvfp4", 262144, "acme-serving", "standard", 1, 1, 2),
+    (
+        "deepseek-v4-pro",
+        None,
+        "deepseek-v4-pro",
+        "b300-288gb-sxm",
+        8,
+        "fp8",
+        262144,
+        "acme-serving",
+        "standard",
+        1,
+        1,
+        2,
+    ),
+    ("glm-5.3", None, "glm-5.3", "b200-180gb-sxm", 8, "fp8", 202752, "acme-serving", "standard", 1, 1, 2),
+    (
+        "deepseek-v4.1-flash",
+        None,
+        "deepseek-v4.1-flash",
+        "b200-180gb-sxm",
+        8,
+        "fp8",
+        262144,
+        "acme-serving",
+        "interactive",
+        2,
+        1,
+        3,
+    ),
+    ("glm-5.3-flash", None, "glm-5.3-flash", "h200-141gb-sxm", 4, "fp8", 202752, "acme-serving", "standard", 2, 1, 4),
+    ("gpt-oss-120b", None, "gpt-oss-120b", "h200-141gb-sxm", 1, "mxfp4", 131072, "acme-serving", "standard", 2, 1, 4),
     (
         "qwen-dev",
-        "eu-west-1a",
-        "qwen2.5-7b-instruct",
-        "l40s-48gb-pcie",
+        "lab-1",
+        "qwen3.8-27b",
+        "rtx-pro-6000-96gb-server-edition",
         1,
-        32768,
+        "fp8",
+        65536,
         "acme-research",
         "interactive",
         1,
@@ -156,6 +194,7 @@ def workload(
     weights: str,
     device_class: str,
     tensor: int,
+    quantization: str,
     context: int,
     project: str,
     priority: str,
@@ -173,7 +212,7 @@ def workload(
         "min_scale": lo,
         "max_scale": hi,
         "enabled": True,
-        "labels": {"env": "prod" if "prod" in name else "dev"},
+        "labels": {"env": "dev" if name.endswith("-dev") else "prod"},
         "serving": {
             "artifact": weights,
             "engine": "vllm",
@@ -185,6 +224,7 @@ def workload(
                 "topology_domain_kind": "nvlink" if tensor > 1 else None,
             },
             "parallelism": {"tensor": tensor},
+            "quantization": quantization,
             "context_length": context,
             "dtype": "bfloat16",
             "cache": {"prefix_cache_enabled": True},
@@ -248,7 +288,7 @@ def seed_declared(fleet: list[ClusterSpec]) -> None:
         {
             "name": "eu-only",
             "description": "Keep regulated tenants inside the EU",
-            "allowed_regions": ["eu-west-1", "eu-central-1"],
+            "allowed_regions": ["eu-west-1", "eu-north-1", "eu-central-1"],
             "allowed_residencies": ["eu"],
             "enabled": True,
         },
@@ -288,9 +328,25 @@ def seed_demand() -> None:
             "visibility": "public",
             "routing_strategy": "weighted",
             "enabled": True,
-            "targets": [{"deployment": "llama-70b-prod", "weight": 80}, {"deployment": "mixtral-prod", "weight": 20}],
+            "targets": targets({"deepseek-v4.1-flash": 80, "glm-5.3-flash": 20}),
         },
     )
+
+
+def targets(weights: dict[str, int]) -> list[dict[str, Any]]:
+    """Endpoint targets for each workload's deployments, its weight split evenly between them.
+
+    A workload placed on two clusters has two deployments sharing its name, and the endpoint
+    refuses an ambiguous name, so each one is named by id.
+    """
+    deployments: dict[str, list[str]] = defaultdict(list)
+    for item in call("GET", "/deployments?limit=100")["items"]:
+        deployments[item["name"]].append(item["id"])
+    out: list[dict[str, Any]] = []
+    for name, weight in weights.items():
+        ids = deployments.get(name) or [name]
+        out.extend({"deployment": target, "weight": max(weight // len(ids), 1)} for target in ids)
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -102,7 +102,7 @@ reseed:
     docker compose up -d --wait api hub
     (cd {{_plane}} && uv run python ../../dev/seed.py)
 
-# Run the fake operators: three clusters of hardware waiting to be enrolled  [--register to skip the screen]
+# Run the fake operators: eight clusters of hardware waiting to be enrolled  [--register to skip the screen]
 fleet *args:
     #!/usr/bin/env bash
     set -euo pipefail

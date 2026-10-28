@@ -82,7 +82,7 @@ You need [`just`](https://github.com/casey/just), Docker, [`uv`](https://docs.as
 just setup      # install console packages, Python virtualenvs and Go modules
 just dev        # Postgres, migrations, api and hub in compose, plus the console dev server
 just seed       # add example tenants to a fresh database  [--demo for a whole worked example]
-just fleet      # three fake clusters that enrol themselves when registered in the console
+just fleet      # eight fake clusters that enrol themselves when registered in the console
 ```
 
 | Process | Address |

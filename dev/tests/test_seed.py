@@ -50,6 +50,7 @@ REQUESTS = {
 def sent(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     posts: list[tuple[str, dict[str, Any]]] = []
     monkeypatch.setattr(seed, "post", lambda path, body: posts.append((path, body)))
+    monkeypatch.setattr(seed, "call", lambda method, path, body=None: {"items": []})
     return posts
 
 
@@ -71,7 +72,7 @@ def test_demo_workloads_fit_the_fleet_and_their_quota(sent) -> None:
     artifacts = {row[0] for row in seed.ARTIFACTS}
     quotas = {(project, device_class): (cluster, limit) for project, device_class, cluster, _, limit in seed.QUOTAS}
 
-    for name, cluster, weights, device_class, tensor, _, project, _, desired, _, _ in seed.WORKLOADS:
+    for name, cluster, weights, device_class, tensor, _, _, project, _, desired, _, _ in seed.WORKLOADS:
         assert weights in artifacts, name
         assert (project, device_class) in quotas, f"{name}: no {device_class} quota in {project}"
         quota_cluster, limit = quotas[(project, device_class)]
