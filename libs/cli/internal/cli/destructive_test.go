@@ -46,13 +46,13 @@ func TestDeletesEmitAResult(t *testing.T) {
 			for _, args := range [][]string{
 				{"workload", "rm", "chat", "--yes"},
 				{"serving-quota", "rm", "chat", "--yes"},
-				{"discovered", "rm", "llama-70b-vllm"},
+				{"discovered", "rm", "gpt-oss-120b-vllm"},
 			} {
 				out, errOut, code := run(t, append(args, "-o", format)...)
 				if code != 0 {
 					t.Fatalf("%v exit %d: %s", args, code, errOut)
 				}
-				if !strings.Contains(out, "chat") && !strings.Contains(out, "llama-70b-vllm") {
+				if !strings.Contains(out, "chat") && !strings.Contains(out, "gpt-oss-120b-vllm") {
 					t.Errorf("%v -o %s does not name what it removed: %q", args, format, out)
 				}
 				if !strings.Contains(out, "deleted") && !strings.Contains(out, "removed") {

@@ -46,9 +46,9 @@ anything in the cluster, so nothing restarts.`,
 		example: `  wings discovered ls
   wings discovered ls --status new
   wings discovered ls --cluster iad-1 -o wide
-  wings discovered track llama-70b-vllm --project core
-  wings discovered rm llama-70b-vllm
-  wings discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core`,
+  wings discovered track gpt-oss-120b-vllm --project core
+  wings discovered rm gpt-oss-120b-vllm
+  wings discovered promote gpt-oss-120b-vllm --artifact gpt-oss-120b --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
 		},
@@ -241,7 +241,7 @@ keeps seeing it. It only stops appearing in the list.
 
 ` + "`wings discovered ls --status dismissed`" + ` shows what has been removed, and
 ` + "`wings discovered restore`" + ` puts one back.`,
-		Example: `  wings discovered rm llama-70b-vllm`,
+		Example: `  wings discovered rm gpt-oss-120b-vllm`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -275,7 +275,7 @@ func newRestoreWorkloadCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:     "restore <workload>",
 		Short:   "Put a removed discovered workload back on the list",
-		Example: `  wings discovered restore llama-70b-vllm`,
+		Example: `  wings discovered restore gpt-oss-120b-vllm`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -327,8 +327,8 @@ Changing its serving configuration or overrides afterwards rolls it.
 
 The replica bounds are taken from what is running, so promotion never scales
 it.`,
-		Example: `  wings discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core
-  wings discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
+		Example: `  wings discovered promote gpt-oss-120b-vllm --artifact gpt-oss-120b --project core
+  wings discovered promote qwen2-72b --artifact gpt-oss-120b --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {

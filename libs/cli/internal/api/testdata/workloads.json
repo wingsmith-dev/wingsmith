@@ -2,7 +2,7 @@
   "items": [
     {
       "id": "wkl_01m0dsfegh7fk4meb5jqnptc3c",
-      "name": "llama-70b-prod",
+      "name": "glm-5.3-flash-prod",
       "kind": "service",
       "phase": "pending",
       "project_id": "prj_01m0dsfeeeejnzba17d528hc2x",
@@ -107,7 +107,7 @@
         }
       },
       "adapter_artifact_ids": [],
-      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
+      "served_model_name": "zai-org/glm-5.3-flash",
       "overrides": {},
       "labels": {
         "env": "prod"
@@ -133,7 +133,7 @@
       "deployments": [
         {
           "id": "dep_01m0dsfegh7fk4meb5jqnptc3c",
-          "name": "llama-70b-prod",
+          "name": "glm-5.3-flash-prod",
           "cluster_id": "clu_01m0dsda0dasate7fg6rrptvx2",
           "cluster_name": "iad-1",
           "region": "us-east-1",
@@ -263,7 +263,7 @@
         }
       },
       "adapter_artifact_ids": [],
-      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
+      "served_model_name": "zai-org/glm-5.3-flash",
       "overrides": {},
       "labels": {
         "env": "prod"
@@ -419,7 +419,7 @@
         }
       },
       "adapter_artifact_ids": [],
-      "served_model_name": "meta-llama/llama-3.3-70b-instruct",
+      "served_model_name": "zai-org/glm-5.3-flash",
       "overrides": {},
       "labels": {
         "wingsmith.dev/alert": "off"

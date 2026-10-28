@@ -299,22 +299,22 @@ func seed() *state {
 	st.Artifacts = append(st.Artifacts, api.Artifact{
 		ID:             artifactID,
 		Digest:         "sha256:7b1f0c0a2e4d6f8091a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f708",
-		Name:           "llama-3.1-70b-instruct",
-		Slug:           "meta-llama/llama-3.1-70b-instruct",
+		Name:           "gpt-oss-120b",
+		Slug:           "openai/gpt-oss-120b",
 		Kind:           "weights",
 		Format:         strptr("safetensors"),
-		SizeBytes:      141_000_000_000,
-		Licence:        strptr("llama-3.1"),
-		ParameterCount: int64ptr(70_000_000_000),
-		Metadata:       map[string]any{"family": "llama"},
+		SizeBytes:      65_000_000_000,
+		Licence:        strptr("apache-2.0"),
+		ParameterCount: int64ptr(116_800_000_000),
+		Metadata:       map[string]any{"family": "gpt-oss"},
 		CreatedAt:      created,
 		Revision:       revision(created),
 		Locations: []api.ArtifactLocation{
-			{Scheme: "s3", URI: "s3://wingsmith-weights/llama-3.1-70b", Region: strptr("us-east-1"), Preferred: true},
+			{Scheme: "s3", URI: "s3://wingsmith-weights/gpt-oss-120b", Region: strptr("us-east-1"), Preferred: true},
 		},
 		Upstream: api.ArtifactUpstream{
-			Provider: strptr("meta-llama"), ProviderModelID: strptr("Llama-3.1-70B-Instruct"),
-			Licence: strptr("llama-3.1"), ContextLength: intptr(131072),
+			Provider: strptr("openai"), ProviderModelID: strptr("gpt-oss-120b"),
+			Licence: strptr("apache-2.0"), ContextLength: intptr(131072),
 			InputModalities: []string{"text"}, StructuredOutputModes: []string{"text", "json_schema"},
 			ToolCalling: boolptr(true),
 		},
@@ -419,9 +419,9 @@ func seed() *state {
 
 	chatEndpoint := uid("end_")
 	st.Endpoints = append(st.Endpoints, api.Endpoint{
-		ID: chatEndpoint, Name: "chat", Slug: "meta-llama/llama-3.3-70b-instruct", ProjectID: projectID,
+		ID: chatEndpoint, Name: "chat", Slug: "openai/gpt-oss-120b", ProjectID: projectID,
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
-		Aliases: []string{"llama-3.3-70b"},
+		Aliases: []string{"gpt-oss-120b"},
 		Targets: []api.EndpointTarget{
 			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
 			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},
@@ -452,7 +452,7 @@ func seed() *state {
 	// like the day it is pointed at clusters that were already serving.
 	found := now.Add(-30 * 24 * time.Hour)
 	st.Discovered = append(st.Discovered,
-		discovered(uid("dsw_"), iad, "iad-1", "serving", "llama-70b-vllm", "meta-llama/Llama-3.1-70B-Instruct",
+		discovered(uid("dsw_"), iad, "iad-1", "serving", "gpt-oss-120b-vllm", "openai/gpt-oss-120b",
 			"ghcr.io/acme/vllm:0.9.1", 2, 2, 4, found, "new", nil),
 		discovered(uid("dsw_"), iad, "iad-1", "serving", "mixtral-8x7b", "mistralai/Mixtral-8x7B-Instruct-v0.1",
 			"ghcr.io/acme/vllm:0.9.1", 1, 1, 2, found, "tracked", strptr(projectID)),
@@ -648,7 +648,7 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000010", ClusterID: strptr(iad), Kind: "deployment.created",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "chat was created on iad-1 from artifact llama-3.1-70b-instruct",
+			Message: "chat was created on iad-1 from artifact gpt-oss-120b",
 			Details: map[string]any{
 				"deployment_id": depRunning, "name": "chat",
 				"cluster": "iad-1", "desired_replicas": "4",
@@ -675,7 +675,7 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000013", ClusterID: strptr(iad), Kind: "deployment.placed",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "serving llama-70b at revision 3",
+			Message: "serving gpt-oss-120b at revision 3",
 			Details: map[string]any{
 				"deployment_id": depRunning, "name": "chat", "reason": "Applied",
 				"ready_replicas": "0", "desired_replicas": "4",
@@ -685,7 +685,7 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000014", ClusterID: strptr(iad), Kind: "deployment.running",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "serving llama-70b at revision 3",
+			Message: "serving gpt-oss-120b at revision 3",
 			Details: map[string]any{
 				"deployment_id": depRunning, "name": "chat", "reason": "Applied",
 				"ready_replicas": "4", "desired_replicas": "4",

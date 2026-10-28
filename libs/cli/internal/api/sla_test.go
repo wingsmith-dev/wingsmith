@@ -40,10 +40,10 @@ func TestTheSLAReportIsAskedOfTheMetricsSurfaceWithThePeriod(t *testing.T) {
 		_, _ = w.Write(readFixture(t, "sla-report.json"))
 	})
 	from := time.Date(2026, 9, 15, 0, 0, 0, 0, time.FixedZone("BRT", -3*3600))
-	if _, err := c.EndpointSLA(context.Background(), "meta-llama/llama-3.3-70b", SLAQuery{From: &from}); err != nil {
+	if _, err := c.EndpointSLA(context.Background(), "zai-org/glm-5.3-flash", SLAQuery{From: &from}); err != nil {
 		t.Fatal(err)
 	}
-	if got.URL.EscapedPath() != "/v1/metrics/endpoints/meta-llama%2Fllama-3.3-70b/sla" {
+	if got.URL.EscapedPath() != "/v1/metrics/endpoints/zai-org%2Fglm-5.3-flash/sla" {
 		t.Errorf("path = %s", got.URL.EscapedPath())
 	}
 	if q := got.URL.Query(); q.Get("from") != "2026-09-15T03:00:00Z" || q.Has("to") || q.Has("month") {

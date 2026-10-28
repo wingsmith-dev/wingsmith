@@ -371,7 +371,7 @@ func TestAdoptingAWorkloadDeclaresNothing(t *testing.T) {
 		t.Fatalf("deployment ls exit %d", code)
 	}
 
-	out, _, code := run(t, "discovered", "track", "llama-70b-vllm", "--project", "core", "-o", "json")
+	out, _, code := run(t, "discovered", "track", "gpt-oss-120b-vllm", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("track exit %d: %s", code, out)
 	}
@@ -421,7 +421,7 @@ func TestIgnoringAWorkloadKeepsTheSighting(t *testing.T) {
 // nobody looked at.
 func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-	before, _, code := run(t, "discovered", "get", "llama-70b-vllm", "-o", "json")
+	before, _, code := run(t, "discovered", "get", "gpt-oss-120b-vllm", "-o", "json")
 	if code != 0 {
 		t.Fatalf("get exit %d", code)
 	}
@@ -430,8 +430,8 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 		t.Fatalf("get is not an object: %v", err)
 	}
 
-	out, _, code := run(t, "discovered", "promote", "llama-70b-vllm",
-		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "-o", "json")
+	out, _, code := run(t, "discovered", "promote", "gpt-oss-120b-vllm",
+		"--artifact", "gpt-oss-120b", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
@@ -455,7 +455,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
-		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "-o", "json")
+		"--artifact", "gpt-oss-120b", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
@@ -502,7 +502,7 @@ func promotedDeployment(t *testing.T, workload map[string]any) map[string]any {
 // TestPromotionNeedsToKnowWhatItIsAdopting: without an artifact and an owner the plane would be
 // holding a deployment it cannot describe.
 func TestPromotionNeedsToKnowWhatItIsAdopting(t *testing.T) {
-	_, errOut, code := run(t, "discovered", "promote", "llama-70b-vllm")
+	_, errOut, code := run(t, "discovered", "promote", "gpt-oss-120b-vllm")
 	if code == 0 {
 		t.Fatal("promote succeeded with no artifact and no project")
 	}

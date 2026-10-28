@@ -12,7 +12,7 @@ import (
 // never named.
 func TestWorkloadCreateTakesTheProjectFromAnywhereItCanBeSet(t *testing.T) {
 	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-	base := []string{"workload", "create", "assistant", "--artifact", "llama-3.1-70b-instruct",
+	base := []string{"workload", "create", "assistant", "--artifact", "gpt-oss-120b",
 		"--class", "h100-80", "--context-length", "8192", "-o", "json"}
 
 	t.Setenv("WINGSMITH_PROJECT", "")
@@ -78,7 +78,7 @@ func TestTheConfiguredProjectLimitsListings(t *testing.T) {
 // and the fake refuses them as the plane does.
 func TestWorkloadCreateOffersOnlyServices(t *testing.T) {
 	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-	base := []string{"workload", "create", "g1", "--project", "core", "--artifact", "llama-3.1-70b-instruct",
+	base := []string{"workload", "create", "g1", "--project", "core", "--artifact", "gpt-oss-120b",
 		"--class", "h100-80", "--context-length", "8192"}
 	for _, extra := range [][]string{{"--kind", "gang"}, {"--gang-size", "2"}} {
 		if _, errOut, code := run(t, append(base, extra...)...); code != 2 || !strings.Contains(errOut, "unknown flag") {

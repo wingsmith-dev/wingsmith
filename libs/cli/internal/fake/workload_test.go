@@ -19,7 +19,7 @@ func TestTaskAndGangWorkloadsAreRefusedAtCreation(t *testing.T) {
 	for _, kind := range []string{"task", "gang"} {
 		_, err := b.CreateWorkload(context.Background(), api.WorkloadCreateRequest{
 			Name: "batch", Project: "core", Kind: kind, GangSize: 2, DesiredScale: 2,
-			Serving: api.ServingRequest{Artifact: "llama-3.1-70b-instruct", Engine: "vllm", ContextLength: 8192},
+			Serving: api.ServingRequest{Artifact: "gpt-oss-120b", Engine: "vllm", ContextLength: 8192},
 		})
 		var e *errs.Error
 		if !errors.As(err, &e) || e.Code != errs.CodeInvalidState {

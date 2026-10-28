@@ -68,13 +68,13 @@ func TestAnOmniWorkloadIsCreatedWithoutAContextLength(t *testing.T) {
 
 func TestOmniFlagsAreRefusedOnAChatEngine(t *testing.T) {
 	_, errOut, code := run(t, "workload", "create", "chat2",
-		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "--class", "h100-80gb-sxm",
+		"--artifact", "gpt-oss-120b", "--project", "core", "--class", "h100-80gb-sxm",
 		"--context-length", "8192", "--output-modality", "image")
 	if code == 0 || !strings.Contains(errOut, "--engine omni") {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
 	_, errOut, code = run(t, "workload", "create", "img",
-		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "--class", "h100-80gb-sxm", "--engine", "omni")
+		"--artifact", "gpt-oss-120b", "--project", "core", "--class", "h100-80gb-sxm", "--engine", "omni")
 	if code == 0 || !strings.Contains(errOut, "--output-modality") {
 		t.Fatalf("omni without a modality: exit %d: %s", code, errOut)
 	}

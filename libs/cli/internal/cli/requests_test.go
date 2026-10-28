@@ -95,17 +95,17 @@ func TestWriteVerbsSendWhatThePlaneReads(t *testing.T) {
 		path   string
 		body   map[string]any
 	}{
-		{[]string{"workload", "scale", "llama-70b-prod", "3"}, "POST", "/v1/operations",
+		{[]string{"workload", "scale", "glm-5.3-flash-prod", "3"}, "POST", "/v1/operations",
 			map[string]any{"type": "workload.scale", "target": wkl, "parameters": map[string]any{"desired": float64(3)}}},
-		{[]string{"workload", "pause", "llama-70b-prod"}, "POST", "/v1/operations",
+		{[]string{"workload", "pause", "glm-5.3-flash-prod"}, "POST", "/v1/operations",
 			map[string]any{"type": "workload.pause", "target": wkl, "parameters": map[string]any{"paused": true}}},
-		{[]string{"workload", "resume", "llama-70b-prod"}, "POST", "/v1/operations",
+		{[]string{"workload", "resume", "glm-5.3-flash-prod"}, "POST", "/v1/operations",
 			map[string]any{"type": "workload.pause", "target": wkl, "parameters": map[string]any{"paused": false}}},
 		{[]string{"operation", "create", "node.drain", "iad-1-n01", "--reason", "firmware"}, "POST", "/v1/operations",
 			map[string]any{"type": "node.drain", "target": "node:iad-1-n01", "reason": "firmware"}},
 		{[]string{"operation", "create", "node.cordon", "iad-1-n01"}, "POST", "/v1/operations",
 			map[string]any{"type": "node.cordon", "target": "node:iad-1-n01"}},
-		{[]string{"workload", "rm", "llama-70b-prod"}, "DELETE", "/v1/workloads/" + wkl, nil},
+		{[]string{"workload", "rm", "glm-5.3-flash-prod"}, "DELETE", "/v1/workloads/" + wkl, nil},
 	}
 	for _, c := range cases {
 		t.Run(strings.Join(c.args, " "), func(t *testing.T) {

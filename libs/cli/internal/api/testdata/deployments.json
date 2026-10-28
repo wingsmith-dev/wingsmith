@@ -2,9 +2,9 @@
   "items": [
     {
       "id": "dep_01m0dsfegh7fk4meb5jqnptc3c",
-      "name": "llama-70b-prod",
+      "name": "glm-5.3-flash-prod",
       "workload_id": "wkl_01m0dsfegh7fk4meb5jqnptc3c",
-      "workload_name": "llama-70b-prod",
+      "workload_name": "glm-5.3-flash-prod",
       "cluster_id": "clu_01m0dsda0dasate7fg6rrptvx2",
       "min_replicas": 2,
       "max_replicas": 2,

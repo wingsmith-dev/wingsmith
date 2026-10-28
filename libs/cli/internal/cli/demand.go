@@ -29,7 +29,7 @@ told apart by kind. Locations say where the files can be fetched from; the
 control plane never stores or serves them.`,
 		example: `  wings artifact ls
   wings artifact ls --kind adapter
-  wings artifact get llama-3.1-70b-instruct`,
+  wings artifact get gpt-oss-120b`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Artifact], error) {
 			return b.Artifacts(ctx, o)
 		},
@@ -333,7 +333,7 @@ refuses them at creation until something runs them.`,
 		example: `  wings workload ls
   wings workload ls --phase pending
   wings workload get chat
-  wings workload create assistant --project core --artifact llama-3.1-70b-instruct --class h100-80 --context-length 8192
+  wings workload create assistant --project core --artifact gpt-oss-120b --class h100-80 --context-length 8192
   wings workload scale chat 4`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Workload], error) {
 			return b.Workloads(ctx, o)
@@ -620,9 +620,9 @@ needs --output-modality image|video instead of --context-length. --model-class
 and --sampling-default go into the worker's stage configuration; the second is
 how a distilled model gets its step count, because omni defaults every model to
 50 inference steps.`,
-		Example: `  wings workload create assistant --project core --artifact llama-3.1-70b-instruct \
+		Example: `  wings workload create assistant --project core --artifact gpt-oss-120b \
     --class h100-80 --context-length 8192 --scale 2
-  wings workload create assistant-tp8 --project core --artifact llama-3.1-70b-instruct \
+  wings workload create assistant-tp8 --project core --artifact gpt-oss-120b \
     --class h100-80 --devices 8 --tensor-parallel 8 --context-length 32768
   wings workload create flux-schnell --project core --artifact flux.1-schnell \
     --class h100-80 --engine omni --engine-runtime-version 1.4.1 \

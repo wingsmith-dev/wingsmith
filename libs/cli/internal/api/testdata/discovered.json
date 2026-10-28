@@ -5,9 +5,9 @@
             "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
             "cluster_name": "iad-1",
             "namespace": "serving",
-            "name": "llama-70b-vllm",
+            "name": "gpt-oss-120b-vllm",
             "kind": "deployment",
-            "model": "meta-llama/Llama-3.1-70B-Instruct",
+            "model": "openai/gpt-oss-120b",
             "images": [
                 "ghcr.io/acme/vllm:0.9.1"
             ],

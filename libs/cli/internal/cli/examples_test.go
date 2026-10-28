@@ -49,7 +49,7 @@ func walk(cmd *cobra.Command, visit func(*cobra.Command)) {
 // something needs the something.
 var preconditions = map[string][]string{
 	"serving-quota create chat": {"serving-quota", "rm", "chat", "--yes"},
-	"discovered restore":        {"discovered", "rm", "llama-70b-vllm"},
+	"discovered restore":        {"discovered", "rm", "gpt-oss-120b-vllm"},
 }
 
 // unrunnable are examples the fake cannot carry out, and why.

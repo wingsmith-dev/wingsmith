@@ -3,7 +3,7 @@
         {
             "id": "end_01j9x2aaaaaaaaaaaaaaaaaaaa",
             "name": "chat",
-            "slug": "meta-llama/llama-3.3-70b-instruct",
+            "slug": "zai-org/glm-5.3-flash",
             "project_id": "prj_01j9x2aaaaaaaaaaaaaaaaaaaa",
             "visibility": "private",
             "routing_strategy": "weighted",
