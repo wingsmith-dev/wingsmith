@@ -14,7 +14,7 @@
       "engine": "vllm",
       "engine_runtime_version": "1.3.1",
       "engine_runtime_image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
-      "frontend_image": "ghcr.io/hangar-dev/vllm-runtime:1.3.1-hgr1",
+      "frontend_image": "ghcr.io/wingsmith-dev/vllm-runtime:1.3.1-wings1",
       "engine_args": {
         "max-num-seqs": "256",
         "enable-chunked-prefill": "true"

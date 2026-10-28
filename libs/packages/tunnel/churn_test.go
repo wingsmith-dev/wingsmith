@@ -153,7 +153,7 @@ func TestARequestWithoutGetBodyCannotBeRetried(t *testing.T) {
 	}
 	occupy(survivorConn, 8)
 
-	req, err := http.NewRequest(http.MethodPost, "https://cluster.tunnel.hangar.internal/v1/chat/completions",
+	req, err := http.NewRequest(http.MethodPost, "https://cluster.tunnel.wingsmith.internal/v1/chat/completions",
 		io.NopCloser(strings.NewReader(`{"model":"llama-3-70b"}`)))
 	if err != nil {
 		t.Fatal(err)

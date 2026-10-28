@@ -16,7 +16,7 @@
     "sources": [
       {
         "kind": "s3",
-        "uri": "s3://hangar-artifacts/eu-west-1/9f2c1b7a/model.safetensors",
+        "uri": "s3://wingsmith-artifacts/eu-west-1/9f2c1b7a/model.safetensors",
         "priority": 1,
         "credential_ref": "artifact-store-eu-west-1"
       },

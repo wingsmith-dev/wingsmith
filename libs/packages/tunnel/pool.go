@@ -103,7 +103,7 @@ const maxTunnelAttempts = 3
 // connection is the address. So the URL is a placeholder and the cluster
 // travels on the request context, where nothing can confuse it with a
 // resolvable name.
-const authoritySuffix = ".tunnel.hangar.internal"
+const authoritySuffix = ".tunnel.wingsmith.internal"
 
 // Observer is told when a cluster's tunnel coverage changes.
 //

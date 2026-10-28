@@ -26,7 +26,7 @@ const (
 	// magic identifies the protocol and its version. A version bump is a new
 	// magic, so an agent that speaks the wrong one is rejected before it can
 	// be misread, not after.
-	magic = "HGRTUN01"
+	magic = "WSMTUN01"
 	// maxHandshakeBytes caps the frame, so an unauthenticated dial cannot make
 	// the gateway allocate.
 	maxHandshakeBytes = 8 << 10
@@ -227,7 +227,7 @@ func readFrame(r io.Reader, prefix []byte, payload any) error {
 			return fmt.Errorf("%w: %w", ErrHandshake, err)
 		}
 		if string(got) != string(prefix) {
-			return fmt.Errorf("%w: not a hangar tunnel dial", ErrHandshake)
+			return fmt.Errorf("%w: not a wingsmith tunnel dial", ErrHandshake)
 		}
 	}
 

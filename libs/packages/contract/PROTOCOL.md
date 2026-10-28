@@ -46,7 +46,7 @@ long as the session lives. A cluster that is not registered, has been disabled, 
 token was rotated after this session opened is refused with an `error` (`code: unavailable`,
 `retryable: true`) and a `4403` close, so disabling a cluster or rotating a leaked token cuts a live
 session instead of waiting for the operator to reconnect, and re-enabling it needs no restart on the
-cluster's side. The hub's check has no off switch, unlike the API's local `HANGAR_ADMIN_AUTH=disabled`: a
+cluster's side. The hub's check has no off switch, unlike the API's local `WINGSMITH_ADMIN_AUTH=disabled`: a
 port-forward does not protect a socket that cluster agents dial in to over the network.
 
 **`hello.operator_version` is checked against the plane's release line.** A release-shaped version

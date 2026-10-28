@@ -7,7 +7,7 @@
 //
 // It depends on http2 and nothing else. Not the routing table, not the metrics registry, not
 // Kubernetes: a change to any of those must not be able to reach the wire format.
-module github.com/hangar-dev/hangar/libs/packages/tunnel
+module github.com/wingsmith-dev/wingsmith/libs/packages/tunnel
 
 go 1.26.0
 

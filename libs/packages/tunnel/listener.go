@@ -21,7 +21,7 @@ import (
 // and is what everything downstream keys on (the pool, the routing table, every
 // metric label) because it is the only one that cannot be renamed. ClusterName
 // is the operator-facing name, and it is what a cluster's own configuration
-// carries: the chart's `cluster.id`, the operator's HANGAR_CLUSTER_ID, the label
+// carries: the chart's `cluster.id`, the operator's WINGSMITH_CLUSTER_ID, the label
 // its metrics are written under. An agent therefore claims the name, and a
 // listener comparing that claim against the uid alone refuses every real
 // install.

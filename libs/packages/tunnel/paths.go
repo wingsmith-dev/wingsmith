@@ -29,7 +29,7 @@ var forwardedPaths = map[string]bool{
 	"/v1/audio/speech":         true,
 }
 
-// Forwarded reports whether a request with this method and path is one hangar
+// Forwarded reports whether a request with this method and path is one wingsmith
 // forwards. The path is matched exactly, without its query.
 func Forwarded(method, path string) bool {
 	return method == http.MethodPost && forwardedPaths[path]

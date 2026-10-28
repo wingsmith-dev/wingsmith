@@ -30,4 +30,4 @@ package tunnel
 // deletes it on every request, which is why the gateway does so
 // unconditionally, and why a reader must never trust this header from anywhere
 // but a tunnel.
-const HeaderDeploymentID = "X-Hangar-Deployment-Id"
+const HeaderDeploymentID = "X-Wingsmith-Deployment-Id"

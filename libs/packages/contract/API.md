@@ -1,6 +1,6 @@
 # The HTTP API: conventions and semantics
 
-What the console, `hgr`, a tenant's console session and the gateway talk to. The plane ↔ operator
+What the console, `wings`, a tenant's console session and the gateway talk to. The plane ↔ operator
 link is a different contract entirely ([`PROTOCOL.md`](PROTOCOL.md)) and nothing here crosses it.
 
 This document is the rules and the reasons: the response shapes, who may call what, and what each
@@ -55,8 +55,8 @@ anywhere. `/health`, `/metrics` and the OpenAPI routes are exempt.
   verbs below. `/health`, `/metrics` (the API process's own Prometheus series, listed in
   [`libs/plane/METRICS.md`](../../plane/METRICS.md)) and the OpenAPI routes are outside `/v1` and need
   no credential.
-- `X-Hangar-Project` is not part of the API. The plane does not scope requests by project, CORS
-  does not allow the header, and neither `hgr` nor the console sends it.
+- `X-Wingsmith-Project` is not part of the API. The plane does not scope requests by project, CORS
+  does not allow the header, and neither `wings` nor the console sends it.
 
 Four principal kinds exist, and the kind is the whole of a principal's authority. What each kind
 may reach is decided in one function on the plane (`app.core.context.authorize`), deny by default,
@@ -64,20 +64,20 @@ matched on the route template instead of the raw path. There are no per-route sc
 
 | Kind | Who | Credential | Reaches |
 |---|---|---|---|
-| `admin` | the operator of this plane, through the console or `hgr` | a session from `POST /v1/auth/login` with the admin password | every route except the gateway's three |
+| `admin` | the operator of this plane, through the console or `wings` | a session from `POST /v1/auth/login` with the admin password | every route except the gateway's three |
 | `tenant` | a tenant's own console session | a session from `POST /v1/auth/login` with the tenant's slug and a tenant token | `GET` under `/v1/serving` only |
-| `gateway` | the inference gateway | the service token in `HANGAR_GATEWAY_SERVICE_TOKEN` | `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants`, `POST /v1/clusters/tunnel-auth`, and nothing else |
+| `gateway` | the inference gateway | the service token in `WINGSMITH_GATEWAY_SERVICE_TOKEN` | `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants`, `POST /v1/clusters/tunnel-auth`, and nothing else |
 | `operator` | one cluster's operator | that cluster's enrolment token | no HTTP route at all; it opens hub sessions ([`PROTOCOL.md`](PROTOCOL.md)) |
 
 A credential of the wrong kind for a route is `403 forbidden`; a missing, unrecognized, expired or
 tampered one is `401 not_authorized`. Both use the standard error envelope.
 
 **Human access is single-operator.** There is one admin identity and every admin session is that
-operator: Hangar does not model several people with different permissions over one fleet, and a
+operator: Wingsmith does not model several people with different permissions over one fleet, and a
 team sharing a plane shares that identity. `POST /v1/auth/login` takes `{"password": "..."}` (with
 `slug` omitted or `"admin"`) and returns `{"access_token", "refresh_token", "expires_in", "kind",
 "tenant"}`. The access token, not the password, is the bearer credential on every request after; it
-is short-lived and signed, and it is prefixed `hgrs1` where a refresh token is prefixed `hgrr1`, so
+is short-lived and signed, and it is prefixed `wss1` where a refresh token is prefixed `wsr1`, so
 the two cannot be confused. `POST /v1/auth/refresh` takes `{"refresh_token": "..."}` and answers
 with the same fields, **rotating the refresh token as it does so**: the one it was given stops
 working, so a stolen refresh token and the real one cannot both stay valid. `POST /v1/auth/logout`
@@ -86,12 +86,12 @@ access token it issued, and answers `204`. Sending the password itself as a per-
 is intentionally not supported: it would end up in proxy logs and could not be rotated independently of
 the person who knows it.
 
-**A tenant signs in with its slug and a tenant token** (`hgrt1...`, minted under
-`/v1/tenants/{ref}/tokens` and shown once): `{"slug": "acme", "password": "hgrt1..."}`. The answer
+**A tenant signs in with its slug and a tenant token** (`wst1...`, minted under
+`/v1/tenants/{ref}/tokens` and shown once): `{"slug": "acme", "password": "wst1..."}`. The answer
 carries `kind: "tenant"` and the tenant's slug, and the session reaches its own serving view and
 nothing else. Revoking the token or disabling the tenant ends its sessions on their next request,
 because a session token is checked against its live session on every call. A tenant API key
-(`hgrk1...`, `/v1/tenants/{ref}/keys`) is a different credential: it calls the gateway, never this
+(`wsk1...`, `/v1/tenants/{ref}/keys`) is a different credential: it calls the gateway, never this
 API.
 
 **Login is budgeted.** Ten failed logins in a rolling minute from one address, and the route
@@ -103,7 +103,7 @@ process-wide ceiling backs it for a caller spread across many addresses.
 verifies agent tunnels, and an admin session is refused on all three of its routes: the tenant
 feed carries every tenant's live key hashes, which must never reach a console response, and
 tunnel verification turns an enrolment token into a cluster identity, which a human credential has
-no reason to do. Under `HANGAR_APP_ENV=local` with no token configured the plane accepts a fixed local
+no reason to do. Under `WINGSMITH_APP_ENV=local` with no token configured the plane accepts a fixed local
 token so a fresh checkout's gateway can start; outside `local` an unset token means no gateway
 principal resolves at all.
 
@@ -115,13 +115,13 @@ writes observed state for that cluster only. The one HTTP route that handles an 
 takes it in a request body, from the gateway, and answers with a cluster identity instead
 of a session (§6).
 
-**`HANGAR_ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
+**`WINGSMITH_ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
 request without a credential then resolves to the admin principal. The plane refuses to start with
-it outside `HANGAR_APP_ENV=local`, logs a warning naming the exposure on every startup while it is active,
+it outside `WINGSMITH_APP_ENV=local`, logs a warning naming the exposure on every startup while it is active,
 and it never affects the gateway, tenant or enrolment-token checks.
 
 **A browser write must come from an allowed origin and carry JSON.** A `POST`, `PUT`, `PATCH` or
-`DELETE` whose `Origin` names neither an origin in `HANGAR_ALLOWED_ORIGINS` nor the plane's own host is
+`DELETE` whose `Origin` names neither an origin in `WINGSMITH_ALLOWED_ORIGINS` nor the plane's own host is
 `403 forbidden`, and any request body that is not `application/json` is `415
 unsupported_media_type`. A caller that is not a browser sends no `Origin` and is unaffected.
 
@@ -140,7 +140,7 @@ canonical: two spellings of one id is the same problem as two ids.
 
 A path segment accepts **either the id or the name** where an object has a unique name
 (`GET /v1/clusters/iad-1` and `GET /v1/clusters/clu_01hq0v8p2m` are the same request). Prefix
-matching is **not** supported by the API: `hgr` resolves prefixes client-side, and that is where
+matching is **not** supported by the API: `wings` resolves prefixes client-side, and that is where
 it belongs, because a server that guesses at ambiguous input is a server that eventually guesses
 wrong.
 
@@ -247,7 +247,7 @@ ref/version the register-cluster screen hands out.
 by hand in the response schema, so a credential added to the plane's settings is absent from this
 endpoint until somebody decides otherwise; a rule that skipped suspicious names would publish the
 next one by default. Three consequences are binding on any implementation: a credential is
-reported only as a boolean, never as a value, a prefix, a length or a digest; `HANGAR_DATABASE_URL` is
+reported only as a boolean, never as a value, a prefix, a length or a digest; `WINGSMITH_DATABASE_URL` is
 reported in parts and never as a string, so userinfo cannot travel; and the per-source `|token=`
 never appears, because a metrics source is public as endpoint, kind and label only. Admin
 principals only: the gateway's service token or a tenant session is `403 forbidden`, since neither
@@ -355,7 +355,7 @@ an outbound tunnel to the gateway (nothing dials into a cluster) and identifies 
 cluster's enrolment token, the same string the operator authenticates to the hub with and delivered
 by the same chart into the same Secret. The gateway cannot check it alone: only the plane holds the
 hash, and shipping every cluster's token material to the machine that faces the internet is exactly
-the trade a control plane exists to avoid. So the gateway posts `{"token": "hgro1..."}` and gets back
+the trade a control plane exists to avoid. So the gateway posts `{"token": "wso1..."}` and gets back
 `{"cluster_id": "clu_...", "cluster_name": "iad-1"}`, or a refusal. Nothing is minted and nothing is
 stored; no hash, prefix or length of the token appears in any response.
 
@@ -452,9 +452,9 @@ and that would only work for the one object it was added to:
 
 | Label | Values | Effect |
 |---|---|---|
-| `hangar.dev/alert` | `off` / `on` | `off` mutes every condition about this object |
-| `hangar.dev/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
-| `hangar.dev/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
+| `wingsmith.dev/alert` | `off` / `on` | `off` mutes every condition about this object |
+| `wingsmith.dev/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
+| `wingsmith.dev/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
 
 They are set on the **workload**, which is the only object that carries them: a workload's serving
 configuration is its own and is not shared with anything, so muting one workload of a model never
@@ -535,7 +535,7 @@ is exactly what `GET /v1/workloads/{ref}` does with the same reference. None of 
 none of them accepts `limit` or `cursor`, and passing one is `400 unknown_parameter` like anywhere
 else.
 
-**Metric names are Hangar's vocabulary, not PromQL, and the family says who emitted the number.**
+**Metric names are Wingsmith's vocabulary, not PromQL, and the family says who emitted the number.**
 `gpu.*` is what the device exporter reports, `inference.*` is what a serving engine says about
 itself, and `serving.*` is what the gateway saw. The percentiles in the vocabulary are named because
 somebody is held to them, not because a caller can pick a quantile: `inference.ttft` (p95)

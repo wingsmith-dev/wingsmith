@@ -56,7 +56,7 @@ func TestUnreadableDialsAreRejected(t *testing.T) {
 		name string
 		wire []byte
 	}{
-		{"not a hangar dial", []byte("GET / HTTP/1.1\r\n\r\n")},
+		{"not a wingsmith dial", []byte("GET / HTTP/1.1\r\n\r\n")},
 		{"truncated", []byte(magic)},
 		{"frame past the cap", oversized},
 		{"empty frame", frame("")},

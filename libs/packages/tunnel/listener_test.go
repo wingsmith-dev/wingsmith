@@ -142,7 +142,7 @@ func TestAnAcceptedDialIsToldWhichReplicaAndHowMany(t *testing.T) {
 	verifier := &stubVerifier{clusters: map[string]string{"tok-ap": "clu_ap"}}
 	_, _, addr := startListener(t, ListenerConfig{
 		Verifier:  verifier,
-		GatewayID: "hangar-gateway-1",
+		GatewayID: "wingsmith-gateway-1",
 		Gateways:  3,
 	})
 
@@ -150,7 +150,7 @@ func TestAnAcceptedDialIsToldWhichReplicaAndHowMany(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	if accept.GatewayID != "hangar-gateway-1" {
+	if accept.GatewayID != "wingsmith-gateway-1" {
 		t.Errorf("GatewayID = %q, want the replica that answered", accept.GatewayID)
 	}
 	if accept.Gateways != 3 {
@@ -247,7 +247,7 @@ func TestDialsThatDoNotAuthenticateAreRefusedWithAReason(t *testing.T) {
 		// check exists for.
 		{name: "another cluster's name", hello: Hello{Token: "tok-ap", ClusterID: "inference-us"}, planeUp: true, reason: ReasonUnauthorized},
 		{name: "plane unreachable", hello: Hello{Token: "tok-ap"}, reason: ReasonUnavailable},
-		{name: "not a hangar dial", garbage: "GET / HTTP/1.1\r\n\r\n", planeUp: true, reason: ReasonHandshake},
+		{name: "not a wingsmith dial", garbage: "GET / HTTP/1.1\r\n\r\n", planeUp: true, reason: ReasonHandshake},
 	}
 
 	for _, tc := range cases {

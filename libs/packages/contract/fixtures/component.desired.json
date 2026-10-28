@@ -13,7 +13,7 @@
     "enabled": true,
     "config": {
       "engine": "vllm",
-      "image_repo": "ghcr.io/hangar-dev/vllm"
+      "image_repo": "ghcr.io/wingsmith-dev/vllm"
     },
     "updated_at": "2026-08-19T09:31:00.000Z"
   }

@@ -12,7 +12,7 @@ import (
 // would look like a cluster that had stopped choosing frontends, not like
 // a header nobody was sending.
 func TestHeaderDeploymentIDIsTheAgreedName(t *testing.T) {
-	if HeaderDeploymentID != "X-Hangar-Deployment-Id" {
+	if HeaderDeploymentID != "X-Wingsmith-Deployment-Id" {
 		t.Fatalf("HeaderDeploymentID = %q, want the name both ends of the wire agree on", HeaderDeploymentID)
 	}
 }

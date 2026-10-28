@@ -285,7 +285,7 @@ operator learning the field rolls any frontend. A declared field renders even wh
 Dynamo's default, because the block records what was asked for.
 
 It is closed, not an environment passthrough. `mode` is Dynamo 1.5.0's `--router-mode` set less
-`direct`, which routes on a worker id nothing in front of a Hangar frontend sends; `queue_policy` is
+`direct`, which routes on a worker id nothing in front of a Wingsmith frontend sends; `queue_policy` is
 `fcfs` or `wspt`; both numbers are finite and non-negative, and render in Python's float spelling
 (`1.0`, never `1`), because the value is part of the pod template Dynamo hashes. `queue_policy` needs
 `queue_threshold`, and the three KV settings need `mode` to be `kv` or absent. The plane refuses

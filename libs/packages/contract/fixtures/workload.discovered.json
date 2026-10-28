@@ -65,7 +65,7 @@
         "nvidia.com/gpu": "4"
       },
       "node_selector": {
-        "hangar.dev/pool": "gpu"
+        "wingsmith.dev/pool": "gpu"
       }
     },
     "observed_at": "2026-08-19T14:02:11.400Z"

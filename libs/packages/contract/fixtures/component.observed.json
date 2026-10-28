@@ -16,7 +16,7 @@
     "total_instances": 8,
     "last_error": {
       "code": "image_pull_failed",
-      "message": "ghcr.io/hangar-dev/vllm:0.9.3 unauthorized on nod_01J9X2BBBBBBBBBBBBBBBBBBBC",
+      "message": "ghcr.io/wingsmith-dev/vllm:0.9.3 unauthorized on nod_01J9X2BBBBBBBBBBBBBBBBBBBC",
       "at": "2026-08-19T13:57:31.660Z"
     },
     "observed_at": "2026-08-19T14:02:11.400Z"
