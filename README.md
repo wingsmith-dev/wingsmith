@@ -1,9 +1,17 @@
 <a href="https://wingsmith.dev">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/banner-dark.png">
-    <img alt="Wingsmith: your fleet, in formation. The open inference control plane for Kubernetes GPU clusters." src=".github/banner-light.png" width="100%">
+    <img alt="Wingsmith: multi-cluster inference. A control plane for serving models across Kubernetes GPU clusters." src=".github/banner-light.png" width="100%">
   </picture>
 </a>
+
+<p align="center">
+  <a href="https://github.com/wingsmith-dev/wingsmith/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/wingsmith-dev/wingsmith/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
+  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-orange">
+  <a href="https://docs.wingsmith.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-wingsmith.dev-2f5be0"></a>
+  <a href="https://wingsmith.dev"><img alt="Website" src="https://img.shields.io/badge/web-wingsmith.dev-2f5be0"></a>
+</p>
 
 # Wingsmith
 
