@@ -10,7 +10,7 @@ are, and nothing at all that says which cards. A label value cannot hold eight U
 publishes them anyway.
 
 The operator runs as a single Deployment with no node-level access. It therefore minted its device
-ids itself: `<node-name>-gpu<index>`, with a `hangar.dev/device-uuids` annotation as the intended
+ids itself: `<node-name>-gpu<index>`, with a `wingsmith.dev/device-uuids` annotation as the intended
 real source, to be written by a bootstrap job or a node agent.
 
 In practice nothing wrote that annotation, so every device carried a synthetic id. The defect this
@@ -21,8 +21,8 @@ asking about a GPU nobody has ever heard of. An id we invent is only useful for 
 ourselves, and a device id is precisely the thing we need to talk to someone else about.
 
 Filling the annotation in would have worked. It was rejected on a principle that outranks the fix:
-**hangar discovers, and is not configured for.** Requiring a cluster to carry a `hangar.dev/*`
-annotation for hangar's benefit means every cluster it is pointed at needs a change to its own
+**wingsmith discovers, and is not configured for.** Requiring a cluster to carry a `wingsmith.dev/*`
+annotation for wingsmith's benefit means every cluster it is pointed at needs a change to its own
 manifests before it can be seen, and the thing most likely to be missing is the thing nobody
 remembered was required. That is exactly the failure we are here to fix, made permanent. Reading
 vendor-standard labels that are already there is discovery. Asking to be written to is not.
@@ -30,7 +30,7 @@ vendor-standard labels that are already there is discovery. Asking to be written
 ## Decision
 
 **The operator scrapes the in-cluster DCGM exporter for device identity, and DCGM is a hard
-dependency of a hangar GPU cluster.**
+dependency of a wingsmith GPU cluster.**
 
 A GPU cluster that is observed at all almost always already runs `dcgm-exporter`, because the
 telemetry it produces is what the observability stack is built on. It is therefore not a new thing
@@ -40,7 +40,7 @@ to install, and its series already carry every identity fact we lack: `UUID`, `g
 Identity precedence, per device slot:
 
 1. **DCGM scrape**: the true hardware UUID, and the model in the `dcgm` dialect.
-2. **`hangar.dev/device-uuids` annotation**: retained, unadvertised, for a cluster running no
+2. **`wingsmith.dev/device-uuids` annotation**: retained, unadvertised, for a cluster running no
    exporter. An escape hatch, not a mechanism.
 3. **`<node>-gpu<index>`**: the synthetic fallback, unchanged.
 
@@ -88,7 +88,7 @@ A GPU cluster with no DCGM exporter is a degraded cluster: it still enrols, stil
 still takes placement, and its device metrics do not join. That is a documented state, not a
 surprise: the operator says so in its logs on every tick.
 
-`HANGAR_DCGM_ENDPOINT` is the one new knob, defaulting to
+`WINGSMITH_DCGM_ENDPOINT` is the one new knob, defaulting to
 `dcgm-exporter.platform.svc.cluster.local:9400`. Setting it empty disables the scrape.
 
 No RBAC changed. The exporter is reached by Service DNS over ordinary HTTP; nothing here asks the

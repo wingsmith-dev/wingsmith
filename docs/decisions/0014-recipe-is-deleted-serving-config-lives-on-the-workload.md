@@ -41,7 +41,7 @@ loud, the identity is a hash, not a row.
 
 1. **Recipe is deleted as an object.** `demand_recipe` is dropped and its columns move onto
    `demand_workload` with the same names and types. `/recipes` and its sub-resources are gone from
-   the HTTP API, `hgr recipe*` from the CLI, and the recipe routes from the console.
+   the HTTP API, `wings recipe*` from the CLI, and the recipe routes from the console.
 2. **The serving configuration reaches a cluster inlined on `deployment.desired.serving`.**
    `RecipeDesired` becomes `ServingSpec` and loses every identity and routing field it carried;
    `recipe.desired`, the ordering rule and `RecipeNotDeclared` are all removed with it.

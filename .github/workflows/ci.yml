@@ -90,7 +90,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run pytest -m 'not database'
       - name: the CLI's plane-schemas snapshot matches the plane
-        run: HANGAR_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py --check ../cli/internal/api/testdata/plane-schemas.json
+        run: WINGSMITH_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py --check ../cli/internal/api/testdata/plane-schemas.json
 
   plane-db:
     runs-on: ubuntu-24.04
@@ -99,19 +99,19 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: hangar
-          POSTGRES_PASSWORD: hangar
-          POSTGRES_DB: hangar
+          POSTGRES_USER: wingsmith
+          POSTGRES_PASSWORD: wingsmith
+          POSTGRES_DB: wingsmith
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U hangar -d hangar"
+          --health-cmd "pg_isready -U wingsmith -d wingsmith"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
-      HANGAR_TEST_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
+      WINGSMITH_DATABASE_URL: postgresql+psycopg://wingsmith:wingsmith@localhost:5432/wingsmith
+      WINGSMITH_TEST_DATABASE_URL: postgresql+psycopg://wingsmith:wingsmith@localhost:5432/wingsmith
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -168,20 +168,20 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: hangar
-          POSTGRES_PASSWORD: hangar
-          POSTGRES_DB: hangar
+          POSTGRES_USER: wingsmith
+          POSTGRES_PASSWORD: wingsmith
+          POSTGRES_DB: wingsmith
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U hangar -d hangar"
+          --health-cmd "pg_isready -U wingsmith -d wingsmith"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@localhost:5432/hangar
-      HANGAR_APP_ENV: local
-      HANGAR_ADMIN_AUTH: disabled
+      WINGSMITH_DATABASE_URL: postgresql+psycopg://wingsmith:wingsmith@localhost:5432/wingsmith
+      WINGSMITH_APP_ENV: local
+      WINGSMITH_ADMIN_AUTH: disabled
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,7 +201,7 @@ jobs:
         working-directory: libs/plane
         run: |
           uv run alembic upgrade head
-          uv run hangar-api --host 127.0.0.1 --port 8000 >"$RUNNER_TEMP/api.log" 2>&1 &
+          uv run wingsmith-api --host 127.0.0.1 --port 8000 >"$RUNNER_TEMP/api.log" 2>&1 &
           for _ in $(seq 1 60); do
             if curl -fsS -o /dev/null http://127.0.0.1:8000/health; then exit 0; fi
             sleep 1
@@ -210,7 +210,7 @@ jobs:
       - name: live client tests
         working-directory: libs/cli
         env:
-          HANGAR_TEST_SERVER: http://127.0.0.1:8000
+          WINGSMITH_TEST_SERVER: http://127.0.0.1:8000
         run: go test -count=1 -run Live -v ./internal/api/
 
   console:
@@ -440,7 +440,7 @@ jobs:
           version: v0.33.0
           kubectl_version: v1.37.0
           config: dev/kind-cluster.yaml
-          cluster_name: hangar
+          cluster_name: wingsmith
       - run: just e2e
 
   prose:
@@ -457,14 +457,14 @@ jobs:
       # push to main after the merge still runs it.
       - name: private denylist
         env:
-          PROSE_DENYLIST: ${{ secrets.HANGAR_PROSE_DENYLIST }}
+          PROSE_DENYLIST: ${{ secrets.WINGSMITH_PROSE_DENYLIST }}
         run: |
           if [ -z "$PROSE_DENYLIST" ]; then
-            echo "::notice::HANGAR_PROSE_DENYLIST unavailable, the names check is skipped"
+            echo "::notice::WINGSMITH_PROSE_DENYLIST unavailable, the names check is skipped"
             exit 0
           fi
           printf '%s\n' "$PROSE_DENYLIST" >"$RUNNER_TEMP/prose-denylist"
-          echo "HANGAR_PROSE_DENYLIST=$RUNNER_TEMP/prose-denylist" >>"$GITHUB_ENV"
+          echo "WINGSMITH_PROSE_DENYLIST=$RUNNER_TEMP/prose-denylist" >>"$GITHUB_ENV"
       # Required: what a change adds is held to every check, tics included.
       - name: what this change adds
         env:

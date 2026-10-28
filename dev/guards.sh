@@ -45,15 +45,15 @@ case "${1:-}" in
   e2e-context)
     # e2e patches a node's labels and allocatable and creates and deletes namespaces, so it runs
     # against a kind cluster unless somebody explicitly names another context.
-    if [ -n "${HANGAR_E2E_CONTEXT:-}" ]; then
-      context="$HANGAR_E2E_CONTEXT"
+    if [ -n "${WINGSMITH_E2E_CONTEXT:-}" ]; then
+      context="$WINGSMITH_E2E_CONTEXT"
       kubectl config get-contexts "$context" >/dev/null 2>&1 || die "no kube context named '$context'"
     else
       context="$(kubectl config current-context 2>/dev/null || true)"
       [ -n "$context" ] || die "no current kube context; 'just cluster-up' creates a local one"
       case "$context" in
         kind-*) ;;
-        *) die "refusing to run e2e against '$context': it is not a kind- context. Set HANGAR_E2E_CONTEXT=$context to run it there anyway" ;;
+        *) die "refusing to run e2e against '$context': it is not a kind- context. Set WINGSMITH_E2E_CONTEXT=$context to run it there anyway" ;;
       esac
     fi
     echo "$context"

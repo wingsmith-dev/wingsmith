@@ -31,13 +31,13 @@ rm -f "$work/chart/Chart.lock"
 
 required=(
   --set cluster.id=ci
-  --set cluster.hubUrl=wss://hangar.example.com/v1/hub/sync
-  --set enrolmentToken.value=hgrtok_ci
+  --set cluster.hubUrl=wss://wingsmith.example.com/v1/hub/sync
+  --set enrolmentToken.value=wstok_ci
   --set pools.labelKey=example.com/pool --set pools.gpuValue=gpu --set pools.cacheValue=system
   --set modelCache.storageClass=standard
 )
 everything=(
-  --set serving.enabled=true --set serving.host=hangar.example.com
+  --set serving.enabled=true --set serving.host=wingsmith.example.com
   --set serving.clusterIssuer=letsencrypt --set serving.backend.service=frontend
   --set 'serving.middlewares[0].name=auth' --set 'serving.middlewares[0].namespace=traefik'
   --set 'networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.team=edge'
@@ -49,8 +49,8 @@ everything=(
   --set hfToken.create=true --set hfToken.value=hf_ci
 )
 
-helm template hangar "$work/chart" -n hangar-system "${required[@]}" >"$work/defaults.yaml"
-helm template hangar "$work/chart" -n hangar-system "${required[@]}" "${everything[@]}" >"$work/everything.yaml"
+helm template wingsmith "$work/chart" -n wingsmith-system "${required[@]}" >"$work/defaults.yaml"
+helm template wingsmith "$work/chart" -n wingsmith-system "${required[@]}" "${everything[@]}" >"$work/everything.yaml"
 
 for render in defaults everything; do
   echo "── $render"

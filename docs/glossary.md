@@ -1,6 +1,6 @@
 # Glossary
 
-Terms used across Hangar's code and docs, in alphabetical order. The
+Terms used across Wingsmith's code and docs, in alphabetical order. The
 [architecture overview](architecture/README.md) explains how they fit together.
 
 **Admission.** The phase a deployment passes through before it is placed:
@@ -10,7 +10,7 @@ refuses it.
 **Adoption.** Recording a workload the operator found already running in a cluster, without taking
 control of it. See *Authority* and [ADR 0006](decisions/0006-adoption-is-a-decision-to-observe.md).
 
-**Agent** (`hangar-agent`, `libs/agent`). The per-cluster process that dials out to the gateway and
+**Agent** (`wingsmith-agent`, `libs/agent`). The per-cluster process that dials out to the gateway and
 carries inference requests to model frontends inside the cluster. Not the operator.
 
 **Allocation.** Observed: the devices currently committed to a replica.
@@ -27,18 +27,18 @@ Dynamo's KV/prefix cache is never shared across tenants.
 
 **CacheEntry.** Observed: whether an artifact's weights are resident on a cluster or node.
 
-**Cluster.** A Kubernetes cluster enrolled in Hangar. Declared as a registry entry, with observed
+**Cluster.** A Kubernetes cluster enrolled in Wingsmith. Declared as a registry entry, with observed
 state (reachability, sync state, operator version) reported by its operator.
 
 **Component.** Something installed in a cluster and versioned independently: the operator, the
 agent, the serving runtime, exporters.
 
-**Console** (`libs/console`). The web UI. A client of the plane's HTTP API, like `hgr`.
+**Console** (`libs/console`). The web UI. A client of the plane's HTTP API, like `wings`.
 
 **Control plane / plane** (`libs/plane`). The central service: the HTTP API, the hub and the
 reactor, over one Postgres database. Stores intent; never in the inference request path.
 
-**DCGM / DCGM exporter.** NVIDIA's GPU telemetry exporter. Hangar reads device identity (GPU UUIDs)
+**DCGM / DCGM exporter.** NVIDIA's GPU telemetry exporter. Wingsmith reads device identity (GPU UUIDs)
 and health from it. See [ADR 0007](decisions/0007-device-identity-comes-from-the-dcgm-exporter.md).
 
 **Declared / observed / operation.** The three kinds of object. Declared objects are written by the
@@ -51,16 +51,16 @@ the operator reconciles. Not a Kubernetes Deployment.
 **Device.** One accelerator, identified by its UUID, with health, memory, MIG profile and current
 allocation.
 
-**Device class.** Hangar's name for a kind of accelerator (for example an 80 GB H100 SXM). Vendor
+**Device class.** Wingsmith's name for a kind of accelerator (for example an 80 GB H100 SXM). Vendor
 strings map to device classes through `libs/packages/contract/devices.json`.
 
 **DGD** (DynamoGraphDeployment). NVIDIA Dynamo's custom resource describing a serving graph:
-frontend, workers and their roles. The operator renders each Hangar deployment into one.
+frontend, workers and their roles. The operator renders each Wingsmith deployment into one.
 
 **Disaggregated serving.** Running prefill and decode as separate worker roles, each with its own
 replica count and devices. A workload declares its roles; an aggregated workload has one.
 
-**Dynamo** (NVIDIA Dynamo). The inference serving framework Hangar renders workloads into. It runs
+**Dynamo** (NVIDIA Dynamo). The inference serving framework Wingsmith renders workloads into. It runs
 vLLM, SGLang or TensorRT-LLM as the engine and provides the frontend, router and KV-aware routing.
 
 **Endpoint.** The stable public model name clients call. Plane-only; resolves to one or more
@@ -72,22 +72,22 @@ deployments with weights or a failover order. The gateway reads endpoints, never
 presents it to the hub and the agent presents it to the gateway. It identifies exactly one cluster.
 
 **Frontend.** Dynamo's OpenAI-compatible HTTP entry point for one model's deployment, which routes
-to that deployment's workers. Hangar renders one per model
+to that deployment's workers. Wingsmith renders one per model
 ([ADR 0013](decisions/0013-one-frontend-per-model-routed-by-a-forwarded-deployment-id.md)).
 
-**Gateway** (`libs/gateway`). The one Hangar process in the inference request path. Takes
+**Gateway** (`libs/gateway`). The one Wingsmith process in the inference request path. Takes
 OpenAI-compatible requests, picks a cluster from the routing table, and forwards over the tunnel.
 
-**hgr** (`libs/cli`). The command line client for the plane's API.
+**wings** (`libs/cli`). The command line client for the plane's API.
 
-**hgrbench** (`libs/benchmarking`). Runs several load generators against an OpenAI-compatible
+**wingsbench** (`libs/benchmarking`). Runs several load generators against an OpenAI-compatible
 endpoint and reports them side by side. A *ladder* is the list of concurrency levels a benchmark
 steps through, and a *rung* is one level of it.
 
-**hgrconform** (`libs/conformance`). Probes an OpenAI-compatible endpoint and compares its behaviour
+**wingsconform** (`libs/conformance`). Probes an OpenAI-compatible endpoint and compares its behaviour
 with a reference provider.
 
-**hgrtransit** (`libs/transit`). Measures the gateway, tunnel and agent path on one host, with no
+**wingstransit** (`libs/transit`). Measures the gateway, tunnel and agent path on one host, with no
 GPU or cluster.
 
 **Hub.** The plane process that terminates the operators' WebSocket streams, with resume and
@@ -107,7 +107,7 @@ metrics store, declared on the cluster's registry entry
 
 **MIG** (Multi-Instance GPU). NVIDIA's partitioning of one GPU into isolated slices.
 
-**Operator** (`hangar-operator`, `libs/operator`). The per-cluster process that receives desired
+**Operator** (`wingsmith-operator`, `libs/operator`). The per-cluster process that receives desired
 state from the hub, stores it in CRDs, renders it into Kubernetes and Dynamo objects, and reports
 observed state back. Also a principal kind in the plane's auth.
 

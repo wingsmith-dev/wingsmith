@@ -48,7 +48,7 @@ reconciliation the plane can own instead of a document a human maintains.
    and a `SecretStore` protocol so the reconciler is testable without a cluster. No
    `kubernetes-asyncio`: a generated client's model hierarchy, watch implementation and discovery
    cache are all cost with no use here.
-5. **It degrades to nothing.** Gated on `HANGAR_REMOTE_WRITE_AUTH_ENABLED`, and additionally inert
+5. **It degrades to nothing.** Gated on `WINGSMITH_REMOTE_WRITE_AUTH_ENABLED`, and additionally inert
    with no in-cluster service account. Both cases log once and return. A plane that could not boot
    without a ServiceAccount would be a plane that could not run on a laptop.
 6. **The values.yaml carries no credential.** The plane emits exactly `cluster.region`,
@@ -117,7 +117,7 @@ front of the middleware.
   `RoleBinding` that let the plane patch the Secret are applied once by hand, in the namespace the
   Secret lives in, which is generally not the plane's own, so they cannot ride along with a
   kustomization that pins the plane's namespace.
-- **The hub has its own ServiceAccount now** (`hangar-hub`) instead of `default`, because the
+- **The hub has its own ServiceAccount now** (`wingsmith-hub`) instead of `default`, because the
   RoleBinding must name something narrower than "every pod in the plane's namespace".
 - **`GET /v1/system/config` reports the write URL and the Secret's coordinates.** Both are
   diagnostic and neither is secret; "the plane is not maintaining that file" is exactly the kind of

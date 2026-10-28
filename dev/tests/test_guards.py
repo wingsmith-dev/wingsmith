@@ -118,11 +118,11 @@ esac
 """
 
 
-@pytest.mark.parametrize("current", ["kind-hangar", "kind-other"])
+@pytest.mark.parametrize("current", ["kind-wingsmith", "kind-other"])
 def test_e2e_context_accepts_a_kind_context(repo: Path, path_with, current: str) -> None:
     bin_dir, env = path_with
     stub(bin_dir, "kubectl", KUBECTL)
-    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": current, "HANGAR_E2E_CONTEXT": ""})
+    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": current, "WINGSMITH_E2E_CONTEXT": ""})
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == current
 
@@ -131,23 +131,23 @@ def test_e2e_context_accepts_a_kind_context(repo: Path, path_with, current: str)
 def test_e2e_context_refuses_anything_else(repo: Path, path_with, current: str) -> None:
     bin_dir, env = path_with
     stub(bin_dir, "kubectl", KUBECTL)
-    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": current, "HANGAR_E2E_CONTEXT": ""})
+    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": current, "WINGSMITH_E2E_CONTEXT": ""})
     assert done.returncode == 1
     assert done.stdout == ""
-    assert "HANGAR_E2E_CONTEXT" in done.stderr
+    assert "WINGSMITH_E2E_CONTEXT" in done.stderr
 
 
 def test_e2e_context_refuses_when_there_is_no_context(repo: Path, path_with) -> None:
     bin_dir, env = path_with
     stub(bin_dir, "kubectl", KUBECTL)
-    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": "", "HANGAR_E2E_CONTEXT": ""})
+    done = run("e2e-context", cwd=repo, env={**env, "FAKE_CURRENT": "", "WINGSMITH_E2E_CONTEXT": ""})
     assert done.returncode == 1
 
 
 def test_e2e_context_takes_an_explicit_context_over_the_current_one(repo: Path, path_with) -> None:
     bin_dir, env = path_with
     stub(bin_dir, "kubectl", KUBECTL)
-    extra = {"FAKE_CURRENT": "prod", "FAKE_KNOWN": "orbstack", "HANGAR_E2E_CONTEXT": "orbstack"}
+    extra = {"FAKE_CURRENT": "prod", "FAKE_KNOWN": "orbstack", "WINGSMITH_E2E_CONTEXT": "orbstack"}
     done = run("e2e-context", cwd=repo, env={**env, **extra})
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "orbstack"
@@ -156,7 +156,7 @@ def test_e2e_context_takes_an_explicit_context_over_the_current_one(repo: Path, 
 def test_e2e_context_refuses_an_explicit_context_that_does_not_exist(repo: Path, path_with) -> None:
     bin_dir, env = path_with
     stub(bin_dir, "kubectl", KUBECTL)
-    done = run("e2e-context", cwd=repo, env={**env, "FAKE_KNOWN": "", "HANGAR_E2E_CONTEXT": "typo"})
+    done = run("e2e-context", cwd=repo, env={**env, "FAKE_KNOWN": "", "WINGSMITH_E2E_CONTEXT": "typo"})
     assert done.returncode == 1
 
 

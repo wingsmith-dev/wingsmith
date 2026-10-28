@@ -3,4 +3,4 @@ useDefault = true
 
 [allowlist]
 description = "Fixed fake credentials in tests"
-regexes = ['''hgr_(pat|rt)_0123456789abcdef''', '''hgr_pat_secret''']
+regexes = ['''ws_(pat|rt)_0123456789abcdef''', '''ws_pat_secret''']

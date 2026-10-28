@@ -1,6 +1,6 @@
 # Roadmap
 
-What Hangar does not do yet. Everything here is either reserved in the object model or designed in
+What Wingsmith does not do yet. Everything here is either reserved in the object model or designed in
 outline, and none of it works today. The [README](../README.md) and the
 [architecture overview](architecture/README.md) describe only what is built; when something on this
 list ships, it moves there.
@@ -21,7 +21,7 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **Quota floors and fair share.** A Quota records a guaranteed floor, a limit and an over-quota
   weight, but placement uses it only as a ceiling on what the project may hold. The floor is not
   reserved against other projects, and idle capacity is not shared out by weight.
-- **Engines other than NVIDIA Dynamo.** The wire carries Hangar's own objects so a second renderer
+- **Engines other than NVIDIA Dynamo.** The wire carries Wingsmith's own objects so a second renderer
   is possible, but Dynamo (with vLLM, SGLang or TensorRT-LLM inside it) is the only one.
 - **Endpoint-level benchmarks.** Harnesses declare an `endpoint` level (conformance with its
   failover probe, evalscope against a served endpoint, an LLM judge credential), but nothing
@@ -50,7 +50,7 @@ There are no dates. Order within a section is roughly the order the work is expe
   table when the plane is down, but a gateway that restarts during a plane outage cannot load a
   table and does not start. Persisting the last known table would remove that dependency.
 - **Gateway replica count at runtime.** Each gateway replica is told how many replicas there are
-  with `HANGAR_GATEWAY_REPLICAS`, which has to match the StatefulSet by hand (see the gateway's
+  with `WINGSMITH_GATEWAY_REPLICAS`, which has to match the StatefulSet by hand (see the gateway's
   [scaling notes](../libs/gateway/README.md#scaling)). Carrying the count in the tunnel listener
   config, or having agents dial each replica through a headless Service, would remove the setting.
 
@@ -81,7 +81,7 @@ There are no dates. Order within a section is roughly the order the work is expe
   [METRICS.md](../libs/plane/METRICS.md)); the hub and reactor processes expose none yet.
 - **Published images and charts.** Nothing is published yet. Build the images into your own
   registry.
-- **CRD versioning and conversion.** The CRDs are `v1alpha1` in the interim `hangar.dev` group, with
+- **CRD versioning and conversion.** The CRDs are `v1alpha1` in the interim `wingsmith.dev` group, with
   no conversion webhooks. Upgrades between versions may require deleting and recreating them until
   a stable version exists.
 - **Faster role and shape edits.** Changing a disaggregated workload's roles or device shape

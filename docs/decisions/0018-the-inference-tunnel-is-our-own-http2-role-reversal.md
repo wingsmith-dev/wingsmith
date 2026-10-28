@@ -28,7 +28,7 @@ off-the-shelf tools are built for that wider job:
 5. **Coverage of every gateway replica from one address.** The tunnel pool is in-process, so each
    gateway replica can only serve clusters it holds a tunnel to. An agent given one address has to
    find all replicas, without the cluster's values listing them.
-6. **No extra process or vendor in the request path.** The gateway is already the one Hangar
+6. **No extra process or vendor in the request path.** The gateway is already the one Wingsmith
    process in the path. A separate tunnel server or a hosted edge adds a hop, a failure domain and,
    for a hosted edge, an account and a third party that sees every prompt.
 
@@ -44,9 +44,9 @@ off-the-shelf tools are built for that wider job:
 
 ## Decision
 
-**Hangar carries its own tunnel, in `libs/packages/tunnel`, built on HTTP/2 with the roles reversed.**
+**Wingsmith carries its own tunnel, in `libs/packages/tunnel`, built on HTTP/2 with the roles reversed.**
 The agent dials the gateway over TLS, presents its enrolment token in a single length-prefixed
-handshake (`HGRTUN01`), and then runs the HTTP/2 *server* on that connection while the gateway runs
+handshake (`WSMTUN01`), and then runs the HTTP/2 *server* on that connection while the gateway runs
 the HTTP/2 *client*. The gateway therefore holds an ordinary `http.RoundTripper` per cluster.
 
 - The pool implements `http2.ClientConnPool`, so `http2.Transport`'s own retry runs and the pool
@@ -83,10 +83,10 @@ The agent runs inside a cluster the operator of the installation controls.
 
 | Threat | Control | Residual risk |
 |---|---|---|
-| Eavesdropping or tampering between agent and gateway | TLS on the tunnel listener (`-tunnel-cert`/`-tunnel-key`), or TLS terminated by a TCP-passthrough load balancer in front; the agent verifies the gateway's certificate | A deployment that terminates TLS in front of the listener and forwards plaintext over an untrusted network; `HANGAR_TUNNEL_INSECURE_SKIP_VERIFY` is for local development only |
+| Eavesdropping or tampering between agent and gateway | TLS on the tunnel listener (`-tunnel-cert`/`-tunnel-key`), or TLS terminated by a TCP-passthrough load balancer in front; the agent verifies the gateway's certificate | A deployment that terminates TLS in front of the listener and forwards plaintext over an untrusted network; `WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY` is for local development only |
 | Unauthenticated dials exhausting the gateway | 10 s handshake deadline, 8 KiB handshake cap, rejected dials counted by reason | Volumetric attacks on the listener are left to the network edge |
 | A dial claiming to be another cluster | Identity is whatever the plane resolves the token to (`POST /v1/clusters/tunnel-auth`, called with the gateway's service token); a claimed cluster id that disagrees is rejected | None beyond token theft |
 | A stolen enrolment token | Tokens are per cluster, so a stolen one impersonates that cluster only; rotating it in the plane refuses it on the next verification | Verifications are cached for 5 minutes, and for up to an hour while the plane is unreachable, so a revoked token can open new tunnels for that long. Tunnels already open stay open until they drop. |
 | A compromised cluster | It can only attach tunnels for its own cluster, so it only receives traffic routed to models placed on it. HTTP/2 stream limits, flow-control windows and the response-header timeout bound what it can make the gateway hold | It sees the prompts sent to its own models, as any serving cluster does, and can answer them wrongly |
-| Routing headers forged by a caller | The gateway overwrites `X-Hangar-Deployment-Id` on every request, and the agent trusts it only from a tunnel | None known |
+| Routing headers forged by a caller | The gateway overwrites `X-Wingsmith-Deployment-Id` on every request, and the agent trusts it only from a tunnel | None known |
 | A compromised gateway | Out of scope for the tunnel: the gateway is in the request path by design and sees all traffic | Run it as trusted infrastructure |

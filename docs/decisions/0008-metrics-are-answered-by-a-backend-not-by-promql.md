@@ -17,7 +17,7 @@ the opposite: clusters remote-write into one central Prometheus which stamps `cl
 clusters at all, database clusters among them. An unscoped query stopped being harmless and became
 a number that adds inference fleets and database fleets together and looks entirely plausible.
 
-The second premise was quieter. ADR 0003 said metric names are Hangar's and dialects are a table,
+The second premise was quieter. ADR 0003 said metric names are Wingsmith's and dialects are a table,
 which was the right idea implemented one layer too shallow: a `Metric` carried the PromQL that
 answered it, so the vocabulary clients name was a Prometheus vocabulary. Three consequences showed
 up at once when the queries were finally run against a live store, not written from the
@@ -34,14 +34,14 @@ None of these fail. They all render as an empty panel, which is why they survive
 
 ## Decision
 
-1. **`registry.py` is vendor-neutral.** A `Metric` is a Hangar name, a unit, a family, a title and
+1. **`registry.py` is vendor-neutral.** A `Metric` is a Wingsmith name, a unit, a family, a title and
    how it aggregates. It names no series, no label and no query language. This is the API's
    vocabulary and clients depend on it, so it must not move because an engine renamed something.
-2. **The dialect is a per-backend table keyed by the Hangar name.** `promql.py` holds the series
+2. **The dialect is a per-backend table keyed by the Wingsmith name.** `promql.py` holds the series
    names, the label names and the expression shapes. A second store is a second table.
 3. **A `Backend` answers metrics for a scope over a window.** Not "run this PromQL": that is a
    transport seam, and `client.py` already was one. The protocol is `answers`, `samples`,
-   `breakdown` and `curves` over a `Scope` expressed in Hangar's dimensions, which is what makes a
+   `breakdown` and `curves` over a `Scope` expressed in Wingsmith's dimensions, which is what makes a
    ClickHouse or OTel implementation a new file instead of a refactor, and what leaves room for a
    backend that answers an hourly cost per node out of inventory and never scrapes anything.
    `Source.kind` selects it; it has been the string `prometheus` since the module was written and
@@ -67,7 +67,7 @@ absent is never zero.
 
 ## Consequences
 
-- `HANGAR_METRICS_SOURCES` grows a `default=` endpoint and a per-entry `label=`. The old
+- `WINGSMITH_METRICS_SOURCES` grows a `default=` endpoint and a per-entry `label=`. The old
   `cluster=url` form still parses and still means a dedicated store with no cluster matcher, so
   per-cluster Prometheus instances keep working; moving one onto the shared store is adding
   `label=` to its entry.
@@ -79,7 +79,7 @@ absent is never zero.
 - The dialect table is the thing to check against a live store when a panel is empty, and it should
   be checked against a live store, which is how all of the above was found.
 
-> **Amended.** The per-cluster half of `HANGAR_METRICS_SOURCES` carried nothing but a label, and
+> **Amended.** The per-cluster half of `WINGSMITH_METRICS_SOURCES` carried nothing but a label, and
 > declaring it there meant enrolling a cluster required a ConfigMap edit that the register flow never
 > mentions. It is now `Cluster.metrics_label`, set at registration to the name the chart stamps its
 > series with. The variable keeps the `default=` endpoint and its credential, an explicit entry still

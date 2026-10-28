@@ -8,23 +8,23 @@
 #
 # What it refuses:
 #   names    words from a private list. The list names exactly what must not appear here, so it
-#            cannot live here either: it is read from $HANGAR_PROSE_DENYLIST, default
-#            ~/.config/hangar-oss/prose-denylist, one case-insensitive extended regex per line,
+#            cannot live here either: it is read from $WINGSMITH_PROSE_DENYLIST, default
+#            ~/.config/wingsmith-oss/prose-denylist, one case-insensitive extended regex per line,
 #            matched at word edges in a line or a path. Without the list this check is skipped.
 #   history  in a comment or docstring of non-test source, a calendar date or a claim about what
 #            production did. A comment states the invariant; when and where somebody measured it
 #            belongs in the commit that changed it.
 #   tics     the em dash and a few stock phrases (the list is under `tics` below).
 #
-# A correct hit is allowed in scripts/prose-allowlist.txt (or $HANGAR_PROSE_ALLOWLIST): one
+# A correct hit is allowed in scripts/prose-allowlist.txt (or $WINGSMITH_PROSE_ALLOWLIST): one
 # extended regex per line, matched against the reported `path:line:text`.
 set -euo pipefail
 
 mode="${1:-staged}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
-allowlist="${HANGAR_PROSE_ALLOWLIST:-$root/scripts/prose-allowlist.txt}"
-denylist="${HANGAR_PROSE_DENYLIST:-$HOME/.config/hangar-oss/prose-denylist}"
+allowlist="${WINGSMITH_PROSE_ALLOWLIST:-$root/scripts/prose-allowlist.txt}"
+denylist="${WINGSMITH_PROSE_DENYLIST:-$HOME/.config/wingsmith-oss/prose-denylist}"
 
 # Word edges are spelled out: BSD and GNU grep disagree on \b and -w.
 edge='[^[:alnum:]_]'

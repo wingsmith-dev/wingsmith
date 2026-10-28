@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Hangar does not behave the way it should.
+description: Something in Wingsmith does not behave the way it should.
 labels: [bug]
 body:
   - type: markdown
@@ -17,7 +17,7 @@ body:
         - gateway
         - agent / tunnel
         - console
-        - cli (hgr)
+        - cli (wings)
         - chart (cluster-setup)
         - benchmarking / transit / conformance
         - docs

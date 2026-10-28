@@ -1,4 +1,4 @@
-"""Fills a local Hangar with something to look at.
+"""Fills a local Wingsmith with something to look at.
 
 Everything goes in over the public API, and observed state comes from the fake fleet
 (`dev/fleet.py`), each cluster connecting to the hub with its own enrolment token. Nothing here
@@ -33,7 +33,7 @@ from fleet import call
 from fleet import registration
 
 
-WAIT_SECONDS = float(os.environ.get("HANGAR_SEED_WAIT", "300"))
+WAIT_SECONDS = float(os.environ.get("WINGSMITH_SEED_WAIT", "300"))
 """How long `--demo` waits for the fleet to connect before giving up."""
 
 
@@ -294,7 +294,7 @@ def seed_demand() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="seed", description="fill a local Hangar over its API")
+    parser = argparse.ArgumentParser(prog="seed", description="fill a local Wingsmith over its API")
     parser.add_argument(
         "--demo",
         action="store_true",

@@ -41,7 +41,7 @@ knows it by are the same string because one is derived from the other.
    from "has no entry" to "has no label". A cluster with a null label is not queried under a guessed
    one, because a store that holds nothing under that label answers a clean empty and a clean empty
    reads as a healthy idle fleet.
-3. **`HANGAR_METRICS_SOURCES` keeps the endpoint and the credential.** Those are genuinely
+3. **`WINGSMITH_METRICS_SOURCES` keeps the endpoint and the credential.** Those are genuinely
    process-level: one store fronts the fleet, the token is a deployment secret, and neither is a fact
    about any cluster. They do not move to the database.
 4. **An explicit env entry still wins over the column.** `<cluster>|label=<name>` overrides the label

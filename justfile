@@ -22,18 +22,18 @@ _py_mods  := _plane + " " + _conform
 _bench_py := "PYTHONPATH=" + _bench + " uv run --no-project --python 3.12"
 
 _kind_config := "dev/kind-cluster.yaml"
-_kind_name   := "hangar"
+_kind_name   := "wingsmith"
 
 # Shared refusals for the cluster and release recipes; see the script's header.
 _guards := "dev/guards.sh"
 
-# Where images and the chart are published. Override with HANGAR_REGISTRY / HANGAR_CHART_OCI to
+# Where images and the chart are published. Override with WINGSMITH_REGISTRY / WINGSMITH_CHART_OCI to
 # publish somewhere of your own; the chart's image defaults name the first.
-registry  := env_var_or_default("HANGAR_REGISTRY", "ghcr.io/hangar-dev")
-chart_oci := env_var_or_default("HANGAR_CHART_OCI", "oci://" + registry + "/charts")
+registry  := env_var_or_default("WINGSMITH_REGISTRY", "ghcr.io/wingsmith-dev")
+chart_oci := env_var_or_default("WINGSMITH_CHART_OCI", "oci://" + registry + "/charts")
 # Clusters are amd64 and a laptop builds arm64 by default, which pushes cleanly and then
 # crash-loops on `exec format error` somewhere that does not mention architecture.
-platform  := env_var_or_default("HANGAR_PLATFORM", "linux/amd64")
+platform  := env_var_or_default("WINGSMITH_PLATFORM", "linux/amd64")
 
 # Show available commands
 default:
@@ -97,7 +97,7 @@ reseed:
     #!/usr/bin/env bash
     set -euo pipefail
     docker compose up -d --wait db
-    docker compose exec -T db psql -U hangar -d hangar -p 5442 -c 'drop schema public cascade; create schema public;'
+    docker compose exec -T db psql -U wingsmith -d wingsmith -p 5442 -c 'drop schema public cascade; create schema public;'
     docker compose run --rm migrate
     docker compose up -d --wait api hub
     (cd {{_plane}} && uv run python ../../dev/seed.py)
@@ -217,15 +217,15 @@ test:
 test-db *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "${HANGAR_TEST_DATABASE_URL:-}" ] && command -v docker >/dev/null 2>&1; then
+    if [ -z "${WINGSMITH_TEST_DATABASE_URL:-}" ] && command -v docker >/dev/null 2>&1; then
       docker compose up -d --wait db
-      export HANGAR_TEST_DATABASE_URL=postgresql+psycopg://hangar:hangar@localhost:5442/hangar
+      export WINGSMITH_TEST_DATABASE_URL=postgresql+psycopg://wingsmith:wingsmith@localhost:5442/wingsmith
     fi
     (cd {{_plane}} && uv run pytest -m database {{args}})
 
 # The plane figure folds the database-backed suite into the default one, so it reflects what CI
 # actually runs across both jobs, not only the markerless tests. The db suite is skipped
-# when no Postgres is reachable (no HANGAR_TEST_DATABASE_URL and no docker): the number is then
+# when no Postgres is reachable (no WINGSMITH_TEST_DATABASE_URL and no docker): the number is then
 # an undercount, and that is called out, not hidden.
 
 # Measure test coverage for every lib, printing a per-lib total  [--html for browsable reports]
@@ -242,11 +242,11 @@ cov *args:
 
     marker="not database"
     floor=()
-    if [ -n "${HANGAR_TEST_DATABASE_URL:-}" ]; then
+    if [ -n "${WINGSMITH_TEST_DATABASE_URL:-}" ]; then
       marker=""
     elif command -v docker >/dev/null 2>&1; then
       docker compose up -d --wait db
-      export HANGAR_TEST_DATABASE_URL=postgresql+psycopg://hangar:hangar@localhost:5442/hangar
+      export WINGSMITH_TEST_DATABASE_URL=postgresql+psycopg://wingsmith:wingsmith@localhost:5442/wingsmith
       marker=""
     else
       echo "warn: no Postgres; plane coverage omits the database-backed suite (undercount)" >&2
@@ -293,7 +293,7 @@ interop *args:
 #
 # It creates and deletes its own namespaces and briefly patches one node's labels and
 # allocatable, restoring both. So it runs against the current context only when that is a kind
-# cluster (`just cluster-up`); any other context has to be named in HANGAR_E2E_CONTEXT. The Go test
+# cluster (`just cluster-up`); any other context has to be named in WINGSMITH_E2E_CONTEXT. The Go test
 # is handed a kubeconfig holding that one context, so it cannot wander onto another.
 #
 # The DynamoGraphDeployment CRD is a test stub. It is installed only where the real one is absent,
@@ -317,7 +317,7 @@ e2e *args:
     trap cleanup EXIT
     "${kube[@]}" config view --minify --flatten >"$work/kubeconfig"
     echo "running against '${context}': this patches a node and creates namespaces"
-    "${kube[@]}" apply -f {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml
+    "${kube[@]}" apply -f {{_operator}}/deploy/crd/wingsmith.dev_syncedresources.yaml
     if "${kube[@]}" get crd dynamographdeployments.nvidia.com >/dev/null 2>&1; then
       echo "dynamographdeployments.nvidia.com is already installed; leaving it as it is"
     else
@@ -347,15 +347,15 @@ check:
 
 # Ramp load through the real gateway, tunnel and agent on this host  [no GPU, no cluster]
 transit ramp="8,32,128" *args:
-    @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp {{ramp}} {{args}}
+    @cd {{_transit}} && go run ./cmd/wingstransit synthetic -repo ../.. -ramp {{ramp}} {{args}}
 
 # The CI shape of the above: one short ramp, JSON out, fails if the path cannot carry it
 transit-smoke:
-    @cd {{_transit}} && go run ./cmd/hgrtransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false -json
+    @cd {{_transit}} && go run ./cmd/wingstransit synthetic -repo ../.. -ramp 4,16 -hold 5s -baseline=false -json
 
 # Ramp against a deployed gateway. Intentionally small by default.
 transit-live url model *args:
-    @cd {{_transit}} && go run ./cmd/hgrtransit live -url {{url}} -model {{model}} {{args}}
+    @cd {{_transit}} && go run ./cmd/wingstransit live -url {{url}} -model {{model}} {{args}}
 
 # ── Benchmark from here ───────────────────────────────────────────────────────
 
@@ -366,11 +366,11 @@ transit-live url model *args:
 # number worth quoting, run the benchmark in the cluster, where the plane schedules the same AIPerf
 # image beside the engine.
 #
-# It is one AIPerf cell run by hgrbench: dev/bench_plan.py writes the plan from the BENCH_*
-# variables it documents, and hgrbench pins the image by digest, runs it, and renders the report.
+# It is one AIPerf cell run by wingsbench: dev/bench_plan.py writes the plan from the BENCH_*
+# variables it documents, and wingsbench pins the image by digest, runs it, and renders the report.
 # The URL is resolved inside the container, so `host.docker.internal` is how it reaches a
 # port-forward on this machine. BENCH_TOKEN, when set, is passed to the container by name and
-# never appears on a command line. Everything after the recipe name goes to `hgrbench run`.
+# never appears on a command line. Everything after the recipe name goes to `wingsbench run`.
 #
 #   BENCH_MODEL=openai/gpt-oss-20b just bench
 #   BENCH_MODEL=served-name BENCH_TOKENIZER=org/repo BENCH_CONCURRENCY=32 just bench
@@ -384,9 +384,9 @@ bench *args:
     mkdir -p "$plans"
     plan="$plans/bench-$(date +%Y%m%d-%H%M%S).toml"
     uv run --no-project --python 3.12 python dev/bench_plan.py >"$plan"
-    {{_bench_py}} python -m hgrbench run "$plan" {{args}}
+    {{_bench_py}} python -m wingsbench run "$plan" {{args}}
 
-# A suite is four harnesses against the same load points, from a plan that ships with hgrbench
+# A suite is four harnesses against the same load points, from a plan that ships with wingsbench
 # (`just bench-plans` lists them). `just bench` above is the quick one-harness check; this is the
 # one that answers how the endpoint behaves, and whether the tools agree about it. Flags only
 # narrow a plan:
@@ -401,19 +401,19 @@ bench *args:
 
 # Run a whole benchmark plan: four harnesses, one comparison report  [smoke | deep]
 bench-suite plan="smoke" *args:
-    @{{_bench_py}} python -m hgrbench run {{plan}} {{args}}
+    @{{_bench_py}} python -m wingsbench run {{plan}} {{args}}
 
 # What the suite runner can drive, and what each harness is for
 bench-harnesses:
-    @{{_bench_py}} python -m hgrbench harnesses
+    @{{_bench_py}} python -m wingsbench harnesses
 
 # The suite plans in this checkout, with what each one costs to run
 bench-plans:
-    @{{_bench_py}} python -m hgrbench plans
+    @{{_bench_py}} python -m wingsbench plans
 
 # Re-render a run's report, from `bench` or `bench-suite`, from what is already on disk  [latest by default]
 bench-report run="":
-    @{{_bench_py}} python -m hgrbench report {{run}}
+    @{{_bench_py}} python -m wingsbench report {{run}}
 
 # ── Conformance ───────────────────────────────────────────────────────────────
 #
@@ -434,15 +434,15 @@ bench-report run="":
 
 # Observe an endpoint, and optionally diff it against a reference  [profile] [--reference <profile>]
 conformance profile="example" *args:
-    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m hgrconform run {{profile}} {{args}}
+    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m wingsconform run {{profile}} {{args}}
 
 # Every question this knows how to ask, and which row of the standard each answers
 conformance-probes:
-    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m hgrconform probes
+    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m wingsconform probes
 
 # Re-diff a stored run without touching the endpoint again  [latest by default]
 conformance-diff run="":
-    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m hgrconform diff {{run}}
+    @cd {{_conform}} && PYTHONPATH=. .venv/bin/python -m wingsconform diff {{run}}
 
 # The self-check: run every probe against two correct-but-noisy stubs and fail on any difference.
 # This is what catches a probe comparing something that varies between runs, which is the one
@@ -462,16 +462,16 @@ conformance-gateway:
 # ── Chart ─────────────────────────────────────────────────────────────────────
 
 # Helm's crds/ dir is a plain copy, never templated, so it is synced by hand when the CRDs change.
-# Copy the hangar CRDs into the chart from their source of truth in libs/operator/deploy/crd
+# Copy the wingsmith CRDs into the chart from their source of truth in libs/operator/deploy/crd
 chart-sync-crds:
     #!/usr/bin/env bash
     set -euo pipefail
-    cp {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml {{_chart}}/crds/
-    cp {{_operator}}/deploy/crd/hangar.dev_streamcheckpoints.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/wingsmith.dev_syncedresources.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/wingsmith.dev_streamcheckpoints.yaml {{_chart}}/crds/
     echo "synced CRDs into {{_chart}}/crds"
 
 # Subchart tarballs are not vendored; template checks for them regardless of condition, so a
-# temp copy with the dependencies stripped renders the hangar-owned templates offline.
+# temp copy with the dependencies stripped renders the wingsmith-owned templates offline.
 # Lint and render the chart offline, catching template errors
 chart-lint:
     #!/usr/bin/env bash
@@ -479,7 +479,7 @@ chart-lint:
     py=(uv run --no-project --quiet --with pyyaml python)
     # The required values are the blanks an operator must fill; lint has to supply them.
     req=(--set cluster.id=lint --set cluster.hubUrl=wss://lint/v1/hub/sync
-         --set enrolmentToken.value=hgrtok_lint
+         --set enrolmentToken.value=wstok_lint
          --set pools.labelKey=lint.example.com/pool --set pools.gpuValue=gpu
          --set pools.cacheValue=system
          --set modelCache.storageClass=lint-models
@@ -494,7 +494,7 @@ chart-lint:
     import sys, pathlib
     p = pathlib.Path(sys.argv[1]); p.write_text(p.read_text().split("dependencies:")[0])
     PY
-    helm template lint "$work/chart" -n hangar-system "${req[@]}" \
+    helm template lint "$work/chart" -n wingsmith-system "${req[@]}" \
       --set hfToken.create=true --set hfToken.value=hf_lint \
       --set serving.enabled=true --set serving.host=lint.example.com \
       --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend >/dev/null
@@ -505,10 +505,10 @@ chart-lint:
     # per-model knobs moved under `frontend.perModel.*`.
     pull=(--set imagePullSecret.create=true --set imagePullSecret.name=ghcr-pull
           --set imagePullSecret.username=lint --set imagePullSecret.token=lint)
-    helm template lint "$work/chart" -n hangar-system "${req[@]}" "${pull[@]}" \
+    helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${pull[@]}" \
       --set 'frontend.imagePullSecrets[0]=ghcr-pull' \
       --show-only templates/20-secrets.yaml >"$work/frontend-secrets.yaml"
-    helm template lint "$work/chart" -n hangar-system "${req[@]}" "${pull[@]}" \
+    helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${pull[@]}" \
       --set 'operator.engine.imagePullSecrets[0]=ghcr-pull' \
       --show-only templates/20-secrets.yaml >"$work/operator-engine-secrets.yaml"
     "${py[@]}" - "$work/frontend-secrets.yaml" "$work/operator-engine-secrets.yaml" <<'PY'
@@ -528,14 +528,14 @@ chart-lint:
     # The credential is not among them: the agent authenticates with the enrolment token in req.
     mon=(--set monitoring.enabled=true --set cluster.region=lint-region-1
          --set monitoring.remoteWrite.url=https://metrics.example.com/api/v1/write)
-    helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" >/dev/null
-    # The escape hatch for a store that is not hangar's still needs its own pair.
+    helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" >/dev/null
+    # The escape hatch for a store that is not wingsmith's still needs its own pair.
     own=(--set monitoring.remoteWrite.basicAuth.useEnrolmentToken=false
          --set monitoring.remoteWrite.basicAuth.username=lint
          --set monitoring.remoteWrite.basicAuth.password=lint)
-    helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" "${own[@]}" >/dev/null
+    helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" "${own[@]}" >/dev/null
     # Off means nothing rendered, not an agent pointed nowhere.
-    if helm template lint "$work/chart" -n hangar-system "${req[@]}" | grep -q '^  name: hangar-metrics-agent$'; then
+    if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" | grep -q '^  name: wingsmith-metrics-agent$'; then
       echo "the metrics agent renders with monitoring.enabled=false" >&2
       exit 1
     fi
@@ -554,19 +554,19 @@ chart-lint:
     PY
     # Each required blank must fail loudly when left empty, not render something broken.
     for blank in pools.labelKey pools.gpuValue pools.cacheValue modelCache.storageClass enrolmentToken.value; do
-      if helm template lint "$work/chart" -n hangar-system "${req[@]}" --set "$blank=" >/dev/null 2>&1; then
+      if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" --set "$blank=" >/dev/null 2>&1; then
         echo "chart renders with an empty $blank; it should have failed" >&2
         exit 1
       fi
     done
     for blank in cluster.region monitoring.remoteWrite.url; do
-      if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" --set "$blank=" >/dev/null 2>&1; then
+      if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" --set "$blank=" >/dev/null 2>&1; then
         echo "chart renders with monitoring on and an empty $blank; it should have failed" >&2
         exit 1
       fi
     done
     for blank in monitoring.remoteWrite.basicAuth.username monitoring.remoteWrite.basicAuth.password; do
-      if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" "${own[@]}" \
+      if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" "${own[@]}" \
            --set "$blank=" >/dev/null 2>&1; then
         echo "chart renders with useEnrolmentToken=false and an empty $blank; it should have failed" >&2
         exit 1
@@ -574,7 +574,7 @@ chart-lint:
     done
     # The enrolment token IS the remote-write credential, so an agent without one 401s forever and
     # says so nowhere but its own log. Refused at render instead.
-    if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" \
+    if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" \
          --set enrolmentToken.value= >/dev/null 2>"$work/err"; then
       echo "chart renders monitoring with useEnrolmentToken=true and no enrolment token" >&2
       exit 1
@@ -584,13 +584,13 @@ chart-lint:
       exit 1
     fi
     # A pre-created basicAuth Secret alongside useEnrolmentToken would be mounted by nothing.
-    if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" \
+    if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" \
          --set monitoring.remoteWrite.basicAuth.existing=true >/dev/null 2>&1; then
       echo "chart renders with both basicAuth.useEnrolmentToken and basicAuth.existing" >&2
       exit 1
     fi
     # Two scrapers for one exporter is a doubled series, so the pair is refused, not merged.
-    if helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" \
+    if helm template lint "$work/chart" -n wingsmith-system "${req[@]}" "${mon[@]}" \
          --set dcgm-exporter.serviceMonitor.enabled=true >/dev/null 2>&1; then
       echo "chart renders with both monitoring.enabled and dcgm-exporter.serviceMonitor.enabled" >&2
       exit 1

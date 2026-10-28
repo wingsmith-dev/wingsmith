@@ -1,6 +1,6 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: hangar
+name: wingsmith
 nodes:
   - role: control-plane
     kubeadmConfigPatches:
@@ -8,7 +8,7 @@ nodes:
         kind: InitConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "hangar.dev/role=dev"
+            node-labels: "wingsmith.dev/role=dev"
 networking:
   apiServerAddress: "127.0.0.1"
   apiServerPort: 6553

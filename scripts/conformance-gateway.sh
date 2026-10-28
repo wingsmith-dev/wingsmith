@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Runs hgrconform against the real gateway, built from this checkout, and diffs it against the
+# Runs wingsconform against the real gateway, built from this checkout, and diffs it against the
 # engine it fronts.
 #
 #   conformance-gateway.sh [results-dir]     default: a temporary directory, removed afterwards
 #
 # Two copies of libs/conformance/tests/stub.py stand in for the engine. One sits behind the path
-# `hgrtransit path` holds open (fake plane, gateway, tunnel, agent), with OPEN=1 because the gateway
+# `wingstransit path` holds open (fake plane, gateway, tunnel, agent), with OPEN=1 because the gateway
 # checks the caller's key and does not forward it. The other is asked directly, as the reference.
 # Both are deterministic (QUIRK=none), so every difference between the two runs is something the
 # gateway changed.
@@ -49,7 +49,7 @@ wait_for() {
 behind="$(free_port)"
 direct="$(free_port)"
 gateway="$(free_port)"
-export HANGAR_API_KEY="hgrconform-ci-key"
+export WINGSMITH_API_KEY="wingsconform-ci-key"
 
 OPEN=1 QUIRK=none "$python" "$conform/tests/stub.py" "$behind" >"$work/stub-behind.log" 2>&1 &
 pids+=($!)
@@ -59,10 +59,10 @@ for port in "$behind" "$direct"; do
   wait_for "the stub on $port" "curl -fsS -o /dev/null http://127.0.0.1:$port/v1/models" 20
 done
 
-# Built first and run directly, so the pid killed on exit is hgrtransit itself, which takes the
+# Built first and run directly, so the pid killed on exit is wingstransit itself, which takes the
 # gateway and agent down with it. Building those two is most of the wait.
-(cd "$root/libs/transit" && go build -o "$work/hgrtransit" ./cmd/hgrtransit)
-"$work/hgrtransit" path -repo "$root" -frontend "http://127.0.0.1:$behind" \
+(cd "$root/libs/transit" && go build -o "$work/wingstransit" ./cmd/wingstransit)
+"$work/wingstransit" path -repo "$root" -frontend "http://127.0.0.1:$behind" \
   -listen "127.0.0.1:$gateway" >"$work/path.log" 2>&1 &
 pids+=($!)
 if ! wait_for "the gateway path" "grep -q 'path ready' '$work/path.log'" 300; then
@@ -76,11 +76,11 @@ profile() {
 name = "$1"
 base_url = "http://127.0.0.1:$2"
 model = "gpt-oss-120b"
-token_env = "HANGAR_API_KEY"
+token_env = "WINGSMITH_API_KEY"
 context_window = 4096
 modalities = ["text", "image", "audio", "video"]
 protocols = ["chat_completions", "messages"]
-leak_needles = ["hangar", "dynamo", "vllm", "transit"]
+leak_needles = ["wingsmith", "dynamo", "vllm", "transit"]
 
 [thinking]
 syntax = "chat_template"
@@ -92,7 +92,7 @@ profile gateway "$gateway" >"$work/gateway.toml"
 profile engine "$direct" >"$work/engine.toml"
 
 # The diff's own exit code is 1 on any difference, accepted or not; the check below decides.
-(cd "$conform" && PYTHONPATH=. "$python" -m hgrconform --results "$results" \
+(cd "$conform" && PYTHONPATH=. "$python" -m wingsconform --results "$results" \
   run "$work/gateway.toml" --reference "$work/engine.toml") || true
 
 cd "$conform"
@@ -100,9 +100,9 @@ PYTHONPATH=. "$python" - "$results" "$accepted" <<'PY'
 import sys
 from pathlib import Path
 
-from hgrconform.cli import compare_run
-from hgrconform.store import latest_run, read_run
-from hgrconform.probes import registry
+from wingsconform.cli import compare_run
+from wingsconform.store import latest_run, read_run
+from wingsconform.probes import registry
 
 registry.load()
 results, accepted_file = Path(sys.argv[1]), Path(sys.argv[2])

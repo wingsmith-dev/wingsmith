@@ -1,4 +1,4 @@
-"""The one-run plan `just bench` hands to hgrbench, written from BENCH_* variables.
+"""The one-run plan `just bench` hands to wingsbench, written from BENCH_* variables.
 
 A committed plan is the right shape for a suite and the wrong one for "how does this endpoint do
 at concurrency 32, right now". This writes that question as a plan, so the quick check runs
@@ -12,7 +12,7 @@ of them.
     BENCH_REQUESTS     requests in total (default: 100)
     BENCH_ISL          input tokens per request (default: 2000)
     BENCH_OSL          output tokens per request (default: 256)
-    BENCH_TOKEN        sent as a bearer token when set; read by hgrbench, never written here
+    BENCH_TOKEN        sent as a bearer token when set; read by wingsbench, never written here
 """
 
 from __future__ import annotations

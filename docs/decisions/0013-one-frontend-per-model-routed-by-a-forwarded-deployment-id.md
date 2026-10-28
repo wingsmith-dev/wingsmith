@@ -37,12 +37,12 @@ chosen a **deployment**.
    differ: the K3 fix is compiled into the frontend binary, and its worker correctly stays on
    NVIDIA's base image. The plane never substitutes one for the other: an image it invented is
    indistinguishable on arrival from one somebody pinned.
-3. **The gateway forwards the deployment id it already resolved, as `X-Hangar-Deployment-Id`.** The
+3. **The gateway forwards the deployment id it already resolved, as `X-Wingsmith-Deployment-Id`.** The
    constant lives in [`libs/packages/tunnel`](../../libs/packages/tunnel/headers.go), because neither
    end owns the wire. The gateway sets it unconditionally and deletes it when there is none:
    `ReverseProxy` clones inbound headers verbatim, so anything less lets a caller pick which model's
    frontend answers them.
-4. **The agent maps that id to a Service by the `hangar.dev/deployment-id` label.** Dynamo copies a
+4. **The agent maps that id to a Service by the `wingsmith.dev/deployment-id` label.** Dynamo copies a
    component's pod-template labels onto the Service it derives: verified on a live cluster, where the
    worker Service carries the deployment, recipe and project the operator set on the worker's pods. A
    frontend Service with no such label is the cluster's shared frontend and is the fallback.

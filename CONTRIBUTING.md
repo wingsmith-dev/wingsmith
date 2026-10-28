@@ -1,6 +1,6 @@
-# Contributing to Hangar
+# Contributing to Wingsmith
 
-Thanks for looking. Hangar is pre-release and maintained by a small team, so the process below is
+Thanks for looking. Wingsmith is pre-release and maintained by a small team, so the process below is
 kept light. If something here is unclear or gets in your way, open an issue about that too.
 
 - **Bugs and feature requests**: open an issue using one of the templates.
@@ -32,7 +32,7 @@ its layout and how to run it on its own.
 | `just fmt` | ruff, gofmt, prettier (`--check` to verify without writing) | nothing |
 | `just lint` | ruff, `go vet`, eslint, tsc | nothing |
 | `just test` | pytest, `go test`, vitest | nothing: no database, no cluster |
-| `just test-db` | the database-backed plane tests | Docker (or `HANGAR_TEST_DATABASE_URL`) |
+| `just test-db` | the database-backed plane tests | Docker (or `WINGSMITH_TEST_DATABASE_URL`) |
 | `just interop` | the real Go operator client against the real Python hub | nothing beyond `just setup` |
 | `just check` | all of the above, in order | Docker |
 

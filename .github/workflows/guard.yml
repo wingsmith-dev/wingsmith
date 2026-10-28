@@ -28,13 +28,13 @@ jobs:
       # Fork PRs get no secrets; the push to main after merge still runs this.
       - name: denylist
         env:
-          DENYLIST: ${{ secrets.HANGAR_DENYLIST }}
+          DENYLIST: ${{ secrets.WINGSMITH_DENYLIST }}
         run: |
           if [ -z "$DENYLIST" ]; then
-            echo "::notice::HANGAR_DENYLIST unavailable, skipping"
+            echo "::notice::WINGSMITH_DENYLIST unavailable, skipping"
             exit 0
           fi
           printf '%s\n' "$DENYLIST" > "$RUNNER_TEMP/denylist"
-          HANGAR_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh tree
+          WINGSMITH_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh tree
           # Every line ever added, and every author and message, not just what HEAD holds.
-          git log --all -p --format='%an%n%ae%n%B' | HANGAR_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh message /dev/stdin
+          git log --all -p --format='%an%n%ae%n%B' | WINGSMITH_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh message /dev/stdin

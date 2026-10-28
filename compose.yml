@@ -1,4 +1,4 @@
-name: hangar
+name: wingsmith
 
 # The plane, as processes something else supervises.
 #
@@ -14,17 +14,17 @@ name: hangar
 # shadows the directory it lands in, so the api here serves the API alone and 404s on `/`. That is
 # the intended local shape: the dev server owns the console, and the deployed image owns both.
 #
-# The reactor runs inside the hub (HANGAR_REACTOR_ENABLED defaults on), so it has no service here.
+# The reactor runs inside the hub (WINGSMITH_REACTOR_ENABLED defaults on), so it has no service here.
 #
 # This is a local stack and nothing else. Every port is published on 127.0.0.1 only, the database
-# password is `hangar`, and HANGAR_APP_ENV=local turns admin authentication off: anyone who can
+# password is `wingsmith`, and WINGSMITH_APP_ENV=local turns admin authentication off: anyone who can
 # reach the api is an administrator. Do not publish these ports to a network, and do not deploy
 # this file.
 
 # One image, built once by `migrate` (which every other plane service waits for) and reused by
 # name. Each service declaring its own `build` is the same image built three times.
 x-plane-image: &plane-image
-  image: hangar-plane:local
+  image: wingsmith-plane:local
 
 x-plane: &plane
   <<: *plane-image
@@ -42,14 +42,14 @@ x-plane: &plane
     - ./libs/plane/migrations:/app/migrations:ro
     - ./libs/packages/contract:/app/contract:ro
   environment: &plane-env
-    HANGAR_DATABASE_URL: postgresql+psycopg://hangar:hangar@db:5442/hangar
+    WINGSMITH_DATABASE_URL: postgresql+psycopg://wingsmith:wingsmith@db:5442/wingsmith
     # Overrides the image's baked-in `production`. This file is the local stack, and `local` is
     # what makes the admin password and the session secret optional; see config/settings.py.
-    HANGAR_APP_ENV: local
+    WINGSMITH_APP_ENV: local
     # `local` binds loopback by default, which inside a container is unreachable. The ports below
     # are published on the host's loopback only, so this does not put the API on the network.
-    HANGAR_API_HOST: 0.0.0.0
-    HANGAR_APP_LOG_FORMAT: console
+    WINGSMITH_API_HOST: 0.0.0.0
+    WINGSMITH_APP_LOG_FORMAT: console
   depends_on:
     db:
       condition: service_healthy
@@ -61,16 +61,16 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: hangar
-      POSTGRES_PASSWORD: hangar
-      POSTGRES_DB: hangar
+      POSTGRES_USER: wingsmith
+      POSTGRES_PASSWORD: wingsmith
+      POSTGRES_DB: wingsmith
       PGPORT: "5442"
     ports:
       - "127.0.0.1:5442:5442"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hangar -d hangar -p 5442"]
+      test: ["CMD-SHELL", "pg_isready -U wingsmith -d wingsmith -p 5442"]
       interval: 5s
       timeout: 5s
       retries: 10

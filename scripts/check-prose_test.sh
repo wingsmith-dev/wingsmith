@@ -14,8 +14,8 @@ fail() {
   failures=$((failures + 1))
 }
 
-export HANGAR_PROSE_DENYLIST="$work/denylist"
-printf '%s\n' '# a comment line' 'zq9' 'frobnitz-dev' 'libs/frob' 'Acme Assist' >"$HANGAR_PROSE_DENYLIST"
+export WINGSMITH_PROSE_DENYLIST="$work/denylist"
+printf '%s\n' '# a comment line' 'zq9' 'frobnitz-dev' 'libs/frob' 'Acme Assist' >"$WINGSMITH_PROSE_DENYLIST"
 
 day="2026-09-""01"
 dash="$(printf '\342\200\224')"
@@ -111,7 +111,7 @@ done
 
 # Without the private denylist the names check is skipped, and says so.
 repo no-denylist libs/x/a.go "// seen on zq9"
-if ! (cd "$work/no-denylist" && HANGAR_PROSE_DENYLIST="$work/absent" scripts/check-prose.sh staged \
+if ! (cd "$work/no-denylist" && WINGSMITH_PROSE_DENYLIST="$work/absent" scripts/check-prose.sh staged \
   >/dev/null 2>"$work/no-denylist.err"); then
   fail "a missing denylist refused: $(cat "$work/no-denylist.err")"
 fi

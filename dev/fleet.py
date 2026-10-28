@@ -47,10 +47,10 @@ from dataclasses import dataclass
 import websockets
 
 
-API = os.environ.get("HANGAR_API", "http://localhost:8000")
-HUB = os.environ.get("HANGAR_HUB", "ws://localhost:8001/v1/hub/sync")
+API = os.environ.get("WINGSMITH_API", "http://localhost:8000")
+HUB = os.environ.get("WINGSMITH_HUB", "ws://localhost:8001/v1/hub/sync")
 
-API_TOKEN = os.environ.get("HANGAR_API_TOKEN", "")
+API_TOKEN = os.environ.get("WINGSMITH_API_TOKEN", "")
 """An admin session token, sent to the API as a bearer when set.
 
 The compose stack runs with `APP_ENV=local`, which turns admin auth off, so locally this is
@@ -60,10 +60,10 @@ never sees it: each cluster connects with its own enrolment token, minted below.
 
 OPERATOR_VERSION = "0.0.0-fake"
 
-HEARTBEAT_SECONDS = float(os.environ.get("HANGAR_FLEET_HEARTBEAT", "10"))
-POLL_SECONDS = float(os.environ.get("HANGAR_FLEET_POLL", "2"))
+HEARTBEAT_SECONDS = float(os.environ.get("WINGSMITH_FLEET_HEARTBEAT", "10"))
+POLL_SECONDS = float(os.environ.get("WINGSMITH_FLEET_POLL", "2"))
 
-STARTUP_SECONDS = float(os.environ.get("HANGAR_FLEET_STARTUP", "3"))
+STARTUP_SECONDS = float(os.environ.get("WINGSMITH_FLEET_STARTUP", "3"))
 """How long a replica spends `starting` before it goes `ready`.
 
 Not zero: a deployment that is ready in the tick it was declared makes the pending and

@@ -6,12 +6,12 @@
 #   check-leaks.sh tree       every tracked file (pre-commit and CI)
 #
 # The denylist names things that must never appear here, so it cannot live here either.
-# It is read from $HANGAR_DENYLIST, default ~/.config/hangar-oss/denylist, one
+# It is read from $WINGSMITH_DENYLIST, default ~/.config/wingsmith-oss/denylist, one
 # case-insensitive extended regex per line. A missing denylist fails closed.
 set -euo pipefail
 
 mode="${1:-staged}"
-denylist="${HANGAR_DENYLIST:-$HOME/.config/hangar-oss/denylist}"
+denylist="${WINGSMITH_DENYLIST:-$HOME/.config/wingsmith-oss/denylist}"
 
 if [ ! -s "$denylist" ]; then
   echo "check-leaks: denylist not found at $denylist" >&2
@@ -29,7 +29,7 @@ hf_[A-Za-z0-9]{30,}
 sk-[A-Za-z0-9_-]{30,}
 xox[abpr]-[A-Za-z0-9-]{10,}
 BEGIN [A-Z ]*PRIVATE KEY
-hgr[a-z]1\.[A-Za-z0-9_.:-]{20,}
+ws[a-z]1\.[A-Za-z0-9_.:-]{20,}
 EOF
 
 case "$mode" in

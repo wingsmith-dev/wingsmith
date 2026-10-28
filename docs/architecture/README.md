@@ -1,6 +1,6 @@
 # Architecture
 
-How Hangar is put together and why. This is the reference for the shape of the system: the
+How Wingsmith is put together and why. This is the reference for the shape of the system: the
 topology, the rules the object model is built on, the objects themselves, and the processes that
 carry them. Individual choices, with the alternatives they beat, are recorded as ADRs in
 [`../decisions/`](../decisions/); this document links to them where they settle a point.
@@ -9,12 +9,12 @@ carry them. Individual choices, with the alternatives they beat, are recorded as
 
 ## 1. What this is, and what it is not
 
-Hangar is a control plane that serves **many models across several Kubernetes GPU clusters**:
+Wingsmith is a control plane that serves **many models across several Kubernetes GPU clusters**:
 cluster enrolment, device inventory, placement, model lifecycle, serving configuration, quota, and
 operations, plus the gateway that routes inference requests to the cluster serving each model.
 Inside each cluster, a model is served by rendering it into an **NVIDIA Dynamo** graph
 (`DynamoGraphDeployment`); Dynamo, with vLLM, SGLang or TensorRT-LLM inside it, is the only serving
-runtime Hangar drives today.
+runtime Wingsmith drives today.
 
 It is pre-release and built for one organisation operating its own clusters, run by a single
 operator or a small team sharing one admin role. What is not built yet is listed in the
@@ -23,10 +23,10 @@ design reserves room for more.
 
 Four scoping decisions frame everything below.
 
-**It is standalone.** Hangar owns its own database, its own deployment and its own vocabulary. A
+**It is standalone.** Wingsmith owns its own database, its own deployment and its own vocabulary. A
 system that wants to sell or meter inference on top of it talks to it through its API.
 
-**Inference serving only, for now.** Everything Hangar renders today is a long-running model
+**Inference serving only, for now.** Everything Wingsmith renders today is a long-running model
 server. The object model reserves room for batch and gang-scheduled work (§11.2), but no renderer
 for them exists.
 
@@ -34,13 +34,13 @@ for them exists.
 renderer is possible, but the operator renders only Dynamo graphs. A cluster has to run the Dynamo
 platform, which the `cluster-setup` chart installs.
 
-**The organisation running Hangar owns every cluster it manages.** No clusters belonging to a third
+**The organisation running Wingsmith owns every cluster it manages.** No clusters belonging to a third
 party, no air-gapped installs. This simplifies exactly one object (Pool, §5.1) and it is easy to
 read too much into it (§2.2).
 
 What it is not, by design:
 
-- **Not a device scheduler.** The scheduler inside each cluster picks cards. Hangar picks clusters.
+- **Not a device scheduler.** The scheduler inside each cluster picks cards. Wingsmith picks clusters.
 - **Not a Kubernetes dashboard.** Showing an operator CRD trees and asking them to reconstruct
   intent is the thing being replaced.
 - **Not a training or batch platform.** It does not run jobs to completion, and it does not preempt.
@@ -54,21 +54,21 @@ What it is not, by design:
 ### 1.1 Where it sits among related projects
 
 Most of the projects below work inside one cluster, or in front of endpoints that already exist.
-Hangar's layer is the one above a set of clusters: which clusters a model runs on, what each one
+Wingsmith's layer is the one above a set of clusters: which clusters a model runs on, what each one
 is told to run, and how a request finds it.
 
-| Project | What it does | Relation to Hangar |
+| Project | What it does | Relation to Wingsmith |
 |---|---|---|
-| **NVIDIA Dynamo** (operator and Planner) | Serves a model inside one cluster: frontend, KV-aware router, disaggregated prefill/decode workers; the Planner scales workers against latency targets | Hangar renders into it. Each Hangar deployment becomes one `DynamoGraphDeployment` in one cluster |
-| **llm-d** | Kubernetes-native distributed inference inside a cluster: vLLM, an inference scheduler on the Gateway API Inference Extension, disaggregation | An in-cluster alternative to Dynamo. Not a renderer Hangar has |
-| **KServe** | Model-serving CRDs (`InferenceService`) per cluster, with autoscaling and many runtimes | Per-cluster serving. Hangar does not render KServe objects |
+| **NVIDIA Dynamo** (operator and Planner) | Serves a model inside one cluster: frontend, KV-aware router, disaggregated prefill/decode workers; the Planner scales workers against latency targets | Wingsmith renders into it. Each Wingsmith deployment becomes one `DynamoGraphDeployment` in one cluster |
+| **llm-d** | Kubernetes-native distributed inference inside a cluster: vLLM, an inference scheduler on the Gateway API Inference Extension, disaggregation | An in-cluster alternative to Dynamo. Not a renderer Wingsmith has |
+| **KServe** | Model-serving CRDs (`InferenceService`) per cluster, with autoscaling and many runtimes | Per-cluster serving. Wingsmith does not render KServe objects |
 | **AIBrix** | Control-plane components for vLLM in one cluster: LLM-aware gateway, autoscaler, LoRA management, distributed KV cache | Same layer as Dynamo's own control plane, inside one cluster |
-| **SkyServe** (SkyPilot) | Serves a model across clouds and regions by provisioning its own VMs or pods and load-balancing across them | Provisions compute itself; Hangar manages clusters you already run and leaves provisioning to you |
-| **LiteLLM, Envoy AI Gateway** | API gateways in front of model providers: one API, keys, rate limits, cost tracking | Route to endpoints that already exist. Hangar's gateway is narrower (no billing, no provider catalog) and is fed by the plane's knowledge of what runs where |
-| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Hangar intentionally leaves to the cluster. Hangar does not preempt or run training |
+| **SkyServe** (SkyPilot) | Serves a model across clouds and regions by provisioning its own VMs or pods and load-balancing across them | Provisions compute itself; Wingsmith manages clusters you already run and leaves provisioning to you |
+| **LiteLLM, Envoy AI Gateway** | API gateways in front of model providers: one API, keys, rate limits, cost tracking | Route to endpoints that already exist. Wingsmith's gateway is narrower (no billing, no provider catalog) and is fed by the plane's knowledge of what runs where |
+| **Run:ai, KAI Scheduler** | GPU scheduling inside a cluster: quotas, fair share, preemption, for training and inference | Device scheduling, which Wingsmith intentionally leaves to the cluster. Wingsmith does not preempt or run training |
 
-NVIDIA has signalled multi-cluster coordination for Dynamo. If that ships, the overlap with Hangar
-is cross-cluster placement and routing. What Hangar adds on top of a single cluster's Dynamo today:
+NVIDIA has signalled multi-cluster coordination for Dynamo. If that ships, the overlap with Wingsmith
+is cross-cluster placement and routing. What Wingsmith adds on top of a single cluster's Dynamo today:
 
 - **Clusters that only dial out.** No kubeconfig in a central database and no inbound port on any
   cluster, for the control stream and for inference traffic (§2, §7.2).
@@ -79,7 +79,7 @@ is cross-cluster placement and routing. What Hangar adds on top of a single clus
 - **Fleet inventory per device.** Device identity and health from DCGM, a device-class table shared
   by plane and operator, and placement against it (§5).
 - **Measurement of the serving path.** Conformance probes of an endpoint against a reference
-  provider (`hgrconform`), load tests (`hgrbench`) and request-path measurement (`hgrtransit`).
+  provider (`wingsconform`), load tests (`wingsbench`) and request-path measurement (`wingstransit`).
 
 ---
 
@@ -93,7 +93,7 @@ is cross-cluster placement and routing. What Hangar adds on top of a single clus
 ```
                          ┌──────────────── control plane ────────────────┐
 console (ts) ──http──►   │  api (python) ◄──► Postgres ◄──► hub (python) │
-hgr     (go) ──http──►   │                       ▲                 ▲     │
+wings   (go) ──http──►   │                       ▲                 ▲     │
                          │                  reactor (python)       │     │
                          └─────────────────────────────────────────┼─────┘
                                                                    │ WebSocket, dialled outbound
@@ -103,7 +103,7 @@ hgr     (go) ──http──►   │                       ▲                
                        └── reads the routing table from the api        └─ one of each per cluster ─┘
 ```
 
-Each cluster runs two Hangar processes. The **operator** operates the cluster: it receives desired
+Each cluster runs two Wingsmith processes. The **operator** operates the cluster: it receives desired
 state from the hub, renders it into Kubernetes objects, and reports what it observes back up. The
 **agent** carries inference traffic: it dials the gateway and proxies requests to the model's
 frontend inside the cluster. Neither the plane nor the gateway ever opens a connection into a
@@ -141,7 +141,7 @@ agent and the operator both dial out.
 is a detail of how it syncs. The real choice was narrower:
 
 - **An operator-initiated bidirectional stream.** One connection, request/response plus server push,
-  straightforward TLS, tractable backpressure and resume. This is what Hangar uses.
+  straightforward TLS, tractable backpressure and resume. This is what Wingsmith uses.
 - **A message bus.** Better for fan-out to many independent consumers, at the cost of making a broker
   a hard dependency of cluster management. If a bus ever appears it is an internal control-plane
   concern, not the plane-to-cluster wire.
@@ -175,7 +175,7 @@ actor, a reason and a failure mode. Modelled as `node.status = 'draining'`, ther
 with GPU reset, node reboot, cache warm and rolling update. One `Operation` object with a typed
 payload covers all of them.
 
-The observed half is not a mirror of the declared half. Hangar never declares a Node. Observed
+The observed half is not a mirror of the declared half. Wingsmith never declares a Node. Observed
 objects also get their identity from the side that observes them: the cluster mints the id of a
 node, device or topology domain when it first sees it, and the plane validates the shape and never
 re-mints it, because the plane cannot name a thing it has not heard of yet
@@ -188,7 +188,7 @@ other.
 
 ### 3.2 The wire carries domain objects, never Kubernetes manifests
 
-The plane does not send Kubernetes Deployments. It sends Hangar's own `Deployment`, `Pool`,
+The plane does not send Kubernetes Deployments. It sends Wingsmith's own `Deployment`, `Pool`,
 `Operation`, and the operator expands them into whatever Kubernetes objects it currently favours.
 
 This is the most important structural decision in the system. The Kubernetes-level implementation
@@ -213,7 +213,7 @@ them pass through the control plane.
 
 If any of them did, **the control plane's availability would become the inference SLA**. A control
 plane is allowed to be down for an hour in a way an endpoint is not. The plane says where things go;
-it never carries them. The gateway is the one Hangar process in the request path, and it is built to
+it never carries them. The gateway is the one Wingsmith process in the request path, and it is built to
 keep serving from the last routing table it loaded when the plane is unreachable. It does depend on
 the plane to start: a gateway that restarts during a plane outage cannot load a table and stays
 down (§7.1).
@@ -232,7 +232,7 @@ Four groups. Most of the design is in the seams between them.
 | **Machinery**: what makes it operable | Component, Operation, Event, CacheEntry, Credential | mixed |
 
 The HTTP API that exposes these is specified in `libs/packages/contract/API.md`; the console and
-`hgr` are two clients of the same surface ([ADR 0004](../decisions/0004-http-api-cli-admin-reconciliation.md)).
+`wings` are two clients of the same surface ([ADR 0004](../decisions/0004-http-api-cli-admin-reconciliation.md)).
 
 ---
 
@@ -256,13 +256,13 @@ Kubernetes does not know a GPU's UUID; node labels say how many cards there are 
 which cards. Device identity therefore comes from the DCGM exporter the cluster already runs, which
 the operator reads inside the cluster
 ([ADR 0007](../decisions/0007-device-identity-comes-from-the-dcgm-exporter.md)). Vendor strings map
-to a Hangar device class through one table, `libs/packages/contract/devices.json`, read by both the
+to a Wingsmith device class through one table, `libs/packages/contract/devices.json`, read by both the
 operator and the plane.
 
 **Pool is declared**, and this is the one place where owning the hardware changes the design. If
-Hangar managed a cluster it did not provision, nodes would simply appear and a declared pool with a
+Wingsmith managed a cluster it did not provision, nodes would simply appear and a declared pool with a
 min and max would be a lie; Pool would have to degrade to a label selector over observed nodes. Since
-the operator of a Hangar install owns its clusters, Pool is a genuine provisioning spec. If that
+the operator of a Wingsmith install owns its clusters, Pool is a genuine provisioning spec. If that
 assumption ever changes, this is the object that breaks first.
 
 ### 5.2 Topology is an object, not an annotation
@@ -394,7 +394,7 @@ one of them. A cluster's own quota takes precedence over a fleet-wide one in tha
 
 ### 6.4 Adoption and authority
 
-Hangar is pointed at clusters that are already serving, with models resident in GPU memory and
+Wingsmith is pointed at clusters that are already serving, with models resident in GPU memory and
 traffic on them that the plane never declared. Importing them as declared state would restart every
 one of them the first time the reconciler ran.
 
@@ -445,7 +445,7 @@ tenant's model reads as `404`, never `403`
 ([ADR 0016](../decisions/0016-the-listener-is-the-guard-tenant-identity-replaces-the-shared-token.md)).
 
 **The gateway is one failure domain.** It is a single deployment, wherever it runs, so if every
-replica is down every model is unreachable through Hangar, in every region. Run several replicas
+replica is down every model is unreachable through Wingsmith, in every region. Run several replicas
 across zones; regional gateways are not designed yet. Its internal listener has no authentication
 and must be kept off any ingress and behind a NetworkPolicy
 ([deploying the plane](../operations/deploy-plane.md)).
@@ -473,7 +473,7 @@ the operator's sync connection, control-plane uptime would be the inference SLA 
 
 Inside the cluster, the operator renders a frontend for each model as part of that model's
 deployment, instead of one shared frontend for the cluster. The gateway forwards the deployment id
-it resolved as `X-Hangar-Deployment-Id`, and the agent maps it to the frontend Service labelled with
+it resolved as `X-Wingsmith-Deployment-Id`, and the agent maps it to the frontend Service labelled with
 that id ([ADR 0013](../decisions/0013-one-frontend-per-model-routed-by-a-forwarded-deployment-id.md)).
 It does not poll each frontend's `/v1/models`: two deployments of the same model on one cluster, a
 canary for instance, advertise the same name, and routing on it would silently collapse a weighted
@@ -528,7 +528,7 @@ metrics store, and none of it passes through the hub. The plane reads that store
 request time, and the browser never queries it directly
 ([ADR 0003](../decisions/0003-telemetry-is-read-beside-the-api-not-through-the-hub.md)).
 
-- Metric names are Hangar's own and vendor-neutral. The query dialect sits behind a `Backend`
+- Metric names are Wingsmith's own and vendor-neutral. The query dialect sits behind a `Backend`
   interface, so a second store is a new implementation instead of a refactor, and every query carries
   a cluster matcher ([ADR 0008](../decisions/0008-metrics-are-answered-by-a-backend-not-by-promql.md)).
 - Each cluster's metrics label is declared on its registry row
@@ -548,7 +548,7 @@ request time, and the browser never queries it directly
 
 `libs/plane` is one Python package that runs as three processes over one Postgres database.
 
-- **api**: the HTTP API, request/response, serving the console and `hgr`.
+- **api**: the HTTP API, request/response, serving the console and `wings`.
 - **hub**: terminates the long-lived operator streams, with resume and backpressure.
 - **reactor**: derives alerts on its own loop, under a lease, and reconciles the derived
   configuration the fleet needs.
@@ -635,7 +635,7 @@ permanently. That does not survive a second region.
 
 ### 11.2 Inference first, with room reserved for other workloads
 
-Hangar serves models. It does not run training or batch jobs, and it does not preempt anything.
+Wingsmith serves models. It does not run training or batch jobs, and it does not preempt anything.
 The object model was nevertheless shaped so that adding them later does not mean rewriting
 placement, because **serving-only placement and queue-based placement are different schedulers**,
 and retrofitting a queue onto a reconciler that assumes "desired replicas, always admitted" is the
@@ -728,7 +728,7 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
   accounts, roles or SSO.
 - **One serving runtime.** Clusters must run NVIDIA Dynamo, and workloads are rendered only as
   Dynamo graphs.
-- **The `hangar.dev` API group is interim.** CRDs are `v1alpha1` with no conversion, and the group
+- **The `wingsmith.dev` API group is interim.** CRDs are `v1alpha1` with no conversion, and the group
   name may change before the first release.
 
 ---

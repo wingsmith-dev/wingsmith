@@ -1,4 +1,4 @@
-"""dev/bench_plan.py: the plan `just bench` writes is one AIPerf cell hgrbench can load."""
+"""dev/bench_plan.py: the plan `just bench` writes is one AIPerf cell wingsbench can load."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ import bench_plan
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "libs" / "benchmarking"))
 
-from hgrbench.plan import expand
-from hgrbench.plan import load_plan
-from hgrbench.plan import sweep_specs
+from wingsbench.plan import expand
+from wingsbench.plan import load_plan
+from wingsbench.plan import sweep_specs
 
 
 def written(tmp_path: Path, env: dict[str, str]):

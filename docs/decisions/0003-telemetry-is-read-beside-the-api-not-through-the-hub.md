@@ -5,7 +5,7 @@
 ## Context
 
 The console could answer what hardware exists and what is declared onto it, and nothing about how
-any of it is behaving. Every operator question that motivated Hangar needed a number the API did not
+any of it is behaving. Every operator question that motivated Wingsmith needed a number the API did not
 have: is this cluster busy, is a card running hot enough to start an RMA, what is this deployment's
 time to first token.
 
@@ -17,7 +17,7 @@ changes, and pushing it through the sync channel would make the channel about me
 
 The open question was therefore not whether to carry telemetry, but where the console reads it from.
 
-Two facts about the clusters Hangar was first run against settled the shape. They already ran
+Two facts about the clusters Wingsmith was first run against settled the shape. They already ran
 kube-prometheus-stack with DCGM-exporter and a PodMonitor for the serving engine, so the numbers
 already existed and were already scraped. And each cluster stored its own metrics: there was no
 `remote_write` to a central store, and no cluster set `externalLabels`. There was no single store
@@ -28,7 +28,7 @@ to query with a `cluster="..."` selector.
 Telemetry is read from the metrics stores directly, by the plane, at request time.
 
 1. **One source per cluster**, configured as
-   `HANGAR_METRICS_SOURCES="us=https://…,eu=https://…"`. Not a label selector against a shared
+   `WINGSMITH_METRICS_SOURCES="us=https://…,eu=https://…"`. Not a label selector against a shared
    store, because there is no shared store, and blending two fleets into one number is worse than
    not answering.
 2. **Configuration is an environment variable, not a column.** The shape is still moving; a column
@@ -37,7 +37,7 @@ Telemetry is read from the metrics stores directly, by the plane, at request tim
    dialling it breaks no invariant, but it does not belong on that table either.
 3. **The plane queries, never the browser.** In-cluster Prometheus is not reachable from a console
    tab, and the query vocabulary, credentials and read-only posture all belong in one place.
-4. **Metric names are Hangar's; dialects are a table.**
+4. **Metric names are Wingsmith's; dialects are a table.**
    [`libs/plane/app/modules/metrics/registry.py`](../../libs/plane/app/modules/metrics/registry.py)
    is the single place that knows DCGM spells it `DCGM_FI_DEV_GPU_UTIL` and vLLM spells its own
    `vllm:time_to_first_token_seconds`. Adding SGLang or TensorRT-LLM is a new entry in `ENGINES`.
