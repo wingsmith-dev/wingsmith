@@ -7,7 +7,7 @@
   "ack": 8807,
   "payload": {
     "deployment_id": "dep_01j9x2gggggggggggggggggggg",
-    "name": "llama-70b-serving",
+    "name": "gpt-oss-120b-serving",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "project_id": "prj_01j9x2jjjjjjjjjjjjjjjjjjjj",
     "serving": {
@@ -106,14 +106,14 @@
     "artifact_ids": [
       "art_01j9x2eeeeeeeeeeeeeeeeeeee"
     ],
-    "served_model_name": "acme/llama-70b-canary",
+    "served_model_name": "acme/gpt-oss-120b-canary",
     "generation": 14,
     "updated_at": "2026-08-19T13:58:02.000Z",
     "authority": "managed",
     "adopt": {
       "namespace": "serving",
       "kind": "deployment",
-      "name": "llama-70b-vllm",
+      "name": "gpt-oss-120b-vllm",
       "spec_fingerprint": "sha256:9f2c1b7d4e6a0835c1d9b2f47a0e6538d1c4b9a70f2e5836c1d4b9a70f2e5836"
     },
     "role_replicas": {

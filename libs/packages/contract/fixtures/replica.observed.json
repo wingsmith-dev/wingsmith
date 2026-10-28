@@ -7,7 +7,7 @@
   "ack": 4420,
   "payload": {
     "replica_id": "rep_01j9x2hhhhhhhhhhhhhhhhhhhh",
-    "name": "llama-70b-chat-7d4f9c8b5-2xqjn",
+    "name": "gpt-oss-120b-chat-7d4f9c8b5-2xqjn",
     "deployment_id": "dep_01j9x2gggggggggggggggggggg",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",

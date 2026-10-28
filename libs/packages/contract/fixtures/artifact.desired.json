@@ -11,8 +11,8 @@
     "kind": "weights",
     "digest": "sha256:9f2c1b7a4d3e5068a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f801",
     "format": "safetensors",
-    "size_bytes": 141733920768,
-    "licence": "llama3.1",
+    "size_bytes": 65248815744,
+    "licence": "apache-2.0",
     "sources": [
       {
         "kind": "s3",
@@ -22,7 +22,7 @@
       },
       {
         "kind": "hf",
-        "uri": "hf://meta-llama/Llama-3.1-70B-Instruct",
+        "uri": "hf://openai/gpt-oss-120b",
         "priority": 2,
         "credential_ref": null
       }

@@ -10,18 +10,18 @@
     "artifact_id": "art_01j9x2eeeeeeeeeeeeeeeeeeee",
     "state": "resident",
     "resident": true,
-    "bytes_resident": 141733920768,
+    "bytes_resident": 65248815744,
     "nodes": [
       {
         "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
         "state": "resident",
-        "bytes_resident": 141733920768,
+        "bytes_resident": 65248815744,
         "path": "/var/lib/wingsmith/cache/art_01j9x2eeeeeeeeeeeeeeeeeeee"
       },
       {
         "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbc",
         "state": "fetching",
-        "bytes_resident": 88080384000
+        "bytes_resident": 40532705280
       }
     ],
     "eviction_pressure": 0.72,

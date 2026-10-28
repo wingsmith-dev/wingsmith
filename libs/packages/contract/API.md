@@ -318,7 +318,7 @@ a bare `kimi-k3` is not a model id anybody can look up.
 
 There used to be a ladder: the workload's `served_model_name`, then the recipe's name, then a slug
 the plane re-derived at read time from the artifact's `name`. Every rung was wrong in its own way.
-The recipe's name described the fit, `llama-3-3-70b-instruct-fp8-tp2-32k`, and moved whenever the
+The recipe's name described the fit, `gpt-oss-120b-mxfp4-tp2-32k`, and moved whenever the
 fit was redone. The read-time derivation could not produce an organisation at all, because a name
 is `gpt-oss-20b` and the `openai/` only ever existed in the location URI that nothing consulted,
 even though the operator started every engine on a `--model` taken from that same location. So the plane
@@ -1163,8 +1163,8 @@ type and a target, never `POST /v1/nodes/{id}/drain`.
 ```
 
 A target is written one of two ways: a prefixed id, or a kind-qualified name such as `node:gpu-node-04`,
-`device:GPU-8f3c...`, `cluster:iad-1`, `workload:llama-70b`, `deployment:llama-70b`,
-`component:operator`, `artifact:llama-3-70b`. The bare name every other path segment accepts is intentionally not a form
+`device:GPU-8f3c...`, `cluster:iad-1`, `workload:gpt-oss-120b`, `deployment:gpt-oss-120b`,
+`component:operator`, `artifact:gpt-oss-120b`. The bare name every other path segment accepts is intentionally not a form
 here. Elsewhere the path says what kind of object it is addressing; a target does not, and the kind
 has to be answerable at creation: `node.drain` against a `dev_...` is a category error caught here
 instead of three hops downstream in the operator, so a target reference carries its own kind
