@@ -26,7 +26,7 @@ import json
 from typing import Any
 from pathlib import Path
 
-from hgrbench import metrics
+from wingsbench import metrics
 
 
 def _fields() -> dict[str, dict[str, Any]]:
@@ -142,7 +142,7 @@ TEMPLATE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hgrbench: __TITLE__</title>
+<title>wingsbench: __TITLE__</title>
 <style>
   :root { color-scheme: light dark; }
   .viz-root {

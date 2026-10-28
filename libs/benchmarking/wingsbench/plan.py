@@ -22,7 +22,7 @@ from dataclasses import field
 from dataclasses import dataclass
 
 
-DEFAULT_TOKEN_ENV = "HANGAR_API_KEY"
+DEFAULT_TOKEN_ENV = "WINGSMITH_API_KEY"
 ENDPOINT_KEYS = frozenset({"url", "probe_url", "token_env"})
 
 

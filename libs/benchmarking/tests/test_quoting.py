@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from hgrbench.plan import Cell
-from hgrbench.plan import Load
-from hgrbench.plan import Model
-from hgrbench.plan import SweepSpec
-from hgrbench.harnesses import aiperf
-from hgrbench.harnesses import guidellm
-from hgrbench.harnesses import vllm_bench
-from hgrbench.harnesses import vllm_sweep
-from hgrbench.harnesses.base import TOKEN_ENV
-from hgrbench.harnesses.base import Context
-from hgrbench.harnesses.base import HarnessError
+from wingsbench.plan import Cell
+from wingsbench.plan import Load
+from wingsbench.plan import Model
+from wingsbench.plan import SweepSpec
+from wingsbench.harnesses import aiperf
+from wingsbench.harnesses import guidellm
+from wingsbench.harnesses import vllm_bench
+from wingsbench.harnesses import vllm_sweep
+from wingsbench.harnesses.base import TOKEN_ENV
+from wingsbench.harnesses.base import Context
+from wingsbench.harnesses.base import HarnessError
 
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")

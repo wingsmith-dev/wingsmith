@@ -15,7 +15,7 @@ alone cannot express "the one that runs here".
 
 **The bearer token is passed as a container environment variable and expanded by a
 shell inside the container.** The `docker run` argv names the variable and never
-carries its value (`-e HGR_BENCH_TOKEN`, inherited from the docker CLI's own
+carries its value (`-e WINGS_BENCH_TOKEN`, inherited from the docker CLI's own
 environment), so the docker CLI's command line, the commands this runner records
 and its logs never hold the token. The one harness that has no header flag at all
 (GuideLLM) still takes it this way, because its `api_key=` attribute is expanded by
@@ -43,10 +43,10 @@ from dataclasses import field
 from dataclasses import dataclass
 from collections.abc import Callable
 
-from hgrbench.plan import Cell
+from wingsbench.plan import Cell
 
 
-TOKEN_ENV = "HGR_BENCH_TOKEN"
+TOKEN_ENV = "WINGS_BENCH_TOKEN"
 REDACTED = "$" + TOKEN_ENV
 # A token shorter than this is left in place: replacing a value like "x" everywhere it appears
 # mangles paths and words in every printed command and log line, and a value that short is not a
@@ -308,7 +308,7 @@ def with_token(ctx: Context) -> dict[str, str]:
 def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoint: str = "sh") -> Invocation:
     """A harness driven through a shell inside the container.
 
-    The script is a single argument, unexpanded by our shell, so `$HGR_BENCH_TOKEN`
+    The script is a single argument, unexpanded by our shell, so `$WINGS_BENCH_TOKEN`
     in it is expanded by the container's shell from the environment. That is the
     reason for going through a shell at all.
     """
@@ -327,7 +327,7 @@ def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoin
 
 def container_name() -> str:
     """A name no other run on this daemon is using."""
-    return f"hgrbench-{uuid.uuid4().hex[:12]}"
+    return f"wingsbench-{uuid.uuid4().hex[:12]}"
 
 
 def read_json(path: Path) -> Any:

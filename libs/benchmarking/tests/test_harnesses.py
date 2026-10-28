@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from hgrbench import cli
-from hgrbench.plan import expand
-from hgrbench.plan import load_plan
-from hgrbench.plan import sweep_specs
-from hgrbench.harnesses import registry
-from hgrbench.harnesses.base import TOKEN_ENV
-from hgrbench.harnesses.base import Context
+from wingsbench import cli
+from wingsbench.plan import expand
+from wingsbench.plan import load_plan
+from wingsbench.plan import sweep_specs
+from wingsbench.harnesses import registry
+from wingsbench.harnesses.base import TOKEN_ENV
+from wingsbench.harnesses.base import Context
 
 
-TOKEN = "hgr-bench-test-token-value"
+TOKEN = "wings-bench-test-token-value"
 PLANS = sorted(cli.PLANS_DIR.glob("*.toml"))
 
 
@@ -81,7 +81,7 @@ def test_plans_ship_inside_the_package() -> None:
 
 
 def test_vllm_build_context_does_not_depend_on_the_working_directory(monkeypatch, tmp_path) -> None:
-    from hgrbench.harnesses import vllm_bench
+    from wingsbench.harnesses import vllm_bench
 
     monkeypatch.chdir(tmp_path)
     assert Path(vllm_bench.BUILD_CONTEXT).is_absolute()

@@ -1,6 +1,6 @@
 # benchmarking: four load generators, one comparable answer
 
-`hgrbench` points the load generators this project cares about at an
+`wingsbench` points the load generators this project cares about at an
 OpenAI-compatible endpoint, from a laptop, in containers, one at a time, and puts
 what they said on one page.
 
@@ -49,8 +49,8 @@ measure each other.
 ## Plans, not flags
 
 A plan is committed TOML: the endpoint, the models, the load points, the ladders,
-the SLA. `hgrbench/plans/smoke.toml` and `hgrbench/plans/deep.toml` are the two
-profiles, shipped inside the package so `hgrbench plans` finds them from an install
+the SLA. `wingsbench/plans/smoke.toml` and `wingsbench/plans/deep.toml` are the two
+profiles, shipped inside the package so `wingsbench plans` finds them from an install
 too. Flags only narrow a plan (`--harness`, `--model`), show it (`--dry-run`), or
 unlock the saturation search (`--hard`).
 
@@ -64,7 +64,7 @@ The same way the plane does it, so that the two agree. See
 
 - Each harness's export is stored **verbatim**. Nothing is converted on the way in.
 - Normalisation happens only through an explicit per-harness, per-version field map
-  in [`hgrbench/metrics.py`](hgrbench/metrics.py): *for this harness, between these
+  in [`wingsbench/metrics.py`](wingsbench/metrics.py): *for this harness, between these
   versions, p90 TTFT is at this path, in these units*.
 - The field ids are the plane's ids. `ttft.p90` means the same thing in both places,
   so a map written here can be lifted into the plane when a harness graduates to
@@ -75,7 +75,7 @@ The same way the plane does it, so that the two agree. See
   in the report's footnotes.
 
 A correction to a field map is therefore a re-read of what is already on disk
-(`hgrbench report <run>`), never a re-run against the endpoint.
+(`wingsbench report <run>`), never a re-run against the endpoint.
 
 ## What the report is for
 
@@ -125,29 +125,29 @@ shows each harness's own value and the spread between them.
 ## Layout
 
 ```
-hgrbench/plans/           committed suite plans (smoke, deep), shipped as package data
-hgrbench/plan.py          plan file → the matrix, the ladders, the ladder specs
-hgrbench/runner.py        one cell at a time; the saturation search
-hgrbench/metrics.py       the field maps: harness export → canonical ids
-hgrbench/store.py         .local/bench/<run>/ layout, suite.json
-hgrbench/harnesses/       one module per load generator + the registry
-hgrbench/report/          the page
-images/vllm-bench/        the client-only vLLM image (see its own README)
+wingsbench/plans/           committed suite plans (smoke, deep), shipped as package data
+wingsbench/plan.py          plan file → the matrix, the ladders, the ladder specs
+wingsbench/runner.py        one cell at a time; the saturation search
+wingsbench/metrics.py       the field maps: harness export → canonical ids
+wingsbench/store.py         .local/bench/<run>/ layout, suite.json
+wingsbench/harnesses/       one module per load generator + the registry
+wingsbench/report/          the page
+images/vllm-bench/          the client-only vLLM image (see its own README)
 ```
 
 No dependencies. Plans are TOML and `tomllib` is in the standard library, the report
-is a string, and the harnesses are containers, so `python3 -m hgrbench` works from a
+is a string, and the harnesses are containers, so `python3 -m wingsbench` works from a
 fresh checkout with no virtualenv.
 
 ## Adding a harness
 
 Three things, and nothing else in the package is harness-specific:
 
-1. A module in `hgrbench/harnesses/` with a `command(cell, ctx)` and a
+1. A module in `wingsbench/harnesses/` with a `command(cell, ctx)` and a
    `read(cell, ctx)`, plus `sweep_command`/`sweep_read` if it can walk a ladder.
-2. An `Adapter` in `hgrbench/metrics.py` naming where its numbers are, with a
+2. An `Adapter` in `wingsbench/metrics.py` naming where its numbers are, with a
    version range.
-3. A line in `hgrbench/harnesses/registry.py`.
+3. A line in `wingsbench/harnesses/registry.py`.
 
 A harness with no adapter still runs and its export is still stored: it just
 contributes nothing to the comparison, and the report says so by name.
@@ -159,6 +159,6 @@ contributes nothing to the comparison, and the report says so by name.
 - `vllm bench sweep serve_workload` works in the image and is not driven from here.
   It is upstream's replacement for the SLA finder and would be a second, sharper
   saturation search.
-- Nothing here writes to the plane. The obvious next step is `hgrbench` submitting a
+- Nothing here writes to the plane. The obvious next step is `wingsbench` submitting a
   run as a plane benchmark so a local investigation and a cluster benchmark land in
   one history: the field ids already match.

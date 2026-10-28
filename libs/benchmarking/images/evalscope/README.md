@@ -1,7 +1,7 @@
 # evalscope
 
 [EvalScope](https://github.com/modelscope/evalscope) `1.11.1`, wrapped for the plane's cluster
-benchmark path. `hgrbench` does not use this image; the plane's `evalscope` harness does, and
+benchmark path. `wingsbench` does not use this image; the plane's `evalscope` harness does, and
 it lives here beside the other harness images so all of them build from one place.
 
 ## Why
@@ -19,11 +19,11 @@ evalscope release is an operator edit plus an image bump, not a new image shape.
 ```sh
 just build evalscope
 # or
-docker build -t hangar-evalscope:1.11.1 .
+docker build -t wingsmith-evalscope:1.11.1 .
 ```
 
 The plane has no default for this image. Push it to a registry your clusters can pull from and
-set `HANGAR_BENCHMARK_EVALSCOPE_IMAGE` on the plane, or pass `image` with each run; a run with
+set `WINGSMITH_BENCHMARK_EVALSCOPE_IMAGE` on the plane, or pass `image` with each run; a run with
 neither is refused with a message naming the setting.
 
 ## Run
@@ -31,15 +31,15 @@ neither is refused with a message naming the setting.
 The image's entrypoint is `sh`. The operator runs the benchmark wrapper under it:
 
 ```sh
-docker run --rm hangar-evalscope:1.11.1 -c 'evalscope eval --help'
+docker run --rm wingsmith-evalscope:1.11.1 -c 'evalscope eval --help'
 ```
 
 In a real run the wrapper is `evalscopeScript` in
 [`render/benchmark.go`](../../../operator/internal/render/benchmark.go): the operator runs
 `evalscope eval` with the flags it built against the deployment's cluster-local endpoint, merges
 every per-dataset report EvalScope wrote under `reports/` in its work directory into one
-`{"reports": [...]}` document, frames it between `---HANGAR-BENCHMARK-SUMMARY-BEGIN---` /
-`---HANGAR-BENCHMARK-SUMMARY-END---`, and the plane reads it back off the pod's log with
+`{"reports": [...]}` document, frames it between `---WINGSMITH-BENCHMARK-SUMMARY-BEGIN---` /
+`---WINGSMITH-BENCHMARK-SUMMARY-END---`, and the plane reads it back off the pod's log with
 [`summaries.dataset_scores`](../../../plane/app/modules/benchmarks/summaries.py).
 
 A version bump on the harness must not silently rewrite the shape the plane reads, so any

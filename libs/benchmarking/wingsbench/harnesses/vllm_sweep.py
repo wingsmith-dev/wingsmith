@@ -30,20 +30,20 @@ import json
 
 from typing import Any
 
-from hgrbench.plan import SweepSpec
-from hgrbench.harnesses.base import TOKEN_ENV
-from hgrbench.harnesses.base import Context
-from hgrbench.harnesses.base import Harness
-from hgrbench.harnesses.base import Emission
-from hgrbench.harnesses.base import Invocation
-from hgrbench.harnesses.base import HarnessError
-from hgrbench.harnesses.base import quote
-from hgrbench.harnesses.base import read_json
-from hgrbench.harnesses.base import double_quoted
-from hgrbench.harnesses.base import shell_command
-from hgrbench.harnesses.vllm_bench import IMAGE
-from hgrbench.harnesses.vllm_bench import BUILD_CONTEXT
-from hgrbench.harnesses.vllm_bench import PINNED_VERSION
+from wingsbench.plan import SweepSpec
+from wingsbench.harnesses.base import TOKEN_ENV
+from wingsbench.harnesses.base import Context
+from wingsbench.harnesses.base import Harness
+from wingsbench.harnesses.base import Emission
+from wingsbench.harnesses.base import Invocation
+from wingsbench.harnesses.base import HarnessError
+from wingsbench.harnesses.base import quote
+from wingsbench.harnesses.base import read_json
+from wingsbench.harnesses.base import double_quoted
+from wingsbench.harnesses.base import shell_command
+from wingsbench.harnesses.vllm_bench import IMAGE
+from wingsbench.harnesses.vllm_bench import BUILD_CONTEXT
+from wingsbench.harnesses.vllm_bench import PINNED_VERSION
 
 
 RESULTS = "/results"
@@ -84,7 +84,7 @@ def sweep_command(ctx: Context, spec: SweepSpec) -> Invocation:
     The bench command is quoted twice, because it is split twice: the sweep runs
     `shlex.split` over it, so every value in it is quoted for that, and the whole
     line is then one double-quoted argument to the container's shell. That shell
-    expands `${HGR_BENCH_TOKEN}` inside the single-quoted `--header` and nothing
+    expands `${WINGS_BENCH_TOKEN}` inside the single-quoted `--header` and nothing
     else, and the sweep then splits a header that already carries the token.
     """
     params = ctx.results_dir / "bench_params.json"

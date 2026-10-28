@@ -7,8 +7,8 @@ import json
 
 from pathlib import Path
 
-from hgrbench.report import render
-from hgrbench.report.html import embedded_json
+from wingsbench.report import render
+from wingsbench.report.html import embedded_json
 
 
 HOSTILE = "</script><img src=x onerror=alert(1)>&"
@@ -46,7 +46,7 @@ def test_the_page_carries_no_raw_markup_from_the_suite(tmp_path: Path) -> None:
 
     assert "<img" not in page
     assert page.count("</script>") == 2
-    assert "<title>hgrbench: &lt;/script&gt;" in page
+    assert "<title>wingsbench: &lt;/script&gt;" in page
 
 
 def test_every_template_escapes_suite_strings(tmp_path: Path) -> None:

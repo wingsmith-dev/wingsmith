@@ -38,18 +38,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from hgrbench.plan import Cell
-from hgrbench.plan import SweepSpec
-from hgrbench.harnesses.base import TOKEN_ENV
-from hgrbench.harnesses.base import Context
-from hgrbench.harnesses.base import Harness
-from hgrbench.harnesses.base import Emission
-from hgrbench.harnesses.base import Invocation
-from hgrbench.harnesses.base import HarnessError
-from hgrbench.harnesses.base import quote
-from hgrbench.harnesses.base import read_json
-from hgrbench.harnesses.base import shell_command
-from hgrbench.harnesses.base import recorded_version
+from wingsbench.plan import Cell
+from wingsbench.plan import SweepSpec
+from wingsbench.harnesses.base import TOKEN_ENV
+from wingsbench.harnesses.base import Context
+from wingsbench.harnesses.base import Harness
+from wingsbench.harnesses.base import Emission
+from wingsbench.harnesses.base import Invocation
+from wingsbench.harnesses.base import HarnessError
+from wingsbench.harnesses.base import quote
+from wingsbench.harnesses.base import read_json
+from wingsbench.harnesses.base import shell_command
+from wingsbench.harnesses.base import recorded_version
 
 
 IMAGE = "ghcr.io/vllm-project/guidellm:v0.7.3"

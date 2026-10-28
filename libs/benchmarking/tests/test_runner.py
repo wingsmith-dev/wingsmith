@@ -10,19 +10,19 @@ from pathlib import Path
 
 import pytest
 
-from hgrbench import runner as runner_module
-from hgrbench.cli import PLANS_DIR
-from hgrbench.plan import load_plan
-from hgrbench.store import Store
-from hgrbench.store import Suite
-from hgrbench.runner import Runner
-from hgrbench.runner import Options
-from hgrbench.harnesses.base import Emission
-from hgrbench.harnesses.base import Invocation
-from hgrbench.harnesses.base import redacted
+from wingsbench import runner as runner_module
+from wingsbench.cli import PLANS_DIR
+from wingsbench.plan import load_plan
+from wingsbench.store import Store
+from wingsbench.store import Suite
+from wingsbench.runner import Runner
+from wingsbench.runner import Options
+from wingsbench.harnesses.base import Emission
+from wingsbench.harnesses.base import Invocation
+from wingsbench.harnesses.base import redacted
 
 
-TOKEN = "hgr-bench-runner-token"
+TOKEN = "wings-bench-runner-token"
 
 
 def _runner(tmp_path: Path, **options: object) -> Runner:
@@ -58,7 +58,7 @@ def test_the_log_is_written_redacted(tmp_path: Path) -> None:
     assert returncode == 0
     text = log.read_text()
     assert TOKEN not in text
-    assert "Bearer $HGR_BENCH_TOKEN" in text
+    assert "Bearer $WINGS_BENCH_TOKEN" in text
     assert "done" in text
 
 
@@ -78,11 +78,11 @@ def test_a_timed_out_run_kills_its_container_and_keeps_its_log(tmp_path: Path, m
     code = f"import time; print('started {TOKEN}', flush=True); time.sleep(30)"
 
     with pytest.raises(subprocess.TimeoutExpired):
-        runner.execute(_python(code, container="hgrbench-test"), log, timeout=1)
+        runner.execute(_python(code, container="wingsbench-test"), log, timeout=1)
 
-    assert killed == [["docker", "kill", "hgrbench-test"]]
+    assert killed == [["docker", "kill", "wingsbench-test"]]
     text = log.read_text()
-    assert "started $HGR_BENCH_TOKEN" in text
+    assert "started $WINGS_BENCH_TOKEN" in text
     assert "timed out after 1s" in text
 
 
@@ -136,7 +136,7 @@ def test_a_plan_is_refused_before_the_first_cell(tmp_path: Path, overrides: dict
 
 
 def test_the_cli_refuses_an_invalid_plan_without_creating_a_run(tmp_path: Path) -> None:
-    from hgrbench import cli
+    from wingsbench import cli
 
     path = tmp_path / "plan.toml"
     path.write_text(_plan_text(models='[[models]]\nname = "m"\n'))
@@ -174,8 +174,8 @@ def test_the_suite_file_is_replaced_whole(tmp_path: Path) -> None:
 def test_a_dry_run_runs_nothing_sends_nothing_and_keeps_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from hgrbench import cli
-    from hgrbench.harnesses import base
+    from wingsbench import cli
+    from wingsbench.harnesses import base
 
     def refuse(*args: object, **kwargs: object) -> None:
         raise AssertionError(f"a dry run started a process or a request: {args}")
@@ -185,7 +185,7 @@ def test_a_dry_run_runs_nothing_sends_nothing_and_keeps_nothing(
     monkeypatch.setattr(runner_module.subprocess, "Popen", refuse)
     monkeypatch.setattr(base.subprocess, "run", refuse)
     monkeypatch.setattr(runner_module.urlrequest, "urlopen", refuse)
-    monkeypatch.setenv("HANGAR_API_KEY", TOKEN)
+    monkeypatch.setenv("WINGSMITH_API_KEY", TOKEN)
     results = tmp_path / "results"
 
     assert cli.main(["run", "deep", "--hard", "--dry-run", "--results", str(results)]) == 0

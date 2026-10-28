@@ -10,11 +10,11 @@ running inside a cluster is a port instead of a rewrite.
 
 from __future__ import annotations
 
-from hgrbench.harnesses import aiperf
-from hgrbench.harnesses import guidellm
-from hgrbench.harnesses import vllm_bench
-from hgrbench.harnesses import vllm_sweep
-from hgrbench.harnesses.base import Harness
+from wingsbench.harnesses import aiperf
+from wingsbench.harnesses import guidellm
+from wingsbench.harnesses import vllm_bench
+from wingsbench.harnesses import vllm_sweep
+from wingsbench.harnesses.base import Harness
 
 
 HARNESSES: dict[str, Harness] = {

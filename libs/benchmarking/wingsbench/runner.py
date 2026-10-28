@@ -29,26 +29,26 @@ from datetime import datetime
 from dataclasses import replace
 from dataclasses import dataclass
 
-from hgrbench import metrics
-from hgrbench.plan import Cell
-from hgrbench.plan import Load
-from hgrbench.plan import Plan
-from hgrbench.plan import expand
-from hgrbench.plan import knee_cells
-from hgrbench.plan import sweep_specs
-from hgrbench.store import Store
-from hgrbench.store import Measurement
-from hgrbench.harnesses import registry
-from hgrbench.harnesses.base import Context
-from hgrbench.harnesses.base import Harness
-from hgrbench.harnesses.base import Emission
-from hgrbench.harnesses.base import Invocation
-from hgrbench.harnesses.base import HarnessError
-from hgrbench.harnesses.base import pull
-from hgrbench.harnesses.base import scrub
-from hgrbench.harnesses.base import host_arch
-from hgrbench.harnesses.base import image_exists
-from hgrbench.harnesses.base import resolve_digest
+from wingsbench import metrics
+from wingsbench.plan import Cell
+from wingsbench.plan import Load
+from wingsbench.plan import Plan
+from wingsbench.plan import expand
+from wingsbench.plan import knee_cells
+from wingsbench.plan import sweep_specs
+from wingsbench.store import Store
+from wingsbench.store import Measurement
+from wingsbench.harnesses import registry
+from wingsbench.harnesses.base import Context
+from wingsbench.harnesses.base import Harness
+from wingsbench.harnesses.base import Emission
+from wingsbench.harnesses.base import Invocation
+from wingsbench.harnesses.base import HarnessError
+from wingsbench.harnesses.base import pull
+from wingsbench.harnesses.base import scrub
+from wingsbench.harnesses.base import host_arch
+from wingsbench.harnesses.base import image_exists
+from wingsbench.harnesses.base import resolve_digest
 
 
 DEFAULT_TIMEOUT = 1800
@@ -260,7 +260,7 @@ class Runner:
             except subprocess.TimeoutExpired:
                 self.kill(invocation, process)
                 reader.join(timeout=30)
-                sink.write(f"\nhgrbench: timed out after {timeout}s; the container was killed\n")
+                sink.write(f"\nwingsbench: timed out after {timeout}s; the container was killed\n")
                 raise
             reader.join()
         return returncode, time.monotonic() - clock

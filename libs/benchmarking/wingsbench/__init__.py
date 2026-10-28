@@ -1,6 +1,6 @@
 """Local benchmark harnesses, one comparable result shape, one report.
 
-`hgrbench` runs the load generators this project cares about (AIPerf, vLLM's
+`wingsbench` runs the load generators this project cares about (AIPerf, vLLM's
 `bench serve`, vLLM's own parameter sweep, and GuideLLM) against any
 OpenAI-compatible endpoint, from a laptop, in containers, one at a time. It keeps
 each tool's export verbatim and normalises through explicit per-harness field maps

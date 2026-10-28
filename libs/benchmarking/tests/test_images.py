@@ -7,9 +7,9 @@ import subprocess
 
 import pytest
 
-from hgrbench.harnesses import base
-from hgrbench.harnesses import registry
-from hgrbench.harnesses.base import HarnessError
+from wingsbench.harnesses import base
+from wingsbench.harnesses import registry
+from wingsbench.harnesses.base import HarnessError
 
 
 INDEX = "sha256:" + "a" * 64

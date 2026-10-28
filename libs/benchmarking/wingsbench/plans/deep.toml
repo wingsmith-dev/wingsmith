@@ -20,7 +20,7 @@ harnesses = ["aiperf", "vllm-bench", "guidellm"]
 url = "http://host.docker.internal:8080"
 # A tenant API key when the endpoint is the gateway's public listener; leave it unset
 # for the internal listener, which takes none.
-token_env = "HANGAR_API_KEY"
+token_env = "WINGSMITH_API_KEY"
 
 [[models]]
 name = "gpt-oss-120b"

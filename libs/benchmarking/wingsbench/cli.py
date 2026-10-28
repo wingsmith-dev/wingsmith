@@ -1,11 +1,11 @@
-"""`hgrbench`: run a benchmark plan locally and render what it found.
+"""`wingsbench`: run a benchmark plan locally and render what it found.
 
 Four verbs:
 
-    hgrbench run <plan>        take the measurements
-    hgrbench report [<run>]    render a suite run as one HTML page
-    hgrbench harnesses         what this runner can drive, and what each is for
-    hgrbench plans             the plans shipped with hgrbench
+    wingsbench run <plan>        take the measurements
+    wingsbench report [<run>]    render a suite run as one HTML page
+    wingsbench harnesses         what this runner can drive, and what each is for
+    wingsbench plans             the plans shipped with wingsbench
 
 `run` is made hard to point somewhere by accident: the endpoint, the
 models, the load points and the ladders all come from a plan file that is committed
@@ -25,26 +25,26 @@ from datetime import UTC
 from datetime import datetime
 from importlib import resources
 
-from hgrbench import metrics
-from hgrbench.plan import Plan
-from hgrbench.plan import expand
-from hgrbench.plan import load_plan
-from hgrbench.plan import sweep_specs
-from hgrbench.store import Store
-from hgrbench.store import Suite
-from hgrbench.store import latest_run
-from hgrbench.store import plan_notes
-from hgrbench.store import read_suite
-from hgrbench.report import render
-from hgrbench.runner import Runner
-from hgrbench.runner import Options
-from hgrbench.runner import refuse_invalid
-from hgrbench.harnesses import registry
+from wingsbench import metrics
+from wingsbench.plan import Plan
+from wingsbench.plan import expand
+from wingsbench.plan import load_plan
+from wingsbench.plan import sweep_specs
+from wingsbench.store import Store
+from wingsbench.store import Suite
+from wingsbench.store import latest_run
+from wingsbench.store import plan_notes
+from wingsbench.store import read_suite
+from wingsbench.report import render
+from wingsbench.runner import Runner
+from wingsbench.runner import Options
+from wingsbench.runner import refuse_invalid
+from wingsbench.harnesses import registry
 
 
-# Shipped inside the package, so `hgrbench plans` and a plan named by its stem work
+# Shipped inside the package, so `wingsbench plans` and a plan named by its stem work
 # from an installed wheel as well as from a checkout.
-PLANS_DIR = Path(resources.files("hgrbench") / "plans")
+PLANS_DIR = Path(resources.files("wingsbench") / "plans")
 DEFAULT_RESULTS = Path(".local/bench")
 
 
@@ -82,7 +82,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         # Harnesses write their per-cell inputs as the commands are built, so a dry run
         # gets a scratch directory that is gone when it returns: nothing lands under
         # --results, and nothing is sent anywhere.
-        with tempfile.TemporaryDirectory(prefix="hgrbench-dry-run-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="wingsbench-dry-run-") as scratch:
             _run(plan, options, Path(scratch), args)
         return 0
     root = _run(plan, options, Path(args.results), args)
@@ -103,7 +103,7 @@ def _run(plan: Plan, options: Options, results: Path, args: argparse.Namespace) 
         plan_source=plan.source,
         started_at=stamp.isoformat(timespec="seconds"),
         endpoint=plan.endpoint.url,
-        host={"arch": "", "runner": "hgrbench"},
+        host={"arch": "", "runner": "wingsbench"},
         models=[model.name for model in plan.models],
         harnesses=list(plan.harnesses),
         planned_cells=len(expand(plan)),
@@ -185,11 +185,11 @@ def _open(path: Path) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="hgrbench", description=__doc__)
+    parser = argparse.ArgumentParser(prog="wingsbench", description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="take the measurements a plan describes")
-    run.add_argument("plan", help="a committed plan by name (see `hgrbench plans`), or a path")
+    run.add_argument("plan", help="a committed plan by name (see `wingsbench plans`), or a path")
     run.add_argument("--results", default=str(DEFAULT_RESULTS), help="where suite runs are kept")
     run.add_argument("--harness", action="append", help="only this harness; repeatable")
     run.add_argument("--model", action="append", help="only this model; repeatable")
@@ -214,7 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
     harnesses = subparsers.add_parser("harnesses", help="what this runner can drive")
     harnesses.set_defaults(func=cmd_harnesses)
 
-    plans = subparsers.add_parser("plans", help="the plans shipped with hgrbench")
+    plans = subparsers.add_parser("plans", help="the plans shipped with wingsbench")
     plans.set_defaults(func=cmd_plans)
 
     return parser

@@ -24,9 +24,9 @@ from dataclasses import field
 from dataclasses import asdict
 from dataclasses import dataclass
 
-from hgrbench import metrics
-from hgrbench.plan import Cell
-from hgrbench.plan import Plan
+from wingsbench import metrics
+from wingsbench.plan import Cell
+from wingsbench.plan import Plan
 
 
 SUITE_FILE = "suite.json"

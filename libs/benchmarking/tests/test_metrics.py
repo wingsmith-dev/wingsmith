@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from hgrbench import metrics
+from wingsbench import metrics
 
 
 FIXTURES = Path(__file__).parent / "fixtures"

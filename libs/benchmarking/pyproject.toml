@@ -1,5 +1,5 @@
 [project]
-name = "hgrbench"
+name = "wingsbench"
 version = "0.1.0"
 license = "Apache-2.0"
 description = "Run this project's benchmark harnesses locally against an OpenAI-compatible endpoint, and compare what they say"
@@ -8,18 +8,18 @@ dependencies = []
 
 # No dependencies, by design. Plans are TOML and `tomllib` is in the standard
 # library; the report is a string; the harnesses are containers. That is what lets
-# `python3 -m hgrbench` work from a fresh checkout with no virtualenv, on the laptop
+# `python3 -m wingsbench` work from a fresh checkout with no virtualenv, on the laptop
 # of somebody who wanted one number and not an environment.
 
 [project.scripts]
-hgrbench = "hgrbench.cli:main"
+wingsbench = "wingsbench.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["hgrbench"]
+packages = ["wingsbench"]
 
 [tool.ruff]
 line-length = 120
@@ -35,7 +35,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # html.py is one long template string holding the report's own CSS and JS. Wrapping
 # those lines to our Python line length would make the page harder to read, not easier.
 [tool.ruff.lint.per-file-ignores]
-"hgrbench/report/html.py" = ["E501"]
+"wingsbench/report/html.py" = ["E501"]
 
 # Borrowed verbatim from libs/plane, so that a file moved between the two does not
 # change shape on the way.
@@ -47,7 +47,7 @@ length-sort = true
 length-sort-straight = true
 lines-after-imports = 2
 lines-between-types = 1
-known-first-party = ["hgrbench"]
+known-first-party = ["wingsbench"]
 section-order = [
   "future",
   "standard-library",

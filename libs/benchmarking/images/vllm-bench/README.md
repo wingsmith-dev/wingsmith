@@ -41,10 +41,10 @@ project's own. The repository's `NOTICE` records the attribution.
 
 ```sh
 ./vendor.sh                              # only when bumping the tag: re-fetch upstream/
-docker build -t hangar/vllm-bench:0.28.0 .
+docker build -t wingsmith/vllm-bench:0.28.0 .
 ```
 
-`vendor.sh` writes only under `upstream/`. It never touches `stubs/`. `hgrbench` builds the image
+`vendor.sh` writes only under `upstream/`. It never touches `stubs/`. `wingsbench` builds the image
 itself the first time a plan needs it.
 
 The base image is pinned by digest and every Python package by version in `requirements.txt`, which
@@ -60,7 +60,7 @@ overriding the entrypoint.
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \
   -v ~/.cache/huggingface:/hf -v "$PWD/results:/results" \
-  --entrypoint sh hangar/vllm-bench:0.28.0 -c '
+  --entrypoint sh wingsmith/vllm-bench:0.28.0 -c '
 python /bench/main.py \
   --backend openai-chat --base-url http://host.docker.internal:8080 \
   --endpoint /v1/chat/completions \
@@ -73,7 +73,7 @@ python /bench/main.py \
 '
 ```
 
-`docker run hangar/vllm-bench:0.28.0 <flags>` is equivalent when no header needs a secret: the
+`docker run wingsmith/vllm-bench:0.28.0 <flags>` is equivalent when no header needs a secret: the
 default entrypoint is `python /bench/main.py`.
 
 Flags this gateway requires: `--backend openai-chat --endpoint /v1/chat/completions`, and `--model`
@@ -85,7 +85,7 @@ with the *served* name; omitting it crashes with `KeyError: 'root'`, because the
 ```sh
 docker run --rm -e TOK -e HF_HOME=/hf \
   -v ~/.cache/huggingface:/hf -v "$PWD:/work" \
-  --entrypoint python hangar/vllm-bench:0.28.0 /bench/sweep.py serve \
+  --entrypoint python wingsmith/vllm-bench:0.28.0 /bench/sweep.py serve \
   --serve-cmd "python3 /bench/fakehealth.py --host 127.0.0.1 --port 9000" \
   --after-bench-cmd "true" \
   --bench-cmd "python3 /bench/main.py --backend openai-chat ..." \

@@ -1,6 +1,6 @@
 # Method
 
-`README.md` covers the load generators and what `hgrbench` does with them. This is the
+`README.md` covers the load generators and what `wingsbench` does with them. This is the
 other half: how to spend a session measuring a serving deployment and know what you
 learned at the end of it. None of it is enforced by the tooling. It is a checklist for
 the person running the tooling, written to be model-, engine- and topology-independent.
@@ -44,7 +44,7 @@ comparison needs.
 
 A number is only comparable to another number measured under the same conditions, so
 record them next to it: the image and its version, the rendered engine arguments, the
-worker generation, the request shape, and the plan that produced the run. `hgrbench`
+worker generation, the request shape, and the plan that produced the run. `wingsbench`
 keeps the plan path, the harness image digests and every harness export in `suite.json`;
 the deployment side is yours to record. When the live fleet differs from what a past
 run recorded, that run is evidence about a fleet that no longer exists.
