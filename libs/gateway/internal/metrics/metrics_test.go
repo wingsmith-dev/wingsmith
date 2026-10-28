@@ -94,12 +94,12 @@ func TestTableAgeIsTimeSinceTheLastConfirmationNotTheLastChange(t *testing.T) {
 	recorder, clock := testRecorder(t)
 
 	recorder.TableApplied(2, []UpstreamSample{{Endpoint: "ep_1", Deployment: "dep_1", Cluster: "ap", Ready: true}})
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 0 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 0 {
 		t.Fatalf("age right after a load = %v, want 0", age)
 	}
 
 	clock.add(30 * time.Second)
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 30 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 30 {
 		t.Fatalf("age = %v, want 30", age)
 	}
 
@@ -107,15 +107,15 @@ func TestTableAgeIsTimeSinceTheLastConfirmationNotTheLastChange(t *testing.T) {
 	// has not changed in a week is healthy. Age has to reset here or it would
 	// report a stable fleet as a stale one.
 	recorder.TableUnchanged()
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 0 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 0 {
 		t.Fatalf("age after a 304 = %v, want 0", age)
 	}
 
 	clock.add(45 * time.Second)
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 45 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 45 {
 		t.Fatalf("age = %v, want 45", age)
 	}
-	if confirmed := mustValue(t, recorder, "hangar_gateway_routing_table_confirmed_timestamp_seconds", nil); confirmed != float64(clock.at.Add(-45*time.Second).Unix()) {
+	if confirmed := mustValue(t, recorder, "wingsmith_gateway_routing_table_confirmed_timestamp_seconds", nil); confirmed != float64(clock.at.Add(-45*time.Second).Unix()) {
 		t.Fatalf("confirmed timestamp = %v, want the moment of the 304", confirmed)
 	}
 }
@@ -130,22 +130,22 @@ func TestAFailedRefreshLeavesTheAgeRunningAndTheGatewayServing(t *testing.T) {
 	// The failure must not look like a confirmation. This is the whole shape of
 	// a plane outage from out here: the table keeps serving, the age keeps
 	// climbing, and the success gauge is the thing that says why.
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 60 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 60 {
 		t.Fatalf("age after a failed refresh = %v, want it still climbing from the last success", age)
 	}
-	if ok := mustValue(t, recorder, "hangar_gateway_routing_table_refresh_success", nil); ok != 0 {
+	if ok := mustValue(t, recorder, "wingsmith_gateway_routing_table_refresh_success", nil); ok != 0 {
 		t.Fatalf("refresh_success = %v, want 0", ok)
 	}
-	if errors := mustValue(t, recorder, "hangar_gateway_routing_table_refreshes_total", map[string]string{"result": "error"}); errors != 1 {
+	if errors := mustValue(t, recorder, "wingsmith_gateway_routing_table_refreshes_total", map[string]string{"result": "error"}); errors != 1 {
 		t.Fatalf("error refreshes = %v, want 1", errors)
 	}
 
 	clock.add(30 * time.Second)
 	recorder.TableUnchanged()
-	if ok := mustValue(t, recorder, "hangar_gateway_routing_table_refresh_success", nil); ok != 1 {
+	if ok := mustValue(t, recorder, "wingsmith_gateway_routing_table_refresh_success", nil); ok != 1 {
 		t.Fatalf("refresh_success after recovery = %v, want 1", ok)
 	}
-	if age := mustValue(t, recorder, "hangar_gateway_routing_table_age_seconds", nil); age != 0 {
+	if age := mustValue(t, recorder, "wingsmith_gateway_routing_table_age_seconds", nil); age != 0 {
 		t.Fatalf("age after recovery = %v, want 0", age)
 	}
 }
@@ -154,7 +154,7 @@ func TestRefreshResultsAreCountedFromZeroRatherThanAppearingLater(t *testing.T) 
 	recorder, _ := testRecorder(t)
 
 	for _, result := range []string{"applied", "unchanged", "error"} {
-		if _, ok := value(t, recorder, "hangar_gateway_routing_table_refreshes_total", map[string]string{"result": result}); !ok {
+		if _, ok := value(t, recorder, "wingsmith_gateway_routing_table_refreshes_total", map[string]string{"result": result}); !ok {
 			t.Fatalf("result=%q has no series before anything happened, so an alert on it has a hole to subtract from", result)
 		}
 	}
@@ -162,13 +162,13 @@ func TestRefreshResultsAreCountedFromZeroRatherThanAppearingLater(t *testing.T) 
 	recorder.TableApplied(3, nil)
 	recorder.TableUnchanged()
 	recorder.TableUnchanged()
-	if applied := mustValue(t, recorder, "hangar_gateway_routing_table_refreshes_total", map[string]string{"result": "applied"}); applied != 1 {
+	if applied := mustValue(t, recorder, "wingsmith_gateway_routing_table_refreshes_total", map[string]string{"result": "applied"}); applied != 1 {
 		t.Fatalf("applied = %v, want 1", applied)
 	}
-	if unchanged := mustValue(t, recorder, "hangar_gateway_routing_table_refreshes_total", map[string]string{"result": "unchanged"}); unchanged != 2 {
+	if unchanged := mustValue(t, recorder, "wingsmith_gateway_routing_table_refreshes_total", map[string]string{"result": "unchanged"}); unchanged != 2 {
 		t.Fatalf("unchanged = %v, want 2", unchanged)
 	}
-	if endpoints := mustValue(t, recorder, "hangar_gateway_routing_table_endpoints", nil); endpoints != 3 {
+	if endpoints := mustValue(t, recorder, "wingsmith_gateway_routing_table_endpoints", nil); endpoints != 3 {
 		t.Fatalf("endpoints = %v, want 3", endpoints)
 	}
 }
@@ -180,10 +180,10 @@ func TestUpstreamGaugesForgetWhatLeftTheTable(t *testing.T) {
 		{Endpoint: "ep_1", EndpointName: "chat", Deployment: "dep_1", Cluster: "ap", Ready: true},
 		{Endpoint: "ep_2", EndpointName: "code", Deployment: "dep_2", Cluster: "us", Ready: false},
 	})
-	if up := mustValue(t, recorder, "hangar_gateway_upstream_up", map[string]string{"deployment": "dep_1"}); up != 1 {
+	if up := mustValue(t, recorder, "wingsmith_gateway_upstream_up", map[string]string{"deployment": "dep_1"}); up != 1 {
 		t.Fatalf("ready upstream = %v, want 1", up)
 	}
-	if up := mustValue(t, recorder, "hangar_gateway_upstream_up", map[string]string{"deployment": "dep_2"}); up != 0 {
+	if up := mustValue(t, recorder, "wingsmith_gateway_upstream_up", map[string]string{"deployment": "dep_2"}); up != 0 {
 		t.Fatalf("unready upstream = %v, want 0", up)
 	}
 
@@ -192,7 +192,7 @@ func TestUpstreamGaugesForgetWhatLeftTheTable(t *testing.T) {
 	})
 	// A gauge frozen at its last value is worse than no gauge: it reports a
 	// deployment that no longer exists as healthy, forever.
-	if _, ok := value(t, recorder, "hangar_gateway_upstream_up", map[string]string{"deployment": "dep_2"}); ok {
+	if _, ok := value(t, recorder, "wingsmith_gateway_upstream_up", map[string]string{"deployment": "dep_2"}); ok {
 		t.Fatal("a deployment that left the table is still reporting")
 	}
 }
@@ -204,7 +204,7 @@ func TestTokensAreAbsentRatherThanZeroWhenNoUsageArrived(t *testing.T) {
 		Endpoint: "ep_1", EndpointName: "chat", Deployment: "dep_1", Cluster: "ap",
 		Status: 200, Outcome: OutcomeOK, Duration: time.Second,
 	})
-	if _, ok := value(t, recorder, "hangar_gateway_tokens_total", nil); ok {
+	if _, ok := value(t, recorder, "wingsmith_gateway_tokens_total", nil); ok {
 		t.Fatal("a response with no usage object produced token series, and a zero there is a claim we cannot make")
 	}
 
@@ -213,13 +213,13 @@ func TestTokensAreAbsentRatherThanZeroWhenNoUsageArrived(t *testing.T) {
 		Status: 200, Outcome: OutcomeOK, Duration: time.Second,
 		HaveUsage: true, InputTokens: 900, OutputTokens: 120, CachedInputTokens: 300,
 	})
-	if in := mustValue(t, recorder, "hangar_gateway_tokens_total", map[string]string{"direction": "input"}); in != 900 {
+	if in := mustValue(t, recorder, "wingsmith_gateway_tokens_total", map[string]string{"direction": "input"}); in != 900 {
 		t.Fatalf("input tokens = %v, want 900", in)
 	}
-	if out := mustValue(t, recorder, "hangar_gateway_tokens_total", map[string]string{"direction": "output"}); out != 120 {
+	if out := mustValue(t, recorder, "wingsmith_gateway_tokens_total", map[string]string{"direction": "output"}); out != 120 {
 		t.Fatalf("output tokens = %v, want 120", out)
 	}
-	if cached := mustValue(t, recorder, "hangar_gateway_tokens_total", map[string]string{"direction": "cached_input"}); cached != 300 {
+	if cached := mustValue(t, recorder, "wingsmith_gateway_tokens_total", map[string]string{"direction": "cached_input"}); cached != 300 {
 		t.Fatalf("cached input tokens = %v, want 300", cached)
 	}
 }
@@ -231,7 +231,7 @@ func TestARequestThatReachedNoClusterKeepsItsLabelsAsEmptyStrings(t *testing.T) 
 		Endpoint: EndpointUnknown, Status: 404, Outcome: OutcomeClientError, Duration: time.Millisecond,
 	})
 
-	family := families(t, recorder)["hangar_gateway_requests_total"]
+	family := families(t, recorder)["wingsmith_gateway_requests_total"]
 	if family == nil || len(family.GetMetric()) != 1 {
 		t.Fatalf("want exactly one series, got %v", family)
 	}
@@ -264,14 +264,14 @@ func TestTheLabelSetIsClosed(t *testing.T) {
 	})
 
 	want := map[string][]string{
-		"hangar_gateway_requests_total":                {"cluster", "deployment", "endpoint_name", "hangar_endpoint", "origin", "outcome", "status"},
-		"hangar_gateway_request_duration_seconds":      {"cluster", "deployment", "endpoint_name", "hangar_endpoint", "origin"},
-		"hangar_gateway_ttft_seconds":                  {"cluster", "deployment", "endpoint_name", "hangar_endpoint", "origin"},
-		"hangar_gateway_ttft_by_input_seconds":         {"endpoint_name", "hangar_endpoint", "input_bucket", "origin"},
-		"hangar_gateway_tokens_total":                  {"cluster", "deployment", "direction", "endpoint_name", "hangar_endpoint", "origin"},
-		"hangar_gateway_requests_in_flight":            {"cluster", "deployment", "endpoint_name", "hangar_endpoint", "origin"},
-		"hangar_gateway_upstream_up":                   {"cluster", "deployment", "endpoint_name", "hangar_endpoint", "origin"},
-		"hangar_gateway_routing_table_refreshes_total": {"result"},
+		"wingsmith_gateway_requests_total":                {"cluster", "deployment", "endpoint_name", "origin", "outcome", "status", "wingsmith_endpoint"},
+		"wingsmith_gateway_request_duration_seconds":      {"cluster", "deployment", "endpoint_name", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_ttft_seconds":                  {"cluster", "deployment", "endpoint_name", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_ttft_by_input_seconds":         {"endpoint_name", "input_bucket", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_tokens_total":                  {"cluster", "deployment", "direction", "endpoint_name", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_requests_in_flight":            {"cluster", "deployment", "endpoint_name", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_upstream_up":                   {"cluster", "deployment", "endpoint_name", "origin", "wingsmith_endpoint"},
+		"wingsmith_gateway_routing_table_refreshes_total": {"result"},
 	}
 
 	byName := families(t, recorder)
@@ -290,7 +290,7 @@ func TestTheLabelSetIsClosed(t *testing.T) {
 		}
 	}
 	release()
-	if flight := mustValue(t, recorder, "hangar_gateway_requests_in_flight", nil); flight != 0 {
+	if flight := mustValue(t, recorder, "wingsmith_gateway_requests_in_flight", nil); flight != 0 {
 		t.Fatalf("in flight after release = %v, want 0", flight)
 	}
 }
@@ -310,10 +310,10 @@ func TestTTFTIsBandedByTheRequestsOwnPromptLength(t *testing.T) {
 		TTFT: 300 * time.Millisecond, HaveTTFT: true,
 	})
 
-	if n := mustValue(t, recorder, "hangar_gateway_ttft_by_input_seconds", map[string]string{"input_bucket": "32k_64k"}); n != 1 {
+	if n := mustValue(t, recorder, "wingsmith_gateway_ttft_by_input_seconds", map[string]string{"input_bucket": "32k_64k"}); n != 1 {
 		t.Fatalf("32k_64k observations = %v, want 1", n)
 	}
-	if n := mustValue(t, recorder, "hangar_gateway_ttft_by_input_seconds", map[string]string{"input_bucket": InputBucketUnknown}); n != 1 {
+	if n := mustValue(t, recorder, "wingsmith_gateway_ttft_by_input_seconds", map[string]string{"input_bucket": InputBucketUnknown}); n != 1 {
 		t.Fatalf("unknown observations = %v, want 1", n)
 	}
 }
@@ -393,10 +393,10 @@ func TestHandlerServesTheExpositionFormat(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, name := range []string{
-		"hangar_gateway_requests_total",
-		"hangar_gateway_request_duration_seconds_bucket",
-		"hangar_gateway_routing_table_age_seconds",
-		"hangar_gateway_routing_table_refresh_success",
+		"wingsmith_gateway_requests_total",
+		"wingsmith_gateway_request_duration_seconds_bucket",
+		"wingsmith_gateway_routing_table_age_seconds",
+		"wingsmith_gateway_routing_table_refresh_success",
 	} {
 		if !strings.Contains(body, name) {
 			t.Fatalf("%s is not in the exposition", name)
@@ -407,7 +407,7 @@ func TestHandlerServesTheExpositionFormat(t *testing.T) {
 func TestBuildInfoCarriesTheVersion(t *testing.T) {
 	r, _ := testRecorder(t)
 	r.BuildInfo("v1.2.3")
-	if got := mustValue(t, r, "hangar_gateway_build_info", map[string]string{"version": "v1.2.3"}); got != 1 {
+	if got := mustValue(t, r, "wingsmith_gateway_build_info", map[string]string{"version": "v1.2.3"}); got != 1 {
 		t.Fatalf("build info = %v, want 1", got)
 	}
 }

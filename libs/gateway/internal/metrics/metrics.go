@@ -53,15 +53,15 @@ var durationBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120
 var ttftBuckets = []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60}
 
 var (
-	// commonLabels ride on every request series. hangar_endpoint is the join
+	// commonLabels ride on every request series. wingsmith_endpoint is the join
 	// key, endpoint_name is for panels and is never joined on, origin keeps the
 	// conformance suite out of the availability ratio.
-	commonLabels = []string{"hangar_endpoint", "endpoint_name", "origin"}
+	commonLabels = []string{"wingsmith_endpoint", "endpoint_name", "origin"}
 	// routedLabels add where the request went. Empty strings, never absent
 	// labels: the requests no cluster could have seen are the important class,
 	// and an absent label makes that class queryable only by a negation over an
 	// unbounded set.
-	routedLabels = []string{"hangar_endpoint", "endpoint_name", "origin", "deployment", "cluster"}
+	routedLabels = []string{"wingsmith_endpoint", "endpoint_name", "origin", "deployment", "cluster"}
 )
 
 // Recorder holds the series and the registry they live in.
@@ -118,70 +118,70 @@ func New(opts ...Option) *Recorder {
 	}
 
 	r.requests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_requests_total",
+		Name: "wingsmith_gateway_requests_total",
 		Help: "Requests answered, by what happened to them. outcome is not derivable from status: a 429 issued to a caller over its declared limit and a 429 shed under load are the same code and only one is a failure.",
 	}, append(append([]string{}, routedLabels...), "status", "outcome"))
 
 	r.duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "hangar_gateway_request_duration_seconds",
+		Name:    "wingsmith_gateway_request_duration_seconds",
 		Help:    "End-to-end time this hop spent on a request, first byte in to last byte out.",
 		Buckets: durationBuckets,
 	}, routedLabels)
 
 	r.ttft = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "hangar_gateway_ttft_seconds",
+		Name:    "wingsmith_gateway_ttft_seconds",
 		Help:    "Time from arrival to the first response byte forwarded to the caller.",
 		Buckets: ttftBuckets,
 	}, routedLabels)
 
 	r.ttftByInput = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "hangar_gateway_ttft_by_input_seconds",
+		Name:    "wingsmith_gateway_ttft_by_input_seconds",
 		Help:    "Time to first byte, banded by the request's own prompt length. Observed late, when usage arrives; a request that never disclosed one lands in input_bucket=\"unknown\".",
 		Buckets: ttftBuckets,
 	}, append(append([]string{}, commonLabels...), "input_bucket"))
 
 	r.tokens = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_tokens_total",
+		Name: "wingsmith_gateway_tokens_total",
 		Help: "Tokens reported by the upstream's own usage object. Observability, not metering: this is not an invoice and must never be reconciled against one.",
 	}, append(append([]string{}, routedLabels...), "direction"))
 
 	r.generated = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_generated_total",
+		Name: "wingsmith_gateway_generated_total",
 		Help: "What successful image and video generations produced, counted by this hop because the engine reports no usage for either: images, videos, video_seconds and video_frames as the request stated them, and upstream_seconds of wall time inside the cluster. Observability, not metering.",
 	}, append(append([]string{}, routedLabels...), "unit"))
 
 	r.inFlight = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_gateway_requests_in_flight",
+		Name: "wingsmith_gateway_requests_in_flight",
 		Help: "Requests currently being proxied to a cluster.",
 	}, routedLabels)
 
 	r.replays = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_upstream_replays_total",
+		Name: "wingsmith_gateway_upstream_replays_total",
 		Help: "Times a request body was sent again to a cluster because the transport retried it, usually after a tunnel or connection went away before the request was processed. A rising rate with a flat error rate is churn the retry absorbed.",
 	}, routedLabels)
 
 	r.upstreamUp = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_gateway_upstream_up",
+		Name: "wingsmith_gateway_upstream_up",
 		Help: "1 when the plane's last table reported this deployment running. The plane's observation, not a probe of our own.",
 	}, routedLabels)
 
 	r.tableRefreshes = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_routing_table_refreshes_total",
+		Name: "wingsmith_gateway_routing_table_refreshes_total",
 		Help: "Attempts to re-read the routing table, by result. A failed refresh keeps the table already loaded, so error here is not an outage; error growing while age grows with it is.",
 	}, []string{"result"})
 
 	r.tableRefreshOK = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_gateway_routing_table_refresh_success",
+		Name: "wingsmith_gateway_routing_table_refresh_success",
 		Help: "1 when the last attempt to re-read the routing table reached the plane, 0 when it did not.",
 	})
 
 	r.tableEndpoints = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_gateway_routing_table_endpoints",
+		Name: "wingsmith_gateway_routing_table_endpoints",
 		Help: "Endpoints in the table currently loaded.",
 	})
 
 	r.tableConfirmUnx = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_gateway_routing_table_confirmed_timestamp_seconds",
+		Name: "wingsmith_gateway_routing_table_confirmed_timestamp_seconds",
 		Help: "Unix time at which the plane last confirmed the loaded table is current, either by sending a new one or by answering 304.",
 	})
 
@@ -190,12 +190,12 @@ func New(opts ...Option) *Recorder {
 	// renewal the gateway ignored, so this is the only series that can catch a
 	// listener serving something stale. Alert on this approaching now.
 	r.tunnelCertExpiry = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_gateway_tunnel_certificate_expiry_timestamp_seconds",
+		Name: "wingsmith_gateway_tunnel_certificate_expiry_timestamp_seconds",
 		Help: "Unix time at which the tunnel certificate currently loaded in this process expires. Every agent dial fails once it passes.",
 	})
 
 	r.buildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_gateway_build_info",
+		Name: "wingsmith_gateway_build_info",
 		Help: "Always 1, labelled with the version this binary was built as.",
 	}, []string{"version"})
 
@@ -204,7 +204,7 @@ func New(opts ...Option) *Recorder {
 	// the plain reading of the timestamp gauge beside it, kept because it is
 	// what a human curling this port during a plane outage wants to see.
 	age := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "hangar_gateway_routing_table_age_seconds",
+		Name: "wingsmith_gateway_routing_table_age_seconds",
 		Help: "Seconds since the plane last confirmed the loaded table is current. Grows without bound while the plane is unreachable, and the gateway keeps serving the whole time.",
 	}, func() float64 {
 		confirmed := r.confirmedAt.Load()
@@ -336,7 +336,7 @@ func (r *Recorder) Observe(s Sample) {
 	}
 }
 
-// Unit is what hangar_gateway_generated_total counts. A closed set, so it is a safe label.
+// Unit is what wingsmith_gateway_generated_total counts. A closed set, so it is a safe label.
 type Unit string
 
 const (

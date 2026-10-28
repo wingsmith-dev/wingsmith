@@ -33,32 +33,32 @@ type tunnelEvents struct {
 func (r *Recorder) registerTunnels() {
 	r.tunnelEvents = tunnelEvents{
 		duplicates: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "hangar_gateway_tunnel_dials_duplicate_total",
+			Name: "wingsmith_gateway_tunnel_dials_duplicate_total",
 			Help: "Agent dials that landed on this replica after the agent already covered it. Not a refusal: it is how an agent behind one address finds every replica. A rate that never settles means the replica count the agents were told is wrong.",
 		}),
 		revoked: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "hangar_gateway_tunnels_revoked_total",
+			Name: "wingsmith_gateway_tunnels_revoked_total",
 			Help: "Open tunnels closed because the plane no longer accepts their token, or now resolves it to another cluster.",
 		}, tunnelLabels),
 		retries: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "hangar_gateway_tunnel_retries_total",
+			Name: "wingsmith_gateway_tunnel_retries_total",
 			Help: "Requests whose tunnel died under them with no GOAWAY, by what became of them: resent down another tunnel, not resent because the agent may already have forwarded them (written), or out of attempts (exhausted).",
 		}, []string{"cluster_id", "outcome"}),
 	}
 	r.registry.MustRegister(r.tunnelEvents.duplicates, r.tunnelEvents.revoked, r.tunnelEvents.retries)
 
 	r.tunnels = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_gateway_tunnels",
+		Name: "wingsmith_gateway_tunnels",
 		Help: "Live tunnels this replica holds to a cluster. Per-replica by nature: an agent dials one pod, not a Service, so this is coverage of this process and not of the deployment.",
 	}, tunnelLabels)
 
 	r.tunnelDials = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_gateway_tunnel_dials_rejected_total",
+		Name: "wingsmith_gateway_tunnel_dials_rejected_total",
 		Help: "Agent dials that never became tunnels, by reason. unauthorized is a credential problem and unavailable is the plane being unreachable; the two need different people. limit is a dial that authenticated while its cluster or this replica held as many tunnels as allowed, and throttled one from an address that kept failing or had too many handshakes open.",
 	}, []string{"reason"})
 
 	r.tunnelCoverage = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_gateway_tunnel_coverage",
+		Name: "wingsmith_gateway_tunnel_coverage",
 		Help: "0 when this replica cannot reach a cluster its own routing table routes to, 1 when it can. The alert is on the zero: it means requests for that cluster's models get no capacity from this pod.",
 	}, coverageLabels)
 }
@@ -85,16 +85,16 @@ type StreamSample struct {
 }
 
 var (
-	streamsActiveDesc = prometheus.NewDesc("hangar_gateway_tunnel_streams_active",
-		"Requests open on this replica's live tunnels to a cluster. Read against hangar_gateway_tunnel_streams_capacity: when the two meet, new requests for the cluster are refused as no capacity until a stream finishes.",
+	streamsActiveDesc = prometheus.NewDesc("wingsmith_gateway_tunnel_streams_active",
+		"Requests open on this replica's live tunnels to a cluster. Read against wingsmith_gateway_tunnel_streams_capacity: when the two meet, new requests for the cluster are refused as no capacity until a stream finishes.",
 		tunnelLabels, nil)
-	streamsCapacityDesc = prometheus.NewDesc("hangar_gateway_tunnel_streams_capacity",
+	streamsCapacityDesc = prometheus.NewDesc("wingsmith_gateway_tunnel_streams_capacity",
 		"Concurrent streams the agents allow on this replica's live tunnels to a cluster, summed over the tunnels.",
 		tunnelLabels, nil)
 )
 
 // streamCollector reads stream use from the pool at scrape time. A cluster with
-// no live tunnel has no series; hangar_gateway_tunnel_coverage covers that case.
+// no live tunnel has no series; wingsmith_gateway_tunnel_coverage covers that case.
 type streamCollector struct {
 	source func() []StreamSample
 }

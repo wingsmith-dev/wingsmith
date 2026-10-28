@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/tenancy"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // requestState is what one stage of withRouting's pipeline learns and the
@@ -382,7 +382,7 @@ func stageCacheSalt(w http.ResponseWriter, r *http.Request, req *requestState) (
 //
 // Only a text endpoint on a generation path is scoped: those are the requests a
 // prefix cache serves, and the paths Dynamo reads the salt from. On the public
-// zone the tenant is the one the host resolved and `X-Hangar-Cache-Scope` is
+// zone the tenant is the one the host resolved and `X-Wingsmith-Cache-Scope` is
 // ignored, because a public caller could name anything in it. On the internal
 // zone it is the endpoint's owner, narrowed by that header when the internal
 // caller sends one.

@@ -11,7 +11,7 @@
 // tenant, no metering, no billing: whoever puts a gateway in front of their
 // users already has a place where that happens, and doing it twice is how two
 // systems end up disagreeing about what a customer owes. What it does own is
-// the one thing only hangar knows: which clusters are serving a model right
+// the one thing only wingsmith knows: which clusters are serving a model right
 // now, and how to reach them.
 //
 // Replica selection inside a cluster is not this hop's business either. The
@@ -31,9 +31,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // DefaultMaxBodyBytes caps how much of a body is buffered to read its `model`
@@ -297,8 +297,8 @@ var callerCredentialHeaders = []string{
 	"Proxy-Authorization",
 	"Cookie",
 	"X-Api-Key",
-	"X-Hangar-Probe-Token",
-	"X-Hangar-Origin",
+	"X-Wingsmith-Probe-Token",
+	"X-Wingsmith-Origin",
 	cacheScopeHeader,
 }
 

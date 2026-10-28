@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 type stubResolver struct {
@@ -342,7 +342,7 @@ func TestARedirectLeavesHereAsAPath(t *testing.T) {
 		want     string
 	}{
 		{"http://model-frontend.dynamo.svc.cluster.local:8000/v1/models", "/v1/models"},
-		{"https://clu_ap.tunnel.hangar.internal/v1/models?limit=2", "/v1/models?limit=2"},
+		{"https://clu_ap.tunnel.wingsmith.internal/v1/models?limit=2", "/v1/models?limit=2"},
 		{"http://10.0.3.4:8000/v1/models#top", "/v1/models#top"},
 		{"/v1/models", "/v1/models"},
 	} {
@@ -363,7 +363,7 @@ func TestTheCatalogDoesNotNameWhoRunsIt(t *testing.T) {
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 
 	body := strings.ToLower(rec.Body.String())
-	for _, needle := range []string{"hangar", "acme", "partner", "dynamo", "vllm"} {
+	for _, needle := range []string{"wingsmith", "acme", "partner", "dynamo", "vllm"} {
 		if strings.Contains(body, needle) {
 			t.Fatalf("the catalog says %q: %s", needle, rec.Body)
 		}
@@ -648,7 +648,7 @@ func TestTheErrorClassFollowsTheStatus(t *testing.T) {
 func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 	tenants := tenantsFor(t, plane.GatewayTenant{
 		ID: "ten_x", Slug: "x", Enabled: true, Ingress: "public", Auth: "api_key",
-		Host: "x.hangar.dev", KeyHashes: []string{keyHash("secret")},
+		Host: "x.wingsmith.dev", KeyHashes: []string{keyHash("secret")},
 	})
 	handler := New(Config{
 		Router:  stubResolver{routes: map[string]routing.Route{"chat": {TenantID: "ten_x", Visibility: "public"}}},
@@ -669,7 +669,7 @@ func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(test.body))
-			request.Host = "x.hangar.dev"
+			request.Host = "x.wingsmith.dev"
 			if test.token != "" {
 				request.Header.Set("Authorization", "Bearer "+test.token)
 			}

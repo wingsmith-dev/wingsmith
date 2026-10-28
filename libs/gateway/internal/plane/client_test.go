@@ -59,7 +59,7 @@ func TestTenantsResolvedSendsTheRevisionBackAndReadsA304AsNotModified(t *testing
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"revision":"9-1","tenants":[{"id":"ten_1","slug":"globex","enabled":true,` +
-			`"ingress":"public","auth":"api_key","host":"globex.hangar.dev","key_hashes":["abc"]}]}`))
+			`"ingress":"public","auth":"api_key","host":"globex.wingsmith.dev","key_hashes":["abc"]}]}`))
 	}))
 	defer server.Close()
 
@@ -72,7 +72,7 @@ func TestTenantsResolvedSendsTheRevisionBackAndReadsA304AsNotModified(t *testing
 	if table.Revision != "9-1" || len(table.Tenants) != 1 {
 		t.Fatalf("table = %+v", table)
 	}
-	if table.Tenants[0].Host != "globex.hangar.dev" || table.Tenants[0].KeyHashes[0] != "abc" {
+	if table.Tenants[0].Host != "globex.wingsmith.dev" || table.Tenants[0].KeyHashes[0] != "abc" {
 		t.Fatalf("tenant = %+v", table.Tenants[0])
 	}
 

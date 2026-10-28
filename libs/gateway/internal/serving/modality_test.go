@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 func TestPathAnswered(t *testing.T) {

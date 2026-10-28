@@ -3,7 +3,7 @@ package metrics
 import (
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 
 	dto "github.com/prometheus/client_model/go"
 )
@@ -46,17 +46,17 @@ func TestTunnelCountsFollowThePool(t *testing.T) {
 
 	recorder.TunnelOpened("clu_ap", 1)
 	recorder.TunnelOpened("clu_ap", 2)
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnels", map[string]string{"cluster_id": "clu_ap"}); !ok || got != 2 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnels", map[string]string{"cluster_id": "clu_ap"}); !ok || got != 2 {
 		t.Fatalf("tunnels = %v (%v)", got, ok)
 	}
 
 	recorder.TunnelClosed("clu_ap", 0)
-	if got, _ := labelled(t, recorder, "hangar_gateway_tunnels", map[string]string{"cluster_id": "clu_ap"}); got != 0 {
+	if got, _ := labelled(t, recorder, "wingsmith_gateway_tunnels", map[string]string{"cluster_id": "clu_ap"}); got != 0 {
 		t.Fatalf("tunnels = %v after the last one closed", got)
 	}
 
 	recorder.TunnelDialRejected("unauthorized")
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_dials_rejected_total", map[string]string{"reason": "unauthorized"}); !ok || got != 1 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_dials_rejected_total", map[string]string{"reason": "unauthorized"}); !ok || got != 1 {
 		t.Fatalf("rejected = %v (%v)", got, ok)
 	}
 }
@@ -70,15 +70,15 @@ func TestCoverageDropsClustersThatLeaveTheTable(t *testing.T) {
 		{ClusterID: "clu_us", Cluster: "us"},
 	})
 
-	if got, _ := labelled(t, recorder, "hangar_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_ap", "cluster": "ap"}); got != 1 {
+	if got, _ := labelled(t, recorder, "wingsmith_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_ap", "cluster": "ap"}); got != 1 {
 		t.Fatalf("ap coverage = %v", got)
 	}
-	if got, _ := labelled(t, recorder, "hangar_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_us", "cluster": "us"}); got != 0 {
+	if got, _ := labelled(t, recorder, "wingsmith_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_us", "cluster": "us"}); got != 0 {
 		t.Fatalf("us coverage = %v", got)
 	}
 
 	recorder.TunnelCoverage([]TunnelSample{{ClusterID: "clu_ap", Cluster: "ap", Reachable: true}})
-	if _, ok := labelled(t, recorder, "hangar_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_us", "cluster": "us"}); ok {
+	if _, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_coverage", map[string]string{"cluster_id": "clu_us", "cluster": "us"}); ok {
 		t.Fatal("a cluster that left the table is still reporting coverage")
 	}
 }
@@ -99,25 +99,25 @@ func TestDuplicatesRevocationsAndRetriesAreTheirOwnSeries(t *testing.T) {
 
 	recorder.TunnelDialDuplicate()
 	recorder.TunnelDialDuplicate()
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_dials_duplicate_total", map[string]string{}); !ok || got != 2 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_dials_duplicate_total", map[string]string{}); !ok || got != 2 {
 		t.Fatalf("duplicates = %v (%v)", got, ok)
 	}
-	if _, ok := labelled(t, recorder, "hangar_gateway_tunnel_dials_rejected_total", map[string]string{"reason": "duplicate"}); ok {
+	if _, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_dials_rejected_total", map[string]string{"reason": "duplicate"}); ok {
 		t.Fatal("a duplicate was counted as a refused dial")
 	}
 
 	recorder.TunnelRevoked("clu_ap")
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnels_revoked_total", map[string]string{"cluster_id": "clu_ap"}); !ok || got != 1 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnels_revoked_total", map[string]string{"cluster_id": "clu_ap"}); !ok || got != 1 {
 		t.Fatalf("revoked = %v (%v)", got, ok)
 	}
 
 	recorder.TunnelRetry("clu_ap", tunnel.RetryWritten)
 	recorder.TunnelRetry("clu_ap", tunnel.RetryResent)
 	recorder.TunnelRetry("clu_ap", tunnel.RetryResent)
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "written"}); !ok || got != 1 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "written"}); !ok || got != 1 {
 		t.Fatalf("written = %v (%v)", got, ok)
 	}
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "resent"}); !ok || got != 2 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_retries_total", map[string]string{"cluster_id": "clu_ap", "outcome": "resent"}); !ok || got != 2 {
 		t.Fatalf("resent = %v (%v)", got, ok)
 	}
 }
@@ -128,15 +128,15 @@ func TestTunnelStreamUseIsReadAtScrape(t *testing.T) {
 	recorder.WatchTunnelStreams(func() []StreamSample { return samples })
 
 	labels := map[string]string{"cluster_id": "clu_ap"}
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_streams_active", labels); !ok || got != 3 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_streams_active", labels); !ok || got != 3 {
 		t.Fatalf("streams active = %v (%v), want 3", got, ok)
 	}
-	if got, ok := labelled(t, recorder, "hangar_gateway_tunnel_streams_capacity", labels); !ok || got != 10 {
+	if got, ok := labelled(t, recorder, "wingsmith_gateway_tunnel_streams_capacity", labels); !ok || got != 10 {
 		t.Fatalf("streams capacity = %v (%v), want 10", got, ok)
 	}
 
 	samples = nil
-	if got := family(t, recorder, "hangar_gateway_tunnel_streams_active"); len(got) != 0 {
+	if got := family(t, recorder, "wingsmith_gateway_tunnel_streams_active"); len(got) != 0 {
 		t.Fatalf("a cluster with no live tunnel still has %d stream series", len(got))
 	}
 }

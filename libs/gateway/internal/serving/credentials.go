@@ -15,7 +15,7 @@ import (
 // up here. The file is a JSON object of `{"<credential id>": {"<header>":
 // "<value>"}}`, which is intentionally dumb: whatever fronts a cluster's serving
 // address (an access service token, a signed header, a shared secret) is
-// somebody else's scheme, and hangar does not need to model it to carry it.
+// somebody else's scheme, and wingsmith does not need to model it to carry it.
 //
 // mTLS is the one thing this shape cannot express, and when that is needed it
 // belongs here as a second kind, not as a header with a certificate in

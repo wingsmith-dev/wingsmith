@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/tenancy"
 )
 
 type fixedTenantSource struct {
@@ -42,7 +42,7 @@ func globex() plane.GatewayTenant {
 		Enabled:   true,
 		Ingress:   "public",
 		Auth:      "api_key",
-		Host:      "globex.hangar.dev",
+		Host:      "globex.wingsmith.dev",
 		KeyHashes: []string{keyHash("secret-key")},
 	}
 }
@@ -82,7 +82,7 @@ func TestAHostThatNamesNoTenantIsRefusedOnThePublicZone(t *testing.T) {
 	handler := publicHandler(t, nil, tenants)
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("nobody.hangar.dev", `{"model":"chat"}`))
+	handler.ServeHTTP(rec, requestTo("nobody.wingsmith.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -93,7 +93,7 @@ func TestAKeyedTenantWithNoKeyPresentedIsUnauthorized(t *testing.T) {
 	handler := publicHandler(t, nil, tenants)
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
@@ -102,14 +102,14 @@ func TestAKeyedTenantWithNoKeyPresentedIsUnauthorized(t *testing.T) {
 func TestAKeyBelongingToAnotherTenantIsUnauthorized(t *testing.T) {
 	other := plane.GatewayTenant{
 		ID: "ten_other", Slug: "other", Enabled: true,
-		Ingress: "public", Auth: "api_key", Host: "other.hangar.dev",
+		Ingress: "public", Auth: "api_key", Host: "other.wingsmith.dev",
 		KeyHashes: []string{keyHash("other-secret")},
 	}
 	tenants := tenantsFor(t, globex(), other)
 	handler := publicHandler(t, nil, tenants)
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer other-secret"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer other-secret"))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401: a key minted for a different tenant must not pass", rec.Code)
 	}
@@ -121,7 +121,7 @@ func TestTheRightKeyForTheRightTenantIsAccepted(t *testing.T) {
 	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenants)
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s, want 200", rec.Code, rec.Body.String())
 	}
@@ -136,7 +136,7 @@ func TestAnotherTenantsModelIsNotFoundNotForbidden(t *testing.T) {
 	handler := publicHandler(t, map[string]routing.Route{"chat": acmesChat}, tenants)
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404: a name resolving to another tenant's endpoint must read as absent", rec.Code)
 	}
@@ -154,7 +154,7 @@ func TestTheCatalogOnThePublicZoneListsOnlyThisTenantsModels(t *testing.T) {
 	}, tenants)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Host = "globex.hangar.dev"
+	req.Host = "globex.wingsmith.dev"
 	req.Header.Set("Authorization", "Bearer secret-key")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -174,7 +174,7 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	server, _ := upstreamServer(t)
 	open := plane.GatewayTenant{
 		ID: "ten_open", Slug: "open", Enabled: true,
-		Ingress: "public", Auth: "none", Host: "open.hangar.dev",
+		Ingress: "public", Auth: "none", Host: "open.wingsmith.dev",
 	}
 	tenants := tenantsFor(t, open)
 	route := routeTo(t, server.URL, nil)
@@ -188,7 +188,7 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("open.hangar.dev", `{"model":"chat"}`))
+	handler.ServeHTTP(rec, requestTo("open.wingsmith.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s, want 200; auth: none takes no key at all", rec.Code, rec.Body.String())
 	}
@@ -197,7 +197,7 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	// unauthenticated public endpoint.
 	refusing := publicHandler(t, map[string]routing.Route{"chat": route}, tenants)
 	rec = httptest.NewRecorder()
-	refusing.ServeHTTP(rec, requestTo("open.hangar.dev", `{"model":"chat"}`))
+	refusing.ServeHTTP(rec, requestTo("open.wingsmith.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401 without AllowUnauthenticatedPublic", rec.Code)
 	}
@@ -232,7 +232,7 @@ func TestADisabledTenantIsRefusedOnThePublicZone(t *testing.T) {
 	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, disabled(globex())))
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "tenant_disabled") {
 		t.Fatalf("status = %d, body = %s, want 403 tenant_disabled", rec.Code, rec.Body)
 	}
@@ -240,7 +240,7 @@ func TestADisabledTenantIsRefusedOnThePublicZone(t *testing.T) {
 	// Without the key it is still the key that is refused: whether a tenant is
 	// enabled is not something an unauthenticated caller gets to learn.
 	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401 before the enabled check", rec.Code)
 	}
@@ -389,13 +389,13 @@ func TestAPrivateEndpointIsNotServedOnThePublicZone(t *testing.T) {
 	handler := publicHandler(t, map[string]routing.Route{"chat": route}, tenantsFor(t, globex()))
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Host = "globex.hangar.dev"
+	req.Host = "globex.wingsmith.dev"
 	req.Header.Set("Authorization", "Bearer secret-key")
 	catalog := httptest.NewRecorder()
 	handler.ServeHTTP(catalog, req)
@@ -411,7 +411,7 @@ func TestATenantWithInternalIngressIsNotServedOnThePublicZone(t *testing.T) {
 	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, tenant))
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_host") {
 		t.Fatalf("status = %d, body = %s, want 404 unknown_host", rec.Code, rec.Body)
 	}

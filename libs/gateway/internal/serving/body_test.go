@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 func chatHandler(t *testing.T, cfg Config) http.Handler {

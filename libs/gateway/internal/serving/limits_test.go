@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 func TestALimiterThatBoundsNothingIsNil(t *testing.T) {
@@ -136,7 +136,7 @@ func TestAPublicTenantIsLimitedBeforeItsBodyIsRead(t *testing.T) {
 	})
 	send := func(body *countingReader) int {
 		r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
-		r.Host = "globex.hangar.dev"
+		r.Host = "globex.wingsmith.dev"
 		r.Header.Set("Authorization", "Bearer secret-key")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, r)

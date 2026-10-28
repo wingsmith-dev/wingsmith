@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // ReadinessChecker answers whether this replica should be sent traffic, and why

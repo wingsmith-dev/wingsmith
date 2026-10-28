@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // aliased binds one route under its canonical name and under every alias, which
@@ -76,7 +76,7 @@ func TestUsageAndMetricsAreKeyedOnTheCanonicalWhateverTheCallerTyped(t *testing.
 
 	post(t, handler, `{"model":"org/reasoning-model"}`)
 
-	match := map[string]string{"hangar_endpoint": "ep_1", "endpoint_name": "reasoning-model"}
+	match := map[string]string{"wingsmith_endpoint": "ep_1", "endpoint_name": "reasoning-model"}
 	if got := requests(t, recorder, match); got != 1 {
 		t.Fatalf("%v = %v, want 1 (series present: %v)", match, got, allSeries(t, recorder))
 	}

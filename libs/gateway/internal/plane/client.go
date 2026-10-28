@@ -1,4 +1,4 @@
-// Package plane fetches the resolved routing table from the hangar control
+// Package plane fetches the resolved routing table from the wingsmith control
 // plane.
 //
 // The plane derives the table on every read and versions it with an ETag
@@ -198,7 +198,7 @@ type TenantTable struct {
 var ErrNotModified = fmt.Errorf("routing table not modified")
 
 // ErrCredential reports that the plane refused the gateway's own service
-// credential (HANGAR_GATEWAY_SERVICE_TOKEN) with a 401 or a 403.
+// credential (WINGSMITH_GATEWAY_SERVICE_TOKEN) with a 401 or a 403.
 //
 // It is a configuration fault on this side and never a verdict about anything
 // the gateway was asking about: a tunnel-auth answer carrying it says nothing

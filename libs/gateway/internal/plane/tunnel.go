@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // tunnelAuthPath resolves an enrolment token to the cluster that holds it.
@@ -123,6 +123,6 @@ func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Id
 // credentialFault logs a refused service credential where an operator will see
 // it: every dial in the meantime fails for a reason no agent can fix.
 func credentialFault(err error) error {
-	slog.Error("gateway: the plane refused HANGAR_GATEWAY_SERVICE_TOKEN; new tunnels cannot be verified until the gateway's service credential is fixed", "err", err)
+	slog.Error("gateway: the plane refused WINGSMITH_GATEWAY_SERVICE_TOKEN; new tunnels cannot be verified until the gateway's service credential is fixed", "err", err)
 	return err
 }

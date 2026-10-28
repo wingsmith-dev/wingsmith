@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 )
 
 type stubSource struct {
@@ -34,7 +34,7 @@ func globex() plane.GatewayTenant {
 		Enabled:   true,
 		Ingress:   "public",
 		Auth:      "api_key",
-		Host:      "globex.hangar.dev",
+		Host:      "globex.wingsmith.dev",
 		KeyHashes: []string{"livehash"},
 	}
 }
@@ -52,7 +52,7 @@ func acme() plane.GatewayTenant {
 func TestANewStoreServesAnEmptyTableBeforeAnyLoad(t *testing.T) {
 	store := New(&stubSource{})
 	table := store.Current()
-	if _, ok := table.TenantByHost("globex.hangar.dev"); ok {
+	if _, ok := table.TenantByHost("globex.wingsmith.dev"); ok {
 		t.Fatal("an unloaded store should resolve nothing")
 	}
 	if table.Revision() != "" {
@@ -68,7 +68,7 @@ func TestALoadedTableResolvesATenantByItsHostAndByItsKeyHash(t *testing.T) {
 	}
 
 	table := store.Current()
-	byHost, ok := table.TenantByHost("globex.hangar.dev")
+	byHost, ok := table.TenantByHost("globex.wingsmith.dev")
 	if !ok || byHost.ID != "ten_globex" {
 		t.Fatalf("TenantByHost = %+v, %v", byHost, ok)
 	}
@@ -121,7 +121,7 @@ func TestAFailedRefreshKeepsServingTheLastGoodTable(t *testing.T) {
 		t.Fatal("expected the second load to report the plane's error")
 	}
 
-	if _, ok := store.Current().TenantByHost("globex.hangar.dev"); !ok {
+	if _, ok := store.Current().TenantByHost("globex.wingsmith.dev"); !ok {
 		t.Fatal("a failed refresh must not drop the table already loaded")
 	}
 }

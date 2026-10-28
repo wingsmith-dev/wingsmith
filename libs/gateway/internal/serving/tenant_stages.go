@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/tenancy"
 )
 
 // Zone says which listener accepted a connection: the one fact about a
@@ -30,8 +30,8 @@ const (
 	// holds only while a NetworkPolicy keeps everything else off the port
 	// (libs/gateway/deploy/networkpolicy.yaml).
 	ZoneInternal
-	// ZonePublic is the *.hangar.example.com listener a tenant's own caller
-	// reaches directly, served by HANGAR_GATEWAY_PUBLIC_LISTEN. A tenant is on
+	// ZonePublic is the *.wingsmith.example.com listener a tenant's own caller
+	// reaches directly, served by WINGSMITH_GATEWAY_PUBLIC_LISTEN. A tenant is on
 	// it once its row carries a host and its ingress is "public".
 	ZonePublic
 )

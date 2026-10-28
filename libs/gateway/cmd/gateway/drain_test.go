@@ -35,8 +35,8 @@ func TestAShortGracePeriodStillFits(t *testing.T) {
 }
 
 func TestExplicitPhasesOverrideTheirShare(t *testing.T) {
-	t.Setenv("HANGAR_GATEWAY_SHUTDOWN_GRACE", "120s")
-	t.Setenv("HANGAR_GATEWAY_DRAIN_TIMEOUT", "90s")
+	t.Setenv("WINGSMITH_GATEWAY_SHUTDOWN_GRACE", "120s")
+	t.Setenv("WINGSMITH_GATEWAY_DRAIN_TIMEOUT", "90s")
 	plan, grace := readDrainPlan()
 	if grace != 120*time.Second || plan.requests != 90*time.Second || plan.delay != 5*time.Second {
 		t.Fatalf("plan = %+v, grace = %v", plan, grace)

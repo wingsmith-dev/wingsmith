@@ -705,7 +705,7 @@ const modelOwner = "system"
 // writeModelList answers GET /v1/models from the routing table.
 //
 // Intentionally bare: context length, quantization and display names are catalog
-// facts, and hangar serves models instead of describing them. Whatever sits in
+// facts, and wingsmith serves models instead of describing them. Whatever sits in
 // front of this hop owns its own catalog.
 func writeModelList(w http.ResponseWriter, names []string, kinds map[string]string) {
 	sort.Strings(names)

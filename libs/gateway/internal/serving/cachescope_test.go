@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 const sharedPrompt = `{"model":"chat","messages":[{"role":"system","content":"a long shared system prompt"},` +
@@ -120,7 +120,7 @@ func TestOnlyTextGenerationPathsAreScoped(t *testing.T) {
 
 // TestThePublicZoneScopesByTheHostsTenantAndIgnoresTheScopeHeader runs the whole
 // pipeline: the salt reaches the cluster, it is the host's tenant's, and a public
-// caller's X-Hangar-Cache-Scope neither changes it nor reaches the cluster.
+// caller's X-Wingsmith-Cache-Scope neither changes it nor reaches the cluster.
 func TestThePublicZoneScopesByTheHostsTenantAndIgnoresTheScopeHeader(t *testing.T) {
 	server, seen := steeringUpstream(t)
 	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, globex()))
@@ -128,7 +128,7 @@ func TestThePublicZoneScopesByTheHostsTenantAndIgnoresTheScopeHeader(t *testing.
 	send := func(headers ...string) string {
 		rec := httptest.NewRecorder()
 		headers = append(headers, "Authorization", "Bearer secret-key")
-		handler.ServeHTTP(rec, requestTo("globex.hangar.dev", sharedPrompt, headers...))
+		handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", sharedPrompt, headers...))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 		}

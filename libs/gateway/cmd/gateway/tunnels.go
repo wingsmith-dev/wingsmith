@@ -9,22 +9,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // tunnelSettings are the tunnel listener and pool limits read from the
 // environment. A zero field leaves the tunnel package's default, and -1 turns
 // off a limit that can be turned off.
 //
-//	HANGAR_GATEWAY_TUNNEL_MAX_PER_CLUSTER             tunnels one cluster may hold on a replica
-//	HANGAR_GATEWAY_TUNNEL_MAX                         tunnels a replica holds across every cluster
-//	HANGAR_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT           a response body unread this long is closed; "off" disables
-//	HANGAR_GATEWAY_TUNNEL_CACHE_TTL                   how long a verified token is reused without asking the plane
-//	HANGAR_GATEWAY_TUNNEL_CACHE_GRACE                 how long a verified token survives a plane that cannot be reached
-//	HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL           how often an open tunnel's token is checked again
-//	HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES              dials mid-handshake at once
-//	HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE   of those, from one address; "off" disables
-//	HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES             failed dials per address per minute before it is throttled; "off" disables
+//	WINGSMITH_GATEWAY_TUNNEL_MAX_PER_CLUSTER             tunnels one cluster may hold on a replica
+//	WINGSMITH_GATEWAY_TUNNEL_MAX                         tunnels a replica holds across every cluster
+//	WINGSMITH_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT           a response body unread this long is closed; "off" disables
+//	WINGSMITH_GATEWAY_TUNNEL_CACHE_TTL                   how long a verified token is reused without asking the plane
+//	WINGSMITH_GATEWAY_TUNNEL_CACHE_GRACE                 how long a verified token survives a plane that cannot be reached
+//	WINGSMITH_GATEWAY_TUNNEL_REVERIFY_INTERVAL           how often an open tunnel's token is checked again
+//	WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES              dials mid-handshake at once
+//	WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE   of those, from one address; "off" disables
+//	WINGSMITH_GATEWAY_TUNNEL_SOURCE_FAILURES             failed dials per address per minute before it is throttled; "off" disables
 //
 // The two per-source limits key on the dial's address, so they only work when
 // the tunnel Service preserves it (externalTrafficPolicy: Local, or a
@@ -44,15 +44,15 @@ type tunnelSettings struct {
 
 func tunnelSettingsFromEnv() tunnelSettings {
 	return tunnelSettings{
-		maxPerCluster:          envInt("HANGAR_GATEWAY_TUNNEL_MAX_PER_CLUSTER"),
-		maxTunnels:             envInt("HANGAR_GATEWAY_TUNNEL_MAX"),
-		bodyIdle:               envDurationOrOff("HANGAR_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT"),
-		cacheTTL:               envDuration("HANGAR_GATEWAY_TUNNEL_CACHE_TTL"),
-		cacheGrace:             envDuration("HANGAR_GATEWAY_TUNNEL_CACHE_GRACE"),
-		reverify:               envDuration("HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL"),
-		maxHandshakes:          envInt("HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES"),
-		maxHandshakesPerSource: envIntOrOff("HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE"),
-		sourceFailures:         envIntOrOff("HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES"),
+		maxPerCluster:          envInt("WINGSMITH_GATEWAY_TUNNEL_MAX_PER_CLUSTER"),
+		maxTunnels:             envInt("WINGSMITH_GATEWAY_TUNNEL_MAX"),
+		bodyIdle:               envDurationOrOff("WINGSMITH_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT"),
+		cacheTTL:               envDuration("WINGSMITH_GATEWAY_TUNNEL_CACHE_TTL"),
+		cacheGrace:             envDuration("WINGSMITH_GATEWAY_TUNNEL_CACHE_GRACE"),
+		reverify:               envDuration("WINGSMITH_GATEWAY_TUNNEL_REVERIFY_INTERVAL"),
+		maxHandshakes:          envInt("WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES"),
+		maxHandshakesPerSource: envIntOrOff("WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE"),
+		sourceFailures:         envIntOrOff("WINGSMITH_GATEWAY_TUNNEL_SOURCE_FAILURES"),
 	}
 }
 

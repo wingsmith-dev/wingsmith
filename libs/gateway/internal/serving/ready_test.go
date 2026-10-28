@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 type stubReach []routing.ClusterReach
@@ -93,7 +93,7 @@ func TestReadinessIsCountedButNotObservedAsTraffic(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("readyz = %d", rec.Code)
 	}
-	if got := len(gathered(t, recorder, "hangar_gateway_requests_total")); got != 0 {
+	if got := len(gathered(t, recorder, "wingsmith_gateway_requests_total")); got != 0 {
 		t.Fatalf("readyz produced %d series, want none", got)
 	}
 }

@@ -7,7 +7,7 @@
 # Adjust the namespace, the pod labels and the selectors to your install, and keep the shape:
 #
 #   :8080  internal listener   your own inference edge only
-#   :8081  public listener     your ingress controller only (only if HANGAR_GATEWAY_PUBLIC_LISTEN is set)
+#   :8081  public listener     your ingress controller only (only if WINGSMITH_GATEWAY_PUBLIC_LISTEN is set)
 #   :8443  tunnel listener     anywhere the cluster agents dial from (they authenticate with an enrolment token)
 #   :9090  /metrics            your monitoring namespace only
 #
@@ -16,12 +16,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hangar-gateway
-  namespace: hangar
+  name: wingsmith-gateway
+  namespace: wingsmith
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: hangar-gateway
+      app.kubernetes.io/name: wingsmith-gateway
   policyTypes:
     - Ingress
   ingress:

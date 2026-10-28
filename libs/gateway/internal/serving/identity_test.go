@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // accessLines runs a handler with slog captured and returns the access lines it
@@ -48,7 +48,7 @@ func TestTheAccessLogNamesTheTenantAndKeyThatSpokeForARequest(t *testing.T) {
 
 	lines := accessLines(t, func() {
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+		handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", rec.Code)
 		}
@@ -84,7 +84,7 @@ func TestTheAccessLogNamesTheKeyOnARejectedRequest(t *testing.T) {
 
 	lines := accessLines(t, func() {
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer wrong-key"))
+		handler.ServeHTTP(rec, requestTo("globex.wingsmith.dev", `{"model":"chat"}`, "Authorization", "Bearer wrong-key"))
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("status = %d, want 401", rec.Code)
 		}
@@ -110,7 +110,7 @@ func TestTheAccessLogCarriesNoIdentityOnTheInternalZone(t *testing.T) {
 
 	lines := accessLines(t, func() {
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, requestTo("anything.hangar.dev", `{"model":"chat"}`))
+		handler.ServeHTTP(rec, requestTo("anything.wingsmith.dev", `{"model":"chat"}`))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", rec.Code)
 		}

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // transcriptionBody builds the shape OpenAI's transcription clients send: an

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // arrival is what the cluster end of the hop received.
@@ -223,7 +223,7 @@ func TestSteeringHeadersAreMatchedWhateverTheirSpelling(t *testing.T) {
 		"X-Tenant-Id":                true,
 		"X-Thread-Id":                false,
 		"Authorization":              false,
-		"X-Hangar-Origin":            false,
+		"X-Wingsmith-Origin":         false,
 		tunnel.HeaderDeploymentID:    false,
 	} {
 		if got := isSteeringHeader(name); got != want {
@@ -240,21 +240,21 @@ func TestCallerCredentialsNeverLeaveThisHop(t *testing.T) {
 	stamped := http.Header{}
 	stamped.Set("Authorization", "Bearer cluster-credential")
 	header := http.Header{
-		"Authorization":        {"Bearer tenant-key"},
-		"Proxy-Authorization":  {"Basic abc"},
-		"Cookie":               {"session=1"},
-		"X-Api-Key":            {"tenant-key"},
-		"X-Hangar-Probe-Token": {"probe-secret"},
-		"X-Hangar-Origin":      {"probe"},
-		cacheScopeHeader:       {"org_1"},
-		"User-Agent":           {"client/1.0"},
+		"Authorization":           {"Bearer tenant-key"},
+		"Proxy-Authorization":     {"Basic abc"},
+		"Cookie":                  {"session=1"},
+		"X-Api-Key":               {"tenant-key"},
+		"X-Wingsmith-Probe-Token": {"probe-secret"},
+		"X-Wingsmith-Origin":      {"probe"},
+		cacheScopeHeader:          {"org_1"},
+		"User-Agent":              {"client/1.0"},
 	}
 	sendThrough(t, routeTo(t, server.URL, stamped), `{"model":"chat"}`, header)
 
 	if got := seen.header.Get("Authorization"); got != "Bearer cluster-credential" {
 		t.Errorf("Authorization = %q, want only the address's own credential", got)
 	}
-	for _, name := range []string{"Proxy-Authorization", "Cookie", "X-Api-Key", "X-Hangar-Probe-Token", "X-Hangar-Origin", cacheScopeHeader} {
+	for _, name := range []string{"Proxy-Authorization", "Cookie", "X-Api-Key", "X-Wingsmith-Probe-Token", "X-Wingsmith-Origin", cacheScopeHeader} {
 		if got := seen.header.Values(name); len(got) != 0 {
 			t.Errorf("%s reached the cluster as %q", name, got)
 		}

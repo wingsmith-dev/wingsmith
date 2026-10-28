@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 )
 
 // denials are the wire features a policy may refuse by name.

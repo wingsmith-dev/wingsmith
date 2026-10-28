@@ -1,15 +1,15 @@
 # gateway
 
-Hangar's data plane. One hop: it takes an OpenAI-compatible request, reads the `model` out of the
+Wingsmith's data plane. One hop: it takes an OpenAI-compatible request, reads the `model` out of the
 body, and forwards it to a cluster currently serving that model.
 
-It is the only part of hangar that sits in the request path, and it holds nothing the control plane
+It is the only part of wingsmith that sits in the request path, and it holds nothing the control plane
 holds. The plane derives the routing table; the gateway keeps a copy in memory and refreshes it on
 a timer. Nothing is joined per request.
 
 It is also the gateway end of the tunnel. There is no separate gateway deployment: one
-StatefulSet, `hangar-gateway`, answers callers on one port and accepts cluster dials on another. A
-cluster runs two hangar processes and neither is this one: the operator, which operates the
+StatefulSet, `wingsmith-gateway`, answers callers on one port and accepts cluster dials on another. A
+cluster runs two wingsmith processes and neither is this one: the operator, which operates the
 cluster, and the agent, which dials out to the gateway and carries inference requests in.
 
 ## Layout
@@ -49,7 +49,7 @@ default, so a listener cannot end up unauthenticated by omission.
   tenant behind it may declare `auth: none`, and a caller there can reach every enabled tenant's
   endpoints. An operator's own edge is `internal` + `none`: it authenticates and bills its own users,
   then calls here.
-- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.example.com`
+- **The public listener** (`WINGSMITH_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.wingsmith.example.com`
   wildcard. A request there is identified by its `Host` header, checked against a key when the tenant
   declares `auth: api_key`, and scoped to that tenant's own catalog and routing. Another tenant's
   model reads as `404`, never `403`. Only a tenant whose `ingress` is `public` is served here, and
@@ -84,36 +84,36 @@ caller on the internet can send an unknown `Host`.
 | Flag / variable | What |
 |---|---|
 | `-listen` | listen address, default `:8080` |
-| `-plane-url` / `HANGAR_PLANE_URL` | the plane's base URL |
-| `HANGAR_GATEWAY_SERVICE_TOKEN` | the gateway's service credential for the plane, required. The plane accepts it on `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` and `POST /v1/clusters/tunnel-auth` only. A 401 or 403 on it is logged as a gateway configuration error and never read as a verdict on an agent's enrolment token |
+| `-plane-url` / `WINGSMITH_PLANE_URL` | the plane's base URL |
+| `WINGSMITH_GATEWAY_SERVICE_TOKEN` | the gateway's service credential for the plane, required. The plane accepts it on `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants` and `POST /v1/clusters/tunnel-auth` only. A 401 or 403 on it is logged as a gateway configuration error and never read as a verdict on an agent's enrolment token |
 | `-resync` | how often to re-read the routing table and the tenant table, default 30s |
-| `HANGAR_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off; env only, never a flag, for the reason below |
-| `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
-| `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
-| `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
-| `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
-| `-gateways` / `HANGAR_GATEWAY_REPLICAS` | how many gateway replicas are running, told to every dialling agent; must equal the StatefulSet's `replicas`. See [Scaling](#scaling) |
-| `-gateway-id` / `HANGAR_GATEWAY_ID` | this replica's identity, reported to agents; defaults to the hostname, which is the pod name in a StatefulSet |
-| `HANGAR_GATEWAY_REDACT_NAMES` | comma-separated names your own infrastructure goes by, redacted from quoted engine messages on top of the built-in stack names; env only |
-| `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
-| `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` | requests one tenant may have in flight on one replica, default `1024`, `0` for no cap |
-| `HANGAR_GATEWAY_TENANT_RPS` / `HANGAR_GATEWAY_TENANT_BURST` | sustained requests per second one tenant may send to one replica, and the burst above it; unset means no rate limit |
-| `HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH` | `true` serves a public tenant declaring `auth: none`; off by default, so such a tenant gets `401` |
-| `HANGAR_GATEWAY_MAX_BODY_BYTES` | the largest request body accepted, default 100 MiB; a larger one is `413` |
-| `HANGAR_GATEWAY_MAX_BUFFERED_BYTES` | request-body memory held at once across the replica, default 1000 MiB, `0` for no bound; a request that would pass it is `503 no_capacity`. Each request is charged its body, the same again as working room for the stages that decode it, and the latest rewritten copy, so the limit is close to what is resident; leave the pod headroom above it for everything else |
-| `HANGAR_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
-| `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
-| `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
-| `HANGAR_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows public hosts and refuses internal ones. See [Remote media](#remote-media) |
-| `HANGAR_GATEWAY_SHUTDOWN_GRACE` | the pod's `terminationGracePeriodSeconds`, default `30s`; the drain phases are cut from it, see [Shutdown](#shutdown) |
-| `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | override one shutdown phase; at the default grace they are `5s` / `16s` / `5s` |
-| `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
+| `WINGSMITH_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off; env only, never a flag, for the reason below |
+| `-credentials` / `WINGSMITH_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
+| `-metrics-listen` / `WINGSMITH_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
+| `-probe-token` / `WINGSMITH_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
+| `-tunnel-listen` / `WINGSMITH_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
+| `-gateways` / `WINGSMITH_GATEWAY_REPLICAS` | how many gateway replicas are running, told to every dialling agent; must equal the StatefulSet's `replicas`. See [Scaling](#scaling) |
+| `-gateway-id` / `WINGSMITH_GATEWAY_ID` | this replica's identity, reported to agents; defaults to the hostname, which is the pod name in a StatefulSet |
+| `WINGSMITH_GATEWAY_REDACT_NAMES` | comma-separated names your own infrastructure goes by, redacted from quoted engine messages on top of the built-in stack names; env only |
+| `-tunnel-cert` / `-tunnel-key` (`WINGSMITH_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
+| `WINGSMITH_GATEWAY_TENANT_MAX_IN_FLIGHT` | requests one tenant may have in flight on one replica, default `1024`, `0` for no cap |
+| `WINGSMITH_GATEWAY_TENANT_RPS` / `WINGSMITH_GATEWAY_TENANT_BURST` | sustained requests per second one tenant may send to one replica, and the burst above it; unset means no rate limit |
+| `WINGSMITH_GATEWAY_PUBLIC_ALLOW_NO_AUTH` | `true` serves a public tenant declaring `auth: none`; off by default, so such a tenant gets `401` |
+| `WINGSMITH_GATEWAY_MAX_BODY_BYTES` | the largest request body accepted, default 100 MiB; a larger one is `413` |
+| `WINGSMITH_GATEWAY_MAX_BUFFERED_BYTES` | request-body memory held at once across the replica, default 1000 MiB, `0` for no bound; a request that would pass it is `503 no_capacity`. Each request is charged its body, the same again as working room for the stages that decode it, and the latest rewritten copy, so the limit is close to what is resident; leave the pod headroom above it for everything else |
+| `WINGSMITH_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
+| `WINGSMITH_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
+| `WINGSMITH_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
+| `WINGSMITH_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows public hosts and refuses internal ones. See [Remote media](#remote-media) |
+| `WINGSMITH_GATEWAY_SHUTDOWN_GRACE` | the pod's `terminationGracePeriodSeconds`, default `30s`; the drain phases are cut from it, see [Shutdown](#shutdown) |
+| `WINGSMITH_GATEWAY_DRAIN_DELAY` / `WINGSMITH_GATEWAY_DRAIN_TIMEOUT` / `WINGSMITH_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | override one shutdown phase; at the default grace they are `5s` / `16s` / `5s` |
+| `-log-upstream-bodies` / `WINGSMITH_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 Only the plane URL and the service token are required; nothing else is fatal by its absence. That is
 a deploy constraint instead of a courtesy: a manifest rolled out before the image it names reaches
 the old binary first, and a flag that binary does not know makes `flag.Parse` exit 2. Prefer the
 environment variable when adding one to a manifest: an unknown variable is inert, an unknown flag
-is a crashloop of the data plane. `HANGAR_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
+is a crashloop of the data plane. `WINGSMITH_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
 manifest naming its address is exactly the change that turns direct tenants on.
 
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
@@ -122,13 +122,13 @@ that redeems it.
 
 ## Limits
 
-Each replica bounds every tenant it serves: at most `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` requests
-in flight (default 1024), and, when `HANGAR_GATEWAY_TENANT_RPS` is set, a token-bucket request rate.
+Each replica bounds every tenant it serves: at most `WINGSMITH_GATEWAY_TENANT_MAX_IN_FLIGHT` requests
+in flight (default 1024), and, when `WINGSMITH_GATEWAY_TENANT_RPS` is set, a token-bucket request rate.
 A tenant over either gets `429 rate_limited` with `Retry-After`, counted as the `rate_limited`
 outcome, not as a failure of this hop. On the public listener the tenant is the host's and
 the check runs before the body is read; on the internal listener it is the endpoint's owner, which
 is known only once the body names a model, so there the buffer budget
-(`HANGAR_GATEWAY_MAX_BUFFERED_BYTES`) is what bounds bodies before the tenant check. The limits are
+(`WINGSMITH_GATEWAY_MAX_BUFFERED_BYTES`) is what bounds bodies before the tenant check. The limits are
 per tenant, not per key: every key belongs to one tenant, and a tenant's keys share its allowance.
 They are per replica, so the fleet-wide figure is the per-replica value times the replica count.
 
@@ -145,12 +145,12 @@ inside the serving cluster, from a GPU node, with whatever that network can reac
 checks every remote media URL before the request leaves this hop and refuses one it does not allow
 with `400 media_url_not_allowed`. `data:` URLs carry bytes and always pass.
 
-- **By default** (`HANGAR_GATEWAY_MEDIA_URL_HOSTS` unset) a URL must be `http` or `https` and must not
+- **By default** (`WINGSMITH_GATEWAY_MEDIA_URL_HOSTS` unset) a URL must be `http` or `https` and must not
   name a private or cluster-internal host: loopback, private, link-local (including the cloud
   metadata address), CGNAT and unspecified addresses, numeric host forms such as `127.1`,
-  single-label names such as `hangar-plane`, and names under `.local`, `.localhost`, `.internal`,
+  single-label names such as `wingsmith-plane`, and names under `.local`, `.localhost`, `.internal`,
   `.svc`, `.cluster.local`, `.lan` and `.home.arpa`. Every public host is allowed.
-- **With `HANGAR_GATEWAY_MEDIA_URL_HOSTS`** a URL must name a host on that list, and nothing else
+- **With `WINGSMITH_GATEWAY_MEDIA_URL_HOSTS`** a URL must name a host on that list, and nothing else
   passes. Listing a private host allows it.
 
 What is checked is where an engine fetches from: chat `image_url` / `video_url` / `audio_url` parts,
@@ -171,7 +171,7 @@ Agents dial out to the gateway, and every replica needs a tunnel from every clus
 An agent learns how many replicas there are from the number each replica reports on the handshake,
 and keeps redialling the tunnel address until it has a tunnel to that many distinct gateway ids.
 The gateway does not discover that number: it has no Kubernetes client, so it is told with
-`HANGAR_GATEWAY_REPLICAS`, and that value must equal the StatefulSet's `replicas`.
+`WINGSMITH_GATEWAY_REPLICAS`, and that value must equal the StatefulSet's `replicas`.
 
 - **Set too low**, agents stop dialling before they cover every replica. The replicas they missed
   hold no tunnel for those clusters and answer `503 no_capacity` for their models while reporting
@@ -184,7 +184,7 @@ The gateway does not discover that number: it has no Kubernetes client, so it is
 Change both numbers in the same rollout. The pods restart, every agent redials, and each reads the
 new count. Readiness (`/readyz`) only fails while a replica can reach none of the clusters in its
 routing table, so a replica missing one cluster's tunnel stays in the Service and answers `503` for
-that cluster's models; `hangar_gateway_tunnel_coverage` shows which replica lacks which cluster.
+that cluster's models; `wingsmith_gateway_tunnel_coverage` shows which replica lacks which cluster.
 
 Keeping the two numbers in step by hand is a known limitation. Removing it takes two changes that
 are not built: the tunnel listener reading the replica count from something that changes at
@@ -194,13 +194,13 @@ The gateway cannot derive the count alone without a Kubernetes client.
 
 ## Shutdown
 
-On `SIGTERM` the replica reports not-ready, keeps accepting for `HANGAR_GATEWAY_DRAIN_DELAY` while
+On `SIGTERM` the replica reports not-ready, keeps accepting for `WINGSMITH_GATEWAY_DRAIN_DELAY` while
 endpoint removal reaches every load balancer, then gives the internal and public listeners each the
-whole `HANGAR_GATEWAY_DRAIN_TIMEOUT` to finish what they are serving, concurrently. Whatever is still
+whole `WINGSMITH_GATEWAY_DRAIN_TIMEOUT` to finish what they are serving, concurrently. Whatever is still
 running when that ends is cut. The tunnel listener is drained after them, under its own
-`HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT`, because the requests being drained ride those tunnels.
+`WINGSMITH_GATEWAY_TUNNEL_DRAIN_TIMEOUT`, because the requests being drained ride those tunnels.
 
-The phases are cut from `HANGAR_GATEWAY_SHUTDOWN_GRACE`, which must equal the pod's
+The phases are cut from `WINGSMITH_GATEWAY_SHUTDOWN_GRACE`, which must equal the pod's
 `terminationGracePeriodSeconds`: up to 5 seconds each for the delay and the tunnel drain, 1 second
 for the metrics listener, 3 seconds left unspent before the kubelet's `SIGKILL`, and the rest to the
 request listeners. At the default 30 seconds that is `5s` / `16s` / `5s`, ending at 27 seconds. A
@@ -208,9 +208,9 @@ phase set explicitly is used as given, and the gateway logs a warning at startup
 together outlast the grace period.
 
 That budget bounds how long a generation can survive a rollout. To carry longer generations through
-one, raise `terminationGracePeriodSeconds` and `HANGAR_GATEWAY_SHUTDOWN_GRACE` together; the extra
+one, raise `terminationGracePeriodSeconds` and `WINGSMITH_GATEWAY_SHUTDOWN_GRACE` together; the extra
 time goes to the request listeners. The agent's drain on the cluster side is cut the same way from
-its own `HANGAR_SHUTDOWN_GRACE`; see its README.
+its own `WINGSMITH_SHUTDOWN_GRACE`; see its README.
 
 ## What it never keeps
 
@@ -243,7 +243,7 @@ Every text generation request (`/v1/chat/completions`, `/v1/completions`, `/v1/r
 `/v1/messages`) on a text endpoint is salted with its tenant:
 
 - on the public listener, the tenant the `Host` resolved;
-- on the internal listener, the tenant that owns the endpoint, narrowed by `X-Hangar-Cache-Scope`
+- on the internal listener, the tenant that owns the endpoint, narrowed by `X-Wingsmith-Cache-Scope`
   when the internal caller sends one. A platform serving many customers through one tenant names the
   customer there, and gets one cache per customer. The header is ignored on the public listener and
   removed before the request leaves this hop.
@@ -304,18 +304,18 @@ into a clean bill of health.
 counted under the reserved endpoint `_catalog`, and a request naming a model we do not serve under
 `_unknown`, not under the string it asked for.
 
-`hangar_gateway_routing_table_age_seconds` is seconds since the plane last confirmed the loaded
+`wingsmith_gateway_routing_table_age_seconds` is seconds since the plane last confirmed the loaded
 table, by sending a new one or by answering `304`. A failed refresh does not reset it:
 the gateway keeps serving what it has, and that gauge climbing beside
-`hangar_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
+`wingsmith_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
 from the data plane.
 
-`hangar_gateway_upstream_replays_total` counts request bodies sent to a cluster a second time
+`wingsmith_gateway_upstream_replays_total` counts request bodies sent to a cluster a second time
 because the transport retried them, usually when a tunnel or connection went away before the
-request was processed. `hangar_gateway_build_info{version}` names the running build.
+request was processed. `wingsmith_gateway_build_info{version}` names the running build.
 
-`hangar_gateway_tunnel_streams_active{cluster_id}` is the requests open on this replica's live
-tunnels to a cluster, and `hangar_gateway_tunnel_streams_capacity{cluster_id}` the stream limits the
+`wingsmith_gateway_tunnel_streams_active{cluster_id}` is the requests open on this replica's live
+tunnels to a cluster, and `wingsmith_gateway_tunnel_streams_capacity{cluster_id}` the stream limits the
 agents advertised on them, summed. When the two meet, the replica answers `503 no_capacity` for that
 cluster until a stream finishes. They are per cluster, not per tunnel: each request goes to the
 least-loaded live tunnel, so the sum is what decides saturation.
@@ -325,10 +325,10 @@ to the cluster untouched, so a trace started at the edge continues into the serv
 
 Text usage is the upstream's own `usage` object, read from a 64 KiB tail of the response and
 written as `input_tokens`/`output_tokens` on the `gateway: request` line and
-`hangar_gateway_tokens_total`. Image and video generations have none (Dynamo 1.5.0's image and
+`wingsmith_gateway_tokens_total`. Image and video generations have none (Dynamo 1.5.0's image and
 video responses carry no usage the worker could fill), so this hop records raw facts for a
 successful `/v1/images/generations`, `/v1/images/edits`, `/v1/videos`, or `/v1/chat/completions`
-answered by an image model, on the same line and in `hangar_gateway_generated_total{unit}`:
+answered by an image model, on the same line and in `wingsmith_gateway_generated_total{unit}`:
 
 - `images` / `videos`: outputs counted as the response streams past (each `b64_json` or `url` in
   `data`, or each `"type":"image_url"` part of a chat answer). Nothing is buffered beyond the tail.
@@ -349,13 +349,13 @@ cost it. Every value has a default in `libs/packages/tunnel`; set one only to ch
 
 | Variable | What |
 |---|---|
-| `HANGAR_GATEWAY_TUNNEL_MAX_PER_CLUSTER` / `HANGAR_GATEWAY_TUNNEL_MAX` | tunnels one cluster may hold on a replica, and a replica across every cluster |
-| `HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES` | dials mid-handshake at once |
-| `HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE` | of those, from one address (an IPv6 address counts by its /64); `off` disables |
-| `HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES` | failed dials one address may make in a minute before its dials are refused as `throttled` without asking the plane; a token verified within the cache TTL still gets in; `off` disables |
-| `HANGAR_GATEWAY_TUNNEL_CACHE_TTL` / `HANGAR_GATEWAY_TUNNEL_CACHE_GRACE` | how long a verified token is reused without asking the plane (1m), and how long it survives a plane that cannot be reached (15m) |
-| `HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL` | how often an open tunnel's token is checked again (1m); it cannot be turned off |
-| `HANGAR_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT` | a tunnelled response body nobody reads for this long is closed (2m); `off` disables |
+| `WINGSMITH_GATEWAY_TUNNEL_MAX_PER_CLUSTER` / `WINGSMITH_GATEWAY_TUNNEL_MAX` | tunnels one cluster may hold on a replica, and a replica across every cluster |
+| `WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES` | dials mid-handshake at once |
+| `WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE` | of those, from one address (an IPv6 address counts by its /64); `off` disables |
+| `WINGSMITH_GATEWAY_TUNNEL_SOURCE_FAILURES` | failed dials one address may make in a minute before its dials are refused as `throttled` without asking the plane; a token verified within the cache TTL still gets in; `off` disables |
+| `WINGSMITH_GATEWAY_TUNNEL_CACHE_TTL` / `WINGSMITH_GATEWAY_TUNNEL_CACHE_GRACE` | how long a verified token is reused without asking the plane (1m), and how long it survives a plane that cannot be reached (15m) |
+| `WINGSMITH_GATEWAY_TUNNEL_REVERIFY_INTERVAL` | how often an open tunnel's token is checked again (1m); it cannot be turned off |
+| `WINGSMITH_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT` | a tunnelled response body nobody reads for this long is closed (2m); `off` disables |
 
 The per-source limits key on the dial's address. Behind a Service or load balancer that rewrites
 it (`externalTrafficPolicy: Cluster`, an L7 proxy), every agent shares a few node addresses; keep
@@ -389,7 +389,7 @@ running, so the tunnels already open keep serving.
   (`{"message"}`, `{"error":{"message"}}`, `{"error":"..."}`, `{"detail"}`), its message is cut to
   its first line (no tracebacks), a leading exception class is dropped, URLs, cluster-internal
   hostnames, IP addresses, source files, filesystem paths and any token naming the stack (the
-  conformance leak needles, plus `HANGAR_GATEWAY_REDACT_NAMES`) become `[redacted]`, the served model name reads back as the caller's,
+  conformance leak needles, plus `WINGSMITH_GATEWAY_REDACT_NAMES`) become `[redacted]`, the served model name reads back as the caller's,
   and it is capped at 500 bytes. This is how input errors reach a caller: the vllm-omni layer
   raises `ValueError` for a validation failure, and Dynamo's frontend answers that `400`
   `InvalidArgument` with the message. A `4xx` prose body is never quoted, and one that mentions a
@@ -408,7 +408,7 @@ running, so the tunnels already open keep serving.
   request, and ahead of whom, is not a caller's to choose. A request carrying none of them is
   forwarded as the bytes that arrived. The names are in `steering.go`.
 - **A caller's own credentials.** `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`,
-  `X-Hangar-Probe-Token`, `X-Hangar-Origin` and `X-Hangar-Cache-Scope` are removed before the
+  `X-Wingsmith-Probe-Token`, `X-Wingsmith-Origin` and `X-Wingsmith-Cache-Scope` are removed before the
   request leaves. A tenant's key is redeemed here and no cluster, agent or engine log gets a copy.
   The credential a serving address sits behind is written after the removal, so it still goes out.
 - **A response header from behind this hop.** Deleted unless it is on the forwarded list in

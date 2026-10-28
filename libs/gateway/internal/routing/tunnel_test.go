@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 )
 
 // recordingFactory answers with the cluster it was built for, so a test can tell

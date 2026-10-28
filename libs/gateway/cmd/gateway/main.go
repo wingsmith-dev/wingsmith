@@ -1,4 +1,4 @@
-// Command gateway is hangar's data plane: it accepts OpenAI-compatible requests
+// Command gateway is wingsmith's data plane: it accepts OpenAI-compatible requests
 // and forwards each to a cluster currently serving the model it names.
 package main
 
@@ -18,12 +18,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/serving"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/serving"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/tenancy"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -31,55 +31,55 @@ var version = "dev"
 
 func main() {
 	listenAddr := flag.String("listen", ":8080", "HTTP listen address")
-	planeURL := flag.String("plane-url", "", "hangar plane base URL (HANGAR_PLANE_URL env fallback)")
+	planeURL := flag.String("plane-url", "", "wingsmith plane base URL (WINGSMITH_PLANE_URL env fallback)")
 	resync := flag.Duration("resync", 30*time.Second, "how often to re-read the routing table")
-	credentialsPath := flag.String("credentials", "", "path to the mounted credential file (HANGAR_GATEWAY_CREDENTIALS env fallback)")
+	credentialsPath := flag.String("credentials", "", "path to the mounted credential file (WINGSMITH_GATEWAY_CREDENTIALS env fallback)")
 	// The settings below default to something that works and are read from the
 	// environment as well as the command line, and none is fatal by its
 	// absence. That is the deploy path, not politeness: a manifest rolled out
 	// before the image it names reaches the old binary first, and a flag that
 	// binary does not know makes flag.Parse exit 2, a crashloop of the data
 	// plane. An unknown environment variable is inert; an unknown flag is not.
-	metricsAddr := flag.String("metrics-listen", "", "address for the Prometheus /metrics listener, empty for the default (HANGAR_GATEWAY_METRICS_LISTEN env fallback, \"off\" to disable)")
-	probeToken := flag.String("probe-token", "", "token the conformance runner presents to mark its traffic as probe, not live; accepts a comma-separated pair while rotating (HANGAR_GATEWAY_PROBE_TOKEN env fallback)")
-	tunnelAddr := flag.String("tunnel-listen", "", "address the cluster agents dial, empty for the default (HANGAR_GATEWAY_TUNNEL_LISTEN env fallback, \"off\" to disable)")
-	tunnelCert := flag.String("tunnel-cert", "", "PEM certificate for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_CERT env fallback); without it the listener is plaintext and TLS must be terminated in front of it")
-	tunnelKey := flag.String("tunnel-key", "", "PEM private key for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_KEY env fallback)")
-	gatewayID := flag.String("gateway-id", "", "this replica's stable identity, reported to dialling agents; empty takes the hostname (HANGAR_GATEWAY_ID env fallback)")
-	headerTimeout := flag.Duration("response-header-timeout", 0, "how long a cluster may hold a request without sending a response header, zero for the built-in default (HANGAR_RESPONSE_HEADER_TIMEOUT env fallback)")
-	replicas := flag.Int("gateways", 0, "how many gateway replicas are running, reported to dialling agents so they know how many tunnels to hold; must match the manifest's replica count (HANGAR_GATEWAY_REPLICAS env fallback)")
-	logUpstreamBodies := flag.Bool("log-upstream-bodies", false, "write discarded upstream error bodies to the log whole; they can quote the caller's request, so this is for debugging a cluster carrying no customer traffic and is off in production (HANGAR_GATEWAY_LOG_UPSTREAM_BODIES=true env fallback)")
+	metricsAddr := flag.String("metrics-listen", "", "address for the Prometheus /metrics listener, empty for the default (WINGSMITH_GATEWAY_METRICS_LISTEN env fallback, \"off\" to disable)")
+	probeToken := flag.String("probe-token", "", "token the conformance runner presents to mark its traffic as probe, not live; accepts a comma-separated pair while rotating (WINGSMITH_GATEWAY_PROBE_TOKEN env fallback)")
+	tunnelAddr := flag.String("tunnel-listen", "", "address the cluster agents dial, empty for the default (WINGSMITH_GATEWAY_TUNNEL_LISTEN env fallback, \"off\" to disable)")
+	tunnelCert := flag.String("tunnel-cert", "", "PEM certificate for the tunnel listener (WINGSMITH_GATEWAY_TUNNEL_TLS_CERT env fallback); without it the listener is plaintext and TLS must be terminated in front of it")
+	tunnelKey := flag.String("tunnel-key", "", "PEM private key for the tunnel listener (WINGSMITH_GATEWAY_TUNNEL_TLS_KEY env fallback)")
+	gatewayID := flag.String("gateway-id", "", "this replica's stable identity, reported to dialling agents; empty takes the hostname (WINGSMITH_GATEWAY_ID env fallback)")
+	headerTimeout := flag.Duration("response-header-timeout", 0, "how long a cluster may hold a request without sending a response header, zero for the built-in default (WINGSMITH_RESPONSE_HEADER_TIMEOUT env fallback)")
+	replicas := flag.Int("gateways", 0, "how many gateway replicas are running, reported to dialling agents so they know how many tunnels to hold; must match the manifest's replica count (WINGSMITH_GATEWAY_REPLICAS env fallback)")
+	logUpstreamBodies := flag.Bool("log-upstream-bodies", false, "write discarded upstream error bodies to the log whole; they can quote the caller's request, so this is for debugging a cluster carrying no customer traffic and is off in production (WINGSMITH_GATEWAY_LOG_UPSTREAM_BODIES=true env fallback)")
 	flag.Parse()
 
 	if *planeURL == "" {
-		*planeURL = os.Getenv("HANGAR_PLANE_URL")
+		*planeURL = os.Getenv("WINGSMITH_PLANE_URL")
 	}
 	if *credentialsPath == "" {
-		*credentialsPath = os.Getenv("HANGAR_GATEWAY_CREDENTIALS")
+		*credentialsPath = os.Getenv("WINGSMITH_GATEWAY_CREDENTIALS")
 	}
 	if *metricsAddr == "" {
-		*metricsAddr = os.Getenv("HANGAR_GATEWAY_METRICS_LISTEN")
+		*metricsAddr = os.Getenv("WINGSMITH_GATEWAY_METRICS_LISTEN")
 	}
 	if *metricsAddr == "" {
 		*metricsAddr = defaultMetricsAddr
 	}
 	if *probeToken == "" {
-		*probeToken = os.Getenv("HANGAR_GATEWAY_PROBE_TOKEN")
+		*probeToken = os.Getenv("WINGSMITH_GATEWAY_PROBE_TOKEN")
 	}
 	if *tunnelAddr == "" {
-		*tunnelAddr = os.Getenv("HANGAR_GATEWAY_TUNNEL_LISTEN")
+		*tunnelAddr = os.Getenv("WINGSMITH_GATEWAY_TUNNEL_LISTEN")
 	}
 	if *tunnelAddr == "" {
 		*tunnelAddr = defaultTunnelAddr
 	}
 	if *tunnelCert == "" {
-		*tunnelCert = os.Getenv("HANGAR_GATEWAY_TUNNEL_TLS_CERT")
+		*tunnelCert = os.Getenv("WINGSMITH_GATEWAY_TUNNEL_TLS_CERT")
 	}
 	if *tunnelKey == "" {
-		*tunnelKey = os.Getenv("HANGAR_GATEWAY_TUNNEL_TLS_KEY")
+		*tunnelKey = os.Getenv("WINGSMITH_GATEWAY_TUNNEL_TLS_KEY")
 	}
 	if *gatewayID == "" {
-		*gatewayID = os.Getenv("HANGAR_GATEWAY_ID")
+		*gatewayID = os.Getenv("WINGSMITH_GATEWAY_ID")
 	}
 	if *gatewayID == "" {
 		// The pod name, which in a StatefulSet is the replica's identity and is
@@ -92,10 +92,10 @@ func main() {
 		}
 	}
 	if *replicas == 0 {
-		*replicas = envInt("HANGAR_GATEWAY_REPLICAS")
+		*replicas = envInt("WINGSMITH_GATEWAY_REPLICAS")
 	}
 	if !*logUpstreamBodies {
-		*logUpstreamBodies = envBool("HANGAR_GATEWAY_LOG_UPSTREAM_BODIES")
+		*logUpstreamBodies = envBool("WINGSMITH_GATEWAY_LOG_UPSTREAM_BODIES")
 	}
 	if *logUpstreamBodies {
 		slog.Warn("gateway: logging upstream error bodies whole; they can carry request content, never run this with customer traffic")
@@ -107,7 +107,7 @@ func main() {
 	// not the other is the one way left to get this wrong, which is why the
 	// value is logged at startup on both ends.
 	if *headerTimeout == 0 {
-		*headerTimeout = envDuration("HANGAR_RESPONSE_HEADER_TIMEOUT")
+		*headerTimeout = envDuration("WINGSMITH_RESPONSE_HEADER_TIMEOUT")
 	}
 	if *headerTimeout <= 0 {
 		*headerTimeout = tunnel.DefaultResponseHeaderTimeout
@@ -117,27 +117,27 @@ func main() {
 	// Comma-separated names this deployment's infrastructure goes by, stripped from any engine
 	// message quoted back to a caller on top of the built-in stack names. Environment only, for the
 	// reason the comment above the flags gives.
-	if names := os.Getenv("HANGAR_GATEWAY_REDACT_NAMES"); names != "" {
+	if names := os.Getenv("WINGSMITH_GATEWAY_REDACT_NAMES"); names != "" {
 		serving.RedactNames(strings.Split(names, ","))
 	}
 	// The gateway's own service principal. The plane accepts it on the three
 	// routes this process reads and nowhere else, so it carries no admin or
 	// operator rights on the plane API.
-	planeToken := os.Getenv("HANGAR_GATEWAY_SERVICE_TOKEN")
-	// HANGAR_GATEWAY_PUBLIC_LISTEN is intentionally read only from the
+	planeToken := os.Getenv("WINGSMITH_GATEWAY_SERVICE_TOKEN")
+	// WINGSMITH_GATEWAY_PUBLIC_LISTEN is intentionally read only from the
 	// environment, never a flag; the reason is the same one metricsAddr and
 	// tunnelAddr are read from both: a manifest naming a flag this binary
 	// does not know reaches flag.Parse before main runs and exits 2, which is
 	// a crashloop of the data plane. An unset variable is inert, which is
 	// what "off" needs to mean for a listener defaulting closed. Empty means
 	// off; an operator that accepts direct tenants turns it on.
-	publicAddr := os.Getenv("HANGAR_GATEWAY_PUBLIC_LISTEN")
+	publicAddr := os.Getenv("WINGSMITH_GATEWAY_PUBLIC_LISTEN")
 
 	if *planeURL == "" || planeToken == "" {
-		if planeToken == "" && os.Getenv("HANGAR_OPERATOR_TOKEN") != "" {
-			slog.Error("gateway: HANGAR_OPERATOR_TOKEN is no longer read; set HANGAR_GATEWAY_SERVICE_TOKEN to the gateway's service token")
+		if planeToken == "" && os.Getenv("WINGSMITH_OPERATOR_TOKEN") != "" {
+			slog.Error("gateway: WINGSMITH_OPERATOR_TOKEN is no longer read; set WINGSMITH_GATEWAY_SERVICE_TOKEN to the gateway's service token")
 		}
-		slog.Error("gateway: -plane-url and HANGAR_GATEWAY_SERVICE_TOKEN are both required")
+		slog.Error("gateway: -plane-url and WINGSMITH_GATEWAY_SERVICE_TOKEN are both required")
 		os.Exit(1)
 	}
 
@@ -237,20 +237,20 @@ func main() {
 	go readiness.RunCoverage(ctx, 15*time.Second)
 
 	limiter := serving.NewLimiter(serving.TenantLimits{
-		MaxInFlight: envIntDefault("HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT", serving.DefaultTenantMaxInFlight),
-		RPS:         envFloat("HANGAR_GATEWAY_TENANT_RPS"),
-		Burst:       envInt("HANGAR_GATEWAY_TENANT_BURST"),
+		MaxInFlight: envIntDefault("WINGSMITH_GATEWAY_TENANT_MAX_IN_FLIGHT", serving.DefaultTenantMaxInFlight),
+		RPS:         envFloat("WINGSMITH_GATEWAY_TENANT_RPS"),
+		Burst:       envInt("WINGSMITH_GATEWAY_TENANT_BURST"),
 	})
-	allowNoAuth := envBool("HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH")
-	bodyBudget := serving.NewBodyBudget(int64(envIntDefault("HANGAR_GATEWAY_MAX_BUFFERED_BYTES", defaultMaxBufferedBytes)))
-	maxBodyBytes := int64(envIntDefault("HANGAR_GATEWAY_MAX_BODY_BYTES", serving.DefaultMaxBodyBytes))
-	readHeaderTimeout := envDurationDefault("HANGAR_GATEWAY_READ_HEADER_TIMEOUT", 10*time.Second)
-	bodyReadTimeout := envDurationDefault("HANGAR_GATEWAY_BODY_READ_TIMEOUT", 2*time.Minute)
-	writeIdleTimeout := envDurationDefault("HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT", 2*time.Minute)
+	allowNoAuth := envBool("WINGSMITH_GATEWAY_PUBLIC_ALLOW_NO_AUTH")
+	bodyBudget := serving.NewBodyBudget(int64(envIntDefault("WINGSMITH_GATEWAY_MAX_BUFFERED_BYTES", defaultMaxBufferedBytes)))
+	maxBodyBytes := int64(envIntDefault("WINGSMITH_GATEWAY_MAX_BODY_BYTES", serving.DefaultMaxBodyBytes))
+	readHeaderTimeout := envDurationDefault("WINGSMITH_GATEWAY_READ_HEADER_TIMEOUT", 10*time.Second)
+	bodyReadTimeout := envDurationDefault("WINGSMITH_GATEWAY_BODY_READ_TIMEOUT", 2*time.Minute)
+	writeIdleTimeout := envDurationDefault("WINGSMITH_GATEWAY_WRITE_IDLE_TIMEOUT", 2*time.Minute)
 	// Hosts a request's remote media may be fetched from by an engine. Unset,
 	// every public host is allowed and internal addresses are refused. See
 	// serving.MediaURLPolicy.
-	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("HANGAR_GATEWAY_MEDIA_URL_HOSTS"), ","))
+	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("WINGSMITH_GATEWAY_MEDIA_URL_HOSTS"), ","))
 	drain, grace := readDrainPlan()
 
 	srv := &http.Server{
@@ -291,7 +291,7 @@ func main() {
 		}
 	}()
 
-	// The public listener, off unless HANGAR_GATEWAY_PUBLIC_LISTEN names an
+	// The public listener, off unless WINGSMITH_GATEWAY_PUBLIC_LISTEN names an
 	// address. A caller here identifies itself by the `Host` it dials instead
 	// of by which port it reached (the internal listener's own proof), so
 	// every request run through it takes the tenant and key stages the
@@ -328,7 +328,7 @@ func main() {
 			}
 		}()
 	} else {
-		slog.Info("gateway: public listener disabled, set HANGAR_GATEWAY_PUBLIC_LISTEN to enable it")
+		slog.Info("gateway: public listener disabled, set WINGSMITH_GATEWAY_PUBLIC_LISTEN to enable it")
 	}
 
 	<-ctx.Done()
@@ -345,7 +345,7 @@ func main() {
 	// Each request listener gets the whole drain budget, concurrently, instead
 	// of the second one getting whatever the first left over. A request
 	// still running when the budget ends is cut. The phases are cut from
-	// HANGAR_GATEWAY_SHUTDOWN_GRACE (drain.go), which must match the pod's
+	// WINGSMITH_GATEWAY_SHUTDOWN_GRACE (drain.go), which must match the pod's
 	// terminationGracePeriodSeconds.
 	var wg sync.WaitGroup
 	for _, s := range []struct {
@@ -413,7 +413,7 @@ const tunnelCertReloadEvery = 10 * time.Minute
 // it discovers. Discovering it would mean a Kubernetes client, and the gateway
 // not having one is a property worth more than the convenience, so scaling the
 // gateway is two numbers that must move together in its manifest, the
-// StatefulSet's `replicas` and HANGAR_GATEWAY_REPLICAS, and changing either
+// StatefulSet's `replicas` and WINGSMITH_GATEWAY_REPLICAS, and changing either
 // restarts the pods, which is what makes every agent redial and read the new
 // number. See "Scaling" in the README.
 //
@@ -442,7 +442,7 @@ func newTunnels(addr, id string, replicas int, headerTimeout time.Duration, veri
 		return nil, nil, err
 	}
 	if replicas < 1 {
-		slog.Warn("gateway: HANGAR_GATEWAY_REPLICAS is unset, telling agents there is one replica; "+
+		slog.Warn("gateway: WINGSMITH_GATEWAY_REPLICAS is unset, telling agents there is one replica; "+
 			"if there is more than one, the others hold no tunnels and serve nothing", "gateway_id", id)
 	} else {
 		slog.Info("gateway: tunnel identity", "gateway_id", id, "replicas", replicas)
@@ -583,7 +583,7 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		// the window, not prompt.
 		go keypair.Watch(ctx, tunnelCertReloadEvery, recorder.TunnelCertificateExpiry)
 		// NextProtos is intentionally absent. The agent negotiates nothing:
-		// the handshake on this connection is hangar's own and HTTP/2 starts
+		// the handshake on this connection is wingsmith's own and HTTP/2 starts
 		// after it, so advertising h2 here would invite a TLS stack to hand the
 		// socket to an HTTP/2 client that expects to be the one dialling.
 		tlsConfig := &tls.Config{GetCertificate: keypair.GetCertificate, MinVersion: tls.VersionTLS12}

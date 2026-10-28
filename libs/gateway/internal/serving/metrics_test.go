@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // availability-2026.1, written out here instead of imported, because the
@@ -49,12 +49,12 @@ func seriesLabels(m *dto.Metric) map[string]string {
 	return out
 }
 
-// requests sums hangar_gateway_requests_total over series matching every label
+// requests sums wingsmith_gateway_requests_total over series matching every label
 // given, exactly as `sum by ()` over the same matcher would.
 func requests(t *testing.T, recorder *metrics.Recorder, match map[string]string) float64 {
 	t.Helper()
 	total := 0.0
-	for _, m := range gathered(t, recorder, "hangar_gateway_requests_total") {
+	for _, m := range gathered(t, recorder, "wingsmith_gateway_requests_total") {
 		labels := seriesLabels(m)
 		ok := true
 		for name, want := range match {
@@ -259,7 +259,7 @@ func TestEveryRefusalThisHopIssuesNamesItsOwnOutcome(t *testing.T) {
 
 			post(t, handler, tc.body)
 
-			match := map[string]string{"status": tc.status, "outcome": tc.outcome, "hangar_endpoint": tc.endpoint}
+			match := map[string]string{"status": tc.status, "outcome": tc.outcome, "wingsmith_endpoint": tc.endpoint}
 			if got := requests(t, recorder, match); got != 1 {
 				t.Fatalf("%v = %v, want 1 (series present: %v)", match, got, allSeries(t, recorder))
 			}
@@ -294,7 +294,7 @@ func TestAnUpstreamsOwnAnswerIsClassifiedByWhoseFaultItIs(t *testing.T) {
 			post(t, handler, `{"model":"chat"}`)
 
 			match := map[string]string{
-				"outcome": tc.outcome, "hangar_endpoint": "ep_1", "endpoint_name": "chat",
+				"outcome": tc.outcome, "wingsmith_endpoint": "ep_1", "endpoint_name": "chat",
 				"deployment": "dep_1", "cluster": "ap", "origin": "live",
 			}
 			if got := requests(t, recorder, match); got != 1 {
@@ -332,12 +332,12 @@ func TestAProxyErrorSeparatesATimeoutFromACallerHangingUp(t *testing.T) {
 func TestARejectedCallerIsOutsideTheRatioRatherThanInsideTheNumerator(t *testing.T) {
 	recorder := metrics.New()
 	tenants := tenantsFor(t, plane.GatewayTenant{
-		ID: "ten_x", Slug: "x", Enabled: true, Ingress: "public", Auth: "api_key", Host: "x.hangar.dev",
+		ID: "ten_x", Slug: "x", Enabled: true, Ingress: "public", Auth: "api_key", Host: "x.wingsmith.dev",
 	})
 	handler := New(Config{Metrics: recorder, Router: stubResolver{}, Tenants: tenants, Zone: ZonePublic})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`))
-	req.Host = "x.hangar.dev"
+	req.Host = "x.wingsmith.dev"
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
 	if got := requests(t, recorder, map[string]string{"status": "401", "outcome": "auth_rejected"}); got != 1 {
@@ -364,12 +364,12 @@ func TestProbeTrafficNeedsBothTheHeaderAndTheToken(t *testing.T) {
 		}},
 	})
 
-	post(t, handler, `{"model":"chat"}`, "X-Hangar-Origin", "probe", "X-Hangar-Probe-Token", "newer-token")
-	post(t, handler, `{"model":"chat"}`, "X-Hangar-Origin", "probe", "X-Hangar-Probe-Token", "older-token")
+	post(t, handler, `{"model":"chat"}`, "X-Wingsmith-Origin", "probe", "X-Wingsmith-Probe-Token", "newer-token")
+	post(t, handler, `{"model":"chat"}`, "X-Wingsmith-Origin", "probe", "X-Wingsmith-Probe-Token", "older-token")
 	// A header anyone can set is a way for any caller to remove itself from a
 	// denominator we quote to a buyer.
-	post(t, handler, `{"model":"chat"}`, "X-Hangar-Origin", "probe")
-	post(t, handler, `{"model":"chat"}`, "X-Hangar-Origin", "probe", "X-Hangar-Probe-Token", "guessed")
+	post(t, handler, `{"model":"chat"}`, "X-Wingsmith-Origin", "probe")
+	post(t, handler, `{"model":"chat"}`, "X-Wingsmith-Origin", "probe", "X-Wingsmith-Probe-Token", "guessed")
 	post(t, handler, `{"model":"chat"}`)
 
 	if got := requests(t, recorder, map[string]string{"origin": "probe"}); got != 2 {
@@ -386,7 +386,7 @@ func TestWithNoProbeTokenConfiguredEverythingIsLive(t *testing.T) {
 	}
 	recorder := metrics.New()
 	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{}})
-	post(t, handler, `{"model":"nope"}`, "X-Hangar-Origin", "probe")
+	post(t, handler, `{"model":"nope"}`, "X-Wingsmith-Origin", "probe")
 	if got := requests(t, recorder, map[string]string{"origin": "live"}); got != 1 {
 		t.Fatalf("live requests = %v, want 1", got)
 	}
@@ -401,7 +401,7 @@ func TestTheKubeletProbeIsNobodysAvailability(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("healthz = %d", rec.Code)
 	}
-	if got := len(gathered(t, recorder, "hangar_gateway_requests_total")); got != 0 {
+	if got := len(gathered(t, recorder, "wingsmith_gateway_requests_total")); got != 0 {
 		t.Fatalf("healthz produced %d series, want none", got)
 	}
 }
@@ -413,7 +413,7 @@ func TestTheModelListIsCountedUnderTheCatalogLabel(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 
-	if got := requests(t, recorder, map[string]string{"hangar_endpoint": metrics.EndpointCatalog, "outcome": "ok"}); got != 1 {
+	if got := requests(t, recorder, map[string]string{"wingsmith_endpoint": metrics.EndpointCatalog, "outcome": "ok"}); got != 1 {
 		t.Fatalf("catalog requests = %v, want 1 (series: %v)", got, allSeries(t, recorder))
 	}
 }
@@ -433,12 +433,12 @@ func TestTimeToFirstTokenIsOnlyMeasuredWhenAClusterProducedTheBytes(t *testing.T
 	// Our own 404 has a first byte too, and observing it would report this
 	// hop's error envelope as a very fast model.
 	post(t, handler, `{"model":"nope"}`)
-	if got := len(gathered(t, recorder, "hangar_gateway_ttft_seconds")); got != 0 {
+	if got := len(gathered(t, recorder, "wingsmith_gateway_ttft_seconds")); got != 0 {
 		t.Fatalf("a locally written error produced %d TTFT series, want none", got)
 	}
 
 	post(t, handler, `{"model":"chat"}`)
-	series := gathered(t, recorder, "hangar_gateway_ttft_seconds")
+	series := gathered(t, recorder, "wingsmith_gateway_ttft_seconds")
 	if len(series) != 1 || series[0].Histogram.GetSampleCount() != 1 {
 		t.Fatalf("TTFT series = %v, want one observation", series)
 	}
@@ -509,7 +509,7 @@ func TestTokensComeFromTheResponseTailAndStreamingStaysStreaming(t *testing.T) {
 				t.Fatalf("body was altered on the way through:\n got %q\nwant %q", rec.Body.String(), tc.body)
 			}
 
-			series := gathered(t, recorder, "hangar_gateway_tokens_total")
+			series := gathered(t, recorder, "wingsmith_gateway_tokens_total")
 			if tc.absent {
 				if len(series) != 0 {
 					t.Fatalf("token series = %v, want none: absent, never zero", series)
@@ -549,7 +549,7 @@ func TestTheUsageWindowIsTheTailAndNotTheWholeBody(t *testing.T) {
 	}
 
 	counts := map[string]float64{}
-	for _, m := range gathered(t, recorder, "hangar_gateway_tokens_total") {
+	for _, m := range gathered(t, recorder, "wingsmith_gateway_tokens_total") {
 		counts[seriesLabels(m)["direction"]] = m.Counter.GetValue()
 	}
 	if counts["input"] != 512 || counts["output"] != 64 {
@@ -570,7 +570,7 @@ func TestInFlightIsReleasedWhateverHappened(t *testing.T) {
 
 	post(t, handler, `{"model":"chat"}`)
 
-	for _, m := range gathered(t, recorder, "hangar_gateway_requests_in_flight") {
+	for _, m := range gathered(t, recorder, "wingsmith_gateway_requests_in_flight") {
 		if m.Gauge.GetValue() != 0 {
 			t.Fatalf("in flight = %v after the request finished", m.Gauge.GetValue())
 		}
@@ -595,7 +595,7 @@ func TestTheHandlerWorksWithNoRecorderAtAll(t *testing.T) {
 func allSeries(t *testing.T, recorder *metrics.Recorder) []map[string]string {
 	t.Helper()
 	out := []map[string]string{}
-	for _, m := range gathered(t, recorder, "hangar_gateway_requests_total") {
+	for _, m := range gathered(t, recorder, "wingsmith_gateway_requests_total") {
 		out = append(out, seriesLabels(m))
 	}
 	return out
@@ -644,7 +644,7 @@ func TestAReplayedBodyIsCounted(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	series := gathered(t, recorder, "hangar_gateway_upstream_replays_total")
+	series := gathered(t, recorder, "wingsmith_gateway_upstream_replays_total")
 	if len(series) != 1 || series[0].GetCounter().GetValue() != 1 {
 		t.Fatalf("replays = %v, want one series at 1", series)
 	}

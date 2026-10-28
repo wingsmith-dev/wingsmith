@@ -6,7 +6,7 @@ import (
 )
 
 // defaultShutdownGrace is Kubernetes' default terminationGracePeriodSeconds.
-// HANGAR_GATEWAY_SHUTDOWN_GRACE must match the pod's value: the drain phases
+// WINGSMITH_GATEWAY_SHUTDOWN_GRACE must match the pod's value: the drain phases
 // are cut from it, and a kubelet that sends SIGKILL before they end cuts
 // whatever generation is still running.
 const defaultShutdownGrace = 30 * time.Second
@@ -50,15 +50,15 @@ func defaultDrainPlan(grace time.Duration) drainPlan {
 // an explicit set that overruns it is kept and warned about, since the operator
 // may have raised terminationGracePeriodSeconds without telling this process.
 func readDrainPlan() (drainPlan, time.Duration) {
-	grace := envDurationDefault("HANGAR_GATEWAY_SHUTDOWN_GRACE", defaultShutdownGrace)
+	grace := envDurationDefault("WINGSMITH_GATEWAY_SHUTDOWN_GRACE", defaultShutdownGrace)
 	def := defaultDrainPlan(grace)
 	plan := drainPlan{
-		delay:    envDurationDefault("HANGAR_GATEWAY_DRAIN_DELAY", def.delay),
-		requests: envDurationDefault("HANGAR_GATEWAY_DRAIN_TIMEOUT", def.requests),
-		tunnels:  envDurationDefault("HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT", def.tunnels),
+		delay:    envDurationDefault("WINGSMITH_GATEWAY_DRAIN_DELAY", def.delay),
+		requests: envDurationDefault("WINGSMITH_GATEWAY_DRAIN_TIMEOUT", def.requests),
+		tunnels:  envDurationDefault("WINGSMITH_GATEWAY_TUNNEL_DRAIN_TIMEOUT", def.tunnels),
 	}
 	if plan.total() > grace-shutdownMargin {
-		slog.Warn("gateway: the drain phases outlast the shutdown grace period; the pod will be killed mid-drain unless terminationGracePeriodSeconds and HANGAR_GATEWAY_SHUTDOWN_GRACE are raised",
+		slog.Warn("gateway: the drain phases outlast the shutdown grace period; the pod will be killed mid-drain unless terminationGracePeriodSeconds and WINGSMITH_GATEWAY_SHUTDOWN_GRACE are raised",
 			"grace", grace, "drain_total", plan.total(), "margin", shutdownMargin)
 	}
 	return plan, grace

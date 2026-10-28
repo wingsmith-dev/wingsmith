@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // The defect this scope was added for. An endpoint answers on every path the
@@ -1076,7 +1076,7 @@ func TestTheRefusalReadsAsAPayloadFaultAndNotAsAMissingModality(t *testing.T) {
 	}
 	lower := strings.ToLower(message)
 
-	// hgrconform's PAYLOAD vocabulary: one of these has to appear.
+	// wingsconform's PAYLOAD vocabulary: one of these has to appear.
 	payload := []string{"invalid", "prepare", "decode", "corrupt", "unsupported", "failed to load", "truncated"}
 	found := false
 	for _, needle := range payload {

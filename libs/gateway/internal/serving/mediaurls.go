@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
 )
 
 // MediaURLPolicy restricts the remote media a request may ask an engine to
@@ -27,7 +27,7 @@ import (
 //     (which the cluster's DNS search path completes), and the `.local`,
 //     `.localhost`, `.internal`, `.svc`, `.cluster.local`, `.lan` and
 //     `.home.arpa` suffixes. Every other host passes.
-//   - With a host list (HANGAR_GATEWAY_MEDIA_URL_HOSTS), a URL must name a host
+//   - With a host list (WINGSMITH_GATEWAY_MEDIA_URL_HOSTS), a URL must name a host
 //     on it, and nothing else passes. A listed private host is allowed: listing
 //     it is the operator's decision.
 //

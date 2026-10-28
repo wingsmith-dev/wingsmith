@@ -170,7 +170,7 @@ func writeSegment(digest hash.Hash, value string) {
 //
 // Tenant is the plane's tenant id: the one the public zone resolved from the host,
 // or on the internal zone the tenant that owns the endpoint. Caller is the
-// internal caller's own narrower scope, from `X-Hangar-Cache-Scope` (an internal
+// internal caller's own narrower scope, from `X-Wingsmith-Cache-Scope` (an internal
 // platform serving many customers through one tenant names the customer there),
 // and is honoured only on the internal zone, whose callers this fleet runs.
 type cacheScope struct {
@@ -184,7 +184,7 @@ func (s cacheScope) empty() bool {
 
 // cacheScopeHeader is the internal zone's narrower cache scope. It is read and
 // removed by stageCacheSalt and never reaches a cluster.
-const cacheScopeHeader = "X-Hangar-Cache-Scope"
+const cacheScopeHeader = "X-Wingsmith-Cache-Scope"
 
 // cacheSaltPaths are the generation paths whose engine keeps a prefix cache and
 // whose request Dynamo reads `nvext.cache_salt` from. Embeddings, images and

@@ -90,14 +90,14 @@ var (
 	systemPath      = regexp.MustCompile(`(?:^|[\s"'(=])(/(?:usr|opt|home|root|app|workspace|tmp|var|etc|lib|lib64|srv|mnt|data|models|cache)(?:/[^\s"'()]*)?)`)
 	whitespace      = regexp.MustCompile(`\s+`)
 	// internalName is any token that names the stack behind this hop. The built-in words are the
-	// conformance suite's leak needles (libs/conformance/hgrconform/profiles/gateway.toml), so a quoted
+	// conformance suite's leak needles (libs/conformance/wingsconform/profiles/gateway.toml), so a quoted
 	// message cannot fail the leak probe. An operator adds its own names with RedactNames.
 	internalName = internalNamePattern(nil)
 )
 
 // stackNames are the words every deployment redacts: the components between this hop and the
 // engine, whoever runs them.
-var stackNames = []string{"hangar", "dynamo", "vllm", "ghcr.io"}
+var stackNames = []string{"wingsmith", "dynamo", "vllm", "ghcr.io"}
 
 // RedactNames adds names an operator's own infrastructure goes by (its company, its clusters, a
 // partner's) to the words stripped from a quoted upstream message. It is meant to be called once

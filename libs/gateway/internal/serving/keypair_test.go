@@ -24,10 +24,10 @@ func writeKeypair(t *testing.T, dir string, notAfter time.Time) (string, string)
 	}
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      pkix.Name{CommonName: "tunnel.hangar.test"},
+		Subject:      pkix.Name{CommonName: "tunnel.wingsmith.test"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     notAfter,
-		DNSNames:     []string{"tunnel.hangar.test"},
+		DNSNames:     []string{"tunnel.wingsmith.test"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {

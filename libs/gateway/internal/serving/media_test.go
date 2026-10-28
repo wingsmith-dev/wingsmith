@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // mediaCall sends one request at an upstream that answers with status and body, and returns the
@@ -41,7 +41,7 @@ func mediaCall(t *testing.T, modality, path, request string, status int, respons
 		t.Fatalf("access lines = %v", lines)
 	}
 	units := map[string]float64{}
-	for _, m := range gathered(t, recorder, "hangar_gateway_generated_total") {
+	for _, m := range gathered(t, recorder, "wingsmith_gateway_generated_total") {
 		units[seriesLabels(m)["unit"]] = m.Counter.GetValue()
 	}
 	return lines[0], units

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
 )
 
 // observation is what one request turns out to have been.
@@ -257,10 +257,10 @@ func NewProbeMarker(tokens string) *ProbeMarker {
 
 // Origin classifies one request. Without the token the header is ignored.
 func (p *ProbeMarker) Origin(r *http.Request) metrics.Origin {
-	if p == nil || !strings.EqualFold(r.Header.Get("X-Hangar-Origin"), string(metrics.OriginProbe)) {
+	if p == nil || !strings.EqualFold(r.Header.Get("X-Wingsmith-Origin"), string(metrics.OriginProbe)) {
 		return metrics.OriginLive
 	}
-	presented := []byte(r.Header.Get("X-Hangar-Probe-Token"))
+	presented := []byte(r.Header.Get("X-Wingsmith-Probe-Token"))
 	for _, token := range p.tokens {
 		if subtle.ConstantTimeCompare(presented, []byte(token)) == 1 {
 			return metrics.OriginProbe

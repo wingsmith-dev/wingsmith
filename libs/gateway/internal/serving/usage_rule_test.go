@@ -3,7 +3,7 @@ package serving
 import (
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 )
 
 // The two rules that make an unadorned `"stream": true` carry a usage frame.

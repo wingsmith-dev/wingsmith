@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // TestTheDialSourceIsSentToThePlane pins what the plane keys its failed-guess

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 )
 
 // Tenant is one tenant, as the gateway needs to trust it.

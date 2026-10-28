@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
 )
 
 // DefaultTenantMaxInFlight is how many requests one tenant may have in flight

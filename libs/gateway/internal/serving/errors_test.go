@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 )
 
 // refusalFor sends one completion body at an upstream that answers with the
@@ -138,7 +138,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 		{
 			name:   "a word that names the stack",
 			status: http.StatusBadRequest,
-			detail: "vllm_omni rejected the request: see ghcr.io/hangar-dev/engine and Dynamo docs",
+			detail: "vllm_omni rejected the request: see ghcr.io/wingsmith-dev/engine and Dynamo docs",
 			never:  []string{"vllm", "ghcr.io", "Dynamo"},
 		},
 		{

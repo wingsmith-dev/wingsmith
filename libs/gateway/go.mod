@@ -1,15 +1,15 @@
-module github.com/hangar-dev/hangar/libs/gateway
+module github.com/wingsmith-dev/wingsmith/libs/gateway
 
 go 1.26.0
 
 require (
-	github.com/hangar-dev/hangar/libs/packages/tunnel v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
+	github.com/wingsmith-dev/wingsmith/libs/packages/tunnel v0.0.0
 )
 
 // The wire lives in this repository; there is no published version to resolve.
-replace github.com/hangar-dev/hangar/libs/packages/tunnel => ../packages/tunnel
+replace github.com/wingsmith-dev/wingsmith/libs/packages/tunnel => ../packages/tunnel
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

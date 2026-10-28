@@ -8,19 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 func TestTunnelSettingsReadTheEnvironment(t *testing.T) {
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_MAX_PER_CLUSTER", "8")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_MAX", "512")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT", "off")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_CACHE_TTL", "30s")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_CACHE_GRACE", "5m")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL", "20s")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES", "64")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE", "OFF")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES", "")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_MAX_PER_CLUSTER", "8")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_MAX", "512")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_BODY_IDLE_TIMEOUT", "off")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_CACHE_TTL", "30s")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_CACHE_GRACE", "5m")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_REVERIFY_INTERVAL", "20s")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES", "64")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_MAX_HANDSHAKES_PER_SOURCE", "OFF")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_SOURCE_FAILURES", "")
 
 	settings := tunnelSettingsFromEnv()
 	pool := settings.pool(tunnel.PoolConfig{})
@@ -45,9 +45,9 @@ func TestTunnelSettingsReadTheEnvironment(t *testing.T) {
 // gateway, like every other setting it reads, and a negative one cannot turn
 // re-verification off.
 func TestUnreadableTunnelSettingsKeepTheDefaults(t *testing.T) {
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_MAX", "lots")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_REVERIFY_INTERVAL", "-1s")
-	t.Setenv("HANGAR_GATEWAY_TUNNEL_SOURCE_FAILURES", "-3")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_MAX", "lots")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_REVERIFY_INTERVAL", "-1s")
+	t.Setenv("WINGSMITH_GATEWAY_TUNNEL_SOURCE_FAILURES", "-3")
 
 	settings := tunnelSettingsFromEnv()
 	if settings.maxTunnels != 0 || settings.reverify != 0 || settings.sourceFailures != 0 {
