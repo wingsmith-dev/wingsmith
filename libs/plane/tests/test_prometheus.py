@@ -21,7 +21,7 @@ def client(monkeypatch):
 
 def requests_total(method: str, route: str, status: str) -> float:
     value = REGISTRY.get_sample_value(
-        "hangar_plane_http_requests_total", {"method": method, "route": route, "status": status}
+        "wingsmith_plane_http_requests_total", {"method": method, "route": route, "status": status}
     )
     return value or 0.0
 
@@ -30,8 +30,8 @@ def test_metrics_needs_no_credential_and_is_the_prometheus_text_format(client):
     response = client.get("/metrics")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
-    assert re.search(r'^hangar_plane_build_info\{version="[^"]+"\} 1\.0$', response.text, re.M)
-    assert "# TYPE hangar_plane_http_request_duration_seconds histogram" in response.text
+    assert re.search(r'^wingsmith_plane_build_info\{version="[^"]+"\} 1\.0$', response.text, re.M)
+    assert "# TYPE wingsmith_plane_http_request_duration_seconds histogram" in response.text
 
 
 def test_a_scrape_with_query_params_is_not_refused(client):
@@ -54,4 +54,4 @@ def test_a_refused_request_is_counted_under_the_route_template_not_the_path(clie
 
 def test_nothing_is_left_in_flight_once_a_request_has_answered(client):
     client.get("/health")
-    assert REGISTRY.get_sample_value("hangar_plane_http_requests_in_flight") == 0
+    assert REGISTRY.get_sample_value("wingsmith_plane_http_requests_in_flight") == 0

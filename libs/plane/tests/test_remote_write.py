@@ -114,7 +114,7 @@ def test_bcrypt_hash_verifies_against_the_token_that_minted_it():
 
 def test_bcrypt_cost_is_the_one_the_decision_records():
     """Traefik verifies this on every remote-write request; the cost is a choice."""
-    digest = AuthManager.hash_remote_write_token("hgro1.whatever")
+    digest = AuthManager.hash_remote_write_token("wso1.whatever")
     assert digest.startswith(f"$2b${REMOTE_WRITE_BCRYPT_ROUNDS:02d}$")
 
 

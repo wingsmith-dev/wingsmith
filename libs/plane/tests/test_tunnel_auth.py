@@ -160,7 +160,7 @@ def test_the_budget_refuses_once_the_window_is_full():
 
 @pytest.fixture
 async def svc(sessions, monkeypatch):
-    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "wss://wingsmith.example/v1/hub/sync")
     async with sessions() as db:
         yield ClusterService(db)
 

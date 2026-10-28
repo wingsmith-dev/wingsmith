@@ -189,7 +189,7 @@ def refuse_cross_site(connection: ASGIConnection) -> None:
     """Refuses a state-changing request a browser sent from another site.
 
     A browser always sends `Origin` on a cross-origin write; a request without
-    one comes from something that is not a browser (`hgr`, the gateway, `curl`)
+    one comes from something that is not a browser (`wings`, the gateway, `curl`)
     and carries its own credential. With one, it must name an allowed origin or
     the origin the plane itself is served from. Any body must be JSON, because
     the bodies a cross-site form can send without a preflight are not.

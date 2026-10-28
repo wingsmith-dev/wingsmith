@@ -337,7 +337,7 @@ def _reasoning_declared(reasoning: ReasoningSchema) -> bool:
 ROUTER_MODES = frozenset({"kv", "round-robin", "random", "power-of-two", "least-loaded", "device-aware-weighted"})
 """The `--router-mode` choices of Dynamo 1.5.0's frontend, less `direct`.
 
-`direct` routes to a worker id the request itself carries. Nothing in front of a Hangar frontend sets
+`direct` routes to a worker id the request itself carries. Nothing in front of a Wingsmith frontend sets
 one, so a frontend in that mode refuses every request the gateway forwards to it.
 """
 

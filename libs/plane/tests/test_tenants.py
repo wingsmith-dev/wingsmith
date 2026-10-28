@@ -119,7 +119,10 @@ def test_a_host_that_is_not_a_lowercase_hostname_is_refused(host):
 
 
 def test_a_hostname_is_accepted():
-    assert decode({"slug": "acme", "name": "Acme", "host": "acme.hangar.example.com"}).host == "acme.hangar.example.com"
+    assert (
+        decode({"slug": "acme", "name": "Acme", "host": "acme.wingsmith.example.com"}).host
+        == "acme.wingsmith.example.com"
+    )
 
 
 def test_ingress_and_auth_are_closed_sets():
@@ -157,7 +160,7 @@ def test_a_new_tenant_is_key_checked_unless_it_says_otherwise():
 
 @pytest.mark.parametrize(
     ("ingress", "host"),
-    [("public", None), ("internal", "acme.hangar.example.com"), ("public", "acme.hangar.example.com")],
+    [("public", None), ("internal", "acme.wingsmith.example.com"), ("public", "acme.wingsmith.example.com")],
 )
 async def test_a_public_tenant_with_no_key_check_is_refused(ingress, host, monkeypatch):
     """The public listener resolves a tenant by host and skips the key check for `none`."""
@@ -166,19 +169,19 @@ async def test_a_public_tenant_with_no_key_check_is_refused(ingress, host, monke
         await TenantService(db=None).create(
             TenantCreateRequest(slug="acme", name="Acme", ingress=ingress, auth="none", host=host)
         )
-    assert refused.value.detail["setting"] == "HANGAR_TENANT_ALLOW_PUBLIC_NO_AUTH"
+    assert refused.value.detail["setting"] == "WINGSMITH_TENANT_ALLOW_PUBLIC_NO_AUTH"
 
 
 def test_a_public_tenant_with_no_key_check_is_allowed_only_by_opting_in(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", True)
-    _check_ingress_auth("public", "none", "acme.hangar.example.com")
+    _check_ingress_auth("public", "none", "acme.wingsmith.example.com")
 
 
 def test_an_internal_tenant_with_no_host_needs_no_key(monkeypatch):
     """There the listener is the proof (ADR 0016)."""
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
     _check_ingress_auth("internal", "none", None)
-    _check_ingress_auth("public", "api_key", "acme.hangar.example.com")
+    _check_ingress_auth("public", "api_key", "acme.wingsmith.example.com")
 
 
 class FakeTenantRow:
@@ -221,11 +224,11 @@ async def test_giving_a_keyless_tenant_a_host_is_refused(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
     svc = update_service(FakeTenant())
     with pytest.raises(Invalid):
-        await svc.update("acme", TenantUpdateRequest(host="acme.hangar.example.com"))
+        await svc.update("acme", TenantUpdateRequest(host="acme.wingsmith.example.com"))
 
 
 async def test_dropping_the_key_check_on_a_public_tenant_is_refused(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
-    svc = update_service(FakeTenant(ingress="public", auth="api_key", host="acme.hangar.example.com"))
+    svc = update_service(FakeTenant(ingress="public", auth="api_key", host="acme.wingsmith.example.com"))
     with pytest.raises(Invalid):
         await svc.update("acme", TenantUpdateRequest(auth="none"))

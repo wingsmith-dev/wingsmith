@@ -397,7 +397,7 @@ class ArtifactService:
         except HuggingFaceGated as exc:
             raise Invalid(
                 f"huggingface repo {slug!r} is gated and the configured token cannot read it",
-                {"source": normalise_source(source), "token": "HANGAR_HF_TOKEN"},
+                {"source": normalise_source(source), "token": "WINGSMITH_HF_TOKEN"},
             ) from exc
         except HuggingFaceUnavailable as exc:
             raise PlaneError(f"huggingface did not answer for {slug!r}") from exc

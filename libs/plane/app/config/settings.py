@@ -8,7 +8,7 @@ from dataclasses import fields
 from dataclasses import dataclass
 
 
-ENV_PREFIX = "HANGAR_"
+ENV_PREFIX = "WINGSMITH_"
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -18,7 +18,7 @@ _FALSE = {"0", "false", "no", "off"}
 class Settings:
     """Typed process configuration, loaded from the environment.
 
-    Every field is read from `HANGAR_<FIELD>` and nowhere else. A bare
+    Every field is read from `WINGSMITH_<FIELD>` and nowhere else. A bare
     `DATABASE_URL` or `APP_ENV` left in a shell or a container by something
     unrelated is never picked up.
     """
@@ -28,7 +28,7 @@ class Settings:
 
     Defaults to `production`, so a plane started without saying otherwise fails
     closed: admin auth on, and no boot without `SESSION_SIGNING_SECRET` and
-    `ADMIN_PASSWORD_HASH`. `local` is opt-in (`HANGAR_APP_ENV=local`, which the
+    `ADMIN_PASSWORD_HASH`. `local` is opt-in (`WINGSMITH_APP_ENV=local`, which the
     compose stack sets); it is what lets admin auth be off and the secrets be
     unset."""
 
@@ -103,7 +103,7 @@ class Settings:
     alert is durable and visible in the console whether or not the message lands.
     """
 
-    DATABASE_URL: str = "postgresql+psycopg://hangar:hangar@localhost:5442/hangar"
+    DATABASE_URL: str = "postgresql+psycopg://wingsmith:wingsmith@localhost:5442/wingsmith"
     DB_ECHO: bool = False
     DB_POOL_SIZE: int = 10
     DB_POOL_MAX_OVERFLOW: int = 10
@@ -172,7 +172,7 @@ class Settings:
     It resolves to the `gateway` principal, which may read the routing table and
     the tenant table and verify an agent's enrolment token, and nothing else: no
     admin rights, no writes. Generate a long random value and give the same one
-    to the gateway as `HANGAR_GATEWAY_SERVICE_TOKEN`.
+    to the gateway as `WINGSMITH_GATEWAY_SERVICE_TOKEN`.
 
     Unset outside `local` means no gateway principal resolves at all, which
     fails closed: the gateway gets `401` until it is configured. In `local`, an
@@ -262,7 +262,7 @@ class Settings:
     """
 
     PUBLIC_HOST: str = ""
-    """Public hostname that fronts the hub ingress, e.g. `hangar.example.com`.
+    """Public hostname that fronts the hub ingress, e.g. `wingsmith.example.com`.
 
     The hub's host, which is not necessarily the host serving this request: the
     console and the hub can be separate names in front of separate Services, and
@@ -345,7 +345,7 @@ class Settings:
     because values that install and serve nothing beat values that do not
     install."""
 
-    SETUP_CHART_REF: str = "oci://ghcr.io/hangar-dev/charts/cluster-setup"
+    SETUP_CHART_REF: str = "oci://ghcr.io/wingsmith-dev/charts/cluster-setup"
     """OCI reference of the `cluster-setup` chart the register-cluster setup
     instructions tell an operator to install. Points at where `just chart-push`
     publishes it; a deployment overrides it only if it mirrors the chart
@@ -458,7 +458,7 @@ def validate(s: "Settings") -> None:
     if s.APP_ENV == "local":
         return
 
-    hint = f"(APP_ENV is {s.APP_ENV!r}; a development checkout sets HANGAR_APP_ENV=local)"
+    hint = f"(APP_ENV is {s.APP_ENV!r}; a development checkout sets WINGSMITH_APP_ENV=local)"
     if s.ADMIN_AUTH == "disabled":
         raise RuntimeError(f"ADMIN_AUTH=disabled is allowed only when APP_ENV is 'local' {hint}")
     if not s.SESSION_SIGNING_SECRET:

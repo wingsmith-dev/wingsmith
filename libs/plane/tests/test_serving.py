@@ -815,7 +815,7 @@ def test_a_declared_frontend_image_is_carried_verbatim():
     frontends through (that is the operator's fact), so the only frontend image
     this side can state is one a person pinned.
     """
-    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"
+    pinned = "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-wings2"
     assert rendered(a_workload(frontend_image=pinned)).frontend_image == pinned
 
 

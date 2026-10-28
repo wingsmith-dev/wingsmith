@@ -19,7 +19,7 @@ async def _cycle() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="hangar-api")
+    parser = argparse.ArgumentParser(prog="wingsmith-api")
     parser.add_argument("--host", default=api_host(settings))
     parser.add_argument("--port", type=int, default=settings.API_PORT)
     parser.add_argument("--reload", action="store_true")

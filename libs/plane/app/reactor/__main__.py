@@ -4,7 +4,7 @@ The hub starts one of these in-process by default (`app.hub.server`), which is t
 right shape while the fleet is small: the lease makes co-tenancy safe, and a
 separate Deployment for a loop that ticks once a minute is infrastructure nobody
 asked for. This entrypoint exists so that stops being a decision baked into the
-code: set `HANGAR_REACTOR_ENABLED=false` on the hub and run this instead.
+code: set `WINGSMITH_REACTOR_ENABLED=false` on the hub and run this instead.
 """
 
 import asyncio

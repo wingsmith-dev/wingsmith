@@ -12,7 +12,7 @@ because "why is this not being evaluated" is the question that gets asked about 
 alert that never fired.
 
 Reads go through `app.modules.metrics`, which is the only thing that knows a query
-language. This module names Hangar metrics and Hangar subjects and nothing else,
+language. This module names Wingsmith metrics and Wingsmith subjects and nothing else,
 which is what makes a second backend invisible here. Rule 4 is not in play: the
 reactor reads an exporter about the data plane, it never carries data-plane traffic.
 """

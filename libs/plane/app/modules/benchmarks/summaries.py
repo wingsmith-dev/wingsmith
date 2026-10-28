@@ -30,7 +30,7 @@ class Field(NamedTuple):
     `absent` is the value of a field the harness leaves out, or writes as null,
     instead of reporting zero. It applies only when the summary is a non-empty
     object, so a run with no summary still reads as a miss and not as zero
-    failures. Same rule as `hgrbench.metrics.Field`.
+    failures. Same rule as `wingsbench.metrics.Field`.
     """
 
     id: str

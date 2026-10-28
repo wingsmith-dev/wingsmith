@@ -34,7 +34,7 @@ def _alembic(url: str, *args: str) -> None:
         cwd=ROOT,
         check=True,
         capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
+        env={**os.environ, "WINGSMITH_DATABASE_URL": url},
     )
 
 

@@ -141,7 +141,7 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
     Its lease already allows exactly one worker fleet-wide, so every replica may
     start one and only the holder does any work, which makes a separate Deployment
     for a loop that ticks once a minute infrastructure nobody asked for.
-    `python -m app.reactor` and `HANGAR_REACTOR_ENABLED=false` are the escape hatch.
+    `python -m app.reactor` and `WINGSMITH_REACTOR_ENABLED=false` are the escape hatch.
     """
     loop = asyncio.get_running_loop()
     if stop is None:

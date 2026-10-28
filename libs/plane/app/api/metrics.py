@@ -51,19 +51,19 @@ PlatformCollector(registry=REGISTRY)
 GCCollector(registry=REGISTRY)
 
 REQUESTS = Counter(
-    "hangar_plane_http_requests_total",
+    "wingsmith_plane_http_requests_total",
     "HTTP requests the API answered, by method, route template and status code.",
     ["method", "route", "status"],
     registry=REGISTRY,
 )
 DURATION = Histogram(
-    "hangar_plane_http_request_duration_seconds",
+    "wingsmith_plane_http_request_duration_seconds",
     "Time from the request reaching the API to the end of its response body, by method and route template.",
     ["method", "route"],
     registry=REGISTRY,
 )
 IN_FLIGHT = Gauge(
-    "hangar_plane_http_requests_in_flight",
+    "wingsmith_plane_http_requests_in_flight",
     "HTTP requests the API is answering now.",
     registry=REGISTRY,
 )
@@ -71,7 +71,7 @@ IN_FLIGHT = Gauge(
 
 def _version() -> str:
     try:
-        return metadata.version("hangar-plane")
+        return metadata.version("wingsmith-plane")
     except metadata.PackageNotFoundError:
         return "0.0.0+unknown"
 
@@ -84,7 +84,9 @@ class _StateCollector(Collector):
     """
 
     def collect(self):
-        build = GaugeMetricFamily("hangar_plane_build_info", "The plane build answering, always 1.", labels=["version"])
+        build = GaugeMetricFamily(
+            "wingsmith_plane_build_info", "The plane build answering, always 1.", labels=["version"]
+        )
         build.add_metric([_version()], 1)
         yield build
 
@@ -93,7 +95,7 @@ class _StateCollector(Collector):
         if pool is None or not hasattr(pool, "checkedout"):
             return
         connections = GaugeMetricFamily(
-            "hangar_plane_db_pool_connections",
+            "wingsmith_plane_db_pool_connections",
             "Connections in the API's database pool, by state.",
             labels=["state"],
         )
@@ -101,12 +103,12 @@ class _StateCollector(Collector):
         connections.add_metric(["idle"], pool.checkedin())
         yield connections
         yield GaugeMetricFamily(
-            "hangar_plane_db_pool_size",
+            "wingsmith_plane_db_pool_size",
             "The pool's configured size, before overflow.",
             value=pool.size(),
         )
         yield GaugeMetricFamily(
-            "hangar_plane_db_pool_overflow",
+            "wingsmith_plane_db_pool_overflow",
             "Connections open beyond the pool's size; negative while the pool is not yet full.",
             value=pool.overflow(),
         )

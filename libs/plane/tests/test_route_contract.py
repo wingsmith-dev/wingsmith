@@ -24,7 +24,7 @@ from app.core.context import GATEWAY_ROUTES
 
 GATEWAY_TOKEN = "route-contract-gateway-token"
 
-UNREACHABLE_DATABASE = "postgresql+psycopg://hangar:hangar@127.0.0.1:1/hangar"
+UNREACHABLE_DATABASE = "postgresql+psycopg://wingsmith:wingsmith@127.0.0.1:1/wingsmith"
 """Port 1: nothing listens there, so a handler that reaches for a session fails loudly."""
 
 METHODS = ("get", "post", "put", "patch", "delete")

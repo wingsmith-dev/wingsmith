@@ -1,4 +1,4 @@
-"""Turning a Hangar object into a scope, and a backend's numbers into a response.
+"""Turning a Wingsmith object into a scope, and a backend's numbers into a response.
 
 The service resolves objects, decides which cluster answers and how strong the
 join is, and never renders a query. Which store, and in which dialect, is
@@ -45,7 +45,7 @@ measurements; see `fleet`, which refuses, not approximates.
 An endpoint is the one object no cluster can be asked about. It never syncs to
 one, and the requests that make its availability number interesting are the ones
 that never reached a cluster at all, so it is answered from the gateway's own
-series: a fifth join, on `hangar_endpoint`, against a store that has no cluster
+series: a fifth join, on `wingsmith_endpoint`, against a store that has no cluster
 label to narrow by.
 """
 
@@ -117,7 +117,7 @@ logger = logging.getLogger(__name__)
 GATEWAY = "gateway"
 """The source key the gateway's own series are read under. Not a cluster name."""
 
-NO_GATEWAY = "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
+NO_GATEWAY = "no metrics store for the plane to read the gateway's own series from; set WINGSMITH_METRICS_SOURCES"
 
 TENANT_UNAVAILABLE = "service level data is temporarily unavailable"
 """What a tenant reads in place of the reason its metrics or SLA report could not be measured.
@@ -440,7 +440,7 @@ class MetricsService:
     ) -> MetricsSchema:
         """One class of card inside one cluster, broken down by node.
 
-        The class is a hangar name and the exporter has never heard of it. The
+        The class is a wingsmith name and the exporter has never heard of it. The
         dialect expands it into the vendor strings `libs/packages/contract/devices.json` maps
         onto it; the service only says which class it means.
         """
@@ -755,7 +755,7 @@ class MetricsService:
 
         The gateway belongs to no cluster, so this does not go through `resolve`
         and it is never narrowed by a cluster label. `cluster` on a
-        `hangar_gateway_*` series names the cluster a request was *sent to*: the
+        `wingsmith_gateway_*` series names the cluster a request was *sent to*: the
         one thing it cannot name is which gateway emitted it, and it is the empty
         string for exactly the requests that matter most, the ones no cluster ever
         saw. Narrowing by it would drop those and count one front door's traffic
@@ -776,7 +776,7 @@ class MetricsService:
 
         An endpoint is a plane-only object (it never reaches a cluster), so no
         cluster can be asked about one, and the answer carries `cluster: null`.
-        The join is exact: `hangar_endpoint` is the uid, stamped by the hop that
+        The join is exact: `wingsmith_endpoint` is the uid, stamped by the hop that
         resolved it.
 
         A configured store that nobody has pointed at the gateway's metrics port
@@ -931,7 +931,7 @@ class MetricsService:
     ) -> MetricsSchema:
         """One tenant's traffic at the front door, summed over the endpoints it owns.
 
-        The gateway's series carry no tenant label (`hangar_endpoint` is the
+        The gateway's series carry no tenant label (`wingsmith_endpoint` is the
         finest identity on them), so a tenant is not a dimension of the
         measurement here. It is a set of endpoint uids resolved in the plane,
         matched in one selector, which is why this is a read of its own,
@@ -1064,7 +1064,9 @@ def _no_source(cluster: Cluster) -> str:
             f"cluster {cluster.name!r} has no metrics label, so nothing narrows the shared store to it; "
             "set one once the store's `cluster` label shows this cluster"
         )
-    return f"no metrics store for the plane to query on behalf of cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
+    return (
+        f"no metrics store for the plane to query on behalf of cluster {cluster.name!r}; set WINGSMITH_METRICS_SOURCES"
+    )
 
 
 def _samples(values: dict[str, float | None], metrics: dict[str, Metric]) -> list[SampleSchema]:

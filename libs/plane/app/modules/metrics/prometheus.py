@@ -1,4 +1,4 @@
-"""The Prometheus `Backend`: Hangar metrics in, numbers out, PromQL in between.
+"""The Prometheus `Backend`: Wingsmith metrics in, numbers out, PromQL in between.
 
 Two things here are worth knowing about.
 

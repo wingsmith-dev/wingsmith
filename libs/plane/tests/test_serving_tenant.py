@@ -107,7 +107,7 @@ def test_a_session_in_the_old_colon_separated_form_is_refused():
 
     payload = f"admin:{int(time.time()) + 900}".encode()
     payload_b64 = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-    legacy = f"hgrs1.{payload_b64}.{AuthManager._sign(payload)}"
+    legacy = f"wss1.{payload_b64}.{AuthManager._sign(payload)}"
     assert AuthManager.verify_session_token(legacy) is None
 
 
@@ -128,7 +128,7 @@ def test_a_tenant_cannot_forge_its_scope_by_editing_the_payload():
 def test_a_tenant_token_is_recognisable_without_a_lookup():
     plaintext, _ = AuthManager.mint_tenant_token()
     assert AuthManager.looks_like_tenant(plaintext)
-    assert not AuthManager.looks_like_tenant("hgro1.something")
+    assert not AuthManager.looks_like_tenant("wso1.something")
     assert not AuthManager.looks_like_enrolment(plaintext)
 
 

@@ -128,7 +128,7 @@ The threshold is tied to the operator's resync interval and must stay above it.
 `last_sync_at` moves only when a frame is *ingested*, and the observation loop
 sends nothing when nothing has changed, so on a quiet cluster the
 only thing that reliably bumps it is the periodic resync, currently 15 minutes
-(`HANGAR_RESYNC_INTERVAL`). Forty minutes is two missed resyncs plus room for a
+(`WINGSMITH_RESYNC_INTERVAL`). Forty minutes is two missed resyncs plus room for a
 slow one. A threshold below the resync interval would mark every healthy idle
 cluster stale, which is worse than the silence it is meant to catch: an
 indicator that cries wolf on a working fleet is one nobody reads when it is
@@ -230,13 +230,13 @@ def _hub_url() -> str:
         return f"ws://localhost:{settings.HUB_PORT}{settings.HUB_PATH}"
     if not url:
         raise Invalid(
-            "this plane has no public hub URL; set HANGAR_HUB_PUBLIC_URL to the wss:// address clusters dial",
-            {"setting": "HANGAR_HUB_PUBLIC_URL"},
+            "this plane has no public hub URL; set WINGSMITH_HUB_PUBLIC_URL to the wss:// address clusters dial",
+            {"setting": "WINGSMITH_HUB_PUBLIC_URL"},
         )
     if not url.startswith(("wss://", "ws://")):
         raise Invalid(
-            "HANGAR_HUB_PUBLIC_URL must be a ws:// or wss:// URL",
-            {"setting": "HANGAR_HUB_PUBLIC_URL"},
+            "WINGSMITH_HUB_PUBLIC_URL must be a ws:// or wss:// URL",
+            {"setting": "WINGSMITH_HUB_PUBLIC_URL"},
         )
     return url
 
@@ -244,7 +244,7 @@ def _hub_url() -> str:
 def _registry_host(chart_ref: str) -> str:
     """The registry host to `helm registry login`, from an OCI chart reference.
 
-    `oci://ghcr.io/hangar-dev/charts/cluster-setup` → `ghcr.io`.
+    `oci://ghcr.io/wingsmith-dev/charts/cluster-setup` → `ghcr.io`.
     """
     return chart_ref.removeprefix("oci://").split("/", 1)[0]
 
@@ -399,7 +399,7 @@ def _setup_values(values: SetupValues) -> str:
         lines += [
             "",
             "# The registry credential this plane is configured to share with every",
-            "# cluster (HANGAR_IMAGE_PULL_SECRET_SHARE_TOKEN). Shown at mint only.",
+            "# cluster (WINGSMITH_IMAGE_PULL_SECRET_SHARE_TOKEN). Shown at mint only.",
             "# Prefer replacing it with a read-only token issued for this cluster alone.",
             *_dump(
                 {
@@ -432,7 +432,7 @@ def _setup_values(values: SetupValues) -> str:
         lines += [
             "",
             "# Telemetry is off: this plane has no central metrics store configured",
-            "# (HANGAR_METRICS_REMOTE_WRITE_URL), and an agent with nowhere to push",
+            "# (WINGSMITH_METRICS_REMOTE_WRITE_URL), and an agent with nowhere to push",
             "# would scrape the cluster and discard every sample.",
             *_dump({"monitoring": {"enabled": False}}),
         ]
@@ -461,7 +461,7 @@ def _setup_values(values: SetupValues) -> str:
         "# prefetch jobs run on). `cacheValue` must name a pool that exists, or the",
         "# model-prefetch jobs stay Pending.",
         "# `cacheTaintKey` is optional: the taint on the cache pool that prefetch jobs",
-        "# must tolerate. Empty takes the operator's default, hangar.dev/cache.",
+        "# must tolerate. Empty takes the operator's default, wingsmith.dev/cache.",
         *_dump({"pools": {"labelKey": "", "gpuValue": "", "cacheValue": "", "cacheTaintKey": ""}}),
         "",
         "# The shared model-weight cache. Must be a ReadWriteMany class, e.g. an",
@@ -505,8 +505,8 @@ def _setup_values(values: SetupValues) -> str:
             "# How inference reaches this cluster. The agent dials out to the plane's",
             "# gateway and nothing dials in, so there is nothing to open here, but a",
             "# cluster with no agent serves nothing. This plane has no gateway address",
-            "# configured (HANGAR_TUNNEL_GATEWAY), so fill it in by hand as host:port,",
-            "# e.g. hangar.example.com:443; ask for it instead of guessing, because a",
+            "# configured (WINGSMITH_TUNNEL_GATEWAY), so fill it in by hand as host:port,",
+            "# e.g. wingsmith.example.com:443; ask for it instead of guessing, because a",
             "# wrong one is a tunnel that never establishes.",
             "#",
             "# Enable it together with `frontend.mode` on a later upgrade: the chart",
@@ -616,14 +616,14 @@ class ClusterService:
         filename = values_filename(cluster.name)
         version = settings.SETUP_CHART_VERSION or None
         parts = [
-            "helm upgrade --install hangar-cluster",
+            "helm upgrade --install wingsmith-cluster",
             shlex.quote(settings.SETUP_CHART_REF),
         ]
         if version:
             parts.append(f"--version {shlex.quote(version)}")
         parts += [
             f"--kube-context {shlex.quote(cluster.name)}",
-            "--namespace hangar-system --create-namespace",
+            "--namespace wingsmith-system --create-namespace",
             f"-f {shlex.quote(filename)}",
         ]
         helm_command = " \\\n  ".join(parts)
@@ -651,7 +651,7 @@ class ClusterService:
         )
 
     async def setup_instructions(self, ref: str) -> ClusterSetupSchema:
-        """The chart install a person runs to make `ref` hangar-ready (no token).
+        """The chart install a person runs to make `ref` wingsmith-ready (no token).
 
         The enrolment token is minted separately (`issue_enrolment_token`) and
         shown once; a plain read never carries it: `enrolment_token_set` tells

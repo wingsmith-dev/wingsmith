@@ -104,7 +104,7 @@ def test_every_route_refuses_an_anonymous_caller(client, method, path):
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
 def test_every_route_refuses_an_unknown_bearer(client, method, path):
-    response = _call(client, method, path, "hgrs1.not.real")
+    response = _call(client, method, path, "wss1.not.real")
     assert response.status_code == 401, (method, path)
 
 

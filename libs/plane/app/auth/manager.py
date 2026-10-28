@@ -240,7 +240,7 @@ class AuthManager:
     def mint_refresh_token(session_id: str, generation: str) -> tuple[str, str]:
         """Mints a refresh token for one session: `(plaintext, sha256_hex)`.
 
-        `hgrr1.<session id>.<generation>.<random>`. The session id names the
+        `wsr1.<session id>.<generation>.<random>`. The session id names the
         session's first row, which is where revocation and the absolute expiry
         live; the generation names the credential the session was opened with.
         Both are covered by the hash the token is looked up by, so neither can be

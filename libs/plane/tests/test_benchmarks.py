@@ -114,8 +114,8 @@ def test_harness_images_have_no_default():
 def test_harness_image_settings_load_from_the_environment():
     loaded = load_settings(
         {
-            "HANGAR_BENCHMARK_EVALSCOPE_IMAGE": "registry.example/evalscope:1.11.1",
-            "HANGAR_BENCHMARK_CONFORMANCE_IMAGE": "registry.example/conformance:0.1.0",
+            "WINGSMITH_BENCHMARK_EVALSCOPE_IMAGE": "registry.example/evalscope:1.11.1",
+            "WINGSMITH_BENCHMARK_CONFORMANCE_IMAGE": "registry.example/conformance:0.1.0",
         }
     )
     assert loaded.BENCHMARK_EVALSCOPE_IMAGE == "registry.example/evalscope:1.11.1"
@@ -131,7 +131,7 @@ def test_an_unset_harness_image_is_refused(monkeypatch):
     monkeypatch.setattr(harnesses.settings, "BENCHMARK_CONFORMANCE_IMAGE", "")
     with pytest.raises(Invalid) as caught:
         harnesses.resolve_image(harnesses.CONFORMANCE, None)
-    assert caught.value.detail == {"harness": "conformance", "setting": "HANGAR_BENCHMARK_CONFORMANCE_IMAGE"}
+    assert caught.value.detail == {"harness": "conformance", "setting": "WINGSMITH_BENCHMARK_CONFORMANCE_IMAGE"}
     assert harnesses.resolve_image(harnesses.CONFORMANCE, "registry.example/conformance:0.1.0")
 
 

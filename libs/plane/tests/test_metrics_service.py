@@ -104,7 +104,7 @@ async def test_a_plane_with_no_store_says_so_rather_than_answering_zero():
 
     assert got.unavailable
     assert "no metrics store" in got.unavailable
-    assert "HANGAR_METRICS_SOURCES" in got.unavailable, "the message does not say how to fix it"
+    assert "WINGSMITH_METRICS_SOURCES" in got.unavailable, "the message does not say how to fix it"
     assert got.source is None
     assert not got.samples
 
@@ -330,7 +330,7 @@ async def test_a_series_carries_its_points_labels_title_and_unit():
 
 
 async def test_a_store_that_is_down_becomes_a_reason_not_an_exception():
-    """Hangar's inventory answer is still good; the panel says why it is empty."""
+    """Wingsmith's inventory answer is still good; the panel says why it is empty."""
     backend = StubBackend(raises=MetricsUnavailable("cannot reach the metrics store for us"))
     got = await answer(service(), backend, Scope(kind="cluster"))
 
@@ -898,7 +898,7 @@ def endpoint_service(*results) -> MetricsService:
 
 
 async def test_an_endpoint_is_measured_at_the_front_door_and_by_its_uid():
-    """`hangar_endpoint` is the uid the gateway stamped, not the name it was called by.
+    """`wingsmith_endpoint` is the uid the gateway stamped, not the name it was called by.
 
     An endpoint never reaches a cluster, so nothing in a cluster can be asked
     about one; the join is against the hop that resolved it, and a rename must not
@@ -1001,7 +1001,7 @@ async def test_no_gateway_store_says_so_rather_than_reporting_full_availability(
         assert got.breakdown == []
         assert got.source is None
         assert got.unavailable
-        assert "HANGAR_METRICS_SOURCES" in got.unavailable
+        assert "WINGSMITH_METRICS_SOURCES" in got.unavailable
 
 
 async def test_a_tenant_reads_its_endpoint_without_the_store_behind_it():
@@ -1021,4 +1021,4 @@ async def test_unmeasurable_tenant_endpoint_reason():
         got = await svc.tenant_endpoint(ENDPOINT)
 
     assert got.unavailable == TENANT_UNAVAILABLE
-    assert "HANGAR_METRICS_SOURCES" not in got.unavailable
+    assert "WINGSMITH_METRICS_SOURCES" not in got.unavailable

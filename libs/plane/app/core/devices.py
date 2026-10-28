@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 DIALECT_GFD: Final = "gfd"
 DIALECT_DCGM: Final = "dcgm"
 
-DEVICE_TABLE_ENV: Final = "HANGAR_DEVICE_TABLE"
+DEVICE_TABLE_ENV: Final = "WINGSMITH_DEVICE_TABLE"
 
 
 def _table_path() -> Path:
@@ -126,7 +126,7 @@ class DeviceTable:
         return self._by_alias.get(dialect, {}).get(normalize(product))
 
     def resolve(self, dialect: str, product: str) -> str:
-        """Maps a vendor string onto a hangar class, slugifying what it cannot."""
+        """Maps a vendor string onto a wingsmith class, slugifying what it cannot."""
         if not product:
             return ""
         found = self.lookup(dialect, product)
@@ -159,7 +159,7 @@ class DeviceTable:
         return max(self.classes, key=lambda c: c.memory_mib, default=None)
 
     def aliases(self, name: str, dialect: str) -> tuple[str, ...]:
-        """The vendor strings a hangar class is emitted under in one dialect."""
+        """The vendor strings a wingsmith class is emitted under in one dialect."""
         entry = self._by_name.get(name)
         if entry is None:
             return ()

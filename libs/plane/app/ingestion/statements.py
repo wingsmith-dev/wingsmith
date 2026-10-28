@@ -150,7 +150,7 @@ def cluster_ref_clause(ref: str):
 
 def serialise_cluster(cluster_id: UUID) -> Select:
     """Takes the transaction-scoped advisory lock that orders every ingestion write for one cluster."""
-    key = func.hashtextextended(literal(f"hangar.ingestion:{cluster_id}"), 0)
+    key = func.hashtextextended(literal(f"wingsmith.ingestion:{cluster_id}"), 0)
     return select(func.pg_advisory_xact_lock(key))
 
 

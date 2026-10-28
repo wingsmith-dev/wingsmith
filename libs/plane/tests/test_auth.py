@@ -74,7 +74,7 @@ def signed(claims: dict) -> str:
     """A session token with exactly these claims, correctly signed."""
     payload = json.dumps(claims).encode()
     encoded = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-    return f"hgrs1.{encoded}.{AuthManager._sign(payload)}"
+    return f"wss1.{encoded}.{AuthManager._sign(payload)}"
 
 
 def claims(**overrides) -> dict:
@@ -135,7 +135,7 @@ def test_tampered_session_payload_is_rejected(monkeypatch):
 
 def test_malformed_session_token_is_rejected():
     assert AuthManager.verify_session_token("not-a-session-token") is None
-    assert AuthManager.verify_session_token("hgrs1.onlyonepart") is None
+    assert AuthManager.verify_session_token("wss1.onlyonepart") is None
 
 
 def test_session_token_signed_under_a_different_secret_is_rejected(monkeypatch):
@@ -178,7 +178,7 @@ def test_the_two_field_payload_is_refused(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
     payload = f"admin:{int(time.time()) + 900}".encode()
     encoded = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-    assert AuthManager.verify_session_token(f"hgrs1.{encoded}.{AuthManager._sign(payload)}") is None
+    assert AuthManager.verify_session_token(f"wss1.{encoded}.{AuthManager._sign(payload)}") is None
 
 
 def test_changing_the_admin_password_ends_every_admin_session(monkeypatch):
@@ -191,11 +191,11 @@ def test_changing_the_admin_password_ends_every_admin_session(monkeypatch):
 
 def test_a_refresh_token_carries_its_session_and_generation():
     token, digest = AuthManager.mint_refresh_token(SESSION, "gen123")
-    assert token.startswith("hgrr1.")
+    assert token.startswith("wsr1.")
     assert AuthManager.parse_refresh_token(token) == (SESSION, "gen123")
     assert digest == AuthManager.hash_refresh_token(token)
-    assert AuthManager.parse_refresh_token("hgrr1.onlyrandom") is None
-    assert AuthManager.parse_refresh_token(f"hgrs1.{SESSION}.gen.x") is None
+    assert AuthManager.parse_refresh_token("wsr1.onlyrandom") is None
+    assert AuthManager.parse_refresh_token(f"wss1.{SESSION}.gen.x") is None
 
 
 # --- resolve_gateway / resolve_principal -------------------------------------
@@ -235,9 +235,9 @@ def test_no_http_credential_resolves_to_an_operator(monkeypatch):
     """Operator credentials open hub sessions and nothing else."""
     monkeypatch.setattr(settings, "APP_ENV", "local")
     token, _ = AuthManager.mint_enrolment_token()
-    for candidate in (token, LOCAL_GATEWAY_SERVICE_TOKEN, "hangar-local-operator-token", None):
+    for candidate in (token, LOCAL_GATEWAY_SERVICE_TOKEN, "wingsmith-local-operator-token", None):
         assert AuthManager.resolve_principal(candidate).kind != "operator"
-    assert AuthManager.resolve_operator("hangar-local-operator-token") is None
+    assert AuthManager.resolve_operator("wingsmith-local-operator-token") is None
 
 
 def test_resolve_principal_with_admin_auth_disabled_accepts_no_token():
@@ -338,7 +338,7 @@ def test_the_local_signing_key_is_random_per_process(monkeypatch):
     secret = AuthManager.signing_secret()
     assert secret == AuthManager.signing_secret()
     assert len(secret) >= 32
-    assert "hangar" not in secret
+    assert "wingsmith" not in secret
 
 
 def test_the_api_binds_loopback_in_local_unless_told_otherwise():
@@ -351,7 +351,7 @@ def test_settings_read_only_prefixed_names():
     loaded = load({"DATABASE_URL": "postgresql+psycopg://elsewhere/db", "APP_ENV": "local"})
     assert loaded.DATABASE_URL == Settings().DATABASE_URL
     assert loaded.APP_ENV == "production"
-    assert load({"HANGAR_APP_ENV": "local"}).APP_ENV == "local"
+    assert load({"WINGSMITH_APP_ENV": "local"}).APP_ENV == "local"
 
 
 def test_an_unconfigured_plane_is_production_and_refuses_to_boot():
@@ -359,7 +359,7 @@ def test_an_unconfigured_plane_is_production_and_refuses_to_boot():
     loaded = load({})
     assert loaded.APP_ENV == "production"
     assert resolved_admin_auth(loaded) == "enabled"
-    with pytest.raises(RuntimeError, match="HANGAR_APP_ENV=local"):
+    with pytest.raises(RuntimeError, match="WINGSMITH_APP_ENV=local"):
         validate(loaded)
 
 
@@ -528,7 +528,7 @@ def test_tenant_failures_never_spend_the_admin_budget(monkeypatch):
     monkeypatch.setattr(TENANT_GUESSES, "limit", 1)
     TENANT_GUESSES.fail("testclient|globex")
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
-        tenant = client.post("/v1/auth/login", json={"slug": "globex", "password": "hgrt1.nope"})
+        tenant = client.post("/v1/auth/login", json={"slug": "globex", "password": "wst1.nope"})
         admin = client.post("/v1/auth/login", json={"password": "not it"})
     assert tenant.status_code == 429
     assert admin.status_code == 401
@@ -543,7 +543,7 @@ def test_the_schema_is_served_outside_local_with_the_package_version(monkeypatch
         response = client.get("/schema/openapi.json")
     assert response.status_code == 200
     document = response.json()
-    assert document["info"]["version"] == metadata.version("hangar-plane")
+    assert document["info"]["version"] == metadata.version("wingsmith-plane")
     assert "/v1/clusters" in document["paths"]
 
 
@@ -747,7 +747,7 @@ async def test_a_copy_presented_after_the_grace_window_ends_the_session(sessions
 async def test_a_refresh_token_in_the_old_format_is_refused(sessions, monkeypatch):
     enable_admin_auth(monkeypatch)
     async with sessions() as db:
-        assert await AuthService(db).rotate_refresh_token("hgrr1.some-random-value") is None
+        assert await AuthService(db).rotate_refresh_token("wsr1.some-random-value") is None
 
 
 def test_cors_allowed_origins_are_configurable(monkeypatch):
@@ -839,8 +839,8 @@ def test_a_rebound_host_is_refused_while_admin_auth_is_off():
 
 def test_the_hosts_the_plane_is_known_by_pass_while_admin_auth_is_off(monkeypatch):
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://console.example.com")
-    monkeypatch.setattr(settings, "PUBLIC_HOST", "hangar.example.com")
-    hosts = ["localhost:8000", "127.0.0.1", "[::1]:8000", "console.example.com", "HANGAR.example.com:443"]
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "wingsmith.example.com")
+    hosts = ["localhost:8000", "127.0.0.1", "[::1]:8000", "console.example.com", "WINGSMITH.example.com:443"]
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         for host in hosts:
             response = client.get("/health", headers={"Host": host})
@@ -851,7 +851,7 @@ def test_the_hosts_the_plane_is_known_by_pass_while_admin_auth_is_off(monkeypatc
 def test_an_unknown_host_is_not_refused_while_admin_auth_is_on(monkeypatch):
     """A rebound page has no credential to borrow then, and a deployment need not list its names."""
     enable_admin_auth(monkeypatch)
-    with TestClient(app=create_app(), base_url="http://hangar.internal:8000") as client:
+    with TestClient(app=create_app(), base_url="http://wingsmith.internal:8000") as client:
         assert client.get("/health").status_code == 200
         assert client.get("/v1/clusters").status_code == 401
 
@@ -868,7 +868,7 @@ def test_a_bodiless_write_needs_no_content_type(monkeypatch):
 
 def test_mint_enrolment_token_is_prefixed_and_hashes_to_its_digest():
     token, digest = AuthManager.mint_enrolment_token()
-    assert token.startswith("hgro1.")
+    assert token.startswith("wso1.")
     assert digest == AuthManager.hash_enrolment_token(token)
     assert len(digest) == 64
 
@@ -902,7 +902,7 @@ def test_there_is_no_unbound_operator_principal():
 @pytest.mark.asyncio
 async def test_resolve_connection_refuses_a_shared_fleet_token():
     """Only a per-cluster enrolment token opens a hub session."""
-    assert await _resolve_connection("hangar-local-operator-token") is None
+    assert await _resolve_connection("wingsmith-local-operator-token") is None
     assert await _resolve_connection(LOCAL_GATEWAY_SERVICE_TOKEN) is None
 
 
@@ -989,7 +989,7 @@ async def test_hub_refuses_a_shared_fleet_token_before_the_upgrade(hub_port):
         with pytest.raises(InvalidStatus) as excinfo:
             async with connect(
                 f"ws://127.0.0.1:{hub_port}{settings.HUB_PATH}",
-                additional_headers={"Authorization": "Bearer hangar-local-operator-token"},
+                additional_headers={"Authorization": "Bearer wingsmith-local-operator-token"},
             ):
                 pass
         assert excinfo.value.response.status_code == 401

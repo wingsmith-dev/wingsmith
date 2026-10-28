@@ -189,9 +189,9 @@ gateway fault is told from an engine fault, and that is the first question asked
 endpoint probe fails. `failover_probe` is endpoint-only: below the endpoint there is
 nothing to fail over to.
 
-The image is named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE` or the request's `image`. The plane
+The image is named by `WINGSMITH_BENCHMARK_CONFORMANCE_IMAGE` or the request's `image`. The plane
 composes no command line for this harness yet, so the operator refuses to render a run until it does.
-`libs/conformance` builds `hgrconform`, as a CLI or an image, which runs probes of this kind from a
+`libs/conformance` builds `wingsconform`, as a CLI or an image, which runs probes of this kind from a
 workstation today but is not what this harness drives.
 `max_probes` caps the enumerated failure list, so it has a stated ceiling even in a total outage;
 the per-probe record goes to object storage behind `artifacts_uri`, never onto the summary.
@@ -416,14 +416,14 @@ def resolve_image(harness: Harness, supplied: str | None) -> str:
 
     Only the reference's shape is checked; a missing image surfaces as a pull failure on the run.
     An override is still bounded by the cluster: the operator renders only images listed in its
-    `HANGAR_BENCHMARK_IMAGES` and fails any other run, so naming one here does not put it there.
+    `WINGSMITH_BENCHMARK_IMAGES` and fails any other run, so naming one here does not put it there.
     A harness whose image setting is unset is refused unless the caller names an image.
     """
     image = (supplied or "").strip()
     if not image:
         image = harness.image
         if not image:
-            variable = f"HANGAR_{harness.image_setting}"
+            variable = f"WINGSMITH_{harness.image_setting}"
             raise Invalid(
                 f"the {harness.name} harness has no image configured; set {variable} on the plane"
                 " or pass `image` with the request",

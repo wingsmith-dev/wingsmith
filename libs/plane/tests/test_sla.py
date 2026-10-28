@@ -291,7 +291,7 @@ async def test_no_gateway_store_says_so_rather_than_reporting_full_availability(
     assert backend.requests == []
     assert report.availability is None
     assert report.met is None
-    assert "HANGAR_METRICS_SOURCES" in report.unavailable
+    assert "WINGSMITH_METRICS_SOURCES" in report.unavailable
 
 
 async def test_a_store_that_is_down_is_a_reason_and_not_an_error():
@@ -335,7 +335,7 @@ async def test_a_tenant_reads_one_generic_line_where_the_operator_reads_the_reas
     assert tenant.unavailable == TENANT_UNAVAILABLE
     assert tenant.met is None
     assert operator.unavailable != TENANT_UNAVAILABLE
-    for detail in ("partner-inference-usw2", "connection refused", "HANGAR_METRICS_SOURCES"):
+    for detail in ("partner-inference-usw2", "connection refused", "WINGSMITH_METRICS_SOURCES"):
         assert detail not in tenant.unavailable
 
 

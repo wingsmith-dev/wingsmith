@@ -77,7 +77,7 @@ def _check_ingress_auth(ingress: str, auth: str, host: str | None) -> None:
     if auth == "none" and needs_key(ingress, auth, host):
         raise Invalid(
             "a tenant reachable on the public listener needs auth 'api_key'",
-            {"ingress": ingress, "host": host, "setting": "HANGAR_TENANT_ALLOW_PUBLIC_NO_AUTH"},
+            {"ingress": ingress, "host": host, "setting": "WINGSMITH_TENANT_ALLOW_PUBLIC_NO_AUTH"},
         )
 
 

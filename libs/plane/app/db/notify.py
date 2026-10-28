@@ -1,6 +1,6 @@
 """The declared-state change channel: one Postgres `NOTIFY` per write, carrying a hint.
 
-`hangar-api` and `hangar-hub` are two processes that share nothing but Postgres,
+`wingsmith-api` and `wingsmith-hub` are two processes that share nothing but Postgres,
 so a write to declared state has no way of reaching the cluster it concerns until
 the operator next reconnects and is streamed a full resync. This is the wakeup
 that closes that gap, and it lives here, beside the engine, not in either
@@ -39,7 +39,7 @@ from app.config import settings
 logger = getLogger(__name__)
 
 
-CHANNEL = "hangar_declared"
+CHANNEL = "wingsmith_declared"
 """The one channel. Kinds are a field in the payload instead of a channel each.
 
 A channel per kind would mean every hub issuing a `LISTEN` per kind and another

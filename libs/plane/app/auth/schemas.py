@@ -6,8 +6,8 @@ from app.utils.schemas import Struct
 
 
 ADMIN = "admin"
-"""A human operating the whole plane through the console or `hgr`. There is one
-admin identity: Hangar is single-operator software, and every admin session is
+"""A human operating the whole plane through the console or `wings`. There is one
+admin identity: Wingsmith is single-operator software, and every admin session is
 that operator."""
 
 TENANT = "tenant"

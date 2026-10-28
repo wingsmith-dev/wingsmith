@@ -141,7 +141,7 @@ class NotificationChannelService:
         message = notify.Message(
             severity="info",
             state="firing",
-            title=f"test notification from Hangar ({settings.APP_ENV})",
+            title=f"test notification from Wingsmith ({settings.APP_ENV})",
             rule="channel.test",
             cluster=None,
             subject=None,

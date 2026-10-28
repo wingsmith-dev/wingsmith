@@ -23,13 +23,13 @@ The `hub` and `reactor` processes do not serve `/metrics` yet.
 
 | Name | Type | Labels | What |
 |---|---|---|---|
-| `hangar_plane_http_requests_total` | counter | `method`, `route`, `status` | HTTP requests answered. `route` is the matched template, e.g. `/v1/clusters/{ref}`, and `status` the response code |
-| `hangar_plane_http_request_duration_seconds` | histogram | `method`, `route` | Time from the request reaching the api to the end of its response, with the client library's default buckets (5 ms to 10 s) |
-| `hangar_plane_http_requests_in_flight` | gauge | | Requests being answered now |
-| `hangar_plane_build_info` | gauge | `version` | Always 1; `version` is the `hangar-plane` package version |
-| `hangar_plane_db_pool_connections` | gauge | `state` (`checked_out`, `idle`) | Connections in the database pool. Absent until the process opens its pool |
-| `hangar_plane_db_pool_size` | gauge | | The pool's configured size (`HANGAR_DB_POOL_SIZE`). Absent until the pool opens |
-| `hangar_plane_db_pool_overflow` | gauge | | Connections open beyond the pool size, up to `HANGAR_DB_POOL_MAX_OVERFLOW`. Negative while the pool is not yet full |
+| `wingsmith_plane_http_requests_total` | counter | `method`, `route`, `status` | HTTP requests answered. `route` is the matched template, e.g. `/v1/clusters/{ref}`, and `status` the response code |
+| `wingsmith_plane_http_request_duration_seconds` | histogram | `method`, `route` | Time from the request reaching the api to the end of its response, with the client library's default buckets (5 ms to 10 s) |
+| `wingsmith_plane_http_requests_in_flight` | gauge | | Requests being answered now |
+| `wingsmith_plane_build_info` | gauge | `version` | Always 1; `version` is the `wingsmith-plane` package version |
+| `wingsmith_plane_db_pool_connections` | gauge | `state` (`checked_out`, `idle`) | Connections in the database pool. Absent until the process opens its pool |
+| `wingsmith_plane_db_pool_size` | gauge | | The pool's configured size (`WINGSMITH_DB_POOL_SIZE`). Absent until the pool opens |
+| `wingsmith_plane_db_pool_overflow` | gauge | | Connections open beyond the pool size, up to `WINGSMITH_DB_POOL_MAX_OVERFLOW`. Negative while the pool is not yet full |
 | `process_*` | various | | CPU, memory, open file descriptors and start time of the process (Linux only) |
 | `python_info`, `python_gc_*` | various | | Interpreter version and garbage collector counts |
 
@@ -40,12 +40,12 @@ template to label them with.
 
 ```promql
 # Error ratio by route over five minutes
-sum by (route) (rate(hangar_plane_http_requests_total{status=~"5.."}[5m]))
-  / sum by (route) (rate(hangar_plane_http_requests_total[5m]))
+sum by (route) (rate(wingsmith_plane_http_requests_total{status=~"5.."}[5m]))
+  / sum by (route) (rate(wingsmith_plane_http_requests_total[5m]))
 
 # p95 latency by route
-histogram_quantile(0.95, sum by (route, le) (rate(hangar_plane_http_request_duration_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (route, le) (rate(wingsmith_plane_http_request_duration_seconds_bucket[5m])))
 
 # A pool into its overflow: every pooled connection is in use
-hangar_plane_db_pool_connections{state="checked_out"} >= on(job, instance) hangar_plane_db_pool_size
+wingsmith_plane_db_pool_connections{state="checked_out"} >= on(job, instance) wingsmith_plane_db_pool_size
 ```

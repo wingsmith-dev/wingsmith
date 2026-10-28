@@ -47,7 +47,7 @@ def _alembic(url: str, *args: str, check: bool = True) -> subprocess.CompletedPr
         check=check,
         capture_output=True,
         text=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
+        env={**os.environ, "WINGSMITH_DATABASE_URL": url},
     )
 
 

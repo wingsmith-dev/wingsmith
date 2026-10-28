@@ -73,10 +73,10 @@ def test_the_feed_is_unpaginated_and_conditional():
 
 @pytest.mark.asyncio
 async def test_the_feed_carries_a_tenants_settings_and_host():
-    tenant = FakeTenant(ingress="public", auth="api_key", host="globex.hangar.dev")
+    tenant = FakeTenant(ingress="public", auth="api_key", host="globex.wingsmith.dev")
     table = await resolution([tenant]).resolve_tenants()
     row = table.tenants[0]
-    assert (row.id, row.ingress, row.auth, row.host) == ("ten_1", "public", "api_key", "globex.hangar.dev")
+    assert (row.id, row.ingress, row.auth, row.host) == ("ten_1", "public", "api_key", "globex.wingsmith.dev")
 
 
 @pytest.mark.asyncio
@@ -127,8 +127,8 @@ async def test_a_disabled_tenant_is_left_out_of_the_feed():
     """The gateway never reads `enabled`, so a disabled tenant in the feed kept serving."""
     table = await resolution(
         [
-            FakeTenant(uid="ten_1", host="acme.hangar.dev", api_keys=[FakeKey(key_hash="a")]),
-            FakeTenant(uid="ten_2", enabled=False, host="globex.hangar.dev", api_keys=[FakeKey(key_hash="g")]),
+            FakeTenant(uid="ten_1", host="acme.wingsmith.dev", api_keys=[FakeKey(key_hash="a")]),
+            FakeTenant(uid="ten_2", enabled=False, host="globex.wingsmith.dev", api_keys=[FakeKey(key_hash="g")]),
         ]
     ).resolve_tenants()
     assert [row.id for row in table.tenants] == ["ten_1"]
@@ -148,7 +148,7 @@ async def test_disabling_a_tenant_moves_the_revision():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("ingress", "host"),
-    [("public", None), ("internal", "globex.hangar.dev"), ("public", "globex.hangar.dev")],
+    [("public", None), ("internal", "globex.wingsmith.dev"), ("public", "globex.wingsmith.dev")],
 )
 async def test_a_reachable_tenant_stored_without_auth_is_fed_as_api_key(monkeypatch, ingress, host):
     """A row from before the create-time check must not stay an open proxy on the public listener."""
@@ -168,7 +168,7 @@ async def test_an_internal_tenant_without_a_host_keeps_auth_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_the_opt_in_feeds_auth_none_under_its_own_revision(monkeypatch):
     """Flipping the setting moves no row stamp, so the revision has to differ or the gateway sees a 304."""
-    tenant = FakeTenant(ingress="public", auth="none", host="globex.hangar.dev")
+    tenant = FakeTenant(ingress="public", auth="none", host="globex.wingsmith.dev")
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", False)
     closed = await resolution([tenant]).resolve_tenants()
     monkeypatch.setattr(settings, "TENANT_ALLOW_PUBLIC_NO_AUTH", True)

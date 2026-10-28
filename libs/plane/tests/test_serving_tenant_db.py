@@ -124,7 +124,7 @@ async def test_a_tenant_token_resolves_to_its_tenant(db: AsyncSession) -> None:
 
 async def test_an_unknown_token_resolves_to_nothing(db: AsyncSession) -> None:
     await served(db, "globex", "moonshotai/kimi-k3")
-    assert await AuthService(db).resolve_tenant_token("hgrt1.not-a-real-token") is None
+    assert await AuthService(db).resolve_tenant_token("wst1.not-a-real-token") is None
 
 
 async def test_a_revoked_token_stops_resolving(db: AsyncSession) -> None:

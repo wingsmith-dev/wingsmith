@@ -28,11 +28,11 @@ class PoolSchema(Struct):
     The declared half is the provisioning intent: device class, shape, and the
     node bounds. The observed half is `membership`.
 
-    `min_nodes` and `max_nodes` are informational. Nothing in Hangar adds or removes
+    `min_nodes` and `max_nodes` are informational. Nothing in Wingsmith adds or removes
     nodes to meet them; they are compared against membership to answer
     `within_declared_bounds`, and node autoscaling is on the roadmap.
     `within_declared_bounds` is computed here, not left to each client,
-    because both the console and `hgr` need the same answer to "is this pool
+    because both the console and `wings` need the same answer to "is this pool
     outside what we asked for" and two clients deriving it independently is two
     chances to derive it differently.
     """

@@ -30,7 +30,7 @@ class QuotaSchema(Struct):
 
     `cluster` is null when the quota spans every cluster, and usage is then
     summed across all of them. `over_limit` and `headroom_devices` are derived
-    here, not in each client, because the console and `hgr` asking the
+    here, not in each client, because the console and `wings` asking the
     same question must not get two answers.
     """
 

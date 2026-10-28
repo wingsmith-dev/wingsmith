@@ -1,6 +1,6 @@
 """What this process is actually running with, reduced to what may be seen.
 
-A misconfigured `HANGAR_METRICS_SOURCES` can silence a freshly enrolled
+A misconfigured `WINGSMITH_METRICS_SOURCES` can silence a freshly enrolled
 cluster's panels without failing anything, and until this endpoint existed the
 only way to find that out was to shell into the cluster and read a ConfigMap.
 So the plane reports its own effective configuration.

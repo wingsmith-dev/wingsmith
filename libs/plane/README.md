@@ -52,7 +52,7 @@ Both processes read the same environment and the same database. `APP_ENV` defaul
 
 ```bash
 uv sync
-export HANGAR_APP_ENV=local
+export WINGSMITH_APP_ENV=local
 uv run python -m app.api            # HTTP API on :8000
 uv run python -m app.api --reload   # with autoreload
 uv run python -m app.hub            # operator hub on :8001
@@ -88,7 +88,7 @@ back to `$HOSTNAME` and then a random id.
 
 ## Configuration
 
-Environment only, typed by `app/config/settings.py`. Each field reads `HANGAR_<NAME>` and nothing
+Environment only, typed by `app/config/settings.py`. Each field reads `WINGSMITH_<NAME>` and nothing
 else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 
 | Variable | Default |
@@ -102,7 +102,7 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 | `HUB_SESSION_TTL_SECONDS` | `600` |
 | `HUB_REAPER_INTERVAL_SECONDS` | `60` |
 | `HUB_OWNERSHIP_CHECK_SECONDS` | `10` |
-| `DATABASE_URL` | `postgresql+psycopg://hangar:hangar@localhost:5442/hangar` |
+| `DATABASE_URL` | `postgresql+psycopg://wingsmith:wingsmith@localhost:5442/wingsmith` |
 | `DB_ECHO` / `DB_POOL_SIZE` / `DB_POOL_MAX_OVERFLOW` / `DB_POOL_PRE_PING` | `false` / `10` / `10` / `true` |
 | `REACTOR_ENABLED` | `true` |
 | `REACTOR_INTERVAL_SECONDS` / `REACTOR_LEASE_SECONDS` | `60` / `180` |
@@ -112,10 +112,10 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 | `METRICS_REMOTE_WRITE_URL` | unset: where the fleet pushes, rendered into the setup values. Empty renders `monitoring.enabled: false` |
 | `REMOTE_WRITE_AUTH_ENABLED` | `false`. Optional: keeps an htpasswd Secret for a basic-auth write receiver (ADR 0012) |
 | `REMOTE_WRITE_AUTH_NAMESPACE` / `REMOTE_WRITE_AUTH_SECRET` / `REMOTE_WRITE_AUTH_KEY` | unset / `prom-remote-write-auth` / `users` |
-| `SETUP_CHART_REF` / `SETUP_CHART_VERSION` / `SETUP_CHART_PRIVATE` | `oci://ghcr.io/hangar-dev/charts/cluster-setup` / unset / `false` |
-| `BENCHMARK_CONFORMANCE_IMAGE` / `BENCHMARK_EVALSCOPE_IMAGE` | `ghcr.io/hangar-dev/conformance:0.1.0` / `ghcr.io/hangar-dev/evalscope:1.11.1` |
+| `SETUP_CHART_REF` / `SETUP_CHART_VERSION` / `SETUP_CHART_PRIVATE` | `oci://ghcr.io/wingsmith-dev/charts/cluster-setup` / unset / `false` |
+| `BENCHMARK_CONFORMANCE_IMAGE` / `BENCHMARK_EVALSCOPE_IMAGE` | `ghcr.io/wingsmith-dev/conformance:0.1.0` / `ghcr.io/wingsmith-dev/evalscope:1.11.1` |
 | `HF_TOKEN` | unset |
-| `GATEWAY_SERVICE_TOKEN` | unset: falls back to `hangar-local-gateway-token` only when `APP_ENV=local` |
+| `GATEWAY_SERVICE_TOKEN` | unset: falls back to `wingsmith-local-gateway-token` only when `APP_ENV=local` |
 | `ADMIN_AUTH` | unset: `disabled` when `APP_ENV=local`; always `enabled` otherwise |
 | `ADMIN_PASSWORD_HASH` | unset; required outside `local` |
 | `SESSION_SIGNING_SECRET` | unset; required outside `local`, and a random per-process key in `local` |
@@ -127,7 +127,7 @@ The default database URL matches `compose.yml` at the repo root.
 
 ## Auth
 
-Hangar is single-operator software: there is one admin identity, and every person signed in as
+Wingsmith is single-operator software: there is one admin identity, and every person signed in as
 admin can do everything. There are no per-user accounts, roles or scopes. What there is instead is
 four principal kinds (`app/auth/schemas.py`), each held to a fixed set of routes in one place,
 `authorize` in `app/core/context.py`:
@@ -135,9 +135,9 @@ four principal kinds (`app/auth/schemas.py`), each held to a fixed set of routes
 | Kind | Credential | Reaches |
 |---|---|---|
 | `admin` | a session from `POST /v1/auth/login` with the admin password | every route except the gateway's |
-| `tenant` | a session from `POST /v1/auth/login` with a tenant's console token (`hgrt1.`) | `GET /v1/serving/...` only |
+| `tenant` | a session from `POST /v1/auth/login` with a tenant's console token (`wst1.`) | `GET /v1/serving/...` only |
 | `gateway` | `GATEWAY_SERVICE_TOKEN`, a static bearer | `GET /v1/gateway/tenants`, `GET /v1/endpoints/resolved`, `POST /v1/clusters/tunnel-auth` |
-| `operator` | the cluster's own enrolment token (`hgro1.`), minted at registration | the hub only, bound to that one cluster; never the HTTP API |
+| `operator` | the cluster's own enrolment token (`wso1.`), minted at registration | the hub only, bound to that one cluster; never the HTTP API |
 
 There is no shared operator token. Each cluster's enrolment token is stored as a hash and resolves
 to an operator principal bound to that cluster, and the hub refuses a `hello` that names any other.
@@ -149,8 +149,8 @@ and `/v1/auth/logout`; `/health`, the OpenAPI schema at `/schema` and the consol
 public. A missing or unknown credential is `401`; a valid credential of the wrong kind is `403`.
 `tests/test_route_auth.py` walks every registered route and checks both.
 
-**Sessions.** Login returns a short-lived access token (`hgrs1.`, `SESSION_TTL_SECONDS`) and a
-refresh token (`hgrr1.`). Refreshing rotates both atomically; presenting a refresh token that was
+**Sessions.** Login returns a short-lived access token (`wss1.`, `SESSION_TTL_SECONDS`) and a
+refresh token (`wsr1.`). Refreshing rotates both atomically; presenting a refresh token that was
 already rotated ends the whole session, unless it was rotated in the last ten seconds, which is two
 copies of one client (a duplicated tab) refreshing together: the late one gets `401` and the session
 stands. A session lasts at most `REFRESH_TTL_SECONDS` from sign-in,

@@ -541,7 +541,7 @@ async def test_an_unknown_endpoint_is_a_404_rather_than_an_empty_measurement():
 
 def test_the_endpoint_dimension_selects_the_uid_the_gateway_stamps():
     """`endpoint_name` is beside it for panels and is never joined on: names change."""
-    assert LABELS["endpoint"] == "hangar_endpoint"
+    assert LABELS["endpoint"] == "wingsmith_endpoint"
 
 
 def test_the_serving_family_is_read_from_the_gateway_and_from_nowhere_else():
@@ -551,7 +551,7 @@ def test_the_serving_family_is_read_from_the_gateway_and_from_nowhere_else():
         m.name for m in family("serving")
     }
     for metric in family("serving"):
-        assert DIALECT[metric.name].candidates[0].startswith("hangar_gateway_")
+        assert DIALECT[metric.name].candidates[0].startswith("wingsmith_gateway_")
 
 
 def test_the_token_rates_never_add_cached_input_to_input():
@@ -753,7 +753,7 @@ def test_a_tenants_endpoints_go_into_one_matcher_rather_than_one_query_each():
         match={"endpoint": ("end_a", "end_b", "end_c")},
         breakdown="endpoint",
     )
-    assert selector(scope) == 'hangar_endpoint=~"end_a|end_b|end_c"'
+    assert selector(scope) == 'wingsmith_endpoint=~"end_a|end_b|end_c"'
 
 
 def test_a_tenant_owning_no_endpoint_selects_nothing_rather_than_everything():

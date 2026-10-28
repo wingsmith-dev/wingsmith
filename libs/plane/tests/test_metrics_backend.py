@@ -262,7 +262,7 @@ async def test_a_curve_carries_its_points_and_labels():
     curve = got[0]
     assert curve.metric == "gpu.utilization"
     assert curve.points == ((1787158053.0, 10.0), (1787158113.0, 20.0))
-    assert curve.labels == {"UUID": "GPU-aaa"}, "__name__ is the series' spelling, not a Hangar label"
+    assert curve.labels == {"UUID": "GPU-aaa"}, "__name__ is the series' spelling, not a Wingsmith label"
 
 
 async def test_a_curve_skips_a_point_it_cannot_read_rather_than_dropping_the_series():
@@ -315,7 +315,7 @@ async def test_the_failure_ratio_names_the_outcomes_that_are_ours():
     its own declared limit; both are 429s, so a ratio keyed off the status code
     reports every capacity incident as a clean bill of health.
     """
-    client = StubClient({"hangar_gateway_requests_total": [sample(0.4)]})
+    client = StubClient({"wingsmith_gateway_requests_total": [sample(0.4)]})
     got = await backend(client).samples(serving(FAILURE_RATIO, match={"endpoint": ("end_1",)}))
 
     assert got == {"serving.failure_ratio": 0.4}
@@ -324,7 +324,7 @@ async def test_the_failure_ratio_names_the_outcomes_that_are_ours():
     assert "rate_limited" not in issued
     assert 'outcome!="canceled"' in issued, "a caller that hung up took its own request away"
     assert 'origin="live"' in issued, "the conformance suite would manufacture its own breach"
-    assert 'hangar_endpoint="end_1"' in issued
+    assert 'wingsmith_endpoint="end_1"' in issued
 
 
 async def test_the_healthy_case_has_a_numerator_wherever_it_has_a_denominator():
@@ -337,10 +337,10 @@ async def test_the_healthy_case_has_a_numerator_wherever_it_has_a_denominator():
     of the denominator so that it exists whenever the denominator does.
     """
     for metric in (FAILURE_RATIO, AVAILABILITY):
-        client = StubClient({"hangar_gateway_requests_total": [sample(0.0)]})
+        client = StubClient({"wingsmith_gateway_requests_total": [sample(0.0)]})
         await backend(client).samples(serving(metric))
         issued = client.instant_queries[0]
-        counted = f'sum (rate(hangar_gateway_requests_total{{origin="live",{COUNTED}}}[5m]))'
+        counted = f'sum (rate(wingsmith_gateway_requests_total{{origin="live",{COUNTED}}}[5m]))'
         assert f"({counted} * 0)" in issued, "the union's other half has to exist when nothing failed"
         assert f" or ({counted} * 0)) /" in issued
 
@@ -353,7 +353,7 @@ async def test_the_failure_ratio_filters_its_denominator_rather_than_clamping_it
     into a green 100% for a day nothing measured. `> 0` drops the sample instead.
     """
     for metric in (FAILURE_RATIO, AVAILABILITY):
-        client = StubClient({"hangar_gateway_requests_total": [sample(0.0)]})
+        client = StubClient({"wingsmith_gateway_requests_total": [sample(0.0)]})
         await backend(client).samples(serving(metric))
         issued = client.instant_queries[0]
         assert "clamp_min(" not in issued, "clamping invents an SLA for an unmeasured window"
@@ -363,18 +363,18 @@ async def test_the_failure_ratio_filters_its_denominator_rather_than_clamping_it
 
 async def test_a_serving_breakdown_keeps_the_group_label_on_both_halves_of_the_union():
     """`vector(0)` carries no labels, so it would match no group and divide nothing."""
-    client = StubClient({"hangar_gateway_requests_total": [sample(0.4, {"hangar_endpoint": "end_1"})]})
+    client = StubClient({"wingsmith_gateway_requests_total": [sample(0.4, {"wingsmith_endpoint": "end_1"})]})
     got = await backend(client).breakdown(serving(FAILURE_RATIO, breakdown="endpoint"))
 
     assert got == {"end_1": {"serving.failure_ratio": 0.4}}
     issued = client.instant_queries[0]
     assert "vector(0)" not in issued
-    assert issued.count("sum by (hangar_endpoint)") == 3, "failed, the zeroed fallback, and the denominator"
+    assert issued.count("sum by (wingsmith_endpoint)") == 3, "failed, the zeroed fallback, and the denominator"
 
 
 async def test_availability_is_the_same_ratio_subtracted_from_a_hundred():
     """Two expressions that could disagree is two numbers on one screen that do."""
-    client = StubClient({"hangar_gateway_requests_total": [sample(99.6)]})
+    client = StubClient({"wingsmith_gateway_requests_total": [sample(99.6)]})
     got = await backend(client).samples(serving(AVAILABILITY))
     assert got == {"serving.availability": 99.6}
     assert client.instant_queries[0].startswith("100 - (")
@@ -383,7 +383,7 @@ async def test_availability_is_the_same_ratio_subtracted_from_a_hundred():
 async def test_a_gateway_nobody_scrapes_is_absent_and_never_a_hundred_percent():
     """The day-one answer: the port is exposed and no ServiceMonitor reads it.
 
-    A store that holds no `hangar_gateway_*` series at all answers with nothing,
+    A store that holds no `wingsmith_gateway_*` series at all answers with nothing,
     and nothing has to stay nothing all the way to the console: an invented 100%
     is an SLA nobody measured.
     """
@@ -399,9 +399,9 @@ async def test_a_serving_breakdown_groups_by_the_endpoint_label():
     """The whole surface and each endpoint's share of it come from one query."""
     client = StubClient(
         {
-            "hangar_gateway_requests_total": [
-                sample(12, {"hangar_endpoint": "end_1"}),
-                sample(3, {"hangar_endpoint": "_unknown"}),
+            "wingsmith_gateway_requests_total": [
+                sample(12, {"wingsmith_endpoint": "end_1"}),
+                sample(3, {"wingsmith_endpoint": "_unknown"}),
             ]
         }
     )
@@ -411,7 +411,7 @@ async def test_a_serving_breakdown_groups_by_the_endpoint_label():
         "end_1": {"serving.requests_per_second": 12.0},
         "_unknown": {"serving.requests_per_second": 3.0},
     }
-    assert "sum by (hangar_endpoint)" in client.instant_queries[0]
+    assert "sum by (wingsmith_endpoint)" in client.instant_queries[0]
 
 
 async def test_a_query_for_the_whole_surface_is_still_well_formed():

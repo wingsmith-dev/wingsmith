@@ -40,7 +40,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_ENV: Final = "HANGAR_VLLM_RECIPES"
+SNAPSHOT_ENV: Final = "WINGSMITH_VLLM_RECIPES"
 
 SNAPSHOT_PATH: Final = Path(
     os.environ.get(SNAPSHOT_ENV) or Path(__file__).resolve().parent / "data" / "vllm-recipes.json"

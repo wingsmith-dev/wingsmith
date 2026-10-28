@@ -30,7 +30,7 @@ async def on_startup() -> None:
             "api.admin_auth_disabled *** ADMIN AUTHENTICATION IS DISABLED *** "
             "every request to this API without a credential resolves to the admin "
             "principal. This is allowed under APP_ENV=local only, on a developer's "
-            "machine. Set HANGAR_ADMIN_AUTH=enabled and HANGAR_ADMIN_PASSWORD_HASH "
+            "machine. Set WINGSMITH_ADMIN_AUTH=enabled and WINGSMITH_ADMIN_PASSWORD_HASH "
             "to sign in locally."
         )
 
@@ -46,7 +46,7 @@ def _allowed_origins() -> list[str]:
 
 def _version() -> str:
     try:
-        return metadata.version("hangar-plane")
+        return metadata.version("wingsmith-plane")
     except metadata.PackageNotFoundError:
         return "0.0.0+unknown"
 
@@ -59,7 +59,7 @@ def _openapi_config() -> OpenAPIConfig:
     every route it lists still answers `401` without a credential. The version
     is the package's own, so a client can tell which plane it is reading.
     """
-    return OpenAPIConfig(title="Hangar", version=_version())
+    return OpenAPIConfig(title="Wingsmith", version=_version())
 
 
 SECURITY_HEADERS = [

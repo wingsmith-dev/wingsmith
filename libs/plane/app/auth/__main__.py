@@ -1,4 +1,4 @@
-"""`python -m app.auth hash`: prints a bcrypt hash for `HANGAR_ADMIN_PASSWORD_HASH`.
+"""`python -m app.auth hash`: prints a bcrypt hash for `WINGSMITH_ADMIN_PASSWORD_HASH`.
 
 Prompts twice on a terminal. With `--stdin` it reads one line from standard
 input instead, for a script or a pipe; the password is never an argument, so it
@@ -27,7 +27,7 @@ def _read_password(from_stdin: bool) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.auth")
     commands = parser.add_subparsers(dest="command", required=True)
-    hash_command = commands.add_parser("hash", help="print a bcrypt hash for HANGAR_ADMIN_PASSWORD_HASH")
+    hash_command = commands.add_parser("hash", help="print a bcrypt hash for WINGSMITH_ADMIN_PASSWORD_HASH")
     hash_command.add_argument("--stdin", action="store_true", help="read the password from standard input")
     args = parser.parse_args(argv)
 

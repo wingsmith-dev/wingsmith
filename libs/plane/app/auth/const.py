@@ -5,34 +5,34 @@ be told apart from a malformed token instead of silently failing signature
 verification.
 """
 
-LOCAL_GATEWAY_SERVICE_TOKEN = "hangar-local-gateway-token"
+LOCAL_GATEWAY_SERVICE_TOKEN = "wingsmith-local-gateway-token"
 """Fallback gateway service token, used only when `APP_ENV == 'local'` and
 `GATEWAY_SERVICE_TOKEN` is unset, so a fresh checkout's gateway can read the
 plane with no configuration. Outside `local` an unset token means no gateway
 principal resolves at all; nothing falls back to this value.
 """
 
-SESSION_PREFIX = "hgrs1"
+SESSION_PREFIX = "wss1"
 """Version tag on session tokens."""
 
-ENROLMENT_PREFIX = "hgro1"
+ENROLMENT_PREFIX = "wso1"
 """Version tag on per-cluster operator enrolment tokens. The prefix lets the hub
 tell a well-formed enrolment token apart from junk before it spends a database
 lookup on it, and lets a future format change be distinguished instead of
 silently failing to resolve.
 """
 
-TENANT_PREFIX = "hgrt1"
+TENANT_PREFIX = "wst1"
 """Version tag on tenant console tokens. A tenant token and an enrolment token are
 resolved against different tables and grant unrelated things, so they must never be
 told apart by a failed lookup."""
 
-TENANT_API_KEY_PREFIX = "hgrk1"
+TENANT_API_KEY_PREFIX = "wsk1"
 """Version tag on tenant API keys. A gateway inference credential, distinct from
 `TENANT_PREFIX`: the console token signs in here, the API key calls the gateway,
 and the two must never resolve against each other's table."""
 
-REFRESH_PREFIX = "hgrr1"
+REFRESH_PREFIX = "wsr1"
 """Version tag on refresh tokens, so a session token and a refresh token cannot
 be confused."""
 

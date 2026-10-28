@@ -1,7 +1,7 @@
 Plane database migrations
 =========================
 
-Alembic, async environment. The database URL comes from `HANGAR_DATABASE_URL`
+Alembic, async environment. The database URL comes from `WINGSMITH_DATABASE_URL`
 (app.config.settings), never from alembic.ini. The version table is `_version`.
 Postgres 15 or later is required: several constraints use NULLS NOT DISTINCT.
 
@@ -22,7 +22,7 @@ From a checkout:
 
 From the plane image, the `migrate` mode passes its arguments to alembic:
 
-    docker run --rm -e HANGAR_DATABASE_URL=... <plane image> migrate upgrade head
+    docker run --rm -e WINGSMITH_DATABASE_URL=... <plane image> migrate upgrade head
 
 `just dev-up` runs the same thing as the compose `migrate` service before api
 and hub start.

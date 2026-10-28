@@ -1,4 +1,4 @@
-"""What Hangar measures, named the Hangar way and nothing else.
+"""What Wingsmith measures, named the Wingsmith way and nothing else.
 
 `libs/packages/contract/API.md` §5 keeps telemetry out of the hub by design: capacity is
 state and occupancy is measurement, and the two travel by different roads. This
@@ -11,7 +11,7 @@ these names, so an upstream rename never changes the names clients use. Another 
 second dialect table and a second `Backend`, not a change to anything here.
 
 `SCOPES` is the other half of the vocabulary: the dimensions a measurement can
-be narrowed by. They are Hangar's own words for objects the plane stores, and
+be narrowed by. They are Wingsmith's own words for objects the plane stores, and
 each backend decides what it calls them: DCGM's label for a node is not
 ClickHouse's column for one.
 """
@@ -37,7 +37,7 @@ SCOPES: tuple[str, ...] = (
     "serving",
     "fleet",
 )
-"""The dimensions a measurement can be narrowed by, in Hangar's words.
+"""The dimensions a measurement can be narrowed by, in Wingsmith's words.
 
 `pool` is not a dimension a store knows: a pool is measured as the set of nodes
 in it, which is why it never reaches a backend under its own name. `workload` is
@@ -66,7 +66,7 @@ falls back, because only the second is always knowable.
 
 @dataclass(frozen=True)
 class Metric:
-    """One measurement, named the Hangar way. Vendor-neutral by construction."""
+    """One measurement, named the Wingsmith way. Vendor-neutral by construction."""
 
     name: str
     unit: Unit

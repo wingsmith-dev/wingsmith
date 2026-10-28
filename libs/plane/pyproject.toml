@@ -1,8 +1,8 @@
 [project]
-name = "hangar-plane"
+name = "wingsmith-plane"
 version = "0.1.0"
 license = "Apache-2.0"
-description = "Hangar control plane: API, registry, placement, hub"
+description = "Wingsmith control plane: API, registry, placement, hub"
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
@@ -25,9 +25,9 @@ dependencies = [
 ]
 
 [project.scripts]
-hangar-api = "app.api.__main__:main"
-hangar-hub = "app.hub.__main__:main"
-hangar-reactor = "app.reactor.__main__:main"
+wingsmith-api = "app.api.__main__:main"
+wingsmith-hub = "app.hub.__main__:main"
+wingsmith-reactor = "app.reactor.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

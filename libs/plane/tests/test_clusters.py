@@ -59,10 +59,10 @@ def test_hub_url_is_refused_when_unset_rather_than_guessed(monkeypatch):
     """The request's Host header is the caller's to choose, so it is never a fallback."""
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
-    monkeypatch.setattr(settings, "PUBLIC_HOST", "hangar.example")
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "wingsmith.example")
     with pytest.raises(Invalid) as refused:
         _hub_url()
-    assert refused.value.detail == {"setting": "HANGAR_HUB_PUBLIC_URL"}
+    assert refused.value.detail == {"setting": "WINGSMITH_HUB_PUBLIC_URL"}
 
 
 def test_hub_url_defaults_to_the_compose_hub_under_local(monkeypatch):
@@ -285,8 +285,8 @@ def test_setup_values_say_what_a_managed_cluster_runs():
 def test_setup_values_fold_in_the_enrolment_token_only_when_given():
     without = _setup_values(values())
     assert "enrolmentToken:" not in without
-    with_token = _setup_values(values(enrolment_token="hgro1.secret"))
-    assert yaml.safe_load(with_token)["enrolmentToken"] == {"value": "hgro1.secret"}
+    with_token = _setup_values(values(enrolment_token="wso1.secret"))
+    assert yaml.safe_load(with_token)["enrolmentToken"] == {"value": "wso1.secret"}
 
 
 def test_setup_values_render_a_shared_pull_secret_when_one_is_given():
@@ -353,11 +353,11 @@ def test_setup_values_disable_monitoring_when_no_url_is_configured():
 def test_setup_values_never_render_a_remote_write_credential():
     """The chart derives basicAuth from the enrolment-token Secret it already creates."""
     url = "https://metrics.example/api/v1/write"
-    out = _setup_values(values(remote_write_url=url, enrolment_token="hgro1.secret"))
+    out = _setup_values(values(remote_write_url=url, enrolment_token="wso1.secret"))
     assert "basicAuth" not in out
     assert "password" not in out
     assert "username" not in out
-    assert out.count("hgro1.secret") == 1
+    assert out.count("wso1.secret") == 1
 
 
 def test_setup_values_render_the_one_gateway_address():
@@ -405,7 +405,7 @@ def test_setup_values_carry_the_editable_infra_skeleton():
 
 
 def test_registry_host_from_oci_chart_ref():
-    assert _registry_host("oci://ghcr.io/hangar-dev/charts/cluster-setup") == "ghcr.io"
+    assert _registry_host("oci://ghcr.io/wingsmith-dev/charts/cluster-setup") == "ghcr.io"
 
 
 def test_node_rollup_counts_ready_in_the_database(repo):
@@ -548,7 +548,7 @@ def test_prefixed_labels_and_nested_capabilities_are_accepted():
             "name": "alpha",
             "region": "eu-west-1",
             "phase": "active",
-            "labels": {"hangar.dev/alert.severity": "warning", "tier": ""},
+            "labels": {"wingsmith.dev/alert.severity": "warning", "tier": ""},
             "capabilities": {"rdma": {"fabric": "ib", "gbps": 400}},
         }
     )

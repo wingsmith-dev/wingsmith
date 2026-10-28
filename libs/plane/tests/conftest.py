@@ -1,9 +1,9 @@
 """Fixtures for the database-backed suites (`-m database`).
 
-They need `HANGAR_TEST_DATABASE_URL`, a Postgres URL with rights to create databases; `just
+They need `WINGSMITH_TEST_DATABASE_URL`, a Postgres URL with rights to create databases; `just
 test-db` sets it. Nothing here touches the database that URL names: the schema is migrated once
-into `hangar_test_template`, and each test module gets its own copy, dropped when it finishes.
-`HANGAR_TEST_DATABASE_SUFFIX` goes after `hangar_test_` in every one of those names, so two runs
+into `wingsmith_test_template`, and each test module gets its own copy, dropped when it finishes.
+`WINGSMITH_TEST_DATABASE_SUFFIX` goes after `wingsmith_test_` in every one of those names, so two runs
 can share a server.
 Without the variable, or with no server behind it, a database test fails instead of skipping.
 """
@@ -17,7 +17,7 @@ import subprocess
 # The plane defaults to `production`, which refuses to boot without its secrets. The suite is a
 # developer's checkout, and tests that need `production` behaviour patch it in themselves. Set before
 # anything imports `app.config`, which reads the environment once.
-os.environ.setdefault("HANGAR_APP_ENV", "local")
+os.environ.setdefault("WINGSMITH_APP_ENV", "local")
 
 from pathlib import Path
 
@@ -34,11 +34,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 ROOT = Path(__file__).resolve().parents[1]
 
-DATABASE_URL_VAR = "HANGAR_TEST_DATABASE_URL"
-SCRATCH_PREFIX = "hangar_test_"
+DATABASE_URL_VAR = "WINGSMITH_TEST_DATABASE_URL"
+SCRATCH_PREFIX = "wingsmith_test_"
 # Two checkouts running the suite against one server would drop each other's databases; a
 # suffix keeps each run's scratch names apart. They all still start with SCRATCH_PREFIX.
-DATABASE_PREFIX = SCRATCH_PREFIX + re.sub(r"[^a-z0-9_]", "_", os.environ.get("HANGAR_TEST_DATABASE_SUFFIX", "").lower())
+DATABASE_PREFIX = SCRATCH_PREFIX + re.sub(
+    r"[^a-z0-9_]", "_", os.environ.get("WINGSMITH_TEST_DATABASE_SUFFIX", "").lower()
+)
 TEMPLATE_DATABASE = DATABASE_PREFIX + "template"
 
 CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
@@ -95,7 +97,7 @@ def database_template():
         cwd=ROOT,
         check=True,
         capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
+        env={**os.environ, "WINGSMITH_DATABASE_URL": url},
     )
     yield admin
     drop(admin, TEMPLATE_DATABASE)

@@ -42,7 +42,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_ENV: Final = "HANGAR_DYNAMO_RECIPES"
+SNAPSHOT_ENV: Final = "WINGSMITH_DYNAMO_RECIPES"
 
 SNAPSHOT_PATH: Final = Path(
     os.environ.get(SNAPSHOT_ENV) or Path(__file__).resolve().parent / "data" / "dynamo-recipes.json"

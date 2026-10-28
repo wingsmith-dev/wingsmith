@@ -1,7 +1,7 @@
-"""One backend's dialect: what Hangar's metrics are called in Prometheus.
+"""One backend's dialect: what Wingsmith's metrics are called in Prometheus.
 
 Everything Prometheus-shaped lives here (the series names, the label names, the
-expression each metric is answered by), keyed by the Hangar name in
+expression each metric is answered by), keyed by the Wingsmith name in
 `registry.py`. Nothing else in the module renders PromQL.
 
 **Candidates, not a name.** An expression carries its source series in
@@ -43,9 +43,9 @@ LABELS: dict[str, str] = {
     "device_class": "modelName",
     "deployment": "model_name",
     "worker": "dynamo_namespace",
-    "endpoint": "hangar_endpoint",
+    "endpoint": "wingsmith_endpoint",
 }
-"""The label each Hangar dimension is selected by. Verified against the fleet's store.
+"""The label each Wingsmith dimension is selected by. Verified against the fleet's store.
 
 `dynamo_namespace` is not a namespace in the Kubernetes sense and is not the
 `dynamo-namespace` pod label either. Dynamo composes it at runtime from
@@ -54,7 +54,7 @@ LABELS: dict[str, str] = {
 the only label on a vLLM series that distinguishes one deployment of a model from
 another.
 
-`hangar_endpoint` is a plane uid instead of a name, and the gateway puts
+`wingsmith_endpoint` is a plane uid instead of a name, and the gateway puts
 `endpoint_name` beside it for panels. Joining on the name would break the moment
 an endpoint is renamed, which is one of the things having an endpoint object is
 for.
@@ -85,7 +85,7 @@ def worker_identity(labels: dict) -> str:
 
 @dataclass(frozen=True)
 class Expression:
-    """How one Hangar metric is answered, and out of which series.
+    """How one Wingsmith metric is answered, and out of which series.
 
     `template` carries `$SERIES`, `$SELECTOR` and `$WINDOW`. An empty template
     means the series is read as-is and only needs the metric's own aggregation
@@ -121,11 +121,11 @@ reads the buckets out of it; dropping it there returns nothing instead of a
 wrong number, which is why this is written out per shape instead of derived.
 """
 
-GATEWAY_REQUESTS = "hangar_gateway_requests_total"
-GATEWAY_DURATION = "hangar_gateway_request_duration_seconds_bucket"
-GATEWAY_TTFT = "hangar_gateway_ttft_seconds_bucket"
-GATEWAY_TOKENS = "hangar_gateway_tokens_total"
-GATEWAY_IN_FLIGHT = "hangar_gateway_requests_in_flight"
+GATEWAY_REQUESTS = "wingsmith_gateway_requests_total"
+GATEWAY_DURATION = "wingsmith_gateway_request_duration_seconds_bucket"
+GATEWAY_TTFT = "wingsmith_gateway_ttft_seconds_bucket"
+GATEWAY_TOKENS = "wingsmith_gateway_tokens_total"
+GATEWAY_IN_FLIGHT = "wingsmith_gateway_requests_in_flight"
 
 INPUT = 'direction="input"'
 CACHED_INPUT = 'direction="cached_input"'
@@ -340,9 +340,9 @@ def matcher(label: str, values: tuple[str, ...]) -> str:
 
 
 def device_class_values(name: str) -> tuple[str, ...]:
-    """The `modelName` values a hangar device class is emitted under.
+    """The `modelName` values a wingsmith device class is emitted under.
 
-    DCGM has never heard of a hangar class, so one class expands into the vendor
+    DCGM has never heard of a wingsmith class, so one class expands into the vendor
     strings `libs/packages/contract/devices.json` maps onto it. A class the table does not
     carry falls back to matching its own name literally, which selects nothing
     until the table grows: an unscoped selector here would report the whole

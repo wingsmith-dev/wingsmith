@@ -209,7 +209,7 @@ def test_external_grader_is_refused_in_a_cluster():
 def test_local_judge_is_allowed_in_a_cluster():
     resolved = harnesses.normalise(
         harnesses.EVALSCOPE,
-        {"judge_base_url": "http://grader.hangar.svc", "judge_model": "grader"},
+        {"judge_base_url": "http://grader.wingsmith.svc", "judge_model": "grader"},
         harnesses.WORKLOAD,
     )
     assert resolved["judge_credential_id"] == ""

@@ -261,7 +261,7 @@ def workload_stalled(
     zero ready against a non-zero desired is a broken workload whether or not anyone
     has got round to importing it.
     """
-    note = "" if promoted else " (not imported into Hangar)"
+    note = "" if promoted else " (not imported into Wingsmith)"
     return AlertIntent(
         dedupe_key=f"{WORKLOAD_STALLED}:{workload_uid}",
         rule=WORKLOAD_STALLED,

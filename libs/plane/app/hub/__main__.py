@@ -8,7 +8,7 @@ from app.hub.server import run
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="hangar-hub")
+    parser = argparse.ArgumentParser(prog="wingsmith-hub")
     parser.add_argument("--check", action="store_true", help="start, tear down, exit")
     args = parser.parse_args()
 

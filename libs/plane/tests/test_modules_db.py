@@ -395,7 +395,7 @@ async def test_a_cluster_registered_with_no_metrics_label_keeps_none(db: AsyncSe
 
 
 async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSession, monkeypatch) -> None:
-    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://wingsmith.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
 
@@ -440,7 +440,7 @@ async def test_enrolment_token_stores_bcrypt_verifier_and_rotation_replaces_both
     Rotation must overwrite both or the two drift apart, and a cluster ends up
     authenticating to the hub with one token while pushing telemetry with another.
     """
-    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://wingsmith.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
 
@@ -472,7 +472,7 @@ async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSessi
     operator's handshake with an internal error. Going through the hub entry
     point instead of the repository is what this test is for.
     """
-    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://wingsmith.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
     issued = await service.issue_enrolment_token(created.id)

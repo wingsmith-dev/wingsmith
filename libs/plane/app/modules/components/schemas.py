@@ -25,7 +25,7 @@ class ComponentSchema(Struct):
 
     `desired_version` is what we asked a cluster to run; `status.observed_version`
     is what it reports running. `behind` is derived here so that the console and
-    `hgr` cannot disagree about what "behind" means, and a component nobody has
+    `wings` cannot disagree about what "behind" means, and a component nobody has
     reported on yet counts as behind: silence is not evidence of a finished
     rollout.
     """

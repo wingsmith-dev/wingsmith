@@ -5,7 +5,7 @@ swapping it buys a different HTTP library instead of a different store. The
 vocabulary that leaked was PromQL: a metric carried its own expression, so
 every caller was one `histogram_quantile` away from a Prometheus.
 
-A `Backend` is asked for Hangar metric names against a Hangar `Scope` and hands
+A `Backend` is asked for Wingsmith metric names against a Wingsmith `Scope` and hands
 back numbers. Nothing in this file names a query language, a series, or a label,
 which is what makes a ClickHouse or OTel implementation a new file instead of a
 refactor, and what leaves room for a backend that reads an hourly cost per node
@@ -29,7 +29,7 @@ from .registry import Metric
 
 @dataclass(frozen=True)
 class Scope:
-    """Which slice of the fleet a question is about, in Hangar's words.
+    """Which slice of the fleet a question is about, in Wingsmith's words.
 
     `match` maps a dimension from `registry.SCOPES` onto the values it may take;
     an empty mapping means the whole cluster. `cluster` is separate because it is
@@ -76,7 +76,7 @@ class Curve:
 
 @runtime_checkable
 class Backend(Protocol):
-    """Answers Hangar metrics for a Hangar scope. Knows no query language to a caller."""
+    """Answers Wingsmith metrics for a Wingsmith scope. Knows no query language to a caller."""
 
     def answers(self, metric: Metric) -> bool:
         """Whether this backend can answer this metric at all."""

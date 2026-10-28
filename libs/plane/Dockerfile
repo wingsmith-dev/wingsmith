@@ -68,8 +68,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 && \
     rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --gid 65532 hangar && \
-    useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin hangar
+RUN groupadd --gid 65532 wingsmith && \
+    useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin wingsmith
 
 WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
@@ -82,7 +82,7 @@ COPY --from=console /src/dist ./app/api/static
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    HANGAR_APP_ENV=production
+    WINGSMITH_APP_ENV=production
 
 COPY --chmod=755 plane/docker-entrypoint.sh /docker-entrypoint.sh
 

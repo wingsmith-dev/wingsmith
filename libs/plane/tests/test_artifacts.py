@@ -579,7 +579,7 @@ async def test_a_gated_model_names_the_token_problem():
     with pytest.raises(Invalid) as caught:
         await service(hub=FakeHub(error=HuggingFaceGated("gated"))).resolve("meta-llama/Llama-3-70B")
     assert "token" in caught.value.message
-    assert caught.value.detail["token"] == "HANGAR_HF_TOKEN"
+    assert caught.value.detail["token"] == "WINGSMITH_HF_TOKEN"
 
 
 async def test_the_hub_being_down_is_not_the_callers_fault():

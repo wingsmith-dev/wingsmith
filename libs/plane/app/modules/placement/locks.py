@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-PLACEMENT_LOCK_PREFIX = "hangar.placement:"
+PLACEMENT_LOCK_PREFIX = "wingsmith.placement:"
 
 
 async def lock_placement(db: AsyncSession, device_classes: Iterable[str]) -> None:

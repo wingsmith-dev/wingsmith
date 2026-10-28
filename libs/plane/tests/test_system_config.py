@@ -27,7 +27,7 @@ SECRETS = {
     "GATEWAY_SERVICE_TOKEN": "sentinel-gateway-token-aaaa",
     "HF_TOKEN": "sentinel-hf-token-bbbb",
     "SESSION_SIGNING_SECRET": "sentinel-signing-secret-cccc",
-    "DATABASE_URL": "postgresql+psycopg://dbuser:sentinel-db-password-dddd@db.internal:5433/hangar",
+    "DATABASE_URL": "postgresql+psycopg://dbuser:sentinel-db-password-dddd@db.internal:5433/wingsmith",
     "METRICS_SOURCES": (
         "default=https://prom.central:9090|token=sentinel-metrics-token-eeee,"
         "us|label=us-cluster-1,"
@@ -100,7 +100,7 @@ def test_database_is_reported_in_parts_and_never_as_a_url():
         "driver": "postgresql+psycopg",
         "host": "db.internal",
         "port": 5433,
-        "database": "hangar",
+        "database": "wingsmith",
         "echo": settings.DB_ECHO,
         "pool_size": settings.DB_POOL_SIZE,
         "pool_max_overflow": settings.DB_POOL_MAX_OVERFLOW,
@@ -215,7 +215,7 @@ def test_no_configured_secret_appears_in_the_struct_before_serialisation():
 
 def test_a_database_url_with_a_password_in_an_odd_shape_still_redacts(monkeypatch):
     monkeypatch.setattr(
-        settings, "DATABASE_URL", "postgresql+psycopg://u:p%40ss%2Fword@10.0.0.5/hangar?sslmode=require"
+        settings, "DATABASE_URL", "postgresql+psycopg://u:p%40ss%2Fword@10.0.0.5/wingsmith?sslmode=require"
     )
     database = body()["database"]
     assert database["host"] == "10.0.0.5"

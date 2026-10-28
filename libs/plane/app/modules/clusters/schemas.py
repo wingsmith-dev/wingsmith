@@ -35,7 +35,7 @@ ClusterPhase = Literal["pending", "active", "draining", "disabled"]
 """Declared intent. Unknown values are refused when the body is decoded."""
 
 LabelKey = Annotated[str, Meta(min_length=1, max_length=253)]
-"""Room for a prefixed key such as `hangar.dev/alert.severity`."""
+"""Room for a prefixed key such as `wingsmith.dev/alert.severity`."""
 Labels = Annotated[dict[LabelKey, Annotated[str, Meta(max_length=63)]], Meta(max_length=64)]
 """What placement and alert tuning match on: string to string, label-value sized, bounded in count."""
 Capabilities = Annotated[dict[Annotated[str, Meta(min_length=1, max_length=63)], Any], Meta(max_length=64)]

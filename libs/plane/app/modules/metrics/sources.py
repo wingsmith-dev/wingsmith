@@ -9,7 +9,7 @@ and the label value that cluster's series carry.
 The two live in different places, because they are different kinds of fact. The
 endpoint and its credential are process-level and belong to the deployment:
 
-    HANGAR_METRICS_SOURCES="default=https://prom.central:9090|token=…"
+    WINGSMITH_METRICS_SOURCES="default=https://prom.central:9090|token=…"
 
 The label is per-cluster and belongs to the cluster, so it is a column:
 `Cluster.metrics_label`. Null there means "not observable" and is honoured as
@@ -20,8 +20,8 @@ clean empty that reads as a healthy idle fleet.
 An env entry per cluster still parses, still means what it meant, and still
 wins over the column, so a wrong or missing label is fixable from either side:
 
-    HANGAR_METRICS_SOURCES="default=https://prom.central:9090,us|label=us-cluster-1"
-    HANGAR_METRICS_SOURCES="us=https://prom.us.example:9090"
+    WINGSMITH_METRICS_SOURCES="default=https://prom.central:9090,us|label=us-cluster-1"
+    WINGSMITH_METRICS_SOURCES="us=https://prom.us.example:9090"
 
 An entry with no URL of its own inherits `default`'s endpoint and carries the
 `cluster` matcher it names, defaulting to its own key. An entry with a URL and no
