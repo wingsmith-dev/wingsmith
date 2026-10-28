@@ -66,8 +66,8 @@ loud, the identity is a hash, not a row.
   device *class* and a memory floor, never a bare count, is untouched; it is now addressed to the
   workload, which is where it always had to end up once ADR 0010 made the workload the thing
   placement expands.
-- **The three-level split becomes two, and the argument for it survives intact.** Llama-70B at
-  FP8/TP2/32k and the same weights at BF16/TP4/128k are still different hardware footprints, still
+- **The three-level split becomes two, and the argument for it survives intact.** GLM-5.3-Flash at
+  FP8/TP4/32k and the same weights at BF16/TP8/128k are still different hardware footprints, still
   different price points, still plausibly different clusters. They are now two Workloads over one
   Artifact, told apart by their `serving_digest`. Context length still determines the footprint and
   therefore still does not belong on a catalog entry.
@@ -79,7 +79,7 @@ loud, the identity is a hash, not a row.
 - **The open question is answered: deployment-time configuration.** A serving configuration is not a
   sellable thing today, and nothing was willing to pay the ordering rule, the pending reason and the
   resume race for a catalog it did not have. If a named, versioned, sellable configuration is ever
-  wanted ("Llama-70B FP8 32k" with a price), it is a thin catalog object pointing at a
+  wanted ("GLM-5.3-Flash FP8 32k" with a price), it is a thin catalog object pointing at a
   `serving_digest`, and it is a decision nobody has had to make yet.
 - **The real cost: `Recipe.name`, `Recipe.version` and `Recipe.lifecycle` are gone and are not
   replaced.** A workload has a name; a serving configuration no longer has one of its own, so

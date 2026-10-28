@@ -313,7 +313,7 @@ attached to a running deployment instead of a special case in the serving path.
 
 The level above is a fully specified, reproducible way to serve some weights: engine and version,
 quantization, parallelism, context length, cache configuration, engine arguments, and the device
-shape that falls out of them. Llama-70B at FP8/TP2/32k and the same weights at BF16/TP4/128k have
+shape that falls out of them. GLM-5.3-Flash at FP8/TP4/32k and the same weights at BF16/TP8/128k have
 different hardware footprints, different costs and plausibly different clusters. **They are two
 Workloads over one Artifact**, told apart by their `serving_digest`, a hash of exactly the fields
 that decide what process runs.
