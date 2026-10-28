@@ -316,7 +316,10 @@ func (l *live) prefetchDone(t *testing.T) {
 
 // withCapacity makes at least one node in the cluster look like it can run the replica.
 //
-// The local cluster has no accelerators, so its node is labelled and its allocatable is patched.
+// The local cluster has no accelerators, so its node is labelled and the resource is patched into
+// both capacity and allocatable, the way a device plugin reports it. Allocatable alone does not
+// hold: the kubelet's next status sync (every ten seconds) drops any extended resource from
+// allocatable that capacity does not list, and a reconcile that lands after it sees no devices.
 // Restored on cleanup so the cluster is left as it was found.
 func (l *live) withCapacity(t *testing.T, devices int64) {
 	t.Helper()
@@ -342,6 +345,7 @@ func (l *live) withCapacity(t *testing.T, devices int64) {
 	}
 
 	statusPatch := client.MergeFrom(node.DeepCopy())
+	node.Status.Capacity[acceleratorResource] = *resource.NewQuantity(devices, resource.DecimalSI)
 	node.Status.Allocatable[acceleratorResource] = *resource.NewQuantity(devices, resource.DecimalSI)
 	if err := l.client.Status().Patch(ctx, node, statusPatch); err != nil {
 		t.Fatalf("advertise accelerators: %v", err)
@@ -357,6 +361,7 @@ func (l *live) withCapacity(t *testing.T, devices int64) {
 		_ = l.client.Patch(ctx, &current, p)
 
 		sp := client.MergeFrom(current.DeepCopy())
+		delete(current.Status.Capacity, acceleratorResource)
 		delete(current.Status.Allocatable, acceleratorResource)
 		_ = l.client.Status().Patch(ctx, &current, sp)
 	})
@@ -581,7 +586,8 @@ func TestE2EDeletingTheDeclaredCopyRemovesTheWorkload(t *testing.T) {
 
 	out, _ := l.reconcile(t, dep.Name)
 	if _, err := l.getGraph(ctx); err != nil {
-		t.Fatalf("nothing to tear down: %v", err)
+		c := readyCondition(t, out)
+		t.Fatalf("nothing to tear down (%s: %s): %v", c.Reason, c.Message, err)
 	}
 
 	if err := l.client.Delete(ctx, out); err != nil {
@@ -617,10 +623,11 @@ func TestE2EAWorkloadDeletedOutOfBandIsRestored(t *testing.T) {
 	dep := l.ready(t)
 	ctx := context.Background()
 
-	l.reconcile(t, dep.Name)
+	out, _ := l.reconcile(t, dep.Name)
 	obj, err := l.getGraph(ctx)
 	if err != nil {
-		t.Fatalf("nothing was applied: %v", err)
+		c := readyCondition(t, out)
+		t.Fatalf("nothing was applied (%s: %s): %v", c.Reason, c.Message, err)
 	}
 	if err := l.client.Delete(ctx, obj); err != nil {
 		t.Fatalf("delete workload: %v", err)
