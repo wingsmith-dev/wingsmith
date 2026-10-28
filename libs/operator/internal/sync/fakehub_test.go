@@ -109,24 +109,30 @@ func (h *fakeHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.conn, h.cancel = conn, cancel
-	h.mu.Unlock()
 
 	if stall {
+		h.mu.Unlock()
 		<-ctx.Done()
 		return
 	}
 
+	// The welcome and the backlog are written before the lock is released. A test that sees the
+	// connection counted pushes at once, and a push that reached the socket ahead of the welcome
+	// would fail the client's handshake and cost a reconnect the test never asked for.
 	welcome := mustEnvelope(h.t, TypeWelcome, wire.Welcome{
 		SessionID: session, AckSeq: lastUp, FullResync: !resumed,
 	})
 	welcome.ReplyTo = replyTo(e.ID)
-	if err := writeJSON(ctx, conn, welcome); err != nil {
-		return
-	}
+	err = writeJSON(ctx, conn, welcome)
 	for _, d := range backlog {
-		if err := writeJSON(ctx, conn, d); err != nil {
-			return
+		if err != nil {
+			break
 		}
+		err = writeJSON(ctx, conn, d)
+	}
+	h.mu.Unlock()
+	if err != nil {
+		return
 	}
 
 	for {
