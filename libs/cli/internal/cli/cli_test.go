@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
 )
 
 // run executes the CLI in-process and returns stdout, stderr, and the exit
-// code. The fake is selected unless the caller sets HANGAR_FAKE=0.
+// code. The fake is selected unless the caller sets WINGSMITH_FAKE=0.
 func run(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
 	return runWith(t, filepath.Join(t.TempDir(), "config.yaml"), args...)
@@ -21,9 +21,9 @@ func run(t *testing.T, args ...string) (string, string, int) {
 // commands that read what an earlier one wrote.
 func runWith(t *testing.T, configPath string, args ...string) (string, string, int) {
 	t.Helper()
-	t.Setenv("HANGAR_CONFIG", configPath)
-	if os.Getenv("HANGAR_FAKE") == "" {
-		t.Setenv("HANGAR_FAKE", "1")
+	t.Setenv("WINGSMITH_CONFIG", configPath)
+	if os.Getenv("WINGSMITH_FAKE") == "" {
+		t.Setenv("WINGSMITH_FAKE", "1")
 	}
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("COLUMNS", "200")
@@ -32,7 +32,7 @@ func runWith(t *testing.T, configPath string, args ...string) (string, string, i
 	errR, errW, _ := os.Pipe()
 	oldOut, oldErr, oldArgs := os.Stdout, os.Stderr, os.Args
 	os.Stdout, os.Stderr = outW, errW
-	os.Args = append([]string{"hgr"}, args...)
+	os.Args = append([]string{"wings"}, args...)
 	defer func() {
 		os.Stdout, os.Stderr, os.Args = oldOut, oldErr, oldArgs
 	}()
@@ -222,7 +222,7 @@ func TestPhaseAndReachabilityAreSeparate(t *testing.T) {
 
 // The imperative surface is one endpoint: a type and a target, then polling.
 func TestOperationLifecycle(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "operation", "create", "node.drain", "iad-1-n02", "--reason", "firmware", "--yes", "-o", "json")
 	if code != 0 {
 		t.Fatalf("create exit %d: %s", code, out)
@@ -255,7 +255,7 @@ func TestOperationLifecycle(t *testing.T) {
 }
 
 func TestOperationCancelIsNotDeletion(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "operation", "create", "node.drain", "iad-1-n03", "--yes", "-o", "json")
 	if code != 0 {
 		t.Fatalf("create exit %d", code)
@@ -282,7 +282,7 @@ func TestOperationCancelIsNotDeletion(t *testing.T) {
 }
 
 func TestIdempotencyKeyReturnsTheSameOperation(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	first, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "retry-key-1", "--yes", "-o", "name")
 	second, _, _ := run(t, "operation", "create", "node.drain", "iad-1-n01", "--idempotency-key", "retry-key-1", "--yes", "-o", "name")
 	if strings.TrimSpace(first) == "" {
@@ -313,7 +313,7 @@ func TestErrorCodesMapFromThePlane(t *testing.T) {
 	if code != 4 {
 		t.Errorf("not found exited %d, want 4", code)
 	}
-	t.Setenv("HANGAR_FAKE_FAIL", "CONFLICT")
+	t.Setenv("WINGSMITH_FAKE_FAIL", "CONFLICT")
 	_, _, code = run(t, "cluster", "ls")
 	if code != 5 {
 		t.Errorf("injected CONFLICT exited %d, want 5", code)
@@ -420,7 +420,7 @@ func TestIgnoringAWorkloadKeepsTheSighting(t *testing.T) {
 // workload and sends back what it was just shown, so an adoption cannot be pinned to a spec
 // nobody looked at.
 func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	before, _, code := run(t, "discovered", "get", "llama-70b-vllm", "-o", "json")
 	if code != 0 {
 		t.Fatalf("get exit %d", code)
@@ -453,7 +453,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 // A promotion that scaled a live workload as a side effect of cataloguing it would be the same
 // class of accident as re-rendering its spec.
 func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
 		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "-o", "json")
 	if code != 0 {
@@ -551,7 +551,7 @@ func TestOperationCreateRefusesTypesNothingCarriesOut(t *testing.T) {
 			t.Errorf("%s exited %d, want 2 (USAGE): %s", typ, code, errOut)
 		}
 		if !strings.Contains(errOut, "node.drain") {
-			t.Errorf("%s: the error does not list the types hgr starts: %s", typ, errOut)
+			t.Errorf("%s: the error does not list the types wings starts: %s", typ, errOut)
 		}
 	}
 }

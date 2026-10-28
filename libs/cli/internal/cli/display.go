@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 // Rendering helpers shared by every noun. Nothing here decides anything: the
 // plane derives `behind`, `over_limit`, `within_declared_bounds` and the rest
-// so that the console and `hgr` cannot disagree, and these only draw them.
+// so that the console and `wings` cannot disagree, and these only draw them.
 
 func orDash(s string) string {
 	if strings.TrimSpace(s) == "" {

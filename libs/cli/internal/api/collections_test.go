@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // collection is one noun's two entry points, reduced to the thing worth testing about them: which

@@ -5,8 +5,8 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // The SLA report's period and verdict, transcribed from the plane

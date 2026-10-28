@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 type cluster struct {
@@ -170,7 +170,7 @@ func TestAgentErrorsAreTheSameEnvelope(t *testing.T) {
 	var out, errw bytes.Buffer
 	r := New(&out, &errw, ui.Style{}, FormatHuman, "", 120, true, false)
 	code := r.EmitError("cluster get", errs.New(errs.CodeNotFound, "no cluster named iad-9").
-		WithFix("List them", "hgr cluster ls"))
+		WithFix("List them", "wings cluster ls"))
 
 	if code != 4 {
 		t.Errorf("exit = %d, want the code's own exit status", code)
@@ -191,7 +191,7 @@ func TestAgentErrorsAreTheSameEnvelope(t *testing.T) {
 }
 
 // TestAMachineFormatSendsErrorsToStderrAsJSON: stdout stays parseable even when the command
-// failed, which is what lets `hgr ... -o json | jq` behave.
+// failed, which is what lets `wings ... -o json | jq` behave.
 func TestAMachineFormatSendsErrorsToStderrAsJSON(t *testing.T) {
 	var out, errw bytes.Buffer
 	r := New(&out, &errw, ui.Style{}, FormatJSON, "", 120, false, false)
@@ -218,13 +218,13 @@ func TestAHumanErrorNamesTheCodeAndHowToExplainIt(t *testing.T) {
 	r := New(&out, &errw, ui.Style{}, FormatHuman, "", 120, false, false)
 	r.EmitError("cluster get", errs.New(errs.CodeRateLimited, "no room").
 		WithCause("every node is full").
-		WithFix("Try another region", "hgr cluster ls --region ap-southeast-1").
+		WithFix("Try another region", "wings cluster ls --region ap-southeast-1").
 		WithRetry(60))
 
 	got := errw.String()
 	for _, want := range []string{
-		"no room", "every node is full", "hgr cluster ls --region ap-southeast-1",
-		"RATE_LIMITED", "hgr explain RATE_LIMITED", "retryable in ~60s",
+		"no room", "every node is full", "wings cluster ls --region ap-southeast-1",
+		"RATE_LIMITED", "wings explain RATE_LIMITED", "retryable in ~60s",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the human error is missing %q:\n%s", want, got)
@@ -274,7 +274,7 @@ func TestJSONLOfANonSliceIsOneLine(t *testing.T) {
 	}
 }
 
-// TestJSONOfNothingPrintsNothing: `hgr ... -o json` on a command with no data must not emit
+// TestJSONOfNothingPrintsNothing: `wings ... -o json` on a command with no data must not emit
 // `null`, which every consumer would have to special-case.
 func TestJSONOfNothingPrintsNothing(t *testing.T) {
 	for _, f := range []Format{FormatJSON, FormatYAML} {
@@ -338,7 +338,7 @@ func TestQuietPrintsOnlyNames(t *testing.T) {
 		Names:    []string{"iad-1"},
 		Warnings: []string{"one cluster is unreachable"},
 		Human:    func(w io.Writer, _ ui.Style, _ int) { _, _ = w.Write([]byte("a table")) },
-		Next:     []errs.Action{{Description: "Look closer", Command: "hgr cluster get iad-1"}},
+		Next:     []errs.Action{{Description: "Look closer", Command: "wings cluster get iad-1"}},
 	})
 	if out != "iad-1\n" {
 		t.Errorf("quiet stdout = %q, want only the name", out)
@@ -355,7 +355,7 @@ func TestWarningsAndNextActionsGoToStderr(t *testing.T) {
 		Human: func(w io.Writer, _ ui.Style, _ int) {
 			_, _ = w.Write([]byte("a table\n"))
 		},
-		Next: []errs.Action{{Description: "Look closer", Command: "hgr cluster get iad-1"}},
+		Next: []errs.Action{{Description: "Look closer", Command: "wings cluster get iad-1"}},
 	})
 	if !strings.Contains(out, "a table") {
 		t.Errorf("the table did not reach stdout: %q", out)
@@ -363,7 +363,7 @@ func TestWarningsAndNextActionsGoToStderr(t *testing.T) {
 	if !strings.Contains(errw, "one cluster is unreachable") {
 		t.Errorf("the warning did not reach stderr: %q", errw)
 	}
-	if !strings.Contains(errw, "hgr cluster get iad-1") {
+	if !strings.Contains(errw, "wings cluster get iad-1") {
 		t.Errorf("the next action did not reach stderr: %q", errw)
 	}
 	if strings.Contains(out, "unreachable") {

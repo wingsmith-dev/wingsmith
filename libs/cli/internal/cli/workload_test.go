@@ -7,24 +7,24 @@ import (
 	"testing"
 )
 
-// --project on workload create is the global flag, so HANGAR_PROJECT and the
+// --project on workload create is the global flag, so WINGSMITH_PROJECT and the
 // context's project reach it too, and nothing defaults it to a project that was
 // never named.
 func TestWorkloadCreateTakesTheProjectFromAnywhereItCanBeSet(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	base := []string{"workload", "create", "assistant", "--artifact", "llama-3.1-70b-instruct",
 		"--class", "h100-80", "--context-length", "8192", "-o", "json"}
 
-	t.Setenv("HANGAR_PROJECT", "")
+	t.Setenv("WINGSMITH_PROJECT", "")
 	_, errOut, code := run(t, base...)
 	if code != 2 || !strings.Contains(errOut, "--project") {
 		t.Fatalf("no project anywhere exited %d: %s", code, errOut)
 	}
 
-	t.Setenv("HANGAR_PROJECT", "core")
+	t.Setenv("WINGSMITH_PROJECT", "core")
 	out, errOut, code := run(t, base...)
 	if code != 0 {
-		t.Fatalf("HANGAR_PROJECT was not used: exit %d %s", code, errOut)
+		t.Fatalf("WINGSMITH_PROJECT was not used: exit %d %s", code, errOut)
 	}
 	var wl map[string]any
 	if err := json.Unmarshal([]byte(out), &wl); err != nil {
@@ -34,7 +34,7 @@ func TestWorkloadCreateTakesTheProjectFromAnywhereItCanBeSet(t *testing.T) {
 		t.Errorf("created %v", wl)
 	}
 
-	t.Setenv("HANGAR_PROJECT", "")
+	t.Setenv("WINGSMITH_PROJECT", "")
 	if _, errOut, code := run(t, append([]string{"--project", "core"}, base...)...); code != 0 && !strings.Contains(errOut, "already exists") {
 		t.Fatalf("--project before the verb was ignored: exit %d %s", code, errOut)
 	}
@@ -54,7 +54,7 @@ func TestTheConfiguredProjectLimitsListings(t *testing.T) {
 	}
 	for _, noun := range []string{"workload", "endpoint", "deployment", "quota", "allocation"} {
 		t.Run(noun, func(t *testing.T) {
-			t.Setenv("HANGAR_PROJECT", "")
+			t.Setenv("WINGSMITH_PROJECT", "")
 			all := names(t, noun, "ls")
 			if len(all) == 0 {
 				t.Fatalf("the seed has no %s to filter", noun)
@@ -63,9 +63,9 @@ func TestTheConfiguredProjectLimitsListings(t *testing.T) {
 				t.Errorf("--project core (the slug) listed %v, want %v", got, all)
 			}
 
-			t.Setenv("HANGAR_PROJECT", "nonexistent")
+			t.Setenv("WINGSMITH_PROJECT", "nonexistent")
 			if got := names(t, noun, "ls"); len(got) != 0 {
-				t.Errorf("HANGAR_PROJECT=nonexistent still listed %v", got)
+				t.Errorf("WINGSMITH_PROJECT=nonexistent still listed %v", got)
 			}
 			if got := names(t, noun, "ls", "--project", ""); len(got) != len(all) {
 				t.Errorf("--project '' listed %v, want every project's %v", got, all)
@@ -77,7 +77,7 @@ func TestTheConfiguredProjectLimitsListings(t *testing.T) {
 // Task and gang workloads are on the roadmap. create offers no flag for them,
 // and the fake refuses them as the plane does.
 func TestWorkloadCreateOffersOnlyServices(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	base := []string{"workload", "create", "g1", "--project", "core", "--artifact", "llama-3.1-70b-instruct",
 		"--class", "h100-80", "--context-length", "8192"}
 	for _, extra := range [][]string{{"--kind", "gang"}, {"--gang-size", "2"}} {

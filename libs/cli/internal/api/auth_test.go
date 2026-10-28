@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // authPlane is a plane with the three auth routes and one guarded collection.
@@ -132,8 +132,8 @@ func TestARefusedRefreshIsAuthExpired(t *testing.T) {
 	if e.Code != errs.CodeAuthExpired {
 		t.Fatalf("code = %v, want AUTH_EXPIRED", e.Code)
 	}
-	if len(e.Remediation) == 0 || e.Remediation[0].Command != "hgr login" {
-		t.Errorf("remediation = %+v, want hgr login", e.Remediation)
+	if len(e.Remediation) == 0 || e.Remediation[0].Command != "wings login" {
+		t.Errorf("remediation = %+v, want wings login", e.Remediation)
 	}
 	if p.refreshes != 1 {
 		t.Errorf("tried to renew %d times, want once", p.refreshes)

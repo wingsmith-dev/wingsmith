@@ -1,17 +1,17 @@
-// Package fake is a local, deterministic stand-in for the Hangar control
+// Package fake is a local, deterministic stand-in for the Wingsmith control
 // plane. It answers with the same shapes the real API answers with (same
 // field names, same envelope, same cursor behaviour), so a command tested
 // against it is a command tested for real shape.
 //
-// Select it with --fake, HANGAR_FAKE=1, or `fake: true` in the config file.
+// Select it with --fake, WINGSMITH_FAKE=1, or `fake: true` in the config file.
 package fake
 
 import (
 	"encoding/json"
 	"os"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // state is the whole simulated control plane, persisted as one JSON document

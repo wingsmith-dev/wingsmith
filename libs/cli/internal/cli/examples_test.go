@@ -23,7 +23,7 @@ func examples(cmd *cobra.Command) [][]string {
 		cur += line
 		full := strings.TrimSpace(cur)
 		cur = ""
-		if !strings.HasPrefix(full, "hgr ") || strings.ContainsAny(full, "…<>|$=") && !onlyFlagEquals(full) {
+		if !strings.HasPrefix(full, "wings ") || strings.ContainsAny(full, "…<>|$=") && !onlyFlagEquals(full) {
 			continue
 		}
 		out = append(out, strings.Fields(full)[1:])
@@ -67,8 +67,8 @@ func TestEveryExampleRuns(t *testing.T) {
 	walk(root, func(cmd *cobra.Command) {
 		for _, args := range examples(cmd) {
 			t.Run(strings.Join(args, " "), func(t *testing.T) {
-				t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
-				t.Setenv("HANGAR_ADMIN_PASSWORD", "example")
+				t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+				t.Setenv("WINGSMITH_ADMIN_PASSWORD", "example")
 				line := strings.Join(args, " ")
 				if why, ok := unrunnable[line]; ok {
 					t.Skip(why)

@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func clusterNoun() noun[api.Cluster] {
@@ -25,10 +25,10 @@ The plane holds its enrolment record, region and capabilities; the operator
 running in the cluster connects out and reports back. phase is what was
 declared; reachable and sync are what the plane observes now. The two are shown
 side by side.`,
-		example: `  hgr cluster ls
-  hgr cluster ls --region us-east-1 --phase active
-  hgr cluster ls --all -o json | jq '.items[].name'
-  hgr cluster get iad-1`,
+		example: `  wings cluster ls
+  wings cluster ls --region us-east-1 --phase active
+  wings cluster ls --all -o json | jq '.items[].name'
+  wings cluster get iad-1`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Cluster], error) {
 			return b.Clusters(ctx, o)
 		},
@@ -89,9 +89,9 @@ side by side.`,
 		},
 		next: func(c api.Cluster) []errs.Action {
 			return []errs.Action{
-				{Description: "Nodes here", Command: "hgr node ls --cluster " + c.Name},
-				{Description: "Devices here", Command: "hgr device ls --cluster " + c.Name},
-				{Description: "What is running here", Command: "hgr deployment ls --cluster " + c.Name},
+				{Description: "Nodes here", Command: "wings node ls --cluster " + c.Name},
+				{Description: "Devices here", Command: "wings device ls --cluster " + c.Name},
+				{Description: "What is running here", Command: "wings deployment ls --cluster " + c.Name},
 			}
 		},
 	}
@@ -118,11 +118,11 @@ func nodeNoun() noun[api.Node] {
 Nodes are observed, not declared. cordoned is shown beside the condition: a
 drain or cordon operation sets it.
 
-The device counts here are a rollup; hgr device ls has the per-device detail.`,
-		example: `  hgr node ls --cluster iad-1
-  hgr node ls --pool h100-80-prod --condition ready
-  hgr node ls --cordoned -o name
-  hgr node ls --all --limit 200`,
+The device counts here are a rollup; wings device ls has the per-device detail.`,
+		example: `  wings node ls --cluster iad-1
+  wings node ls --pool h100-80-prod --condition ready
+  wings node ls --cordoned -o name
+  wings node ls --all --limit 200`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Node], error) {
 			return b.Nodes(ctx, o)
 		},
@@ -194,8 +194,8 @@ The device counts here are a rollup; hgr device ls has the per-device detail.`,
 		},
 		next: func(n api.Node) []errs.Action {
 			return []errs.Action{
-				{Description: "Devices on this node", Command: "hgr device ls --node " + n.Name},
-				{Description: "Drain it", Command: "hgr operation create node.drain " + n.Name + " --reason firmware"},
+				{Description: "Devices on this node", Command: "wings device ls --node " + n.Name},
+				{Description: "Drain it", Command: "wings operation create node.drain " + n.Name + " --reason firmware"},
 			}
 		},
 	}
@@ -213,10 +213,10 @@ Each device shows its health, ECC and throttle state, memory, MIG profile,
 whether it can be allocated, and its topology domain.
 
 Utilization, temperature and throughput are metrics and are not shown here.`,
-		example: `  hgr device ls --cluster iad-1
-  hgr device ls --class h100-80 --health unhealthy
-  hgr device ls --allocatable -o name
-  hgr device ls --cluster iad-1 --group-by domain`,
+		example: `  wings device ls --cluster iad-1
+  wings device ls --class h100-80 --health unhealthy
+  wings device ls --allocatable -o name
+  wings device ls --cluster iad-1 --group-by domain`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Device], error) {
 			return b.Devices(ctx, o)
 		},
@@ -305,11 +305,11 @@ Utilization, temperature and throughput are metrics and are not shown here.`,
 		},
 		next: func(d api.Device) []errs.Action {
 			out := []errs.Action{
-				{Description: "Its node", Command: "hgr node get " + d.NodeName},
-				{Description: "What holds it", Command: "hgr allocation ls --device " + d.ID},
+				{Description: "Its node", Command: "wings node get " + d.NodeName},
+				{Description: "What holds it", Command: "wings allocation ls --device " + d.ID},
 			}
 			if d.Topology != nil {
-				out = append(out, errs.Action{Description: "Siblings in the same fabric", Command: "hgr device ls --domain " + d.Topology.ID})
+				out = append(out, errs.Action{Description: "Siblings in the same fabric", Command: "wings device ls --domain " + d.Topology.ID})
 			}
 			return out
 		},
@@ -332,10 +332,10 @@ operator, so a class is added by a release, not over the API.
 The listing combines the catalog with what clusters report. A class with no
 devices is in the catalog but not installed anywhere. A class marked
 "catalog no" is installed but missing from the catalog, and should be added.`,
-		example: `  hgr device-class ls
-  hgr device-class ls --present
-  hgr device-class ls --cluster iad-1
-  hgr device-class get h100-80`,
+		example: `  wings device-class ls
+  wings device-class ls --present
+  wings device-class ls --cluster iad-1
+  wings device-class get h100-80`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DeviceClass], error) {
 			return b.DeviceClasses(ctx, o)
 		},
@@ -392,9 +392,9 @@ devices is in the catalog but not installed anywhere. A class marked
 		},
 		next: func(c api.DeviceClass) []errs.Action {
 			return []errs.Action{
-				{Description: "Devices of this class", Command: "hgr device ls --class " + c.Class},
-				{Description: "Pools that provision it", Command: "hgr pool ls --class " + c.Class},
-				{Description: "Workloads that ask for it", Command: "hgr workload ls --class " + c.Class},
+				{Description: "Devices of this class", Command: "wings device ls --class " + c.Class},
+				{Description: "Pools that provision it", Command: "wings pool ls --class " + c.Class},
+				{Description: "Workloads that ask for it", Command: "wings workload ls --class " + c.Class},
 			}
 		},
 	}
@@ -440,9 +440,9 @@ NVLink island.
 A device shows a summary of its own domain. Membership, nesting and bandwidth
 are here, and are what placement checks before putting a tensor-parallel
 workload on one domain.`,
-		example: `  hgr topology-domain ls --cluster iad-1
-  hgr topology-domain ls --kind nvswitch
-  hgr topology-domain ls --spans-nodes`,
+		example: `  wings topology-domain ls --cluster iad-1
+  wings topology-domain ls --kind nvswitch
+  wings topology-domain ls --spans-nodes`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.TopologyDomain], error) {
 			return b.TopologyDomains(ctx, o)
 		},
@@ -491,7 +491,7 @@ workload on one domain.`,
 			kv.Render(w)
 		},
 		next: func(t api.TopologyDomain) []errs.Action {
-			return []errs.Action{{Description: "Its devices", Command: "hgr device ls --domain " + t.ID}}
+			return []errs.Action{{Description: "Its devices", Command: "wings device ls --domain " + t.ID}}
 		},
 	}
 }
@@ -508,9 +508,9 @@ a node shape, and size bounds.
 Pools give placement a set of matching devices to work with; a cluster with
 mixed hardware has one pool per kind. Which nodes are in a pool is observed,
 and is shown separately from the declaration.`,
-		example: `  hgr pool ls
-  hgr pool ls --cluster iad-1 --class h100-80
-  hgr pool get h100-80-prod`,
+		example: `  wings pool ls
+  wings pool ls --cluster iad-1 --class h100-80
+  wings pool get h100-80-prod`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Pool], error) {
 			return b.Pools(ctx, o)
 		},
@@ -577,8 +577,8 @@ and is shown separately from the declaration.`,
 		},
 		next: func(p api.Pool) []errs.Action {
 			return []errs.Action{
-				{Description: "Nodes in this pool", Command: "hgr node ls --pool " + p.Name},
-				{Description: "Allocatable devices", Command: "hgr device ls --pool " + p.Name + " --allocatable"},
+				{Description: "Nodes in this pool", Command: "wings node ls --pool " + p.Name},
+				{Description: "Allocatable devices", Command: "wings device ls --pool " + p.Name + " --allocatable"},
 			}
 		},
 	}

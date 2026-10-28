@@ -37,7 +37,7 @@ func TestSilentNarrationWritesNothing(t *testing.T) {
 	r.Info("informational")
 	r.Success("done")
 	r.Warn("careful")
-	r.Hint("try this", "hgr cluster ls")
+	r.Hint("try this", "wings cluster ls")
 	p := r.Progress("downloading", 100)
 	p.Set(50)
 	p.Done("downloaded")
@@ -59,13 +59,13 @@ func TestPlainNarrationIsOneLinePerTransition(t *testing.T) {
 	r.Info("3 clusters considered")
 	r.Success("deployment created")
 	r.Warn("one cluster was unreachable")
-	r.Hint("Watch it roll out", "hgr deployment get dep_1")
+	r.Hint("Watch it roll out", "wings deployment get dep_1")
 	r.Stop()
 
 	got := buf.String()
 	for _, want := range []string{
 		"placed on iad-1", "3 clusters considered", "deployment created",
-		"one cluster was unreachable", "hgr deployment get dep_1",
+		"one cluster was unreachable", "wings deployment get dep_1",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("plain narration is missing %q:\n%s", want, got)

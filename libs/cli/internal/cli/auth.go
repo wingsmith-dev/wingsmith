@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 // newLoginCmd trades the admin password for a session and stores it in the
@@ -31,7 +31,7 @@ func newLoginCmd(app *App) *cobra.Command {
 		Long: `Log in to the control plane and store the session in the active context.
 
 Human access to a plane is a single admin login. The password is read from
-stdin with --password-stdin, else from $HANGAR_ADMIN_PASSWORD, else from a
+stdin with --password-stdin, else from $WINGSMITH_ADMIN_PASSWORD, else from a
 no-echo prompt. It is never accepted as an argument.
 
 The session is an access token that lasts about 15 minutes and a refresh token
@@ -40,9 +40,9 @@ when the refresh token is refused too. The server you log in to is stored
 beside the session, so --server on login sets it for later commands.
 
 Neither token is ever printed, in any output mode.`,
-		Example: `  hgr login --server http://localhost:8000
-  printf '%s' "$ADMIN_PASSWORD" | hgr login --password-stdin
-  HANGAR_ADMIN_PASSWORD=… hgr login --no-input`,
+		Example: `  wings login --server http://localhost:8000
+  printf '%s' "$ADMIN_PASSWORD" | wings login --password-stdin
+  WINGSMITH_ADMIN_PASSWORD=… wings login --no-input`,
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{annotationAuthOptional: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -80,7 +80,7 @@ Neither token is ever printed, in any output mode.`,
 						s.Tick(), s.Bold(server), res.Kind, res.ExpiresIn)
 				},
 				Next: []errs.Action{
-					{Description: "See what the CLI is pointed at", Command: "hgr whoami"},
+					{Description: "See what the CLI is pointed at", Command: "wings whoami"},
 				},
 			}
 			if app.Backend.Simulated() {
@@ -89,7 +89,7 @@ Neither token is ever printed, in any output mode.`,
 			}
 
 			// Persist to the stored context, not to the flag/env overlay, so the
-			// session round-trips exactly like `hgr config set context.token`.
+			// session round-trips exactly like `wings config set context.token`.
 			// The tokens belong to the server that issued them, so it is
 			// recorded beside them.
 			name := app.Cfg.CurrentContext
@@ -121,13 +121,13 @@ func readPassword(app *App, fromStdin bool) (string, error) {
 			return "", errs.Wrap(err, errs.CodeInputRequired, "cannot read the password from stdin")
 		}
 		pw = strings.TrimRight(line, "\r\n")
-	case os.Getenv("HANGAR_ADMIN_PASSWORD") != "":
-		pw = os.Getenv("HANGAR_ADMIN_PASSWORD")
+	case os.Getenv("WINGSMITH_ADMIN_PASSWORD") != "":
+		pw = os.Getenv("WINGSMITH_ADMIN_PASSWORD")
 	case app.NoInput:
 		return "", errs.New(errs.CodeInputRequired, "a password is required and prompting is disabled").
-			WithCause("--password-stdin was not given and $HANGAR_ADMIN_PASSWORD is unset").
+			WithCause("--password-stdin was not given and $WINGSMITH_ADMIN_PASSWORD is unset").
 			WithFlag("--password-stdin").
-			WithFix("Pipe it in", "hgr login --password-stdin < password-file")
+			WithFix("Pipe it in", "wings login --password-stdin < password-file")
 	default:
 		got, err := app.Ask.Secret("admin password", "--password-stdin")
 		if err != nil {

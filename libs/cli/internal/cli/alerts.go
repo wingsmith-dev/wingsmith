@@ -6,11 +6,11 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func alertThresholdNoun() noun[api.AlertThreshold] {
@@ -23,14 +23,14 @@ func alertThresholdNoun() noun[api.AlertThreshold] {
 must cross before it fires.
 
 The metric and which way it is wrong are the rule's, not the caller's: a rule
-watches time-to-first-token going up or output speed going down, and 'hgr
+watches time-to-first-token going up or output speed going down, and 'wings
 alert-threshold rules' is the catalogue the plane will take. A threshold with no
 subject is the fleet default for its rule: the line every subject of that type
 is held to unless one carries its own.`,
-		example: `  hgr alert-threshold ls
-  hgr alert-threshold ls --rule deployment.ttft_high
-  hgr alert-threshold rules
-  hgr alert-threshold create deployment.ttft_high --value 2.5 --subject dep_01m…`,
+		example: `  wings alert-threshold ls
+  wings alert-threshold ls --rule deployment.ttft_high
+  wings alert-threshold rules
+  wings alert-threshold create deployment.ttft_high --value 2.5 --subject dep_01m…`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.AlertThreshold], error) {
 			return b.AlertThresholds(ctx, o)
 		},
@@ -67,8 +67,8 @@ is held to unless one carries its own.`,
 		detail: alertThresholdDetail,
 		next: func(t api.AlertThreshold) []errs.Action {
 			return []errs.Action{
-				{Description: "Edit its value", Command: "hgr alert-threshold set " + t.ID + " --value N"},
-				{Description: "The rule it uses", Command: "hgr alert-threshold rules"},
+				{Description: "Edit its value", Command: "wings alert-threshold set " + t.ID + " --value N"},
+				{Description: "The rule it uses", Command: "wings alert-threshold rules"},
 			}
 		},
 		extra: func(app *App) []*cobra.Command {
@@ -124,13 +124,13 @@ must cross. Omit --subject to set the fleet default for the rule's subject type;
 name one to hold a single deployment or node to a different line. --for is how
 long the metric must stay across the line before it fires, so a brief spike
 does not.`,
-		Example: `  hgr alert-threshold create deployment.ttft_high --value 2.5
-  hgr alert-threshold create deployment.ttft_high --value 3 --subject dep_01m… --for 300 --severity error`,
+		Example: `  wings alert-threshold create deployment.ttft_high --value 2.5
+  wings alert-threshold create deployment.ttft_high --value 3 --subject dep_01m… --for 300 --severity error`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !cmd.Flags().Changed("value") {
 				return errs.New(errs.CodeInputRequired, "a threshold needs a --value to cross").
-					WithFix("See the rule's suggested value", "hgr alert-threshold rules")
+					WithFix("See the rule's suggested value", "wings alert-threshold rules")
 			}
 			dims, err := parseDimensions(dimensions)
 			if err != nil {
@@ -197,13 +197,13 @@ func newAlertThresholdSetCmd(app *App) *cobra.Command {
 		Long: `Edit an alert threshold. Only the fields named change; the rule, metric and
 subject are its identity and are not among them: a different rule or subject is
 a different threshold.`,
-		Example: `  hgr alert-threshold set alt_01m… --value 3
-  hgr alert-threshold set alt_01m… --enabled=false`,
+		Example: `  wings alert-threshold set alt_01m… --value 3
+  wings alert-threshold set alt_01m… --enabled=false`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().NFlag() == 0 {
 				return errs.New(errs.CodeInputRequired, "set needs at least one field to change").
-					WithFix("See what it has", "hgr alert-threshold get "+args[0])
+					WithFix("See what it has", "wings alert-threshold get "+args[0])
 			}
 			dims, err := parseDimensions(dimensions)
 			if err != nil {

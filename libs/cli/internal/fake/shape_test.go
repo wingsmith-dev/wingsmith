@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
 )
 
 // The fake is only worth having if it lies about nothing. These tests compare

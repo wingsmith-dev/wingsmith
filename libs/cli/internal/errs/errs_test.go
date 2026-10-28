@@ -88,7 +88,7 @@ func TestNewFormatsAndCarriesDocs(t *testing.T) {
 	if e.Code != CodeNotFound {
 		t.Errorf("code = %v", e.Code)
 	}
-	if e.Docs != DocsURL || !strings.HasPrefix(e.Docs, "https://github.com/hangar-dev/hangar/") {
+	if e.Docs != DocsURL || !strings.HasPrefix(e.Docs, "https://github.com/wingsmith-dev/wingsmith/") {
 		t.Errorf("docs = %q, want the error table in the repository", e.Docs)
 	}
 }
@@ -172,8 +172,8 @@ func TestABareMessageWithAPercentIsNotReformatted(t *testing.T) {
 func TestBuildersCompose(t *testing.T) {
 	e := New(CodeRateLimited, "too many requests").
 		WithCause("the plane is shedding load").
-		WithFix("Wait and try again", "hgr cluster ls").
-		WithFix("Check your quota", "hgr quota ls").
+		WithFix("Wait and try again", "wings cluster ls").
+		WithFix("Check your quota", "wings quota ls").
 		WithRetry(30).
 		WithFlag("--force")
 
@@ -183,7 +183,7 @@ func TestBuildersCompose(t *testing.T) {
 	if len(e.Remediation) != 2 {
 		t.Fatalf("remediation has %d entries, want 2 in the order they were added", len(e.Remediation))
 	}
-	if e.Remediation[0].Command != "hgr cluster ls" || e.Remediation[1].Command != "hgr quota ls" {
+	if e.Remediation[0].Command != "wings cluster ls" || e.Remediation[1].Command != "wings quota ls" {
 		t.Errorf("remediation order = %+v", e.Remediation)
 	}
 	if !e.Retryable || e.RetryAfterS != 30 {
@@ -206,7 +206,7 @@ func TestWithCausefFormats(t *testing.T) {
 func TestTheJSONShapeIsTheContract(t *testing.T) {
 	full, err := json.Marshal(New(CodeNotFound, "no such cluster").
 		WithCause("looked in project prj_1").
-		WithFix("List them", "hgr cluster ls").
+		WithFix("List them", "wings cluster ls").
 		WithRetry(5).
 		WithFlag("--project"))
 	if err != nil {
@@ -232,7 +232,7 @@ func TestTheJSONShapeIsTheContract(t *testing.T) {
 	}
 }
 
-// TestEveryExplainedCodeIsAKnownOne: `hgr explain` must not describe a code the CLI cannot emit.
+// TestEveryExplainedCodeIsAKnownOne: `wings explain` must not describe a code the CLI cannot emit.
 func TestEveryExplainedCodeIsAKnownOne(t *testing.T) {
 	known := map[Code]bool{}
 	for _, c := range allCodes {
@@ -240,7 +240,7 @@ func TestEveryExplainedCodeIsAKnownOne(t *testing.T) {
 	}
 	for _, c := range AllCodes() {
 		if !known[c] {
-			t.Errorf("`hgr explain` describes %s, which is not a code this package declares", c)
+			t.Errorf("`wings explain` describes %s, which is not a code this package declares", c)
 		}
 	}
 }
@@ -282,7 +282,7 @@ func TestAllCodesIsSorted(t *testing.T) {
 	}
 }
 
-// TestParseCodeAcceptsHowAPersonWouldTypeIt: `hgr explain not-found` and `hgr explain NOT_FOUND`
+// TestParseCodeAcceptsHowAPersonWouldTypeIt: `wings explain not-found` and `wings explain NOT_FOUND`
 // are the same request.
 func TestParseCodeAcceptsHowAPersonWouldTypeIt(t *testing.T) {
 	cases := map[string]Code{

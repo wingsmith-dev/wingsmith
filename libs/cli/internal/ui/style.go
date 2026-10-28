@@ -129,7 +129,7 @@ func (s Style) StatusColor(status string) string {
 
 // DetectStyle resolves terminal capabilities for the given stream.
 //
-// FORCE_COLOR (or HGR_FORCE_COLOR) overrides the TTY check, which is what CI
+// FORCE_COLOR (or WINGS_FORCE_COLOR) overrides the TTY check, which is what CI
 // log viewers, `script`-less demo captures, and recorded terminal sessions
 // need. An explicit --no-color still wins over it.
 func DetectStyle(f *os.File, forceNoColor bool) Style {
@@ -137,7 +137,7 @@ func DetectStyle(f *os.File, forceNoColor bool) Style {
 	if forceNoColor {
 		return st
 	}
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("HGR_NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("WINGS_NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return st
 	}
 	if !IsTerminal(f) && !forcedColor() {
@@ -158,7 +158,7 @@ func DetectStyle(f *os.File, forceNoColor bool) Style {
 }
 
 func forcedColor() bool {
-	for _, k := range []string{"HGR_FORCE_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE"} {
+	for _, k := range []string{"WINGS_FORCE_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE"} {
 		if v := os.Getenv(k); v != "" && v != "0" && v != "false" {
 			return true
 		}

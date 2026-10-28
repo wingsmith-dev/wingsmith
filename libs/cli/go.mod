@@ -1,4 +1,4 @@
-module github.com/hangar-dev/hangar/libs/cli
+module github.com/wingsmith-dev/wingsmith/libs/cli
 
 go 1.26.0
 

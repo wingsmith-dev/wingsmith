@@ -159,8 +159,8 @@ func As(err error) *Error {
 }
 
 // DocsURL is where the error codes are documented. It is the CLI's own README
-// in the repository; `hgr explain <code>` prints the same thing offline.
-const DocsURL = "https://github.com/hangar-dev/hangar/blob/main/libs/cli/README.md#errors-and-exit-codes"
+// in the repository; `wings explain <code>` prints the same thing offline.
+const DocsURL = "https://github.com/wingsmith-dev/wingsmith/blob/main/libs/cli/README.md#errors-and-exit-codes"
 
 func docsURL(code Code) string {
 	if code == CodeOK {
@@ -169,7 +169,7 @@ func docsURL(code Code) string {
 	return DocsURL
 }
 
-// Explanation is the long-form description surfaced by `hgr explain`.
+// Explanation is the long-form description surfaced by `wings explain`.
 type Explanation struct {
 	Code               Code     `json:"code"`
 	Exit               int      `json:"exit_code"`
@@ -191,23 +191,23 @@ var explanations = map[Code]Explanation{
 	},
 	CodeAuthRequired: {
 		Summary: "No credentials are available for the active context.",
-		Detail:  "The CLI found no token in the config file, HANGAR_TOKEN, or --token.",
-		Fixes:   []string{"hgr login", "hgr context ls"},
+		Detail:  "The CLI found no token in the config file, WINGSMITH_TOKEN, or --token.",
+		Fixes:   []string{"wings login", "wings context ls"},
 	},
 	CodeAuthExpired: {
 		Summary: "The session has expired and could not be renewed.",
 		Detail:  "The access token expired and the plane refused the stored refresh token, or none was stored.",
-		Fixes:   []string{"hgr login"},
+		Fixes:   []string{"wings login"},
 	},
 	CodeForbidden: {
 		Summary: "The credentials are valid but lack permission.",
-		Detail:  "A tenant token reaches only its own tenant's serving view. Operating the fleet takes the admin session from hgr login.",
-		Fixes:   []string{"hgr whoami", "hgr login"},
+		Detail:  "A tenant token reaches only its own tenant's serving view. Operating the fleet takes the admin session from wings login.",
+		Fixes:   []string{"wings whoami", "wings login"},
 	},
 	CodeNotFound: {
 		Summary: "The referenced object does not exist.",
 		Detail:  "A reference is an id or a name. get also takes a unique prefix; verbs that change something take only a whole id or name.",
-		Fixes:   []string{"List the noun to find it, e.g. hgr workload ls", "hgr context"},
+		Fixes:   []string{"List the noun to find it, e.g. wings workload ls", "wings context"},
 	},
 	CodeAmbiguous: {
 		Summary: "The identifier prefix matched more than one object.",
@@ -220,11 +220,11 @@ var explanations = map[Code]Explanation{
 	CodeInvalidState: {
 		Summary: "The object is not in a state that allows this operation.",
 		Detail:  "For example, a draining cluster cannot accept new deployments.",
-		Fixes:   []string{"hgr cluster get <cluster>", "hgr operation ls"},
+		Fixes:   []string{"wings cluster get <cluster>", "wings operation ls"},
 	},
 	CodeTimeout: {
 		Summary:            "The operation did not complete within the deadline.",
-		Fixes:              []string{"Raise --timeout for one request, or --wait-timeout for a --wait", "Poll with `hgr operation get <id>`"},
+		Fixes:              []string{"Raise --timeout for one request, or --wait-timeout for a --wait", "Poll with `wings operation get <id>`"},
 		TypicallyRetryable: true,
 	},
 	CodeRateLimited: {
@@ -234,12 +234,12 @@ var explanations = map[Code]Explanation{
 	},
 	CodeServerError: {
 		Summary:            "The control plane returned an unexpected error.",
-		Fixes:              []string{"Retry", "hgr version"},
+		Fixes:              []string{"Retry", "wings version"},
 		TypicallyRetryable: true,
 	},
 	CodeNetwork: {
 		Summary:            "The control plane could not be reached.",
-		Fixes:              []string{"Check --server and any proxy settings", "Run offline against the fake: hgr --fake …"},
+		Fixes:              []string{"Check --server and any proxy settings", "Run offline against the fake: wings --fake …"},
 		TypicallyRetryable: true,
 	},
 	CodeConfirmationRequired: {
@@ -249,11 +249,11 @@ var explanations = map[Code]Explanation{
 	CodeOperationFailed: {
 		Summary: "An operation or benchmark that was waited on did not succeed.",
 		Detail:  "The request was accepted and the work ran, but it ended failed or cancelled. The object carries the reason.",
-		Fixes:   []string{"hgr operation get <id>", "hgr benchmark get <id>"},
+		Fixes:   []string{"wings operation get <id>", "wings benchmark get <id>"},
 	},
 	CodeInterrupted: {
 		Summary: "The command was interrupted.",
-		Fixes:   []string{"hgr operation ls"},
+		Fixes:   []string{"wings operation ls"},
 	},
 	CodeInternal: {
 		Summary: "The CLI hit an unexpected condition.",

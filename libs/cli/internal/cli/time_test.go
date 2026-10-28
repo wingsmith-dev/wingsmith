@@ -50,7 +50,7 @@ func TestBadInstantsAreRefused(t *testing.T) {
 
 // End to end: the operation the plane receives carries a deadline ahead of now.
 func TestOperationCreateSendsAFutureDeadline(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	t.Setenv("WINGSMITH_FAKE_STATE", t.TempDir()+"/state.json")
 	out, errOut, code := run(t, "operation", "create", "node.drain", "iad-1-n02", "--deadline", "2h", "--yes", "-o", "json")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
@@ -75,7 +75,7 @@ func containsFutureDeadline(t *testing.T, out string) bool {
 // short request timeout must not cut a long wait short, and a wait that runs
 // out is TIMEOUT with exit 8.
 func TestAWaitHasItsOwnDeadline(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	t.Setenv("WINGSMITH_FAKE_STATE", t.TempDir()+"/state.json")
 	out, errOut, code := run(t, "operation", "create", "node.drain", "iad-1-n02", "--yes",
 		"--wait", "--interval", "250ms", "--timeout", "100ms", "-o", "json")
 	if code != 0 {
@@ -91,7 +91,7 @@ func TestAWaitHasItsOwnDeadline(t *testing.T) {
 // Every operation is created under an idempotency key, and the one minted for
 // it is reported so the caller can retry with it.
 func TestOperationsAlwaysCarryAnIdempotencyKey(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	t.Setenv("WINGSMITH_FAKE_STATE", t.TempDir()+"/state.json")
 	for _, args := range [][]string{
 		{"operation", "create", "node.cordon", "iad-1-n01"},
 		{"workload", "scale", "chat", "3"},
@@ -107,7 +107,7 @@ func TestOperationsAlwaysCarryAnIdempotencyKey(t *testing.T) {
 			t.Fatal(err)
 		}
 		key, _ := env.Meta["idempotency_key"].(string)
-		if !strings.HasPrefix(key, "hgr-") || len(key) != len("hgr-")+32 {
+		if !strings.HasPrefix(key, "wings-") || len(key) != len("wings-")+32 {
 			t.Errorf("%v reported idempotency key %q", args, key)
 		}
 	}

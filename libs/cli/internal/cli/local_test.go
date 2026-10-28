@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-// fresh is a machine that has never run hgr: no config file, no server, no
+// fresh is a machine that has never run wings: no config file, no server, no
 // token, and the fake switched off.
 func fresh(t *testing.T) string {
 	t.Helper()
-	for _, k := range []string{"HANGAR_SERVER", "HANGAR_TOKEN", "HANGAR_CONTEXT", "HANGAR_PROJECT", "HANGAR_OUTPUT", "HANGAR_ADMIN_PASSWORD"} {
+	for _, k := range []string{"WINGSMITH_SERVER", "WINGSMITH_TOKEN", "WINGSMITH_CONTEXT", "WINGSMITH_PROJECT", "WINGSMITH_OUTPUT", "WINGSMITH_ADMIN_PASSWORD"} {
 		t.Setenv(k, "")
 	}
-	t.Setenv("HANGAR_FAKE", "0")
-	return filepath.Join(t.TempDir(), "hangar", "config.yaml")
+	t.Setenv("WINGSMITH_FAKE", "0")
+	return filepath.Join(t.TempDir(), "wingsmith", "config.yaml")
 }
 
 // The first commands in the README run before there is a token, and some
@@ -39,7 +39,7 @@ func TestLocalCommandsWorkOnAFreshInstall(t *testing.T) {
 	} {
 		out, errOut, code := runWith(t, cfg, args...)
 		if code != 0 {
-			t.Errorf("hgr %s exited %d on a fresh install: %s %s", strings.Join(args, " "), code, out, errOut)
+			t.Errorf("wings %s exited %d on a fresh install: %s %s", strings.Join(args, " "), code, out, errOut)
 		}
 	}
 	got, _, _ := runWith(t, cfg, "config", "get", "context.server", "-o", "name")
@@ -52,17 +52,17 @@ func TestLocalCommandsWorkOnAFreshInstall(t *testing.T) {
 // reaches for a host nobody configured.
 func TestNoServerIsAUsageErrorAndNeverADefault(t *testing.T) {
 	cfg := fresh(t)
-	t.Setenv("HANGAR_TOKEN", "hgrs1_test")
+	t.Setenv("WINGSMITH_TOKEN", "wss1_test")
 	_, errOut, code := runWith(t, cfg, "cluster", "ls")
 	if code != 2 {
 		t.Fatalf("cluster ls with no server exited %d, want 2 (USAGE): %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "no control plane URL") || strings.Contains(errOut, "hangar.dev") {
+	if !strings.Contains(errOut, "no control plane URL") || strings.Contains(errOut, "wingsmith.dev") {
 		t.Errorf("the error does not say what is missing, or names a default: %s", errOut)
 	}
 
-	t.Setenv("HANGAR_TOKEN", "")
-	t.Setenv("HANGAR_ADMIN_PASSWORD", "hunter2")
+	t.Setenv("WINGSMITH_TOKEN", "")
+	t.Setenv("WINGSMITH_ADMIN_PASSWORD", "hunter2")
 	_, errOut, code = runWith(t, cfg, "login", "--no-input")
 	if code != 2 || !strings.Contains(errOut, "no control plane URL") {
 		t.Fatalf("login with no server exited %d: %s", code, errOut)
@@ -79,9 +79,9 @@ func TestABadStoredOutputDoesNotLockOutConfig(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("output: nonsense\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HANGAR_FAKE", "1")
+	t.Setenv("WINGSMITH_FAKE", "1")
 	_, errOut, code := runWith(t, cfg, "cluster", "ls")
-	if code != 2 || !strings.Contains(errOut, "hgr config set output auto") {
+	if code != 2 || !strings.Contains(errOut, "wings config set output auto") {
 		t.Errorf("a bad stored format exited %d without saying how to fix it: %s", code, errOut)
 	}
 	if _, errOut, code := runWith(t, cfg, "config", "set", "output", "json"); code != 0 {
@@ -108,10 +108,10 @@ func TestInvocationMistakesAreUsageErrors(t *testing.T) {
 	} {
 		_, errOut, code := run(t, args...)
 		if code != 2 {
-			t.Errorf("hgr %s exited %d, want 2 (USAGE): %s", strings.Join(args, " "), code, errOut)
+			t.Errorf("wings %s exited %d, want 2 (USAGE): %s", strings.Join(args, " "), code, errOut)
 		}
 		if !strings.Contains(errOut, "USAGE") {
-			t.Errorf("hgr %s did not say USAGE: %s", strings.Join(args, " "), errOut)
+			t.Errorf("wings %s did not say USAGE: %s", strings.Join(args, " "), errOut)
 		}
 	}
 	if _, _, code := run(t, "cluster"); code != 0 {
@@ -122,16 +122,16 @@ func TestInvocationMistakesAreUsageErrors(t *testing.T) {
 // A suggestion rebuilt from argv never repeats a credential that was on it.
 func TestRerunNeverEchoesACredential(t *testing.T) {
 	cases := [][]string{
-		{"cluster", "ls", "--token", "hgrs1_secret"},
-		{"cluster", "ls", "--token=hgrs1_secret"},
-		{"config", "set", "context.token", "hgrs1_secret"},
-		{"config", "set", "context.refresh_token", "hgrs1_secret"},
-		{"login", "--password", "hgrs1_secret"},
+		{"cluster", "ls", "--token", "wss1_secret"},
+		{"cluster", "ls", "--token=wss1_secret"},
+		{"config", "set", "context.token", "wss1_secret"},
+		{"config", "set", "context.refresh_token", "wss1_secret"},
+		{"login", "--password", "wss1_secret"},
 	}
 	for _, args := range cases {
 		got := redactArgs(args)
 		joined := strings.Join(got, " ")
-		if strings.Contains(joined, "hgrs1_secret") {
+		if strings.Contains(joined, "wss1_secret") {
 			t.Errorf("%v redacted to %q", args, joined)
 		}
 		if !strings.Contains(joined, redacted) {
@@ -143,10 +143,10 @@ func TestRerunNeverEchoesACredential(t *testing.T) {
 	}
 
 	cfg := fresh(t)
-	t.Setenv("HANGAR_SERVER", "http://127.0.0.1:1")
+	t.Setenv("WINGSMITH_SERVER", "http://127.0.0.1:1")
 	_, errOut, _ := runWith(t, cfg, "cluster", "ls", "--token", "")
-	_, errOut2, _ := runWith(t, cfg, "--token=hgrs1_secret", "--server", "nope", "cluster", "ls")
-	if strings.Contains(errOut+errOut2, "hgrs1_secret") {
+	_, errOut2, _ := runWith(t, cfg, "--token=wss1_secret", "--server", "nope", "cluster", "ls")
+	if strings.Contains(errOut+errOut2, "wss1_secret") {
 		t.Errorf("an error suggestion echoed the token: %s %s", errOut, errOut2)
 	}
 }

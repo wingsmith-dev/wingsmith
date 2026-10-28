@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
 )
 
 // A request with no serving flags must leave the plane's defaults alone. Sent as zero values,
@@ -48,7 +48,7 @@ func TestOmniBehaviour(t *testing.T) {
 }
 
 func TestAnOmniWorkloadIsCreatedWithoutAContextLength(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, errOut, code := run(t, "workload", "create", "flux-schnell",
 		"--artifact", "flux.1-schnell", "--project", "core", "--class", "h100-80gb-sxm",
 		"--engine", "omni", "--engine-runtime-version", "1.4.1",

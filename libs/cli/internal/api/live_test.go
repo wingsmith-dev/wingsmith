@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // These run against a real plane when one is pointed at, and are skipped
@@ -14,14 +14,14 @@ import (
 // this checks the transport with one: query params, envelopes, the
 // error body, and cursor following are things only a real server can confirm.
 //
-//	HANGAR_TEST_SERVER=http://localhost:8099 go test ./internal/api/
+//	WINGSMITH_TEST_SERVER=http://localhost:8099 go test ./internal/api/
 func liveClient(t *testing.T) *Client {
 	t.Helper()
-	server := os.Getenv("HANGAR_TEST_SERVER")
+	server := os.Getenv("WINGSMITH_TEST_SERVER")
 	if server == "" {
-		t.Skip("set HANGAR_TEST_SERVER to run against a live plane")
+		t.Skip("set WINGSMITH_TEST_SERVER to run against a live plane")
 	}
-	c, err := NewClient(server, os.Getenv("HANGAR_TEST_TOKEN"), "", "test", 20*time.Second)
+	c, err := NewClient(server, os.Getenv("WINGSMITH_TEST_TOKEN"), "", "test", 20*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

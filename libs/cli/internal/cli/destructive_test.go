@@ -10,7 +10,7 @@ import (
 // still takes a prefix; `rm` deleting the only thing that starts with "ch" is a
 // guess, and it is the expensive kind.
 func TestDestructiveVerbsNeverResolveByPrefix(t *testing.T) {
-	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	if _, _, code := run(t, "workload", "get", "ch"); code != 0 {
 		t.Fatalf("get by a unique prefix exited %d, want 0", code)
 	}
@@ -24,10 +24,10 @@ func TestDestructiveVerbsNeverResolveByPrefix(t *testing.T) {
 	} {
 		_, errOut, code := run(t, args...)
 		if code != 4 {
-			t.Errorf("hgr %s exited %d, want 4 (NOT_FOUND): %s", strings.Join(args, " "), code, errOut)
+			t.Errorf("wings %s exited %d, want 4 (NOT_FOUND): %s", strings.Join(args, " "), code, errOut)
 		}
-		if n := strings.Count(errOut, "hgr "+args[0]+" ls"); n > 1 {
-			t.Errorf("hgr %s suggests the same listing %d times: %s", strings.Join(args, " "), n, errOut)
+		if n := strings.Count(errOut, "wings "+args[0]+" ls"); n > 1 {
+			t.Errorf("wings %s suggests the same listing %d times: %s", strings.Join(args, " "), n, errOut)
 		}
 	}
 	if _, _, code := run(t, "workload", "get", "chat"); code != 0 {
@@ -42,7 +42,7 @@ func TestDestructiveVerbsNeverResolveByPrefix(t *testing.T) {
 func TestDeletesEmitAResult(t *testing.T) {
 	for _, format := range []string{"json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
-			t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+			t.Setenv("WINGSMITH_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 			for _, args := range [][]string{
 				{"workload", "rm", "chat", "--yes"},
 				{"serving-quota", "rm", "chat", "--yes"},

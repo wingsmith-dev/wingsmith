@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/config"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func newWhoamiCmd(app *App) *cobra.Command {
@@ -22,7 +22,7 @@ func newWhoamiCmd(app *App) *cobra.Command {
 stored, and whether the plane answers.
 
 The plane has no identity endpoint. Human access is a single admin login
-(hgr login), so there is no user name to show.`,
+(wings login), so there is no user name to show.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -75,7 +75,7 @@ func newContextCmd(app *App) *cobra.Command {
 				Human: func(w io.Writer, s ui.Style, width int) {
 					kv := app.KV()
 					kv.Add("context", app.Cfg.CurrentContext)
-					kv.Add("server", orDefault(c.Server, s.Dim("none: hgr config set context.server <url>")))
+					kv.Add("server", orDefault(c.Server, s.Dim("none: wings config set context.server <url>")))
 					kv.Add("project", app.Project)
 					kv.Add("token", tokenState(c))
 					if app.UseFake() {
@@ -154,7 +154,7 @@ func newContextUseCmd(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, ok := app.Cfg.Contexts[args[0]]; !ok {
 				return errs.New(errs.CodeNotFound, "no context named %q", args[0]).
-					WithFix("List contexts", "hgr context ls")
+					WithFix("List contexts", "wings context ls")
 			}
 			if err := app.Cfg.Set("current_context", args[0]); err != nil {
 				return err
@@ -286,7 +286,7 @@ func newExplainCmd(app *App) *cobra.Command {
 			e, ok := errs.Explain(code)
 			if !ok {
 				return errs.New(errs.CodeNotFound, "unknown error code %q", args[0]).
-					WithFix("List every code", "hgr explain")
+					WithFix("List every code", "wings explain")
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
@@ -332,7 +332,7 @@ func newVersionCmd(app *App) *cobra.Command {
 				Data:    data,
 				Names:   []string{Version},
 				Human: func(w io.Writer, s ui.Style, width int) {
-					fmt.Fprintf(w, "hgr %s %s %s\n", s.Bold(Version), s.Dim(s.Dot()),
+					fmt.Fprintf(w, "wings %s %s %s\n", s.Bold(Version), s.Dim(s.Dot()),
 						s.Dim(strings.Join([]string{Commit, runtime.GOOS + "/" + runtime.GOARCH}, " ")))
 				},
 			})

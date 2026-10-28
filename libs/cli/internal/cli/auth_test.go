@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/config"
 )
 
 // testPlane records what each auth route was sent.
@@ -40,7 +40,7 @@ func (p *testPlane) serve(t *testing.T) *httptest.Server {
 				_, _ = w.Write([]byte(`{"code":"not_authorized","message":"invalid credentials"}`))
 				return
 			}
-			_, _ = w.Write([]byte(`{"access_token":"hgrs1_access","refresh_token":"hgrr1_refresh","expires_in":900,"kind":"admin"}`))
+			_, _ = w.Write([]byte(`{"access_token":"wss1_access","refresh_token":"wsr1_refresh","expires_in":900,"kind":"admin"}`))
 		case "/v1/auth/logout":
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -75,7 +75,7 @@ func TestLoginStoresTheSessionAndTheServerItUsed(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("login exit %d: %s %s", code, out, errOut)
 	}
-	if strings.Contains(out+errOut, "hgrs1_access") || strings.Contains(out+errOut, "hgrr1_refresh") {
+	if strings.Contains(out+errOut, "wss1_access") || strings.Contains(out+errOut, "wsr1_refresh") {
 		t.Fatal("login printed a token")
 	}
 	if got := p.bodies["/v1/auth/login"][0]["password"]; got != "s3cret" {
@@ -86,7 +86,7 @@ func TestLoginStoresTheSessionAndTheServerItUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := stored.Context("")
-	if c.Server != srv.URL || c.Token != "hgrs1_access" || c.RefreshToken != "hgrr1_refresh" {
+	if c.Server != srv.URL || c.Token != "wss1_access" || c.RefreshToken != "wsr1_refresh" {
 		t.Errorf("stored context = %+v, want the server, access and refresh tokens", c)
 	}
 	if info, err := os.Stat(cfg); err != nil || info.Mode().Perm() != 0o600 {
@@ -125,7 +125,7 @@ func TestLogoutRevokesTheRefreshTokenAndClearsBoth(t *testing.T) {
 	cfg := fresh(t)
 	p := &testPlane{}
 	srv := p.serve(t)
-	t.Setenv("HANGAR_ADMIN_PASSWORD", "s3cret")
+	t.Setenv("WINGSMITH_ADMIN_PASSWORD", "s3cret")
 	if _, errOut, code := runWith(t, cfg, "login", "--server", srv.URL, "--no-input"); code != 0 {
 		t.Fatalf("login: %d %s", code, errOut)
 	}
@@ -134,7 +134,7 @@ func TestLogoutRevokesTheRefreshTokenAndClearsBoth(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("logout exit %d: %s", code, errOut)
 	}
-	if got := p.bodies["/v1/auth/logout"]; len(got) != 1 || got[0]["refresh_token"] != "hgrr1_refresh" {
+	if got := p.bodies["/v1/auth/logout"]; len(got) != 1 || got[0]["refresh_token"] != "wsr1_refresh" {
 		t.Fatalf("logout sent %v, want the stored refresh token", got)
 	}
 	var data map[string]any
@@ -153,7 +153,7 @@ func TestLogoutSaysSoWhenItCouldNotRevoke(t *testing.T) {
 	cfg := fresh(t)
 	p := &testPlane{}
 	srv := p.serve(t)
-	t.Setenv("HANGAR_ADMIN_PASSWORD", "s3cret")
+	t.Setenv("WINGSMITH_ADMIN_PASSWORD", "s3cret")
 	if _, _, code := runWith(t, cfg, "login", "--server", srv.URL, "--no-input"); code != 0 {
 		t.Fatal("login failed")
 	}
@@ -176,9 +176,9 @@ func TestLogoutSaysSoWhenItCouldNotRevoke(t *testing.T) {
 // whoami reports the token the context really has.
 func TestTheFakeIsSealed(t *testing.T) {
 	cfg := fresh(t)
-	t.Setenv("HANGAR_FAKE", "1")
-	t.Setenv("HANGAR_SERVER", "http://127.0.0.1:1")
-	t.Setenv("HANGAR_ADMIN_PASSWORD", "anything")
+	t.Setenv("WINGSMITH_FAKE", "1")
+	t.Setenv("WINGSMITH_SERVER", "http://127.0.0.1:1")
+	t.Setenv("WINGSMITH_ADMIN_PASSWORD", "anything")
 	if _, errOut, code := runWith(t, cfg, "login", "--no-input"); code != 0 {
 		t.Fatalf("fake login exit %d: %s", code, errOut)
 	}
@@ -208,7 +208,7 @@ func TestAContextOverrideIsNotSavedAsTheDefault(t *testing.T) {
 	srv := p.serve(t)
 	f, _ := config.Load(cfg)
 	f.SetContext("default", config.Context{Server: srv.URL})
-	f.SetContext("other", config.Context{Server: srv.URL, Token: "hgrs1_other", RefreshToken: "hgrr1_other"})
+	f.SetContext("other", config.Context{Server: srv.URL, Token: "wss1_other", RefreshToken: "wsr1_other"})
 	if err := f.Save(); err != nil {
 		t.Fatal(err)
 	}

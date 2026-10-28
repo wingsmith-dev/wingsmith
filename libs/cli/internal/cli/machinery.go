@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func allocationNoun() noun[api.Allocation] {
@@ -33,10 +33,10 @@ for auditing; --live shows only what is held now.
 
 gang_complete is false when the allocation holds fewer live devices than it
 asked for.`,
-		example: `  hgr allocation ls --live
-  hgr allocation ls --cluster iad-1 --project core
-  hgr allocation ls --device dev_01m0dj…
-  hgr allocation ls -o json | jq '.items[] | select(.gang_complete | not)'`,
+		example: `  wings allocation ls --live
+  wings allocation ls --cluster iad-1 --project core
+  wings allocation ls --device dev_01m0dj…
+  wings allocation ls -o json | jq '.items[] | select(.gang_complete | not)'`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Allocation], error) {
 			return b.Allocations(ctx, o)
 		},
@@ -141,9 +141,9 @@ for and the version the cluster reports running.
 
 behind is computed by the plane. A component no cluster has reported on counts
 as behind.`,
-		example: `  hgr component ls --behind
-  hgr component ls --cluster iad-1
-  hgr component get scheduler`,
+		example: `  wings component ls --behind
+  wings component ls --cluster iad-1
+  wings component get scheduler`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Component], error) {
 			return b.Components(ctx, o)
 		},
@@ -216,9 +216,9 @@ carry no revision.
 
 --since and --until take a duration (30m, meaning that long ago) or an RFC 3339
 timestamp.`,
-		example: `  hgr event ls --since 30m
-  hgr event ls --cluster iad-1 --severity error
-  hgr event ls --kind device.unhealthy --all`,
+		example: `  wings event ls --since 30m
+  wings event ls --cluster iad-1 --severity error
+  wings event ls --kind device.unhealthy --all`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Event], error) {
 			return b.Events(ctx, o)
 		},
@@ -266,7 +266,7 @@ timestamp.`,
 			if e.OperationID == nil {
 				return nil
 			}
-			return []errs.Action{{Description: "The operation behind it", Command: "hgr operation get " + *e.OperationID}}
+			return []errs.Action{{Description: "The operation behind it", Command: "wings operation get " + *e.OperationID}}
 		},
 	}
 }
@@ -283,10 +283,10 @@ and why, and its progress.
 Imperative changes go through operations, not verbs on the object, so
 each one records who asked, the reason, the attempts, and the outcome. Create
 one, then poll it with get or wait.`,
-		example: `  hgr operation ls --phase running
-  hgr operation create node.drain iad-1-n01 --reason firmware --wait
-  hgr operation get opr_01m0dj…
-  hgr operation cancel opr_01m0dj…`,
+		example: `  wings operation ls --phase running
+  wings operation create node.drain iad-1-n01 --reason firmware --wait
+  wings operation get opr_01m0dj…
+  wings operation cancel opr_01m0dj…`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Operation], error) {
 			return b.Operations(ctx, o)
 		},
@@ -328,11 +328,11 @@ one, then poll it with get or wait.`,
 		},
 		next: func(o api.Operation) []errs.Action {
 			if o.Terminal() {
-				return []errs.Action{{Description: "What it emitted", Command: "hgr event ls --kind " + o.Type}}
+				return []errs.Action{{Description: "What it emitted", Command: "wings event ls --kind " + o.Type}}
 			}
 			return []errs.Action{
-				{Description: "Wait for it", Command: "hgr operation wait " + o.ID},
-				{Description: "Cancel it", Command: "hgr operation cancel " + o.ID},
+				{Description: "Wait for it", Command: "wings operation wait " + o.ID},
+				{Description: "Cancel it", Command: "wings operation cancel " + o.ID},
 			}
 		},
 	}
@@ -413,11 +413,11 @@ the type acts on, so the plane can refuse a node.drain aimed at a device.
 
 The types are node.drain, node.cordon and node.uncordon, which the cluster's
 operator carries out, and workload.scale, workload.pause, workload.reshape and
-workload.drain, which the plane carries out itself (hgr workload scale, pause
-and drain start those for you). Benchmarks start with hgr benchmark run.`,
-		Example: `  hgr operation create node.drain iad-1-n01 --reason firmware
-  hgr operation create node.cordon iad-1-n02 --reason ecc --wait
-  hgr operation create node.uncordon iad-1-n02 --reason repaired`,
+workload.drain, which the plane carries out itself (wings workload scale, pause
+and drain start those for you). Benchmarks start with wings benchmark run.`,
+		Example: `  wings operation create node.drain iad-1-n01 --reason firmware
+  wings operation create node.cordon iad-1-n02 --reason ecc --wait
+  wings operation create node.uncordon iad-1-n02 --reason repaired`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkOperationType(args[0]); err != nil {
@@ -507,8 +507,8 @@ func newOperationWaitCmd(app *App) *cobra.Command {
 A failure is reported with the operation's own error. Exits 11
 (OPERATION_FAILED) if the operation ends in anything but success, and 8
 (TIMEOUT) if it is still running when --wait-timeout runs out.`,
-		Example: `  hgr operation wait opr_01m0dj…
-  hgr operation wait opr_01m0dj… --interval 5s --wait-timeout 2h`,
+		Example: `  wings operation wait opr_01m0dj…
+  wings operation wait opr_01m0dj… --interval 5s --wait-timeout 2h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			every, err := pollInterval(interval)
@@ -531,7 +531,7 @@ func (a *App) idempotencyKey(given string) string {
 	if key == "" {
 		var b [16]byte
 		if _, err := rand.Read(b[:]); err == nil {
-			key = "hgr-" + hex.EncodeToString(b[:])
+			key = "wings-" + hex.EncodeToString(b[:])
 		}
 	}
 	if key != "" {
@@ -576,7 +576,7 @@ func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Durati
 		if expired && op.ID != "" {
 			e = errs.New(errs.CodeTimeout, "operation %s was still %s after %s", op.ID, op.Phase, a.WaitTimeout).
 				WithCause(e.Cause).
-				WithFix("Keep watching", "hgr operation wait "+op.ID)
+				WithFix("Keep watching", "wings operation wait "+op.ID)
 		}
 		return e
 	}
@@ -589,7 +589,7 @@ func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Durati
 	if op.Error != nil {
 		e = e.WithCause(*op.Error)
 	}
-	return e.WithFix("Inspect it", "hgr operation get "+op.ID)
+	return e.WithFix("Inspect it", "wings operation get "+op.ID)
 }
 
 // poll calls check every `every` until it reports done, the wait runs out, or
@@ -664,13 +664,13 @@ func (a *App) emitOperation(cmd *cobra.Command, op api.Operation) error {
 	})
 }
 
-// operationTargetKinds is every operation type hgr starts, and the kind of
+// operationTargetKinds is every operation type wings starts, and the kind of
 // object each acts upon. The kind is written beside a bare name before the
 // request leaves, because a name carries nothing about its own kind.
 //
 // It lists only what something will carry out: the operator runs node drain
 // and cordon, and the plane runs the workload changes itself. Benchmarks are
-// started with hgr benchmark run, which goes through their own collection.
+// started with wings benchmark run, which goes through their own collection.
 var operationTargetKinds = map[string]string{
 	"node.drain":       "node",
 	"node.cordon":      "node",
@@ -698,7 +698,7 @@ func checkOperationType(opType string) error {
 		return nil
 	}
 	return errs.New(errs.CodeUsage, "unknown operation type %q", opType).
-		WithCause("hgr starts " + strings.Join(operationTypes(), ", "))
+		WithCause("wings starts " + strings.Join(operationTypes(), ", "))
 }
 
 // qualifyOperationTarget turns a human reference into a form the plane can read

@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/config"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/fake"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/fake"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 // Version is stamped at build time.
@@ -150,9 +150,9 @@ func Execute() int {
 func commandPath(root *cobra.Command) string {
 	cmd, _, err := root.Find(os.Args[1:])
 	if err != nil || cmd == nil {
-		return "hgr"
+		return "wings"
 	}
-	return strings.TrimPrefix(cmd.CommandPath(), "hgr ")
+	return strings.TrimPrefix(cmd.CommandPath(), "wings ")
 }
 
 // cmdPath is the canonical invocation path of a command, without the binary
@@ -164,7 +164,7 @@ func cmdPath(cmd *cobra.Command) string {
 // bootstrapFallback builds the renderer for failures that happen before setup
 // finished, so a bad flag still answers in the right shape.
 func (a *App) bootstrapFallback() {
-	agent := a.flags.agent || config.EnvBool("HANGAR_AGENT")
+	agent := a.flags.agent || config.EnvBool("WINGSMITH_AGENT")
 	format := output.FormatHuman
 	if agent {
 		format = output.FormatJSON
@@ -176,9 +176,10 @@ func (a *App) bootstrapFallback() {
 
 func newRootCmd(app *App) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "hgr",
-		Short: "Hangar: control plane for many GPU clusters and many models",
-		Long: `hgr is the Hangar command line. It talks only to the control plane's HTTP API.
+		Use:   "wings",
+		Short: "Wingsmith: control plane for many GPU clusters and many models",
+		Long: `wings is the Wingsmith command line. It talks only to the control plane's
+HTTP API.
 
 Most nouns are read-only here: ls and get for clusters, nodes, devices, pools,
 artifacts, deployments, projects, quotas, policies and the rest. The verbs that
@@ -195,8 +196,8 @@ Enrolling clusters, publishing artifacts and editing endpoints, projects and
 policies are done in the console for now.
 
 Commands are noun-verb. -o json prints the API's own objects, and
-HANGAR_AGENT=1 wraps every result in a stable JSON envelope with suggested next
-commands. --fake answers from an offline copy of the plane.`,
+WINGSMITH_AGENT=1 wraps every result in a stable JSON envelope with suggested
+next commands. --fake answers from an offline copy of the plane.`,
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		DisableAutoGenTag: true,
@@ -211,7 +212,7 @@ commands. --fake answers from an offline copy of the plane.`,
 	f.StringVar(&g.context, "context", "", "named context from the config file")
 	f.StringVar(&g.project, "project", "", "project new workloads belong to and listings are limited to ('' for every project)")
 	f.StringVar(&g.server, "server", "", "control plane base URL")
-	f.StringVar(&g.token, "token", "", "API token (prefer HANGAR_TOKEN)")
+	f.StringVar(&g.token, "token", "", "API token (prefer WINGSMITH_TOKEN)")
 	f.StringVar(&g.configPath, "config", "", "path to the config file")
 	f.StringVar(&g.timeout, "timeout", "", "per-request timeout (default 60s)")
 	f.StringVar(&g.waitTO, "wait-timeout", "", "how long --wait and operation wait poll before giving up (default 30m)")
@@ -286,24 +287,24 @@ func (a *App) setup(cmd *cobra.Command) error {
 	a.authOptional = cmd.Annotations[annotationAuthOptional] == "true"
 	a.local = isLocal(cmd) || cmd.Annotations[annotationHelpOnly] == "true"
 
-	cfg, err := config.Load(firstNonEmpty(g.configPath, os.Getenv("HANGAR_CONFIG")))
+	cfg, err := config.Load(firstNonEmpty(g.configPath, os.Getenv("WINGSMITH_CONFIG")))
 	if err != nil {
 		return err
 	}
 	a.Cfg = cfg
 
-	if name := firstNonEmpty(g.context, os.Getenv("HANGAR_CONTEXT")); name != "" {
+	if name := firstNonEmpty(g.context, os.Getenv("WINGSMITH_CONTEXT")); name != "" {
 		cfg.Override(name)
 		if _, ok := cfg.Contexts[name]; !ok && name != "default" {
 			return errs.New(errs.CodeNotFound, "no context named %q", name).
-				WithFix("List contexts", "hgr context ls")
+				WithFix("List contexts", "wings context ls")
 		}
 	}
 	a.Context = cfg.Context("")
-	if v := firstNonEmpty(g.server, os.Getenv("HANGAR_SERVER")); v != "" {
+	if v := firstNonEmpty(g.server, os.Getenv("WINGSMITH_SERVER")); v != "" {
 		a.Context.Server = v
 	}
-	if v := firstNonEmpty(g.token, os.Getenv("HANGAR_TOKEN")); v != "" {
+	if v := firstNonEmpty(g.token, os.Getenv("WINGSMITH_TOKEN")); v != "" {
 		a.Context.Token = v
 	}
 	// An explicit --project '' clears a project set in the environment or the
@@ -311,22 +312,22 @@ func (a *App) setup(cmd *cobra.Command) error {
 	if fl := cmd.Flag("project"); fl != nil && fl.Changed {
 		a.Project = g.project
 	} else {
-		a.Project = firstNonEmpty(os.Getenv("HANGAR_PROJECT"), a.Context.Project)
+		a.Project = firstNonEmpty(os.Getenv("WINGSMITH_PROJECT"), a.Context.Project)
 	}
 	a.projectSet = a.Project != ""
 	if !a.projectSet {
 		a.Project = "default"
 	}
 
-	a.Agent = g.agent || config.EnvBool("HANGAR_AGENT")
-	a.Quiet = g.quiet || config.EnvBool("HANGAR_QUIET")
-	a.Yes = g.yes || config.EnvBool("HANGAR_YES")
+	a.Agent = g.agent || config.EnvBool("WINGSMITH_AGENT")
+	a.Quiet = g.quiet || config.EnvBool("WINGSMITH_QUIET")
+	a.Yes = g.yes || config.EnvBool("WINGSMITH_YES")
 	a.Force = g.force
-	a.Debug = g.debug || config.EnvBool("HANGAR_DEBUG")
-	a.NoInput = g.noInput || config.EnvBool("HANGAR_NO_INPUT") || a.Agent || !ui.StdinIsTerminal()
+	a.Debug = g.debug || config.EnvBool("WINGSMITH_DEBUG")
+	a.NoInput = g.noInput || config.EnvBool("WINGSMITH_NO_INPUT") || a.Agent || !ui.StdinIsTerminal()
 
 	a.Timeout = 60 * time.Second
-	if v := firstNonEmpty(g.timeout, os.Getenv("HANGAR_TIMEOUT")); v != "" {
+	if v := firstNonEmpty(g.timeout, os.Getenv("WINGSMITH_TIMEOUT")); v != "" {
 		d, err := api.ParseDuration(v)
 		if err != nil {
 			return err
@@ -334,7 +335,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 		a.Timeout = d
 	}
 	a.WaitTimeout = 30 * time.Minute
-	if v := firstNonEmpty(g.waitTO, os.Getenv("HANGAR_WAIT_TIMEOUT")); v != "" {
+	if v := firstNonEmpty(g.waitTO, os.Getenv("WINGSMITH_WAIT_TIMEOUT")); v != "" {
 		d, err := api.ParseDuration(v)
 		if err != nil {
 			return err
@@ -381,7 +382,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 // command that fixes it: a local command falls back to `auto`, and every other
 // command says which key to repair.
 func (a *App) resolveFormat() (output.Format, string, error) {
-	explicit := firstNonEmpty(a.flags.output, os.Getenv("HANGAR_OUTPUT"))
+	explicit := firstNonEmpty(a.flags.output, os.Getenv("WINGSMITH_OUTPUT"))
 	raw := firstNonEmpty(explicit, a.Cfg.Output, string(output.FormatAuto))
 	f, arg, err := output.ParseFormat(raw)
 	if err != nil && explicit == "" {
@@ -390,7 +391,7 @@ func (a *App) resolveFormat() (output.Format, string, error) {
 		} else {
 			return "", "", errs.As(err).
 				WithCausef("output %q is set in %s", a.Cfg.Output, a.Cfg.Path()).
-				WithFix("Reset it", "hgr config set output auto")
+				WithFix("Reset it", "wings config set output auto")
 		}
 	}
 	if err != nil {
@@ -408,14 +409,14 @@ func (a *App) resolveFormat() (output.Format, string, error) {
 
 // UseFake reports whether the offline backend was requested.
 func (a *App) UseFake() bool {
-	return a.flags.fake || config.EnvBool("HANGAR_FAKE") || a.Cfg.Fake
+	return a.flags.fake || config.EnvBool("WINGSMITH_FAKE") || a.Cfg.Fake
 }
 
 // connect selects the backend. The fake is opt-in: silently simulating a
 // control plane the caller believes is real is worse than failing to reach it.
 func (a *App) connect() error {
 	if a.UseFake() {
-		b, err := fake.New(os.Getenv("HANGAR_FAKE_STATE"))
+		b, err := fake.New(os.Getenv("WINGSMITH_FAKE_STATE"))
 		if err != nil {
 			return err
 		}
@@ -434,8 +435,8 @@ func (a *App) connect() error {
 	}
 	if a.Context.Token == "" && !a.authOptional {
 		return errs.New(errs.CodeAuthRequired, "no token for context %q", a.Cfg.CurrentContext).
-			WithCausef("looked in --token, HANGAR_TOKEN, and %s", a.Cfg.Path()).
-			WithFix("Log in", "hgr login").
+			WithCausef("looked in --token, WINGSMITH_TOKEN, and %s", a.Cfg.Path()).
+			WithFix("Log in", "wings login").
 			WithFix("Or work offline", rerun("--fake"))
 	}
 	c, err := api.NewClient(server, a.Context.Token, a.Project, Version, a.Timeout)
@@ -449,7 +450,7 @@ func (a *App) connect() error {
 
 // renewSessions lets the client renew an expired session with the stored
 // refresh token and write the rotated pair back. Only when the token in use is
-// the stored one: a token from --token or HANGAR_TOKEN is somebody else's
+// the stored one: a token from --token or WINGSMITH_TOKEN is somebody else's
 // session, and renewing the stored one in its place would switch identities.
 func (a *App) renewSessions(c *api.Client) {
 	name := a.Cfg.CurrentContext
@@ -469,13 +470,13 @@ func (a *App) renewSessions(c *api.Client) {
 }
 
 // server is the control plane URL for this invocation. There is no default:
-// Hangar is self-hosted, and a compiled-in URL would be somebody else's.
+// Wingsmith is self-hosted, and a compiled-in URL would be somebody else's.
 func (a *App) server() (string, error) {
 	if a.Context.Server == "" {
 		return "", errs.New(errs.CodeUsage, "no control plane URL configured for context %q", a.Cfg.CurrentContext).
-			WithCausef("looked in --server, HANGAR_SERVER, and %s", a.Cfg.Path()).
+			WithCausef("looked in --server, WINGSMITH_SERVER, and %s", a.Cfg.Path()).
 			WithFlag("--server").
-			WithFix("Set one", "hgr config set context.server http://localhost:8000").
+			WithFix("Set one", "wings config set context.server http://localhost:8000").
 			WithFix("Or work offline", rerun("--fake"))
 	}
 	if err := config.ValidateServer(a.Context.Server); err != nil {
@@ -526,7 +527,7 @@ func (a *App) Confirm(question string) error {
 // Credentials in it are replaced, because the suggestion is printed, logged by
 // CI and pasted into chat.
 func rerun(extra ...string) string {
-	parts := append([]string{"hgr"}, redactArgs(os.Args[1:])...)
+	parts := append([]string{"wings"}, redactArgs(os.Args[1:])...)
 	for _, f := range extra {
 		if !slices.Contains(parts, f) {
 			parts = append(parts, f)
@@ -541,7 +542,7 @@ func rerun(extra ...string) string {
 // secretFlags take a credential as their value.
 var secretFlags = []string{"--token", "--password"}
 
-// secretKeys are config keys whose value, on `hgr config set`, is a credential.
+// secretKeys are config keys whose value, on `wings config set`, is a credential.
 var secretKeys = []string{"context.token", "context.refresh_token"}
 
 const redacted = "<redacted>"

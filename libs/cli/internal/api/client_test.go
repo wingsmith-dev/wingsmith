@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // serveJSON stands a plane up and points a client at it. The handler sees the real request the
@@ -20,7 +20,7 @@ func serveJSON(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Serve
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	c, err := NewClient(srv.URL, "hgr_pat_secret", "prj_1", "1.2.3", 5*time.Second)
+	c, err := NewClient(srv.URL, "ws_pat_secret", "prj_1", "1.2.3", 5*time.Second)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
@@ -78,16 +78,16 @@ func TestEveryRequestCarriesTheCredential(t *testing.T) {
 	if _, err := c.Clusters(context.Background(), ListOpts{}); err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if h := got.Header.Get("Authorization"); h != "Bearer hgr_pat_secret" {
+	if h := got.Header.Get("Authorization"); h != "Bearer ws_pat_secret" {
 		t.Errorf("Authorization = %q", h)
 	}
-	if _, present := got.Header["X-Hangar-Project"]; present {
-		t.Error("the configured project was sent as an X-Hangar-Project header")
+	if _, present := got.Header["X-Wingsmith-Project"]; present {
+		t.Error("the configured project was sent as an X-Wingsmith-Project header")
 	}
 	if h := got.Header.Get("Accept"); h != "application/json" {
 		t.Errorf("Accept = %q", h)
 	}
-	if h := got.Header.Get("User-Agent"); h != "hgr/1.2.3" {
+	if h := got.Header.Get("User-Agent"); h != "wings/1.2.3" {
 		t.Errorf("User-Agent = %q, want the CLI's version", h)
 	}
 	if got.URL.Path != "/v1/clusters" {

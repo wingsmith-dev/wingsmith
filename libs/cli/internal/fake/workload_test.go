@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // The plane refuses task and gang workloads at creation, since nothing renders

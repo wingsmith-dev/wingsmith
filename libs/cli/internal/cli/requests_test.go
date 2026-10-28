@@ -110,9 +110,9 @@ func TestWriteVerbsSendWhatThePlaneReads(t *testing.T) {
 	for _, c := range cases {
 		t.Run(strings.Join(c.args, " "), func(t *testing.T) {
 			srv, writes := fixturePlane(t)
-			t.Setenv("HANGAR_FAKE", "0")
-			t.Setenv("HANGAR_SERVER", srv.URL)
-			t.Setenv("HANGAR_TOKEN", "test-token")
+			t.Setenv("WINGSMITH_FAKE", "0")
+			t.Setenv("WINGSMITH_SERVER", srv.URL)
+			t.Setenv("WINGSMITH_TOKEN", "test-token")
 			out, errOut, code := run(t, append(c.args, "--yes", "-o", "json")...)
 			if code != 0 {
 				t.Fatalf("exit %d\n%s%s", code, out, errOut)

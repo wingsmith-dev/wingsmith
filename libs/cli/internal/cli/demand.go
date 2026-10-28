@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func artifactNoun() noun[api.Artifact] {
@@ -27,9 +27,9 @@ func artifactNoun() noun[api.Artifact] {
 Weights, fine-tunes, quantized copies and LoRA adapters are all artifacts,
 told apart by kind. Locations say where the files can be fetched from; the
 control plane never stores or serves them.`,
-		example: `  hgr artifact ls
-  hgr artifact ls --kind adapter
-  hgr artifact get llama-3.1-70b-instruct`,
+		example: `  wings artifact ls
+  wings artifact ls --kind adapter
+  wings artifact get llama-3.1-70b-instruct`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Artifact], error) {
 			return b.Artifacts(ctx, o)
 		},
@@ -95,7 +95,7 @@ control plane never stores or serves them.`,
 			t.Render(w)
 		},
 		next: func(a api.Artifact) []errs.Action {
-			return []errs.Action{{Description: "Workloads that serve it", Command: "hgr workload ls --artifact " + a.ID}}
+			return []errs.Action{{Description: "Workloads that serve it", Command: "wings workload ls --artifact " + a.ID}}
 		},
 	}
 }
@@ -161,10 +161,10 @@ workload lands on. Its replica counts are that cluster's share of the
 workload's total. Serving settings, adapters, overrides and labels belong to
 the workload; admission is per deployment, because a workload can run in one
 cluster and wait on quota in another.`,
-		example: `  hgr deployment ls
-  hgr deployment ls --cluster iad-1 --phase placed
-  hgr deployment ls --workload chat
-  hgr deployment get chat`,
+		example: `  wings deployment ls
+  wings deployment ls --cluster iad-1 --phase placed
+  wings deployment ls --workload chat
+  wings deployment get chat`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Deployment], error) {
 			return b.Deployments(ctx, o)
 		},
@@ -283,10 +283,10 @@ cluster and wait on quota in another.`,
 		},
 		next: func(d api.Deployment) []errs.Action {
 			return []errs.Action{
-				{Description: "The workload it is a share of", Command: "hgr workload get " + d.WorkloadID},
-				{Description: "What happened to it", Command: "hgr deployment events " + d.Name},
-				{Description: "What holds its devices", Command: "hgr allocation ls --cluster " + d.ClusterID},
-				{Description: "Benchmark it", Command: "hgr benchmark run " + d.Name},
+				{Description: "The workload it is a share of", Command: "wings workload get " + d.WorkloadID},
+				{Description: "What happened to it", Command: "wings deployment events " + d.Name},
+				{Description: "What holds its devices", Command: "wings allocation ls --cluster " + d.ClusterID},
+				{Description: "Benchmark it", Command: "wings benchmark run " + d.Name},
 			}
 		},
 		extra: func(app *App) []*cobra.Command {
@@ -330,11 +330,11 @@ with two deployments.
 Workloads are long-running inference services. Batch tasks and gang-scheduled
 jobs are on the roadmap: the kind field has room for them, and the plane
 refuses them at creation until something runs them.`,
-		example: `  hgr workload ls
-  hgr workload ls --phase pending
-  hgr workload get chat
-  hgr workload create assistant --project core --artifact llama-3.1-70b-instruct --class h100-80 --context-length 8192
-  hgr workload scale chat 4`,
+		example: `  wings workload ls
+  wings workload ls --phase pending
+  wings workload get chat
+  wings workload create assistant --project core --artifact llama-3.1-70b-instruct --class h100-80 --context-length 8192
+  wings workload scale chat 4`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Workload], error) {
 			return b.Workloads(ctx, o)
 		},
@@ -459,16 +459,16 @@ refuses them at creation until something runs them.`,
 		},
 		next: func(wl api.Workload) []errs.Action {
 			out := []errs.Action{
-				{Description: "Its shares, per cluster", Command: "hgr deployment ls --workload " + wl.Name},
+				{Description: "Its shares, per cluster", Command: "wings deployment ls --workload " + wl.Name},
 				{Description: "Everything running this exact configuration",
-					Command: "hgr workload ls --serving-digest " + wl.ServingDigest},
+					Command: "wings workload ls --serving-digest " + wl.ServingDigest},
 			}
 			if wl.Paused {
-				return append(out, errs.Action{Description: "Let it run again", Command: "hgr workload resume " + wl.Name})
+				return append(out, errs.Action{Description: "Let it run again", Command: "wings workload resume " + wl.Name})
 			}
 			return append(out,
-				errs.Action{Description: "Change the total", Command: "hgr workload scale " + wl.Name + " <n>"},
-				errs.Action{Description: "Take it out of one cluster", Command: "hgr workload drain " + wl.Name + " --cluster <cluster>"},
+				errs.Action{Description: "Change the total", Command: "wings workload scale " + wl.Name + " <n>"},
+				errs.Action{Description: "Take it out of one cluster", Command: "wings workload drain " + wl.Name + " --cluster <cluster>"},
 			)
 		},
 	}
@@ -620,18 +620,18 @@ needs --output-modality image|video instead of --context-length. --model-class
 and --sampling-default go into the worker's stage configuration; the second is
 how a distilled model gets its step count, because omni defaults every model to
 50 inference steps.`,
-		Example: `  hgr workload create assistant --project core --artifact llama-3.1-70b-instruct \
+		Example: `  wings workload create assistant --project core --artifact llama-3.1-70b-instruct \
     --class h100-80 --context-length 8192 --scale 2
-  hgr workload create assistant-tp8 --project core --artifact llama-3.1-70b-instruct \
+  wings workload create assistant-tp8 --project core --artifact llama-3.1-70b-instruct \
     --class h100-80 --devices 8 --tensor-parallel 8 --context-length 32768
-  hgr workload create flux-schnell --project core --artifact flux.1-schnell \
+  wings workload create flux-schnell --project core --artifact flux.1-schnell \
     --class h100-80 --engine omni --engine-runtime-version 1.4.1 \
     --output-modality image --sampling-default num_inference_steps=4`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {
 				return errs.New(errs.CodeInputRequired, "a workload needs --artifact and --project").
-					WithCause("what to run, and who is charged for it; --project may also come from HANGAR_PROJECT or context.project")
+					WithCause("what to run, and who is charged for it; --project may also come from WINGSMITH_PROJECT or context.project")
 			}
 			project := app.Project
 			omni := isOmniEngine(engine)
@@ -856,7 +856,7 @@ func newWorkloadDeleteCmd(app *App) *cobra.Command {
 		Long: `Delete a workload and every cluster's share of it.
 
 Deployments have no delete of their own. To take a workload out of one
-cluster, use ` + "`hgr workload drain`" + `, which drives that cluster's share to zero
+cluster, use ` + "`wings workload drain`" + `, which drives that cluster's share to zero
 and removes the deployment once its replicas are gone.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -902,8 +902,8 @@ func newWorkloadScaleCmd(app *App) *cobra.Command {
 
 This starts a workload.scale operation, because the new total has to find
 quota and capacity and can fail or wait. --wait polls it until it finishes.`,
-		Example: `  hgr workload scale chat 12
-  hgr workload scale chat 12 --wait`,
+		Example: `  wings workload scale chat 12
+  wings workload scale chat 12 --wait`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			desired, err := strconv.Atoi(args[1])
@@ -942,8 +942,8 @@ somewhere else. Nothing is deleted and no endpoint target is removed.`
 
 The shares come back from the totals, in the clusters that were already holding
 them. A workload that was paused for long enough that its clusters filled up can
-come back partially placed, which is what the placed count on ` + "`hgr workload get`" + `
-is for.`
+come back partially placed, which is what the placed count on
+` + "`wings workload get`" + ` is for.`
 	}
 	cmd := &cobra.Command{
 		Use:   use,
@@ -977,13 +977,13 @@ func newWorkloadDrainCmd(app *App) *cobra.Command {
 That cluster's share goes to zero and its endpoint targets are removed. Once
 its replicas are gone the deployment is deleted, and the remaining clusters are
 re-expanded to carry the total.`,
-		Example: `  hgr workload drain chat --cluster sjc-1
-  hgr workload drain chat --cluster sjc-1 --wait`,
+		Example: `  wings workload drain chat --cluster sjc-1
+  wings workload drain chat --cluster sjc-1 --wait`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cluster == "" {
 				return errs.New(errs.CodeInputRequired, "drain needs --cluster").
-					WithCause("draining a workload everywhere is `hgr workload rm`")
+					WithCause("draining a workload everywhere is `wings workload rm`")
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
@@ -1073,11 +1073,11 @@ made. deployment.dispatched means the plane delivered the declared state to the
 cluster. deployment.pending, deployment.placed and deployment.failed are what
 the cluster reported when it reconciled it.
 
-` + "`hgr deployment get`" + ` shows only the latest status; this shows how it got
+` + "`wings deployment get`" + ` shows only the latest status; this shows how it got
 there, for example an hour spent waiting for weights to download.`,
-		Example: `  hgr deployment events chat
-  hgr deployment events chat --since 1h
-  hgr deployment events chat --severity error`,
+		Example: `  wings deployment events chat
+  wings deployment events chat --since 1h
+  wings deployment events chat --severity error`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -1134,7 +1134,7 @@ there, for example an hour spent waiting for weights to download.`,
 					t.Render(w)
 				},
 				Next: []errs.Action{
-					{Description: "The deployment itself", Command: "hgr deployment get " + d.Name},
+					{Description: "The deployment itself", Command: "wings deployment get " + d.Name},
 				},
 			})
 		},
@@ -1167,9 +1167,9 @@ func endpointNoun() noun[api.Endpoint] {
 It routes to deployments in any cluster through weighted targets and a failover
 order, so it names no cluster itself. Deployments behind it can be replaced
 without clients noticing.`,
-		example: `  hgr endpoint ls
-  hgr endpoint ls --project core
-  hgr endpoint get chat`,
+		example: `  wings endpoint ls
+  wings endpoint ls --project core
+  wings endpoint get chat`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Endpoint], error) {
 			return b.Endpoints(ctx, o)
 		},
@@ -1236,7 +1236,7 @@ without clients noticing.`,
 			if len(e.Targets) == 0 {
 				return nil
 			}
-			return []errs.Action{{Description: "Its primary deployment", Command: "hgr deployment get " + e.Targets[0].DeploymentID}}
+			return []errs.Action{{Description: "Its primary deployment", Command: "wings deployment get " + e.Targets[0].DeploymentID}}
 		},
 		extra: func(app *App) []*cobra.Command {
 			return []*cobra.Command{newEndpointSLACmd(app)}

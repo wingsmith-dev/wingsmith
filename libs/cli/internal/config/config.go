@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// There is no default server. Hangar is self-hosted, so any URL compiled in
-// would belong to somebody else, and the first thing `hgr login` sends to it
+// There is no default server. Wingsmith is self-hosted, so any URL compiled in
+// would belong to somebody else, and the first thing `wings login` sends to it
 // is the admin password.
 
 // Context is one named server + credential + tenancy set. Named after the
@@ -38,7 +38,7 @@ type File struct {
 
 	path string
 	// saved is the current_context Save writes, changed only by
-	// Set("current_context"). A --context or HANGAR_CONTEXT for one command
+	// Set("current_context"). A --context or WINGSMITH_CONTEXT for one command
 	// moves CurrentContext but never becomes the default when that command
 	// writes the file.
 	saved string
@@ -47,34 +47,34 @@ type File struct {
 // Path returns the file the config was loaded from.
 func (f *File) Path() string { return f.path }
 
-// DefaultPath is the config location, honouring HANGAR_CONFIG and XDG.
+// DefaultPath is the config location, honouring WINGSMITH_CONFIG and XDG.
 func DefaultPath() string {
-	if p := os.Getenv("HANGAR_CONFIG"); p != "" {
+	if p := os.Getenv("WINGSMITH_CONFIG"); p != "" {
 		return p
 	}
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "hangar", "config.yaml")
+		return filepath.Join(d, "wingsmith", "config.yaml")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "hangar-config.yaml"
+		return "wingsmith-config.yaml"
 	}
-	return filepath.Join(home, ".config", "hangar", "config.yaml")
+	return filepath.Join(home, ".config", "wingsmith", "config.yaml")
 }
 
 // StateDir is where the CLI keeps mutable local state (fake backend data).
 func StateDir() string {
-	if p := os.Getenv("HANGAR_STATE_DIR"); p != "" {
+	if p := os.Getenv("WINGSMITH_STATE_DIR"); p != "" {
 		return p
 	}
 	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
-		return filepath.Join(d, "hangar")
+		return filepath.Join(d, "wingsmith")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".hangar-state"
+		return ".wingsmith-state"
 	}
-	return filepath.Join(home, ".local", "state", "hangar")
+	return filepath.Join(home, ".local", "state", "wingsmith")
 }
 
 // Load reads the config file, returning an empty document when absent.
@@ -188,7 +188,7 @@ func (f *File) ContextNames() []string {
 	return out
 }
 
-// settable enumerates the dotted keys `hgr config set` accepts. Keeping this
+// settable enumerates the dotted keys `wings config set` accepts. Keeping this
 // explicit means a typo is an error instead of a silently ignored setting.
 var settable = []string{
 	"current_context", "output", "fake",
@@ -321,7 +321,7 @@ func unknownKey(key string) error {
 	if len(near) > 0 {
 		e.WithFix("Did you mean "+strings.Join(near, ", "), "")
 	}
-	return e.WithFix("List every key", "hgr config list")
+	return e.WithFix("List every key", "wings config list")
 }
 
 // Redact masks a credential for display.

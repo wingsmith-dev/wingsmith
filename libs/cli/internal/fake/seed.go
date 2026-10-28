@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
 	"strings"
 )
 
@@ -310,7 +310,7 @@ func seed() *state {
 		CreatedAt:      created,
 		Revision:       revision(created),
 		Locations: []api.ArtifactLocation{
-			{Scheme: "s3", URI: "s3://hangar-weights/llama-3.1-70b", Region: strptr("us-east-1"), Preferred: true},
+			{Scheme: "s3", URI: "s3://wingsmith-weights/llama-3.1-70b", Region: strptr("us-east-1"), Preferred: true},
 		},
 		Upstream: api.ArtifactUpstream{
 			Provider: strptr("meta-llama"), ProviderModelID: strptr("Llama-3.1-70B-Instruct"),
@@ -640,7 +640,7 @@ func seed() *state {
 		},
 	)
 
-	// One deployment's whole timeline, so `hgr deployment events` has something to
+	// One deployment's whole timeline, so `wings deployment events` has something to
 	// show offline. Seeded as the awkward case (weights that took most of an hour,
 	// then a rollout that filled in one replica at a time) because a deployment
 	// that came up instantly would not exercise what the command exists to reveal.
@@ -710,7 +710,7 @@ func seed() *state {
 		CreatedAt:      created,
 		Revision:       revision(created),
 		Locations: []api.ArtifactLocation{
-			{Scheme: "s3", URI: "s3://hangar-weights/flux.1-schnell", Region: strptr("us-east-1"), Preferred: true},
+			{Scheme: "s3", URI: "s3://wingsmith-weights/flux.1-schnell", Region: strptr("us-east-1"), Preferred: true},
 		},
 		Upstream: api.ArtifactUpstream{
 			Provider: strptr("black-forest-labs"), ProviderModelID: strptr("FLUX.1-schnell"),

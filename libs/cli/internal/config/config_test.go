@@ -8,25 +8,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 func tempConfig(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "hangar", "config.yaml")
+	return filepath.Join(t.TempDir(), "wingsmith", "config.yaml")
 }
 
-// TestDefaultPathHonoursTheOverridesInPrecedenceOrder. HANGAR_CONFIG is what a script or a CI job
+// TestDefaultPathHonoursTheOverridesInPrecedenceOrder. WINGSMITH_CONFIG is what a script or a CI job
 // sets to keep out of the operator's real config; XDG is the fallback a desktop expects.
 func TestDefaultPathHonoursTheOverridesInOrder(t *testing.T) {
-	t.Setenv("HANGAR_CONFIG", "/explicit/config.yaml")
+	t.Setenv("WINGSMITH_CONFIG", "/explicit/config.yaml")
 	t.Setenv("XDG_CONFIG_HOME", "/xdg")
 	if got := DefaultPath(); got != "/explicit/config.yaml" {
 		t.Fatalf("DefaultPath = %q, want the explicit override to win", got)
 	}
 
-	t.Setenv("HANGAR_CONFIG", "")
-	if got := DefaultPath(); got != filepath.Join("/xdg", "hangar", "config.yaml") {
+	t.Setenv("WINGSMITH_CONFIG", "")
+	if got := DefaultPath(); got != filepath.Join("/xdg", "wingsmith", "config.yaml") {
 		t.Fatalf("DefaultPath = %q, want the XDG location", got)
 	}
 
@@ -35,24 +35,24 @@ func TestDefaultPathHonoursTheOverridesInOrder(t *testing.T) {
 	if err != nil {
 		t.Skip("no home directory in this environment")
 	}
-	if got := DefaultPath(); got != filepath.Join(home, ".config", "hangar", "config.yaml") {
+	if got := DefaultPath(); got != filepath.Join(home, ".config", "wingsmith", "config.yaml") {
 		t.Fatalf("DefaultPath = %q, want the home fallback", got)
 	}
 }
 
 func TestStateDirHonoursTheOverridesInOrder(t *testing.T) {
-	t.Setenv("HANGAR_STATE_DIR", "/explicit/state")
+	t.Setenv("WINGSMITH_STATE_DIR", "/explicit/state")
 	t.Setenv("XDG_STATE_HOME", "/xdg")
 	if got := StateDir(); got != "/explicit/state" {
 		t.Fatalf("StateDir = %q, want the explicit override", got)
 	}
-	t.Setenv("HANGAR_STATE_DIR", "")
-	if got := StateDir(); got != filepath.Join("/xdg", "hangar") {
+	t.Setenv("WINGSMITH_STATE_DIR", "")
+	if got := StateDir(); got != filepath.Join("/xdg", "wingsmith") {
 		t.Fatalf("StateDir = %q, want the XDG location", got)
 	}
 }
 
-// TestAMissingConfigIsAnEmptyDocumentNotAnError: a fresh checkout runs `hgr` with no config at
+// TestAMissingConfigIsAnEmptyDocumentNotAnError: a fresh checkout runs `wings` with no config at
 // all, and refusing to start would make the first run a setup task.
 func TestAMissingConfigIsAnEmptyDocument(t *testing.T) {
 	f, err := Load(filepath.Join(t.TempDir(), "nothing-here.yaml"))
@@ -92,7 +92,7 @@ func TestSaveRoundTripsWithRestrictivePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.SetContext("prod", Context{Server: "https://plane.example", Token: "hgr_pat_secret", Project: "prj_1"})
+	f.SetContext("prod", Context{Server: "https://plane.example", Token: "ws_pat_secret", Project: "prj_1"})
 	f.CurrentContext = "prod"
 	f.Output = "json"
 	if err := f.Save(); err != nil {
@@ -121,7 +121,7 @@ func TestSaveRoundTripsWithRestrictivePermissions(t *testing.T) {
 	if back.CurrentContext != "prod" || back.Output != "json" {
 		t.Errorf("round trip lost settings: %+v", back)
 	}
-	if got := back.Context(""); got.Server != "https://plane.example" || got.Token != "hgr_pat_secret" {
+	if got := back.Context(""); got.Server != "https://plane.example" || got.Token != "ws_pat_secret" {
 		t.Errorf("round trip lost the context: %+v", got)
 	}
 	if back.Path() != path {
@@ -129,7 +129,7 @@ func TestSaveRoundTripsWithRestrictivePermissions(t *testing.T) {
 	}
 }
 
-// TestAnUnknownContextIsEmptyRatherThanMissing: `hgr --context typo cluster ls` must fall through
+// TestAnUnknownContextIsEmptyRatherThanMissing: `wings --context typo cluster ls` must fall through
 // to a clear "no server configured", not panic on a nil map entry.
 func TestAnUnknownContextIsEmpty(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
@@ -160,8 +160,8 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 		"output":                "json",
 		"fake":                  "true",
 		"context.server":        "https://plane.example",
-		"context.token":         "hgr_pat_0123456789abcdef",
-		"context.refresh_token": "hgr_rt_0123456789abcdef",
+		"context.token":         "ws_pat_0123456789abcdef",
+		"context.refresh_token": "ws_rt_0123456789abcdef",
 		"context.project":       "prj_1",
 		"context.user":          "operator",
 	}
@@ -179,7 +179,7 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 		}
 		if key == "context.token" || key == "context.refresh_token" {
 			if got == value {
-				t.Error("the token was echoed back in full; `hgr config get` would print a credential")
+				t.Error("the token was echoed back in full; `wings config get` would print a credential")
 			}
 			continue
 		}
@@ -189,7 +189,7 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 	}
 }
 
-// TestSettingTheContextWritesToTheCurrentOne: `hgr config set context.server` with a non-default
+// TestSettingTheContextWritesToTheCurrentOne: `wings config set context.server` with a non-default
 // current context must not silently edit `default`.
 func TestSettingTheContextWritesToTheCurrentOne(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
@@ -251,7 +251,7 @@ func TestAnUnknownKeyIsRefused(t *testing.T) {
 	if remediation(e) == "" {
 		t.Fatal("an unknown key was refused with nowhere to go")
 	}
-	if !strings.Contains(remediation(e), "hgr config list") {
+	if !strings.Contains(remediation(e), "wings config list") {
 		t.Errorf("the refusal does not point at the key listing: %q", remediation(e))
 	}
 	if _, err := f.Get("nonsense"); err == nil {
@@ -275,7 +275,7 @@ func TestASubstringOfARealKeyIsSuggested(t *testing.T) {
 // TestATypoWithAnExtraCharacterGetsNoSuggestion pins a real weakness instead of an intent: the
 // near-miss check asks whether a settable key contains what was typed, so "context.servers" (the
 // most common way to get this wrong) is longer than every candidate and matches none. The user
-// still gets `hgr config list`, so nothing is broken, but the suggestion that would have saved the
+// still gets `wings config list`, so nothing is broken, but the suggestion that would have saved the
 // round trip does not appear.
 //
 // TODO: match on edit distance, or on the typed key's prefix, instead of containment.
@@ -314,7 +314,7 @@ func TestFakeMustBeABoolean(t *testing.T) {
 
 func TestUnsetClearsAKey(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
-	if err := f.Set("context.token", "hgr_pat_secret"); err != nil {
+	if err := f.Set("context.token", "ws_pat_secret"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Unset("context.token"); err != nil {
@@ -332,7 +332,7 @@ func TestUnsetClearsAKey(t *testing.T) {
 // must not be something that could be pasted back as a working credential.
 func TestRedactNeverReturnsTheSecret(t *testing.T) {
 	for _, secret := range []string{
-		"", "a", "short", "tenchars12", "hgr_pat_0123456789abcdef", strings.Repeat("x", 200),
+		"", "a", "short", "tenchars12", "ws_pat_0123456789abcdef", strings.Repeat("x", 200),
 	} {
 		got := Redact(secret)
 		if secret != "" && got == secret {
@@ -353,8 +353,8 @@ func TestEnvBoolAcceptsTheUsualSpellings(t *testing.T) {
 		"0": false, "false": false, "no": false, "off": false, "": false, "maybe": false,
 	}
 	for raw, want := range cases {
-		t.Setenv("HANGAR_TEST_ENVBOOL", raw)
-		if got := EnvBool("HANGAR_TEST_ENVBOOL"); got != want {
+		t.Setenv("WINGSMITH_TEST_ENVBOOL", raw)
+		if got := EnvBool("WINGSMITH_TEST_ENVBOOL"); got != want {
 			t.Errorf("EnvBool(%q) = %v, want %v", raw, got, want)
 		}
 	}
@@ -421,7 +421,7 @@ func TestSaveTightensAnExistingLooseFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.SetContext("default", Context{Token: "hgrs1_secret"})
+	f.SetContext("default", Context{Token: "wss1_secret"})
 	if err := f.Save(); err != nil {
 		t.Fatal(err)
 	}

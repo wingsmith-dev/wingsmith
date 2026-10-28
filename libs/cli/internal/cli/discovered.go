@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 const (
@@ -43,12 +43,12 @@ holding accelerators.
 
 Tracking one adds it to the inventory with an owner. It does not change
 anything in the cluster, so nothing restarts.`,
-		example: `  hgr discovered ls
-  hgr discovered ls --status new
-  hgr discovered ls --cluster iad-1 -o wide
-  hgr discovered track llama-70b-vllm --project core
-  hgr discovered rm llama-70b-vllm
-  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core`,
+		example: `  wings discovered ls
+  wings discovered ls --status new
+  wings discovered ls --cluster iad-1 -o wide
+  wings discovered track llama-70b-vllm --project core
+  wings discovered rm llama-70b-vllm
+  wings discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
 		},
@@ -132,25 +132,25 @@ anything in the cluster, so nothing restarts.`,
 			switch d.Status {
 			case "promoted":
 				return []errs.Action{
-					{Description: "Manage it", Command: "hgr deployment get " + str(d.DeploymentID)},
-					{Description: "The workload it belongs to", Command: "hgr workload ls --cluster " + d.ClusterName},
+					{Description: "Manage it", Command: "wings deployment get " + str(d.DeploymentID)},
+					{Description: "The workload it belongs to", Command: "wings workload ls --cluster " + d.ClusterName},
 				}
 			case "dismissed":
 				return []errs.Action{
-					{Description: "Put it back on the list", Command: "hgr discovered restore " + d.Name},
+					{Description: "Put it back on the list", Command: "wings discovered restore " + d.Name},
 				}
 			case "tracked":
 				return []errs.Action{
 					{Description: "Let the plane manage it",
-						Command: "hgr discovered promote " + d.Name + " --artifact <artifact> --project <project>"},
-					{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
+						Command: "wings discovered promote " + d.Name + " --artifact <artifact> --project <project>"},
+					{Description: "Stop showing it", Command: "wings discovered ignore " + d.Name},
 				}
 			}
 			return []errs.Action{
 				{Description: "Track it: nothing is declared and nothing restarts",
-					Command: "hgr discovered track " + d.Name + " --project <project>"},
-				{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
-				{Description: "Take it off the list for good", Command: "hgr discovered rm " + d.Name},
+					Command: "wings discovered track " + d.Name + " --project <project>"},
+				{Description: "Stop showing it", Command: "wings discovered ignore " + d.Name},
+				{Description: "Take it off the list for good", Command: "wings discovered rm " + d.Name},
 			}
 		},
 	}
@@ -173,7 +173,7 @@ are.`
 
 The sighting stays: the cluster keeps reporting it and it is still there. This
 only says we have looked at it and do not want it in the default listing;
-` + "`hgr discovered ls --status ignored`" + ` still shows it.`
+` + "`wings discovered ls --status ignored`" + ` still shows it.`
 	}
 
 	cmd := &cobra.Command{
@@ -239,9 +239,9 @@ func newRemoveWorkloadCmd(app *App) *cobra.Command {
 Nothing changes in the cluster: the workload keeps running and the plane
 keeps seeing it. It only stops appearing in the list.
 
-` + "`hgr discovered ls --status dismissed`" + ` shows what has been removed, and
-` + "`hgr discovered restore`" + ` puts one back.`,
-		Example: `  hgr discovered rm llama-70b-vllm`,
+` + "`wings discovered ls --status dismissed`" + ` shows what has been removed, and
+` + "`wings discovered restore`" + ` puts one back.`,
+		Example: `  wings discovered rm llama-70b-vllm`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -262,7 +262,7 @@ keeps seeing it. It only stops appearing in the list.
 					fmt.Fprintf(w, "%s removed: still running, never touched\n", s.Bold(found.Name))
 				},
 				Next: []errs.Action{
-					{Description: "Put it back", Command: "hgr discovered restore " + found.Name},
+					{Description: "Put it back", Command: "wings discovered restore " + found.Name},
 				},
 			})
 		},
@@ -275,7 +275,7 @@ func newRestoreWorkloadCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:     "restore <workload>",
 		Short:   "Put a removed discovered workload back on the list",
-		Example: `  hgr discovered restore llama-70b-vllm`,
+		Example: `  wings discovered restore llama-70b-vllm`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -320,20 +320,20 @@ func newPromoteCmd(app *App) *cobra.Command {
 		Long: `Promote a discovered workload into a workload the plane declares.
 
 The result is a workload pinned to the cluster it runs in, with one
-deployment, managed under ` + "`hgr workload`" + ` like any other. Promotion does not
+deployment, managed under ` + "`wings workload`" + ` like any other. Promotion does not
 restart it: the deployment is pinned to the digest of what is running now.
 
 Changing its serving configuration or overrides afterwards rolls it.
 
 The replica bounds are taken from what is running, so promotion never scales
 it.`,
-		Example: `  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core
-  hgr discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
+		Example: `  wings discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core
+  wings discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {
 				return errs.New(errs.CodeInputRequired, "promote needs --artifact and --project").
-					WithCause("the plane has to know what this workload is and who owns it; --project may also come from HANGAR_PROJECT or context.project")
+					WithCause("the plane has to know what this workload is and who owns it; --project may also come from WINGSMITH_PROJECT or context.project")
 			}
 			project := app.Project
 			ctx, cancel := app.RequestContext()

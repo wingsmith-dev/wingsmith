@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func tenantNoun() noun[api.Tenant] {
@@ -25,8 +25,8 @@ tenant exists.
 
 A tenant also says how its inference traffic reaches the gateway (ingress,
 auth and host).`,
-		example: `  hgr tenant ls
-  hgr tenant get acme`,
+		example: `  wings tenant ls
+  wings tenant get acme`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Tenant], error) {
 			return b.Tenants(ctx, o)
 		},
@@ -63,7 +63,7 @@ auth and host).`,
 		},
 		next: func(t api.Tenant) []errs.Action {
 			return []errs.Action{
-				{Description: "Its projects", Command: "hgr project ls --tenant " + t.Slug},
+				{Description: "Its projects", Command: "wings project ls --tenant " + t.Slug},
 			}
 		},
 	}
@@ -79,9 +79,9 @@ func projectNoun() noun[api.Project] {
 
 Each project shows its tenant. enabled is the project's own switch;
 effective_enabled is false when either the project or its tenant is disabled.`,
-		example: `  hgr project ls
-  hgr project ls --tenant acme
-  hgr project get core`,
+		example: `  wings project ls
+  wings project ls --tenant acme
+  wings project get core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Project], error) {
 			return b.Projects(ctx, o)
 		},
@@ -124,8 +124,8 @@ effective_enabled is false when either the project or its tenant is disabled.`,
 		},
 		next: func(p api.Project) []errs.Action {
 			return []errs.Action{
-				{Description: "Its quotas", Command: "hgr quota ls --project " + p.Slug},
-				{Description: "What it is holding", Command: "hgr allocation ls --project " + p.Slug + " --live"},
+				{Description: "Its quotas", Command: "wings quota ls --project " + p.Slug},
+				{Description: "What it is holding", Command: "wings allocation ls --project " + p.Slug + " --live"},
 			}
 		},
 	}
@@ -147,9 +147,9 @@ but nothing reads it: there is no fair-share division of spare capacity yet.
 
 A quota with no cluster applies across every cluster, and its usage is summed
 across all of them. over_limit and headroom are computed by the plane.`,
-		example: `  hgr quota ls
-  hgr quota ls --project core --class h100-80
-  hgr quota ls -o json | jq '.items[] | select(.over_limit)'`,
+		example: `  wings quota ls
+  wings quota ls --project core --class h100-80
+  wings quota ls -o json | jq '.items[] | select(.over_limit)'`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Quota], error) {
 			return b.Quotas(ctx, o)
 		},
@@ -210,7 +210,7 @@ across all of them. over_limit and headroom are computed by the plane.`,
 			ukv.Render(w)
 		},
 		next: func(q api.Quota) []errs.Action {
-			return []errs.Action{{Description: "What is holding it", Command: "hgr allocation ls --project " + q.ProjectSlug + " --class " + q.DeviceClass + " --live"}}
+			return []errs.Action{{Description: "What is holding it", Command: "wings allocation ls --project " + q.ProjectSlug + " --class " + q.DeviceClass + " --live"}}
 		},
 	}
 }
@@ -226,9 +226,9 @@ func priorityClassNoun() noun[api.PriorityClass] {
 
 Preemption is not implemented yet. The classes order admission today, and the
 switches are recorded for when it is.`,
-		example: `  hgr priority-class ls
-  hgr priority-class ls --preempts
-  hgr priority-class get production`,
+		example: `  wings priority-class ls
+  wings priority-class ls --preempts
+  wings priority-class get production`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.PriorityClass], error) {
 			return b.PriorityClasses(ctx, o)
 		},
@@ -282,9 +282,9 @@ func policyNoun() noun[api.Policy] {
 Allow-lists and deny-lists are separate. An empty allow-list means no
 restriction, and a deny entry still applies when the allow-list is widened. A
 policy with no attachments has no effect, so attachments are shown with it.`,
-		example: `  hgr policy ls
-  hgr policy ls --region eu-west-1
-  hgr policy get eu-only`,
+		example: `  wings policy ls
+  wings policy ls --region eu-west-1
+  wings policy get eu-only`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Policy], error) {
 			return b.Policies(ctx, o)
 		},

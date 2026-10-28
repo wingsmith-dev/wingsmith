@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func benchmarkNoun() noun[api.BenchmarkRun] {
@@ -26,18 +26,18 @@ func benchmarkNoun() noun[api.BenchmarkRun] {
 		long: `A benchmark run is the record of one measurement and its result.
 
 The run is carried out by an operation: that is where the phases, the deadline
-and the cancellation live, and 'hgr operation cancel' against the operation named
-on the run is how one is stopped. What the run holds that an operation cannot is
-the result, because a load generator emits nested JSON and an operation's result
-is a flat string map.
+and the cancellation live, and 'wings operation cancel' against the operation
+named on the run is how one is stopped. What the run holds that an operation
+cannot is the result, because a load generator emits nested JSON and an
+operation's result is a flat string map.
 
 The result is stored in the harness's own format and is not normalised. Runs
 are comparable when their harness and version match. Use -o json and jq to read
 a result.`,
-		example: `  hgr benchmark ls --deployment chat
-  hgr benchmark run chat --param concurrency=64 --wait
-  hgr benchmark get bmk_01m0dj…
-  hgr benchmark get bmk_01m0dj… -o json | jq .summary.time_to_first_token`,
+		example: `  wings benchmark ls --deployment chat
+  wings benchmark run chat --param concurrency=64 --wait
+  wings benchmark get bmk_01m0dj…
+  wings benchmark get bmk_01m0dj… -o json | jq .summary.time_to_first_token`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.BenchmarkRun], error) {
 			return b.Benchmarks(ctx, o)
 		},
@@ -82,13 +82,13 @@ a result.`,
 		next: func(r api.BenchmarkRun) []errs.Action {
 			if !r.Terminal() && r.OperationID != nil {
 				return []errs.Action{
-					{Description: "Watch the operation", Command: "hgr operation wait " + *r.OperationID},
-					{Description: "Stop it", Command: "hgr operation cancel " + *r.OperationID},
+					{Description: "Watch the operation", Command: "wings operation wait " + *r.OperationID},
+					{Description: "Stop it", Command: "wings operation cancel " + *r.OperationID},
 				}
 			}
 			return []errs.Action{
-				{Description: "Compare with earlier runs", Command: "hgr benchmark ls --deployment " + str(r.DeploymentID)},
-				{Description: "Read the full result", Command: "hgr benchmark get " + r.ID + " -o json | jq .summary"},
+				{Description: "Compare with earlier runs", Command: "wings benchmark ls --deployment " + str(r.DeploymentID)},
+				{Description: "Read the full result", Command: "wings benchmark get " + r.ID + " -o json | jq .summary"},
 			}
 		},
 	}
@@ -305,8 +305,8 @@ func newBenchmarkVerdictCmd(app *App) *cobra.Command {
 Nothing is stored: the checks are recomputed against the criteria version named
 here, defaulting to whatever the plane currently publishes. Pass --criteria to
 choose an older standard to grade against.`,
-		Example: `  hgr benchmark verdict bmk_01m…
-  hgr benchmark verdict bmk_01m… --criteria acceptance-2026.1`,
+		Example: `  wings benchmark verdict bmk_01m…
+  wings benchmark verdict bmk_01m… --criteria acceptance-2026.1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -375,8 +375,8 @@ input-length band. Endpoint-level runs are refused until something executes them
 
 --criteria is left blank to pin whatever standard the plane currently publishes;
 a mode of ramp or sweep walks the --steps load points in order.`,
-		Example: `  hgr benchmark request create dep_01m… --level deployment
-  hgr benchmark request create wkl_01m… --level workload --mode sweep --steps 1000,8000,24000`,
+		Example: `  wings benchmark request create dep_01m… --level deployment
+  wings benchmark request create wkl_01m… --level workload --mode sweep --steps 1000,8000,24000`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv, err := api.ParseKV(params, "param")
@@ -496,8 +496,8 @@ func (a *App) emitBenchmarkRequest(cmd *cobra.Command, request api.BenchmarkRequ
 			benchmarkRequestDetail(a, w, s, request)
 		},
 		Next: []errs.Action{
-			{Description: "Its verdict", Command: "hgr benchmark request verdict " + request.ID},
-			{Description: "Its bands", Command: "hgr benchmark request bands " + request.ID},
+			{Description: "Its verdict", Command: "wings benchmark request verdict " + request.ID},
+			{Description: "Its bands", Command: "wings benchmark request bands " + request.ID},
 		},
 	})
 }
@@ -624,16 +624,16 @@ func newBenchmarkRunCmd(app *App) *cobra.Command {
 The load is generated inside the cluster against that cluster's own inference
 endpoint. No load passes through the control plane or this machine.
 
---param takes whatever the named harness accepts; 'hgr benchmark harnesses'
+--param takes whatever the named harness accepts; 'wings benchmark harnesses'
 lists them with their defaults. A parameter the harness does not accept is
 refused before the run starts.
 
 --image overrides the harness's pinned image for this run alone. Leave it alone
 unless you are reaching for a release the plane has not pinned yet: runs that
 did not use the same image are not the same comparison group.`,
-		Example: `  hgr benchmark run chat
-  hgr benchmark run chat --param concurrency=64 --param request_count=500 --wait
-  hgr benchmark run dep_01m0dj… --param output_tokens_mean=1024 --reason "long-generation check"`,
+		Example: `  wings benchmark run chat
+  wings benchmark run chat --param concurrency=64 --param request_count=500 --wait
+  wings benchmark run dep_01m0dj… --param output_tokens_mean=1024 --reason "long-generation check"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv, err := api.ParseKV(params, "param")
@@ -745,7 +745,7 @@ func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Durati
 		if expired && run.ID != "" {
 			e = errs.New(errs.CodeTimeout, "benchmark %s was still %s after %s", run.ID, run.Phase, a.WaitTimeout).
 				WithCause(e.Cause).
-				WithFix("Keep watching", "hgr benchmark get "+run.ID)
+				WithFix("Keep watching", "wings benchmark get "+run.ID)
 		}
 		return e
 	}
@@ -758,7 +758,7 @@ func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Durati
 	if run.Error != nil {
 		e = e.WithCause(*run.Error)
 	}
-	return e.WithFix("Inspect it", "hgr benchmark get "+run.ID)
+	return e.WithFix("Inspect it", "wings benchmark get "+run.ID)
 }
 
 func (a *App) emitBenchmark(cmd *cobra.Command, run api.BenchmarkRun) error {

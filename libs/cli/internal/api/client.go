@@ -1,4 +1,4 @@
-// Package api holds the wire types and the HTTP client for the Hangar
+// Package api holds the wire types and the HTTP client for the Wingsmith
 // control plane. The CLI speaks to the plane's API and to nothing else: it
 // never holds a kubeconfig and never dials a cluster or the hub.
 package api
@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // Client is the live control plane transport.
@@ -44,8 +44,8 @@ type Client struct {
 func NewClient(server, token, project, version string, timeout time.Duration) (*Client, error) {
 	if server == "" {
 		return nil, errs.New(errs.CodeUsage, "no control plane URL configured").
-			WithFix("Set one", "hgr config set context.server http://localhost:8000").
-			WithFix("Or run offline", "hgr --fake cluster ls")
+			WithFix("Set one", "wings config set context.server http://localhost:8000").
+			WithFix("Or run offline", "wings --fake cluster ls")
 	}
 	if _, err := url.Parse(server); err != nil {
 		return nil, errs.Wrap(err, errs.CodeUsage, "invalid control plane URL %q", server)
@@ -699,7 +699,7 @@ func (c *Client) refresh(ctx context.Context) error {
 		}
 		return errs.Wrap(err, errs.CodeAuthExpired, "the session has expired").
 			WithCause("the plane refused the stored refresh token").
-			WithFix("Log in again", "hgr login")
+			WithFix("Log in again", "wings login")
 	}
 	c.Token = res.AccessToken
 	if c.OnRefresh != nil {
@@ -733,7 +733,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		return nil, nil, errs.Wrap(err, errs.CodeInternal, "cannot build request")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "hgr/"+c.Version)
+	req.Header.Set("User-Agent", "wings/"+c.Version)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -766,8 +766,8 @@ func transportError(ctx context.Context, err error, server string) error {
 			WithFix("Allow longer", "--timeout 2m")
 	}
 	return errs.Wrap(err, errs.CodeNetwork, "cannot reach the control plane at %s", server).
-		WithFix("Check the server", "hgr context").
-		WithFix("Run offline against the fake backend", "hgr --fake cluster ls")
+		WithFix("Check the server", "wings context").
+		WithFix("Run offline against the fake backend", "wings --fake cluster ls")
 }
 
 func isTimeout(err error) bool {

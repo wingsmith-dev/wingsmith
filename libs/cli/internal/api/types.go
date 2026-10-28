@@ -635,7 +635,7 @@ type WorkloadScale struct {
 
 // WorkloadDeployment is one cluster's share of a workload, as seen from the
 // workload. Enough to draw the per-cluster table; the whole per-cluster object
-// is `hgr deployment get`.
+// is `wings deployment get`.
 type WorkloadDeployment struct {
 	ID              string                  `json:"id"`
 	Name            string                  `json:"name"`
@@ -1387,7 +1387,7 @@ type BenchmarkProvenance struct {
 //
 // Summary is json.RawMessage and not a typed struct. It is the harness's own
 // export, stored verbatim by the plane, and giving it a shape here would be this
-// client asserting it knows a format nothing promised. `hgr benchmark get -o
+// client asserting it knows a format nothing promised. `wings benchmark get -o
 // json` hands it straight to jq, which is the tool for a shape you do not know.
 type BenchmarkRun struct {
 	ID string `json:"id"`
@@ -1687,7 +1687,7 @@ type BenchmarkRequestCreate struct {
 	Deadline   *time.Time     `json:"deadline,omitempty"`
 }
 
-// Operation phases. Terminal ones are what `hgr operation wait` waits for.
+// Operation phases. Terminal ones are what `wings operation wait` waits for.
 const (
 	OpPending   = "pending"
 	OpRunning   = "running"

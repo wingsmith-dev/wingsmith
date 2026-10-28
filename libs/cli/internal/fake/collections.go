@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // The filters here are the ones the plane's routes declare, and only those. A
@@ -826,7 +826,7 @@ func (b *Backend) CreateServingQuota(ctx context.Context, req api.ServingQuotaCr
 	for _, existing := range b.state.ServingQuotas {
 		if existing.Endpoint == endpoint.ID {
 			return api.ServingQuota{}, errs.New(errs.CodeConflict, "%s already carries a serving quota", endpoint.Name).
-				WithFix("Edit the one it has", "hgr serving-quota set "+existing.ID+" --committed-rpm N")
+				WithFix("Edit the one it has", "wings serving-quota set "+existing.ID+" --committed-rpm N")
 		}
 	}
 	now := time.Now().UTC()
@@ -1066,7 +1066,7 @@ func (b *Backend) Operations(ctx context.Context, o api.ListOpts) (api.Page[api.
 
 // Operation advances a running operation one step per poll, so that waiting
 // on a drain is exercisable offline: an operation that never moves would make
-// `hgr operation wait` look correct while it is broken.
+// `wings operation wait` look correct while it is broken.
 func (b *Backend) Operation(ctx context.Context, ref string) (api.Operation, error) {
 	op, err := find(b, "operation", b.state.Operations, ref, func(op api.Operation) []string {
 		return []string{op.ID}
@@ -1638,7 +1638,7 @@ func (b *Backend) CreateAlertThreshold(ctx context.Context, req api.AlertThresho
 	rule := b.metricRule(req.Rule)
 	if rule == nil {
 		return api.AlertThreshold{}, errs.New(errs.CodeUsage, "unknown metric rule %q", req.Rule).
-			WithFix("List the catalogue", "hgr alert-threshold rules")
+			WithFix("List the catalogue", "wings alert-threshold rules")
 	}
 	subjectType := orElse(req.SubjectType, rule.SubjectType)
 	if !strings.EqualFold(subjectType, rule.SubjectType) {

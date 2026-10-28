@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 // noun describes one collection at the command surface: how to list it, how
@@ -247,12 +247,12 @@ func (n noun[T]) listNext(page api.Page[T]) []errs.Action {
 	var out []errs.Action
 	if page.NextCursor != "" {
 		out = append(out,
-			errs.Action{Description: "Next page", Command: fmt.Sprintf("hgr %s ls --cursor %s", n.name, page.NextCursor)},
-			errs.Action{Description: "Every page", Command: fmt.Sprintf("hgr %s ls --all", n.name)},
+			errs.Action{Description: "Next page", Command: fmt.Sprintf("wings %s ls --cursor %s", n.name, page.NextCursor)},
+			errs.Action{Description: "Every page", Command: fmt.Sprintf("wings %s ls --all", n.name)},
 		)
 	}
 	if len(page.Items) > 0 {
-		out = append(out, errs.Action{Description: "Inspect one", Command: fmt.Sprintf("hgr %s get %s", n.name, n.label(page.Items[0]))})
+		out = append(out, errs.Action{Description: "Inspect one", Command: fmt.Sprintf("wings %s get %s", n.name, n.label(page.Items[0]))})
 	}
 	return out
 }
@@ -299,7 +299,7 @@ func (n noun[T]) resolveExact(ctx context.Context, app *App, ref string) (T, err
 	item, err := n.lookup(ctx, app, ref, func(key, ref string) bool { return key == ref })
 	if errs.As(err) != nil && errs.As(err).Code == errs.CodeNotFound {
 		e := errs.As(err).WithCause("a verb that changes something needs the full id or name, never a prefix")
-		list := "hgr " + n.name + " ls"
+		list := "wings " + n.name + " ls"
 		if !slices.ContainsFunc(e.Remediation, func(a errs.Action) bool { return a.Command == list }) {
 			e = e.WithFix("Find the full name", list)
 		}
@@ -430,7 +430,7 @@ type filters struct {
 	groupBy string
 
 	// byProject marks a listing whose endpoint takes a project filter. The
-	// filter is the global --project (or HANGAR_PROJECT, or context.project),
+	// filter is the global --project (or WINGSMITH_PROJECT, or context.project),
 	// not a flag of its own, so the configured project reaches it.
 	byProject bool
 }

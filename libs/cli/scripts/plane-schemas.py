@@ -3,7 +3,7 @@
 The CLI's wire types are checked against this (internal/api/schema_test.go).
 Run from libs/plane after changing a plane schema, and commit the result:
 
-    cd libs/plane && HANGAR_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
+    cd libs/plane && WINGSMITH_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
         > ../cli/internal/api/testdata/plane-schemas.json
 
 With `--check PATH` it prints nothing to stdout and instead exits 1, naming the

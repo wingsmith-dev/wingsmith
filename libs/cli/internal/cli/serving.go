@@ -6,11 +6,11 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func servingQuotaNoun() noun[api.ServingQuota] {
@@ -29,10 +29,10 @@ unset is a promise nobody made instead of a promise of nothing.
 Serving quotas are advisory today. The gateway does not read them, so no request
 is refused, queued or counted against these numbers. 'enforced' records whether
 a limit should be enforced once something does.`,
-		example: `  hgr serving-quota ls
-  hgr serving-quota ls --enforced=false
-  hgr serving-quota get chat
-  hgr serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000 --enforced`,
+		example: `  wings serving-quota ls
+  wings serving-quota ls --enforced=false
+  wings serving-quota get chat
+  wings serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000 --enforced`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.ServingQuota], error) {
 			return b.ServingQuotas(ctx, o)
 		},
@@ -71,8 +71,8 @@ a limit should be enforced once something does.`,
 		detail: servingQuotaDetail,
 		next: func(q api.ServingQuota) []errs.Action {
 			return []errs.Action{
-				{Description: "How it divides across replicas", Command: "hgr serving-quota resolved " + q.EndpointName},
-				{Description: "Edit it", Command: "hgr serving-quota set " + q.ID + " --committed-rpm N"},
+				{Description: "How it divides across replicas", Command: "wings serving-quota resolved " + q.EndpointName},
+				{Description: "Edit it", Command: "wings serving-quota set " + q.ID + " --committed-rpm N"},
 			}
 		},
 		extra: func(app *App) []*cobra.Command {
@@ -224,13 +224,13 @@ func newServingQuotaCreateCmd(app *App) *cobra.Command {
 		Aliases: []string{"new"},
 		Short:   "Commit limits on an endpoint that has none",
 		Long: `Commit a serving quota on an endpoint. An endpoint carries at most one, so
-this is a create and 'hgr serving-quota set' is how it is changed afterwards.
+this is a create and 'wings serving-quota set' is how it is changed afterwards.
 
 Every limit left unset stays uncommitted. The limits are advisory: the gateway
 does not read serving quotas yet, so --enforced only records that they should be
 enforced once something does.`,
-		Example: `  hgr serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000
-  hgr serving-quota create chat --max-concurrent 256 --on-exceed queue --queue-timeout-ms 5000 --enforced`,
+		Example: `  wings serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000
+  wings serving-quota create chat --max-concurrent 256 --on-exceed queue --queue-timeout-ms 5000 --enforced`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -260,14 +260,14 @@ func newServingQuotaSetCmd(app *App) *cobra.Command {
 keep the values they had.
 
 An axis cannot be returned to uncommitted here: that is a different intent, and
-'hgr serving-quota rm' removes the commitment entirely.`,
-		Example: `  hgr serving-quota set chat --committed-rpm 2000
-  hgr serving-quota set chat --enforced`,
+'wings serving-quota rm' removes the commitment entirely.`,
+		Example: `  wings serving-quota set chat --committed-rpm 2000
+  wings serving-quota set chat --enforced`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().NFlag() == 0 {
 				return errs.New(errs.CodeInputRequired, "set needs at least one limit to change").
-					WithFix("See what it has", "hgr serving-quota get "+args[0])
+					WithFix("See what it has", "wings serving-quota get "+args[0])
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
@@ -333,8 +333,8 @@ func newServingQuotaResolvedCmd(app *App) *cobra.Command {
 A per_replica limit is the same on every replica; a divided one is split across
 them, so what a single replica would serve depends on how many there are. This
 is the table a gateway would enforce from; no gateway reads it yet.`,
-		Example: `  hgr serving-quota resolved chat --replicas 4
-  hgr serving-quota resolved chat --replicas 4 --index 1`,
+		Example: `  wings serving-quota resolved chat --replicas 4
+  wings serving-quota resolved chat --replicas 4 --index 1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()

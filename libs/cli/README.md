@@ -1,10 +1,10 @@
-# `hgr`
+# `wings`
 
-`hgr` is the Hangar command line: one Go binary that talks to the control plane's HTTP API and
+`wings` is the Wingsmith command line: one Go binary that talks to the control plane's HTTP API and
 nothing else. It never holds a kubeconfig, never dials a cluster, and never talks to the hub,
 the same as the console.
 
-Every command is noun–verb (`hgr cluster ls`, `hgr cluster get iad-1`). Humans read a table,
+Every command is noun–verb (`wings cluster ls`, `wings cluster get iad-1`). Humans read a table,
 scripts read `-o json`, and agents read a stable envelope.
 
 **Status.** Every noun has `ls` and `get`. The commands that change something are:
@@ -31,39 +31,39 @@ schemas, which has to be regenerated when a plane schema changes (see [Developme
 Against a plane:
 
 ```sh
-go build -o bin/hgr ./cmd/hgr
-hgr config set context.server http://localhost:8000
-hgr login                      # prompts for the admin password
-hgr whoami
-hgr cluster ls
-hgr device ls --cluster iad-1 --health unhealthy
-hgr operation create node.drain iad-1-n01 --reason firmware --wait
+go build -o bin/wings ./cmd/wings
+wings config set context.server http://localhost:8000
+wings login                    # prompts for the admin password
+wings whoami
+wings cluster ls
+wings device ls --cluster iad-1 --health unhealthy
+wings operation create node.drain iad-1-n01 --reason firmware --wait
 ```
 
 Or offline, with `--fake`:
 
 ```sh
-./bin/hgr --fake cluster ls
-./bin/hgr --fake node ls --cluster iad-1 --cordoned
-./bin/hgr --fake device ls --cluster iad-1 --allocatable --group-by domain
-./bin/hgr --fake device ls --all -o json | jq '.count'
+./bin/wings --fake cluster ls
+./bin/wings --fake node ls --cluster iad-1 --cordoned
+./bin/wings --fake device ls --cluster iad-1 --allocatable --group-by domain
+./bin/wings --fake device ls --all -o json | jq '.count'
 ```
 
 ```
-$ hgr --fake cluster ls
+$ wings --fake cluster ls
 NAME   REGION          PHASE                 REACHABLE  SYNC             SYNCED
 iad-1  us-east-1       active                yes        connected           12s
 sjc-1  us-west-2       active (unreachable)  no         disconnected        11m
 ams-1  eu-west-1       draining              yes        connected           12s
 sin-1  ap-southeast-1  pending               no         never_connected   never
-↳ hgr cluster get iad-1  Inspect one
+↳ wings cluster get iad-1  Inspect one
 ```
 
 `sjc-1` shows why declared and observed state are kept apart: it is `active` because that is
 what was declared, and unreachable because that is what the plane sees.
 
 ```
-$ hgr --fake cluster get iad-1
+$ wings --fake cluster get iad-1
 iad-1 clu_01m0dj00000000000000000001
 
 declared
@@ -89,7 +89,7 @@ observed
 ```
 
 ```
-$ hgr --fake operation create node.drain iad-1-n02 --reason firmware --wait
+$ wings --fake operation create node.drain iad-1-n02 --reason firmware --wait
 ✓ node.drain succeeded
 
 observed
@@ -115,19 +115,19 @@ grouped in help the way the model groups them.
 
 Plus CLI-local commands: `login`, `logout`, `context`, `config`, `whoami`, `explain`, `version`.
 
-`hgr endpoint sla <endpoint>` is the one measurement command: an endpoint's service level for the
+`wings endpoint sla <endpoint>` is the one measurement command: an endpoint's service level for the
 current month to date, a `--month YYYY-MM`, or a `--from`/`--to` range, with the verdict against the
 success-rate objective its serving quota declares (`GET /v1/metrics/endpoints/{ref}/sla`).
 
 Declared state, observed state and operations stay separate at the CLI too. Draining a node is
-an operation (`hgr operation create node.drain …`), not a flag on `node`, so it has a record of
+an operation (`wings operation create node.drain …`), not a flag on `node`, so it has a record of
 who asked, why, and how it ended.
 
 ---
 
 ## Output modes
 
-`--output` / `-o`, or `HANGAR_OUTPUT`, or `output:` in the config file.
+`--output` / `-o`, or `WINGSMITH_OUTPUT`, or `output:` in the config file.
 
 | Mode | For |
 |---|---|
@@ -151,7 +151,7 @@ The JSON contract for a list is the API's own envelope, an **object** and never 
 and the human output says so; `--cursor` takes the next page and `--all` follows the cursors to
 the end.
 
-**Agent mode** (`--agent` or `HANGAR_AGENT=1`) wraps everything, success and failure alike, in
+**Agent mode** (`--agent` or `WINGSMITH_AGENT=1`) wraps everything, success and failure alike, in
 one envelope: `schema_version`, `ok`, `command`, `data`, `error`, `warnings`, `next_actions`,
 `meta`. Prompts and animation are off, and `meta.simulated` is `true` whenever the fake answered.
 
@@ -162,7 +162,7 @@ one envelope: `schema_version`, `ok`, `command`, `data`, `error`, `warnings`, `n
 `internal/fake` is an offline stand-in for the control plane, for demos, tests and CI without a
 server.
 
-- **Selected by** `--fake`, `HANGAR_FAKE=1`, or `fake: true` in the config file. It is opt-in, so
+- **Selected by** `--fake`, `WINGSMITH_FAKE=1`, or `fake: true` in the config file. It is opt-in, so
   a command never answers from the fake when the caller expects a real plane. `login` and
   `logout` never touch the network under `--fake`.
 - **Implements `api.Backend`**, the same interface the HTTP client implements. Commands cannot
@@ -172,25 +172,25 @@ server.
   fixtures in `internal/api/testdata`.
 - **Seeded, not random**: four clusters in every phase, including an unreachable one and one
   that never connected, plus a cordoned node, an unhealthy device, an allocation holding fewer
-  devices than it asked for and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
+  devices than it asked for and a quota over its limit. `WINGSMITH_FAKE_STATE=/path/to/state.json` pins the state to a file
   and persists mutations, so create-then-poll workflows work offline.
-- **Failure injection**: `HANGAR_FAKE_FAIL=NOT_FOUND` (any code from `hgr explain`) makes every
+- **Failure injection**: `WINGSMITH_FAKE_FAIL=NOT_FOUND` (any code from `wings explain`) makes every
   call fail with that code, which is how error paths and exit codes get tested.
 
 ---
 
 ## Configuration
 
-`~/.config/hangar/config.yaml` (or `HANGAR_CONFIG`, or `$XDG_CONFIG_HOME/hangar/config.yaml`),
-written `0600`.
+`~/.config/wingsmith/config.yaml` (or `WINGSMITH_CONFIG`, or
+`$XDG_CONFIG_HOME/wingsmith/config.yaml`), written `0600`.
 
 ```yaml
 current_context: prod
 contexts:
   prod:
     server: https://plane.example.com
-    token: …          # written by hgr login
-    refresh_token: …  # written by hgr login
+    token: …          # written by wings login
+    refresh_token: …  # written by wings login
     project: default
 output: auto
 fake: false
@@ -200,15 +200,15 @@ Precedence is flag → environment → config file → default.
 
 | Flag | Env | Config key |
 |---|---|---|
-| `--context` | `HANGAR_CONTEXT` | `current_context` |
-| `--server` | `HANGAR_SERVER` | `context.server` |
-| `--token` | `HANGAR_TOKEN` | `context.token` |
-| `--project` | `HANGAR_PROJECT` | `context.project` |
-| `--output` | `HANGAR_OUTPUT` | `output` |
-| `--fake` | `HANGAR_FAKE` | `fake` |
-| `--agent` | `HANGAR_AGENT` | none |
-| `--timeout` | `HANGAR_TIMEOUT` | none |
-| `--wait-timeout` | `HANGAR_WAIT_TIMEOUT` | none |
+| `--context` | `WINGSMITH_CONTEXT` | `current_context` |
+| `--server` | `WINGSMITH_SERVER` | `context.server` |
+| `--token` | `WINGSMITH_TOKEN` | `context.token` |
+| `--project` | `WINGSMITH_PROJECT` | `context.project` |
+| `--output` | `WINGSMITH_OUTPUT` | `output` |
+| `--fake` | `WINGSMITH_FAKE` | `fake` |
+| `--agent` | `WINGSMITH_AGENT` | none |
+| `--timeout` | `WINGSMITH_TIMEOUT` | none |
+| `--wait-timeout` | `WINGSMITH_WAIT_TIMEOUT` | none |
 
 There is no default server: until one is set, every command that needs the plane fails with
 `USAGE` and says how to set it. `config`, `context`, `explain` and `version` work without a server
@@ -216,25 +216,25 @@ or a token.
 
 The file is written atomically with mode `0600`, and an existing file with looser permissions is
 tightened on the next write. Values are checked when they are set, so a bad `output` cannot lock
-you out of `hgr config`.
+you out of `wings config`.
 
 ### Authentication
 
-Human access to a plane is a single admin login. `hgr login` reads the admin password from
-`--password-stdin`, else `HANGAR_ADMIN_PASSWORD`, else a no-echo prompt (never from an argument),
+Human access to a plane is a single admin login. `wings login` reads the admin password from
+`--password-stdin`, else `WINGSMITH_ADMIN_PASSWORD`, else a no-echo prompt (never from an argument),
 and stores the access and refresh tokens in the active context together with the server it logged
 in to. The access token is short-lived; the CLI renews it with the refresh token when it expires,
-and `AUTH_EXPIRED` means the refresh token was refused too. `hgr logout` revokes the refresh token
+and `AUTH_EXPIRED` means the refresh token was refused too. `wings logout` revokes the refresh token
 on the plane and clears both locally, and warns if the revoke failed.
 
 For CI, log in as the admin in the job and let the session expire with it:
 
 ```sh
-printf '%s' "$HANGAR_ADMIN_PASSWORD" | hgr login --server "$HANGAR_SERVER" --password-stdin
+printf '%s' "$WINGSMITH_ADMIN_PASSWORD" | wings login --server "$WINGSMITH_SERVER" --password-stdin
 ```
 
 Do not give CI the operator or gateway service credentials: those are narrow service principals
-for the cluster operator and the gateway, with no admin rights on the plane API. `HANGAR_TOKEN`
+for the cluster operator and the gateway, with no admin rights on the plane API. `WINGSMITH_TOKEN`
 and `--token` supply an access token without storing it. Tokens are never printed, in any output mode,
 and are redacted from the re-run commands suggested in errors. No keychain yet.
 
@@ -243,7 +243,7 @@ and are redacted from the re-run commands suggested in errors. No keychain yet.
 ## Errors and exit codes
 
 Every failure is an `errs.Error` with a stable `code`, so humans, scripts, and agents branch on
-the same thing. `hgr explain` lists them; `hgr explain NOT_FOUND` describes one.
+the same thing. `wings explain` lists them; `wings explain NOT_FOUND` describes one.
 
 | Exit | Codes |
 |---|---|
@@ -266,10 +266,10 @@ Human failures print the message, the cause, runnable fixes, and the code:
 
 ```
 ✗ no control plane URL configured for context "default"
-  cause  looked in --server, HANGAR_SERVER, and ~/.config/hangar/config.yaml
-  try    hgr config set context.server http://localhost:8000  Set one
-         hgr cluster ls --fake  Or work offline
-  code   USAGE · hgr explain USAGE
+  cause  looked in --server, WINGSMITH_SERVER, and ~/.config/wingsmith/config.yaml
+  try    wings config set context.server http://localhost:8000  Set one
+         wings cluster ls --fake  Or work offline
+  code   USAGE · wings explain USAGE
 ```
 
 ---
@@ -277,7 +277,7 @@ Human failures print the message, the cause, runnable fixes, and the code:
 ## Layout
 
 ```
-cmd/hgr/            entrypoint; nothing but os.Exit(cli.Execute())
+cmd/wings/          entrypoint; nothing but os.Exit(cli.Execute())
 internal/cli/       cobra tree, global flags, App session, one file per noun
 internal/api/       wire types + HTTP client; the Backend interface
 internal/fake/      offline control plane implementing the same interface
@@ -315,11 +315,11 @@ snapshot is regenerated.
 - **Declared and observed are never merged**: a cluster has a declared `phase` beside observed
   `reachable` and `sync`; a node has observed `condition`, `ready` and `cordoned` as three
   separate facts; a component has `desired_version` beside `status.observed_version`.
-- **No `/v1/whoami`**: human access is a single admin, so `hgr whoami` reports the configured
+- **No `/v1/whoami`**: human access is a single admin, so `wings whoami` reports the configured
   context and whether `/health` answers.
-- **No project header**: the configured project (`--project`, `HANGAR_PROJECT` or
+- **No project header**: the configured project (`--project`, `WINGSMITH_PROJECT` or
   `context.project`) limits every listing that takes a project filter and is the project new
-  workloads belong to; `--project ''` lists every project. `X-Hangar-Project` is not sent; the
+  workloads belong to; `--project ''` lists every project. `X-Wingsmith-Project` is not sent; the
   plane does not scope requests by it.
 - **Writes**: every `POST /v1/operations` carries an `Idempotency-Key`: `--idempotency-key`
   when given, otherwise a fresh one per invocation, reported in the agent envelope's
@@ -330,7 +330,7 @@ snapshot is regenerated.
 
 ```sh
 go build ./... && go vet ./... && gofmt -l . && go test ./...
-go build -o bin/hgr ./cmd/hgr
+go build -o bin/wings ./cmd/wings
 ```
 
 Two things keep the client in step with the plane:
@@ -343,7 +343,7 @@ Two things keep the client in step with the plane:
   needed) and commit the result:
 
   ```sh
-  cd libs/plane && HANGAR_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
+  cd libs/plane && WINGSMITH_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
       > ../cli/internal/api/testdata/plane-schemas.json
   ```
 
@@ -358,6 +358,6 @@ Two things keep the client in step with the plane:
 The transport itself is exercised against a live plane when one is pointed at:
 
 ```sh
-HANGAR_TEST_SERVER=http://localhost:8000 go test ./internal/api/
+WINGSMITH_TEST_SERVER=http://localhost:8000 go test ./internal/api/
 ```
 

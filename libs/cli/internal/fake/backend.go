@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // defaultLimit and maxLimit mirror the plane's pagination, so a listing that
@@ -43,12 +43,12 @@ func New(path string) (*Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Backend{state: st, path: path, fail: os.Getenv("HANGAR_FAKE_FAIL"), polls: map[string]int{}}, nil
+	return &Backend{state: st, path: path, fail: os.Getenv("WINGSMITH_FAKE_FAIL"), polls: map[string]int{}}, nil
 }
 
 func (b *Backend) Simulated() bool { return true }
 
-// injected turns HANGAR_FAKE_FAIL=<CODE> into a real failure, so error paths
+// injected turns WINGSMITH_FAKE_FAIL=<CODE> into a real failure, so error paths
 // are exercisable without a server that can be made to misbehave.
 func (b *Backend) injected() error {
 	if b.fail == "" {
@@ -58,7 +58,7 @@ func (b *Backend) injected() error {
 	if _, ok := errs.Explain(code); !ok {
 		code = errs.CodeServerError
 	}
-	return errs.New(code, "injected failure (HANGAR_FAKE_FAIL=%s)", b.fail)
+	return errs.New(code, "injected failure (WINGSMITH_FAKE_FAIL=%s)", b.fail)
 }
 
 // persist writes the current state when the caller pinned one to a file.
@@ -187,7 +187,7 @@ func find[T any](b *Backend, noun string, items []T, ref string, keys func(T) []
 		}
 	}
 	return zero, errs.New(errs.CodeNotFound, "no %s named %q", noun, ref).
-		WithFix("List them", "hgr "+noun+" ls")
+		WithFix("List them", "wings "+noun+" ls")
 }
 
 // --- predicate helpers -----------------------------------------------------

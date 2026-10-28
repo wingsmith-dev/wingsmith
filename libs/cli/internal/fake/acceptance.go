@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
 )
 
 // The acceptance standard, transcribed from the plane's frozen criteria table

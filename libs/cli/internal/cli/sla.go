@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/api"
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/output"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/output"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 )
 
 func newEndpointSLACmd(app *App) *cobra.Command {
@@ -28,9 +28,9 @@ says whether it was met and how much of the error budget was spent.
 
 The period is a calendar month in UTC (--month), a range (--from/--to, RFC 3339 or
 YYYY-MM-DD), or by default the current month measured up to now.`,
-		Example: `  hgr endpoint sla chat
-  hgr endpoint sla chat --month 2026-09
-  hgr endpoint sla chat --from 2026-09-15 --to 2026-09-22 -o json`,
+		Example: `  wings endpoint sla chat
+  wings endpoint sla chat --month 2026-09
+  wings endpoint sla chat --from 2026-09-15 --to 2026-09-22 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query, err := slaQuery(month, from, to)

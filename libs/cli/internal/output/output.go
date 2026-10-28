@@ -12,8 +12,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
-	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/ui"
 	yaml "go.yaml.in/yaml/v2"
 )
 
@@ -253,7 +253,7 @@ func (r *Renderer) EmitError(command string, err error) int {
 	if e.Retryable && e.RetryAfterS > 0 {
 		kv.Addf("retry", "retryable in ~%ds", e.RetryAfterS)
 	}
-	kv.Add("code", s.Amber(string(e.Code))+" "+s.Dim(s.Dot())+" "+s.Dim("hgr explain "+string(e.Code)))
+	kv.Add("code", s.Amber(string(e.Code))+" "+s.Dim(s.Dot())+" "+s.Dim("wings explain "+string(e.Code)))
 	kv.Render(r.Err)
 	return e.ExitCode()
 }
