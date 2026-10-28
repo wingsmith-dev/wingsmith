@@ -1,4 +1,4 @@
-"""Fake operators: three clusters' worth of hardware that exists, waiting to be enrolled.
+"""Fake operators: eight clusters' worth of hardware that exists, waiting to be enrolled.
 
 There is nothing to virtualise here. The plane does not know what Kubernetes is, so a cluster
 *is* a socket that speaks the contract and a device *is* a `device.observed` frame, which
@@ -18,7 +18,7 @@ Demand is answered, not just received: a `deployment.desired` arriving here is a
 `deployment.observed`, a `replica.observed` per replica, and the `allocation.observed` that
 commits the devices. That is what makes a workload actually go ready locally.
 
-    just fleet                  # all three, waiting
+    just fleet                  # all eight, waiting
     just fleet eu-west-1a       # just one
 
 It is not the operator and renders nothing. For the reconcile half (whether a Deployment comes
@@ -105,8 +105,11 @@ class NodeSpec:
 
     @property
     def nvlink(self) -> bool:
-        """Whether the node's devices sit in one NVLink domain, so TP>1 has somewhere to land."""
-        return self.devices >= 8
+        """Whether the node's devices sit in one NVLink domain, so TP>1 has somewhere to land.
+
+        SXM boards do; the RTX PRO 6000 is PCIe only, however many a node holds.
+        """
+        return self.device_class.endswith("-sxm")
 
 
 @dataclass(frozen=True)
@@ -124,43 +127,50 @@ class ClusterSpec:
     nodes: list[NodeSpec] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class Gpu:
+    """One kind of device, as libs/operator/internal/devices/table.json classifies it."""
+
+    short: str
+    device_class: str
+    model: str
+    """The DCGM model string, which is what the real operator reports."""
+    memory_mib: int
+
+
+B200 = Gpu("b200", "b200-180gb-sxm", "NVIDIA B200", 183359)
+B300 = Gpu("b300", "b300-288gb-sxm", "NVIDIA B300 SXM6 AC", 294912)
+H200 = Gpu("h200", "h200-141gb-sxm", "NVIDIA H200", 143771)
+RTX_PRO_6000 = Gpu("rtx6000", "rtx-pro-6000-96gb-server-edition", "NVIDIA RTX PRO 6000 Blackwell Server Edition", 97249)
+
+
+def nodes(tag: str, *groups: tuple[Gpu, int, int]) -> list[NodeSpec]:
+    """`count` nodes of `devices` each, per (gpu, count, devices) group, named gpu-<kind>-<tag>-NN."""
+    return [
+        NodeSpec(
+            f"gpu-{gpu.short}-{tag}-{n:02d}",
+            f"{gpu.short}-{devices}x",
+            gpu.device_class,
+            gpu.model,
+            gpu.memory_mib,
+            devices,
+        )
+        for gpu, count, devices in groups
+        for n in range(1, count + 1)
+    ]
+
+
 FLEET: list[ClusterSpec] = [
-    ClusterSpec(
-        name="eu-west-1a",
-        region="eu-west-1",
-        zone="eu-west-1a",
-        residency="eu",
-        nodes=[
-            NodeSpec("gpu-h100-a-01", "h100-sxm-8x", "h100-80gb-sxm", "NVIDIA H100 80GB HBM3", 81559, 8),
-            NodeSpec("gpu-h100-a-02", "h100-sxm-8x", "h100-80gb-sxm", "NVIDIA H100 80GB HBM3", 81559, 8),
-            NodeSpec("gpu-l40s-a-01", "l40s-4x", "l40s-48gb-pcie", "NVIDIA L40S", 46068, 4),
-        ],
-    ),
-    ClusterSpec(
-        name="us-east-2b",
-        region="us-east-2",
-        zone="us-east-2b",
-        residency="us",
-        nodes=[
-            NodeSpec("gpu-h200-b-01", "h200-sxm-8x", "h200-141gb-sxm", "NVIDIA H200 141GB HBM3e", 143771, 8),
-            NodeSpec("gpu-h200-b-02", "h200-sxm-8x", "h200-141gb-sxm", "NVIDIA H200 141GB HBM3e", 143771, 8),
-        ],
-    ),
-    # Two small classes instead of one, by design: "this artifact fits an H100 or an RTX 6000,
-    # at different parallelism" is the question the fit work has to answer, and it is not a
-    # question a homogeneous fleet can be asked.
-    ClusterSpec(
-        name="lab-1",
-        region="eu-central-1",
-        zone="eu-central-1c",
-        residency="eu",
-        nodes=[
-            NodeSpec("gpu-a100-lab-01", "a100-pcie-4x", "a100-40gb-pcie", "NVIDIA A100-PCIE-40GB", 40960, 4),
-            NodeSpec(
-                "gpu-6000-lab-01", "rtx6000-4x", "rtx-6000-ada-48gb-pcie", "NVIDIA RTX 6000 Ada Generation", 49140, 4
-            ),
-        ],
-    ),
+    ClusterSpec("us-east-1a", "us-east-1", "us-east-1a", "us", nodes("a", (B300, 2, 8))),
+    ClusterSpec("us-east-2b", "us-east-2", "us-east-2b", "us", nodes("b", (B200, 2, 8))),
+    # Mixed on purpose: "this artifact fits an H200 or an RTX PRO 6000, at different parallelism"
+    # is the question the fit work has to answer, and a homogeneous cluster cannot ask it.
+    ClusterSpec("us-west-2a", "us-west-2", "us-west-2a", "us", nodes("c", (H200, 1, 8), (RTX_PRO_6000, 1, 8))),
+    ClusterSpec("eu-west-1a", "eu-west-1", "eu-west-1a", "eu", nodes("d", (H200, 2, 8))),
+    ClusterSpec("eu-north-1a", "eu-north-1", "eu-north-1a", "eu", nodes("e", (B200, 1, 8), (B300, 1, 8))),
+    ClusterSpec("lab-1", "eu-central-1", "eu-central-1c", "eu", nodes("lab", (RTX_PRO_6000, 2, 4))),
+    ClusterSpec("ap-northeast-1a", "ap-northeast-1", "ap-northeast-1a", "jp", nodes("f", (H200, 2, 8))),
+    ClusterSpec("ap-southeast-1b", "ap-southeast-1", "ap-southeast-1b", "sg", nodes("g", (B200, 1, 8))),
 ]
 
 
@@ -368,6 +378,9 @@ class Agent:
             self.socket = socket
             self.deployments.clear()
             self.devices.taken.clear()
+            # The hello names no session to resume, so the hub opens a new one and expects the
+            # stream from 1. Carrying the last session's count over is a sequence gap it closes on.
+            self.seq = 0
 
             await socket.send(
                 self.unsequenced(
@@ -427,7 +440,7 @@ class Agent:
                             }
                         ],
                         "kernel_version": "6.8.0-45-generic",
-                        "driver_version": "570.86.15",
+                        "driver_version": "580.95.05",
                         "runtime_version": "containerd://1.7.27",
                         "operator_version": OPERATOR_VERSION,
                         "device_ids": dids,
@@ -642,7 +655,7 @@ class Agent:
             "ready": replica.phase == "ready",
             "engine": "vllm",
             "engine_runtime_version": OPERATOR_VERSION,
-            "recipe_id": deployment.desired["recipe_id"],
+            "serving_digest": (deployment.desired.get("serving") or {}).get("digest", ""),
             "restart_count": 0,
             "observed_generation": deployment.generation,
             "started_at": replica.started_at,
