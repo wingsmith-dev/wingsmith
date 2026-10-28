@@ -1,7 +1,7 @@
 BIN            := $(CURDIR)/bin
 CONTROLLER_GEN := $(BIN)/controller-gen
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
-IMG            ?= ghcr.io/hangar-dev/operator:dev
+IMG            ?= ghcr.io/wingsmith-dev/operator:dev
 VERSION        ?= dev
 
 .PHONY: all
@@ -17,7 +17,7 @@ generate: $(CONTROLLER_GEN)
 .PHONY: manifests
 manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=deploy/crd
-	$(CONTROLLER_GEN) rbac:roleName=hangar-operator paths=./... output:rbac:artifacts:config=deploy/rbac
+	$(CONTROLLER_GEN) rbac:roleName=wingsmith-operator paths=./... output:rbac:artifacts:config=deploy/rbac
 
 .PHONY: verify-manifests
 verify-manifests: generate manifests
@@ -46,7 +46,7 @@ docker-build:
 
 .PHONY: kind-load
 kind-load: docker-build
-	kind load docker-image $(IMG) --name hangar
+	kind load docker-image $(IMG) --name wingsmith
 
 .PHONY: deploy
 deploy:

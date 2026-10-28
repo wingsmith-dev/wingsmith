@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // fixturePayload reads the canonical example for a type. The corpus is the only thing standing in

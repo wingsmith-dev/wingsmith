@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 func testInputs() Inputs {
@@ -108,7 +108,7 @@ func TestDynamoGraphDeploymentPod(t *testing.T) {
 	if v, ok := envValue(main, "HF_HOME"); !ok || v != "/models/hf" {
 		t.Fatalf("HF_HOME = %q, %v", v, ok)
 	}
-	if got := pod.NodeSelector["hangar.dev/pool"]; got != "gpu" {
+	if got := pod.NodeSelector["wingsmith.dev/pool"]; got != "gpu" {
 		t.Fatalf("node selector pool = %q", got)
 	}
 
@@ -350,13 +350,13 @@ func TestTheOwnershipLabelsReachThePodTemplate(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("podTemplate.metadata.labels missing: found %v, err %v", found, err)
 	}
-	if labels["hangar.dev/deployment-id"] != "dep_01J9X2" {
-		t.Fatalf("deployment-id label = %q", labels["hangar.dev/deployment-id"])
+	if labels["wingsmith.dev/deployment-id"] != "dep_01J9X2" {
+		t.Fatalf("deployment-id label = %q", labels["wingsmith.dev/deployment-id"])
 	}
-	if labels["hangar.dev/managed-by"] != "hangar-operator" {
-		t.Fatalf("managed-by label = %q", labels["hangar.dev/managed-by"])
+	if labels["wingsmith.dev/managed-by"] != "wingsmith-operator" {
+		t.Fatalf("managed-by label = %q", labels["wingsmith.dev/managed-by"])
 	}
-	if obj.GetLabels()["hangar.dev/deployment-id"] != "dep_01J9X2" {
+	if obj.GetLabels()["wingsmith.dev/deployment-id"] != "dep_01J9X2" {
 		t.Fatalf("graph labels = %v", obj.GetLabels())
 	}
 }
@@ -545,7 +545,7 @@ func TestAFrontendIsRenderedBesideTheWorker(t *testing.T) {
 }
 
 // The routing key. Dynamo copies a component's pod-template labels onto the Service it derives, so
-// hangar.dev/deployment-id here is what lets the agent pick this frontend for a request the
+// wingsmith.dev/deployment-id here is what lets the agent pick this frontend for a request the
 // gateway has already resolved to this deployment. Without it the Service is anonymous and the
 // deployment is reachable by nothing.
 func TestTheFrontendPodTemplateCarriesTheOwnershipLabels(t *testing.T) {
@@ -558,11 +558,11 @@ func TestTheFrontendPodTemplateCarriesTheOwnershipLabels(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("frontend podTemplate.metadata.labels missing: found %v, err %v", found, err)
 	}
-	if labels["hangar.dev/deployment-id"] != "dep_01J9X2" {
-		t.Fatalf("deployment-id label = %q; the agent has no way to pick this frontend", labels["hangar.dev/deployment-id"])
+	if labels["wingsmith.dev/deployment-id"] != "dep_01J9X2" {
+		t.Fatalf("deployment-id label = %q; the agent has no way to pick this frontend", labels["wingsmith.dev/deployment-id"])
 	}
-	if labels["hangar.dev/managed-by"] != "hangar-operator" {
-		t.Fatalf("managed-by label = %q", labels["hangar.dev/managed-by"])
+	if labels["wingsmith.dev/managed-by"] != "wingsmith-operator" {
+		t.Fatalf("managed-by label = %q", labels["wingsmith.dev/managed-by"])
 	}
 }
 
@@ -587,7 +587,7 @@ func TestTheFrontendIsKeptOffTheAcceleratorNodes(t *testing.T) {
 	}
 	// The worker still gets both, unchanged.
 	worker := componentPod(t, componentNamed(t, obj, WorkerComponent))
-	if worker.NodeSelector["hangar.dev/pool"] != "gpu" || len(worker.Tolerations) != 1 {
+	if worker.NodeSelector["wingsmith.dev/pool"] != "gpu" || len(worker.Tolerations) != 1 {
 		t.Fatalf("the worker's scheduling changed: selector=%v tolerations=%v", worker.NodeSelector, worker.Tolerations)
 	}
 }
@@ -595,7 +595,7 @@ func TestTheFrontendIsKeptOffTheAcceleratorNodes(t *testing.T) {
 // A frontend image is not always the engine image: a model may need a patched frontend beside a
 // stock worker when its defects are in the frontend binary.
 func TestTheFrontendImageIsResolvedMostSpecificFirst(t *testing.T) {
-	const patched = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.2"
+	const patched = "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-patched.2"
 	const clusterDefault = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
 
 	cases := []struct {
@@ -820,9 +820,9 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 // reload for anything that redeploys.
 func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 	want := []string{
-		"hangar.dev/deployment-id",
-		"hangar.dev/managed-by",
-		"hangar.dev/project",
+		"wingsmith.dev/deployment-id",
+		"wingsmith.dev/managed-by",
+		"wingsmith.dev/project",
 	}
 
 	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
@@ -1377,7 +1377,7 @@ func TestLocalModelCacheOffByDefault(t *testing.T) {
 // hangs on a download it cannot see, so the assertion is that the argument and the copy's
 // destination are the same string.
 func TestLocalModelCacheMirrorsSharedPath(t *testing.T) {
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/var/lib/hangar/models"}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/var/lib/wingsmith/models"}
 	in := testInputs()
 	in.Artifact.Sources = []wire.ArtifactSource{
 		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},

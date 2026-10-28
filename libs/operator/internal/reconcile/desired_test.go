@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // TestEveryDesiredTypeDecodesToAnIdentity walks the whole registry. A type that is declared

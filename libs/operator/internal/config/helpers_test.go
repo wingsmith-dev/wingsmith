@@ -72,20 +72,20 @@ func TestEnvListToleratesHowAConfigMapIsWritten(t *testing.T) {
 		{"\n  cordon,\n  drain\n", []string{"cordon", "drain"}},
 	}
 	for _, c := range cases {
-		t.Setenv("HANGAR_TEST_LIST", c.raw)
-		if got := envList("HANGAR_TEST_LIST"); !reflect.DeepEqual(got, c.want) {
+		t.Setenv("WINGSMITH_TEST_LIST", c.raw)
+		if got := envList("WINGSMITH_TEST_LIST"); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("envList(%q) = %#v, want %#v", c.raw, got, c.want)
 		}
 	}
 }
 
 func TestEnvListIsNilWhenUnset(t *testing.T) {
-	if got := envList("HANGAR_TEST_LIST_DEFINITELY_UNSET"); got != nil {
+	if got := envList("WINGSMITH_TEST_LIST_DEFINITELY_UNSET"); got != nil {
 		t.Errorf("envList of an unset key = %#v, want nil", got)
 	}
 }
 
-// TestLoaderBoolRefusesWhatItCannotRead is the one that matters for safety: HANGAR_READ_ONLY set
+// TestLoaderBoolRefusesWhatItCannotRead is the one that matters for safety: WINGSMITH_READ_ONLY set
 // to something unparseable must stop the operator, not resolve to a default nobody chose.
 func TestLoaderBoolRefusesWhatItCannotRead(t *testing.T) {
 	cases := []struct {
@@ -107,9 +107,9 @@ func TestLoaderBoolRefusesWhatItCannotRead(t *testing.T) {
 		{"maybe", true, true, false},
 	}
 	for _, c := range cases {
-		t.Setenv("HANGAR_TEST_BOOL", c.raw)
+		t.Setenv("WINGSMITH_TEST_BOOL", c.raw)
 		var l loader
-		got := l.bool("HANGAR_TEST_BOOL", c.def)
+		got := l.bool("WINGSMITH_TEST_BOOL", c.def)
 		if (len(l.errs) == 0) != c.ok {
 			t.Errorf("bool(%q) errors = %v, want ok=%v", c.raw, l.errs, c.ok)
 		}
@@ -121,7 +121,7 @@ func TestLoaderBoolRefusesWhatItCannotRead(t *testing.T) {
 
 func TestLoaderBoolKeepsTheDefaultWhenUnset(t *testing.T) {
 	var l loader
-	if !l.bool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", true) || l.bool("HANGAR_TEST_BOOL_DEFINITELY_UNSET", false) {
+	if !l.bool("WINGSMITH_TEST_BOOL_DEFINITELY_UNSET", true) || l.bool("WINGSMITH_TEST_BOOL_DEFINITELY_UNSET", false) {
 		t.Error("an unset key did not keep its default")
 	}
 	if len(l.errs) != 0 {
@@ -130,24 +130,24 @@ func TestLoaderBoolKeepsTheDefaultWhenUnset(t *testing.T) {
 }
 
 func TestReadOnlyYesFailsStartup(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/hub/sync")
-	t.Setenv("HANGAR_READ_ONLY", "yes")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://hub.example/v1/hub/sync")
+	t.Setenv("WINGSMITH_READ_ONLY", "yes")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_READ_ONLY") {
-		t.Fatalf("error = %v, want one naming HANGAR_READ_ONLY", err)
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_READ_ONLY") {
+		t.Fatalf("error = %v, want one naming WINGSMITH_READ_ONLY", err)
 	}
 }
 
 // TestEnvTreatsAnEmptyValueAsUnset: an env var set to the empty string is how a Helm template
 // renders an omitted field, and it must mean "not configured" instead of "configured to nothing".
 func TestEnvTreatsAnEmptyValueAsUnset(t *testing.T) {
-	t.Setenv("HANGAR_TEST_STR", "")
-	if got := env("HANGAR_TEST_STR", "fallback"); got != "fallback" {
+	t.Setenv("WINGSMITH_TEST_STR", "")
+	if got := env("WINGSMITH_TEST_STR", "fallback"); got != "fallback" {
 		t.Errorf("env of an empty value = %q, want the default", got)
 	}
-	t.Setenv("HANGAR_TEST_STR", "set")
-	if got := env("HANGAR_TEST_STR", "fallback"); got != "set" {
+	t.Setenv("WINGSMITH_TEST_STR", "set")
+	if got := env("WINGSMITH_TEST_STR", "fallback"); got != "set" {
 		t.Errorf("env = %q, want the value that was set", got)
 	}
 }
@@ -166,9 +166,9 @@ func TestLoaderIntAndDurationRefuseWhatTheyCannotRead(t *testing.T) {
 		{"seven", 0, false},
 	}
 	for _, c := range cases {
-		t.Setenv("HANGAR_TEST_INT", c.raw)
+		t.Setenv("WINGSMITH_TEST_INT", c.raw)
 		var l loader
-		got := l.int("HANGAR_TEST_INT", 5)
+		got := l.int("WINGSMITH_TEST_INT", 5)
 		if (len(l.errs) == 0) != c.ok {
 			t.Errorf("int(%q) errors = %v, want ok=%v", c.raw, l.errs, c.ok)
 		}
@@ -177,9 +177,9 @@ func TestLoaderIntAndDurationRefuseWhatTheyCannotRead(t *testing.T) {
 		}
 	}
 
-	t.Setenv("HANGAR_TEST_DURATION", "30")
+	t.Setenv("WINGSMITH_TEST_DURATION", "30")
 	var l loader
-	l.duration("HANGAR_TEST_DURATION", time.Second)
+	l.duration("WINGSMITH_TEST_DURATION", time.Second)
 	if len(l.errs) != 1 {
 		t.Errorf("a duration without a unit was accepted: %v", l.errs)
 	}

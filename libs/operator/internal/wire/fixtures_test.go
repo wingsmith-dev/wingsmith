@@ -226,14 +226,14 @@ func TestDecodeRejectsUnregisteredType(t *testing.T) {
 // every model through its default frontend and reports nothing about it.
 func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
 	var dep DeploymentDesired
-	body := `{"deployment_id":"dep_1","serving":{"frontend_image":"ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1"}}`
+	body := `{"deployment_id":"dep_1","serving":{"frontend_image":"ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-patched.1"}}`
 	if err := json.Unmarshal([]byte(body), &dep); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if dep.Serving.FrontendImage == nil {
 		t.Fatal("frontend_image decoded to nil; this deployment's frontend would be the cluster's default")
 	}
-	if *dep.Serving.FrontendImage != "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1" {
+	if *dep.Serving.FrontendImage != "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-patched.1" {
 		t.Fatalf("frontend_image = %q", *dep.Serving.FrontendImage)
 	}
 	// A pointer, so that a plane too old to send the field is distinguishable from one that

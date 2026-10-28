@@ -18,16 +18,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const testCluster = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 
 // benchImages allowlists the harness image the test operations name.
-var benchImages = []string{"ghcr.io/hangar-dev/aiperf:0.4.1"}
+var benchImages = []string{"ghcr.io/wingsmith-dev/aiperf:0.4.1"}
 
 // recorder collects what the executor reported instead of sending it.
 type recorder struct {
@@ -67,7 +67,7 @@ func node(name string, cordoned bool) *corev1.Node {
 
 func acceleratorPod(name, nodeName string) *corev1.Pod {
 	pod := unmanagedAcceleratorPod(name, nodeName)
-	pod.Labels = map[string]string{render.ManagedByLabel: "hangar-operator"}
+	pod.Labels = map[string]string{render.ManagedByLabel: "wingsmith-operator"}
 	return pod
 }
 
@@ -308,7 +308,7 @@ func stepObjects(n int) []client.Object {
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 			Namespace: benchNS,
 			Name:      stepPodName(n),
-			Labels:    map[string]string{"hangar.dev/benchmark": id},
+			Labels:    map[string]string{"wingsmith.dev/benchmark": id},
 		}},
 	}
 }

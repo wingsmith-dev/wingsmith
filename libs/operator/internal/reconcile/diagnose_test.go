@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 // component builds the object Dynamo derives from a graph deployment, carrying one condition.

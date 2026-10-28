@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // HFHome is the shared model cache mount and HF_HOME in every pod that uses it. One constant
@@ -153,9 +153,9 @@ type Inputs struct {
 // not touch every running workload. Generation and serving digest are the plane's; the layout is computed
 // on this cluster and invisible to the plane, hence a third.
 const (
-	GenerationAnnotation    = "hangar.dev/generation"
-	ServingDigestAnnotation = "hangar.dev/serving-digest"
-	LayoutAnnotation        = "hangar.dev/layout"
+	GenerationAnnotation    = "wingsmith.dev/generation"
+	ServingDigestAnnotation = "wingsmith.dev/serving-digest"
+	LayoutAnnotation        = "wingsmith.dev/layout"
 )
 
 // The rollout strategy Dynamo reads off the graph's `spec.annotations`. Dynamo's 25%/25% rounds
@@ -444,7 +444,7 @@ func slugify(in string) string {
 // the one of the four that is also a routing key: Dynamo copies a component's pod-template labels
 // onto the Service it derives, and this is what the in-cluster agent matches to pick a frontend
 // for a request the gateway has already resolved to this deployment.
-const deploymentIDLabel = "hangar.dev/deployment-id"
+const deploymentIDLabel = "wingsmith.dev/deployment-id"
 
 // ownershipLabels mark what this operator renders as ours. They go on the pod template too, because
 // discovery reads pod labels and Dynamo does not copy the graph's labels onto its pods. The role
@@ -452,9 +452,9 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 // hashes into the object name, stays unchanged.
 func ownershipLabels(in Inputs, role workerRole) map[string]any {
 	labels := map[string]any{
-		deploymentIDLabel:       in.Deployment.DeploymentID,
-		"hangar.dev/project":    in.Deployment.ProjectID,
-		"hangar.dev/managed-by": "hangar-operator",
+		deploymentIDLabel:          in.Deployment.DeploymentID,
+		"wingsmith.dev/project":    in.Deployment.ProjectID,
+		"wingsmith.dev/managed-by": "wingsmith-operator",
 	}
 	if role.Role != "" {
 		labels[RoleLabel] = role.Role
@@ -464,7 +464,7 @@ func ownershipLabels(in Inputs, role workerRole) map[string]any {
 
 // roleLabel says which role of a disaggregated deployment a pod is. Absent on an aggregated one,
 // where there is one worker and nothing to distinguish.
-const RoleLabel = "hangar.dev/role"
+const RoleLabel = "wingsmith.dev/role"
 
 // Replicas is this cluster's share of the workload, as the plane divided it; render exactly that.
 // MinReplicas, because nothing here autoscales. Exported so the reconciler judges completeness by
@@ -478,7 +478,7 @@ func Replicas(dep wire.DeploymentDesired) int {
 
 // localizeScript mirrors one model directory onto the node's disk before the engine starts.
 // Afterwards $DST is either the mirror or a symlink to the shared copy, so --model never changes
-// and a failure is only a slow start. $DST/.hangar-complete is written last, so an interrupted
+// and a failure is only a slow start. $DST/.wingsmith-complete is written last, so an interrupted
 // copy is redone, never served.
 const localizeScript = `set -eu
 SRC="$1"
@@ -487,7 +487,7 @@ DST="$2"
 # The marker alone is not enough to trust a mirror: an earlier build wrote it over a directory
 # of dangling symlinks. A correct mirror holds files, so a top-level symlink means the copy came
 # from the version that did not dereference, and the mirror is redone.
-if [ -e "$DST/.hangar-complete" ] && [ -z "$(find "$DST" -maxdepth 1 -type l -print 2>/dev/null | head -n1)" ]; then
+if [ -e "$DST/.wingsmith-complete" ] && [ -z "$(find "$DST" -maxdepth 1 -type l -print 2>/dev/null | head -n1)" ]; then
   echo "weights already on this node: $DST"
   exit 0
 fi
@@ -520,7 +520,7 @@ echo "copying ${need}K from $SRC to $DST"
 rm -rf "$DST" "$DST.partial"
 mkdir -p "$DST.partial"
 cp -aL "$SRC/." "$DST.partial/" || fallback "copy error"
-touch "$DST.partial/.hangar-complete"
+touch "$DST.partial/.wingsmith-complete"
 mv "$DST.partial" "$DST"
 echo "weights localized: $DST"
 `
@@ -551,7 +551,7 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 }
 
 // frontendLocalizeScript gives the frontend the metadata at the path the workers advertise, without
-// the weights, into an emptyDir. It writes no `.hangar-complete`, so it is never mistaken for a
+// the weights, into an emptyDir. It writes no `.wingsmith-complete`, so it is never mistaken for a
 // mirror.
 const frontendLocalizeScript = `set -eu
 SRC="$1"
@@ -664,7 +664,7 @@ func workerProbes() (liveness, readiness *corev1.Probe) {
 	return probe("/live", 30, 15, 6), probe("/health", 10, 10, 3)
 }
 
-// GPUResource is the extended resource a worker asks for its accelerators by. Hangar targets
+// GPUResource is the extended resource a worker asks for its accelerators by. Wingsmith targets
 // NVIDIA GPUs through the NVIDIA device plugin, and discovery reads the same name.
 const GPUResource = corev1.ResourceName("nvidia.com/gpu")
 
@@ -693,7 +693,7 @@ func fabricResource(opts Options) (corev1.ResourceName, error) {
 	if opts.Fabric == FabricEFA {
 		return efaResource, nil
 	}
-	return "", fmt.Errorf("fabric %q needs a resource name; set HANGAR_FABRIC_RESOURCE", opts.Fabric)
+	return "", fmt.Errorf("fabric %q needs a resource name; set WINGSMITH_FABRIC_RESOURCE", opts.Fabric)
 }
 
 // fabricPrivileged says whether a worker runs privileged with host IPC for its fabric.
@@ -1055,7 +1055,7 @@ const OmniRouterMode = "round-robin"
 
 // routerModes is every `DYN_ROUTER_MODE` a deployment may declare: Dynamo 1.5.0's `--router-mode`
 // choices less `direct`, which routes to a worker id the request has to carry. Nothing in front of a
-// Hangar frontend sets one, so a frontend in that mode refuses every request it is sent.
+// Wingsmith frontend sets one, so a frontend in that mode refuses every request it is sent.
 var routerModes = map[string]bool{
 	"kv": true, "round-robin": true, "random": true, "power-of-two": true,
 	"least-loaded": true, "device-aware-weighted": true,
@@ -1316,7 +1316,7 @@ const (
 	omniStageDir    = "/etc/omni"
 	omniStagePath   = omniStageDir + "/stage.yaml"
 	omniStageVolume = "omni-stage"
-	omniStageEnv    = "HANGAR_OMNI_STAGE_CONFIG"
+	omniStageEnv    = "WINGSMITH_OMNI_STAGE_CONFIG"
 )
 
 // omniStageConfig is the stage-config JSON for a deployment with a diffusion block, or "" to keep
@@ -1732,8 +1732,8 @@ func mergeMaps(base, over map[string]any) map[string]any {
 // Labels recording which declared object a rendered one came from. An owner reference across
 // namespaces reads as a deleted owner and gets the dependent collected.
 const (
-	OwnerNameLabel      = "hangar.dev/owner"
-	OwnerNamespaceLabel = "hangar.dev/owner-namespace"
+	OwnerNameLabel      = "wingsmith.dev/owner"
+	OwnerNamespaceLabel = "wingsmith.dev/owner-namespace"
 )
 
 // Owned records which declared object a rendered one came from: an owner reference only within one

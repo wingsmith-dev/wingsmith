@@ -11,8 +11,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // spyHandler stands in for the desired-state store below the tee.

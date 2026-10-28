@@ -3,7 +3,7 @@ package observe
 import (
 	"crypto/sha256"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // Id prefixes for the objects this cluster observes and therefore names (ADR 0002).

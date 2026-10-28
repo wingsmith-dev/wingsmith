@@ -18,11 +18,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/hangar-dev/hangar/libs/operator/api"
-	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/config"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api"
+	checkpointv1alpha1 "github.com/wingsmith-dev/wingsmith/libs/operator/api/checkpoint/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 // Scheme is the runtime scheme shared by the manager and every client built from it.
@@ -59,7 +59,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 		Scheme:                  scheme,
 		Metrics:                 metricsserver.Options{BindAddress: cfg.MetricsAddr},
 		LeaderElection:          cfg.LeaderElection,
-		LeaderElectionID:        "hangar-operator." + api.Group,
+		LeaderElectionID:        "wingsmith-operator." + api.Group,
 		LeaderElectionNamespace: cfg.Namespace,
 		// Safe because the process exits as soon as the manager stops, and every loop that needs
 		// the lease runs inside the manager. Releasing on the way out lets the replacement pod

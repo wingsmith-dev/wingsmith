@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 type recorder struct {

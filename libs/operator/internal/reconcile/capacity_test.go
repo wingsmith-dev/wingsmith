@@ -12,8 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // pipelined is a deployment whose devices do not have to share a node: one device per tensor

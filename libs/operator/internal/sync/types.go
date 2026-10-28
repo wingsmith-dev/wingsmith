@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // Envelope is the wire envelope. It is an alias instead of a wrapper so that a frame handed to

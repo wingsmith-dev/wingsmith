@@ -71,6 +71,6 @@ func checkImages(object any, opts Options) error {
 		return nil
 	}
 	sort.Strings(refused)
-	return fmt.Errorf("image %s is not under an allowed prefix (HANGAR_ALLOWED_IMAGE_PREFIXES: %s)",
+	return fmt.Errorf("image %s is not under an allowed prefix (WINGSMITH_ALLOWED_IMAGE_PREFIXES: %s)",
 		strings.Join(refused, ", "), strings.Join(opts.ImagePrefixes, ", "))
 }

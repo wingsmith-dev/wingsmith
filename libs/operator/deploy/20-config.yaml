@@ -4,7 +4,7 @@
 # The enrolment token is a credential and does not ship here. Issue one for this cluster from the
 # plane, then create the Secret before applying this bundle:
 #
-#   kubectl create secret generic hangar-operator -n hangar-system \
+#   kubectl create secret generic wingsmith-operator -n wingsmith-system \
 #     --from-literal=enrolment-token=<token>
 #
 # 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod fails
@@ -12,47 +12,47 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hangar-operator
-  namespace: hangar-system
+  name: wingsmith-operator
+  namespace: wingsmith-system
 data:
-  HANGAR_CLUSTER_ID: dev-cluster
+  WINGSMITH_CLUSTER_ID: dev-cluster
   # The plane's hub listens on 8001 (`just dev-up`). Plaintext ws:// carries the enrolment token
-  # unencrypted, so the operator refuses it unless HANGAR_HUB_ALLOW_INSECURE is set; use wss://
+  # unencrypted, so the operator refuses it unless WINGSMITH_HUB_ALLOW_INSECURE is set; use wss://
   # anywhere but a local loop.
-  HANGAR_HUB_URL: ws://host.docker.internal:8001/v1/hub/sync
-  HANGAR_HUB_ALLOW_INSECURE: "true"
-  HANGAR_LOG_LEVEL: info
-  HANGAR_LOG_FORMAT: json
-  HANGAR_NAMESPACE: hangar-system
-  HANGAR_HEARTBEAT_INTERVAL: 10s
-  HANGAR_LIVENESS_TIMEOUT: 30s
-  HANGAR_SEND_QUEUE_SIZE: "1024"
-  HANGAR_LEADER_ELECTION: "true"
+  WINGSMITH_HUB_URL: ws://host.docker.internal:8001/v1/hub/sync
+  WINGSMITH_HUB_ALLOW_INSECURE: "true"
+  WINGSMITH_LOG_LEVEL: info
+  WINGSMITH_LOG_FORMAT: json
+  WINGSMITH_NAMESPACE: wingsmith-system
+  WINGSMITH_HEARTBEAT_INTERVAL: 10s
+  WINGSMITH_LIVENESS_TIMEOUT: 30s
+  WINGSMITH_SEND_QUEUE_SIZE: "1024"
+  WINGSMITH_LEADER_ELECTION: "true"
   # Observe and report: no reconciler, and only the operations listed below. This is how a cluster
   # is first pointed at a plane. Set to "false" when the cluster should serve what the plane
   # declares; a managed cluster performs every operation kind.
-  HANGAR_READ_ONLY: "true"
+  WINGSMITH_READ_ONLY: "true"
   # Operation kinds a read-only operator still performs, comma-separated: cordon, drain,
-  # benchmark. Empty means none. Ignored once HANGAR_READ_ONLY is false.
-  HANGAR_ALLOWED_OPERATIONS: ""
+  # benchmark. Empty means none. Ignored once WINGSMITH_READ_ONLY is false.
+  WINGSMITH_ALLOWED_OPERATIONS: ""
   # The node label that names a node's pool, the pool holding GPU nodes, and the pool (and its
   # taint) model-prefetch jobs run on.
-  HANGAR_POOL_LABEL_KEY: hangar.dev/pool
-  HANGAR_GPU_POOL_VALUE: gpu
-  HANGAR_CACHE_POOL_VALUE: cache
-  HANGAR_CACHE_TAINT_KEY: hangar.dev/cache
+  WINGSMITH_POOL_LABEL_KEY: wingsmith.dev/pool
+  WINGSMITH_GPU_POOL_VALUE: gpu
+  WINGSMITH_CACHE_POOL_VALUE: cache
+  WINGSMITH_CACHE_TAINT_KEY: wingsmith.dev/cache
   # Registries or repositories engine, frontend and prefetch images must come from,
   # comma-separated. Empty allows any image the plane names.
-  HANGAR_ALLOWED_IMAGE_PREFIXES: ""
+  WINGSMITH_ALLOWED_IMAGE_PREFIXES: ""
   # The in-cluster DCGM exporter's metrics URL, scraped for device identity only (ADR 0007).
-  # Empty disables the scrape; device ids then come from the hangar.dev/device-uuids annotation
+  # Empty disables the scrape; device ids then come from the wingsmith.dev/device-uuids annotation
   # or fall back to <node>-gpu<index>.
-  HANGAR_DCGM_ENDPOINT: ""
-  HANGAR_DCGM_TIMEOUT: 5s
+  WINGSMITH_DCGM_ENDPOINT: ""
+  WINGSMITH_DCGM_TIMEOUT: 5s
   # Where a benchmark aims its load. Empty finds the Service that selects Dynamo's Frontend
   # component; set it only when the frontend is something Dynamo did not label.
-  HANGAR_INFERENCE_ENDPOINT: ""
-  HANGAR_BENCHMARK_TIMEOUT: 30m
-  HANGAR_BENCHMARK_ARTIFACT_BASE: ""
-  HANGAR_BENCHMARK_CPU: 500m
-  HANGAR_BENCHMARK_MEMORY: 1Gi
+  WINGSMITH_INFERENCE_ENDPOINT: ""
+  WINGSMITH_BENCHMARK_TIMEOUT: 30m
+  WINGSMITH_BENCHMARK_ARTIFACT_BASE: ""
+  WINGSMITH_BENCHMARK_CPU: 500m
+  WINGSMITH_BENCHMARK_MEMORY: 1Gi

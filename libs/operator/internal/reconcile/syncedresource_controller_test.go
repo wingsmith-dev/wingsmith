@@ -8,13 +8,13 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 const watchedDeploymentID = "dep_01j9x2wwwwwwwwwwwwwwwwwwww"
 
 func TestADeploymentPodEnqueuesTheDeclarationThatRenderedIt(t *testing.T) {
-	r := &SyncedResourceReconciler{Namespace: "hangar-system"}
+	r := &SyncedResourceReconciler{Namespace: "wingsmith-system"}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name:      "qwen-frontend-0",
 		Namespace: "dynamo",
@@ -26,13 +26,13 @@ func TestADeploymentPodEnqueuesTheDeclarationThatRenderedIt(t *testing.T) {
 		t.Fatalf("requests = %v, want one declaration", requests)
 	}
 	got := requests[0].NamespacedName
-	if got.Namespace != "hangar-system" || got.Name != resourceName(watchedDeploymentID) {
-		t.Errorf("request = %s, want hangar-system/%s", got, resourceName(watchedDeploymentID))
+	if got.Namespace != "wingsmith-system" || got.Name != resourceName(watchedDeploymentID) {
+		t.Errorf("request = %s, want wingsmith-system/%s", got, resourceName(watchedDeploymentID))
 	}
 }
 
 func TestAPodWithoutADeploymentIDEnqueuesNothing(t *testing.T) {
-	r := &SyncedResourceReconciler{Namespace: "hangar-system"}
+	r := &SyncedResourceReconciler{Namespace: "wingsmith-system"}
 	if got := r.declaredForPod(context.Background(), &corev1.Pod{}); len(got) != 0 {
 		t.Errorf("requests = %v, want none", got)
 	}

@@ -3,7 +3,7 @@ package checkpoint
 import (
 	"context"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // Adapter presents a Store as the sync client's Checkpointer.

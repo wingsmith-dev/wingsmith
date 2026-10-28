@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // A role that is entirely absent must not read as a shortfall that will resolve itself.
@@ -121,7 +121,7 @@ func observedRolloutFor(t *testing.T, dep wire.DeploymentDesired, pods ...*corev
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithObjects(objects...).Build(),
 		Scheme:    clientgoscheme.Scheme,
 		Log:       slog.Default(),
-		Namespace: "hangar-system",
+		Namespace: "wingsmith-system",
 		Render:    testRender,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}

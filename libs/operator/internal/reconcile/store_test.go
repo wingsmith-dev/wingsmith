@@ -15,13 +15,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
-const testNS = "hangar-system"
+const testNS = "wingsmith-system"
 
 func existing(names ...string) []client.Object {
 	objs := make([]client.Object, 0, len(names))

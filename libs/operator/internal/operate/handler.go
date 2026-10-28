@@ -3,7 +3,7 @@ package operate
 import (
 	"context"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // tee delivers every frame to the desired-state handler and every operation to the executor.

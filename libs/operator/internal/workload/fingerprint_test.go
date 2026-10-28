@@ -13,7 +13,7 @@ func podSpec() *corev1.PodSpec {
 	return &corev1.PodSpec{
 		Containers: []corev1.Container{{
 			Name:    "server",
-			Image:   "ghcr.io/hangar-dev/vllm:0.9.3",
+			Image:   "ghcr.io/wingsmith-dev/vllm:0.9.3",
 			Command: []string{"/bin/vllm"},
 			Args:    []string{"--model", "meta-llama/Llama-3.1-8B"},
 			Env: []corev1.EnvVar{
@@ -53,7 +53,7 @@ func TestFingerprintMovesWithWhatIsRunning(t *testing.T) {
 		what   string
 		mutate func(*corev1.PodSpec)
 	}{
-		{"image", func(s *corev1.PodSpec) { s.Containers[0].Image = "ghcr.io/hangar-dev/vllm:0.9.4" }},
+		{"image", func(s *corev1.PodSpec) { s.Containers[0].Image = "ghcr.io/wingsmith-dev/vllm:0.9.4" }},
 		{"command", func(s *corev1.PodSpec) { s.Containers[0].Command = []string{"/bin/other"} }},
 		{"args", func(s *corev1.PodSpec) { s.Containers[0].Args = []string{"--model", "meta-llama/Llama-3.1-70B"} }},
 		{"env value", func(s *corev1.PodSpec) { s.Containers[0].Env[0].Value = "/elsewhere" }},

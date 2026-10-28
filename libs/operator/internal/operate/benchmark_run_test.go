@@ -18,9 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const (
@@ -81,7 +81,7 @@ func benchmarkOperation(params map[string]string) wire.OperationDesired {
 	merged := map[string]string{
 		"benchmark_id": benchID,
 		"harness":      "aiperf",
-		"image":        "ghcr.io/hangar-dev/aiperf:0.4.1",
+		"image":        "ghcr.io/wingsmith-dev/aiperf:0.4.1",
 		"model":        benchModel,
 	}
 	for k, v := range params {
@@ -118,7 +118,7 @@ func benchmarkPod(name string, created time.Time) *corev1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:         benchNS,
 			Name:              name,
-			Labels:            map[string]string{"hangar.dev/benchmark": benchID},
+			Labels:            map[string]string{"wingsmith.dev/benchmark": benchID},
 			CreationTimestamp: metav1.NewTime(created),
 		},
 	}

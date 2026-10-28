@@ -20,9 +20,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/workload"
 )
 
 func servingDeployment(image string) *appsv1.Deployment {
@@ -38,7 +38,7 @@ func servingDeployment(image string) *appsv1.Deployment {
 
 func adoptedResource(f string) *v1alpha1.SyncedResource {
 	return &v1alpha1.SyncedResource{
-		ObjectMeta: metav1.ObjectMeta{Name: "dep-01j9x2", Namespace: "hangar-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: "dep-01j9x2", Namespace: "wingsmith-system"},
 		Spec: v1alpha1.SyncedResourceSpec{
 			Kind:     "deployment",
 			Revision: 1,
@@ -333,7 +333,7 @@ func TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead(t *testing.T) {
 	}
 	direct := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(res, live).WithStatusSubresource(res).Build()
-	cached := cachedNamespaces{Client: direct, allowed: map[string]bool{"hangar-system": true, "dynamo": true}}
+	cached := cachedNamespaces{Client: direct, allowed: map[string]bool{"wingsmith-system": true, "dynamo": true}}
 
 	for _, tc := range []struct {
 		name   string

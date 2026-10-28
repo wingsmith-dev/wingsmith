@@ -14,9 +14,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const testCacheID = "cch_01j9x2hhhhhhhhhhhhhhhhhhhh"
@@ -364,7 +364,7 @@ func legacyPrefetch(status batchv1.JobStatus) *batchv1.Job {
 			Namespace: testRender.Namespace,
 			Labels: map[string]string{
 				render.ArtifactLabel:  testArtifactID,
-				render.ManagedByLabel: "hangar-operator",
+				render.ManagedByLabel: "wingsmith-operator",
 			},
 		},
 		Status: status,

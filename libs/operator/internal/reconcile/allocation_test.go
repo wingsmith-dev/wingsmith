@@ -6,8 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // fakeDevices is a fixed pod-to-accelerator binding, standing in for a scrape of the exporters.

@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
 )
 
 // FinalizerReleaser is the only controller that runs in read-only mode. It removes the teardown

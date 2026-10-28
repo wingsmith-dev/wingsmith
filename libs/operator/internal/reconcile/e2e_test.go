@@ -17,7 +17,7 @@
 // Run with `just e2e`, or: go test -tags e2e ./internal/reconcile/ -run E2E -v
 // It needs the SyncedResource CRD from deploy/crd/ and deploy/crd/testing_dynamographdeployments.yaml.
 // It creates and deletes its own namespaces and briefly patches one node, so it runs only against a
-// kind- context, or the context HANGAR_E2E_CONTEXT names; anything else is refused.
+// kind- context, or the context WINGSMITH_E2E_CONTEXT names; anything else is refused.
 package reconcile
 
 import (
@@ -42,10 +42,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // settleFor is how long a rendered object is watched before it is called survived.
@@ -100,7 +100,7 @@ func (c *capture) sawReason(reason string) bool {
 	return false
 }
 
-// e2eContext is the context this suite may write to: the one HANGAR_E2E_CONTEXT names, or else
+// e2eContext is the context this suite may write to: the one WINGSMITH_E2E_CONTEXT names, or else
 // the current context when it is a kind cluster. The same rule as dev/guards.sh e2e-context, so a
 // direct `go test` is refused where `just e2e` would be.
 func e2eContext(current, explicit string) (string, error) {
@@ -112,7 +112,7 @@ func e2eContext(current, explicit string) (string, error) {
 	}
 	if !strings.HasPrefix(current, "kind-") {
 		return "", fmt.Errorf("refusing to run e2e against %q: it is not a kind- context. "+
-			"Set HANGAR_E2E_CONTEXT=%s to run it there anyway", current, current)
+			"Set WINGSMITH_E2E_CONTEXT=%s to run it there anyway", current, current)
 	}
 	return current, nil
 }
@@ -126,7 +126,7 @@ func e2eConfig(t *testing.T) *rest.Config {
 	if err != nil {
 		t.Skipf("no kubeconfig available: %v", err)
 	}
-	explicit := os.Getenv("HANGAR_E2E_CONTEXT")
+	explicit := os.Getenv("WINGSMITH_E2E_CONTEXT")
 	if raw.CurrentContext == "" && explicit == "" {
 		t.Skip("no kube context; `just cluster-up` creates a local one")
 	}
@@ -149,7 +149,7 @@ func TestE2EContextIsKindOrNamed(t *testing.T) {
 		current, explicit, want string
 		refused                 bool
 	}{
-		{current: "kind-hangar", want: "kind-hangar"},
+		{current: "kind-wingsmith", want: "kind-wingsmith"},
 		{current: "prod-eu", refused: true},
 		{current: "", refused: true},
 		{current: "prod-eu", explicit: "staging", want: "staging"},
@@ -190,8 +190,8 @@ func newLive(t *testing.T) *live {
 	l := &live{
 		client:     c,
 		reports:    &capture{},
-		declaredNS: fmt.Sprintf("hgr-e2e-sys-%d", stamp),
-		workloadNS: fmt.Sprintf("hgr-e2e-wl-%d", stamp),
+		declaredNS: fmt.Sprintf("wings-e2e-sys-%d", stamp),
+		workloadNS: fmt.Sprintf("wings-e2e-wl-%d", stamp),
 	}
 	for _, name := range []string{l.declaredNS, l.workloadNS} {
 		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
@@ -218,7 +218,7 @@ func newLive(t *testing.T) *live {
 // dropNamespace deletes a test namespace, releasing anything holding it open first.
 //
 // The finalizer is why this cannot be a plain delete. A namespace will not finish terminating
-// while a resource in it still carries one, and the only thing that removes `hangar.dev/rendered`
+// while a resource in it still carries one, and the only thing that removes `wingsmith.dev/rendered`
 // is a running reconciler, which a finished test no longer has. Deleting the namespace and
 // walking away leaves it Terminating forever, and the next run adds another.
 //

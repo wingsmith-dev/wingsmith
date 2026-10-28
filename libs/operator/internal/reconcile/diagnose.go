@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // componentGVK is the object Dynamo derives from a graph deployment, one per component.

@@ -3,7 +3,7 @@ package observe
 import (
 	"context"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // joinedHandler delegates inbound frames to the desired-state store and fans a fresh session out

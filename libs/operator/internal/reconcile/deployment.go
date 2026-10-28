@@ -17,9 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // fieldOwner identifies this operator's writes to the API server.
@@ -28,7 +28,7 @@ import (
 // Dynamo operator own the fields it writes back without the two of us overwriting each other on
 // every pass. It also means a field this operator stops rendering is removed, not left
 // behind, which hand-rolled create-then-update does not give.
-const fieldOwner = client.FieldOwner("hangar-operator")
+const fieldOwner = client.FieldOwner("wingsmith-operator")
 
 // waitForDependency is how long to wait before looking again for a declared object that has not
 // arrived, or for weights that are still downloading.
@@ -50,12 +50,12 @@ const resyncAfterApply = 5 * time.Minute
 // Cross-namespace rendering is why this exists at all. Deleting the declared copy used to
 // garbage-collect the workload through an owner reference; that reference was never valid across
 // namespaces, so teardown is a code path now and this is the hook it hangs on.
-const renderedFinalizer = "hangar.dev/rendered"
+const renderedFinalizer = "wingsmith.dev/rendered"
 
 // deploymentIDLabel is the label the render stamps the plane's deployment id with. It is how a
 // rendered object is found without knowing what it was named, which matters because the name
 // follows the deployment's name and the name can change.
-const deploymentIDLabel = "hangar.dev/deployment-id"
+const deploymentIDLabel = "wingsmith.dev/deployment-id"
 
 // reconcileDeployment renders one deployment into the objects that serve it.
 //

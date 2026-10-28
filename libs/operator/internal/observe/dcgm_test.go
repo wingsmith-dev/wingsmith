@@ -242,7 +242,7 @@ func TestUnreachableDCGMDegradesRatherThanFailing(t *testing.T) {
 }
 
 // TestAnnotationOverridesTheSyntheticFallback keeps the escape hatch for a cluster with no
-// exporter: hangar asks for nothing, but a cluster that volunteers real uuids is believed.
+// exporter: wingsmith asks for nothing, but a cluster that volunteers real uuids is believed.
 func TestAnnotationOverridesTheSyntheticFallback(t *testing.T) {
 	node := gpuNode("gpu-a", map[string]string{labelGPUCount: "2"},
 		map[string]string{annotationDeviceUUIDs: "GPU-aaaa,GPU-bbbb"}, true, false)

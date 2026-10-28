@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // The overlay allowlists. They mirror POD_OVERLAY_KEYS, CONTAINER_OVERLAY_KEYS,

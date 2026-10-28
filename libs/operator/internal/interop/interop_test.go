@@ -11,8 +11,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // TestHandshake is PROTOCOL §1: the token rides on the dial as a bearer header, hello is answered
@@ -47,7 +47,7 @@ func TestHandshake(t *testing.T) {
 // enrolment token it never minted before the upgrade, so neither gets a session.
 func TestOnlyTheEnrolmentTokenOpensASession(t *testing.T) {
 	h := startHub(t, "--desired-count", "0")
-	for _, bad := range []string{"interop-token", "hgro1.unknown"} {
+	for _, bad := range []string{"interop-token", "wso1.unknown"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		conn, resp, err := websocket.Dial(ctx, h.url(), &websocket.DialOptions{
 			HTTPHeader: http.Header{"Authorization": []string{"Bearer " + bad}},

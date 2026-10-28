@@ -1,4 +1,4 @@
-// Command operator runs the Hangar cluster operator: one instance per Kubernetes cluster, dialling
+// Command operator runs the Wingsmith cluster operator: one instance per Kubernetes cluster, dialling
 // out to the control-plane hub and reconciling CRDs into cluster objects.
 package main
 
@@ -23,14 +23,14 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
-	"github.com/hangar-dev/hangar/libs/operator/internal/config"
-	"github.com/hangar-dev/hangar/libs/operator/internal/health"
-	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
-	"github.com/hangar-dev/hangar/libs/operator/internal/operate"
-	"github.com/hangar-dev/hangar/libs/operator/internal/reconcile"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/health"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/operate"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/reconcile"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 // version is stamped at build time with -ldflags.
@@ -98,7 +98,7 @@ func run() error {
 	}
 	if cfg.TLSInsecureSkipVerify {
 		log.Warn("hub certificate verification is disabled; anyone on the path can impersonate the hub " +
-			"and declare workloads on this cluster. Use HANGAR_HUB_CA_FILE instead outside local development")
+			"and declare workloads on this cluster. Use WINGSMITH_HUB_CA_FILE instead outside local development")
 	}
 
 	restCfg, err := ctrl.GetConfig()

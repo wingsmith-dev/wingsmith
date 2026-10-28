@@ -12,9 +12,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // streamingReporter records a correlated snapshot the way the hub would receive it.
@@ -56,7 +56,7 @@ func demandReconciler(t *testing.T, rep Reporter, objects ...client.Object) *Syn
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 		ClusterID: "ap-cluster-1",
 	}
 	r.Bind(rep)

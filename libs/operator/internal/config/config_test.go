@@ -8,8 +8,8 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://hub.example/v1/stream")
 
 	c, err := Load()
 	if err != nil {
@@ -21,8 +21,8 @@ func TestLoadDefaults(t *testing.T) {
 	if c.LivenessTimeout <= c.HeartbeatInterval {
 		t.Errorf("liveness timeout must exceed the heartbeat interval")
 	}
-	if c.PoolLabelKey != "hangar.dev/pool" || c.CacheTaintKey != "hangar.dev/cache" {
-		t.Errorf("pool label = %q, cache taint = %q, want the hangar.dev defaults", c.PoolLabelKey, c.CacheTaintKey)
+	if c.PoolLabelKey != "wingsmith.dev/pool" || c.CacheTaintKey != "wingsmith.dev/cache" {
+		t.Errorf("pool label = %q, cache taint = %q, want the wingsmith.dev defaults", c.PoolLabelKey, c.CacheTaintKey)
 	}
 	if c.DCGMEndpoint != "" {
 		t.Errorf("dcgm endpoint = %q, want none until the cluster names one", c.DCGMEndpoint)
@@ -34,16 +34,16 @@ func TestLoadRejectsBadInput(t *testing.T) {
 		name string
 		env  map[string]string
 	}{
-		{"no cluster id", map[string]string{"HANGAR_HUB_URL": "wss://h/x"}},
-		{"no hub url", map[string]string{"HANGAR_CLUSTER_ID": "c"}},
-		{"inbound scheme", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "https://h/x"}},
-		{"plaintext hub", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "ws://h/x"}},
-		{"liveness below heartbeat", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x", "HANGAR_HEARTBEAT_INTERVAL": "30s", "HANGAR_LIVENESS_TIMEOUT": "10s"}},
-		{"bad log level", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x", "HANGAR_LOG_LEVEL": "loud"}},
+		{"no cluster id", map[string]string{"WINGSMITH_HUB_URL": "wss://h/x"}},
+		{"no hub url", map[string]string{"WINGSMITH_CLUSTER_ID": "c"}},
+		{"inbound scheme", map[string]string{"WINGSMITH_CLUSTER_ID": "c", "WINGSMITH_HUB_URL": "https://h/x"}},
+		{"plaintext hub", map[string]string{"WINGSMITH_CLUSTER_ID": "c", "WINGSMITH_HUB_URL": "ws://h/x"}},
+		{"liveness below heartbeat", map[string]string{"WINGSMITH_CLUSTER_ID": "c", "WINGSMITH_HUB_URL": "wss://h/x", "WINGSMITH_HEARTBEAT_INTERVAL": "30s", "WINGSMITH_LIVENESS_TIMEOUT": "10s"}},
+		{"bad log level", map[string]string{"WINGSMITH_CLUSTER_ID": "c", "WINGSMITH_HUB_URL": "wss://h/x", "WINGSMITH_LOG_LEVEL": "loud"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"HANGAR_CLUSTER_ID", "HANGAR_HUB_URL", "HANGAR_HUB_ALLOW_INSECURE", "HANGAR_HEARTBEAT_INTERVAL", "HANGAR_LIVENESS_TIMEOUT", "HANGAR_LOG_LEVEL"} {
+			for _, k := range []string{"WINGSMITH_CLUSTER_ID", "WINGSMITH_HUB_URL", "WINGSMITH_HUB_ALLOW_INSECURE", "WINGSMITH_HEARTBEAT_INTERVAL", "WINGSMITH_LIVENESS_TIMEOUT", "WINGSMITH_LOG_LEVEL"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range tc.env {
@@ -57,12 +57,12 @@ func TestLoadRejectsBadInput(t *testing.T) {
 }
 
 func TestLoadOverrides(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "ws://localhost:8001/v1/hub/sync")
-	t.Setenv("HANGAR_HUB_ALLOW_INSECURE", "true")
-	t.Setenv("HANGAR_LOG_LEVEL", "debug")
-	t.Setenv("HANGAR_SEND_QUEUE_SIZE", "8")
-	t.Setenv("HANGAR_BACKOFF_MAX", "1m")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "ws://localhost:8001/v1/hub/sync")
+	t.Setenv("WINGSMITH_HUB_ALLOW_INSECURE", "true")
+	t.Setenv("WINGSMITH_LOG_LEVEL", "debug")
+	t.Setenv("WINGSMITH_SEND_QUEUE_SIZE", "8")
+	t.Setenv("WINGSMITH_BACKOFF_MAX", "1m")
 
 	c, err := Load()
 	if err != nil {
@@ -77,8 +77,8 @@ func TestLoadOverrides(t *testing.T) {
 // exactly what it always did, which is what lets this binary reach every cluster before any
 // cluster changes shape.
 func TestTheFrontendIsOffByDefaultAndItsSwitchesAreOn(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://hub.example/v1/stream")
 
 	c, err := Load()
 	if err != nil {
@@ -108,19 +108,19 @@ func TestTheFrontendIsOffByDefaultAndItsSwitchesAreOn(t *testing.T) {
 }
 
 func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")
-	t.Setenv("HANGAR_FRONTEND_ENABLED", "true")
-	t.Setenv("HANGAR_FRONTEND_IMAGE", "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.2")
-	t.Setenv("HANGAR_FRONTEND_REPLICAS", "3")
-	t.Setenv("HANGAR_ENGINE_PULL_SECRETS", "ghcr-engine, ghcr-mirror")
-	t.Setenv("HANGAR_FRONTEND_PULL_SECRETS", "ghcr-hangar, ghcr-mirror")
-	t.Setenv("HANGAR_FRONTEND_CPU", "500m")
-	t.Setenv("HANGAR_FRONTEND_MEMORY", "1Gi")
-	t.Setenv("HANGAR_FRONTEND_MEMORY_LIMIT", "4Gi")
-	t.Setenv("HANGAR_FRONTEND_ANTHROPIC_API", "false")
-	t.Setenv("HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE", "false")
-	t.Setenv("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", "false")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://hub.example/v1/stream")
+	t.Setenv("WINGSMITH_FRONTEND_ENABLED", "true")
+	t.Setenv("WINGSMITH_FRONTEND_IMAGE", "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-patched.2")
+	t.Setenv("WINGSMITH_FRONTEND_REPLICAS", "3")
+	t.Setenv("WINGSMITH_ENGINE_PULL_SECRETS", "ghcr-engine, ghcr-mirror")
+	t.Setenv("WINGSMITH_FRONTEND_PULL_SECRETS", "ghcr-wingsmith, ghcr-mirror")
+	t.Setenv("WINGSMITH_FRONTEND_CPU", "500m")
+	t.Setenv("WINGSMITH_FRONTEND_MEMORY", "1Gi")
+	t.Setenv("WINGSMITH_FRONTEND_MEMORY_LIMIT", "4Gi")
+	t.Setenv("WINGSMITH_FRONTEND_ANTHROPIC_API", "false")
+	t.Setenv("WINGSMITH_FRONTEND_ANTHROPIC_STRIP_PREAMBLE", "false")
+	t.Setenv("WINGSMITH_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", "false")
 
 	c, err := Load()
 	if err != nil {
@@ -149,22 +149,22 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 // and is reachable by nothing. Turning the frontend off is its own setting, so say so instead of
 // quietly substituting the default for what somebody wrote.
 func TestZeroFrontendReplicasIsRefusedRatherThanDefaulted(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "wss://hub.example/v1/stream")
-	t.Setenv("HANGAR_FRONTEND_ENABLED", "true")
-	t.Setenv("HANGAR_FRONTEND_REPLICAS", "0")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://hub.example/v1/stream")
+	t.Setenv("WINGSMITH_FRONTEND_ENABLED", "true")
+	t.Setenv("WINGSMITH_FRONTEND_REPLICAS", "0")
 
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_FRONTEND_ENABLED") {
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_FRONTEND_ENABLED") {
 		t.Fatalf("error = %v, want one naming the way to render no frontend", err)
 	}
 }
 
 func TestPlaintextHubNeedsTheDevFlagAndIsWarnedAbout(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "ws://localhost:8001/v1/hub/sync")
-	t.Setenv("HANGAR_HUB_ALLOW_INSECURE", "true")
-	t.Setenv("HANGAR_HUB_INSECURE_SKIP_VERIFY", "true")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "cluster-1")
+	t.Setenv("WINGSMITH_HUB_URL", "ws://localhost:8001/v1/hub/sync")
+	t.Setenv("WINGSMITH_HUB_ALLOW_INSECURE", "true")
+	t.Setenv("WINGSMITH_HUB_INSECURE_SKIP_VERIFY", "true")
 
 	c, err := Load()
 	if err != nil {
@@ -176,26 +176,26 @@ func TestPlaintextHubNeedsTheDevFlagAndIsWarnedAbout(t *testing.T) {
 }
 
 func TestTheFabricIsDeclaredWholeOrNotAtAll(t *testing.T) {
-	base := map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x"}
+	base := map[string]string{"WINGSMITH_CLUSTER_ID": "c", "WINGSMITH_HUB_URL": "wss://h/x"}
 	cases := []struct {
 		name string
 		env  map[string]string
 		ok   bool
 	}{
 		{"none", nil, true},
-		{"efa", map[string]string{"HANGAR_FABRIC": "efa", "HANGAR_FABRIC_DEVICES": "16"}, true},
-		{"rdma with a resource", map[string]string{"HANGAR_FABRIC": "rdma", "HANGAR_FABRIC_DEVICES": "8", "HANGAR_FABRIC_RESOURCE": "rdma/ib"}, true},
-		{"devices without a fabric", map[string]string{"HANGAR_FABRIC_DEVICES": "16"}, false},
-		{"fabric without devices", map[string]string{"HANGAR_FABRIC": "efa"}, false},
-		{"rdma without a resource", map[string]string{"HANGAR_FABRIC": "rdma", "HANGAR_FABRIC_DEVICES": "8"}, false},
-		{"unknown fabric", map[string]string{"HANGAR_FABRIC": "infiniband", "HANGAR_FABRIC_DEVICES": "8"}, false},
-		{"older efa spelling", map[string]string{"HANGAR_EFA_DEVICES": "16"}, true},
-		{"older efa spelling at zero", map[string]string{"HANGAR_EFA_DEVICES": "0"}, true},
-		{"both spellings", map[string]string{"HANGAR_EFA_DEVICES": "16", "HANGAR_FABRIC": "efa", "HANGAR_FABRIC_DEVICES": "16"}, false},
+		{"efa", map[string]string{"WINGSMITH_FABRIC": "efa", "WINGSMITH_FABRIC_DEVICES": "16"}, true},
+		{"rdma with a resource", map[string]string{"WINGSMITH_FABRIC": "rdma", "WINGSMITH_FABRIC_DEVICES": "8", "WINGSMITH_FABRIC_RESOURCE": "rdma/ib"}, true},
+		{"devices without a fabric", map[string]string{"WINGSMITH_FABRIC_DEVICES": "16"}, false},
+		{"fabric without devices", map[string]string{"WINGSMITH_FABRIC": "efa"}, false},
+		{"rdma without a resource", map[string]string{"WINGSMITH_FABRIC": "rdma", "WINGSMITH_FABRIC_DEVICES": "8"}, false},
+		{"unknown fabric", map[string]string{"WINGSMITH_FABRIC": "infiniband", "WINGSMITH_FABRIC_DEVICES": "8"}, false},
+		{"older efa spelling", map[string]string{"WINGSMITH_EFA_DEVICES": "16"}, true},
+		{"older efa spelling at zero", map[string]string{"WINGSMITH_EFA_DEVICES": "0"}, true},
+		{"both spellings", map[string]string{"WINGSMITH_EFA_DEVICES": "16", "WINGSMITH_FABRIC": "efa", "WINGSMITH_FABRIC_DEVICES": "16"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_RESOURCE", "HANGAR_FABRIC_PRIVILEGED", "HANGAR_EFA_DEVICES"} {
+			for _, k := range []string{"WINGSMITH_FABRIC", "WINGSMITH_FABRIC_DEVICES", "WINGSMITH_FABRIC_RESOURCE", "WINGSMITH_FABRIC_PRIVILEGED", "WINGSMITH_EFA_DEVICES"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range base {
@@ -214,10 +214,10 @@ func TestTheFabricIsDeclaredWholeOrNotAtAll(t *testing.T) {
 
 // Privileged follows the fabric that needs it, and nothing else.
 func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "c")
-	t.Setenv("HANGAR_HUB_URL", "wss://h/x")
-	t.Setenv("HANGAR_FABRIC", "efa")
-	t.Setenv("HANGAR_FABRIC_DEVICES", "16")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "c")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://h/x")
+	t.Setenv("WINGSMITH_FABRIC", "efa")
+	t.Setenv("WINGSMITH_FABRIC_DEVICES", "16")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -226,8 +226,8 @@ func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
 		t.Error("EFA needs privileged workers to register GPU memory")
 	}
 
-	t.Setenv("HANGAR_FABRIC", "rdma")
-	t.Setenv("HANGAR_FABRIC_RESOURCE", "rdma/ib")
+	t.Setenv("WINGSMITH_FABRIC", "rdma")
+	t.Setenv("WINGSMITH_FABRIC_RESOURCE", "rdma/ib")
 	if c, err = Load(); err != nil {
 		t.Fatal(err)
 	}
@@ -236,13 +236,13 @@ func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
 	}
 }
 
-// Charts before 0.3.0 wrote HANGAR_EFA_DEVICES. Dropping it silently would turn the fabric off on
+// Charts before 0.3.0 wrote WINGSMITH_EFA_DEVICES. Dropping it silently would turn the fabric off on
 // every such install and move KV over TCP with nothing saying so.
 func TestTheOlderEFASpellingStillDeclaresTheFabric(t *testing.T) {
-	t.Setenv("HANGAR_CLUSTER_ID", "c")
-	t.Setenv("HANGAR_HUB_URL", "wss://h/x")
-	t.Setenv("HANGAR_EFA_DEVICES", "16")
-	t.Setenv("HANGAR_FABRIC_RESOURCE", "vpc.amazonaws.com/efa")
+	t.Setenv("WINGSMITH_CLUSTER_ID", "c")
+	t.Setenv("WINGSMITH_HUB_URL", "wss://h/x")
+	t.Setenv("WINGSMITH_EFA_DEVICES", "16")
+	t.Setenv("WINGSMITH_FABRIC_RESOURCE", "vpc.amazonaws.com/efa")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -252,9 +252,9 @@ func TestTheOlderEFASpellingStillDeclaresTheFabric(t *testing.T) {
 	}
 	warned := false
 	for _, w := range c.Warnings() {
-		warned = warned || strings.Contains(w, "HANGAR_EFA_DEVICES")
+		warned = warned || strings.Contains(w, "WINGSMITH_EFA_DEVICES")
 	}
 	if !warned {
-		t.Errorf("warnings = %v, want one naming HANGAR_EFA_DEVICES", c.Warnings())
+		t.Errorf("warnings = %v, want one naming WINGSMITH_EFA_DEVICES", c.Warnings())
 	}
 }

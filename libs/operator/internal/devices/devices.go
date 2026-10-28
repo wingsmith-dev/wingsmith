@@ -1,4 +1,4 @@
-// Package devices resolves a vendor's product string into a hangar device class.
+// Package devices resolves a vendor's product string into a wingsmith device class.
 //
 // The dictionary itself is libs/packages/contract/devices.json, read by both the operator and the plane, because
 // the two dialects a card is named in (the GPU Feature Discovery node label and the DCGM
@@ -116,7 +116,7 @@ func (t *Table) Lookup(dialect, product string) (Class, bool) {
 	return class, ok
 }
 
-// Resolve maps a vendor string onto a hangar class, falling back to the slug of the string itself
+// Resolve maps a vendor string onto a wingsmith class, falling back to the slug of the string itself
 // so unknown hardware still gets a stable, deterministic class. A fallthrough is logged once per
 // distinct string, because discovery runs on an interval and the table is grown from these lines.
 func (t *Table) Resolve(dialect, product string) string {

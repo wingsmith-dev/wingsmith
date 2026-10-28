@@ -10,8 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	checkpointv1alpha1 "github.com/wingsmith-dev/wingsmith/libs/operator/api/checkpoint/v1alpha1"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
 func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
@@ -25,7 +25,7 @@ func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
 
 func loaded(t *testing.T, c client.Client) *CRDStore {
 	t.Helper()
-	s := NewCRDStore(c, "hangar-system")
+	s := NewCRDStore(c, "wingsmith-system")
 	if _, err := s.Load(context.Background()); err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestRestartDuringPartitionDoesNotRewind(t *testing.T) {
 		}
 	}
 
-	restarted := NewCRDStore(c, "hangar-system")
+	restarted := NewCRDStore(c, "wingsmith-system")
 	got, err := restarted.Load(ctx)
 	if err != nil {
 		t.Fatalf("load after restart: %v", err)
@@ -79,7 +79,7 @@ func TestCrashBetweenApplyAndCheckpointFailsBackwards(t *testing.T) {
 
 	applied := uint64(4)
 
-	after := NewCRDStore(c, "hangar-system")
+	after := NewCRDStore(c, "wingsmith-system")
 	got, err := after.Load(ctx)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -168,7 +168,7 @@ func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 		t.Fatalf("save after lossy: %v", err)
 	}
 
-	restarted := NewCRDStore(c, "hangar-system")
+	restarted := NewCRDStore(c, "wingsmith-system")
 	got, err := restarted.Load(ctx)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -203,7 +203,7 @@ func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 // TestLoadFailureIsNotAZeroCursor: an unreadable cursor must surface as an error. Flattening it to
 // zero would rewind the stream on every transient API-server hiccup.
 func TestLoadFailureIsNotAZeroCursor(t *testing.T) {
-	s := NewCRDStore(errClient{}, "hangar-system")
+	s := NewCRDStore(errClient{}, "wingsmith-system")
 	if _, err := s.Load(context.Background()); err == nil {
 		t.Fatal("unreadable cursor reported as zero state")
 	}
@@ -220,7 +220,7 @@ func TestCursorIsStoredBesideTheCRDs(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 	var obj checkpointv1alpha1.StreamCheckpoint
-	key := types.NamespacedName{Namespace: "hangar-system", Name: DefaultName}
+	key := types.NamespacedName{Namespace: "wingsmith-system", Name: DefaultName}
 	if err := c.Get(ctx, key, &obj); err != nil {
 		t.Fatalf("checkpoint object not found at %s: %v", key, err)
 	}

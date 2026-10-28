@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const prefetchImage = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1"
@@ -16,10 +16,10 @@ const prefetchImage = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1"
 func testOptions() Options {
 	return Options{
 		Namespace:      "dynamo",
-		PoolLabelKey:   "hangar.dev/pool",
+		PoolLabelKey:   "wingsmith.dev/pool",
 		GPUPoolValue:   "gpu",
 		CachePoolValue: "cache",
-		CacheTaintKey:  "hangar.dev/cache",
+		CacheTaintKey:  "wingsmith.dev/cache",
 		ModelCachePVC:  "model-cache",
 	}
 }
@@ -56,10 +56,10 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if job.Name != "qwen3-8b-prefetch-art-01j9x2aaaaaaaaaaaaaaaaaaaa" {
 		t.Fatalf("name = %q", job.Name)
 	}
-	if got := job.Labels["hangar.dev/artifact"]; got != hfArtifact().ArtifactID {
+	if got := job.Labels["wingsmith.dev/artifact"]; got != hfArtifact().ArtifactID {
 		t.Fatalf("artifact label = %q", got)
 	}
-	if got := job.Labels["hangar.dev/managed-by"]; got != "hangar-operator" {
+	if got := job.Labels["wingsmith.dev/managed-by"]; got != "wingsmith-operator" {
 		t.Fatalf("managed-by label = %q", got)
 	}
 	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 3 {
@@ -70,10 +70,10 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if pod.RestartPolicy != corev1.RestartPolicyOnFailure {
 		t.Fatalf("restart policy = %q", pod.RestartPolicy)
 	}
-	if got := pod.NodeSelector["hangar.dev/pool"]; got != "cache" {
+	if got := pod.NodeSelector["wingsmith.dev/pool"]; got != "cache" {
 		t.Fatalf("node selector pool = %q, want the cache pool", got)
 	}
-	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "hangar.dev/cache" {
+	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "wingsmith.dev/cache" {
 		t.Fatalf("tolerations = %+v", pod.Tolerations)
 	}
 	if len(pod.Volumes) != 1 || pod.Volumes[0].PersistentVolumeClaim == nil ||
@@ -311,7 +311,7 @@ func TestAPrefetchJobSaysWhichModelItIsPulling(t *testing.T) {
 
 	// The Job's labels take the warm-set's origin and the pod template's must not, or the two
 	// would be one map and an immutable pod selector would move with it.
-	OwnedMeta(job, &metav1.ObjectMeta{Name: "cch-1", Namespace: "hangar-system"})
+	OwnedMeta(job, &metav1.ObjectMeta{Name: "cch-1", Namespace: "wingsmith-system"})
 	if _, ok := job.Spec.Template.Labels[OwnerNameLabel]; ok {
 		t.Error("the owner label leaked into the pod template; job and pod share one label map")
 	}

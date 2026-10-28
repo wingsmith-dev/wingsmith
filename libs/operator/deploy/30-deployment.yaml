@@ -1,39 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hangar-operator
-  namespace: hangar-system
+  name: wingsmith-operator
+  namespace: wingsmith-system
   labels:
-    app.kubernetes.io/name: hangar-operator
+    app.kubernetes.io/name: wingsmith-operator
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: hangar-operator
+      app.kubernetes.io/name: wingsmith-operator
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: hangar-operator
+        app.kubernetes.io/name: wingsmith-operator
     spec:
-      serviceAccountName: hangar-operator
+      serviceAccountName: wingsmith-operator
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: operator
-          image: ghcr.io/hangar-dev/operator:REPLACE_WITH_IMAGE_TAG
+          image: ghcr.io/wingsmith-dev/operator:REPLACE_WITH_IMAGE_TAG
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
-                name: hangar-operator
+                name: wingsmith-operator
           env:
-            - name: HANGAR_ENROLMENT_TOKEN
+            - name: WINGSMITH_ENROLMENT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: hangar-operator
+                  name: wingsmith-operator
                   key: enrolment-token
           ports:
             - name: health

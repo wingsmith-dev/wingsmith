@@ -6,14 +6,14 @@
 // plane, and keeping the types apart keeps the two from being mistaken for each other.
 //
 // +kubebuilder:object:generate=true
-// +groupName=hangar.dev
+// +groupName=wingsmith.dev
 package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 
-	"github.com/hangar-dev/hangar/libs/operator/api"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api"
 )
 
 var (

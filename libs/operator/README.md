@@ -1,6 +1,6 @@
 # operator
 
-The Hangar cluster operator. Go, one instance per Kubernetes cluster. It dials out to the plane's
+The Wingsmith cluster operator. Go, one instance per Kubernetes cluster. It dials out to the plane's
 hub over one WebSocket and nothing ever connects inward.
 
 It does five things:
@@ -25,7 +25,7 @@ operator restart.
 
 ## Custom resources
 
-Both resources are in the `hangar.dev` API group at `v1alpha1`:
+Both resources are in the `wingsmith.dev` API group at `v1alpha1`:
 
 | Kind | Short name | What it is |
 |---|---|---|
@@ -80,7 +80,7 @@ A frame the operator fails to apply is retried in place a few times; if it still
 ends and the resume replays it.
 
 **Backpressure.** One queue sits between every producer and the single writer. Below its bound
-(`HANGAR_SEND_QUEUE_SIZE`) every frame is appended. Above it an event is dropped and counted, and
+(`WINGSMITH_SEND_QUEUE_SIZE`) every frame is appended. Above it an event is dropped and counted, and
 an uncorrelated observation replaces the queued one for the same subject. Nothing queued is
 evicted. A hard limit of sixteen times the bound (at least 16384 frames) refuses the frames a later
 resync restates (stream openers and terminators, frames inside a resync stream, replies) and ends
@@ -100,51 +100,51 @@ replica waiting for the lease reports not ready because it holds no hub session.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HANGAR_CLUSTER_ID` | required | the plane-assigned cluster id |
-| `HANGAR_HUB_URL` | required | `wss://` hub address; `ws://` only with `HANGAR_HUB_ALLOW_INSECURE=true` |
-| `HANGAR_HUB_ALLOW_INSECURE` | `false` | accept a `ws://` hub URL, which sends the token in the clear; local development only |
-| `HANGAR_ENROLMENT_TOKEN` | required | the cluster's enrolment token |
-| `HANGAR_HUB_CA_FILE` | none | PEM bundle for verifying the hub |
-| `HANGAR_HUB_INSECURE_SKIP_VERIFY` | `false` | local development only; logs a warning at startup |
-| `HANGAR_NAMESPACE` | `hangar-system` | where the custom resources and the lease live |
-| `HANGAR_WORKLOAD_NAMESPACE` | `dynamo` | where rendered workloads and prefetch jobs go |
-| `HANGAR_READ_ONLY` | `false` | observe and report only: no reconciler runs and operations are refused |
-| `HANGAR_ALLOWED_OPERATIONS` | none | operation kinds a read-only operator still runs, comma-separated |
-| `HANGAR_LEADER_ELECTION` | `true` | controller-runtime leader election |
-| `HANGAR_LOG_LEVEL` / `HANGAR_LOG_FORMAT` | `info` / `json` | structured logging |
-| `HANGAR_HEALTH_ADDR` | `:8081` | `/healthz`, `/readyz` |
-| `HANGAR_METRICS_ADDR` | `0` | controller-runtime metrics; `0` disables |
-| `HANGAR_SEND_QUEUE_SIZE` | `1024` | outbound queue bound |
-| `HANGAR_HEARTBEAT_INTERVAL` | `10s` | application-level ping interval |
-| `HANGAR_LIVENESS_TIMEOUT` | `30s` | silence tolerated before redialling; must exceed the interval |
-| `HANGAR_BACKOFF_MIN` / `HANGAR_BACKOFF_MAX` | `1s` / `30s` | reconnect backoff, full jitter |
-| `HANGAR_OBSERVE_INTERVAL` / `HANGAR_OBSERVE_TIMEOUT` | `30s` / `60s` | observation tick and its deadline |
-| `HANGAR_OBSERVE_STALE_AFTER` | `5m` | readiness fails when the last observation is older |
-| `HANGAR_RESYNC_INTERVAL` | `15m` | how often the whole observed inventory is restated, which is what retires objects the cluster no longer has |
-| `HANGAR_DCGM_ENDPOINT` / `HANGAR_DCGM_SELECTOR` / `HANGAR_DCGM_TIMEOUT` | in-cluster exporter / none / `5s` | where device identity is scraped |
-| `HANGAR_POOL_LABEL_KEY` / `HANGAR_GPU_POOL_VALUE` | `hangar.dev/pool` / `gpu` | node label workers are placed by |
-| `HANGAR_GPU_TOLERATION_KEY` / `HANGAR_GPU_TOLERATION_VALUE` | `nvidia.com/gpu` / none | the taint GPU workers tolerate; no value tolerates any value of the key |
-| `HANGAR_CACHE_POOL_VALUE` / `HANGAR_CACHE_TAINT_KEY` / `HANGAR_CACHE_TAINT_VALUE` | `cache` / `hangar.dev/cache` / none | node pool and taint for weight downloads |
-| `HANGAR_PREFETCH_CPU` / `HANGAR_PREFETCH_MEMORY` / `HANGAR_PREFETCH_MEMORY_LIMIT` | none | prefetch job resources |
-| `HANGAR_MODEL_CACHE_PVC` / `HANGAR_LOCAL_MODEL_CACHE_DIR` | `model-cache` / none | where weights are cached |
-| `HANGAR_ENGINE_PULL_SECRETS` | none | image pull secrets for engine workers |
-| `HANGAR_ALLOWED_IMAGE_PREFIXES` | none | registries or repositories every engine, frontend and prefetch image must come from; empty allows any |
-| `HANGAR_FRONTEND_ENABLED` | `false` | render one frontend per model |
-| `HANGAR_FRONTEND_IMAGE` / `HANGAR_FRONTEND_REPLICAS` / `HANGAR_FRONTEND_PULL_SECRETS` | none / `2` / none | the frontend's image, count and pull secrets |
-| `HANGAR_FRONTEND_CPU` / `HANGAR_FRONTEND_MEMORY` / `HANGAR_FRONTEND_MEMORY_LIMIT` | none | frontend resources |
-| `HANGAR_FRONTEND_ANTHROPIC_API` / `HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE` | `true` / `true` | serve `/v1/messages`, and drop a fixed client preamble so the prefix cache can hit |
-| `HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE` | `true` | put each graph's frontend and workers in the shared Dynamo namespace; `false` gives each graph its own. Read only with `HANGAR_FRONTEND_ENABLED` |
-| `HANGAR_MULTINODE` | `false` | assert a leader-worker backend (Grove or LeaderWorkerSet) when discovery cannot see it |
-| `HANGAR_FABRIC` | none | RDMA fabric workers move KV over: empty, `efa` or `rdma` |
-| `HANGAR_FABRIC_DEVICES` / `HANGAR_FABRIC_RESOURCE` | `0` / `vpc.amazonaws.com/efa` under `efa` | interfaces per worker pod and their extended resource; `rdma` requires the resource |
-| `HANGAR_FABRIC_PRIVILEGED` | `true` under `efa`, else `false` | run fabric workers privileged with host IPC |
-| `HANGAR_EFA_DEVICES` | none | legacy alias for `HANGAR_FABRIC=efa` with that many devices; refused alongside the new keys |
-| `HANGAR_NIXL_BACKENDS` | none | NIXL plugins the KV connector registers; `LIBFABRIC` on EFA |
-| `HANGAR_INFERENCE_ENDPOINT` | discovered | the frontend a benchmark aims at |
-| `HANGAR_BENCHMARK_TIMEOUT` / `HANGAR_BENCHMARK_CPU` / `HANGAR_BENCHMARK_MEMORY` | `30m` / `500m` / `1Gi` | benchmark runs |
-| `HANGAR_BENCHMARK_IMAGES` | the pinned aiperf and evalscope images | harness images a benchmark may run, matched exactly |
-| `HANGAR_BENCHMARK_TOKEN_SECRET` | none | Secret in the workload namespace handed to benchmark jobs as environment, for a gated tokenizer |
-| `HANGAR_BENCHMARK_ARTIFACT_BASE` | none | where raw benchmark records would be uploaded; nothing uploads yet |
+| `WINGSMITH_CLUSTER_ID` | required | the plane-assigned cluster id |
+| `WINGSMITH_HUB_URL` | required | `wss://` hub address; `ws://` only with `WINGSMITH_HUB_ALLOW_INSECURE=true` |
+| `WINGSMITH_HUB_ALLOW_INSECURE` | `false` | accept a `ws://` hub URL, which sends the token in the clear; local development only |
+| `WINGSMITH_ENROLMENT_TOKEN` | required | the cluster's enrolment token |
+| `WINGSMITH_HUB_CA_FILE` | none | PEM bundle for verifying the hub |
+| `WINGSMITH_HUB_INSECURE_SKIP_VERIFY` | `false` | local development only; logs a warning at startup |
+| `WINGSMITH_NAMESPACE` | `wingsmith-system` | where the custom resources and the lease live |
+| `WINGSMITH_WORKLOAD_NAMESPACE` | `dynamo` | where rendered workloads and prefetch jobs go |
+| `WINGSMITH_READ_ONLY` | `false` | observe and report only: no reconciler runs and operations are refused |
+| `WINGSMITH_ALLOWED_OPERATIONS` | none | operation kinds a read-only operator still runs, comma-separated |
+| `WINGSMITH_LEADER_ELECTION` | `true` | controller-runtime leader election |
+| `WINGSMITH_LOG_LEVEL` / `WINGSMITH_LOG_FORMAT` | `info` / `json` | structured logging |
+| `WINGSMITH_HEALTH_ADDR` | `:8081` | `/healthz`, `/readyz` |
+| `WINGSMITH_METRICS_ADDR` | `0` | controller-runtime metrics; `0` disables |
+| `WINGSMITH_SEND_QUEUE_SIZE` | `1024` | outbound queue bound |
+| `WINGSMITH_HEARTBEAT_INTERVAL` | `10s` | application-level ping interval |
+| `WINGSMITH_LIVENESS_TIMEOUT` | `30s` | silence tolerated before redialling; must exceed the interval |
+| `WINGSMITH_BACKOFF_MIN` / `WINGSMITH_BACKOFF_MAX` | `1s` / `30s` | reconnect backoff, full jitter |
+| `WINGSMITH_OBSERVE_INTERVAL` / `WINGSMITH_OBSERVE_TIMEOUT` | `30s` / `60s` | observation tick and its deadline |
+| `WINGSMITH_OBSERVE_STALE_AFTER` | `5m` | readiness fails when the last observation is older |
+| `WINGSMITH_RESYNC_INTERVAL` | `15m` | how often the whole observed inventory is restated, which is what retires objects the cluster no longer has |
+| `WINGSMITH_DCGM_ENDPOINT` / `WINGSMITH_DCGM_SELECTOR` / `WINGSMITH_DCGM_TIMEOUT` | in-cluster exporter / none / `5s` | where device identity is scraped |
+| `WINGSMITH_POOL_LABEL_KEY` / `WINGSMITH_GPU_POOL_VALUE` | `wingsmith.dev/pool` / `gpu` | node label workers are placed by |
+| `WINGSMITH_GPU_TOLERATION_KEY` / `WINGSMITH_GPU_TOLERATION_VALUE` | `nvidia.com/gpu` / none | the taint GPU workers tolerate; no value tolerates any value of the key |
+| `WINGSMITH_CACHE_POOL_VALUE` / `WINGSMITH_CACHE_TAINT_KEY` / `WINGSMITH_CACHE_TAINT_VALUE` | `cache` / `wingsmith.dev/cache` / none | node pool and taint for weight downloads |
+| `WINGSMITH_PREFETCH_CPU` / `WINGSMITH_PREFETCH_MEMORY` / `WINGSMITH_PREFETCH_MEMORY_LIMIT` | none | prefetch job resources |
+| `WINGSMITH_MODEL_CACHE_PVC` / `WINGSMITH_LOCAL_MODEL_CACHE_DIR` | `model-cache` / none | where weights are cached |
+| `WINGSMITH_ENGINE_PULL_SECRETS` | none | image pull secrets for engine workers |
+| `WINGSMITH_ALLOWED_IMAGE_PREFIXES` | none | registries or repositories every engine, frontend and prefetch image must come from; empty allows any |
+| `WINGSMITH_FRONTEND_ENABLED` | `false` | render one frontend per model |
+| `WINGSMITH_FRONTEND_IMAGE` / `WINGSMITH_FRONTEND_REPLICAS` / `WINGSMITH_FRONTEND_PULL_SECRETS` | none / `2` / none | the frontend's image, count and pull secrets |
+| `WINGSMITH_FRONTEND_CPU` / `WINGSMITH_FRONTEND_MEMORY` / `WINGSMITH_FRONTEND_MEMORY_LIMIT` | none | frontend resources |
+| `WINGSMITH_FRONTEND_ANTHROPIC_API` / `WINGSMITH_FRONTEND_ANTHROPIC_STRIP_PREAMBLE` | `true` / `true` | serve `/v1/messages`, and drop a fixed client preamble so the prefix cache can hit |
+| `WINGSMITH_FRONTEND_GLOBAL_DYNAMO_NAMESPACE` | `true` | put each graph's frontend and workers in the shared Dynamo namespace; `false` gives each graph its own. Read only with `WINGSMITH_FRONTEND_ENABLED` |
+| `WINGSMITH_MULTINODE` | `false` | assert a leader-worker backend (Grove or LeaderWorkerSet) when discovery cannot see it |
+| `WINGSMITH_FABRIC` | none | RDMA fabric workers move KV over: empty, `efa` or `rdma` |
+| `WINGSMITH_FABRIC_DEVICES` / `WINGSMITH_FABRIC_RESOURCE` | `0` / `vpc.amazonaws.com/efa` under `efa` | interfaces per worker pod and their extended resource; `rdma` requires the resource |
+| `WINGSMITH_FABRIC_PRIVILEGED` | `true` under `efa`, else `false` | run fabric workers privileged with host IPC |
+| `WINGSMITH_EFA_DEVICES` | none | legacy alias for `WINGSMITH_FABRIC=efa` with that many devices; refused alongside the new keys |
+| `WINGSMITH_NIXL_BACKENDS` | none | NIXL plugins the KV connector registers; `LIBFABRIC` on EFA |
+| `WINGSMITH_INFERENCE_ENDPOINT` | discovered | the frontend a benchmark aims at |
+| `WINGSMITH_BENCHMARK_TIMEOUT` / `WINGSMITH_BENCHMARK_CPU` / `WINGSMITH_BENCHMARK_MEMORY` | `30m` / `500m` / `1Gi` | benchmark runs |
+| `WINGSMITH_BENCHMARK_IMAGES` | the pinned aiperf and evalscope images | harness images a benchmark may run, matched exactly |
+| `WINGSMITH_BENCHMARK_TOKEN_SECRET` | none | Secret in the workload namespace handed to benchmark jobs as environment, for a gated tokenizer |
+| `WINGSMITH_BENCHMARK_ARTIFACT_BASE` | none | where raw benchmark records would be uploaded; nothing uploads yet |
 
 The renderer targets NVIDIA GPUs only: workers request `nvidia.com/gpu` (`render.GPUResource`) and
 device identity comes from DCGM. Other accelerators are not supported.
@@ -157,22 +157,22 @@ unreachable.
 
 The Helm chart in `libs/chart/cluster-setup` is the supported install. `deploy/` is a kustomize
 bundle for development: namespace, CRDs, generated RBAC, config and deployment. It expects a
-`hangar-operator` Secret holding the enrolment token (see `deploy/20-config.yaml`).
+`wingsmith-operator` Secret holding the enrolment token (see `deploy/20-config.yaml`).
 
-A declared deployment carries the `hangar.dev/rendered` finalizer until the operator has removed
+A declared deployment carries the `wingsmith.dev/rendered` finalizer until the operator has removed
 what it rendered, so uninstall in this order:
 
 1. Delete the `SyncedResource` objects while the operator is still running, and wait for them to
-   go: `kubectl -n hangar-system delete syncedresources --all --wait`.
+   go: `kubectl -n wingsmith-system delete syncedresources --all --wait`.
 2. Uninstall the operator (`helm uninstall`, or `make undeploy` for the kustomize bundle).
 3. Delete the CRDs: `kubectl delete -f deploy/crd/`.
 
 If the operator is already gone, remove the finalizers by hand and then delete the graph
-deployments it rendered (they carry the `hangar.dev/deployment-id` label):
+deployments it rendered (they carry the `wingsmith.dev/deployment-id` label):
 
 ```
-kubectl -n hangar-system get syncedresources -o name \
-  | xargs -r -n1 kubectl -n hangar-system patch --type merge -p '{"metadata":{"finalizers":null}}'
+kubectl -n wingsmith-system get syncedresources -o name \
+  | xargs -r -n1 kubectl -n wingsmith-system patch --type merge -p '{"metadata":{"finalizers":null}}'
 ```
 
 A read-only operator has no reconciler to tear anything down. It runs one small controller instead

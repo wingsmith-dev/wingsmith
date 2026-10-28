@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/devices"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/devices"
 )
 
 // Labels and annotations the discoverer reads. GPU inventory in a real cluster is published by
@@ -32,11 +32,11 @@ const (
 	labelRegion       = "topology.kubernetes.io/region"
 	labelZone         = "topology.kubernetes.io/zone"
 	// labelPool is the fallback pool label, used when no key is configured. A cluster that
-	// labels its pools with anything else sets HANGAR_POOL_LABEL_KEY, which is the same key
+	// labels its pools with anything else sets WINGSMITH_POOL_LABEL_KEY, which is the same key
 	// placement selects on: observing one key while scheduling against another puts a node in
 	// a pool the plane cannot then target.
-	labelPool         = "hangar.dev/pool"
-	labelDeviceClass  = "hangar.dev/device-class"
+	labelPool         = "wingsmith.dev/pool"
+	labelDeviceClass  = "wingsmith.dev/device-class"
 	labelInstanceType = "node.kubernetes.io/instance-type"
 	labelInstanceBeta = "beta.kubernetes.io/instance-type"
 
@@ -46,11 +46,11 @@ const (
 	// annotation is retained as an override for a cluster that runs no DCGM; absent both,
 	// devices are keyed by node and index, which is stable for as long as the hardware does
 	// not move between machines.
-	annotationDeviceUUIDs = "hangar.dev/device-uuids"
+	annotationDeviceUUIDs = "wingsmith.dev/device-uuids"
 
 	// annotationUnhealthy lists the indices or UUIDs of accelerators a health checker has
 	// condemned.
-	annotationUnhealthy = "hangar.dev/unhealthy-devices"
+	annotationUnhealthy = "wingsmith.dev/unhealthy-devices"
 
 	resourceGPU = corev1.ResourceName("nvidia.com/gpu")
 )
@@ -390,18 +390,18 @@ func exportedLabels(in map[string]string, poolKey string) map[string]string {
 		out["fabric"] = "nvlink"
 	}
 	for k, v := range in {
-		if rest, ok := strings.CutPrefix(k, "hangar.dev/"); ok {
+		if rest, ok := strings.CutPrefix(k, "wingsmith.dev/"); ok {
 			out[rest] = v
 		}
 	}
-	// Last so the configured key wins over a stale `hangar.dev/pool` the prefix loop copied.
+	// Last so the configured key wins over a stale `wingsmith.dev/pool` the prefix loop copied.
 	if v := in[poolKey]; v != "" {
 		out["pool"] = v
 	}
 	return out
 }
 
-// deviceClass names the hardware the way hangar names it, from libs/packages/contract/devices.json. The names
+// deviceClass names the hardware the way wingsmith names it, from libs/packages/contract/devices.json. The names
 // GFD and DCGM publish are two dialects for the same card and neither is canonical, so the
 // dictionary decides; hardware it does not list falls back to a slug of the vendor string, which
 // is stable and deterministic and gets logged so the table can be grown.

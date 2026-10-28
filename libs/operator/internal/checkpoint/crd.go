@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
+	checkpointv1alpha1 "github.com/wingsmith-dev/wingsmith/libs/operator/api/checkpoint/v1alpha1"
 )
 
 // DefaultName is the name of the singleton StreamCheckpoint object. There is exactly one stream
@@ -40,7 +40,7 @@ type CRDStore struct {
 	last   State
 }
 
-// +kubebuilder:rbac:groups=hangar.dev,resources=streamcheckpoints,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=wingsmith.dev,resources=streamcheckpoints,verbs=get;list;watch;create;update;patch
 
 var _ Store = (*CRDStore)(nil)
 

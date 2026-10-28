@@ -15,9 +15,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // recordingReporter keeps what the reconciler tried to tell the hub.
@@ -63,7 +63,7 @@ func runReconcileReporting(t *testing.T, rep Reporter, objects ...client.Object)
 		WithObjects(objects...).WithStatusSubresource(subject).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 		ClusterID: "ap-cluster-1",
 	}
 	r.Bind(rep)
@@ -388,7 +388,7 @@ func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
 		t.Fatalf("creating the replacement pod: %v", err)
 	}
 
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "hangar-system", Name: dep.Name}}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "wingsmith-system", Name: dep.Name}}
 	if _, err := r.Reconcile(ctx, req); err != nil {
 		t.Fatalf("second pass: %v", err)
 	}

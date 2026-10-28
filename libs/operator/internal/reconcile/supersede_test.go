@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 const (
@@ -104,7 +104,7 @@ func pruneSupersededOn(t *testing.T, objects ...client.Object) client.Client {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 	}
 	if err := r.pruneSuperseded(context.Background(), testGraphName); err != nil {
 		t.Fatalf("pruneSuperseded: %v", err)

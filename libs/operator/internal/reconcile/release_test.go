@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
 )
 
 // TestReadOnlyReleasesADeclarationDeletedWithKubectl: a declaration deleted outside the hub, as

@@ -11,8 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 func discardLogger() *slog.Logger {
@@ -155,7 +155,7 @@ func TestBenchmarkSaysSoWhenThereIsNoFrontend(t *testing.T) {
 		Render: render.Options{Namespace: "dynamo"},
 	}
 	_, err := e.frontendEndpoint(context.Background(), "dep_01J9X2")
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_INFERENCE_ENDPOINT") {
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_INFERENCE_ENDPOINT") {
 		t.Errorf("the error does not name the way out: %v", err)
 	}
 }
@@ -287,7 +287,7 @@ func TestBenchmarkStillRefusesWhenNoFrontendIsThisDeploymentsAndTwoAreShared(t *
 		Render: render.Options{Namespace: "dynamo"},
 	}
 	_, err := e.frontendEndpoint(context.Background(), "dep_qwen")
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_INFERENCE_ENDPOINT") {
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_INFERENCE_ENDPOINT") {
 		t.Fatalf("the error does not name the way out: %v", err)
 	}
 	if !strings.Contains(err.Error(), "dep_qwen") {

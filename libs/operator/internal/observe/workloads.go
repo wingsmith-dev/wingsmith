@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/workload"
 )
 
 // Labels and annotations the workload discoverer reads.
@@ -24,16 +24,16 @@ const (
 	// Two keys because the deployment id is only on what a deployment renders, while
 	// `managed-by` is on everything this operator writes (a prefetch job, a benchmark run),
 	// none of which is a workload anybody discovered.
-	labelManaged   = "hangar.dev/deployment-id"
-	labelManagedBy = "hangar.dev/managed-by"
+	labelManaged   = "wingsmith.dev/deployment-id"
+	labelManagedBy = "wingsmith.dev/managed-by"
 
 	// managedByOperator is the value this operator stamps on what it renders.
-	managedByOperator = "hangar-operator"
+	managedByOperator = "wingsmith-operator"
 
 	// labelModel and annotationModel are where a workload says which model it serves, when it
 	// says so at all. A hint for the human reading the list, never an input to placement.
-	labelModel      = "hangar.dev/model"
-	annotationModel = "hangar.dev/model"
+	labelModel      = "wingsmith.dev/model"
+	annotationModel = "wingsmith.dev/model"
 
 	// labelPodTemplateHash is set by the Deployment controller on every ReplicaSet it owns and
 	// on their pods. It is what lets a pod be traced back to its Deployment without listing
@@ -328,7 +328,7 @@ func exportedWorkloadLabels(in map[string]string) map[string]string {
 // is here because Dynamo says more about a workload in its labels than most operators say
 // anywhere: the graph deployment a worker belongs to, its component and its role in the graph.
 // Dropping them left every discovered vLLM worker looking anonymous.
-var exportedLabelPrefixes = []string{"hangar.dev/", "app.kubernetes.io/", "nvidia.com/"}
+var exportedLabelPrefixes = []string{"wingsmith.dev/", "app.kubernetes.io/", "nvidia.com/"}
 
 func keys(in map[string]bool) []string {
 	out := make([]string, 0, len(in))

@@ -22,9 +22,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const (

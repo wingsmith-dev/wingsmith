@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 // componentItemGVK is one of the objects `componentGVK` lists.

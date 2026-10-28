@@ -9,4 +9,4 @@ package api
 // `+kubebuilder:rbac` markers in internal/reconcile and internal/checkpoint spell it literally;
 // changing the group means changing this line and those markers, then running `make manifests`
 // and copying deploy/crd into the chart.
-const Group = "hangar.dev"
+const Group = "wingsmith.dev"

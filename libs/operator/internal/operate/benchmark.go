@@ -13,8 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // TypeBenchmarkObserved is the frame a run's result comes back on.
@@ -179,12 +179,12 @@ const frontendComponentLabel = "nvidia.com/dynamo-component"
 // deploymentIDLabel is the label the operator puts on everything it renders for one deployment,
 // and, because Dynamo copies a component's pod-template labels onto the Service it derives, the
 // label that says which deployment a frontend Service belongs to.
-const deploymentIDLabel = "hangar.dev/deployment-id"
+const deploymentIDLabel = "wingsmith.dev/deployment-id"
 
 // frontendEndpoint finds the OpenAI-compatible frontend to aim a run at.
 //
 // Frontend Service names vary between clusters, so the operator selects on Dynamo's own component
-// label instead of guessing a name. `HANGAR_INFERENCE_ENDPOINT` wins when it is set.
+// label instead of guessing a name. `WINGSMITH_INFERENCE_ENDPOINT` wins when it is set.
 //
 // With several frontends, the deployment id decides: Dynamo copies a component's pod-template
 // labels onto the Service it derives, so a frontend rendered for one deployment carries its id,
@@ -221,7 +221,7 @@ func (e *Executor) frontendEndpoint(ctx context.Context, deploymentID string) (s
 	if len(found) == 0 {
 		return "", fmt.Errorf(
 			"no service in %s selects %s=%s, so there is nothing to benchmark against; "+
-				"set HANGAR_INFERENCE_ENDPOINT if this cluster fronts its models with something else",
+				"set WINGSMITH_INFERENCE_ENDPOINT if this cluster fronts its models with something else",
 			e.Render.Namespace, frontendComponentLabel, render.FrontendComponent,
 		)
 	}
@@ -229,13 +229,13 @@ func (e *Executor) frontendEndpoint(ctx context.Context, deploymentID string) (s
 	if len(mine) > 1 {
 		return "", fmt.Errorf(
 			"%s holds %d inference frontends labelled %s=%s (%s) and nothing here can tell them "+
-				"apart; set HANGAR_INFERENCE_ENDPOINT",
+				"apart; set WINGSMITH_INFERENCE_ENDPOINT",
 			e.Render.Namespace, len(mine), deploymentIDLabel, deploymentID, serviceNames(mine),
 		)
 	}
 	return "", fmt.Errorf(
 		"%s holds %d inference frontends (%s), none of them labelled %s=%s, so nothing here can "+
-			"tell which one serves the deployment under test; set HANGAR_INFERENCE_ENDPOINT",
+			"tell which one serves the deployment under test; set WINGSMITH_INFERENCE_ENDPOINT",
 		e.Render.Namespace, len(found), serviceNames(found), deploymentIDLabel, deploymentID,
 	)
 }
@@ -338,7 +338,7 @@ func (e *Executor) jobLogs(ctx context.Context, namespace, benchmarkID string) (
 	var pods corev1.PodList
 	if err := e.Client.List(ctx, &pods,
 		client.InNamespace(namespace),
-		client.MatchingLabels{"hangar.dev/benchmark": benchmarkID},
+		client.MatchingLabels{"wingsmith.dev/benchmark": benchmarkID},
 	); err != nil {
 		return "", fmt.Errorf("list benchmark pods: %w", err)
 	}

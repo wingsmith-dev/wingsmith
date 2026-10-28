@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // runOn hands an operation to a fresh executor over an existing client, which is what an
@@ -101,11 +101,11 @@ func TestTheNodeRecordIsBounded(t *testing.T) {
 // Cordon and drain reach only the GPU pool unless forced: a wrong node id must not be enough to
 // take a system node out of service.
 func TestNodeOperationsStayInTheGPUPoolUnlessForced(t *testing.T) {
-	pool := render.Options{PoolLabelKey: "hangar.dev/pool", GPUPoolValue: "gpu"}
+	pool := render.Options{PoolLabelKey: "wingsmith.dev/pool", GPUPoolValue: "gpu"}
 	gpu := node("gpu-0", false)
-	gpu.Labels = map[string]string{"hangar.dev/pool": "gpu"}
+	gpu.Labels = map[string]string{"wingsmith.dev/pool": "gpu"}
 	system := node("sys-0", false)
-	system.Labels = map[string]string{"hangar.dev/pool": "system"}
+	system.Labels = map[string]string{"wingsmith.dev/pool": "system"}
 	c := fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithObjects(gpu, system).Build()
 
 	if got := runOn(t, c, pool, operation("cordon", "gpu-0", nil)); got.Phase != "succeeded" {

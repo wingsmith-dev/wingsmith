@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // prefetchNamePrefix distinguishes the download job from anything else rendered for an artifact.
@@ -27,14 +27,14 @@ const prefetchNamePrefix = "prefetch-"
 // ArtifactLabel is the key the whole operator finds a prefetch job by, and it is the only one that
 // carries meaning to code: the object name is a rendering for people and has changed shape once
 // already. ModelLabel and ModelSourceAnnotation are for the reader: `kubectl get jobs -L
-// hangar.dev/model` answers "who is downloading" even for an artifact whose slug was truncated out
+// wingsmith.dev/model` answers "who is downloading" even for an artifact whose slug was truncated out
 // of the name, and the annotation holds the full source URI, which no object name could.
 const (
-	ArtifactLabel         = "hangar.dev/artifact"
-	ManagedByLabel        = "hangar.dev/managed-by"
-	ModelLabel            = "hangar.dev/model"
-	ModelSourceAnnotation = "hangar.dev/model-source"
-	AttemptAnnotation     = "hangar.dev/prefetch-attempt"
+	ArtifactLabel         = "wingsmith.dev/artifact"
+	ManagedByLabel        = "wingsmith.dev/managed-by"
+	ModelLabel            = "wingsmith.dev/model"
+	ModelSourceAnnotation = "wingsmith.dev/model-source"
+	AttemptAnnotation     = "wingsmith.dev/prefetch-attempt"
 )
 
 // What one download asks the scheduler for, when the cluster does not say.
@@ -179,7 +179,7 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 		return nil, fmt.Errorf("artifact %s has no image to fetch with", art.ArtifactID)
 	}
 	if !imageAllowed(image, opts.ImagePrefixes) {
-		return nil, fmt.Errorf("artifact %s: image %s is not under an allowed prefix (HANGAR_ALLOWED_IMAGE_PREFIXES: %s)",
+		return nil, fmt.Errorf("artifact %s: image %s is not under an allowed prefix (WINGSMITH_ALLOWED_IMAGE_PREFIXES: %s)",
 			art.ArtifactID, image, strings.Join(opts.ImagePrefixes, ", "))
 	}
 
@@ -422,11 +422,11 @@ func PrefetchAttemptName(art wire.ArtifactDesired, attempt int) string {
 //
 // The model is a label, not only a name segment, because a label survives what a name cannot:
 // it is present in full on an artifact whose slug was truncated out of the name, and `kubectl get
-// jobs -L hangar.dev/model` reads it back without parsing anything.
+// jobs -L wingsmith.dev/model` reads it back without parsing anything.
 func prefetchLabels(art wire.ArtifactDesired) map[string]string {
 	labels := map[string]string{
 		ArtifactLabel:  art.ArtifactID,
-		ManagedByLabel: "hangar-operator",
+		ManagedByLabel: "wingsmith-operator",
 	}
 	if model := PrefetchModel(art); model != "" {
 		if len(model) > maxLabelValue {

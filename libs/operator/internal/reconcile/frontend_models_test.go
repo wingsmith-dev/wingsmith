@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 )
 
 // fakeFrontend answers for every pod at once, which is what the cluster case looks like: the
@@ -57,7 +57,7 @@ func observedRolloutProbing(
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithObjects(objects...).Build(),
 		Scheme:    clientgoscheme.Scheme,
 		Log:       slog.Default(),
-		Namespace: "hangar-system",
+		Namespace: "wingsmith-system",
 		Render:    opts,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 		Frontend:  probe,

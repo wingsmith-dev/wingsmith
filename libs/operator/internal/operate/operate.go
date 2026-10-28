@@ -27,10 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // TypeOperationDesired and TypeOperationObserved are the two frames this package deals in.
@@ -535,7 +535,7 @@ func (e *Executor) permits(kind string) bool {
 // the terminal frame, so it sends the operation again to an operator that has no memory of it.
 // Kept on the node because a drain already needs to patch it, so the record costs no extra
 // permission; a benchmark's record is its Job, which a replay re-attaches to by name.
-const nodeOperationsAnnotation = "hangar.dev/operations"
+const nodeOperationsAnnotation = "wingsmith.dev/operations"
 
 // maxNodeOperations bounds the record on one node.
 const maxNodeOperations = 8
@@ -577,7 +577,7 @@ func (e *Executor) nodeOperation(ctx context.Context, op wire.OperationDesired) 
 }
 
 // inGPUPool refuses a node outside the accelerator pool unless the operation sets force=true.
-// Hangar places work only on that pool, and a wrong node id should not be enough to cordon or
+// Wingsmith places work only on that pool, and a wrong node id should not be enough to cordon or
 // drain a system node.
 func (e *Executor) inGPUPool(node *corev1.Node, op wire.OperationDesired) error {
 	key, value := e.Render.PoolLabelKey, e.Render.GPUPoolValue
@@ -650,7 +650,7 @@ func (e *Executor) cordon(ctx context.Context, op wire.OperationDesired, node *c
 // backoff until the drain's deadline, and the drain then waits for every evicted pod to exit, so
 // success means the node is actually empty of them.
 //
-// Only Hangar-managed pods holding accelerators are evicted. Agents, exporters and CSI drivers stay
+// Only Wingsmith-managed pods holding accelerators are evicted. Agents, exporters and CSI drivers stay
 // so the plane can still see the node, and accelerator pods this operator did not place stay unless
 // the operation sets `force=true`; how many were left is in the result.
 func (e *Executor) drain(ctx context.Context, op wire.OperationDesired, node *corev1.Node) (map[string]string, error) {
@@ -672,7 +672,7 @@ func (e *Executor) drain(ctx context.Context, op wire.OperationDesired, node *co
 		if !holdsAccelerator(pod) {
 			continue
 		}
-		if !force && !managedByHangar(pod) {
+		if !force && !managedByWingsmith(pod) {
 			unmanaged++
 			continue
 		}
@@ -827,14 +827,14 @@ func holdsAccelerator(pod *corev1.Pod) bool {
 	return false
 }
 
-// managedByHangar reports whether a pod was rendered by this operator. The render puts its
+// managedByWingsmith reports whether a pod was rendered by this operator. The render puts its
 // ownership labels on every pod template.
-func managedByHangar(pod *corev1.Pod) bool {
+func managedByWingsmith(pod *corev1.Pod) bool {
 	return pod.Labels[render.ManagedByLabel] == managedByOperator
 }
 
 // managedByOperator is the value render stamps on render.ManagedByLabel.
-const managedByOperator = "hangar-operator"
+const managedByOperator = "wingsmith-operator"
 
 // cordoning is the drain's first step expressed as the operation it already is.
 func cordoning(op wire.OperationDesired) wire.OperationDesired {

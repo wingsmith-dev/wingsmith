@@ -26,9 +26,9 @@ const benchmarkNamePrefix = "benchmark-"
 // The sentinels exist because a load generator prints a human summary too, and picking the JSON
 // out of that by shape would be guessing.
 const (
-	SummaryBegin = "---HANGAR-BENCHMARK-SUMMARY-BEGIN---"
-	SummaryEnd   = "---HANGAR-BENCHMARK-SUMMARY-END---"
-	VersionLine  = "---HANGAR-BENCHMARK-VERSION---"
+	SummaryBegin = "---WINGSMITH-BENCHMARK-SUMMARY-BEGIN---"
+	SummaryEnd   = "---WINGSMITH-BENCHMARK-SUMMARY-END---"
+	VersionLine  = "---WINGSMITH-BENCHMARK-VERSION---"
 )
 
 // BenchmarkOptions are the cluster-local facts a run needs and the plane does not declare.
@@ -197,7 +197,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 	}
 	if !slices.Contains(bench.Images, image) {
 		if len(bench.Images) == 0 {
-			return nil, fmt.Errorf("this cluster allows no benchmark images (HANGAR_BENCHMARK_IMAGES is empty), so not %q", image)
+			return nil, fmt.Errorf("this cluster allows no benchmark images (WINGSMITH_BENCHMARK_IMAGES is empty), so not %q", image)
 		}
 		return nil, fmt.Errorf("benchmark image %q is not one this cluster allows (%s)", image, strings.Join(bench.Images, ", "))
 	}
@@ -253,11 +253,11 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 	}
 
 	labels := map[string]string{
-		"hangar.dev/benchmark":  benchmarkID,
-		"hangar.dev/managed-by": "hangar-operator",
+		"wingsmith.dev/benchmark":  benchmarkID,
+		"wingsmith.dev/managed-by": "wingsmith-operator",
 	}
 	if deployment := parameters["deployment_id"]; deployment != "" {
-		labels["hangar.dev/deployment"] = deployment
+		labels["wingsmith.dev/deployment"] = deployment
 	}
 
 	return &batchv1.Job{
@@ -311,8 +311,8 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 							{Name: "HF_HOME", Value: sharedCacheDir},
 							{Name: "HOME", Value: runCacheDir},
 							{Name: "HF_HUB_DISABLE_PROGRESS_BARS", Value: "1"},
-							{Name: "HANGAR_BENCHMARK_ID", Value: benchmarkID},
-							{Name: "HANGAR_ARTIFACT_BASE", Value: bench.ArtifactBase},
+							{Name: "WINGSMITH_BENCHMARK_ID", Value: benchmarkID},
+							{Name: "WINGSMITH_ARTIFACT_BASE", Value: bench.ArtifactBase},
 						},
 						EnvFrom: benchmarkEnvFrom(bench),
 						VolumeMounts: []corev1.VolumeMount{

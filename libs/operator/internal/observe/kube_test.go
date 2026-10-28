@@ -202,9 +202,9 @@ func TestSnakeCasesKubernetesConditions(t *testing.T) {
 	}
 }
 
-// TestDeviceClassPrecedence pins the order the class is decided in: the hangar label overrides
+// TestDeviceClassPrecedence pins the order the class is decided in: the wingsmith label overrides
 // everything, the dictionary names what it knows, and anything else is slugified, not
-// dropped, so a cluster with no hangar labels at all still groups its hardware.
+// dropped, so a cluster with no wingsmith labels at all still groups its hardware.
 func TestDeviceClassPrecedence(t *testing.T) {
 	labelled := gpuNode("gpu-a", map[string]string{
 		labelGPUCount:    "1",
@@ -230,7 +230,7 @@ func TestDeviceClassPrecedence(t *testing.T) {
 }
 
 // TestKubePoolLabelKeyIsConfigurable: the label a cluster names its pools with is the one
-// HANGAR_POOL_LABEL_KEY sets, and observation must read that key instead of a compiled-in one.
+// WINGSMITH_POOL_LABEL_KEY sets, and observation must read that key instead of a compiled-in one.
 // Reading a different key than placement selects on is silent: the node arrives in the default
 // pool, no pool of that name is declared, and the plane stores a null pool without complaining.
 func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
@@ -252,7 +252,7 @@ func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
 		t.Fatalf("exported pool label is %q, want %q", got, "gpu")
 	}
 
-	// Unset falls back to the hangar key, so a cluster that never configured one is unaffected.
+	// Unset falls back to the wingsmith key, so a cluster that never configured one is unaffected.
 	plain := newKubeDiscoverer(t, node)
 	if got := plain.poolKey(); got != labelPool {
 		t.Fatalf("default pool key is %q, want %q", got, labelPool)

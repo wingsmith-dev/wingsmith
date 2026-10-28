@@ -25,10 +25,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
-	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/workload"
 )
 
 // SyncedResourceReconciler converges the durable local copy of declared state onto the cluster.
@@ -114,8 +114,8 @@ func (r *SyncedResourceReconciler) multinodeEnabled() bool {
 	return r.Capabilities != nil && r.Capabilities.Multinode()
 }
 
-// +kubebuilder:rbac:groups=hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=hangar.dev,resources=syncedresources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=wingsmith.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=wingsmith.dev,resources=syncedresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;patch;update

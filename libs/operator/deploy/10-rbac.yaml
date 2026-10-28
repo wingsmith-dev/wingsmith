@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: hangar-operator
-  namespace: hangar-system
+  name: wingsmith-operator
+  namespace: wingsmith-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: hangar-operator
+  name: wingsmith-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: hangar-operator
+  name: wingsmith-operator
 subjects:
   - kind: ServiceAccount
-    name: hangar-operator
-    namespace: hangar-system
+    name: wingsmith-operator
+    namespace: wingsmith-system

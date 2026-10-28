@@ -27,10 +27,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
-	"github.com/hangar-dev/hangar/libs/operator/internal/config"
-	"github.com/hangar-dev/hangar/libs/operator/internal/render"
-	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 const (
@@ -42,11 +42,11 @@ const (
 
 var testRender = render.Options{
 	Namespace:      "dynamo",
-	PoolLabelKey:   "hangar.dev/pool",
+	PoolLabelKey:   "wingsmith.dev/pool",
 	GPUPoolValue:   "gpu",
 	ModelCachePVC:  "model-cache",
 	CachePoolValue: "cache",
-	CacheTaintKey:  "hangar.dev/cache",
+	CacheTaintKey:  "wingsmith.dev/cache",
 }
 
 func declared(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResource {
@@ -66,7 +66,7 @@ func declared(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResour
 		spec.Authority = v1alpha1.AuthorityManaged
 	}
 	return &v1alpha1.SyncedResource{
-		ObjectMeta: metav1.ObjectMeta{Name: render.Name(id), Namespace: "hangar-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: render.Name(id), Namespace: "wingsmith-system"},
 		Spec:       spec,
 	}
 }
@@ -112,7 +112,7 @@ func gpuNode(name string, devices int64, ready bool) *corev1.Node {
 		condition = corev1.ConditionTrue
 	}
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"hangar.dev/pool": "gpu"}},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"wingsmith.dev/pool": "gpu"}},
 		Status: corev1.NodeStatus{
 			Allocatable: corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(devices, resource.DecimalSI)},
 			Conditions:  []corev1.NodeCondition{{Type: corev1.NodeReady, Status: condition}},
@@ -209,7 +209,7 @@ func runReconcileAs(t *testing.T, reporter Reporter, caps Capabilities, objects 
 		WithObjects(objects...).WithStatusSubresource(subject).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa", Report: reporter,
 		Capabilities: caps,
 	}
@@ -291,7 +291,7 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 		t.Fatalf("graph deployment was not applied: %v", err)
 	}
 
-	// The declared copy is in hangar-system and this is in dynamo, so an owner reference here is
+	// The declared copy is in wingsmith-system and this is in dynamo, so an owner reference here is
 	// not a link: Kubernetes resolves one within the dependent's own namespace, finds nothing,
 	// and deletes the object it is stamped on. This is the regression that made a deployment
 	// report Applied and then quietly not exist.
@@ -302,8 +302,8 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 	if got := labels[render.OwnerNameLabel]; got != render.Name(testDeploymentID) {
 		t.Errorf("%s = %q, want %q", render.OwnerNameLabel, got, render.Name(testDeploymentID))
 	}
-	if got := labels[render.OwnerNamespaceLabel]; got != "hangar-system" {
-		t.Errorf("%s = %q, want hangar-system", render.OwnerNamespaceLabel, got)
+	if got := labels[render.OwnerNamespaceLabel]; got != "wingsmith-system" {
+		t.Errorf("%s = %q, want wingsmith-system", render.OwnerNamespaceLabel, got)
 	}
 
 	// Nothing else will delete it now, so the declared copy has to be held open until this
@@ -464,7 +464,7 @@ func TestAServingDeploymentIsNotReportedAgainOnAnUnchangedPass(t *testing.T) {
 	r, _ := runReconcileReporting(t, reporter, objects...)
 	first := len(reporter.sent)
 
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "hangar-system", Name: dep.Name}}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "wingsmith-system", Name: dep.Name}}
 	if _, err := r.Reconcile(context.Background(), req); err != nil {
 		t.Fatalf("second pass: %v", err)
 	}
@@ -815,12 +815,12 @@ func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
 func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 	cfg := &config.Config{
 		WorkloadNamespace:              "dynamo",
-		PoolLabelKey:                   "hangar.dev/pool",
+		PoolLabelKey:                   "wingsmith.dev/pool",
 		EnginePullSecrets:              []string{"ghcr-engine"},
 		FrontendEnabled:                true,
-		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2",
+		FrontendImage:                  "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-wings2",
 		FrontendReplicas:               3,
-		FrontendPullSecrets:            []string{"ghcr-hangar"},
+		FrontendPullSecrets:            []string{"ghcr-wingsmith"},
 		FrontendCPU:                    "500m",
 		FrontendMemory:                 "1Gi",
 		FrontendMemoryLimit:            "4Gi",
@@ -833,7 +833,7 @@ func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 	if !opts.FrontendEnabled || opts.FrontendImage != cfg.FrontendImage || opts.FrontendReplicas != 3 {
 		t.Fatalf("frontend options not carried: %+v", opts)
 	}
-	if len(opts.FrontendPullSecrets) != 1 || opts.FrontendPullSecrets[0] != "ghcr-hangar" {
+	if len(opts.FrontendPullSecrets) != 1 || opts.FrontendPullSecrets[0] != "ghcr-wingsmith" {
 		t.Fatalf("frontend pull secrets = %v", opts.FrontendPullSecrets)
 	}
 	if len(opts.EnginePullSecrets) != 1 || opts.EnginePullSecrets[0] != "ghcr-engine" {
@@ -865,7 +865,7 @@ func stuckFrontendPods(n int) []*corev1.Pod {
 				Name: "main",
 				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
 					Reason:  "ImagePullBackOff",
-					Message: `Back-off pulling image "ghcr.io/hangar-dev/vllm-runtime:1.4.0-hgr2"`,
+					Message: `Back-off pulling image "ghcr.io/wingsmith-dev/vllm-runtime:1.4.0-wings2"`,
 				}},
 			}},
 		}
@@ -902,7 +902,7 @@ func observedRollout(t *testing.T, opts render.Options, pods ...*corev1.Pod) rol
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithObjects(objects...).Build(),
 		Scheme:    clientgoscheme.Scheme,
 		Log:       slog.Default(),
-		Namespace: "hangar-system",
+		Namespace: "wingsmith-system",
 		Render:    opts,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
@@ -1058,7 +1058,7 @@ func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: frontendRender(),
+		Namespace: "wingsmith-system", Render: frontendRender(),
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
@@ -1119,7 +1119,7 @@ func TestAWebhookDenialIsReportedRatherThanRetriedInSilence(t *testing.T) {
 
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: frontendRender(),
+		Namespace: "wingsmith-system", Render: frontendRender(),
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
@@ -1189,10 +1189,10 @@ func TestARendererChangeDoesNotRollAWorkloadWhoseDeclarationStandsStill(t *testi
 	}
 	component := components[0].(map[string]any)
 	if err := unstructured.SetNestedStringMap(component, map[string]string{
-		"hangar.dev/deployment-id": testDeploymentID,
-		"hangar.dev/managed-by":    "hangar-operator",
-		"hangar.dev/project":       "prj_01J9X2",
-		"hangar.dev/recipe":        "rec_01J9X2",
+		"wingsmith.dev/deployment-id": testDeploymentID,
+		"wingsmith.dev/managed-by":    "wingsmith-operator",
+		"wingsmith.dev/project":       "prj_01J9X2",
+		"wingsmith.dev/recipe":        "rec_01J9X2",
 	}, "podTemplate", "metadata", "labels"); err != nil {
 		t.Fatalf("set labels: %v", err)
 	}
@@ -1266,7 +1266,7 @@ func TestARunningDeploymentDoesNotRegressWhenAGateFails(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).WithStatusSubresource(dep).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
@@ -1308,7 +1308,7 @@ func TestANewGenerationIsStillGated(t *testing.T) {
 		WithObjects(dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).WithStatusSubresource(dep).Build()
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
-		Namespace: "hangar-system", Render: testRender,
+		Namespace: "wingsmith-system", Render: testRender,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
