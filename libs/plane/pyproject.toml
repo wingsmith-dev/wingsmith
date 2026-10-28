@@ -40,7 +40,7 @@ packages = ["app"]
 dev = [
   "pytest==8.4.2",
   "pytest-asyncio==0.24.0",
-  "pytest-cov==6.0.0",
+  "pytest-cov==7.1.0",
   "ruff==0.16.3",
 ]
 
