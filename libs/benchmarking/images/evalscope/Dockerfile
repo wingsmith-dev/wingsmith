@@ -1,4 +1,4 @@
-FROM python:3.12.16-slim@sha256:f3aa44c1f89302501f8b812a3abe4ca997177f227e295d9a76ac0d683b493800
+FROM python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58
 
 RUN pip install --no-cache-dir \
       "evalscope==1.11.1" \

@@ -7,7 +7,7 @@
 # that runs the console dev server, wants.
 ARG CONSOLE=bundled
 
-FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS console-none
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d AS console-none
 RUN mkdir -p /src/dist
 
 FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS console-bundled
@@ -36,7 +36,7 @@ RUN pnpm run build
 
 FROM console-${CONSOLE} AS console
 
-FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS build
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d AS build
 COPY --from=ghcr.io/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 /uv /uvx /bin/
 WORKDIR /src
 
@@ -58,7 +58,7 @@ COPY plane/README.md ./
 COPY packages/contract/devices.json ./contract/devices.json
 RUN uv sync --locked --no-dev
 
-FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d
 
 # psycopg is the pure-Python build and loads libpq at import time. A developer's machine has one
 # already, which is why this is missing, not wrong: the image had never been run. Installing
