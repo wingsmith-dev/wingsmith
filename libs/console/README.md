@@ -1,6 +1,6 @@
 # console
 
-The Hangar console. React 19, TypeScript, TanStack Router and Query, shadcn/ui.
+The Wingsmith console. React 19, TypeScript, TanStack Router and Query, shadcn/ui.
 
 It talks to `libs/plane` over HTTP and nothing else: never to a cluster, never to the hub.
 Every cluster fact it shows reached the plane through the operator's sync stream first.
@@ -46,12 +46,12 @@ cross-origin requests and the plane's CORS allowlist does not need the dev origi
 ### Container image
 
 The `Dockerfile` builds a static bundle served by nginx on port 8080. Nothing about the
-plane is baked in: `docker/40-hangar-config.sh` writes `config.js` at container start from
+plane is baked in: `docker/40-wingsmith-config.sh` writes `config.js` at container start from
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HANGAR_API_BASE_URL` | empty | Plane origin (plus optional path). Empty means same origin, behind one ingress. |
-| `HANGAR_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
+| `WINGSMITH_API_BASE_URL` | empty | Plane origin (plus optional path). Empty means same origin, behind one ingress. |
+| `WINGSMITH_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
 
 so one image serves any plane. Runtime values win over the `VITE_*` build-time ones. The
 image also sets a Content-Security-Policy (whose `connect-src` allows the configured plane
@@ -74,7 +74,7 @@ session storage, so they survive a reload but not the tab. A 401 triggers one re
 
 ## Read-only mode
 
-A switch on the Settings page (and `VITE_READ_ONLY` / `HANGAR_READ_ONLY` for the default) makes the
+A switch on the Settings page (and `VITE_READ_ONLY` / `WINGSMITH_READ_ONLY` for the default) makes the
 console refuse every write before it leaves the browser. It is a guard against accidents, not
 an access control: the plane enforces nothing different for it.
 

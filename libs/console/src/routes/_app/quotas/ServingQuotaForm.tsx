@@ -209,7 +209,7 @@ export function ServingQuotaForm({
       {unreadable && (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           A limit is larger than a number this console can hold exactly. Declare
-          it with `hgr` instead of writing back a rounded figure.
+          it with `wings` instead of writing back a rounded figure.
         </p>
       )}
 

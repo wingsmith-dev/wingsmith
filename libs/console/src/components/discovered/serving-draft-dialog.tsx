@@ -177,7 +177,7 @@ function Steps({ current }: { current: Step }) {
  * block inline the way a create does.
  *
  * The first step is why this exists. A serving block needs an artifact, and a
- * workload Hangar never declared has none, so without it the form would
+ * workload Wingsmith never declared has none, so without it the form would
  * dead-end asking for one that nobody had created.
  */
 export function ServingDraftDialog({

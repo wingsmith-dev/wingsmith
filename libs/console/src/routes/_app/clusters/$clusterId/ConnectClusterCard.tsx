@@ -24,7 +24,7 @@ const LOGIN_METHODS: { key: LoginMethod; label: string }[] = [
  * only writes the registry row; a cluster does nothing until the cluster-setup
  * chart is installed in it, the operator dials the hub, and it starts reporting.
  * This panel walks that gap: a checklist driven by observed state, and the
- * per-cluster `helm` install that makes it hangar-ready.
+ * per-cluster `helm` install that makes it wingsmith-ready.
  *
  * It is intentionally shown only while onboarding is unfinished. Once the agent
  * is connected and a serving address is set, the sync card and the identity

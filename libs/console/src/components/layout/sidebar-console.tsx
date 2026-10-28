@@ -1,4 +1,4 @@
-import { HangarMark } from "@/components/layout/hangar-mark"
+import { WingsmithMark } from "@/components/layout/wingsmith-mark"
 import {
   ResourceIcon,
   type ResourceKind,
@@ -145,10 +145,10 @@ export function ConsoleSidebar({
       <SidebarHeader className="gap-3 p-4">
         <div className="flex items-center gap-2">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
-            <HangarMark className="size-4" />
+            <WingsmithMark className="size-4" />
           </div>
           <span className="truncate text-sm leading-none font-semibold tracking-[0.14em] uppercase group-data-[collapsible=icon]:hidden">
-            HANGAR
+            WINGSMITH
           </span>
         </div>
         {transport.kind === "fixtures" && (

@@ -139,7 +139,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: "hangar.auth",
+      name: "wingsmith.auth",
       // Session storage, not local storage: the pair survives a reload but not
       // the tab, and is never shared with other tabs or left on disk after the
       // browser closes. A stolen refresh token mints sessions until it is

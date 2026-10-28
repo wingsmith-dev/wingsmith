@@ -1,7 +1,7 @@
-# Rendered by 40-hangar-config.sh at container start, which fills in ${HANGAR_CONNECT_SRC} with
+# Rendered by 40-wingsmith-config.sh at container start, which fills in ${WINGSMITH_CONNECT_SRC} with
 # the API origin, or nothing when the API shares this origin.
 # Inline styles are allowed because Radix and sonner set them at runtime; scripts are not.
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ${HANGAR_CONNECT_SRC}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ${WINGSMITH_CONNECT_SRC}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 add_header X-Frame-Options "DENY" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "no-referrer" always;

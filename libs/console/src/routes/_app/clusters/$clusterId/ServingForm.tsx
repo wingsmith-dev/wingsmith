@@ -36,7 +36,7 @@ export function ServingForm({
       open={open}
       onOpenChange={onOpenChange}
       title="Serving address"
-      description="Where the data plane reaches this cluster. Opaque to hangar: an ingress, an in-cluster service, anything dialable."
+      description="Where the data plane reaches this cluster. Opaque to wingsmith: an ingress, an in-cluster service, anything dialable."
       error={set.error}
       pending={set.isPending}
       submitLabel="Save"

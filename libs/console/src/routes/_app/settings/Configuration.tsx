@@ -23,7 +23,7 @@ import type { PlaneConfig } from "@/modules/system/types"
  * come from the process's environment and change only when it is redeployed.
  *
  * Metrics sources lead because they are the reason this section exists. A
- * mis-set `HANGAR_METRICS_SOURCES` silences a cluster's panels without failing
+ * mis-set `WINGSMITH_METRICS_SOURCES` silences a cluster's panels without failing
  * anything, and finding that out otherwise means reading a ConfigMap in the
  * cluster. Everything below it is the same class of question (which database,
  * which hub URL, which operator image), answered before somebody has to guess.
@@ -143,7 +143,7 @@ function MetricsSourcesPanel({ config }: { config: PlaneConfig }) {
             which is intended, but it is not a healthy fleet, and it is fixed by
             adding an entry to
             <span className="mx-1 font-mono text-2xs">
-              HANGAR_METRICS_SOURCES
+              WINGSMITH_METRICS_SOURCES
             </span>
             {metrics.shared_url
               ? "naming the cluster label its series carry."

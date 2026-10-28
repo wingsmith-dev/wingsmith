@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/modules/auth/store"
-import { HangarMark } from "@/components/layout/hangar-mark"
+import { WingsmithMark } from "@/components/layout/wingsmith-mark"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/login")({
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/login")({
  * a second URL to publish and a wrong-door state to design; one field costs the
  * operator four keystrokes they can leave in place.
  *
- * Only the tenant credential is trimmed. A token is `hgrt1.` and 32 url-safe
+ * Only the tenant credential is trimmed. A token is `wst1.` and 32 url-safe
  * random bytes, so it can never legitimately carry surrounding whitespace and a
  * pasted one that does is a paste artifact, which otherwise fails the hash
  * lookup and reports itself as a wrong token. The admin password is not ours to
@@ -58,10 +58,10 @@ function LoginPage() {
       >
         <div className="flex items-center justify-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
-            <HangarMark className="size-5" />
+            <WingsmithMark className="size-5" />
           </div>
           <p className="text-base leading-none font-semibold tracking-[0.14em] uppercase">
-            HANGAR
+            WINGSMITH
           </p>
         </div>
 

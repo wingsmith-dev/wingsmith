@@ -52,7 +52,7 @@ export async function renderRoute(path: string) {
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
   const view = render(
-    <ThemeProvider storageKey="hangar.theme.test">
+    <ThemeProvider storageKey="wingsmith.theme.test">
       <QueryClientProvider client={client}>
         <TooltipProvider>
           <RouterProvider router={router} />

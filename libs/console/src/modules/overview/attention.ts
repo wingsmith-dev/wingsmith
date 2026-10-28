@@ -244,7 +244,7 @@ function discoveredItems(discovered: DiscoveredWorkload[]): AttentionItem[] {
     group: "discovered" as const,
     tone: "neutral" as const,
     kind: "discovered" as const,
-    title: `${sighting.name} running outside Hangar`,
+    title: `${sighting.name} running outside Wingsmith`,
     detail: `${sighting.cluster_name} · ns/${sighting.namespace} · ${
       sighting.replicas_ready
     }/${sighting.replicas_desired} replicas · ${sighting.devices_total} devices`,

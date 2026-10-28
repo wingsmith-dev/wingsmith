@@ -54,7 +54,7 @@ export interface ClusterSync {
  * gateway does.
  */
 export interface ClusterServing {
-  /** Opaque to hangar: a public ingress, an in-cluster service name, anything dialable. */
+  /** Opaque to wingsmith: a public ingress, an in-cluster service name, anything dialable. */
   url: string
   /** A reference to whatever fronts the address, never the secret itself. */
   credential_id: string | null
@@ -96,7 +96,7 @@ export interface Cluster {
 }
 
 /**
- * Everything the register-cluster screen shows to make a cluster hangar-ready:
+ * Everything the register-cluster screen shows to make a cluster wingsmith-ready:
  * a `helm` install of the `cluster-setup` chart. `values_yaml` is one editable
  * file: plane-filled identity up top, a commented skeleton of the cluster's own
  * infra facts below to fill in. The enrollment token is shown once when minted

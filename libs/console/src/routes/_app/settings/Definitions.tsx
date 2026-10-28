@@ -32,7 +32,7 @@ export function GpuModelsSection() {
     <Panel
       id="gpu-models"
       title="GPU models"
-      description="hardware types Hangar knows how to schedule"
+      description="hardware types Wingsmith knows how to schedule"
       action={
         <Link
           to="/device-classes"

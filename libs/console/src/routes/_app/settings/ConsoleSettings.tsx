@@ -140,7 +140,7 @@ function PlanePanel() {
           </Field>
         </FieldGrid>
         <p className="font-mono text-2xs text-muted-foreground">
-          Set by the deployment: HANGAR_API_BASE_URL on the console image, or
+          Set by the deployment: WINGSMITH_API_BASE_URL on the console image, or
           VITE_API_BASE_URL for a dev server.
         </p>
       </div>

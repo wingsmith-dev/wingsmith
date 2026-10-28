@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
-    // A port of Hangar's own, and a hard failure if it is taken.
+    // A port of Wingsmith's own, and a hard failure if it is taken.
     //
     // Vite's default is to walk forward from 5173 until something is free, which makes the console's
     // origin depend on what else happened to be running that morning, and the API's CORS policy is

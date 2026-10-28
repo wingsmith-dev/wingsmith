@@ -2,8 +2,8 @@
  * Deployment settings, read when the page loads, not baked into the bundle.
  *
  * `index.html` loads `/config.js` before the app. The bundle ships a default one that sets
- * nothing; the standalone nginx image rewrites it at container start from `HANGAR_API_BASE_URL`
- * and `HANGAR_READ_ONLY`, so one image serves any plane. The `VITE_*` variables still apply as
+ * nothing; the standalone nginx image rewrites it at container start from `WINGSMITH_API_BASE_URL`
+ * and `WINGSMITH_READ_ONLY`, so one image serves any plane. The `VITE_*` variables still apply as
  * build-time defaults, which is how `pnpm dev` is configured.
  */
 export interface RuntimeConfig {
@@ -18,7 +18,7 @@ export interface RuntimeConfig {
 
 declare global {
   interface Window {
-    __HANGAR_CONFIG__?: Partial<Record<keyof RuntimeConfig, unknown>>
+    __WINGSMITH_CONFIG__?: Partial<Record<keyof RuntimeConfig, unknown>>
   }
 }
 
@@ -53,6 +53,6 @@ export function resolveConfig(
 }
 
 export const config: RuntimeConfig = resolveConfig(
-  typeof window === "undefined" ? undefined : window.__HANGAR_CONFIG__,
+  typeof window === "undefined" ? undefined : window.__WINGSMITH_CONFIG__,
   import.meta.env
 )

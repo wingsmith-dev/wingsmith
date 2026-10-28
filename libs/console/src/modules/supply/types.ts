@@ -226,7 +226,7 @@ export interface Pool {
   updated_at: string | null
   revision: string
   membership: PoolMembership
-  /** Derived by the plane so the console and `hgr` cannot disagree about it. */
+  /** Derived by the plane so the console and `wings` cannot disagree about it. */
   within_declared_bounds: boolean
 }
 

@@ -102,7 +102,7 @@ export function OperationsPage() {
             <TabsTrigger value="events">Events</TabsTrigger>
           </TabsList>
 
-          {/* OPERATIONS: things Hangar was asked to do, each with a lifecycle. */}
+          {/* OPERATIONS: things Wingsmith was asked to do, each with a lifecycle. */}
           <TabsContent value="operations" className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <FilterSelect

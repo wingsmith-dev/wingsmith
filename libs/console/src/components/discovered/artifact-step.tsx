@@ -21,7 +21,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 /**
  * The first step of adoption: which weights this workload is serving.
  *
- * A serving block must point at an artifact, and a workload Hangar never declared
+ * A serving block must point at an artifact, and a workload Wingsmith never declared
  * has none, so adoption would otherwise dead-end on a form asking for an
  * artifact nobody had created. The step exists to create it from
  * the same reading, and to say plainly what that reading is worth: the digest is

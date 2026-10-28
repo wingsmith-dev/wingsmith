@@ -16,7 +16,7 @@ export interface RequestOptions {
 }
 
 /**
- * The single seam between the console and the Hangar plane. Every module talks
+ * The single seam between the console and the Wingsmith plane. Every module talks
  * to the plane through this interface and nothing else, so the fixture and HTTP
  * implementations are interchangeable without touching a caller.
  */

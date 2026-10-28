@@ -602,7 +602,7 @@ registerFixtures([
       if (HF_GATED.includes(slug))
         throw new InvalidError(
           `'${slug}' is gated on HuggingFace and the plane has no accepted license for it`,
-          { source, token: "HANGAR_HF_TOKEN" }
+          { source, token: "WINGSMITH_HF_TOKEN" }
         )
       const found = HF_FIXTURES[slug]
       if (!found) throw new NotFoundError(`no HuggingFace repo '${slug}'`)
@@ -889,7 +889,7 @@ registerFixtures([
         id: uid("tak_"),
         tenant: tenant.slug,
         name,
-        key: `hgrk1.${uid("")}`,
+        key: `wsk1.${uid("")}`,
         last_used_at: null,
         revoked_at: null,
         created_at: new Date().toISOString(),
@@ -1653,15 +1653,15 @@ registerFixtures([
         debug: false,
         log_level: "INFO",
         log_format: "json",
-        allowed_origins: ["https://hangar.example.com"],
+        allowed_origins: ["https://wingsmith.example.com"],
       },
       api: { host: "0.0.0.0", port: 8000 },
       hub: {
         host: "0.0.0.0",
         port: 8001,
         path: "/v1/hub/sync",
-        public_host: "hangar.example.com",
-        public_url: "wss://hangar.example.com/v1/hub/sync",
+        public_host: "wingsmith.example.com",
+        public_url: "wss://wingsmith.example.com/v1/hub/sync",
         instance_id: "",
         session_ttl_seconds: 600,
         reaper_interval_seconds: 60,
@@ -1676,9 +1676,9 @@ registerFixtures([
       },
       database: {
         driver: "postgresql+psycopg",
-        host: "hangar-db.internal",
+        host: "wingsmith-db.internal",
         port: 5432,
-        database: "hangar",
+        database: "wingsmith",
         echo: false,
         pool_size: 10,
         pool_max_overflow: 10,
@@ -1721,8 +1721,8 @@ registerFixtures([
         huggingface_token_set: false,
       },
       setup: {
-        operator_image: "ghcr.io/hangar-dev/hangar-operator:cf143b3",
-        chart_ref: "oci://ghcr.io/hangar-dev/charts/cluster-setup",
+        operator_image: "ghcr.io/wingsmith-dev/wingsmith-operator:cf143b3",
+        chart_ref: "oci://ghcr.io/wingsmith-dev/charts/cluster-setup",
         chart_version: "0.4.2",
         chart_private: true,
       },

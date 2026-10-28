@@ -57,7 +57,7 @@ export function Committed({
         </TooltipTrigger>
         <TooltipContent className="max-w-64 text-2xs">
           The plane sent a value past what a JavaScript number holds exactly.
-          Read it with `hgr` instead of trusting a rounded figure here.
+          Read it with `wings` instead of trusting a rounded figure here.
         </TooltipContent>
       </Tooltip>
     )

@@ -135,7 +135,7 @@ export function TenantForm({
         label="Host"
         value={host}
         onChange={setHost}
-        placeholder="globex.hangar.dev"
+        placeholder="globex.wingsmith.dev"
         hint="The name that resolves to this tenant, matched against the request's Host header."
       />
     </FormDialog>

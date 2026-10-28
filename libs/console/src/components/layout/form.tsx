@@ -317,7 +317,7 @@ export function SwitchField({
 
 /**
  * `k=v` pairs, one per line: the same notation the `label=` query parameter and
- * `hgr` both use, so what an operator types here is what they can paste back
+ * `wings` both use, so what an operator types here is what they can paste back
  * into a filter.
  */
 export function LabelsField({

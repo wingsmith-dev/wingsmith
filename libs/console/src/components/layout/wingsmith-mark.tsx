@@ -1,5 +1,5 @@
-/** The Hangar wordmark glyph: three slabs, drawn in the current text color. */
-export function HangarMark({ className }: { className?: string }) {
+/** The Wingsmith wordmark glyph: three slabs, drawn in the current text color. */
+export function WingsmithMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 195 185"

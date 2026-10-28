@@ -178,9 +178,9 @@ function ClusterDashboard({
         </TabsContent>
         <TabsContent value="components" className="space-y-3">
           <TabNote>
-            Reported, not managed. Hangar records what version of each component
-            a cluster is running and whether it is behind, but it does not
-            install or upgrade them: that is done out of band by whatever
+            Reported, not managed. Wingsmith records what version of each
+            component a cluster is running and whether it is behind, but it does
+            not install or upgrade them: that is done out of band by whatever
             provisions the cluster.
           </TabNote>
           <ComponentsTable clusterId={cluster.id} />

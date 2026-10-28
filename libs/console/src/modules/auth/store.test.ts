@@ -26,7 +26,7 @@ describe("signIn", () => {
   it("refuses a tenant sign-in in fixtures mode", async () => {
     vi.stubEnv("VITE_API_MODE", "fixtures")
     await expect(
-      useAuthStore.getState().signIn("hgrt1.token", "acme")
+      useAuthStore.getState().signIn("wst1.token", "acme")
     ).rejects.toThrow("admin only")
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })

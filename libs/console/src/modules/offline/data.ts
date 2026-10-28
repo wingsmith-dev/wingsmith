@@ -818,13 +818,13 @@ export const artifacts: Artifact[] = [
     locations: [
       {
         scheme: "s3",
-        uri: "s3://hangar-weights/llama-3.3-70b-instruct",
+        uri: "s3://wingsmith-weights/llama-3.3-70b-instruct",
         region: "us-east-1",
         preferred: true,
       },
       {
         scheme: "https",
-        uri: "https://cdn.hangar.dev/llama-3.3-70b",
+        uri: "https://cdn.wingsmith.dev/llama-3.3-70b",
         region: null,
         preferred: false,
       },
@@ -864,7 +864,7 @@ const serving = {
     artifact_id: artifacts[0].id,
     engine: "vllm",
     engine_runtime_version: "0.9.1",
-    engine_runtime_image: "ghcr.io/hangar/vllm:0.9.1",
+    engine_runtime_image: "ghcr.io/wingsmith/vllm:0.9.1",
     frontend_image: null,
     engine_args: { "--enable-chunked-prefill": true },
     quantization: "fp8",
@@ -960,7 +960,7 @@ const serving = {
     artifact_id: artifacts[0].id,
     engine: "vllm",
     engine_runtime_version: "0.9.1",
-    engine_runtime_image: "ghcr.io/hangar/vllm:0.9.1",
+    engine_runtime_image: "ghcr.io/wingsmith/vllm:0.9.1",
     frontend_image: null,
     engine_args: { "--kv-cache-dtype": "fp8" },
     quantization: "fp8",

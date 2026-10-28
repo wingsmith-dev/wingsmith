@@ -20,7 +20,7 @@ export const useSettingsStore = create<SettingsState>()(
       readOnly: config.readOnly,
       setReadOnly: (readOnly) => set({ readOnly }),
     }),
-    { name: "hangar.settings" }
+    { name: "wingsmith.settings" }
   )
 )
 

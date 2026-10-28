@@ -422,7 +422,7 @@ function ConditionsCard({
       <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
         <h2 className="font-heading text-sm font-medium">Conditions</h2>
         <p className="font-mono text-2xs text-muted-foreground">
-          reported by the kubelet and the Hangar agent
+          reported by the kubelet and the Wingsmith agent
         </p>
       </div>
       <div className="divide-y">

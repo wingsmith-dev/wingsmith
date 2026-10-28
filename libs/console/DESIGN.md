@@ -6,13 +6,13 @@ the interface only.
 
 ## Users
 
-The single operator of a Hangar plane: a platform, SRE, or ML infrastructure engineer, or a small team sharing that one admin identity, running GPU clusters their own organization owns. They serve models to their own organization's teams and carry the pager for the fleet.
+The single operator of a Wingsmith plane: a platform, SRE, or ML infrastructure engineer, or a small team sharing that one admin identity, running GPU clusters their own organization owns. They serve models to their own organization's teams and carry the pager for the fleet.
 
 They work at a desktop during capacity planning, model rollouts, and incident response. Their inference fleet spans several clusters and several kinds of GPU. They need to understand global intent and per-cluster reality without mentally joining several systems, and without dropping into `kubectl` on four clusters to answer one question.
 
 ## Brand Personality
 
-Precise, operational, calm. Hangar should feel trustworthy under pressure and concise during routine work.
+Precise, operational, calm. Wingsmith should feel trustworthy under pressure and concise during routine work.
 
 ## Anti-references
 

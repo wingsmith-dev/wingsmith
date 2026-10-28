@@ -25,8 +25,8 @@
   --accent: oklch(0.946 0.002 286); /* #e8e8ec; slightly darker for hover */
   --accent-foreground: oklch(0.113 0.004 286);
 
-  /* brand: hangar cyan */
-  --primary: oklch(0.47 0.11 208); /* hangar cyan, dark enough to read as text */
+  /* brand: wingsmith cyan */
+  --primary: oklch(0.47 0.11 208); /* wingsmith cyan, dark enough to read as text */
   --primary-foreground: oklch(1 0 0);
 
   /* semantic: text tokens hold 4.5:1 on every surface and on their own /10 and

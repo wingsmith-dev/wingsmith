@@ -17,7 +17,7 @@ import {
  * The class picker every form that takes one should use.
  *
  * The hint carries the identifier because that is the string the operator will
- * see again in `hgr`, in a pool name and in a serving shape: the friendly name
+ * see again in `wings`, in a pool name and in a serving shape: the friendly name
  * exists to choose by, not to work from.
  */
 export function DeviceClassField({

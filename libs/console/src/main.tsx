@@ -34,7 +34,7 @@ installUnauthorizedHandler(() => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider storageKey="hangar.theme">
+    <ThemeProvider storageKey="wingsmith.theme">
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <RouterProvider router={router} />

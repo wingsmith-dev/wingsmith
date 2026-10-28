@@ -2,7 +2,7 @@ import { useState } from "react"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 
 import { Button } from "@/components/ui/button"
-import { HangarMark } from "@/components/layout/hangar-mark"
+import { WingsmithMark } from "@/components/layout/wingsmith-mark"
 import { ErrorScreen } from "@/components/layout/error-screen"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSignOut } from "@/modules/auth/session"
@@ -49,7 +49,7 @@ function ServingPage() {
       <header className="flex h-16 items-center justify-between gap-4 border-b bg-card px-6">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-            <HangarMark className="size-4" />
+            <WingsmithMark className="size-4" />
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
