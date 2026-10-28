@@ -252,6 +252,7 @@ func frontend(ctx context.Context, args []string) error {
 	ttft := fs.String("ttft", "200ms", "time to first token")
 	itl := fs.String("itl", "10ms", "inter-token delay")
 	tokens := fs.String("tokens", "64", "tokens per answer")
+	demo := fs.String("demo", "", "answer in words that name the model and this cluster, instead of filler")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -259,8 +260,12 @@ func frontend(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	server := upstream.New(profile)
+	if *demo != "" {
+		server.WithReply(upstream.DemoReply(*demo))
+	}
 	fmt.Fprintf(os.Stderr, "wingstransit: fake frontend on %s\n", *addr)
-	return listen(ctx, *addr, upstream.New(profile).Handler())
+	return listen(ctx, *addr, server.Handler())
 }
 
 func plane(ctx context.Context, args []string) error {

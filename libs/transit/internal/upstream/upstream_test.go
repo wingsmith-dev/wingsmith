@@ -3,6 +3,7 @@ package upstream
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,6 +55,44 @@ func TestAStreamCarriesOneChunkPerTokenAndBothStamps(t *testing.T) {
 	}
 	if s := front.Stats(); s.Served != 1 || s.InFlight != 0 {
 		t.Fatalf("stats %+v", s)
+	}
+}
+
+func TestAReplyIsStreamedAWordAtATimeAndReassemblesWhole(t *testing.T) {
+	front := New(Profile{TTFT: time.Millisecond, Tokens: 64}).WithReply(func(model string) string {
+		return "served by " + model
+	})
+	srv := httptest.NewServer(front.Handler())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"glm-5.3-flash","stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var text strings.Builder
+	chunks := 0
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimPrefix(scanner.Text(), "data: ")
+		if !strings.Contains(line, `"delta":{"content"`) {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			t.Fatalf("chunk %q: %v", line, err)
+		}
+		text.WriteString(chunk.Choices[0].Delta.Content)
+		chunks++
+	}
+	if got := text.String(); got != "served by glm-5.3-flash" || chunks != 3 {
+		t.Fatalf("reply %q in %d chunks, want the reply whole in 3", got, chunks)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -68,6 +69,7 @@ func (p Profile) withDefaults() Profile {
 // Server answers completions and counts what it was asked to do.
 type Server struct {
 	profile Profile
+	reply   func(model string) string
 
 	inflight atomic.Int64
 	peak     atomic.Int64
@@ -78,6 +80,38 @@ type Server struct {
 // New builds a frontend that answers to profile unless a request overrides it.
 func New(profile Profile) *Server {
 	return &Server{profile: profile.withDefaults()}
+}
+
+// WithReply makes the frontend answer in words instead of filler: each answer is reply(model),
+// one word to a chunk, still on the profile's schedule. The token count is then the reply's word
+// count, whatever the profile or the request asked for.
+func (s *Server) WithReply(reply func(model string) string) *Server {
+	s.reply = reply
+	return s
+}
+
+// DemoReply is a reply that says where it came from, for a demo fleet: the request crossed the real
+// gateway, tunnel and agent, and only the engine at the end of them is a stand-in.
+func DemoReply(cluster string) func(model string) string {
+	return func(model string) string {
+		return fmt.Sprintf("Hello from %s on %s. This answer is simulated: Wingsmith placed the model on "+
+			"this cluster, the gateway picked it for your request and sent it down the cluster's tunnel, "+
+			"and a stand-in engine wrote this instead of a GPU.", model, cluster)
+	}
+}
+
+// words is the answer to model, a chunk at a time: the reply split after each space, or the
+// profile's filler when there is no reply.
+func (s *Server) words(model string, profile Profile) []string {
+	if s.reply == nil {
+		token := content(profile.TokenBytes)
+		out := make([]string, profile.Tokens)
+		for i := range out {
+			out[i] = token
+		}
+		return out
+	}
+	return strings.SplitAfter(s.reply(model), " ")
 }
 
 // request is the OpenAI body, plus the fields that let one caller in a run ask
@@ -149,6 +183,9 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		profile.Tokens = *body.Tokens
 	}
 
+	words := s.words(body.Model, profile)
+	profile.Tokens = len(words)
+
 	received := time.Now()
 	live := s.inflight.Add(1)
 	for {
@@ -172,7 +209,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = fmt.Fprintf(w, `{"id":"transit","object":"chat.completion","model":%q,"transit_received_ns":%d,"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":16,"completion_tokens":%d,"total_tokens":%d}}`,
-			body.Model, received.UnixNano(), content(profile.Tokens*profile.TokenBytes), profile.Tokens, profile.Tokens+16)
+			body.Model, received.UnixNano(), strings.Join(words, ""), profile.Tokens, profile.Tokens+16)
 		s.served.Add(1)
 		return
 	}
@@ -182,9 +219,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(HeaderReceived, strconv.FormatInt(received.UnixNano(), 10))
 	w.WriteHeader(http.StatusOK)
 	flusher := http.NewResponseController(w)
-	token := content(profile.TokenBytes)
-
-	for i := 0; i < profile.Tokens; i++ {
+	for i, token := range words {
 		if i > 0 && !wait(r, profile.ITL) {
 			s.aborted.Add(1)
 			return
