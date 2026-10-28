@@ -60,7 +60,7 @@ function scene(options: { held?: number } = {}) {
     ? [
         make.allocation("alc_1", {
           cluster: iad.id,
-          workload: "wkl_llama",
+          workload: "wkl_gpt_oss",
           devices: devices.slice(0, options.held),
         }),
       ]

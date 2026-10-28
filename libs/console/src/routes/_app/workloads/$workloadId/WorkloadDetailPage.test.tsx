@@ -11,7 +11,9 @@ afterAll(() => {
   vi.unstubAllGlobals()
 })
 
-const llama = workloads.find((workload) => workload.name === "llama-70b-prod")!
+const gptOss = workloads.find(
+  (workload) => workload.name === "gpt-oss-120b-prod"
+)!
 
 describe("workload detail", () => {
   it(
@@ -19,13 +21,13 @@ describe("workload detail", () => {
     { timeout: 15_000 },
     async () => {
       const user = userEvent.setup()
-      await renderRoute(`/workloads/${llama.id}`)
+      await renderRoute(`/workloads/${gptOss.id}`)
 
       const main = await screen.findByRole("main")
       expect(
         await within(main).findByRole(
           "heading",
-          { name: llama.name },
+          { name: gptOss.name },
           { timeout: 5000 }
         )
       ).toBeInTheDocument()
@@ -34,7 +36,7 @@ describe("workload detail", () => {
       expect(
         await within(main).findByText("Scheduling constraints")
       ).toBeInTheDocument()
-      expect(within(main).getByText(llama.priority_class)).toBeInTheDocument()
+      expect(within(main).getByText(gptOss.priority_class)).toBeInTheDocument()
 
       await user.click(within(main).getByRole("tab", { name: /Workbench/ }))
       expect(await within(main).findByText("Run history")).toBeInTheDocument()

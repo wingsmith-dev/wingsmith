@@ -769,7 +769,7 @@ export const projects: Project[] = [
 ]
 
 /**
- * Llama 3.3 70B's attention shape, as the plane persists it on an artifact at
+ * gpt-oss-120b's attention shape, as the plane persists it on an artifact at
  * resolve time. Real values from the published `config.json`, because the fixture's
  * fitment matrix does the plane's arithmetic and a made-up shape would put the wrong
  * card at the top of a table somebody is learning to read.
@@ -780,15 +780,17 @@ export const projects: Project[] = [
  * one re-read away from a priced context window. The console has to render the floor
  * as a note instead of an empty table, and then render what the refresh changed.
  */
-const LLAMA_70B_SHAPE = {
-  num_hidden_layers: 80,
+const GPT_OSS_120B_SHAPE = {
+  num_hidden_layers: 36,
   num_key_value_heads: 8,
-  head_dim: 128,
+  head_dim: 64,
   kv_lora_rank: null,
   qk_rope_head_dim: null,
   context_length: 131_072,
   num_attention_heads: 64,
-  hidden_size: 8192,
+  hidden_size: 2880,
+  sliding_window: 128,
+  sliding_layers: 18,
 }
 
 export const artifacts: Artifact[] = [
@@ -797,20 +799,20 @@ export const artifacts: Artifact[] = [
     digest:
       "sha256:9f2c1a0b7d4e5f6a8b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
     verified: true,
-    name: "llama-3.3-70b-instruct",
+    name: "gpt-oss-120b",
     kind: "weights",
     format: "safetensors",
-    size_bytes: 141_733_920_768,
-    licence: "llama3.3",
-    parameter_count: 70_000_000_000,
+    size_bytes: 65_248_893_184,
+    licence: "apache-2.0",
+    parameter_count: 116_829_156_672,
     base_artifact_id: null,
     project_id: null,
     upstream: emptyUpstream(),
     metadata: {
       source: "huggingface",
-      quantization: "fp16",
+      quantization: "mxfp4",
       context_length: 131_072,
-      shape: LLAMA_70B_SHAPE,
+      shape: GPT_OSS_120B_SHAPE,
     },
     created_at: CREATED,
     updated_at: null,
@@ -818,13 +820,13 @@ export const artifacts: Artifact[] = [
     locations: [
       {
         scheme: "s3",
-        uri: "s3://wingsmith-weights/llama-3.3-70b-instruct",
+        uri: "s3://wingsmith-weights/gpt-oss-120b",
         region: "us-east-1",
         preferred: true,
       },
       {
         scheme: "https",
-        uri: "https://cdn.wingsmith.dev/llama-3.3-70b",
+        uri: "https://cdn.wingsmith.dev/gpt-oss-120b",
         region: null,
         preferred: false,
       },
@@ -860,16 +862,16 @@ export const artifacts: Artifact[] = [
  * it, and two identical ones are identical because their digests are.
  */
 const serving = {
-  llama: {
+  gptOss: {
     artifact_id: artifacts[0].id,
     engine: "vllm",
     engine_runtime_version: "0.9.1",
     engine_runtime_image: "ghcr.io/wingsmith/vllm:0.9.1",
     frontend_image: null,
     engine_args: { "--enable-chunked-prefill": true },
-    quantization: "fp8",
+    quantization: "mxfp4",
     dtype: "bfloat16",
-    parallelism: { tensor: 8, pipeline: 1, expert: 1 },
+    parallelism: { tensor: 2, pipeline: 1, expert: 1 },
     context_length: 131_072,
     max_batch_tokens: 32_768,
     cache: {
@@ -885,12 +887,12 @@ const serving = {
     overlay: { pod_spec: {}, dynamo: {} },
     shape: {
       device_class: "h100-80gb-sxm",
-      device_count: 8,
+      device_count: 2,
       device_memory_mib_min: 81_920,
       requires_single_topology_domain: true,
       topology_domain_kind: "nvswitch",
     },
-    resources: { cpu_cores: 64, memory_mib: 262_144, disk_gib: 512 },
+    resources: { cpu_cores: 32, memory_mib: 131_072, disk_gib: 256 },
   },
   bge: {
     artifact_id: artifacts[1].id,
@@ -1019,7 +1021,7 @@ function digest(seed: string): string {
  * creates; the deployments underneath it are what placement expanded it into.
  */
 const workloadIds = {
-  llama: uid("wkl_"),
+  gptOss: uid("wkl_"),
   bge: uid("wkl_"),
   eval: uid("wkl_"),
   kimi: uid("wkl_"),
@@ -1028,9 +1030,9 @@ const workloadIds = {
 export const deployments: Deployment[] = [
   {
     id: uid("dep_"),
-    name: "llama-70b-prod",
-    workload_id: workloadIds.llama,
-    workload_name: "llama-70b-prod",
+    name: "gpt-oss-120b-prod",
+    workload_id: workloadIds.gptOss,
+    workload_name: "gpt-oss-120b-prod",
     cluster_id: clusters[0].id,
     min_replicas: 4,
     max_replicas: 4,
@@ -1073,9 +1075,9 @@ export const deployments: Deployment[] = [
   },
   {
     id: uid("dep_"),
-    name: "llama-70b-prod",
-    workload_id: workloadIds.llama,
-    workload_name: "llama-70b-prod",
+    name: "gpt-oss-120b-prod",
+    workload_id: workloadIds.gptOss,
+    workload_name: "gpt-oss-120b-prod",
     cluster_id: clusters[2].id,
     min_replicas: 2,
     max_replicas: 2,
@@ -1366,8 +1368,8 @@ function workload(
 }
 
 export const workloads: Workload[] = [
-  workload(workloadIds.llama, {
-    name: "llama-70b-prod",
+  workload(workloadIds.gptOss, {
+    name: "gpt-oss-120b-prod",
     kind: "service",
     phase: "placed",
     project_id: projects[0].id,
@@ -1376,8 +1378,8 @@ export const workloads: Workload[] = [
     paused: false,
     gang_size: 1,
     serving_digest: digest("a"),
-    serving: serving.llama,
-    served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    serving: serving.gptOss,
+    served_model_name: "openai/gpt-oss-120b",
     adapter_artifact_ids: [],
     overrides: { "--max-num-seqs": 256 },
     labels: { tier: "prod" },
@@ -1404,7 +1406,7 @@ export const workloads: Workload[] = [
     gang_size: 1,
     serving_digest: digest("b"),
     serving: serving.bge,
-    served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    served_model_name: "openai/gpt-oss-120b",
     adapter_artifact_ids: [],
     overrides: {},
     labels: {},
@@ -1431,7 +1433,7 @@ export const workloads: Workload[] = [
     gang_size: 8,
     serving_digest: digest("c"),
     serving: serving.eval,
-    served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    served_model_name: "openai/gpt-oss-120b",
     adapter_artifact_ids: [artifacts[1].id],
     overrides: {},
     labels: { tier: "batch" },
@@ -1485,8 +1487,8 @@ export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
     name: "chat",
-    slug: "meta-llama/llama-3.3-70b-instruct",
-    aliases: ["llama-3.3-70b"],
+    slug: "openai/gpt-oss-120b",
+    aliases: ["gpt-oss-120b"],
     project_id: projects[0].id,
     visibility: "public",
     routing_strategy: "weighted",
@@ -1629,14 +1631,14 @@ interface Commitment {
 const COMMITMENTS: Commitment[] = [
   {
     nodes: ["iad-1-n01"],
-    workload: workloadIds.llama,
+    workload: workloadIds.gptOss,
     project: 0,
     count: 8,
     age: 2875,
   },
   {
     nodes: ["iad-1-n02"],
-    workload: workloadIds.llama,
+    workload: workloadIds.gptOss,
     project: 0,
     count: 4,
     age: 1440,
@@ -1673,7 +1675,7 @@ const COMMITMENTS: Commitment[] = [
   },
   {
     nodes: ["sjc-1-n02"],
-    workload: workloadIds.llama,
+    workload: workloadIds.gptOss,
     project: 0,
     count: 2,
     offset: 2,
@@ -1957,10 +1959,10 @@ const deploymentTimeline: PlaneEvent[] = [
     severity: "info",
     subject: { type: "deployment", id: deployments[0].id },
     operation_id: null,
-    message: "llama-70b-prod was created on iad-1",
+    message: "gpt-oss-120b-prod was created on iad-1",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       cluster: "iad-1",
       desired_replicas: "4",
     },
@@ -1974,10 +1976,10 @@ const deploymentTimeline: PlaneEvent[] = [
     severity: "info",
     subject: { type: "deployment", id: deployments[0].id },
     operation_id: null,
-    message: "llama-70b-prod was sent to iad-1",
+    message: "gpt-oss-120b-prod was sent to iad-1",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       frames: "4",
     },
     occurred_at: iso(5399),
@@ -1993,7 +1995,7 @@ const deploymentTimeline: PlaneEvent[] = [
     message: "reconciling revision 3",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       reason: "Accepted",
       ready_replicas: "0",
       desired_replicas: "4",
@@ -2011,7 +2013,7 @@ const deploymentTimeline: PlaneEvent[] = [
     message: "waiting for art_01j9x2eeeeeeeeeeeeeeeeeeee to finish downloading",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       reason: "WeightsNotResident",
       ready_replicas: "0",
       desired_replicas: "4",
@@ -2026,10 +2028,10 @@ const deploymentTimeline: PlaneEvent[] = [
     severity: "info",
     subject: { type: "deployment", id: deployments[0].id },
     operation_id: null,
-    message: "building dep_llama-70b-prod from llama-70b",
+    message: "building dep_gpt-oss-120b-prod from gpt-oss-120b",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       reason: "Rendering",
       ready_replicas: "0",
       desired_replicas: "4",
@@ -2047,7 +2049,7 @@ const deploymentTimeline: PlaneEvent[] = [
     message: "0 of 4 replicas ready",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       reason: "Applied",
       ready_replicas: "0",
       desired_replicas: "4",
@@ -2065,7 +2067,7 @@ const deploymentTimeline: PlaneEvent[] = [
     message: "4 of 4 replicas ready",
     details: {
       deployment_id: deployments[0].id,
-      name: "llama-70b-prod",
+      name: "gpt-oss-120b-prod",
       reason: "Serving",
       ready_replicas: "4",
       desired_replicas: "4",
@@ -2351,7 +2353,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     requested_by: "operator",
     reason: "concurrency sweep, step 3",
     provenance: {
-      model: "llama-70b",
+      model: "gpt-oss-120b",
       deployment_generation: 7,
       serving_digest: workloads[0].serving_digest,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },
@@ -2433,7 +2435,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     requested_by: "operator",
     reason: "concurrency sweep, step 1",
     provenance: {
-      model: "llama-70b",
+      model: "gpt-oss-120b",
       deployment_generation: 7,
       serving_digest: workloads[0].serving_digest,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },

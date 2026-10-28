@@ -23,21 +23,22 @@ const ARTIFACT: Artifact = {
   id: "art_1",
   digest: "sha256:abc",
   verified: true,
-  name: "meta-llama/Llama-3.3-70B-Instruct",
+  name: "openai/gpt-oss-120b",
   kind: "weights",
   format: "safetensors",
-  size_bytes: 140_000_000_000,
-  licence: "llama3.3",
-  parameter_count: 70_000_000_000,
+  size_bytes: 65_248_893_184,
+  licence: "apache-2.0",
+  parameter_count: 116_829_156_672,
   base_artifact_id: null,
   project_id: null,
-  metadata: { context_length: 131072, quantization: "fp8" },
+  metadata: { context_length: 131072, quantization: "mxfp4" },
   created_at: "2026-08-01T10:00:00Z",
   updated_at: null,
   revision: "1",
   locations: [],
 }
 
+/** 57 GB of weights, plus 36 KiB of KV per token for each of 128 sequences. */
 function layout(
   device_count: number,
   context_length: number,
@@ -49,7 +50,7 @@ function layout(
     tensor_parallel: device_count,
     pipeline_parallel: 1,
     aggregate_gb: device_count * 125,
-    required_gb: 80,
+    required_gb: Math.round(57 + (128 * context_length * 36_864) / 1024 ** 3),
     context_length,
     reduced: context_length < 131072,
     supply_short: false,
@@ -71,8 +72,8 @@ const FIT: ArtifactFit = {
   pipeline_parallel: 1,
   memory_mib_per_device: 143771,
   aggregate_gb: 1003,
-  weights_gb: 66,
-  required_gb: 800,
+  weights_gb: 57,
+  required_gb: 633,
   context_length: 131072,
   kv_counted: true,
   reason: "needs 8x H200 at the full 131,072 tokens",
@@ -94,9 +95,9 @@ function response(fit: ArtifactFit = FIT): ArtifactFitment {
     artifact_id: ARTIFACT.id,
     scope: "fleet",
     sizable: true,
-    quantization: "fp8",
+    quantization: "mxfp4",
     context_length: 131072,
-    concurrency: 1,
+    concurrency: 128,
     max_devices: 512,
     considered: 1,
     note: null,
@@ -127,7 +128,7 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
     const [footprint] = onPick.mock.calls[0]
     expect(footprint.device_count).toBe(8)
     expect(footprint.context_length).toBe(131072)
-    expect(footprint.quantization).toBe("fp8")
+    expect(footprint.quantization).toBe("mxfp4")
   })
 
   it("keeps the other counts out of the way until a class is chosen", () => {
@@ -142,7 +143,7 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
       tensor_parallel: 8,
       pipeline_parallel: 1,
       context_length: 131072,
-      quantization: "fp8",
+      quantization: "mxfp4",
     })
 
     expect(screen.getByText("How many")).toBeInTheDocument()
@@ -198,7 +199,8 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
         ...FIT,
         fits: false,
         possible: false,
-        reason: "the weights need 140 GB and 1x H200 offers 125 GB usable",
+        reason:
+          "the weights need 218 GB at fp16 and 1x H200 offers 125 GB usable",
       }),
       isLoading: false,
       error: null,
@@ -224,7 +226,7 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
       tensor_parallel: 8,
       pipeline_parallel: 1,
       context_length: 131072,
-      quantization: "fp8",
+      quantization: "mxfp4",
     })
 
     fireEvent.click(screen.getByText("2 nodes x 8"))

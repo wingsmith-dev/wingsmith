@@ -54,7 +54,7 @@ function deployment(live: Record<string, number>): WorkloadDeployment {
 function workload(deployments: WorkloadDeployment[] = []): Workload {
   return {
     id: "wkl_1",
-    name: "llama-prod",
+    name: "gpt-oss-prod",
     serving_digest: DECLARED,
     revision: "1700000000",
     serving: { artifact_id: "art_1" },

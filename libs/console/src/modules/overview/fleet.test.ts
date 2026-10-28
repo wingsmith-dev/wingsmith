@@ -38,8 +38,8 @@ function replicas(
 function deployment(over: Partial<Deployment> = {}): Deployment {
   return {
     id: "dep_1",
-    name: "llama-iad",
-    workload_name: "llama",
+    name: "gpt-oss-iad",
+    workload_name: "gpt-oss",
     cluster_id: "clu_1",
     desired_replicas: 2,
     admission_phase: "running",

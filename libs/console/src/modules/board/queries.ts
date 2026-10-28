@@ -142,7 +142,7 @@ export function useFleetBoard(scope: BoardScope = {}) {
  *
  * A workload brick is a real commitment: it has a scale, spread rules and
  * replicas already holding devices, so planning it means planning the shortfall.
- * A serving configuration is not an object, so "where would llama-70b fit"
+ * A serving configuration is not an object, so "where would gpt-oss-120b fit"
  * before anything is declared is asked of an artifact's fitment or of the shape
  * builder, both of which the tray offers.
  */

@@ -49,7 +49,7 @@ export const DEFAULT_ENGINE = "vllm"
  */
 export const DEFAULT_ENGINE_RUNTIME_VERSION = "latest"
 
-/** `Llama-3.3-70B-Instruct` -> `llama-3-3-70b-instruct`. */
+/** `zai-org/GLM-5.3-Flash` -> `glm-5-3-flash`. */
 export function slugify(value: string): string {
   return value
     .split("/")

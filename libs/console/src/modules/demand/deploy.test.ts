@@ -97,9 +97,7 @@ function workloadLike(over: Partial<Workload> = {}): Workload {
 
 describe("slugify", () => {
   it("drops the owner and normalizes the name", () => {
-    expect(slugify("meta-llama/Llama-3.3-70B-Instruct")).toBe(
-      "llama-3-3-70b-instruct"
-    )
+    expect(slugify("zai-org/GLM-5.3-Flash")).toBe("glm-5-3-flash")
   })
 })
 

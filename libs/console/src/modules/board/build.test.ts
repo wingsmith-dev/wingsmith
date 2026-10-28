@@ -300,7 +300,7 @@ describe("buildBoard", () => {
       ...parts,
       assignments: new Map(),
       reservations: [
-        make.reservation("iad-1", 3, { workloadName: "llama-70b-prod" }),
+        make.reservation("iad-1", 3, { workloadName: "gpt-oss-120b-prod" }),
       ],
     })
     const iad = board.regions
@@ -311,7 +311,7 @@ describe("buildBoard", () => {
     expect(iad.counts.reserved).toBe(3)
     expect(iad.counts.available).toBe(1)
     expect(iad.reservations.map((entry) => entry.workload_name)).toEqual([
-      "llama-70b-prod",
+      "gpt-oss-120b-prod",
     ])
   })
 

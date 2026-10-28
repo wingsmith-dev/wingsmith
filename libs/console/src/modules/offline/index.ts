@@ -402,7 +402,7 @@ const HF_FIXTURES: Record<
   },
 }
 
-const HF_GATED = ["meta-llama/Llama-3.1-70B-Instruct"]
+const HF_GATED = ["google/gemma-3-27b-it"]
 
 function hfSlug(source: string): string {
   const value = source
@@ -522,7 +522,7 @@ const HF_REFRESH: Record<string, Record<string, unknown>> = {
  * Mutates the fixture row, so a refresh is visible in the panel that prompted it
  * instead of being a message about a write that did not happen. The three refusals
  * are all reachable: an artifact with no source, a source the offline Hub does not
- * carry, and (for `llama-3.3-70b-instruct`, whose locations are `s3`) the "nowhere
+ * carry, and (for `gpt-oss-120b`, whose locations are `s3`) the "nowhere
  * to go back and ask" case a console has to render as a disabled button.
  */
 registerFixtures([

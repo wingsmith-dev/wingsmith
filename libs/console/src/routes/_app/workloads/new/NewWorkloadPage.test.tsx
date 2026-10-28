@@ -29,14 +29,14 @@ describe("new workload", () => {
       await user.click(
         await within(main).findByRole(
           "button",
-          { name: /llama-3\.3-70b-instruct/ },
+          { name: /gpt-oss-120b/ },
           { timeout: 5000 }
         )
       )
 
       // The picked artifact becomes the step's answer, and the search closes.
       expect(
-        await within(main).findByText("llama-3.3-70b-instruct", {
+        await within(main).findByText("gpt-oss-120b", {
           selector: "span",
         })
       ).toBeInTheDocument()

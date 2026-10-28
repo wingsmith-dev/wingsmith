@@ -47,8 +47,6 @@ describe("offline artifact refresh", () => {
   })
 
   it("refuses an artifact whose bytes came from somewhere we cannot ask", async () => {
-    await expect(refresh("llama-3.3-70b-instruct")).rejects.toThrow(
-      InvalidError
-    )
+    await expect(refresh("gpt-oss-120b")).rejects.toThrow(InvalidError)
   })
 })

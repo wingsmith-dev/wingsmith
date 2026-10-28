@@ -4,7 +4,7 @@ import { artifacts } from "@/modules/offline/data"
 import { artifactSource, refreshSummary } from "./display"
 import type { Artifact } from "./types"
 
-const llama = artifacts[0]
+const gptOss = artifacts[0]
 const embed = artifacts[1]
 
 function withSource(patch: Partial<Artifact>): Artifact {
@@ -32,7 +32,7 @@ describe("artifactSource", () => {
   })
 
   it("has nothing to offer for weights that came from somewhere else", () => {
-    expect(artifactSource(llama)).toBeNull()
+    expect(artifactSource(gptOss)).toBeNull()
     expect(
       artifactSource(withSource({ metadata: {}, locations: [] }))
     ).toBeNull()

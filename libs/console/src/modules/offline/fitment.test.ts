@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest"
 import { artifacts, deviceClasses } from "./data"
 import { fitment } from "./fitment"
 
-const llama = artifacts[0]
+const gptOss = artifacts[0]
 const embed = artifacts[1]
 
 describe("offline fitment", () => {
   it("ranks the cheapest workable class first", () => {
-    const result = fitment(llama, deviceClasses(), {
+    const result = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -22,7 +22,7 @@ describe("offline fitment", () => {
   })
 
   it("keeps no-fits at the bottom instead of dropping them", () => {
-    const result = fitment(llama, deviceClasses(), {
+    const result = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -39,7 +39,7 @@ describe("offline fitment", () => {
           }
         : entry
     )
-    const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
+    const result = fitment(gptOss, classes, { scope: "fleet", limit: 0 })
 
     const short = result.items.filter((item) => item.supply_short)
     expect(short.length).toBeGreaterThan(0)
@@ -54,7 +54,7 @@ describe("offline fitment", () => {
   })
 
   it("offers every count that serves and not only the fewest", () => {
-    const result = fitment(llama, deviceClasses(), {
+    const result = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -72,7 +72,7 @@ describe("offline fitment", () => {
   })
 
   it("carries no layouts for a class that fits nowhere", () => {
-    const result = fitment(llama, deviceClasses(), {
+    const result = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
       max_devices: 1,
@@ -90,7 +90,7 @@ describe("offline fitment", () => {
           }
         : entry
     )
-    const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
+    const result = fitment(gptOss, classes, { scope: "fleet", limit: 0 })
     const fit = result.items.find(
       (item) => item.fits && !item.supply_short && item.layouts.length > 1
     )!
@@ -101,8 +101,8 @@ describe("offline fitment", () => {
   })
 
   it("asks a different question in each scope", () => {
-    const fleet = fitment(llama, deviceClasses(), { scope: "fleet", limit: 0 })
-    const catalog = fitment(llama, deviceClasses(), {
+    const fleet = fitment(gptOss, deviceClasses(), { scope: "fleet", limit: 0 })
+    const catalog = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -112,20 +112,20 @@ describe("offline fitment", () => {
     expect(catalog.items.some((item) => item.devices_total === 0)).toBe(true)
   })
 
-  it("halves the weights when asked about a smaller precision", () => {
-    const native = fitment(llama, deviceClasses(), {})
-    const quantized = fitment(llama, deviceClasses(), { quantization: "int4" })
+  it("quadruples the weights when asked about a wider precision", () => {
+    const native = fitment(gptOss, deviceClasses(), {})
+    const widened = fitment(gptOss, deviceClasses(), { quantization: "fp16" })
 
-    expect(native.quantization).toBe("fp16")
-    expect(quantized.quantization).toBe("int4")
-    expect(quantized.items[0].weights_gb).toBeCloseTo(
-      native.items[0].weights_gb / 4,
+    expect(native.quantization).toBe("mxfp4")
+    expect(widened.quantization).toBe("fp16")
+    expect(widened.items[0].weights_gb).toBeCloseTo(
+      native.items[0].weights_gb * 4,
       1
     )
   })
 
   it("offers a truncated window instead of calling it a failure", () => {
-    const result = fitment(llama, deviceClasses(), {
+    const result = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       concurrency: 256,
       limit: 0,
@@ -139,9 +139,9 @@ describe("offline fitment", () => {
   })
 
   it("defaults to the artifact's own declared window", () => {
-    expect(fitment(llama, deviceClasses(), {}).context_length).toBe(131_072)
+    expect(fitment(gptOss, deviceClasses(), {}).context_length).toBe(131_072)
     expect(
-      fitment(llama, deviceClasses(), { context_length: 8192 }).context_length
+      fitment(gptOss, deviceClasses(), { context_length: 8192 }).context_length
     ).toBe(8192)
   })
 
@@ -170,14 +170,14 @@ describe("offline fitment", () => {
   })
 
   it("counts the cache and stays quiet when the shape is there", () => {
-    const result = fitment(llama, deviceClasses(), {})
+    const result = fitment(gptOss, deviceClasses(), {})
     expect(result.items.every((item) => item.kv_counted)).toBe(true)
     expect(result.note).toBeNull()
   })
 
   it("carries each class's own memory instead of the catalog's", () => {
     const classes = deviceClasses()
-    const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
+    const result = fitment(gptOss, classes, { scope: "fleet", limit: 0 })
 
     for (const item of result.items) {
       const source = classes.find((entry) => entry.name === item.device_class)
@@ -194,15 +194,15 @@ describe("offline fitment", () => {
       memory_mib: 0,
       in_catalog: false,
     }
-    const result = fitment(llama, [unknown], { scope: "catalog" })
+    const result = fitment(gptOss, [unknown], { scope: "catalog" })
 
     expect(result.items[0].fits).toBe(false)
     expect(result.items[0].reason).toContain("no memory size")
   })
 
   it("returns the ranked head and says how many it ranked", () => {
-    const capped = fitment(llama, deviceClasses(), { scope: "catalog" })
-    const every = fitment(llama, deviceClasses(), {
+    const capped = fitment(gptOss, deviceClasses(), { scope: "catalog" })
+    const every = fitment(gptOss, deviceClasses(), {
       scope: "catalog",
       limit: 0,
     })
@@ -217,7 +217,7 @@ describe("offline fitment", () => {
 
   it("answers a frontier model in nodes instead of refusing it", () => {
     const frontier = {
-      ...llama,
+      ...gptOss,
       parameter_count: 2_800_000_000_000,
       metadata: { quantization: "fp8" },
     }
@@ -236,7 +236,7 @@ describe("offline fitment", () => {
 
   it("treats an NVL72 rack as one node instead of nine chassis", () => {
     const frontier = {
-      ...llama,
+      ...gptOss,
       parameter_count: 2_800_000_000_000,
       metadata: { quantization: "fp8" },
     }
@@ -254,7 +254,10 @@ describe("offline fitment", () => {
   })
 
   it("applies the utilization envelope once, on the capacity side", () => {
-    const result = fitment(llama, deviceClasses(), { scope: "fleet", limit: 0 })
+    const result = fitment(gptOss, deviceClasses(), {
+      scope: "fleet",
+      limit: 0,
+    })
     const h100 = result.items.find((i) => i.device_class === "h100-80gb-sxm")
 
     // Usable, not nameplate: net of the 0.9 envelope and 1 GiB per device.
@@ -265,7 +268,7 @@ describe("offline fitment", () => {
 
   it("matches the plane on the case the compounded overhead was refusing", () => {
     const qwen = {
-      ...llama,
+      ...gptOss,
       parameter_count: 27_781_427_952,
       metadata: {
         quantization: "fp16",
