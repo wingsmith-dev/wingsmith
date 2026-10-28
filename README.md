@@ -1,3 +1,10 @@
+<a href="https://wingsmith.dev">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/banner-dark.png">
+    <img alt="Wingsmith: your fleet, in formation. The open inference control plane for Kubernetes GPU clusters." src=".github/banner-light.png" width="100%">
+  </picture>
+</a>
+
 # Hangar
 
 A control plane for serving models across several Kubernetes GPU clusters. Hangar enrols your
