@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // Dialler opens an authenticated tunnel to one gateway replica.
@@ -57,11 +57,11 @@ func NewDialler(cfg *Config) (*Dialler, error) {
 	if cfg.TLSCAFile != "" {
 		pem, err := os.ReadFile(cfg.TLSCAFile)
 		if err != nil {
-			return nil, fmt.Errorf("read HANGAR_TUNNEL_CA_FILE: %w", err)
+			return nil, fmt.Errorf("read WINGSMITH_TUNNEL_CA_FILE: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("HANGAR_TUNNEL_CA_FILE %s contains no certificates", cfg.TLSCAFile)
+			return nil, fmt.Errorf("WINGSMITH_TUNNEL_CA_FILE %s contains no certificates", cfg.TLSCAFile)
 		}
 		tlsCfg.RootCAs = pool
 	}
@@ -115,7 +115,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 	// disagreeing means the Secret in this cluster holds another cluster's credential. Refusing is
 	// the only safe move: carrying on would serve that cluster's traffic from this one's GPUs.
 	//
-	// Either name in the answer counts as agreement. HANGAR_CLUSTER_ID is normally the cluster's
+	// Either name in the answer counts as agreement. WINGSMITH_CLUSTER_ID is normally the cluster's
 	// name (the chart writes it from what the plane rendered), while the accept's ClusterID is the
 	// plane's uid, so comparing against that alone refuses every ordinary install. It refuses none
 	// of the dangerous ones: another cluster's credential resolves to a uid *and* a name that are
@@ -123,7 +123,7 @@ func (d *Dialler) Dial(ctx context.Context, target string, covered []string) (ne
 	if named := accept.ClusterID != "" || accept.ClusterName != ""; named &&
 		accept.ClusterID != d.clusterID && accept.ClusterName != d.clusterID {
 		_ = conn.Close()
-		return nil, Peer{}, fmt.Errorf("agent: %s resolved this enrolment token to %s (%s), but HANGAR_CLUSTER_ID says %s",
+		return nil, Peer{}, fmt.Errorf("agent: %s resolved this enrolment token to %s (%s), but WINGSMITH_CLUSTER_ID says %s",
 			target, accept.ClusterID, accept.ClusterName, d.clusterID)
 	}
 	return conn, peerFrom(accept, target), nil

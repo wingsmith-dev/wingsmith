@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // Target is the address lookup the handler needs. The Resolver in this package

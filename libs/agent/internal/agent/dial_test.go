@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 func TestDialPresentsTheEnrolmentToken(t *testing.T) {
@@ -61,7 +61,7 @@ func TestDialRejectedTokenIsRejected(t *testing.T) {
 }
 
 // The shape a real handshake has, and the one that refused every install in production: the agent
-// claims the cluster's name, because that is what the chart writes HANGAR_CLUSTER_ID from, and the
+// claims the cluster's name, because that is what the chart writes WINGSMITH_CLUSTER_ID from, and the
 // gateway answers with the plane's uid, because that is what the pool and every metric label key on.
 // Neither side is wrong and the two strings differ, so the answer has to carry both for either side
 // to recognise it. Every other test here let the fake gateway echo the claim, which is the one
@@ -99,7 +99,7 @@ func TestDialRefusesAClusterTheGatewayDisagreesWith(t *testing.T) {
 	if err == nil {
 		t.Fatal("Dial accepted a tunnel for another cluster")
 	}
-	if !strings.Contains(err.Error(), "HANGAR_CLUSTER_ID") || !strings.Contains(err.Error(), "clu_somebody_else") {
+	if !strings.Contains(err.Error(), "WINGSMITH_CLUSTER_ID") || !strings.Contains(err.Error(), "clu_somebody_else") {
 		t.Errorf("error %q does not name the setting and the answer", err)
 	}
 }
@@ -209,7 +209,7 @@ func TestDialOverTLSVerifiesAgainstTheConfiguredCA(t *testing.T) {
 	cfg.TLSCAFile = caFile
 	// The test dials 127.0.0.1 while the certificate is issued for a name, which is the one case
 	// the override is still for.
-	cfg.TLSServerName = "gateway.hangar.test"
+	cfg.TLSServerName = "gateway.wingsmith.test"
 	dialler, err := NewDialler(cfg)
 	if err != nil {
 		t.Fatalf("NewDialler: %v", err)
@@ -233,7 +233,7 @@ func TestDialOverTLSRefusesAnUnknownCertificate(t *testing.T) {
 
 	cfg := dialConfig(tr.addr)
 	cfg.TLSEnabled = true
-	cfg.TLSServerName = "gateway.hangar.test"
+	cfg.TLSServerName = "gateway.wingsmith.test"
 	dialler, _ := NewDialler(cfg)
 
 	_, _, err := dialler.Dial(context.Background(), tr.addr, nil)
@@ -249,8 +249,8 @@ func TestNewDiallerRejectsAnUnreadableCA(t *testing.T) {
 	cfg := dialConfig("gw-0.gw:9443")
 	cfg.TLSEnabled = true
 	cfg.TLSCAFile = "/nowhere/ca.pem"
-	if _, err := NewDialler(cfg); err == nil || !strings.Contains(err.Error(), "HANGAR_TUNNEL_CA_FILE") {
-		t.Fatalf("NewDialler error = %v, want one naming HANGAR_TUNNEL_CA_FILE", err)
+	if _, err := NewDialler(cfg); err == nil || !strings.Contains(err.Error(), "WINGSMITH_TUNNEL_CA_FILE") {
+		t.Fatalf("NewDialler error = %v, want one naming WINGSMITH_TUNNEL_CA_FILE", err)
 	}
 }
 
@@ -290,23 +290,23 @@ func TestAnUnreachablePlaneIsRefusedNotUnauthorized(t *testing.T) {
 // The covered list rides on the hello, and a replica that is on it answers with its identity and
 // the replica count instead of a tunnel.
 func TestADialToACoveredReplicaReturnsItsPeer(t *testing.T) {
-	tr := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 3, accepted: func(net.Conn) {}})
+	tr := startGateway(t, &gateway{ids: []string{"wingsmith-gateway-0"}, replicas: 3, accepted: func(net.Conn) {}})
 
 	cfg := dialConfig(tr.addr)
 	cfg.TLSEnabled = false
 	dialler, _ := NewDialler(cfg)
 
-	conn, peer, err := dialler.Dial(context.Background(), tr.addr, []string{"hangar-gateway-0"})
+	conn, peer, err := dialler.Dial(context.Background(), tr.addr, []string{"wingsmith-gateway-0"})
 	if conn != nil {
 		_ = conn.Close()
 	}
 	if !errors.Is(err, tunnel.ErrDuplicate) {
 		t.Fatalf("Dial error = %v, want tunnel.ErrDuplicate", err)
 	}
-	if peer.ID != "hangar-gateway-0" || peer.Total != 3 {
-		t.Errorf("peer = %+v, want hangar-gateway-0 of 3", peer)
+	if peer.ID != "wingsmith-gateway-0" || peer.Total != 3 {
+		t.Errorf("peer = %+v, want wingsmith-gateway-0 of 3", peer)
 	}
-	if got := tr.lastHello(t).Covered; len(got) != 1 || got[0] != "hangar-gateway-0" {
+	if got := tr.lastHello(t).Covered; len(got) != 1 || got[0] != "wingsmith-gateway-0" {
 		t.Errorf("hello carried covered = %v", got)
 	}
 }

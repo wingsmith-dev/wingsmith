@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // Config is the fully resolved agent configuration.
@@ -141,38 +141,38 @@ const ShutdownMargin = 5 * time.Second
 // Load reads configuration from the environment, applying defaults and validating the result.
 //
 // A value that is set and cannot be parsed fails the load. Falling back to the default instead
-// turned a typo such as HANGAR_TUNNEL_TLS=flase into a silently different agent.
+// turned a typo such as WINGSMITH_TUNNEL_TLS=flase into a silently different agent.
 func Load() (*Config, error) {
 	r := &envReader{}
 	c := &Config{
-		ClusterID:             env("HANGAR_CLUSTER_ID", ""),
-		Gateway:               env("HANGAR_TUNNEL_GATEWAY", ""),
-		EnrolmentToken:        env("HANGAR_ENROLMENT_TOKEN", ""),
-		ConnsPerGateway:       r.int("HANGAR_TUNNEL_CONNS_PER_GATEWAY", 2),
-		MaxConcurrentStreams:  r.int("HANGAR_TUNNEL_MAX_CONCURRENT_STREAMS", 0),
-		TLSEnabled:            r.bool("HANGAR_TUNNEL_TLS", true),
-		TLSServerName:         env("HANGAR_TUNNEL_SERVER_NAME", ""),
-		TLSCAFile:             env("HANGAR_TUNNEL_CA_FILE", ""),
-		TLSInsecureSkipVerify: r.bool("HANGAR_TUNNEL_INSECURE_SKIP_VERIFY", false),
-		DialTimeout:           r.duration("HANGAR_TUNNEL_DIAL_TIMEOUT", 10*time.Second),
-		HandshakeTimeout:      r.duration("HANGAR_TUNNEL_HANDSHAKE_TIMEOUT", 10*time.Second),
-		BackoffMin:            r.duration("HANGAR_BACKOFF_MIN", time.Second),
-		BackoffMax:            r.duration("HANGAR_BACKOFF_MAX", 30*time.Second),
-		ShutdownGrace:         r.duration("HANGAR_SHUTDOWN_GRACE", DefaultShutdownGrace),
-		HealthAddr:            env("HANGAR_HEALTH_ADDR", ":8081"),
-		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
-		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
-		DiscoveryInterval:     r.duration("HANGAR_FRONTEND_DISCOVERY_INTERVAL", 0),
-		DiscoveryStaleAfter:   r.duration("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER", 5*time.Minute),
-		ResponseHeaderTimeout: r.duration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
-		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
+		ClusterID:             env("WINGSMITH_CLUSTER_ID", ""),
+		Gateway:               env("WINGSMITH_TUNNEL_GATEWAY", ""),
+		EnrolmentToken:        env("WINGSMITH_ENROLMENT_TOKEN", ""),
+		ConnsPerGateway:       r.int("WINGSMITH_TUNNEL_CONNS_PER_GATEWAY", 2),
+		MaxConcurrentStreams:  r.int("WINGSMITH_TUNNEL_MAX_CONCURRENT_STREAMS", 0),
+		TLSEnabled:            r.bool("WINGSMITH_TUNNEL_TLS", true),
+		TLSServerName:         env("WINGSMITH_TUNNEL_SERVER_NAME", ""),
+		TLSCAFile:             env("WINGSMITH_TUNNEL_CA_FILE", ""),
+		TLSInsecureSkipVerify: r.bool("WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY", false),
+		DialTimeout:           r.duration("WINGSMITH_TUNNEL_DIAL_TIMEOUT", 10*time.Second),
+		HandshakeTimeout:      r.duration("WINGSMITH_TUNNEL_HANDSHAKE_TIMEOUT", 10*time.Second),
+		BackoffMin:            r.duration("WINGSMITH_BACKOFF_MIN", time.Second),
+		BackoffMax:            r.duration("WINGSMITH_BACKOFF_MAX", 30*time.Second),
+		ShutdownGrace:         r.duration("WINGSMITH_SHUTDOWN_GRACE", DefaultShutdownGrace),
+		HealthAddr:            env("WINGSMITH_HEALTH_ADDR", ":8081"),
+		InferenceEndpoint:     env("WINGSMITH_INFERENCE_ENDPOINT", ""),
+		WorkloadNamespace:     env("WINGSMITH_WORKLOAD_NAMESPACE", "dynamo"),
+		DiscoveryInterval:     r.duration("WINGSMITH_FRONTEND_DISCOVERY_INTERVAL", 0),
+		DiscoveryStaleAfter:   r.duration("WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER", 5*time.Minute),
+		ResponseHeaderTimeout: r.duration("WINGSMITH_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
+		LogFormat:             env("WINGSMITH_LOG_FORMAT", "json"),
 	}
-	c.DrainTimeout = r.duration("HANGAR_DRAIN_TIMEOUT", c.ShutdownGrace-ShutdownMargin)
+	c.DrainTimeout = r.duration("WINGSMITH_DRAIN_TIMEOUT", c.ShutdownGrace-ShutdownMargin)
 	if err := errors.Join(r.errs...); err != nil {
 		return nil, err
 	}
 
-	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
+	lvl, err := parseLevel(env("WINGSMITH_LOG_LEVEL", "info"))
 	if err != nil {
 		return nil, err
 	}
@@ -188,92 +188,92 @@ func Load() (*Config, error) {
 func (c *Config) Warnings() []string {
 	var warnings []string
 	if !c.TLSEnabled {
-		warnings = append(warnings, "HANGAR_TUNNEL_TLS is off: the enrolment token and every request "+
+		warnings = append(warnings, "WINGSMITH_TUNNEL_TLS is off: the enrolment token and every request "+
 			"cross the network in cleartext unless something in front terminates TLS")
 	}
 	if c.TLSEnabled && c.TLSInsecureSkipVerify {
-		warnings = append(warnings, "HANGAR_TUNNEL_INSECURE_SKIP_VERIFY is on: the gateway's certificate "+
+		warnings = append(warnings, "WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY is on: the gateway's certificate "+
 			"is not checked, so anything that can intercept the dial receives the enrolment token")
 	}
 	if c.ShutdownGrace > 0 && c.DrainTimeout > c.ShutdownGrace-ShutdownMargin {
-		warnings = append(warnings, fmt.Sprintf("HANGAR_DRAIN_TIMEOUT (%s) runs past HANGAR_SHUTDOWN_GRACE (%s) "+
+		warnings = append(warnings, fmt.Sprintf("WINGSMITH_DRAIN_TIMEOUT (%s) runs past WINGSMITH_SHUTDOWN_GRACE (%s) "+
 			"less %s: the pod is killed mid-drain unless terminationGracePeriodSeconds and "+
-			"HANGAR_SHUTDOWN_GRACE are raised", c.DrainTimeout, c.ShutdownGrace, ShutdownMargin))
+			"WINGSMITH_SHUTDOWN_GRACE are raised", c.DrainTimeout, c.ShutdownGrace, ShutdownMargin))
 	}
 	return warnings
 }
 
 func (c *Config) validate() error {
 	if c.ClusterID == "" {
-		return fmt.Errorf("HANGAR_CLUSTER_ID is required")
+		return fmt.Errorf("WINGSMITH_CLUSTER_ID is required")
 	}
 	if c.Gateway == "" {
-		return fmt.Errorf("HANGAR_TUNNEL_GATEWAY is required: the gateway's address, as host:port")
+		return fmt.Errorf("WINGSMITH_TUNNEL_GATEWAY is required: the gateway's address, as host:port")
 	}
 	host, port, err := net.SplitHostPort(c.Gateway)
 	if err != nil {
-		return fmt.Errorf("HANGAR_TUNNEL_GATEWAY %q is not host:port: %w", c.Gateway, err)
+		return fmt.Errorf("WINGSMITH_TUNNEL_GATEWAY %q is not host:port: %w", c.Gateway, err)
 	}
 	if host == "" {
-		return fmt.Errorf("HANGAR_TUNNEL_GATEWAY %q names no host", c.Gateway)
+		return fmt.Errorf("WINGSMITH_TUNNEL_GATEWAY %q names no host", c.Gateway)
 	}
 	if _, err := strconv.Atoi(port); err != nil {
-		return fmt.Errorf("HANGAR_TUNNEL_GATEWAY %q has no numeric port", c.Gateway)
+		return fmt.Errorf("WINGSMITH_TUNNEL_GATEWAY %q has no numeric port", c.Gateway)
 	}
 	if c.EnrolmentToken == "" {
-		return fmt.Errorf("HANGAR_ENROLMENT_TOKEN is required")
+		return fmt.Errorf("WINGSMITH_ENROLMENT_TOKEN is required")
 	}
 	if c.ConnsPerGateway < 1 {
-		return fmt.Errorf("HANGAR_TUNNEL_CONNS_PER_GATEWAY must be positive")
+		return fmt.Errorf("WINGSMITH_TUNNEL_CONNS_PER_GATEWAY must be positive")
 	}
 	if c.MaxConcurrentStreams < 0 || c.MaxConcurrentStreams > math.MaxUint32 {
-		return fmt.Errorf("HANGAR_TUNNEL_MAX_CONCURRENT_STREAMS must be between 0 and %d", uint32(math.MaxUint32))
+		return fmt.Errorf("WINGSMITH_TUNNEL_MAX_CONCURRENT_STREAMS must be between 0 and %d", uint32(math.MaxUint32))
 	}
 	if c.DialTimeout <= 0 {
-		return fmt.Errorf("HANGAR_TUNNEL_DIAL_TIMEOUT must be positive")
+		return fmt.Errorf("WINGSMITH_TUNNEL_DIAL_TIMEOUT must be positive")
 	}
 	if c.HandshakeTimeout <= 0 {
-		return fmt.Errorf("HANGAR_TUNNEL_HANDSHAKE_TIMEOUT must be positive")
+		return fmt.Errorf("WINGSMITH_TUNNEL_HANDSHAKE_TIMEOUT must be positive")
 	}
 	if c.BackoffMin <= 0 {
-		return fmt.Errorf("HANGAR_BACKOFF_MIN must be positive")
+		return fmt.Errorf("WINGSMITH_BACKOFF_MIN must be positive")
 	}
 	if c.BackoffMax < c.BackoffMin {
-		return fmt.Errorf("HANGAR_BACKOFF_MAX must be >= HANGAR_BACKOFF_MIN")
+		return fmt.Errorf("WINGSMITH_BACKOFF_MAX must be >= WINGSMITH_BACKOFF_MIN")
 	}
 	if c.ShutdownGrace <= ShutdownMargin {
-		return fmt.Errorf("HANGAR_SHUTDOWN_GRACE must be longer than %s, the margin left before the kill", ShutdownMargin)
+		return fmt.Errorf("WINGSMITH_SHUTDOWN_GRACE must be longer than %s, the margin left before the kill", ShutdownMargin)
 	}
 	if c.DrainTimeout <= 0 {
-		return fmt.Errorf("HANGAR_DRAIN_TIMEOUT must be positive")
+		return fmt.Errorf("WINGSMITH_DRAIN_TIMEOUT must be positive")
 	}
 	// Refused, not clamped. A value below the default is very likely somebody trying to
 	// bound generation with the wrong knob, and silently accepting it reintroduces exactly the
 	// bug this setting exists to fix: the innermost hop firing first and every long non-streamed
 	// completion coming back 502 at a wall nothing in the gateway names.
 	if c.ResponseHeaderTimeout < tunnel.DefaultResponseHeaderTimeout {
-		return fmt.Errorf("HANGAR_RESPONSE_HEADER_TIMEOUT must be >= %s, the bound the gateway defaults to; "+
+		return fmt.Errorf("WINGSMITH_RESPONSE_HEADER_TIMEOUT must be >= %s, the bound the gateway defaults to; "+
 			"a smaller one here fires first and turns a long non-streamed completion into a 502",
 			tunnel.DefaultResponseHeaderTimeout)
 	}
 	if c.HealthAddr == "" {
-		return fmt.Errorf("HANGAR_HEALTH_ADDR must not be empty")
+		return fmt.Errorf("WINGSMITH_HEALTH_ADDR must not be empty")
 	}
 	if c.DiscoveryStaleAfter < 0 {
-		return fmt.Errorf("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER must not be negative; 0 turns the check off")
+		return fmt.Errorf("WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER must not be negative; 0 turns the check off")
 	}
 	if c.DiscoveryStaleAfter > 0 && c.DiscoveryStaleAfter <= c.DiscoveryInterval {
-		return fmt.Errorf("HANGAR_FRONTEND_DISCOVERY_STALE_AFTER must be longer than HANGAR_FRONTEND_DISCOVERY_INTERVAL, " +
+		return fmt.Errorf("WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER must be longer than WINGSMITH_FRONTEND_DISCOVERY_INTERVAL, " +
 			"or readiness fails between two healthy passes")
 	}
 	if c.InferenceEndpoint == "" && c.WorkloadNamespace == "" {
-		return fmt.Errorf("HANGAR_WORKLOAD_NAMESPACE must not be empty unless HANGAR_INFERENCE_ENDPOINT is set")
+		return fmt.Errorf("WINGSMITH_WORKLOAD_NAMESPACE must not be empty unless WINGSMITH_INFERENCE_ENDPOINT is set")
 	}
 	if c.TLSCAFile != "" && !c.TLSEnabled {
-		return fmt.Errorf("HANGAR_TUNNEL_CA_FILE is set but HANGAR_TUNNEL_TLS is off, so nothing would verify it")
+		return fmt.Errorf("WINGSMITH_TUNNEL_CA_FILE is set but WINGSMITH_TUNNEL_TLS is off, so nothing would verify it")
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
-		return fmt.Errorf("HANGAR_LOG_FORMAT must be json or text")
+		return fmt.Errorf("WINGSMITH_LOG_FORMAT must be json or text")
 	}
 	return nil
 }
@@ -289,7 +289,7 @@ func parseLevel(s string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("HANGAR_LOG_LEVEL %q is not one of debug, info, warn, error", s)
+		return 0, fmt.Errorf("WINGSMITH_LOG_LEVEL %q is not one of debug, info, warn, error", s)
 	}
 }
 

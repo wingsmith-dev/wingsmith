@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/agent/internal/agent"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/agent"
 )
 
 func TestReadinessFailsOnStaleDiscovery(t *testing.T) {
@@ -69,7 +69,7 @@ func TestDiscoveryWithoutClusterCredentialsSaysHowToSkipIt(t *testing.T) {
 	t.Setenv("KUBERNETES_SERVICE_PORT", "")
 
 	_, err := newResolver(&agent.Config{WorkloadNamespace: "dynamo"})
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_INFERENCE_ENDPOINT") {
-		t.Fatalf("newResolver off-cluster = %v, want an error naming HANGAR_INFERENCE_ENDPOINT", err)
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_INFERENCE_ENDPOINT") {
+		t.Fatalf("newResolver off-cluster = %v, want an error naming WINGSMITH_INFERENCE_ENDPOINT", err)
 	}
 }

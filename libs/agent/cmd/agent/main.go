@@ -1,4 +1,4 @@
-// Command agent runs hangar's agent: one Deployment per GPU cluster, dialling out to the gateway and
+// Command agent runs wingsmith's agent: one Deployment per GPU cluster, dialling out to the gateway and
 // forwarding whatever arrives to the cluster's own OpenAI-compatible Dynamo frontend Service.
 //
 // It is given one address and redials it until it holds a tunnel to every gateway replica, because
@@ -6,7 +6,7 @@
 // with the shape of the control plane, which is the point: the plane can scale its gateway
 // without an edit reaching a single cluster.
 //
-// It is the data plane's cluster-local half and is intentionally not the operator, the other hangar
+// It is the data plane's cluster-local half and is intentionally not the operator, the other wingsmith
 // process a cluster runs: the operator is a leader-elected singleton on the control path, this
 // scales with traffic, and neither shares a process or a connection with the other.
 package main
@@ -24,9 +24,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/hangar-dev/hangar/libs/agent/internal/agent"
-	"github.com/hangar-dev/hangar/libs/agent/internal/dynamo"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/agent"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/dynamo"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // version is stamped at build time with -ldflags.
@@ -193,11 +193,11 @@ func newResolver(cfg *agent.Config) (*dynamo.Resolver, error) {
 // In-cluster only, and no kubeconfig fallback: the agent is a Deployment in the cluster it
 // serves, and a process running anywhere else has no business discovering that cluster's frontend by
 // name: it would resolve to a ClusterIP it cannot reach. Running one from a laptop means setting
-// HANGAR_INFERENCE_ENDPOINT, which skips discovery entirely.
+// WINGSMITH_INFERENCE_ENDPOINT, which skips discovery entirely.
 func kubeConfig() (*rest.Config, error) {
 	inCluster, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, fmt.Errorf("no in-cluster credentials; set HANGAR_INFERENCE_ENDPOINT to skip frontend discovery: %w", err)
+		return nil, fmt.Errorf("no in-cluster credentials; set WINGSMITH_INFERENCE_ENDPOINT to skip frontend discovery: %w", err)
 	}
 	return inCluster, nil
 }

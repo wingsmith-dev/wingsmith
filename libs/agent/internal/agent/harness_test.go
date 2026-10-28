@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // gateway is a stand-in for the gateway's tunnel listener: it accepts a connection, reads the
@@ -203,8 +203,8 @@ func selfSignedCert(t *testing.T) (tls.Certificate, string) {
 	}
 	template := x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "gateway.hangar.test"},
-		DNSNames:              []string{"gateway.hangar.test", "localhost"},
+		Subject:               pkix.Name{CommonName: "gateway.wingsmith.test"},
+		DNSNames:              []string{"gateway.wingsmith.test", "localhost"},
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),

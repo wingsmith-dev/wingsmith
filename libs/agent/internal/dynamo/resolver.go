@@ -43,7 +43,7 @@ const componentFrontend = "Frontend"
 // A frontend Service with no such label is the cluster's shared frontend (the
 // one `cluster-setup` installs, which belongs to the cluster and not to any
 // deployment), and it is the fallback for everything this map cannot answer.
-const DeploymentIDLabel = "hangar.dev/deployment-id"
+const DeploymentIDLabel = "wingsmith.dev/deployment-id"
 
 // defaultPort is Dynamo's frontend port, used when a Service declares several
 // ports and names none of them `http`.

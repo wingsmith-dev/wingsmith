@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // minimal is a configuration that loads, so a case can break exactly one thing.
 func minimal() map[string]string {
 	return map[string]string{
-		"HANGAR_CLUSTER_ID":         "clu_123",
-		"HANGAR_TUNNEL_GATEWAY":     "gw.hangar.svc:9443",
-		"HANGAR_ENROLMENT_TOKEN":    "tok_123",
-		"HANGAR_LOG_FORMAT":         "text",
-		"HANGAR_TUNNEL_TLS":         "false",
-		"HANGAR_TUNNEL_CA_FILE":     "",
-		"HANGAR_INFERENCE_ENDPOINT": "",
+		"WINGSMITH_CLUSTER_ID":         "clu_123",
+		"WINGSMITH_TUNNEL_GATEWAY":     "gw.wingsmith.svc:9443",
+		"WINGSMITH_ENROLMENT_TOKEN":    "tok_123",
+		"WINGSMITH_LOG_FORMAT":         "text",
+		"WINGSMITH_TUNNEL_TLS":         "false",
+		"WINGSMITH_TUNNEL_CA_FILE":     "",
+		"WINGSMITH_INFERENCE_ENDPOINT": "",
 	}
 }
 
@@ -34,7 +34,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Gateway != "gw.hangar.svc:9443" {
+	if cfg.Gateway != "gw.wingsmith.svc:9443" {
 		t.Fatalf("gateway = %q, want the one address given", cfg.Gateway)
 	}
 	if cfg.ConnsPerGateway != 2 {
@@ -55,17 +55,17 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ShutdownGrace != 120*time.Second || cfg.DrainTimeout != 115*time.Second {
 		t.Errorf("grace %s, drain %s, want 2m0s and 1m55s", cfg.ShutdownGrace, cfg.DrainTimeout)
 	}
-	if warnings := cfg.Warnings(); len(warnings) != 1 || !strings.Contains(warnings[0], "HANGAR_TUNNEL_TLS") {
+	if warnings := cfg.Warnings(); len(warnings) != 1 || !strings.Contains(warnings[0], "WINGSMITH_TUNNEL_TLS") {
 		t.Errorf("warnings = %q, want only the one about TLS being off", warnings)
 	}
 }
 
 // The drain is cut from the grace period the pod is given, the way the gateway's phases are, so
-// raising terminationGracePeriodSeconds and HANGAR_SHUTDOWN_GRACE together is enough. A drain set
+// raising terminationGracePeriodSeconds and WINGSMITH_SHUTDOWN_GRACE together is enough. A drain set
 // explicitly is kept as given and warned about when it outlasts the grace period.
 func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
 	env := minimal()
-	env["HANGAR_SHUTDOWN_GRACE"] = "10m"
+	env["WINGSMITH_SHUTDOWN_GRACE"] = "10m"
 	cfg, err := load(t, env)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -74,7 +74,7 @@ func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
 		t.Errorf("drain = %s, want the grace less %s", cfg.DrainTimeout, ShutdownMargin)
 	}
 
-	env["HANGAR_DRAIN_TIMEOUT"] = "15m"
+	env["WINGSMITH_DRAIN_TIMEOUT"] = "15m"
 	cfg, err = load(t, env)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -84,7 +84,7 @@ func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
 	}
 	warned := false
 	for _, warning := range cfg.Warnings() {
-		warned = warned || strings.Contains(warning, "HANGAR_DRAIN_TIMEOUT")
+		warned = warned || strings.Contains(warning, "WINGSMITH_DRAIN_TIMEOUT")
 	}
 	if !warned {
 		t.Errorf("a drain longer than the grace period was not warned about: %q", cfg.Warnings())
@@ -96,7 +96,7 @@ func TestTheDrainFollowsTheShutdownGrace(t *testing.T) {
 // be read as a hostname with commas in it.
 func TestLoadRefusesAListOfGateways(t *testing.T) {
 	env := minimal()
-	env["HANGAR_TUNNEL_GATEWAY"] = "gw-0.gw:9443,gw-1.gw:9443"
+	env["WINGSMITH_TUNNEL_GATEWAY"] = "gw-0.gw:9443,gw-1.gw:9443"
 	if _, err := load(t, env); err == nil {
 		t.Fatal("Load accepted a comma-separated list where one address belongs")
 	}
@@ -108,25 +108,25 @@ func TestValidateNamesTheSetting(t *testing.T) {
 		set  map[string]string
 		want string
 	}{
-		{"no cluster", map[string]string{"HANGAR_CLUSTER_ID": ""}, "HANGAR_CLUSTER_ID"},
-		{"no gateway", map[string]string{"HANGAR_TUNNEL_GATEWAY": ""}, "HANGAR_TUNNEL_GATEWAY"},
-		{"gateway without port", map[string]string{"HANGAR_TUNNEL_GATEWAY": "gw.hangar.svc"}, "HANGAR_TUNNEL_GATEWAY"},
-		{"gateway with a named port", map[string]string{"HANGAR_TUNNEL_GATEWAY": "gw.hangar.svc:tunnel"}, "numeric port"},
-		{"no token", map[string]string{"HANGAR_ENROLMENT_TOKEN": ""}, "HANGAR_ENROLMENT_TOKEN"},
-		{"no connections", map[string]string{"HANGAR_TUNNEL_CONNS_PER_GATEWAY": "0"}, "HANGAR_TUNNEL_CONNS_PER_GATEWAY"},
-		{"backoff inverted", map[string]string{"HANGAR_BACKOFF_MIN": "10s", "HANGAR_BACKOFF_MAX": "1s"}, "HANGAR_BACKOFF_MAX"},
-		{"no dial timeout", map[string]string{"HANGAR_TUNNEL_DIAL_TIMEOUT": "0s"}, "HANGAR_TUNNEL_DIAL_TIMEOUT"},
-		{"no handshake timeout", map[string]string{"HANGAR_TUNNEL_HANDSHAKE_TIMEOUT": "0s"}, "HANGAR_TUNNEL_HANDSHAKE_TIMEOUT"},
-		{"no drain", map[string]string{"HANGAR_DRAIN_TIMEOUT": "0s"}, "HANGAR_DRAIN_TIMEOUT"},
-		{"grace inside the margin", map[string]string{"HANGAR_SHUTDOWN_GRACE": "5s"}, "HANGAR_SHUTDOWN_GRACE"},
-		{"CA without TLS", map[string]string{"HANGAR_TUNNEL_CA_FILE": "/etc/ca.pem"}, "HANGAR_TUNNEL_CA_FILE"},
-		{"bad log format", map[string]string{"HANGAR_LOG_FORMAT": "logfmt"}, "HANGAR_LOG_FORMAT"},
-		{"bad log level", map[string]string{"HANGAR_LOG_LEVEL": "chatty"}, "HANGAR_LOG_LEVEL"},
-		{"negative staleness", map[string]string{"HANGAR_FRONTEND_DISCOVERY_STALE_AFTER": "-1m"}, "HANGAR_FRONTEND_DISCOVERY_STALE_AFTER"},
+		{"no cluster", map[string]string{"WINGSMITH_CLUSTER_ID": ""}, "WINGSMITH_CLUSTER_ID"},
+		{"no gateway", map[string]string{"WINGSMITH_TUNNEL_GATEWAY": ""}, "WINGSMITH_TUNNEL_GATEWAY"},
+		{"gateway without port", map[string]string{"WINGSMITH_TUNNEL_GATEWAY": "gw.wingsmith.svc"}, "WINGSMITH_TUNNEL_GATEWAY"},
+		{"gateway with a named port", map[string]string{"WINGSMITH_TUNNEL_GATEWAY": "gw.wingsmith.svc:tunnel"}, "numeric port"},
+		{"no token", map[string]string{"WINGSMITH_ENROLMENT_TOKEN": ""}, "WINGSMITH_ENROLMENT_TOKEN"},
+		{"no connections", map[string]string{"WINGSMITH_TUNNEL_CONNS_PER_GATEWAY": "0"}, "WINGSMITH_TUNNEL_CONNS_PER_GATEWAY"},
+		{"backoff inverted", map[string]string{"WINGSMITH_BACKOFF_MIN": "10s", "WINGSMITH_BACKOFF_MAX": "1s"}, "WINGSMITH_BACKOFF_MAX"},
+		{"no dial timeout", map[string]string{"WINGSMITH_TUNNEL_DIAL_TIMEOUT": "0s"}, "WINGSMITH_TUNNEL_DIAL_TIMEOUT"},
+		{"no handshake timeout", map[string]string{"WINGSMITH_TUNNEL_HANDSHAKE_TIMEOUT": "0s"}, "WINGSMITH_TUNNEL_HANDSHAKE_TIMEOUT"},
+		{"no drain", map[string]string{"WINGSMITH_DRAIN_TIMEOUT": "0s"}, "WINGSMITH_DRAIN_TIMEOUT"},
+		{"grace inside the margin", map[string]string{"WINGSMITH_SHUTDOWN_GRACE": "5s"}, "WINGSMITH_SHUTDOWN_GRACE"},
+		{"CA without TLS", map[string]string{"WINGSMITH_TUNNEL_CA_FILE": "/etc/ca.pem"}, "WINGSMITH_TUNNEL_CA_FILE"},
+		{"bad log format", map[string]string{"WINGSMITH_LOG_FORMAT": "logfmt"}, "WINGSMITH_LOG_FORMAT"},
+		{"bad log level", map[string]string{"WINGSMITH_LOG_LEVEL": "chatty"}, "WINGSMITH_LOG_LEVEL"},
+		{"negative staleness", map[string]string{"WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER": "-1m"}, "WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER"},
 		{"staleness inside one interval", map[string]string{
-			"HANGAR_FRONTEND_DISCOVERY_INTERVAL":    "1m",
-			"HANGAR_FRONTEND_DISCOVERY_STALE_AFTER": "30s",
-		}, "HANGAR_FRONTEND_DISCOVERY_STALE_AFTER"},
+			"WINGSMITH_FRONTEND_DISCOVERY_INTERVAL":    "1m",
+			"WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER": "30s",
+		}, "WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER"},
 	}
 
 	for _, tc := range cases {
@@ -170,8 +170,8 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 	}
 
 	err := base.validate()
-	if err == nil || !strings.Contains(err.Error(), "HANGAR_WORKLOAD_NAMESPACE") {
-		t.Fatalf("validate with neither = %v, want a failure naming HANGAR_WORKLOAD_NAMESPACE", err)
+	if err == nil || !strings.Contains(err.Error(), "WINGSMITH_WORKLOAD_NAMESPACE") {
+		t.Fatalf("validate with neither = %v, want a failure naming WINGSMITH_WORKLOAD_NAMESPACE", err)
 	}
 
 	withEndpoint := base
@@ -196,12 +196,12 @@ func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
 		{name: "unset takes the gateway's default", value: "", want: tunnel.DefaultResponseHeaderTimeout},
 		{name: "a raised value is kept", value: "90m", want: 90 * time.Minute},
 		{name: "the default itself is accepted", value: tunnel.DefaultResponseHeaderTimeout.String(), want: tunnel.DefaultResponseHeaderTimeout},
-		{name: "below the gateway's default is refused", value: "5m", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
-		{name: "zero is refused, not read as no bound", value: "0s", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
+		{name: "below the gateway's default is refused", value: "5m", wantErr: "WINGSMITH_RESPONSE_HEADER_TIMEOUT"},
+		{name: "zero is refused, not read as no bound", value: "0s", wantErr: "WINGSMITH_RESPONSE_HEADER_TIMEOUT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := minimal()
-			env["HANGAR_RESPONSE_HEADER_TIMEOUT"] = tc.value
+			env["WINGSMITH_RESPONSE_HEADER_TIMEOUT"] = tc.value
 			cfg, err := load(t, env)
 			if tc.wantErr != "" {
 				if err == nil {
@@ -228,15 +228,15 @@ func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
 }
 
 // A value that is set and unreadable fails the load. It used to fall back to the default, so
-// HANGAR_TUNNEL_TLS=flase quietly meant TLS on and HANGAR_TUNNEL_INSECURE_SKIP_VERIFY=ture meant off.
+// WINGSMITH_TUNNEL_TLS=flase quietly meant TLS on and WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY=ture meant off.
 func TestLoadRefusesValuesItCannotParse(t *testing.T) {
 	for key, value := range map[string]string{
-		"HANGAR_TUNNEL_TLS":                  "flase",
-		"HANGAR_TUNNEL_INSECURE_SKIP_VERIFY": "ture",
-		"HANGAR_TUNNEL_CONNS_PER_GATEWAY":    "two",
-		"HANGAR_TUNNEL_DIAL_TIMEOUT":         "10",
-		"HANGAR_DRAIN_TIMEOUT":               "a minute",
-		"HANGAR_SHUTDOWN_GRACE":              "two minutes",
+		"WINGSMITH_TUNNEL_TLS":                  "flase",
+		"WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY": "ture",
+		"WINGSMITH_TUNNEL_CONNS_PER_GATEWAY":    "two",
+		"WINGSMITH_TUNNEL_DIAL_TIMEOUT":         "10",
+		"WINGSMITH_DRAIN_TIMEOUT":               "a minute",
+		"WINGSMITH_SHUTDOWN_GRACE":              "two minutes",
 	} {
 		t.Run(key, func(t *testing.T) {
 			env := minimal()
@@ -258,8 +258,8 @@ func TestWarningsNameTheWeakenedSetting(t *testing.T) {
 		cfg  Config
 		want string
 	}{
-		{"tls off", Config{TLSEnabled: false}, "HANGAR_TUNNEL_TLS"},
-		{"skip verify", Config{TLSEnabled: true, TLSInsecureSkipVerify: true}, "HANGAR_TUNNEL_INSECURE_SKIP_VERIFY"},
+		{"tls off", Config{TLSEnabled: false}, "WINGSMITH_TUNNEL_TLS"},
+		{"skip verify", Config{TLSEnabled: true, TLSInsecureSkipVerify: true}, "WINGSMITH_TUNNEL_INSECURE_SKIP_VERIFY"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

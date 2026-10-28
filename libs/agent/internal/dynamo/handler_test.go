@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // fixedTarget is a Target that answers with whatever it was given, so the

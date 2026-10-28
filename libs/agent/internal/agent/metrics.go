@@ -36,7 +36,7 @@ type Metrics struct {
 	duration prometheus.Histogram
 }
 
-// Reasons a dial failed, as the `reason` label on hangar_agent_dial_failures_total.
+// Reasons a dial failed, as the `reason` label on wingsmith_agent_dial_failures_total.
 const (
 	reasonDial         = "dial"
 	reasonUnauthorized = "unauthorized"
@@ -56,23 +56,23 @@ func NewMetrics() *Metrics {
 	// below: coverage is complete when this many replicas each have a tunnel, and the gateway is
 	// the only thing that knows what this many is.
 	m.expected = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_agent_gateways_expected",
+		Name: "wingsmith_agent_gateways_expected",
 		Help: "Gateway replicas the gateway last reported it was running.",
 	})
 	m.tunnels = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_agent_tunnels",
+		Name: "wingsmith_agent_tunnels",
 		Help: "Established tunnels to each gateway replica.",
 	}, []string{labelGateway})
 	m.up = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "hangar_agent_gateway_up",
+		Name: "wingsmith_agent_gateway_up",
 		Help: "1 when at least one tunnel to the gateway replica is established.",
 	}, []string{labelGateway})
 	m.attempts = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "hangar_agent_dial_attempts_total",
+		Name: "wingsmith_agent_dial_attempts_total",
 		Help: "Outbound tunnel dials attempted.",
 	})
 	m.failures = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_agent_dial_failures_total",
+		Name: "wingsmith_agent_dial_failures_total",
 		Help: "Outbound tunnel dials that did not produce a tunnel, per reason.",
 	}, []string{"reason"})
 	// Not a failure, and intentionally not folded into one. A dial that landed on a replica this
@@ -80,19 +80,19 @@ func NewMetrics() *Metrics {
 	// how coverage is reached at all; a rate that never settles is the signal, and that is only
 	// readable if it is its own series.
 	m.duplicates = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_agent_dial_duplicates_total",
+		Name: "wingsmith_agent_dial_duplicates_total",
 		Help: "Dials answered by a replica that already had its quota of tunnels.",
 	}, []string{labelGateway})
 	m.established = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_agent_tunnels_established_total",
+		Name: "wingsmith_agent_tunnels_established_total",
 		Help: "Tunnels that completed the preface, per gateway replica.",
 	}, []string{labelGateway})
 	m.closed = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_agent_tunnels_closed_total",
+		Name: "wingsmith_agent_tunnels_closed_total",
 		Help: "Tunnels that ended, per gateway replica.",
 	}, []string{labelGateway})
 	m.sessions = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "hangar_agent_tunnel_seconds",
+		Name: "wingsmith_agent_tunnel_seconds",
 		Help: "How long each tunnel lasted, per gateway replica.",
 		// Wide and coarse: the question this answers is whether tunnels live for hours or are
 		// being churned every few seconds, and nothing in between matters.
@@ -103,15 +103,15 @@ func NewMetrics() *Metrics {
 	// caller label: the gateway already counts per endpoint, and this hop exists to say whether a
 	// failure happened inside the cluster or before it.
 	m.requests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "hangar_agent_requests_total",
+		Name: "wingsmith_agent_requests_total",
 		Help: "Requests that arrived over a tunnel, by outcome and the status class answered. forwarded with code 5xx is the frontend's own error; frontend_unavailable is a frontend that did not answer; aborted is a response cut after it started.",
 	}, []string{"outcome", "code"})
 	m.inFlight = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hangar_agent_requests_in_flight",
+		Name: "wingsmith_agent_requests_in_flight",
 		Help: "Requests this agent is serving now, across every tunnel.",
 	})
 	m.duration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "hangar_agent_request_duration_seconds",
+		Name: "wingsmith_agent_request_duration_seconds",
 		Help: "Time from a request's arrival over the tunnel to its last response byte.",
 		// The gateway's request buckets, so the two hops can be read side by side.
 		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
@@ -130,7 +130,7 @@ func NewMetrics() *Metrics {
 // server, read from age at every scrape.
 func (m *Metrics) WatchDiscovery(age func() time.Duration) {
 	m.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "hangar_agent_frontend_discovery_age_seconds",
+		Name: "wingsmith_agent_frontend_discovery_age_seconds",
 		Help: "Seconds since frontend discovery last got an answer from the API server. Requests keep going to the addresses last seen while it grows, but those addresses no longer follow a redeployed frontend.",
 	}, func() float64 { return age().Seconds() }))
 }
@@ -164,7 +164,7 @@ func (m *Metrics) expect(replicas int) {
 // whose tunnel then drops reads as zero, not as absent.
 //
 // It cannot be done up front any more, because the agent is no longer told which replicas exist:
-// hangar_agent_gateways_expected is what says how many series there should be.
+// wingsmith_agent_gateways_expected is what says how many series there should be.
 func (m *Metrics) track(gateway string) {
 	m.tunnels.WithLabelValues(gateway).Set(0)
 	m.up.WithLabelValues(gateway).Set(0)

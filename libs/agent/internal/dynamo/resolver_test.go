@@ -15,7 +15,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
-const testNamespace = "hangar-serving"
+const testNamespace = "wingsmith-serving"
 
 func frontendService(name string, ports ...corev1.ServicePort) *corev1.Service {
 	return service(name, map[string]string{ComponentLabel: componentFrontend}, ports...)
@@ -55,7 +55,7 @@ func TestDiscovery(t *testing.T) {
 		{
 			name:    "the service is found by dynamo's component label, not by name",
 			objects: []runtime.Object{frontendService("qwen3-8-27b-agg-frontend")},
-			want:    "http://qwen3-8-27b-agg-frontend.hangar-serving.svc.cluster.local:8000",
+			want:    "http://qwen3-8-27b-agg-frontend.wingsmith-serving.svc.cluster.local:8000",
 		},
 		{
 			name: "the port named http is preferred over the ones that are not",
@@ -63,14 +63,14 @@ func TestDiscovery(t *testing.T) {
 				corev1.ServicePort{Name: "metrics", Port: 9090},
 				corev1.ServicePort{Name: "http", Port: 8080},
 			)},
-			want: "http://graph-frontend.hangar-serving.svc.cluster.local:8080",
+			want: "http://graph-frontend.wingsmith-serving.svc.cluster.local:8080",
 		},
 		{
 			name: "a single unnamed port is the http port",
 			objects: []runtime.Object{frontendService("graph-frontend",
 				corev1.ServicePort{Port: 3000},
 			)},
-			want: "http://graph-frontend.hangar-serving.svc.cluster.local:3000",
+			want: "http://graph-frontend.wingsmith-serving.svc.cluster.local:3000",
 		},
 		{
 			name: "services that do not select the frontend component are ignored",
@@ -161,7 +161,7 @@ func TestTheAddressFollowsTheServiceWhenAGraphIsRedeployed(t *testing.T) {
 		t.Fatalf("first refresh: %v", err)
 	}
 	first, _ := resolver.URL()
-	if first.Host != "old-graph-frontend.hangar-serving.svc.cluster.local:8000" {
+	if first.Host != "old-graph-frontend.wingsmith-serving.svc.cluster.local:8000" {
 		t.Fatalf("first host = %q", first.Host)
 	}
 
@@ -176,7 +176,7 @@ func TestTheAddressFollowsTheServiceWhenAGraphIsRedeployed(t *testing.T) {
 		t.Fatalf("second refresh: %v", err)
 	}
 	second, _ := resolver.URL()
-	if second.Host != "new-graph-frontend.hangar-serving.svc.cluster.local:8000" {
+	if second.Host != "new-graph-frontend.wingsmith-serving.svc.cluster.local:8000" {
 		t.Fatalf("second host = %q, want the redeployed service", second.Host)
 	}
 }
@@ -206,7 +206,7 @@ func TestAFailedLookupKeepsTheAddressAlreadyLoaded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("url after a failed refresh: %v", err)
 	}
-	if kept.Host != "graph-frontend.hangar-serving.svc.cluster.local:8000" {
+	if kept.Host != "graph-frontend.wingsmith-serving.svc.cluster.local:8000" {
 		t.Fatalf("host = %q, want the last known address", kept.Host)
 	}
 }
@@ -271,13 +271,13 @@ func TestEachDeploymentsFrontendIsFoundByItsLabel(t *testing.T) {
 	}
 
 	for deployment, want := range map[string]string{
-		"dep_01j9x2": "http://chat-model-frontend.hangar-serving.svc.cluster.local:8000",
-		"dep_01k4b7": "http://qwen3-32b-frontend.hangar-serving.svc.cluster.local:8000",
+		"dep_01j9x2": "http://chat-model-frontend.wingsmith-serving.svc.cluster.local:8000",
+		"dep_01k4b7": "http://qwen3-32b-frontend.wingsmith-serving.svc.cluster.local:8000",
 		// A deployment this cluster renders no frontend for, and a request that
 		// names none at all, both land on the shared frontend. That fallback is
 		// the migration: it is what every request does today.
-		"dep_never_heard_of": "http://inference-frontend.hangar-serving.svc.cluster.local:8000",
-		"":                   "http://inference-frontend.hangar-serving.svc.cluster.local:8000",
+		"dep_never_heard_of": "http://inference-frontend.wingsmith-serving.svc.cluster.local:8000",
+		"":                   "http://inference-frontend.wingsmith-serving.svc.cluster.local:8000",
 	} {
 		got, err := resolver.URLFor(deployment)
 		if err != nil {
@@ -292,7 +292,7 @@ func TestEachDeploymentsFrontendIsFoundByItsLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URL: %v", err)
 	}
-	if shared.Host != "inference-frontend.hangar-serving.svc.cluster.local:8000" {
+	if shared.Host != "inference-frontend.wingsmith-serving.svc.cluster.local:8000" {
 		t.Fatalf("URL = %q, want the frontend no deployment owns", shared.Host)
 	}
 }
@@ -322,8 +322,8 @@ func TestTheLabelIsReadWhereverDynamoPutIt(t *testing.T) {
 	}
 
 	for deployment, want := range map[string]string{
-		"dep_metadata": "metadata-labelled-frontend.hangar-serving.svc.cluster.local:8000",
-		"dep_selector": "selector-labelled-frontend.hangar-serving.svc.cluster.local:8000",
+		"dep_metadata": "metadata-labelled-frontend.wingsmith-serving.svc.cluster.local:8000",
+		"dep_selector": "selector-labelled-frontend.wingsmith-serving.svc.cluster.local:8000",
 	} {
 		got, err := resolver.URLFor(deployment)
 		if err != nil {
@@ -351,7 +351,7 @@ func TestOneSharedFrontendAnswersEveryDeployment(t *testing.T) {
 		t.Fatalf("refresh: %v", err)
 	}
 
-	want := "http://inference-frontend.hangar-serving.svc.cluster.local:8000"
+	want := "http://inference-frontend.wingsmith-serving.svc.cluster.local:8000"
 	shared, err := resolver.URL()
 	if err != nil {
 		t.Fatalf("URL: %v", err)
@@ -541,7 +541,7 @@ func TestAFailedLookupKeepsThePerDeploymentFrontendsToo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URLFor after a failed refresh: %v", err)
 	}
-	if kept.Host != "chat-model-frontend.hangar-serving.svc.cluster.local:8000" {
+	if kept.Host != "chat-model-frontend.wingsmith-serving.svc.cluster.local:8000" {
 		t.Fatalf("host = %q, want the deployment's own frontend", kept.Host)
 	}
 }

@@ -5,14 +5,14 @@
 // repository applies: different places, different lifecycles. Separate modules mean the compiler
 // enforces the split: this cannot reach the routing table or the plane client, and the gateway
 // cannot reach the Kubernetes client this needs to find Dynamo.
-module github.com/hangar-dev/hangar/libs/agent
+module github.com/wingsmith-dev/wingsmith/libs/agent
 
 go 1.26.0
 
 require (
-	github.com/hangar-dev/hangar/libs/packages/tunnel v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
+	github.com/wingsmith-dev/wingsmith/libs/packages/tunnel v0.0.0
 	k8s.io/api v0.34.0
 	k8s.io/apimachinery v0.34.0
 	k8s.io/client-go v0.34.0
@@ -63,4 +63,4 @@ require (
 )
 
 // The wire lives in this repository; there is no published version to resolve.
-replace github.com/hangar-dev/hangar/libs/packages/tunnel => ../packages/tunnel
+replace github.com/wingsmith-dev/wingsmith/libs/packages/tunnel => ../packages/tunnel

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/agent/internal/dynamo"
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/dynamo"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 func quietLogger() *slog.Logger {
@@ -173,7 +173,7 @@ func TestSupervisorReadinessFollowsTheTunnels(t *testing.T) {
 func TestAgentCoversEveryReplicaBehindOneAddress(t *testing.T) {
 	server := &blockingServer{}
 	gw := startGateway(t, &gateway{
-		ids:      []string{"hangar-gateway-0", "hangar-gateway-1", "hangar-gateway-2"},
+		ids:      []string{"wingsmith-gateway-0", "wingsmith-gateway-1", "wingsmith-gateway-2"},
 		accepted: func(net.Conn) {},
 	})
 
@@ -196,7 +196,7 @@ func TestAgentCoversEveryReplicaBehindOneAddress(t *testing.T) {
 	if got := supervisor.Expected(); got != 3 {
 		t.Errorf("Expected = %d, want the 3 the gateway reported", got)
 	}
-	if got := gaugeValue(t, metrics, "hangar_agent_gateways_expected", nil); got != 3 {
+	if got := gaugeValue(t, metrics, "wingsmith_agent_gateways_expected", nil); got != 3 {
 		t.Errorf("gateways_expected = %v, want 3", got)
 	}
 }
@@ -208,7 +208,7 @@ func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 	// Two replicas, but the load balancer sends the first two dials to the same one. The second is
 	// the duplicate, and the third dial is what finally reaches gateway-1.
 	gw := startGateway(t, &gateway{
-		ids:      []string{"hangar-gateway-0", "hangar-gateway-0", "hangar-gateway-1"},
+		ids:      []string{"wingsmith-gateway-0", "wingsmith-gateway-0", "wingsmith-gateway-1"},
 		replicas: 2,
 		accepted: func(net.Conn) {},
 	})
@@ -220,13 +220,13 @@ func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 	eventually(t, "both replicas covered despite the duplicate", func() bool {
 		return len(supervisor.Coverage()) == 2
 	})
-	if got := counterValue(t, metrics, "hangar_agent_dial_duplicates_total", map[string]string{
-		"gateway": "hangar-gateway-0",
+	if got := counterValue(t, metrics, "wingsmith_agent_dial_duplicates_total", map[string]string{
+		"gateway": "wingsmith-gateway-0",
 	}); got < 1 {
 		t.Errorf("duplicates for gateway-0 = %v, want at least the one that was rejected", got)
 	}
 	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake, reasonRefused} {
-		if got := counterValue(t, metrics, "hangar_agent_dial_failures_total",
+		if got := counterValue(t, metrics, "wingsmith_agent_dial_failures_total",
 			map[string]string{"reason": reason}); got != 0 {
 			t.Errorf("dial failures for %s = %v, want 0: a duplicate is not a failure", reason, got)
 		}
@@ -237,13 +237,13 @@ func TestALandingOnACoveredReplicaIsNotAFailure(t *testing.T) {
 // replicas while only one ever answers leaves this agent ready and still short of the gateway.
 func TestSupervisorReportsPartialCoverage(t *testing.T) {
 	server := &blockingServer{}
-	gw := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 2, accepted: func(net.Conn) {}})
+	gw := startGateway(t, &gateway{ids: []string{"wingsmith-gateway-0"}, replicas: 2, accepted: func(net.Conn) {}})
 
 	supervisor, stop := runSupervisor(t, gw.addr, server, NewMetrics())
 	defer stop()
 
 	eventually(t, "coverage of the replica that answers", func() bool {
-		return supervisor.Coverage()["hangar-gateway-0"] == 1
+		return supervisor.Coverage()["wingsmith-gateway-0"] == 1
 	})
 	if err := supervisor.Ready(); err != nil {
 		t.Errorf("Ready = %v, want ready on partial coverage", err)
@@ -264,7 +264,7 @@ func TestARefusedTokenIsCountedAsUnauthorized(t *testing.T) {
 	defer stop()
 
 	eventually(t, "the refusal to be counted as unauthorized", func() bool {
-		return counterValue(t, metrics, "hangar_agent_dial_failures_total", map[string]string{
+		return counterValue(t, metrics, "wingsmith_agent_dial_failures_total", map[string]string{
 			"reason": reasonUnauthorized,
 		}) > 0
 	})
@@ -278,7 +278,7 @@ func TestARefusedTokenIsCountedAsUnauthorized(t *testing.T) {
 func TestSupervisorFollowsTheGatewayShrinking(t *testing.T) {
 	server := &blockingServer{}
 	gw := startGateway(t, &gateway{
-		ids:      []string{"hangar-gateway-0", "hangar-gateway-1"},
+		ids:      []string{"wingsmith-gateway-0", "wingsmith-gateway-1"},
 		accepted: func(net.Conn) {},
 	})
 
@@ -290,15 +290,15 @@ func TestSupervisorFollowsTheGatewayShrinking(t *testing.T) {
 
 	// The manifest edit and the rollout it causes: the gateway reports one replica from here, and
 	// every tunnel is severed, which is what makes the agent redial and read the new number.
-	gw.scale([]string{"hangar-gateway-0"})
+	gw.scale([]string{"wingsmith-gateway-0"})
 	_ = server.sever()
 
 	eventually(t, "the departed replica to be forgotten", func() bool {
 		coverage := supervisor.Coverage()
-		return len(coverage) == 1 && coverage["hangar-gateway-0"] == 1 && supervisor.Expected() == 1
+		return len(coverage) == 1 && coverage["wingsmith-gateway-0"] == 1 && supervisor.Expected() == 1
 	})
-	if _, err := seriesFor(metrics, "hangar_agent_tunnels", map[string]string{
-		"gateway": "hangar-gateway-1",
+	if _, err := seriesFor(metrics, "wingsmith_agent_tunnels", map[string]string{
+		"gateway": "wingsmith-gateway-1",
 	}); err == nil {
 		t.Error("the gauge for the departed replica is still in the registry")
 	}
@@ -537,7 +537,7 @@ func (s *blockingServer) sever() error {
 // thousands would otherwise have this agent start thousands of dial loops.
 func TestTheReportedReplicaCountIsClamped(t *testing.T) {
 	server := &blockingServer{}
-	gw := startGateway(t, &gateway{ids: []string{"hangar-gateway-0"}, replicas: 100000, accepted: func(net.Conn) {}})
+	gw := startGateway(t, &gateway{ids: []string{"wingsmith-gateway-0"}, replicas: 100000, accepted: func(net.Conn) {}})
 
 	supervisor, stop := runSupervisor(t, gw.addr, server, NewMetrics())
 	defer stop()

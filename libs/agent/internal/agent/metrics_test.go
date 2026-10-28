@@ -12,16 +12,16 @@ import (
 )
 
 // The replica label, for readability. It is the pod name of a gateway replica in production.
-const testGateway = "hangar-gateway-0"
+const testGateway = "wingsmith-gateway-0"
 
 func TestMetricsTrackReportsAReachedReplicaWithNoTunnelAsZero(t *testing.T) {
 	m := NewMetrics()
 	m.track(testGateway)
 
-	if got := gaugeValue(t, m, "hangar_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
+	if got := gaugeValue(t, m, "wingsmith_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("tunnels = %v, want an explicit 0", got)
 	}
-	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
+	if got := gaugeValue(t, m, "wingsmith_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("gateway_up = %v, want 0", got)
 	}
 }
@@ -30,11 +30,11 @@ func TestDiscoveryAgeIsReadAtScrape(t *testing.T) {
 	m := NewMetrics()
 	age := time.Minute
 	m.WatchDiscovery(func() time.Duration { return age })
-	if got := gaugeValue(t, m, "hangar_agent_frontend_discovery_age_seconds", nil); got != 60 {
+	if got := gaugeValue(t, m, "wingsmith_agent_frontend_discovery_age_seconds", nil); got != 60 {
 		t.Errorf("discovery age = %v, want 60", got)
 	}
 	age = 2 * time.Minute
-	if got := gaugeValue(t, m, "hangar_agent_frontend_discovery_age_seconds", nil); got != 120 {
+	if got := gaugeValue(t, m, "wingsmith_agent_frontend_discovery_age_seconds", nil); got != 120 {
 		t.Errorf("discovery age after a minute more = %v, want 120", got)
 	}
 }
@@ -45,15 +45,15 @@ func TestMetricsFollowTunnelState(t *testing.T) {
 	m.dialled()
 	m.tunnelOpened(testGateway, 1)
 
-	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 1 {
+	if got := gaugeValue(t, m, "wingsmith_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 1 {
 		t.Errorf("gateway_up after opening = %v, want 1", got)
 	}
 
 	m.tunnelClosed(testGateway, 0, 12)
-	if got := gaugeValue(t, m, "hangar_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
+	if got := gaugeValue(t, m, "wingsmith_agent_tunnels", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("tunnels after closing = %v, want 0", got)
 	}
-	if got := gaugeValue(t, m, "hangar_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
+	if got := gaugeValue(t, m, "wingsmith_agent_gateway_up", map[string]string{"gateway": testGateway}); got != 0 {
 		t.Errorf("gateway_up after closing = %v, want 0", got)
 	}
 }
@@ -66,7 +66,7 @@ func TestMetricsForgetARetiredReplica(t *testing.T) {
 	m.tunnelOpened(testGateway, 1)
 	m.forget(testGateway)
 
-	for _, name := range []string{"hangar_agent_tunnels", "hangar_agent_gateway_up"} {
+	for _, name := range []string{"wingsmith_agent_tunnels", "wingsmith_agent_gateway_up"} {
 		if _, err := seriesFor(m, name, map[string]string{"gateway": testGateway}); err == nil {
 			t.Errorf("%s still carries the retired replica", name)
 		}
@@ -78,11 +78,11 @@ func TestMetricsForgetARetiredReplica(t *testing.T) {
 // that is not running.
 func TestDialCountersExistBeforeAnyDial(t *testing.T) {
 	m := NewMetrics()
-	if got := counterValue(t, m, "hangar_agent_dial_attempts_total", nil); got != 0 {
+	if got := counterValue(t, m, "wingsmith_agent_dial_attempts_total", nil); got != 0 {
 		t.Errorf("dial attempts = %v, want an explicit 0", got)
 	}
 	for _, reason := range []string{reasonDial, reasonUnauthorized, reasonHandshake} {
-		if got := counterValue(t, m, "hangar_agent_dial_failures_total",
+		if got := counterValue(t, m, "wingsmith_agent_dial_failures_total",
 			map[string]string{"reason": reason}); got != 0 {
 			t.Errorf("dial failures for %s = %v, want an explicit 0", reason, got)
 		}
@@ -98,7 +98,7 @@ func TestMetricsHandlerExposes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "hangar_agent_tunnels") {
+	if !strings.Contains(rec.Body.String(), "wingsmith_agent_tunnels") {
 		t.Errorf("exposition does not carry the tunnel gauge:\n%s", rec.Body.String())
 	}
 }
@@ -107,15 +107,15 @@ func TestRequestsAreCountedByOutcomeAndCode(t *testing.T) {
 	m := NewMetrics()
 	m.RequestStarted()
 	m.RequestStarted()
-	if got := gaugeValue(t, m, "hangar_agent_requests_in_flight", nil); got != 2 {
+	if got := gaugeValue(t, m, "wingsmith_agent_requests_in_flight", nil); got != 2 {
 		t.Fatalf("in flight = %v, want 2", got)
 	}
 	m.RequestFinished("forwarded", "2xx", time.Second)
 	m.RequestFinished("frontend_unavailable", "5xx", time.Second)
-	if got := gaugeValue(t, m, "hangar_agent_requests_in_flight", nil); got != 0 {
+	if got := gaugeValue(t, m, "wingsmith_agent_requests_in_flight", nil); got != 0 {
 		t.Errorf("in flight = %v after both finished, want 0", got)
 	}
-	if got := counterValue(t, m, "hangar_agent_requests_total",
+	if got := counterValue(t, m, "wingsmith_agent_requests_total",
 		map[string]string{"outcome": "frontend_unavailable", "code": "5xx"}); got != 1 {
 		t.Errorf("frontend_unavailable 5xx = %v, want 1", got)
 	}

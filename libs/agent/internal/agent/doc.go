@@ -1,4 +1,4 @@
-// Package agent is the hangar agent: the process that runs inside a GPU cluster
+// Package agent is the wingsmith agent: the process that runs inside a GPU cluster
 // and gives the gateway a way in without anything dialling inwards.
 //
 // It owns three things and delegates the rest. It dials out to the gateway,
@@ -25,5 +25,5 @@
 // covered so a landing on one of them is answered, not adopted. Scaling
 // the gateway is then a change to the gateway alone. Coverage per replica is
 // exported, so a replica the load balancer never reaches is visible as a gap in
-// hangar_agent_gateway_up, not as ErrNoTunnel under traffic.
+// wingsmith_agent_gateway_up, not as ErrNoTunnel under traffic.
 package agent

@@ -1,13 +1,13 @@
 # agent
 
-The cluster end of hangar's data plane. One Deployment per GPU cluster, `hangar-agent`, and it is
+The cluster end of wingsmith's data plane. One Deployment per GPU cluster, `wingsmith-agent`, and it is
 how an inference request gets into a cluster at all.
 
 It dials **out**. An operator owns every cluster but not always the networks they sit in, so nothing ever
 dials into a GPU cluster: not the gateway, not the plane, not a laptop. The agent opens the
 connection and the request travels back down it.
 
-A cluster runs two hangar processes and this is one of them. The operator operates the cluster: it
+A cluster runs two wingsmith processes and this is one of them. The operator operates the cluster: it
 deploys workloads and reports observed state up the sync stream. The agent carries traffic. They
 share neither a process nor a connection, because if a request needed the operator's connection then
 control-plane uptime would be the inference SLA.
@@ -34,8 +34,8 @@ control-plane uptime would be the inference SLA.
 `/readyz` reports how many replicas have been reached against how many the gateway says there are,
 and one tunnel is enough to be ready: an agent that waited for full coverage would fail its own
 rollout because one gateway replica happened to be restarting. The shortfall is a metric, not a
-readiness failure: `hangar_agent_gateways_expected` against the number of
-`hangar_agent_gateway_up` series, with `hangar_agent_dial_duplicates_total` as the one to watch if
+readiness failure: `wingsmith_agent_gateways_expected` against the number of
+`wingsmith_agent_gateway_up` series, with `wingsmith_agent_dial_duplicates_total` as the one to watch if
 coverage never settles.
 
 ## Requests
@@ -44,33 +44,33 @@ The agent forwards only a `POST` to one of the inference paths in
 [`libs/packages/tunnel/paths.go`](../packages/tunnel/paths.go), the same list the gateway checks, and
 answers anything else `404 unsupported_path` without reaching the frontend.
 
-`hangar_agent_requests_total{outcome,code}` counts every request that came down a tunnel. `outcome`
+`wingsmith_agent_requests_total{outcome,code}` counts every request that came down a tunnel. `outcome`
 is `forwarded` (the frontend answered; `code` says with what), `unsupported_path`, `no_frontend`,
 `deployment_frontend_not_ready`, `frontend_error`, `frontend_unavailable` (the frontend did not
 answer), `canceled` (the caller left first) or `aborted` (the response was cut after it started).
 Read beside the gateway's own request series, it says whether a failure happened inside the cluster
-or before it. `hangar_agent_requests_in_flight` and `hangar_agent_request_duration_seconds` go with
+or before it. `wingsmith_agent_requests_in_flight` and `wingsmith_agent_request_duration_seconds` go with
 it. There is no model or deployment label: the gateway already counts per endpoint.
 
 ## Stale frontend discovery
 
-Discovery re-reads the frontend Services every `HANGAR_FRONTEND_DISCOVERY_INTERVAL` (30s by
+Discovery re-reads the frontend Services every `WINGSMITH_FRONTEND_DISCOVERY_INTERVAL` (30s by
 default). When the API server stops answering, the agent keeps forwarding to the addresses it last
-saw, and `hangar_agent_frontend_discovery_age_seconds` grows. Past
-`HANGAR_FRONTEND_DISCOVERY_STALE_AFTER` (5m by default, `0` turns it off) `/readyz` fails, because
+saw, and `wingsmith_agent_frontend_discovery_age_seconds` grows. Past
+`WINGSMITH_FRONTEND_DISCOVERY_STALE_AFTER` (5m by default, `0` turns it off) `/readyz` fails, because
 those addresses no longer follow a redeployed frontend. Two Services claiming the same deployment
 are skipped and logged on their own; every other deployment keeps refreshing.
 
 ## Shutdown
 
 On `SIGTERM` the agent stops dialling, sends GOAWAY on every tunnel and waits for the streams
-already open, then severs whatever is left. The wait is `HANGAR_DRAIN_TIMEOUT`, which by default is
-`HANGAR_SHUTDOWN_GRACE` less 5 seconds. `HANGAR_SHUTDOWN_GRACE` must equal the pod's
+already open, then severs whatever is left. The wait is `WINGSMITH_DRAIN_TIMEOUT`, which by default is
+`WINGSMITH_SHUTDOWN_GRACE` less 5 seconds. `WINGSMITH_SHUTDOWN_GRACE` must equal the pod's
 `terminationGracePeriodSeconds`, so the drain ends before the kubelet's `SIGKILL`. Both are 120
 seconds by default, and the chart sets both from `agent.terminationGracePeriodSeconds`. A drain set
 explicitly is used as given, with a warning at startup when it runs past the grace period.
 
-That drain bounds which generations survive an agent rollout, and `HANGAR_RESPONSE_HEADER_TIMEOUT`
+That drain bounds which generations survive an agent rollout, and `WINGSMITH_RESPONSE_HEADER_TIMEOUT`
 does not. A non-streamed completion sends nothing until its last token, and the header timeout lets
 it run for up to 45 minutes; a rollout still cuts it when the drain ends. To carry longer
 generations through one, raise `agent.terminationGracePeriodSeconds` in the chart, or both values

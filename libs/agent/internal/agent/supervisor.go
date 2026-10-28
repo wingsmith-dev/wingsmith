@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangar-dev/hangar/libs/packages/tunnel"
+	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
 // DialFunc opens an authenticated tunnel to the gateway and reports which replica answered.
@@ -65,7 +65,7 @@ type SupervisorConfig struct {
 // path while the control plane is down.
 //
 // There is no periodic re-probe of the count, and there is a reason it is not needed here.
-// HANGAR_GATEWAY_REPLICAS lives in the gateway's pod spec, so changing it necessarily restarts every
+// WINGSMITH_GATEWAY_REPLICAS lives in the gateway's pod spec, so changing it necessarily restarts every
 // replica, which severs every tunnel and makes every agent redial and read the new number. The one
 // way to defeat that is to scale the StatefulSet without editing the env, and the replica that
 // results holds no tunnels, so it reports itself unready, never joins the Service, and stalls a
