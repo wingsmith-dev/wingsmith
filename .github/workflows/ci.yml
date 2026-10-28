@@ -91,6 +91,8 @@ jobs:
       - run: uv run pytest -m 'not database'
       - name: the CLI's plane-schemas snapshot matches the plane
         run: WINGSMITH_APP_ENV=local uv run python ../cli/scripts/plane-schemas.py --check ../cli/internal/api/testdata/plane-schemas.json
+      - name: the dev seed and fake fleet still speak the plane's API and wire
+        run: uv run pytest ../../dev/tests -q -p no:cacheprovider
 
   plane-db:
     runs-on: ubuntu-24.04
