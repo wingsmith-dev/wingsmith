@@ -102,11 +102,30 @@ reseed:
     docker compose up -d --wait api hub
     (cd {{_plane}} && uv run python ../../dev/seed.py)
 
-# Run the fake operators: eight clusters of hardware waiting to be enrolled  [--register to skip the screen]
+# Run the fake operators: eight clusters of hardware waiting to be enrolled  [--register to skip the screen, --serve to answer requests]
 fleet *args:
     #!/usr/bin/env bash
     set -euo pipefail
     (cd {{_plane}} && uv run python ../../dev/fleet.py {{args}})
+
+# The whole demo: the stack, the fake fleet with a gateway and an agent per cluster, the demo seed and the console  [no GPU]
+demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d {{_console}}/node_modules ]; then
+      echo "error: console dependencies are not installed; run 'just setup' first" >&2
+      exit 1
+    fi
+    docker compose up -d --build --wait
+    (cd {{_plane}} && exec uv run python ../../dev/fleet.py --serve) &
+    fleet=$!
+    trap 'kill $fleet 2>/dev/null || true; wait $fleet 2>/dev/null || true' EXIT
+    (cd {{_plane}} && uv run python ../../dev/seed.py --demo)
+    echo
+    echo "console  http://localhost:5273"
+    echo "gateway  http://127.0.0.1:8080/v1  (try: curl -s http://127.0.0.1:8080/v1/chat/completions -d '{\"model\":\"chat\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}')"
+    echo
+    (cd {{_console}} && pnpm dev)
 
 # Re-snapshot the vLLM recipe corpus the plane reads  [pass a tag or sha to pin one]
 vllm-recipes *args:

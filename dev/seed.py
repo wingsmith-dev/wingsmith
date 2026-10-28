@@ -320,10 +320,28 @@ def seed_demand() -> None:
     for row in WORKLOADS:
         post("/workloads", workload(*row))
 
+    # One endpoint per workload, answering to its model's repo id (the default slug) and to the
+    # workload's name, so every model in the demo can be called. Then `chat`, which splits one
+    # public name across two of them.
+    for name, _, _, _, _, _, _, project, *_ in WORKLOADS:
+        post(
+            "/endpoints",
+            {
+                "name": name,
+                "project": project,
+                "visibility": "public",
+                "routing_strategy": "weighted",
+                "enabled": True,
+                "aliases": [name],
+                "targets": targets({name: 100}),
+            },
+        )
+
     post(
         "/endpoints",
         {
             "name": "chat",
+            "slug": "chat",
             "project": "acme-serving",
             "visibility": "public",
             "routing_strategy": "weighted",

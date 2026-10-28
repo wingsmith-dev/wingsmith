@@ -20,6 +20,7 @@ commits the devices. That is what makes a workload actually go ready locally.
 
     just fleet                  # all eight, waiting
     just fleet eu-west-1a       # just one
+    just fleet --serve          # plus a real gateway and agent per cluster (dev/inference.py)
 
 It is not the operator and renders nothing. For the reconcile half (whether a Deployment comes
 out right), run the real operator against kind (`just cluster-up`).
@@ -44,6 +45,7 @@ from typing import Any
 from dataclasses import field
 from dataclasses import dataclass
 
+import inference
 import websockets
 
 
@@ -163,8 +165,8 @@ def nodes(tag: str, *groups: tuple[Gpu, int, int]) -> list[NodeSpec]:
 FLEET: list[ClusterSpec] = [
     ClusterSpec("us-east-1a", "us-east-1", "us-east-1a", "us", nodes("a", (B300, 2, 8))),
     ClusterSpec("us-east-2b", "us-east-2", "us-east-2b", "us", nodes("b", (B200, 2, 8))),
-    # Mixed on purpose: "this artifact fits an H200 or an RTX PRO 6000, at different parallelism"
-    # is the question the fit work has to answer, and a homogeneous cluster cannot ask it.
+    # Two classes in one cluster: "this artifact fits an H200 or an RTX PRO 6000, at different
+    # parallelism" is the question the fit work has to answer, and a homogeneous cluster cannot ask it.
     ClusterSpec("us-west-2a", "us-west-2", "us-west-2a", "us", nodes("c", (H200, 1, 8), (RTX_PRO_6000, 1, 8))),
     ClusterSpec("eu-west-1a", "eu-west-1", "eu-west-1a", "eu", nodes("d", (H200, 2, 8))),
     ClusterSpec("eu-north-1a", "eu-north-1", "eu-north-1a", "eu", nodes("e", (B200, 1, 8), (B300, 1, 8))),
@@ -314,8 +316,9 @@ class Deployment:
 class Agent:
     """One cluster's agent: wait to be enrolled, report supply, then serve demand."""
 
-    def __init__(self, spec: ClusterSpec) -> None:
+    def __init__(self, spec: ClusterSpec, path: inference.ClusterPath | None = None) -> None:
         self.spec = spec
+        self.path = path
         self.cluster_id = ""
         self.seq = 0
         self.ack = 0
@@ -367,6 +370,8 @@ class Agent:
                 announced = False
                 self.cluster_id = cluster["id"]
                 token = enrol(self.spec)
+                if self.path is not None:
+                    await self.path.attach(self.cluster_id, token)
                 await self.session(token)
             except Exception as error:  # noqa: BLE001 (a rack does not power off because the plane restarted)
                 self.log(f"{type(error).__name__}: {error}")
@@ -689,20 +694,32 @@ def register(spec: ClusterSpec) -> None:
     print(f"  {spec.name}: registered")
 
 
-async def serve(specs: list[ClusterSpec]) -> None:
+async def serve(specs: list[ClusterSpec], requests: bool = False) -> None:
     print(f"fleet: {', '.join(s.name for s in specs)} -> {HUB}")
+    gateway: inference.Gateway | None = None
+    paths: dict[str, inference.ClusterPath] = {}
+    if requests:
+        await inference.build()
+        gateway = inference.Gateway()
+        await gateway.start()
+        # Indexed by place in FLEET, not in `specs`, so a cluster keeps its ports when run alone.
+        paths = {s.name: inference.ClusterPath(s.name, FLEET.index(s)) for s in specs}
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
 
-    agents = [asyncio.create_task(Agent(spec).run()) for spec in specs]
+    agents = [asyncio.create_task(Agent(spec, paths.get(spec.name)).run()) for spec in specs]
     await stop.wait()
     print("\nfleet: stopping")
     for task in agents:
         task.cancel()
     await asyncio.gather(*agents, return_exceptions=True)
+    for path in paths.values():
+        await path.close()
+    if gateway is not None:
+        await gateway.close()
 
 
 def main() -> int:
@@ -712,6 +729,11 @@ def main() -> int:
         "--register",
         action="store_true",
         help="register the clusters first, instead of waiting for someone to do it",
+    )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="also run the gateway and an agent per cluster, so endpoints answer requests (dev/inference.py)",
     )
     args = parser.parse_args()
 
@@ -727,7 +749,7 @@ def main() -> int:
         for spec in specs:
             register(spec)
 
-    asyncio.run(serve(specs))
+    asyncio.run(serve(specs, requests=args.serve))
     return 0
 
 

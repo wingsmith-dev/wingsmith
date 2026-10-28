@@ -35,3 +35,4 @@ coverage_html/
 htmlcov/
 coverage.out
 coverage.html
+/dev/.bin/
