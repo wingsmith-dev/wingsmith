@@ -457,7 +457,7 @@ frontend:
       # and Helm does not expose a dependency's version to a template, so the two
       # versions cannot be derived from one another here.
       repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
-      tag: "1.4.1"
+      tag: "1.6.1"
       pullPolicy: IfNotPresent
 
     # Anything else to put on the frontend container, for a flag this chart has
