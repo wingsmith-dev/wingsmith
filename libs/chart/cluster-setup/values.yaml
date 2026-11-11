@@ -623,7 +623,7 @@ monitoring:
       repository: quay.io/prometheus/prometheus
       # Agent mode is `--agent` from 3.0 on; on 2.x it was
       # `--enable-feature=agent`. Pinned to the 3.5 LTS line.
-      tag: v3.5.5
+      tag: v3.16.0
       pullPolicy: IfNotPresent
     scrapeInterval: 15s
     # Must be <= scrapeInterval, the same trap the exporter's ServiceMonitor has.
