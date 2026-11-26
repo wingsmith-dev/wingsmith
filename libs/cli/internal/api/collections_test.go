@@ -220,3 +220,28 @@ func TestAnErrorFromAnyCollectionIsTyped(t *testing.T) {
 func errorCode(err error) string {
 	return string(errs.As(err).Code)
 }
+
+// TestDeploymentByWorkloadNameRetriesInProject: a bare name is read as an object name first,
+// and only a miss is retried inside the default project, where it matches the workload name.
+func TestDeploymentByWorkloadNameRetriesInProject(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("project") == "" {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"code":"not_found","message":"nope"}`)
+			return
+		}
+		fmt.Fprint(w, `{"id":"d1","name":"qwen"}`)
+	}))
+	defer srv.Close()
+	c, _ := NewClient(srv.URL, "", "team", "1.0", time.Second)
+
+	d, err := c.Deployment(context.Background(), "qwen")
+	if err != nil || d.ID != "d1" {
+		t.Fatalf("got %+v, %v", d, err)
+	}
+	if len(queries) != 2 || queries[1] != "project=team" {
+		t.Fatalf("queries %q, want a bare lookup then project=team", queries)
+	}
+}

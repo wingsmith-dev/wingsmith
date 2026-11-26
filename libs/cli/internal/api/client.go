@@ -291,17 +291,32 @@ func (c *Client) Deployments(ctx context.Context, o ListOpts) (Page[Deployment],
 	return list[Deployment](ctx, c, "/v1/deployments", q.values(), o)
 }
 
-// Deployment resolves by id, or by name within a cluster: a deployment name
-// is unique per cluster and not globally (two clusters holding shares of one
-// workload share a name), so `--cluster` is how a name is made unambiguous.
+// Deployment resolves by id or by object name (workload name plus uid). A bare
+// workload name only matches inside a project, so when the object-name lookup
+// misses it is retried in the default project.
 func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error) {
-	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
+	out, err := one[Deployment](ctx, c, "/v1/deployments", ref, nil)
+	if q, ok := c.projectRetry(err); ok {
+		return one[Deployment](ctx, c, "/v1/deployments", ref, q)
+	}
+	return out, err
 }
 
 func (c *Client) UpdateDeployment(ctx context.Context, ref string, req DeploymentUpdateRequest) (Deployment, error) {
 	var out Deployment
-	err := c.send(ctx, http.MethodPatch, "/v1/deployments/"+url.PathEscape(ref), nil, req, nil, &out)
+	path := "/v1/deployments/" + url.PathEscape(ref)
+	err := c.send(ctx, http.MethodPatch, path, nil, req, nil, &out)
+	if q, ok := c.projectRetry(err); ok {
+		err = c.send(ctx, http.MethodPatch, path, q, req, nil, &out)
+	}
 	return out, err
+}
+
+func (c *Client) projectRetry(err error) (url.Values, bool) {
+	if err == nil || c.DefaultProject == "" || errs.As(err).Code != errs.CodeNotFound {
+		return nil, false
+	}
+	return url.Values{"project": {c.DefaultProject}}, true
 }
 
 func (c *Client) DiscoveredWorkloads(ctx context.Context, o ListOpts) (Page[DiscoveredWorkload], error) {
