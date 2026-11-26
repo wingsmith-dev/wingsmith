@@ -58,8 +58,9 @@ class DeploymentRoutes(Controller):
         svc: DeploymentService,
         ref: str,
         cluster: str | None = None,
+        project: str | None = None,
     ) -> Response[DeploymentSchema]:
-        return Response(await svc.get(ref, cluster=cluster))
+        return Response(await svc.get(ref, cluster=cluster, project=project))
 
     @patch("/{ref:str}")
     async def update_deployment(

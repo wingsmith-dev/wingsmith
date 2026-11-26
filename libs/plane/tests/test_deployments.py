@@ -137,14 +137,23 @@ def test_list_query_over_fetches_one_row_for_the_cursor(repo):
     assert repo.list_query(limit=10).compile().params["param_1"] == 11
 
 
-def test_get_query_resolves_a_name_or_an_id(repo):
-    assert "demand_deployment.name = " in sql(repo.get_query("serve"))
+def test_get_query_resolves_an_object_name_or_an_id(repo):
+    text = sql(repo.get_query("serve"))
+    assert "demand_deployment.object_name = " in text
+    assert "demand_deployment.name = " not in text, "a bare workload name would reach another project's row"
     assert "demand_deployment.uid = " in sql(repo.get_query(new_uid(DEPLOYMENT)))
+
+
+def test_a_workload_name_only_resolves_inside_a_project(repo):
+    text = sql(repo.get_query("serve", project="acme"))
+    assert "demand_deployment.name = " in text
+    assert "demand_workload.project_id IN (SELECT bind_project.id" in text
+    assert "bind_project.slug = " in text
 
 
 def test_a_bare_name_can_be_narrowed_by_cluster(repo):
     text = sql(repo.get_query("serve", cluster="iad-1"))
-    assert "demand_deployment.name = " in text
+    assert "demand_deployment.object_name = " in text
     assert "supply_cluster.name = " in text
 
 

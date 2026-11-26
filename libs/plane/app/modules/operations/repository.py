@@ -57,7 +57,7 @@ TARGET_NAME_COLUMNS = {
     CLUSTER: "name",
     NODE: "name",
     DEVICE: "device_uuid",
-    DEPLOYMENT: "name",
+    DEPLOYMENT: "object_name",
     WORKLOAD: "name",
     COMPONENT: "name",
     ARTIFACT: "name",

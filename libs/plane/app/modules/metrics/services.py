@@ -78,6 +78,7 @@ from app.config.settings import settings
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 from app.core.exceptions import InvalidParameter
+from app.modules.deployments.naming import by_ref
 
 from .sla import Period
 from .sla import PeriodQuery
@@ -501,7 +502,7 @@ class MetricsService:
             select(Deployment, Workload, Artifact)
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Artifact, Workload.artifact_id == Artifact.id)
-            .where(Deployment.uid == ref if is_uid(ref) else Deployment.name == ref)
+            .where(by_ref(ref))
         )
         row = (await self.db.execute(query)).first()
         if row is None:

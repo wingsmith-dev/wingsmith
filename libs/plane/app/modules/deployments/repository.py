@@ -21,6 +21,7 @@ from app.db.models import DeploymentStatus
 from app.db.models import DiscoveredWorkload
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
+from app.modules.deployments.naming import by_ref
 
 
 RUNNING_PHASES = ("starting", "ready", "draining")
@@ -92,15 +93,15 @@ class DeploymentRepository:
             .join(Cluster, Deployment.cluster_id == Cluster.id)
         )
 
-    def get_query(self, ref: str, cluster: str | None = None) -> Select:
-        """An id or a name; a name is unique only within its cluster.
+    def get_query(self, ref: str, cluster: str | None = None, project: str | None = None) -> Select:
+        """An id, a workload name inside `project`, or else a cluster object name (`naming.by_ref`).
 
         A workload expanded onto three clusters has three deployments sharing one
         name, so a bare name is ambiguous across clusters by construction and the
         `cluster` filter is what makes it an answer.
         """
-        column = Deployment.uid if is_uid(ref) else Deployment.name
-        query = self._base().where(column == ref)
+        projects = None if project is None else ref_ids(Project, project, "slug")
+        query = self._base().where(by_ref(ref, projects))
         if cluster is not None:
             query = query.where(Deployment.cluster_id.in_(ref_ids(Cluster, cluster)))
         return query
@@ -151,14 +152,16 @@ class DeploymentRepository:
             .group_by(Replica.deployment_id)
         )
 
-    async def get(self, ref: str, cluster: str | None = None, lock: bool = False) -> Row | None:
+    async def get(
+        self, ref: str, cluster: str | None = None, lock: bool = False, project: str | None = None
+    ) -> Row | None:
         """By id, or by name narrowed by `cluster`.
 
         A workload expanded onto three clusters has three deployments of one name, so a
         bare name that matches more than one is refused, not resolved to any of
         them. `lock` holds the deployment row until the transaction ends, re-read, for a write.
         """
-        query = self.get_query(ref, cluster).limit(2)
+        query = self.get_query(ref, cluster, project).limit(2)
         if lock:
             query = query.with_for_update(of=Deployment).execution_options(populate_existing=True)
         result = await self.db.execute(query)

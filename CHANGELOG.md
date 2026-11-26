@@ -21,6 +21,9 @@ protocol can change between minor versions.
 - Deployments render under a cluster-unique `object_name` (workload name plus the tail of the
   workload id) instead of the bare workload name, so workloads of one name in different projects
   can share a cluster. Existing and adopted deployments keep their current name.
+- A bare deployment name in a lookup (`GET /deployments/{ref}`, metrics, benchmarks, operations)
+  is read as the cluster object name; pass `project` to `GET /deployments/{ref}` to look one up
+  by workload name. Endpoint targets resolve bare names inside the endpoint's own project.
 
 ## [0.3.0] - 2026-11-26
 

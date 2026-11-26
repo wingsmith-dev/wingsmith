@@ -24,6 +24,7 @@ from app.db.models import EndpointTarget
 from app.db.models import ArtifactBaseline
 from app.db.models import BenchmarkRequest
 from app.core.filters import ref_ids
+from app.modules.deployments.naming import by_ref
 
 
 class BenchmarkRepository:
@@ -123,14 +124,13 @@ class BenchmarkRepository:
         against, which is the only place the model's repository survives for an
         artifact registered by digest.
         """
-        column = Deployment.uid if is_uid(ref) else Deployment.name
         query = (
             select(Deployment, Workload, Artifact, Cluster.uid.label("cluster_uid"))
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Artifact, Workload.artifact_id == Artifact.id)
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
-            .where(column == ref)
+            .where(by_ref(ref))
         )
         if cluster is not None:
             query = query.where(Deployment.cluster_id.in_(ref_ids(Cluster, cluster)))

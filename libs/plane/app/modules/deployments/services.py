@@ -225,8 +225,8 @@ class DeploymentService:
             status=status,
         )
 
-    async def _one(self, ref: str, cluster: str | None = None, lock: bool = False):
-        row = await self.repo.get(ref, cluster, lock=lock)
+    async def _one(self, ref: str, cluster: str | None = None, lock: bool = False, project: str | None = None):
+        row = await self.repo.get(ref, cluster, lock=lock, project=project)
         if row is None:
             raise NotFound(f"no deployment {ref!r}")
         return row
@@ -248,8 +248,8 @@ class DeploymentService:
             replicas = _rollup(rollup.get(deployment.id))
         return self._row_schema(row, replicas)
 
-    async def get(self, ref: str, cluster: str | None = None) -> DeploymentSchema:
-        return await self._render(await self._one(ref, cluster))
+    async def get(self, ref: str, cluster: str | None = None, project: str | None = None) -> DeploymentSchema:
+        return await self._render(await self._one(ref, cluster, project=project))
 
     async def list(
         self,
