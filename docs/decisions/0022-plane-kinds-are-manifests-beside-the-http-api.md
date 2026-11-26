@@ -34,7 +34,7 @@ as msgspec structs in `app/modules/manifest/` and read at `GET /v1/manifests/{ki
   `gang_size`, `cluster`, `enabled`, `allowed_*`; Artifact `digest`, `source`). `x-defaulted`
   marks fields the plane fills when omitted (`priority_class`, slugs, fields an `hf://` source
   resolves). A diff compares a defaulted field only when the manifest declared it. The OpenAPI
-  document drops these markers, so `scripts/manifest-schema.py` exports the schema to the CLI.
+  document drops these markers, so `libs/cli/scripts/manifest-schema.py` exports the schema to the CLI.
 - A workload's `note` is the `plane.wingsmith.dev/note` annotation, since it lands on a revision.
 
 ## Consequences

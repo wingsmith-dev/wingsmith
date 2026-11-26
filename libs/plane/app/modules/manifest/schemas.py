@@ -4,7 +4,7 @@ A second representation beside the `/v1` request and read schemas, not a replace
 `metadata` is spelled the Kubernetes way (camelCase) so `kubectl` and Argo can read it later;
 `spec` and `status` keep the plane's snake_case vocabulary, so a field reads the same in both.
 
-Two markers in the JSON Schema carry what a client needs to apply and diff honestly:
+The JSON Schema carries two markers that apply and diff read:
 
 - `x-immutable`: settable at create only. A later apply that changes it is refused.
 - `x-defaulted`: the plane fills it when the manifest leaves it out. A diff compares it only when
@@ -285,7 +285,7 @@ MANIFESTS = {WORKLOAD: WorkloadManifest, ENDPOINT: EndpointManifest, ARTIFACT: A
 def json_schema() -> dict:
     """The three kinds as one JSON Schema document, `x-immutable` and `x-defaulted` included.
 
-    Built by msgspec rather than read from the OpenAPI document, which drops the markers.
+    Built by msgspec: the OpenAPI document drops the markers.
     """
     refs, components = msgspec.json.schema_components(MANIFESTS.values(), ref_template="#/$defs/{name}")
     return {
