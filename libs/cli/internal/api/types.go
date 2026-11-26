@@ -369,6 +369,8 @@ type Artifact struct {
 	// name and nothing has hashed anything.
 	Verified       bool               `json:"verified"`
 	Name           string             `json:"name"`
+	Handle         string             `json:"handle"`
+	OwnerProjectID *string            `json:"owner_project_id"`
 	Slug           string             `json:"slug"`
 	Kind           string             `json:"kind"`
 	Format         *string            `json:"format"`
@@ -673,6 +675,7 @@ type WorkloadDeployment struct {
 type Workload struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
+	Generation    int    `json:"generation"`
 	Kind          string `json:"kind"`
 	Phase         string `json:"phase"`
 	ProjectID     string `json:"project_id"`
@@ -789,6 +792,7 @@ type DeploymentReplicaRollup struct {
 type Deployment struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
+	ObjectName      string     `json:"object_name"`
 	WorkloadID      string     `json:"workload_id"`
 	WorkloadName    string     `json:"workload_name"`
 	ClusterID       string     `json:"cluster_id"`
@@ -929,8 +933,9 @@ type EndpointTarget struct {
 // Endpoint is the stable public name clients call. Global and plane-only:
 // there is no cluster on it at any depth.
 type Endpoint struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Generation int    `json:"generation"`
 	// Slug is what a client sends as `model`, and the key the gateway routes on. Name is the
 	// internal handle and routes nothing: the two are separate so that a public model id can be
 	// corrected without moving the handle every link and metric label holds.

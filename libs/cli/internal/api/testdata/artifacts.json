@@ -36,7 +36,9 @@
                 "source_uri": null,
                 "recorded_by": null,
                 "recorded_at": null
-            }
+            },
+            "handle": "glm-5.3-flash",
+            "owner_project_id": null
         }
     ],
     "count": 1,

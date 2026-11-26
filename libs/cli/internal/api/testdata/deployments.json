@@ -30,7 +30,8 @@
         "failed": 0,
         "at_current_generation": 0
       },
-      "status": null
+      "status": null,
+      "object_name": "glm-5.3-flash-prod-k2m9x4p8"
     },
     {
       "id": "dep_01m0dsfeh294c34fkb2wfgzx6g",
@@ -62,7 +63,8 @@
         "failed": 0,
         "at_current_generation": 0
       },
-      "status": null
+      "status": null,
+      "object_name": "mixtral-prod-k2m9x4p8"
     },
     {
       "id": "dep_01m0dsfehd4m2jqemsjnvwj7r4",
@@ -94,7 +96,8 @@
         "failed": 0,
         "at_current_generation": 0
       },
-      "status": null
+      "status": null,
+      "object_name": "qwen-dev-k2m9x4p8"
     }
   ],
   "count": 3

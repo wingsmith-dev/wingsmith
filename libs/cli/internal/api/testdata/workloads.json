@@ -160,7 +160,8 @@
           "live_digests": {}
         }
       ],
-      "artifact_tag": null
+      "artifact_tag": null,
+      "generation": 1
     },
     {
       "id": "wkl_01m0dsfeh294c34fkb2wfgzx6g",
@@ -316,7 +317,8 @@
           "live_digests": {}
         }
       ],
-      "artifact_tag": null
+      "artifact_tag": null,
+      "generation": 1
     },
     {
       "id": "wkl_01m0dsfehd4m2jqemsjnvwj7r4",
@@ -472,7 +474,8 @@
           "live_digests": {}
         }
       ],
-      "artifact_tag": null
+      "artifact_tag": null,
+      "generation": 1
     }
   ],
   "count": 3
