@@ -405,9 +405,9 @@ class DiscoveredWorkloadService:
             workload=deployment_workload,
             cluster_id=workload.cluster_id,
             name=name,
-            # The object is already running under its in-cluster name; renaming it would render a
-            # second. `name` may be the caller's, so the object name is the workload's own.
-            object_name=workload.name,
+            # The live object is addressed through `adopted_name`; this is the deployment's own
+            # name, bounded by the NAME_MAX check above.
+            object_name=name,
             min_replicas=replicas,
             max_replicas=replicas,
             desired_replicas=replicas,

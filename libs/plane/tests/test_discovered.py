@@ -378,14 +378,15 @@ def test_a_promotion_answers_201_because_it_creates_a_workload() -> None:
     assert DiscoveredWorkloadRoutes.promote_discovered.status_code == 201
 
 
-async def test_an_adopted_deployment_keeps_the_in_cluster_name_as_its_object_name(promotion) -> None:
+async def test_an_adopted_deployment_is_named_as_asked_and_points_at_the_live_object(promotion) -> None:
     svc, _, _ = service_over(sighted())
     await svc.promote(
         "gpt-oss", PromoteRequest(artifact="art_1", project="acme", fingerprint="sha256:abc", name="renamed")
     )
     deployment = promotion[0]["deployment"]
     assert deployment.name == "renamed"
-    assert deployment.object_name == deployment.adopted_name
+    assert deployment.object_name == "renamed"
+    assert deployment.adopted_name == "gpt-oss"
 
 
 async def test_an_adoption_refuses_a_name_wider_than_a_workload_name(promotion) -> None:
