@@ -1,0 +1,1801 @@
+{
+ "$defs": {
+  "ArtifactLocationSchema": {
+   "additionalProperties": false,
+   "description": "One place an artifact's bytes can be fetched from.\n\n    A child collection instead of a column, because locations are mutable and\n    plural while the artifact they belong to is neither. There is no `id`: the\n    table carries no prefixed identifier, and `uri` is unique within the\n    artifact, so the uri is the handle.",
+   "properties": {
+    "preferred": {
+     "type": "boolean"
+    },
+    "region": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "scheme": {
+     "type": "string"
+    },
+    "uri": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "scheme",
+    "uri",
+    "region",
+    "preferred"
+   ],
+   "title": "ArtifactLocationSchema",
+   "type": "object"
+  },
+  "ArtifactManifest": {
+   "additionalProperties": false,
+   "properties": {
+    "apiVersion": {
+     "default": "plane.wingsmith.dev/v1alpha1",
+     "type": "string"
+    },
+    "kind": {
+     "default": "Artifact",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/$defs/ObjectMeta"
+    },
+    "spec": {
+     "$ref": "#/$defs/ArtifactSpec"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/ArtifactStatus"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "metadata",
+    "spec"
+   ],
+   "title": "ArtifactManifest",
+   "type": "object"
+  },
+  "ArtifactSpec": {
+   "additionalProperties": false,
+   "description": "The weights, by content. `metadata.name` is the handle.\n\n    `digest` and `source` are create-only. `source` (`hf://org/repo@revision`) resolves to the digest\n    and the fields marked defaulted at create, and is not stored, so a read leaves it null.\n    `project` is attribution (who registered it), not scope: scope is `metadata.namespace`.\n    `properties` is the HTTP API's free-form `metadata` map.",
+   "properties": {
+    "base_artifact": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "digest": {
+     "default": "",
+     "type": "string",
+     "x-immutable": true
+    },
+    "display_name": {
+     "default": "",
+     "type": "string",
+     "x-defaulted": true
+    },
+    "format": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true
+    },
+    "kind": {
+     "default": "weights",
+     "type": "string"
+    },
+    "licence": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true
+    },
+    "locations": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/ArtifactLocationSchema"
+     },
+     "type": "array"
+    },
+    "parameter_count": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true
+    },
+    "project": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "properties": {
+     "default": {},
+     "type": "object"
+    },
+    "size_bytes": {
+     "default": 0,
+     "type": "integer",
+     "x-defaulted": true
+    },
+    "slug": {
+     "default": "",
+     "type": "string",
+     "x-defaulted": true
+    },
+    "source": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-immutable": true
+    },
+    "upstream": {
+     "$ref": "#/$defs/ArtifactUpstreamSchema"
+    }
+   },
+   "required": [],
+   "title": "ArtifactSpec",
+   "type": "object"
+  },
+  "ArtifactStatus": {
+   "additionalProperties": false,
+   "description": "`residency` is the regions a location names. Fitment is `/v1/artifacts/{ref}/fitment`: it is\n    a query over the fleet with parameters, not a property of the artifact.",
+   "properties": {
+    "residency": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "verified": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "verified",
+    "residency"
+   ],
+   "title": "ArtifactStatus",
+   "type": "object"
+  },
+  "ArtifactUpstreamSchema": {
+   "additionalProperties": false,
+   "description": "What the model's publisher says these weights are. Asserted, never observed.\n\n    `metadata`'s opposite in the way `imported_args` is `engine_args`: a claim\n    somebody signed, against a scratchpad. Nothing here reaches a cluster and\n    nothing here is checked: a wrong value changes only what we told somebody.\n\n    `reasoning` and `tool_calling` are intentionally tri-state. Null is \"the\n    publisher did not say\", which is not `false`: a workload may still claim the\n    capability on the strength of an engine recipe that names a parser for it,\n    and collapsing the two would turn silence into a denial that blocks it.\n\n    The provenance triple (`recorded_by`, `recorded_at`, `source_uri`) is what\n    separates this from a guess. A resolve fills it with the Hub; a person\n    editing the block replaces it with themselves.",
+   "properties": {
+    "context_length": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "input_modalities": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "licence": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "max_output_tokens": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "provider": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "provider_model_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "reasoning": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "recorded_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "recorded_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "released_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "source_uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "structured_output_modes": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tool_calling": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "ArtifactUpstreamSchema",
+   "type": "object"
+  },
+  "CacheSchema": {
+   "additionalProperties": false,
+   "description": "KV and prefix cache configuration. Unrelated to the weight cache.\n\n    This is per-request attention state and is configuration on the workload. It has\n    nothing to do with where model weights are cached on a cluster's nodes.",
+   "properties": {
+    "kv_cache_dtype": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "kv_cache_fraction": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "prefix_cache_config": {
+     "default": {},
+     "type": "object"
+    },
+    "prefix_cache_enabled": {
+     "default": true,
+     "type": "boolean"
+    }
+   },
+   "required": [],
+   "title": "CacheSchema",
+   "type": "object"
+  },
+  "CapabilitiesSchema": {
+   "additionalProperties": false,
+   "description": "What this engine \u00d7 artifact is claimed to be able to do. Asserted, never rendered.\n\n    The same split as `engine_args` against `imported_args`, one level up: nothing\n    here becomes a flag or reaches a cluster, because a cluster has no use for a\n    claim about itself. The plane checks these against the workload's own\n    declarations and against nothing else (it holds no table of what an engine\n    can do), so a block that is internally consistent and entirely false is\n    accepted, stored, and falsified by the first conformance run.\n\n    `asserted_by` / `asserted_at` / `source_uri` are the provenance triple, spelled\n    the same way and in the same order as every other asserted claim in the model.",
+   "properties": {
+    "asserted_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "asserted_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "input_modalities": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "parallel_tool_calls": {
+     "default": false,
+     "type": "boolean"
+    },
+    "prompt_cache_mode": {
+     "default": "off",
+     "type": "string"
+    },
+    "prompt_cache_ttl_seconds": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "reasoning_supported": {
+     "default": false,
+     "type": "boolean"
+    },
+    "source_uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "streaming_supported": {
+     "default": true,
+     "type": "boolean"
+    },
+    "structured_output_modes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tool_calling_supported": {
+     "default": false,
+     "type": "boolean"
+    },
+    "tool_choice_modes": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "required": [],
+   "title": "CapabilitiesSchema",
+   "type": "object"
+  },
+  "DiffusionSchema": {
+   "additionalProperties": false,
+   "description": "What a vLLM-Omni worker reads from its stage-config file instead of its command line.\n\n    Two fields because only two vary per model. The operator writes the rest of the file\n    (one stage, the devices the pod holds, the executor), and the Dynamo omni CLI refuses\n    `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`\n    exists because omni defaults every model to 50 inference steps, which is wrong for every\n    distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.",
+   "properties": {
+    "default_sampling_params": {
+     "default": {},
+     "type": "object"
+    },
+    "model_class_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "DiffusionSchema",
+   "type": "object"
+  },
+  "EndpointManifest": {
+   "additionalProperties": false,
+   "properties": {
+    "apiVersion": {
+     "default": "plane.wingsmith.dev/v1alpha1",
+     "type": "string"
+    },
+    "kind": {
+     "default": "Endpoint",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/$defs/ObjectMeta"
+    },
+    "spec": {
+     "$ref": "#/$defs/EndpointSpec"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/EndpointStatus"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "metadata",
+    "spec"
+   ],
+   "title": "EndpointManifest",
+   "type": "object"
+  },
+  "EndpointSpec": {
+   "additionalProperties": false,
+   "properties": {
+    "aliases": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "enabled": {
+     "default": true,
+     "type": "boolean"
+    },
+    "failover_order": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "routing_strategy": {
+     "default": "weighted",
+     "type": "string"
+    },
+    "slug": {
+     "default": "",
+     "type": "string",
+     "x-defaulted": true
+    },
+    "surface": {
+     "$ref": "#/$defs/EndpointSurfaceSchema"
+    },
+    "targets": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/EndpointTargetSpec"
+     },
+     "type": "array"
+    },
+    "visibility": {
+     "default": "private",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "EndpointSpec",
+   "type": "object"
+  },
+  "EndpointStatus": {
+   "additionalProperties": false,
+   "description": "The deployments the targets resolved to. Upstream addresses are `/v1/endpoints/{ref}/resolved`.",
+   "properties": {
+    "targets": {
+     "items": {
+      "$ref": "#/$defs/EndpointTargetStatus"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "targets"
+   ],
+   "title": "EndpointStatus",
+   "type": "object"
+  },
+  "EndpointSurfaceSchema": {
+   "additionalProperties": false,
+   "description": "The terms on which the served API is exposed, as they are read back.\n\n    Typed instead of the bare dict it is stored as, because half of it the\n    gateway acts on and the other half is a disclosure somebody repeats to a\n    customer, and a field that only exists when it was written cannot be drawn\n    either way. Every field is nullable or empty by default and absent means the\n    gateway's own behaviour, never a claim.\n\n    `policy` is converted on the way out by `endpoint_policy`, so a surface\n    stored in the v1 language reads back in the one language the gateway speaks.",
+   "properties": {
+    "auth_mode": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "cors_enabled": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "error_shape": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "max_request_bytes": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "output_length_params": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "policy": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/PolicySchema"
+      }
+     ],
+     "default": null
+    },
+    "protocols": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "request_timeout_seconds": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "streaming_transport": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "EndpointSurfaceSchema",
+   "type": "object"
+  },
+  "EndpointTargetSpec": {
+   "additionalProperties": false,
+   "description": "Today's target shape: a deployment by its object name. P1.6 adds targeting a workload.",
+   "properties": {
+    "deployment": {
+     "type": "string"
+    },
+    "enabled": {
+     "default": true,
+     "type": "boolean"
+    },
+    "role": {
+     "default": "primary",
+     "type": "string"
+    },
+    "served_model_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "weight": {
+     "default": 100,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "deployment"
+   ],
+   "title": "EndpointTargetSpec",
+   "type": "object"
+  },
+  "EndpointTargetStatus": {
+   "additionalProperties": false,
+   "properties": {
+    "deployment": {
+     "type": "string"
+    },
+    "deployment_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "deployment",
+    "deployment_id"
+   ],
+   "title": "EndpointTargetStatus",
+   "type": "object"
+  },
+  "ObjectMeta": {
+   "additionalProperties": false,
+   "description": "Identity. `namespace` is the project's slug, and is absent on a public Artifact.\n\n    `uid`, `generation`, `creationTimestamp` and `resourceVersion` are read-only: the plane writes\n    them and ignores them on input. `resourceVersion` is the object's `revision`, the value\n    `If-Match` takes.",
+   "properties": {
+    "annotations": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "default": {},
+     "type": "object"
+    },
+    "creationTimestamp": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "generation": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "labels": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "default": {},
+     "type": "object"
+    },
+    "name": {
+     "type": "string"
+    },
+    "namespace": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "resourceVersion": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "uid": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "ObjectMeta",
+   "type": "object"
+  },
+  "OverlaySchema": {
+   "additionalProperties": false,
+   "description": "Overrides for what the plane intentionally does not model, inside an allowlist.\n\n    `pod_spec` merges over the rendered pod with strategic-merge semantics;\n    `dynamo` merges over the rendered graph deployment, where maps merge and\n    lists replace. Both are checked against the keys in\n    `app.modules.workloads.validation` before anything is stored: container args,\n    command, literal env, ports and probes, and the graph's annotations and shared env,\n    are allowed. Resources, scheduling, Secret and ConfigMap env references, graph\n    components, security contexts, host namespaces, volumes and service accounts are\n    refused.",
+   "properties": {
+    "dynamo": {
+     "default": {},
+     "type": "object"
+    },
+    "pod_spec": {
+     "default": {},
+     "type": "object"
+    }
+   },
+   "required": [],
+   "title": "OverlaySchema",
+   "type": "object"
+  },
+  "ParallelismSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "expert": {
+     "default": 1,
+     "type": "integer"
+    },
+    "pipeline": {
+     "default": 1,
+     "type": "integer"
+    },
+    "tensor": {
+     "default": 1,
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "title": "ParallelismSchema",
+   "type": "object"
+  },
+  "PlacementSpec": {
+   "additionalProperties": false,
+   "description": "Where replicas may go. Cluster references are names.\n\n    `allowed_regions` and `allowed_clusters` become the workload's own placement policy at create\n    and are not editable through the workload afterwards.",
+   "properties": {
+    "allowed_clusters": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array",
+     "x-immutable": true
+    },
+    "allowed_regions": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array",
+     "x-immutable": true
+    },
+    "cluster_floors": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "default": {},
+     "type": "object"
+    },
+    "max_clusters": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "strategy": {
+     "default": "pack",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "PlacementSpec",
+   "type": "object"
+  },
+  "PolicySchema": {
+   "additionalProperties": false,
+   "description": "The request terms this endpoint enforces, on top of whatever the engine does.\n\n    It exists because \"consistent with the original model provider\" is a term of\n    sale, and a provider is sometimes stricter than the engine we run: Moonshot\n    answers 400 to any `temperature` but 1, where an ordinary OpenAI-compatible\n    server accepts the whole range. Conforming means refusing a request the engine\n    would happily serve, and sometimes it means the opposite: filling in a field\n    the provider treats as having a default so that the engine reads what the\n    provider's own frontend would have.\n\n    Absent is the default and means no opinion: every endpoint that has not sold\n    a consistency term behaves exactly as it did before this existed. That default\n    is the whole design: the policy is per endpoint precisely so that conforming\n    on one model never narrows another.\n\n    `version` is what a reader that does not understand a future rule reports,\n    not guesses. The gateway enforces what it knows and counts what it\n    does not, because a policy it cannot fully read is a conformance gap somebody\n    must see, never a reason to drop traffic. 2 is this shape; a v1 policy is\n    converted on read and reaches the gateway as this one.",
+   "properties": {
+    "rules": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/RuleSchema"
+     },
+     "type": "array"
+    },
+    "version": {
+     "default": 2,
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "title": "PolicySchema",
+   "type": "object"
+  },
+  "ReasoningSchema": {
+   "additionalProperties": false,
+   "description": "How this workload thinks, as rendered flags. What it *can* do is in `capabilities`.\n\n    Its own struct for the reason `CacheSchema` is: the fields are meaningless\n    individually. All of them are conditioned on the model being able to think at\n    all, and flattened onto the serving block they would read as six unrelated\n    optionals with nothing to group them under.",
+   "properties": {
+    "default_on": {
+     "default": false,
+     "type": "boolean"
+    },
+    "parser": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "suppress_eos_until_think_end": {
+     "default": false,
+     "type": "boolean"
+    },
+    "think_begin_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "think_end_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "transport": {
+     "default": "reasoning_content",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "ReasoningSchema",
+   "type": "object"
+  },
+  "ResourcesSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "cpu_cores": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "disk_gib": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "memory_mib": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "ResourcesSchema",
+   "type": "object"
+  },
+  "RoleSchema": {
+   "additionalProperties": false,
+   "description": "One role of a disaggregated workload: its share of the group, and what makes it different.\n\n    Three fields because the difference between prefill and decode is three fields wide. Across\n    NVIDIA's published recipe the two roles agree on the artifact, the tensor degree, the device\n    class, the context length, the quantization and the `kv-cache-dtype`, and on\n    `kv-transfer-config`, which is literally the same string on both sides, because the transfer\n    mechanism belongs to the topology, not to either role. A schema giving each role a full\n    copy of the serving block would be charging for a difference that does not exist.\n\n    `weight` is scale and the other two are configuration, and that split is essential,\n    not tidy: the weights are outside `serving_digest` and the other two are inside\n    it. See `app.core.serving.serving_digest`.",
+   "properties": {
+    "engine_args": {
+     "default": {},
+     "type": "object"
+    },
+    "max_batch_tokens": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "role": {
+     "type": "string"
+    },
+    "weight": {
+     "default": 1,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "role"
+   ],
+   "title": "RoleSchema",
+   "type": "object"
+  },
+  "RouterSchema": {
+   "additionalProperties": false,
+   "description": "How this workload's own Dynamo frontend routes requests between its workers.\n\n    One field per Dynamo setting, each rendered as one `DYN_ROUTER_*` variable on the frontend and\n    nothing else. Null renders nothing and leaves Dynamo's default in place, except `mode`, where\n    null is the operator's default of `kv`, or `round-robin` for an omni workload.\n\n    - `mode`: `kv`, `round-robin`, `random`, `power-of-two`, `least-loaded` or\n      `device-aware-weighted`.\n    - `queue_threshold`: a fraction of a worker's batched-token budget above which the router holds\n      requests back instead of dispatching them. Null means the router does not queue.\n    - `queue_policy`: `fcfs` or `wspt`, the order a queued request leaves in. Needs a threshold.\n    - `kv_overlap_score_credit`: how much a cached prefix discounts a worker's prefill load when the\n      KV router picks one.\n\n    Typed instead of an environment passthrough, so the plane can refuse a value Dynamo would refuse\n    at startup and say what it asked for. It replaces whole on a patch, like `cache`.",
+   "properties": {
+    "kv_overlap_score_credit": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "mode": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "queue_policy": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "queue_threshold": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "RouterSchema",
+   "type": "object"
+  },
+  "RuleSchema": {
+   "additionalProperties": false,
+   "description": "One term this endpoint sells: where it applies, what it is about, what it says.\n\n    **Scope.** `route` is the request path the term was measured against,\n    `stream` the transport mode, and `when_present` another JSON path the request\n    must carry for this rule to apply at all. All three are optional and an\n    omitted one matches everything, so an unscoped rule behaves exactly as a v1\n    policy did. A term is a claim about one protocol's request shape, and it is a\n    claim somebody measured: writing the path down is what stops it being\n    applied to three other protocols nobody measured.\n\n    `when_present` is a scope and not a term, which is why it sits here and not\n    beside `drop`. \"Does this rule look at this request at all\" is one question\n    however it is narrowed, and keeping the condition in the scope block means it\n    composes with every term, not with one of them: the same field that\n    says \"drop `reasoning_effort` when `thinking.effort` is set\" would say\n    \"`temperature` must be 1 while thinking is on\", with no second way to spell\n    `when`.\n\n    **Subject.** Exactly one of `key` and `predicate`. A `key` is a JSON path\n    into the request body, dotted for nesting (`thinking.type`). A `predicate`\n    names a rule the gateway implements in Go, out of the same registry the v1\n    `deny` list named. The two are separate namespaces and never fall back to one\n    another: a key is read out of the body, a predicate is looked up in a map.\n\n    **Terms.** `enum`, `min` and `max` say what the value may be; `deny` refuses\n    the request outright: whenever the key is sent at all, or whenever the\n    predicate fires. `default`, `drop` and `value_from` are the terms that write\n    instead of refusing, and none of them ever fails a request: `default` says what\n    to put in the request when the key is absent and its parent object is not,\n    `drop` takes the key back out, and `value_from` copies another path's value\n    onto the key. `drop` is for a field the provider accepts and ignores:\n    denying one of those would 400 a request the vendor serves, and leaving it in\n    place lets an engine honour a field the provider does not, which is a wrong\n    answer instead of an error and the harder of the two to notice.\n\n    `value_from` is for the case `drop` looks like it covers and does not: a knob\n    the provider spells one way and the engine behind it spells another. Removing\n    the engine's spelling makes it ignored, which is only half of \"the provider's\n    field wins\": the other half is that the provider's field is *read*, and if\n    nothing downstream reads it, the removal just leaves the engine on its own\n    default. `{key: \"reasoning_effort\", value_from: \"thinking.effort\"}` says both\n    halves at once: the vendor's value is carried onto the field the engine reads,\n    so it takes effect, and the caller's own `reasoning_effort` is ignored because\n    it has been overwritten. It overwrites where `default` defers, because the\n    value being replaced is exactly the one the provider ignores, and it writes\n    nothing at all when the source path is not in the request.\n\n    Every rule whose scope matches applies and the request must satisfy all of\n    them. There is no precedence and the order of the list is never read: a term\n    is something that was sold, and a second term does not cancel the first. Two\n    that cannot both hold are an authoring mistake and are refused here, where\n    somebody is writing the policy, not on a request already in flight.\n\n    A rule is data and never an expression. This is read on every request, and it\n    is also the thing somebody reads across a negotiating table; neither\n    survives a small language.",
+   "properties": {
+    "default": {
+     "default": null
+    },
+    "deny": {
+     "default": false,
+     "type": "boolean"
+    },
+    "drop": {
+     "default": false,
+     "type": "boolean"
+    },
+    "enum": {
+     "anyOf": [
+      {
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "key": {
+     "default": "",
+     "type": "string"
+    },
+    "max": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "min": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "predicate": {
+     "default": "",
+     "type": "string"
+    },
+    "route": {
+     "default": "",
+     "type": "string"
+    },
+    "stream": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "value_from": {
+     "default": "",
+     "type": "string"
+    },
+    "when_present": {
+     "default": "",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "RuleSchema",
+   "type": "object"
+  },
+  "RuntimeSpec": {
+   "additionalProperties": false,
+   "description": "What process serves the weights. Only `dynamo` today; custom workers add `container`.\n\n    `kind` picks the runtime and the rest is read under it. For `dynamo`, `engine` and `version`\n    pick the worker image unless `image` pins one, and `args` are the engine's own flags.",
+   "properties": {
+    "args": {
+     "default": {},
+     "type": "object"
+    },
+    "engine": {
+     "type": "string"
+    },
+    "frontend_image": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "image": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "kind": {
+     "default": "dynamo",
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "engine",
+    "version"
+   ],
+   "title": "RuntimeSpec",
+   "type": "object"
+  },
+  "ScaleSpec": {
+   "additionalProperties": false,
+   "properties": {
+    "desired": {
+     "default": 1,
+     "type": "integer"
+    },
+    "max": {
+     "default": 1,
+     "type": "integer"
+    },
+    "min": {
+     "default": 1,
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "title": "ScaleSpec",
+   "type": "object"
+  },
+  "ServingSchema": {
+   "additionalProperties": false,
+   "description": "What the served API does, as the engine will actually be told to behave.\n\n    Every field renders to a flag or a rendered value. Honouring any of it means\n    a replica restart, which is why it lives beside `cache` on the workload,\n    not on the endpoint. Before it existed all of this went into `engine_args`,\n    where the plane could neither validate it nor say what it had asked for.\n\n    Every default is the behaviour of a workload that says nothing, so the block is\n    inert on an existing workload: an empty parser, an empty tool parser and\n    `suppress_eos_until_think_end` false all mean \"emit no flag\".",
+   "properties": {
+    "context_overflow": {
+     "default": "reject",
+     "type": "string"
+    },
+    "diffusion": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/DiffusionSchema"
+      }
+     ],
+     "default": null
+    },
+    "max_images_per_request": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "max_videos_per_request": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "output_modality": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "reasoning": {
+     "$ref": "#/$defs/ReasoningSchema"
+    },
+    "stream_usage": {
+     "default": "final_chunk",
+     "type": "string"
+    },
+    "structured_output_backend": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "tool_call_parser": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [],
+   "title": "ServingSchema",
+   "type": "object"
+  },
+  "ServingSpec": {
+   "additionalProperties": false,
+   "description": "How the weights are served, independent of which runtime runs them.\n\n    `artifact` and `adapters` are artifact handles, resolved in the manifest's project, private\n    first, then public. `api` is the served API's behaviour (`serving` on the HTTP API).",
+   "properties": {
+    "adapters": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "api": {
+     "$ref": "#/$defs/ServingSchema"
+    },
+    "artifact": {
+     "type": "string"
+    },
+    "cache": {
+     "$ref": "#/$defs/CacheSchema"
+    },
+    "capabilities": {
+     "$ref": "#/$defs/CapabilitiesSchema"
+    },
+    "context_length": {
+     "default": 0,
+     "type": "integer"
+    },
+    "dtype": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "max_batch_tokens": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "overlay": {
+     "$ref": "#/$defs/OverlaySchema"
+    },
+    "parallelism": {
+     "$ref": "#/$defs/ParallelismSchema"
+    },
+    "quantization": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "resources": {
+     "$ref": "#/$defs/ResourcesSchema"
+    },
+    "roles": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/RoleSchema"
+     },
+     "type": "array"
+    },
+    "router": {
+     "$ref": "#/$defs/RouterSchema"
+    },
+    "shape": {
+     "$ref": "#/$defs/ShapeSchema"
+    },
+    "topology": {
+     "default": "aggregated",
+     "type": "string"
+    }
+   },
+   "required": [
+    "artifact",
+    "shape"
+   ],
+   "title": "ServingSpec",
+   "type": "object"
+  },
+  "ShapeSchema": {
+   "additionalProperties": false,
+   "description": "The hardware a workload implies, class first.\n\n    `device_class` is not optional and is not separable from the counts: a\n    tensor-parallel-8 configuration means nothing spread across an A100 and an\n    H100, so a count without a class is not a shape.\n\n    The topology pair sits here, not beside the scale numbers, because it is\n    a property of one replica's layout, the same way the counts are. It used to be\n    declared twice, once on the recipe and once as a nullable override on the\n    workload, and with one object there is one answer.",
+   "properties": {
+    "device_class": {
+     "type": "string"
+    },
+    "device_count": {
+     "default": 1,
+     "type": "integer"
+    },
+    "device_memory_mib_min": {
+     "default": 0,
+     "type": "integer"
+    },
+    "requires_single_topology_domain": {
+     "default": false,
+     "type": "boolean"
+    },
+    "topology_domain_kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "device_class"
+   ],
+   "title": "ShapeSchema",
+   "type": "object"
+  },
+  "TopologyViewSchema": {
+   "additionalProperties": false,
+   "description": "`TopologySchema` as a read returns it, with the derived numbers beside it.",
+   "properties": {
+    "group_devices": {
+     "default": 0,
+     "type": "integer"
+    },
+    "roles": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/RoleSchema"
+     },
+     "type": "array"
+    },
+    "serving_topology": {
+     "default": "aggregated",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "TopologyViewSchema",
+   "type": "object"
+  },
+  "WorkloadDeploymentStatus": {
+   "additionalProperties": false,
+   "properties": {
+    "admission_phase": {
+     "type": "string"
+    },
+    "authority": {
+     "type": "string"
+    },
+    "cluster": {
+     "type": "string"
+    },
+    "desired_replicas": {
+     "type": "integer"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "name": {
+     "type": "string"
+    },
+    "ready_replicas": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "name",
+    "cluster",
+    "admission_phase",
+    "authority",
+    "enabled",
+    "desired_replicas",
+    "ready_replicas"
+   ],
+   "title": "WorkloadDeploymentStatus",
+   "type": "object"
+  },
+  "WorkloadManifest": {
+   "additionalProperties": false,
+   "properties": {
+    "apiVersion": {
+     "default": "plane.wingsmith.dev/v1alpha1",
+     "type": "string"
+    },
+    "kind": {
+     "default": "Workload",
+     "type": "string"
+    },
+    "metadata": {
+     "$ref": "#/$defs/ObjectMeta"
+    },
+    "spec": {
+     "$ref": "#/$defs/WorkloadSpec"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/WorkloadStatus"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "metadata",
+    "spec"
+   ],
+   "title": "WorkloadManifest",
+   "type": "object"
+  },
+  "WorkloadScaleStatus": {
+   "additionalProperties": false,
+   "properties": {
+    "placed": {
+     "type": "integer"
+    },
+    "ready": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "placed",
+    "ready"
+   ],
+   "title": "WorkloadScaleStatus",
+   "type": "object"
+  },
+  "WorkloadSpec": {
+   "additionalProperties": false,
+   "description": "What the workload declares.\n\n    `enabled` is create-only and afterwards lives on each deployment, so a read leaves it null.",
+   "properties": {
+    "cluster": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-immutable": true
+    },
+    "deadline_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "enabled": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-immutable": true
+    },
+    "gang_size": {
+     "default": 1,
+     "type": "integer",
+     "x-immutable": true
+    },
+    "kind": {
+     "default": "service",
+     "type": "string",
+     "x-immutable": true
+    },
+    "overrides": {
+     "default": {},
+     "type": "object"
+    },
+    "paused": {
+     "default": false,
+     "type": "boolean"
+    },
+    "placement": {
+     "$ref": "#/$defs/PlacementSpec"
+    },
+    "preemptible": {
+     "default": false,
+     "type": "boolean"
+    },
+    "priority_class": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true
+    },
+    "runtime": {
+     "$ref": "#/$defs/RuntimeSpec"
+    },
+    "scale": {
+     "$ref": "#/$defs/ScaleSpec"
+    },
+    "serving": {
+     "$ref": "#/$defs/ServingSpec"
+    }
+   },
+   "required": [
+    "runtime",
+    "serving"
+   ],
+   "title": "WorkloadSpec",
+   "type": "object"
+  },
+  "WorkloadStatus": {
+   "additionalProperties": false,
+   "description": "What the plane derived or observed. Never written through a manifest.",
+   "properties": {
+    "artifact_tag": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "deployments": {
+     "items": {
+      "$ref": "#/$defs/WorkloadDeploymentStatus"
+     },
+     "type": "array"
+    },
+    "finished_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "imported_args": {
+     "type": "object"
+    },
+    "phase": {
+     "type": "string"
+    },
+    "resolved_engine_args": {
+     "type": "object"
+    },
+    "scale": {
+     "$ref": "#/$defs/WorkloadScaleStatus"
+    },
+    "served_model_name": {
+     "type": "string"
+    },
+    "serving_digest": {
+     "type": "string"
+    },
+    "started_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "topology": {
+     "$ref": "#/$defs/TopologyViewSchema"
+    }
+   },
+   "required": [
+    "phase",
+    "served_model_name",
+    "serving_digest",
+    "resolved_engine_args",
+    "imported_args",
+    "topology",
+    "scale",
+    "deployments"
+   ],
+   "title": "WorkloadStatus",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "oneOf": [
+  {
+   "$ref": "#/$defs/WorkloadManifest"
+  },
+  {
+   "$ref": "#/$defs/EndpointManifest"
+  },
+  {
+   "$ref": "#/$defs/ArtifactManifest"
+  }
+ ],
+ "title": "plane.wingsmith.dev/v1alpha1"
+}

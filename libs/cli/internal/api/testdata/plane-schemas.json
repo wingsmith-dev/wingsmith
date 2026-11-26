@@ -234,6 +234,13 @@
   "scheme": "string",
   "uri": "string"
  },
+ "ArtifactManifest": {
+  "apiVersion": "string",
+  "kind": "string",
+  "metadata": "$ObjectMeta",
+  "spec": "$ArtifactSpec",
+  "status": "$ArtifactStatus?"
+ },
  "ArtifactRefreshSchema": {
   "artifact": "$ArtifactSchema",
   "changed": "[]string",
@@ -260,6 +267,26 @@
   "slug": "string",
   "updated_at": "string?",
   "upstream": "$ArtifactUpstreamSchema",
+  "verified": "boolean"
+ },
+ "ArtifactSpec": {
+  "base_artifact": "string?",
+  "digest": "string",
+  "display_name": "string",
+  "format": "string?",
+  "kind": "string",
+  "licence": "string?",
+  "locations": "[]$ArtifactLocationSchema",
+  "parameter_count": "integer?",
+  "project": "string?",
+  "properties": "object",
+  "size_bytes": "integer",
+  "slug": "string",
+  "source": "string?",
+  "upstream": "$ArtifactUpstreamSchema"
+ },
+ "ArtifactStatus": {
+  "residency": "[]string",
   "verified": "boolean"
  },
  "ArtifactUpdateRequest": {
@@ -805,6 +832,13 @@
   "targets": "[]$EndpointTargetRequest",
   "visibility": "string"
  },
+ "EndpointManifest": {
+  "apiVersion": "string",
+  "kind": "string",
+  "metadata": "$ObjectMeta",
+  "spec": "$EndpointSpec",
+  "status": "$EndpointStatus?"
+ },
  "EndpointSchema": {
   "aliases": "[]string",
   "created_at": "string",
@@ -822,6 +856,19 @@
   "targets": "[]$EndpointTargetSchema",
   "updated_at": "string?",
   "visibility": "string"
+ },
+ "EndpointSpec": {
+  "aliases": "[]string",
+  "enabled": "boolean",
+  "failover_order": "[]string",
+  "routing_strategy": "string",
+  "slug": "string",
+  "surface": "$EndpointSurfaceSchema",
+  "targets": "[]$EndpointTargetSpec",
+  "visibility": "string"
+ },
+ "EndpointStatus": {
+  "targets": "[]$EndpointTargetStatus"
  },
  "EndpointSurfaceSchema": {
   "auth_mode": "string?",
@@ -847,6 +894,17 @@
   "role": "string",
   "served_model_name": "string?",
   "weight": "integer"
+ },
+ "EndpointTargetSpec": {
+  "deployment": "string",
+  "enabled": "boolean",
+  "role": "string",
+  "served_model_name": "string?",
+  "weight": "integer"
+ },
+ "EndpointTargetStatus": {
+  "deployment": "string",
+  "deployment_id": "string"
  },
  "EndpointUpdateRequest": {
   "aliases": "[]string",
@@ -1089,6 +1147,16 @@
   "delivered": "boolean",
   "detail": "string?"
  },
+ "ObjectMeta": {
+  "annotations": "object",
+  "creationTimestamp": "string?",
+  "generation": "integer?",
+  "labels": "object",
+  "name": "string",
+  "namespace": "string?",
+  "resourceVersion": "string?",
+  "uid": "string?"
+ },
  "OperationCreateRequest": {
   "cluster": "string?",
   "deadline": "string?",
@@ -1166,6 +1234,13 @@
   "requires_single_topology_domain": "boolean",
   "tensor_parallel": "integer",
   "topology_domain_kind": "string?"
+ },
+ "PlacementSpec": {
+  "allowed_clusters": "[]string",
+  "allowed_regions": "[]string",
+  "cluster_floors": "object",
+  "max_clusters": "integer?",
+  "strategy": "string"
  },
  "PolicyAttachmentRequest": {
   "subject": "string",
@@ -1526,11 +1601,24 @@
   "value_from": "string",
   "when_present": "string"
  },
+ "RuntimeSpec": {
+  "args": "object",
+  "engine": "string",
+  "frontend_image": "string?",
+  "image": "string?",
+  "kind": "string",
+  "version": "string"
+ },
  "SampleSchema": {
   "metric": "string",
   "title": "string",
   "unit": "string",
   "value": "number?"
+ },
+ "ScaleSpec": {
+  "desired": "integer",
+  "max": "integer",
+  "min": "integer"
  },
  "SeriesPointSchema": {
   "at": "number",
@@ -1675,6 +1763,24 @@
   "stream_usage": "string",
   "structured_output_backend": "string?",
   "tool_call_parser": "string?"
+ },
+ "ServingSpec": {
+  "adapters": "[]string",
+  "api": "$ServingSchema",
+  "artifact": "string",
+  "cache": "$CacheSchema",
+  "capabilities": "$CapabilitiesSchema",
+  "context_length": "integer",
+  "dtype": "string?",
+  "max_batch_tokens": "integer?",
+  "overlay": "$OverlaySchema",
+  "parallelism": "$ParallelismSchema",
+  "quantization": "string?",
+  "resources": "$ResourcesSchema",
+  "roles": "[]$RoleSchema",
+  "router": "$RouterSchema",
+  "shape": "$ShapeSchema",
+  "topology": "string"
  },
  "SetupConfigSchema": {
   "chart_private": "boolean",
@@ -1895,6 +2001,22 @@
   "replicas": "$DeploymentReplicaRollupSchema",
   "status": "$DeploymentStatusSchema?"
  },
+ "WorkloadDeploymentStatus": {
+  "admission_phase": "string",
+  "authority": "string",
+  "cluster": "string",
+  "desired_replicas": "integer",
+  "enabled": "boolean",
+  "name": "string",
+  "ready_replicas": "integer"
+ },
+ "WorkloadManifest": {
+  "apiVersion": "string",
+  "kind": "string",
+  "metadata": "$ObjectMeta",
+  "spec": "$WorkloadSpec",
+  "status": "$WorkloadStatus?"
+ },
  "WorkloadPlacementNodeSchema": {
   "cluster": "string",
   "device_count": "integer",
@@ -1936,6 +2058,10 @@
   "placed": "integer",
   "ready": "integer",
   "unit": "string"
+ },
+ "WorkloadScaleStatus": {
+  "placed": "integer",
+  "ready": "integer"
  },
  "WorkloadSchema": {
   "adapter_artifact_ids": "[]string",
@@ -2033,6 +2159,34 @@
   "serving": "$ServingSchema",
   "shape": "$ShapeSchema",
   "topology": "$TopologySchema"
+ },
+ "WorkloadSpec": {
+  "cluster": "string?",
+  "deadline_at": "string?",
+  "enabled": "boolean?",
+  "gang_size": "integer",
+  "kind": "string",
+  "overrides": "object",
+  "paused": "boolean",
+  "placement": "$PlacementSpec",
+  "preemptible": "boolean",
+  "priority_class": "string?",
+  "runtime": "$RuntimeSpec",
+  "scale": "$ScaleSpec",
+  "serving": "$ServingSpec"
+ },
+ "WorkloadStatus": {
+  "artifact_tag": "string?",
+  "deployments": "[]$WorkloadDeploymentStatus",
+  "finished_at": "string?",
+  "imported_args": "object",
+  "phase": "string",
+  "resolved_engine_args": "object",
+  "scale": "$WorkloadScaleStatus",
+  "served_model_name": "string",
+  "serving_digest": "string",
+  "started_at": "string?",
+  "topology": "$TopologyViewSchema"
  },
  "WorkloadUpdateRequest": {
   "adapter_artifacts": "[]string",
