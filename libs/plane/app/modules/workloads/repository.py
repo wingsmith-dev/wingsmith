@@ -33,6 +33,8 @@ from app.db.models import PolicyAttachment
 from app.db.models import WorkloadRevision
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
+from app.modules.artifacts.scope import visible
+from app.modules.artifacts.scope import private_first
 
 
 RUNNING_PHASES = ("starting", "ready", "draining")
@@ -292,12 +294,15 @@ class WorkloadRepository:
         result = await self.db.execute(select(Artifact.id, Artifact.uid).where(Artifact.id.in_(artifact_ids)))
         return {row.id: row.uid for row in result.all()}
 
-    async def artifacts_by_ref(self, refs: builtins.list[str]) -> builtins.list[Artifact]:
+    async def artifacts_by_ref(
+        self, refs: builtins.list[str], project_id: UUID | None = None
+    ) -> builtins.list[Artifact]:
         """The artifacts a list of references names, in the order given, in one query.
 
         A reference that names nothing is left out, so the caller can tell which were
         missing. A handle names one artifact and wins over a name; a name two artifacts
-        share is refused, as `artifact_by_ref` refuses it.
+        share is refused, as `artifact_by_ref` refuses it. Names reach the public catalogue and
+        `project_id`'s private artifacts, which win over a public one of the same handle.
         """
         if not refs:
             return []
@@ -305,7 +310,12 @@ class WorkloadRepository:
         names = [ref for ref in refs if not is_uid(ref)]
         rows = (
             await self.db.execute(
-                select(Artifact).where(Artifact.uid.in_(uids) | Artifact.handle.in_(names) | Artifact.name.in_(names))
+                select(Artifact)
+                .where(
+                    Artifact.uid.in_(uids)
+                    | ((Artifact.handle.in_(names) | Artifact.name.in_(names)) & visible(project_id))
+                )
+                .order_by(private_first())
             )
         ).scalars()
         exact: dict[str, Artifact] = {}
@@ -314,7 +324,7 @@ class WorkloadRepository:
             if artifact.uid in uids:
                 exact[artifact.uid] = artifact
             if artifact.handle in names:
-                exact[artifact.handle] = artifact
+                exact.setdefault(artifact.handle, artifact)
             if artifact.name in names:
                 by_name.setdefault(artifact.name, []).append(artifact)
         found: list[Artifact] = []
@@ -329,15 +339,20 @@ class WorkloadRepository:
         result = await self.db.execute(select(Cluster).where(column == ref).limit(1))
         return result.scalar_one_or_none()
 
-    async def artifact_by_ref(self, ref: str) -> Artifact | None:
-        """By id, handle or name. Names are not unique, so a name two artifacts share is refused."""
+    async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
+        """By id, handle or name. Names are not unique, so a name two artifacts share is refused.
+
+        A handle or name reaches the public catalogue and `project_id`'s private artifacts, and
+        a private handle wins over a public one.
+        """
         if is_uid(ref):
             result = await self.db.execute(select(Artifact).where(Artifact.uid == ref).limit(1))
             return result.scalar_one_or_none()
-        result = await self.db.execute(select(Artifact).where(Artifact.handle == ref).limit(1))
+        query = select(Artifact).where(Artifact.handle == ref, visible(project_id)).order_by(private_first())
+        result = await self.db.execute(query.limit(1))
         if (artifact := result.scalar_one_or_none()) is not None:
             return artifact
-        result = await self.db.execute(select(Artifact).where(Artifact.name == ref).limit(2))
+        result = await self.db.execute(select(Artifact).where(Artifact.name == ref, visible(project_id)).limit(2))
         return at_most_one(list(result.scalars()), "artifact", ref)
 
     async def artifact_of(self, workload: Workload) -> Artifact | None:

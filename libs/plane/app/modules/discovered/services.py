@@ -357,14 +357,14 @@ class DiscoveredWorkloadService:
                 {"observed": workload.spec_fingerprint, "sent": data.fingerprint},
             )
 
-        artifact = await self.repo.artifact_by_ref(data.artifact)
+        project = await self.repo.project_row(data.project)
+        if project is None:
+            raise NotFound(f"no project {data.project!r}")
+        artifact = await self.repo.artifact_by_ref(data.artifact, project.id)
         if artifact is None:
             raise NotFound(f"no artifact {data.artifact!r}")
         serving = serving_from_draft(await self._draft(row), artifact.uid)
         check_serving_request(serving, artifact)
-        project = await self.repo.project_row(data.project)
-        if project is None:
-            raise NotFound(f"no project {data.project!r}")
         priority_class_id = await self._priority_class_id(data.priority_class, project)
 
         replicas = max(workload.replicas_desired, 0)

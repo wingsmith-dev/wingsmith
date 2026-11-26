@@ -117,7 +117,7 @@ class SightingRepo:
         )
         self.row = self.row._replace(WorkloadAdoption=adoption)
 
-    async def artifact_by_ref(self, ref):
+    async def artifact_by_ref(self, ref, project_id=None):
         return SimpleNamespace(uid="art_1", name="gpt-oss")
 
     async def project_row(self, ref):

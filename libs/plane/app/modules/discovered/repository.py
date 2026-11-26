@@ -1,3 +1,4 @@
+from uuid import UUID
 from collections.abc import Sequence
 
 from sqlalchemy import Row
@@ -20,6 +21,7 @@ from app.db.models import WorkloadAdoption
 from app.db.models import DiscoveredWorkload
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
+from app.modules.artifacts.scope import visible
 
 
 ADOPTION_CONSTRAINT = "uq_demand_workload_adoption_identity"
@@ -141,10 +143,13 @@ class DiscoveredWorkloadRepository:
         await self.db.execute(delete(WorkloadAdoption).where(WorkloadAdoption.workload_uid == uid))
         await self.db.flush()
 
-    async def artifact_by_ref(self, ref: str) -> Artifact | None:
-        """The weights a promotion says it is adopting, by id or by name."""
-        column = Artifact.uid if is_uid(ref) else Artifact.name
-        result = await self.db.execute(select(Artifact).where(column == ref).limit(2))
+    async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
+        """The weights a promotion says it is adopting, by id or by name, public or `project_id`'s own."""
+        if is_uid(ref):
+            query = select(Artifact).where(Artifact.uid == ref)
+        else:
+            query = select(Artifact).where(Artifact.name == ref, visible(project_id))
+        result = await self.db.execute(query.limit(2))
         return at_most_one(list(result.scalars()), "artifact", ref)
 
     async def priority_class_by_name(self, name: str):
@@ -195,14 +200,14 @@ class DiscoveredWorkloadRepository:
         location is what both of them fetch.
         """
         if digest:
-            found = await self.db.scalar(select(Artifact.uid).where(Artifact.digest == digest))
+            found = await self.db.scalar(select(Artifact.uid).where(Artifact.digest == digest, visible()))
             if found:
                 return found
         if uri:
             found = await self.db.scalar(
                 select(Artifact.uid)
                 .join(ArtifactLocation, ArtifactLocation.artifact_id == Artifact.id)
-                .where(ArtifactLocation.uri == uri)
+                .where(ArtifactLocation.uri == uri, visible())
                 .limit(1)
             )
             if found:

@@ -798,10 +798,10 @@ class WorkloadService:
             replicas=replicas,
         )
 
-    async def _adapter_ids(self, refs: builtins.list[str]) -> builtins.list[UUID]:
+    async def _adapter_ids(self, refs: builtins.list[str], project_id: UUID) -> builtins.list[UUID]:
         if not refs:
             return []
-        found = await self.repo.artifacts_by_ref(refs)
+        found = await self.repo.artifacts_by_ref(refs, project_id)
         if len(found) != len(refs):
             names = {a.uid for a in found} | {a.name for a in found}
             raise NotFound("unknown adapter artifact", {"missing": sorted(set(refs) - names)})
@@ -899,13 +899,13 @@ class WorkloadService:
             raise Invalid("max_clusters must be at least 1", {"max_clusters": data.max_clusters})
         check_scale(data.min_scale, data.desired_scale, data.max_scale, data.kind, data.gang_size)
 
-        artifact = await self.repo.artifact_by_ref(data.serving.artifact)
-        if artifact is None:
-            raise NotFound(f"no artifact {data.serving.artifact!r}")
-        check_serving_request(data.serving, artifact)
         project = await self.repo.project_by_ref(data.project)
         if project is None:
             raise NotFound(f"no project {data.project!r}")
+        artifact = await self.repo.artifact_by_ref(data.serving.artifact, project.id)
+        if artifact is None:
+            raise NotFound(f"no artifact {data.serving.artifact!r}")
+        check_serving_request(data.serving, artifact)
         priority = await self._priority_class(data.priority_class, project)
 
         pinned = None
@@ -956,7 +956,7 @@ class WorkloadService:
             gang_size=data.gang_size,
             preemptible=data.preemptible,
             paused=False,
-            adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
+            adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts, project.id),
             overrides=data.overrides,
             labels=data.labels,
             deadline_at=data.deadline_at,
@@ -1190,7 +1190,9 @@ class WorkloadService:
                 raise NotFound(f"no priority class {name!r}")
             workload.priority_class_id = found.id
         if "adapter_artifacts" in fields:
-            workload.adapter_artifact_ids = await self._adapter_ids(fields.pop("adapter_artifacts"))
+            workload.adapter_artifact_ids = await self._adapter_ids(
+                fields.pop("adapter_artifacts"), workload.project_id
+            )
         for key, value in fields.items():
             setattr(workload, key, value)
 
