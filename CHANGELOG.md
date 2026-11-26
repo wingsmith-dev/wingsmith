@@ -7,6 +7,12 @@ protocol can change between minor versions.
 
 ## [Unreleased]
 
+### Added
+
+- Artifacts carry a unique, immutable `handle` (`openai-gpt-oss-20b`), derived from the slug or
+  declared at create, and accepted wherever an artifact reference is. Existing artifacts are
+  backfilled oldest first.
+
 ## [0.3.0] - 2026-11-26
 
 The first tagged release. Images for the plane, console, operator, agent, gateway and demo, and the

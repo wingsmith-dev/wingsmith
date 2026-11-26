@@ -144,6 +144,12 @@ matching is **not** supported by the API: `wings` resolves prefixes client-side,
 it belongs, because a server that guesses at ambiguous input is a server that eventually guesses
 wrong.
 
+**An artifact's unique name is its `handle`**, not its `name` (display text) or `slug` (the model id
+the gateway routes on, which two commits of one repo share). It is DNS-subdomain shaped
+(`openai-gpt-oss-20b`), derived from the slug at create with a digest suffix when another artifact
+holds it, may be declared on `POST /v1/artifacts`, and never changes. An artifact reference tries
+the id, then the handle, then the name (ADR 0019).
+
 Timestamps are RFC 3339, UTC, millisecond precision. Nullable where the event may not have
 happened; `last_sync_at` on a never-synced cluster is `null`, not the epoch.
 
