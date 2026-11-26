@@ -780,7 +780,7 @@ class BaselineRepo:
         self.artifact = artifact
         self.rows = []
 
-    async def get(self, ref: str, lock: bool = False):
+    async def get(self, ref: str, lock: bool = False, **_):
         return ArtifactRow(self.artifact) if ref == self.artifact.uid else None
 
     async def add_baseline(self, baseline):

@@ -285,7 +285,7 @@ async def test_delete_refuses_while_a_workload_still_names_the_artifact():
     service = ArtifactService(db=fake)
     service.repo = fake
 
-    async def one(ref):
+    async def one(ref, **_):
         return object(), None, None
 
     service._one = one
@@ -387,7 +387,7 @@ class FakeRepo:
         self.added = artifact
         return artifact
 
-    async def get(self, ref: str, lock: bool = False, project: str | None = None):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False):
         return FakeRow(self.added)
 
 
@@ -628,7 +628,7 @@ class RefreshRepo:
         """What the fleet actually holds. `None` is a plane with no cluster enrolled yet."""
         return self.largest_device_mib
 
-    async def get(self, ref: str, lock: bool = False, project: str | None = None):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False):
         return FakeRow(self.artifact)
 
     async def artifact_by_digest(self, digest: str):
@@ -882,7 +882,7 @@ class FakeBaselineRepo:
         self.rows: list[ArtifactBaseline] = []
         self.next_seq = 1000
 
-    async def get(self, ref: str, lock: bool = False, project: str | None = None):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False):
         if ref in {self.artifact.uid, self.artifact.name}:
             return FakeRow(self.artifact)
         return None
@@ -1109,7 +1109,7 @@ class FitmentRepo:
         self.fleet = fleet if fleet is not None else [FleetRow("h100-80gb-sxm", 81559, 16, 16, 2)]
         self.domains = domains or {}
 
-    async def get(self, ref: str, lock: bool = False, project: str | None = None):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False):
         return FakeRow(self.artifact)
 
     async def fleet_classes(self):

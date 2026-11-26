@@ -152,8 +152,11 @@ the id, then the handle, then the name (ADR 0019).
 
 A handle is unique within a scope: the public catalogue, or one project for an artifact created
 with `private: true` (`owner_project_id` on read). A reference by handle or name reaches public
-artifacts and the caller's project's private ones, private first; `GET /v1/artifacts/{ref}` takes
-`project` for that, and without it reaches only the public catalogue.
+artifacts and the caller's project's private ones, private first. So does a reference by id, and
+every listing and count: another project's private artifact is a 404, never a 403, and is left out
+of `GET /v1/artifacts`, usage counts, workload and endpoint filters. The `/v1/artifacts` routes take
+`project` to name the caller's project, and without it reach only the public catalogue. A workload,
+endpoint target or adapter can only name what its own project sees.
 
 Timestamps are RFC 3339, UTC, millisecond precision. Nullable where the event may not have
 happened; `last_sync_at` on a never-synced cluster is `null`, not the epoch.

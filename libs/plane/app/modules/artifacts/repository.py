@@ -53,17 +53,22 @@ class ArtifactRepository:
             .options(selectinload(Artifact.locations))
         )
 
-    def get_query(self, ref: str, project: str | None = None) -> Select:
+    def get_query(self, ref: str, project: str | None = None, everywhere: bool = False) -> Select:
         """An id or a name, per the contract. Prefixes are the client's problem.
+
+        Either reaches the public catalogue and `project`'s private artifacts, never another
+        project's: an id from elsewhere is not found, so a lookup cannot confirm it exists.
+        `everywhere` lifts that for the service re-reading a row it already holds.
 
         A name reaches the public catalogue and, given `project`, that project's private
         artifacts, which come first. Within that the handle is unique and wins. An artifact
         name is not: two quantizations of one base model are routinely named the same, so a
         name resolves to the oldest match.
         """
-        if is_uid(ref):
-            return self._base().where(Artifact.uid == ref)
         scope = None if project is None else ref_ids(Project, project, "slug")
+        if is_uid(ref):
+            query = self._base().where(Artifact.uid == ref)
+            return query if everywhere else query.where(visible(scope))
         return (
             self._base()
             .where(or_(Artifact.handle == ref, Artifact.name == ref), visible(scope))
@@ -81,7 +86,9 @@ class ArtifactRepository:
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> Select:
-        query = self._base().order_by(Artifact.seq.asc()).limit(limit + 1)
+        """Public artifacts and, given `project`, that project's: then only the ones it owns or is attributed."""
+        scope = None if project is None else ref_ids(Project, project, "slug")
+        query = self._base().where(visible(scope)).order_by(Artifact.seq.asc()).limit(limit + 1)
         if after_seq is not None:
             query = query.where(Artifact.seq > after_seq)
         if kind is not None:
@@ -91,16 +98,18 @@ class ArtifactRepository:
         if format is not None:
             query = query.where(Artifact.format == format)
         if project is not None:
-            query = query.where(Artifact.project_id.in_(ref_ids(Project, project, "slug")))
+            query = query.where(or_(Artifact.owner_project_id.in_(scope), Artifact.project_id.in_(scope)))
         if search is not None:
             query = query.where(Artifact.name.ilike(f"%{search}%"))
         for key, value in (labels or {}).items():
             query = query.where(Artifact.metadata_[key].astext == value)
         return query
 
-    async def get(self, ref: str, lock: bool = False, project: str | None = None) -> Row | None:
+    async def get(
+        self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False
+    ) -> Row | None:
         """`lock` holds the artifact row until the transaction ends, so an If-Match check and the write it guards agree."""
-        query = self.get_query(ref, project).limit(1)
+        query = self.get_query(ref, project, everywhere).limit(1)
         if lock:
             query = query.with_for_update(of=Artifact).execution_options(populate_existing=True)
         result = await self.db.execute(query)
@@ -118,7 +127,7 @@ class ArtifactRepository:
     async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
         """By id, or by handle or name among the public artifacts and `project_id`'s own."""
         if is_uid(ref):
-            query = select(Artifact).where(Artifact.uid == ref)
+            query = select(Artifact).where(Artifact.uid == ref, visible(project_id))
         else:
             query = (
                 select(Artifact)
@@ -162,14 +171,17 @@ class ArtifactRepository:
             )
         )
 
-    def downstream_query(self, artifact: Artifact) -> Select:
-        """Counts the artifacts derived from this one."""
-        return select(func.count(Artifact.id)).where(Artifact.base_artifact_id == artifact.id)
+    def downstream_query(self, artifact: Artifact, project: str | None = None) -> Select:
+        """Counts the artifacts derived from this one that `project` can see.
 
-    async def usage_counts(self, artifact: Artifact) -> tuple[int, int]:
+        A public base is shared, so another project's private fine-tune of it is not counted."""
+        scope = None if project is None else ref_ids(Project, project, "slug")
+        return select(func.count(Artifact.id)).where(Artifact.base_artifact_id == artifact.id, visible(scope))
+
+    async def usage_counts(self, artifact: Artifact, project: str | None = None) -> tuple[int, int]:
         """The workload and downstream counts, one round trip each."""
         workloads = await self.db.execute(self.workload_usage_query(artifact))
-        downstream = await self.db.execute(self.downstream_query(artifact))
+        downstream = await self.db.execute(self.downstream_query(artifact, project))
         return int(workloads.scalar_one()), int(downstream.scalar_one())
 
     def baseline_list_query(

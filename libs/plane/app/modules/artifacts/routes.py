@@ -84,10 +84,10 @@ class ArtifactRoutes(Controller):
 
     @get("/{ref:str}/usage")
     async def artifact_usage(
-        self, context: RequestContext, svc: ArtifactService, ref: str
+        self, context: RequestContext, svc: ArtifactService, ref: str, project: str | None = None
     ) -> Response[ArtifactUsageSchema]:
         """Workload and downstream counts for this artifact. Derived, stored nowhere."""
-        return Response(await svc.usage(ref))
+        return Response(await svc.usage(ref, project=project))
 
     @get("/{ref:str}/fitment")
     async def artifact_fitment(
@@ -102,6 +102,7 @@ class ArtifactRoutes(Controller):
         devices_per_node: int | None = None,
         max_devices: int | None = None,
         limit: int | None = None,
+        project: str | None = None,
     ) -> Response[ArtifactFitmentSchema]:
         """The device classes this artifact could be served on, ranked, derived at read time.
 
@@ -126,12 +127,13 @@ class ArtifactRoutes(Controller):
                     max_devices=max_devices,
                     limit=limit,
                 ),
+                project=project,
             )
         )
 
     @post("/{ref:str}/refresh", status_code=200)
     async def refresh_artifact(
-        self, context: RequestContext, svc: ArtifactService, ref: str
+        self, context: RequestContext, svc: ArtifactService, ref: str, project: str | None = None
     ) -> Response[ArtifactRefreshSchema]:
         """Re-reads this artifact's source and records what the plane can now derive from it.
 
@@ -139,7 +141,7 @@ class ArtifactRoutes(Controller):
         different one would be a way to move an artifact onto weights it was not
         registered from. A source that resolves to a different digest is a 409.
         """
-        return Response(await svc.refresh(ref))
+        return Response(await svc.refresh(ref, project=project))
 
     @get("/{ref:str}/baselines")
     async def list_artifact_baselines(
@@ -151,9 +153,12 @@ class ArtifactRoutes(Controller):
         cursor: str | None = None,
         dataset: str | None = None,
         metric: str | None = None,
+        project: str | None = None,
     ) -> Response[ListResponse[ArtifactBaselineSchema]]:
         """The declared quality floors for this artifact, one row per dataset and metric."""
-        return Response(await baselines.list(ref, limit=limit, cursor=cursor, dataset=dataset, metric=metric))
+        return Response(
+            await baselines.list(ref, limit=limit, cursor=cursor, dataset=dataset, metric=metric, project=project)
+        )
 
     @post("/{ref:str}/baselines")
     async def create_artifact_baseline(
@@ -162,8 +167,9 @@ class ArtifactRoutes(Controller):
         baselines: ArtifactBaselineService,
         ref: str,
         data: ArtifactBaselineCreateRequest,
+        project: str | None = None,
     ) -> Response[ArtifactBaselineSchema]:
-        return Response(await baselines.create(ref, data), status_code=201)
+        return Response(await baselines.create(ref, data, project=project), status_code=201)
 
     @patch("/{ref:str}/baselines/{baseline:str}")
     async def update_artifact_baseline(
@@ -174,14 +180,20 @@ class ArtifactRoutes(Controller):
         baseline: str,
         data: ArtifactBaselineUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        project: str | None = None,
     ) -> Response[ArtifactBaselineSchema]:
-        return Response(await baselines.update(ref, baseline, data, if_match=if_match))
+        return Response(await baselines.update(ref, baseline, data, if_match=if_match, project=project))
 
     @delete("/{ref:str}/baselines/{baseline:str}", status_code=204)
     async def delete_artifact_baseline(
-        self, context: RequestContext, baselines: ArtifactBaselineService, ref: str, baseline: str
+        self,
+        context: RequestContext,
+        baselines: ArtifactBaselineService,
+        ref: str,
+        baseline: str,
+        project: str | None = None,
     ) -> None:
-        await baselines.delete(ref, baseline)
+        await baselines.delete(ref, baseline, project=project)
 
     @patch("/{ref:str}")
     async def update_artifact(
@@ -191,9 +203,12 @@ class ArtifactRoutes(Controller):
         ref: str,
         data: ArtifactUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        project: str | None = None,
     ) -> Response[ArtifactSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match))
+        return Response(await svc.update(ref, data, if_match=if_match, project=project))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_artifact(self, context: RequestContext, svc: ArtifactService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_artifact(
+        self, context: RequestContext, svc: ArtifactService, ref: str, project: str | None = None
+    ) -> None:
+        await svc.delete(ref, project=project)

@@ -423,7 +423,7 @@ class ArtifactService:
             ceiling_mib=await self.repo.largest_device_memory_mib(),
         )
 
-    async def refresh(self, ref: str) -> ArtifactRefreshSchema:
+    async def refresh(self, ref: str, project: str | None = None) -> ArtifactRefreshSchema:
         """Re-reads a registered artifact's own source and updates what is derived from it.
 
         The case this exists for: the plane learns to extract something it did not
@@ -446,7 +446,7 @@ class ArtifactService:
         No commit happens when nothing moved, so a refresh that finds the source
         unchanged leaves `updated_at` alone and nobody's `If-Match` goes stale.
         """
-        artifact, *_ = await self._one(ref)
+        artifact, *_ = await self._one(ref, project=project)
         source = source_of(artifact.metadata_, tuple(loc.uri for loc in artifact.locations))
         if source is None:
             raise Invalid(
@@ -470,7 +470,7 @@ class ArtifactService:
         if changed:
             await self.db.commit()
         return ArtifactRefreshSchema(
-            artifact=await self.get(artifact.uid),
+            artifact=await self._reload(artifact.uid),
             source=source,
             changed=changed,
             notes=list(draft.notes),
@@ -503,28 +503,35 @@ class ArtifactService:
         )
 
     async def _one(
-        self, ref: str, lock: bool = False, project: str | None = None
+        self, ref: str, lock: bool = False, project: str | None = None, everywhere: bool = False
     ) -> tuple[Artifact, str | None, str | None, str | None]:
-        row = await self.repo.get(ref, lock=lock, project=project)
+        """Another project's private artifact is not found, never forbidden: a 403 would confirm it exists."""
+        row = await self.repo.get(ref, lock=lock, project=project, everywhere=everywhere)
         if row is None:
             raise NotFound(f"no artifact {ref!r}")
         return row[0], row.base_uid, row.project_uid, row.owner_project_uid
+
+    async def _reload(self, uid: str) -> ArtifactSchema:
+        """Re-reads a row this request already reached, so its scope was checked then."""
+        return self.schema(*await self._one(uid, everywhere=True))
 
     async def get(self, ref: str, project: str | None = None) -> ArtifactSchema:
         """A name reaches the public catalogue, and `project`'s private artifacts first when given."""
         return self.schema(*await self._one(ref, project=project))
 
-    async def usage(self, ref: str) -> ArtifactUsageSchema:
+    async def usage(self, ref: str, project: str | None = None) -> ArtifactUsageSchema:
         """What depends on this artifact, counted at read time."""
-        artifact, *_ = await self._one(ref)
-        workloads, downstream = await self.repo.usage_counts(artifact)
+        artifact, *_ = await self._one(ref, project=project)
+        workloads, downstream = await self.repo.usage_counts(artifact, project)
         return ArtifactUsageSchema(
             artifact_id=artifact.uid,
             workload_count=workloads,
             downstream_count=downstream,
         )
 
-    async def fitment(self, ref: str, query: ArtifactFitmentRequest) -> ArtifactFitmentSchema:
+    async def fitment(
+        self, ref: str, query: ArtifactFitmentRequest, project: str | None = None
+    ) -> ArtifactFitmentSchema:
         """Every device class this artifact could be served on, most useful first.
 
         Reads nothing but the artifact and the observed device counts. The sizing is
@@ -547,7 +554,7 @@ class ArtifactService:
         if query.context_length is not None and query.context_length < 1:
             raise Invalid("context_length must be at least 1", {"context_length": query.context_length})
 
-        artifact, *_ = await self._one(ref)
+        artifact, *_ = await self._one(ref, project=project)
         sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
         if sizing is not None and query.quantization:
             sizing = replace(sizing, quantization=query.quantization)
@@ -705,7 +712,7 @@ class ArtifactService:
                     raise Conflict(f"an artifact with handle {artifact_handle!r} already exists") from exc
                 lost.add(artifact_handle)
                 continue
-            return await self.get(artifact.uid)
+            return await self._reload(artifact.uid)
 
     @staticmethod
     def _artifact(
@@ -752,7 +759,9 @@ class ArtifactService:
                 return candidate
         raise Conflict(f"no free handle for artifact {digest!r}")
 
-    async def update(self, ref: str, data: ArtifactUpdateRequest, if_match: str | None = None) -> ArtifactSchema:
+    async def update(
+        self, ref: str, data: ArtifactUpdateRequest, if_match: str | None = None, project: str | None = None
+    ) -> ArtifactSchema:
         """Replaces the declared half, and the location set as a whole when it is given.
 
         The replacement empties the collection and flushes before attaching the new
@@ -760,7 +769,7 @@ class ArtifactService:
         deletes, so keeping a location while changing its region would collide with
         the row it is about to replace.
         """
-        artifact, *_ = await self._one(ref, lock=True)
+        artifact, *_ = await self._one(ref, lock=True, project=project)
         check_if_match(artifact, if_match, "artifact")
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
@@ -812,16 +821,16 @@ class ArtifactService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("artifact conflicts with an existing one") from exc
-        return await self.get(artifact.uid)
+        return await self._reload(artifact.uid)
 
-    async def delete(self, ref: str) -> None:
+    async def delete(self, ref: str, project: str | None = None) -> None:
         """Refuses while a workload still names the artifact.
 
         The foreign key is `RESTRICT`, so the database would refuse anyway; the
         point of catching it is that "a workload still serves this" is an answer
         and an integrity error is not.
         """
-        artifact, *_ = await self._one(ref)
+        artifact, *_ = await self._one(ref, project=project)
         try:
             await self.repo.delete(artifact)
             await self.db.commit()
@@ -862,8 +871,8 @@ class ArtifactBaselineService:
             revision=revision(row),
         )
 
-    async def _artifact(self, ref: str) -> Artifact:
-        row = await self.repo.get(ref)
+    async def _artifact(self, ref: str, project: str | None = None) -> Artifact:
+        row = await self.repo.get(ref, project=project)
         if row is None:
             raise NotFound(f"no artifact {ref!r}")
         return row[0]
@@ -881,8 +890,9 @@ class ArtifactBaselineService:
         cursor: str | None = None,
         dataset: str | None = None,
         metric: str | None = None,
+        project: str | None = None,
     ) -> ListResponse[ArtifactBaselineSchema]:
-        artifact = await self._artifact(ref)
+        artifact = await self._artifact(ref, project)
         size = clamp_limit(limit)
         rows = await self.repo.baseline_list(
             artifact_id=artifact.id,
@@ -895,18 +905,20 @@ class ArtifactBaselineService:
         items = [self.schema(row, artifact.uid) for row in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
-    async def get(self, ref: str, baseline: str) -> ArtifactBaselineSchema:
-        artifact = await self._artifact(ref)
+    async def get(self, ref: str, baseline: str, project: str | None = None) -> ArtifactBaselineSchema:
+        artifact = await self._artifact(ref, project)
         return self.schema(await self._one(artifact, baseline), artifact.uid)
 
-    async def create(self, ref: str, data: ArtifactBaselineCreateRequest) -> ArtifactBaselineSchema:
+    async def create(
+        self, ref: str, data: ArtifactBaselineCreateRequest, project: str | None = None
+    ) -> ArtifactBaselineSchema:
         """One floor per dataset and metric, recorded in the principal's name.
 
         A second row for the same pair is refused, not reconciled: two
         declared floors for one eval is two standards, and a verdict would grade
         against whichever the query returned first.
         """
-        artifact = await self._artifact(ref)
+        artifact = await self._artifact(ref, project)
         if not data.dataset.strip():
             raise Invalid("a baseline without a dataset is not about any eval")
         if not data.metric.strip():
@@ -934,7 +946,7 @@ class ArtifactBaselineService:
                 f"artifact {artifact.uid} already declares a baseline for {data.dataset!r}/{data.metric!r}",
                 {"dataset": data.dataset, "metric": data.metric},
             ) from exc
-        return await self.get(artifact.uid, baseline.uid)
+        return self.schema(await self._one(artifact, baseline.uid), artifact.uid)
 
     async def update(
         self,
@@ -942,13 +954,14 @@ class ArtifactBaselineService:
         baseline: str,
         data: ArtifactBaselineUpdateRequest,
         if_match: str | None = None,
+        project: str | None = None,
     ) -> ArtifactBaselineSchema:
         """Revises the number, never which eval it is about.
 
         `recorded_by` and `recorded_at` are left as first written: they say who
         declared this floor, and an edit does not transfer the assertion.
         """
-        artifact = await self._artifact(ref)
+        artifact = await self._artifact(ref, project)
         row = await self._one(artifact, baseline, lock=True)
         check_if_match(row, if_match, "baseline")
 
@@ -961,10 +974,10 @@ class ArtifactBaselineService:
             setattr(row, key, value)
 
         await self.db.commit()
-        return await self.get(artifact.uid, row.uid)
+        return self.schema(await self._one(artifact, row.uid), artifact.uid)
 
-    async def delete(self, ref: str, baseline: str) -> None:
-        artifact = await self._artifact(ref)
+    async def delete(self, ref: str, baseline: str, project: str | None = None) -> None:
+        artifact = await self._artifact(ref, project)
         row = await self._one(artifact, baseline)
         await self.repo.delete_baseline(row)
         await self.db.commit()
