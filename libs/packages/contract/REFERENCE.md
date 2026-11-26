@@ -281,6 +281,9 @@ response follows are in [`API.md`](API.md).
 |---|---|---|
 | GET | `/v1/projects` | ListProjects |
 | POST | `/v1/projects` | CreateProject |
+| GET | `/v1/projects/{project}/credentials` | ListCredentials |
+| PUT | `/v1/projects/{project}/credentials/{name}` | PutCredential |
+| DELETE | `/v1/projects/{project}/credentials/{name}` | DeleteCredential |
 | GET | `/v1/projects/{ref}` | GetProject |
 | PATCH | `/v1/projects/{ref}` | UpdateProject |
 | DELETE | `/v1/projects/{ref}` | DeleteProject |

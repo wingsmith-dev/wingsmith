@@ -36,6 +36,7 @@ from app.modules.components.routes import ComponentRoutes
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
 from app.modules.operations.routes import OperationRoutes
 from app.modules.allocations.routes import AllocationRoutes
+from app.modules.credentials.routes import CredentialRoutes
 from app.modules.deployments.routes import DeploymentRoutes
 from app.modules.notifications.routes import NotificationChannelRoutes
 from app.modules.device_classes.routes import DeviceClassRoutes
@@ -62,6 +63,7 @@ V1_ROUTES = [
     TenantRoutes,
     GatewayRoutes,
     ProjectRoutes,
+    CredentialRoutes,
     QuotaRoutes,
     ServingQuotaRoutes,
     PriorityClassRoutes,

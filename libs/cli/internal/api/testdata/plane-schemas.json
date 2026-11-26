@@ -661,6 +661,20 @@
   "reactor": "$ReactorConfigSchema",
   "setup": "$SetupConfigSchema"
  },
+ "CredentialPutRequest": {
+  "expires_at": "string?",
+  "kind": "string",
+  "secret_ref": "string"
+ },
+ "CredentialSchema": {
+  "created_at": "string",
+  "expires_at": "string?",
+  "kind": "string",
+  "name": "string",
+  "project": "string",
+  "secret_ref": "string",
+  "updated_at": "string?"
+ },
  "DatabaseConfigSchema": {
   "database": "string",
   "driver": "string",
