@@ -1,7 +1,7 @@
 # Build context is `libs/`, not `libs/agent/`; see the note in gateway/Dockerfile. The agent requires
 # libs/packages/tunnel through a `replace`, and a path outside the context does not exist to the
 # builder.
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /src
 
 COPY packages/tunnel/ ./packages/tunnel/

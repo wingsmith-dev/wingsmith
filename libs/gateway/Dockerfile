@@ -4,7 +4,7 @@
 # path outside the context does not exist as far as the builder is concerned: the narrower context
 # fails at `go mod download` with a missing replacement, not anywhere informative. So the
 # context is the parent and both module trees are copied in.
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /src
 
 # The wire first and on its own layer: it changes far less often than the gateway does, so a gateway
