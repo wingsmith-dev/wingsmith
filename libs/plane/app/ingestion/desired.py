@@ -57,6 +57,7 @@ from app.ingestion.time import now
 from app.ingestion.statements import UnknownCluster
 from app.ingestion.statements import cluster_ref_clause
 from app.modules.artifacts.scope import visible
+from app.modules.credentials.scope import ProjectCredentials
 from app.modules.workloads.services import resolved_engine_args
 
 
@@ -267,6 +268,14 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     if not artifacts:
         return []
 
+    owners = {a.owner_project_id for a in artifacts if a.owner_project_id is not None}
+    project_uids: dict[UUID, str] = {}
+    if owners:
+        rows = await db.execute(select(Project.id, Project.uid).where(Project.id.in_(owners)))
+        project_uids = {row.id: row.uid for row in rows}
+    credentials = await ProjectCredentials.load(db, owners, now())
+    owner_of = {a.id: a.owner_project_id for a in artifacts}
+
     located = await db.execute(
         select(ArtifactLocation)
         .where(ArtifactLocation.artifact_id.in_([a.id for a in artifacts]))
@@ -275,12 +284,16 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     sources: dict[UUID, list[ArtifactSource]] = {}
     for location in located.scalars():
         bucket = sources.setdefault(location.artifact_id, [])
+        kind = SOURCE_KINDS.get(location.scheme, "https")
+        # Only a private artifact carries a reference, and only to its own project's credential:
+        # a public one is fetched with the cluster's fleet-wide token.
+        owner = owner_of[location.artifact_id]
         bucket.append(
             ArtifactSource(
-                kind=SOURCE_KINDS.get(location.scheme, "https"),
+                kind=kind,
                 uri=location.uri,
                 priority=0 if location.preferred else len(bucket),
-                credential_ref=str(location.credential_id) if location.credential_id else None,
+                credential_ref=credentials.ref(owner, location.credential_id, kind) if owner else None,
             )
         )
 
@@ -295,6 +308,7 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
             licence=artifact.licence or "",
             sources=sources.get(artifact.id, []),
             updated_at=format_ts(artifact.updated_at or artifact.created_at),
+            owner_project=project_uids.get(artifact.owner_project_id) if artifact.owner_project_id else None,
         )
         for artifact in artifacts
     ]

@@ -116,6 +116,13 @@ secret. Values would be copied into the plane's database and into every backup o
 purpose: the names already tell a reader what the workload expects to find. A secret or config-map
 reference appears as `secretRef:<name>`, naming the source without reading it.
 
+**`artifact.desired` carries a credential reference, never a credential.** `owner_project` is
+set on a private artifact and absent for the public catalogue. Only a private artifact's sources
+carry `credential_ref`, and only to a credential of that same project: the credential's
+`secret_ref`, which the operator resolves to a Secret an admin applied on the cluster. The token
+itself is never in the plane's database and never on the stream. A public artifact is fetched with
+the cluster's own fleet-wide token.
+
 **`deployment.desired` carries `authority`, and it is the only thing that decides whether the
 operator may write.** `observed` means record and verify and touch nothing; `managed` means render
 and converge. An absent value reads as `observed`, so a frame from a plane that predates the field

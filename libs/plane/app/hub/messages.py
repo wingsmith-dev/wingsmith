@@ -663,6 +663,8 @@ class ArtifactSource(Struct):
     uri: str
     priority: int
     credential_ref: str | None = None
+    """The `secret_ref` of the credential this source is read with, never the secret. Set only on a
+    private artifact's sources, to its own project's credential."""
 
 
 class ArtifactDesired(Struct):
@@ -675,6 +677,9 @@ class ArtifactDesired(Struct):
     licence: str
     sources: list[ArtifactSource]
     updated_at: str
+    owner_project: str | None = None
+    """The project a private artifact belongs to, null for the public catalogue. The operator
+    caches a private artifact under that project and fetches it with that project's token."""
 
 
 class ComponentDesired(Struct):
