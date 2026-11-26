@@ -16,6 +16,12 @@ protocol can change between minor versions.
   `owner_project_id`). Handle and digest are unique within the public catalogue or within one
   project, and a reference by handle or name reaches only public artifacts and the caller's own.
 
+### Changed
+
+- Deployments render under a cluster-unique `object_name` (workload name plus the tail of the
+  workload id) instead of the bare workload name, so workloads of one name in different projects
+  can share a cluster. Existing and adopted deployments keep their current name.
+
 ## [0.3.0] - 2026-11-26
 
 The first tagged release. Images for the plane, console, operator, agent, gateway and demo, and the

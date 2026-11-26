@@ -793,6 +793,12 @@ cluster or a scale change, not a DELETE of the per-cluster row. What remains is 
 detail, a `PATCH` narrow enough to hold only per-cluster switches, and the authority verb below.
 Filters: `cluster`, `workload`, `project`, `phase` (which reads the deployment's admission phase).
 
+**A deployment's `name` is its workload's; `object_name` is what it renders as in the cluster.**
+Only `object_name` is unique per cluster: the workload name cut to 23 characters, a dash, and the
+last eight characters of the workload id (`qwen-7k2m9x4p`), shared by the workload's deployments in
+every cluster. Two projects can therefore both run a `qwen` on one cluster. A deployment created
+before this, or adopted from a running workload, keeps its name as its object name (ADR 0020).
+
 **`/v1/discovered` is the one observed collection that accepts a `POST`**, and the exception proves
 the rule: `POST /v1/discovered/{ref}/track` and `.../ignore` do not write the sighting, which stays
 ingestion's alone. They write a decision beside it: one row saying we looked at this and want it in
