@@ -420,8 +420,8 @@ async def seed_deployment(sessions, cluster) -> None:
                   INSERT INTO bind_priority_class (uid, name, value) VALUES ('prc_bench', 'bench', 41337)
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), a AS (
-                  INSERT INTO demand_artifact (uid, digest, name)
-                  VALUES ('art_bench', 'sha256:bench', 'gpt-oss-120b')
+                  INSERT INTO demand_artifact (uid, handle, digest, name)
+                  VALUES ('art_bench', 'bench', 'sha256:bench', 'gpt-oss-120b')
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
                   INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id,

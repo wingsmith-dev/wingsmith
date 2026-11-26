@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.db import models  # noqa: F401  (registers every table on the metadata)
 from app.db.engine import Base
 from app.core.exceptions import Conflict
+from app.modules.artifacts import handle
 from app.modules.quotas.schemas import QuotaCreateRequest
 from app.modules.quotas.services import QuotaService
 
@@ -252,7 +253,7 @@ def test_benchmark_history_survives_its_deployment(scratch) -> None:
         project = _project(conn)
         priority = conn.execute("SELECT id FROM bind_priority_class LIMIT 1").fetchone()[0]
         artifact = conn.execute(
-            "INSERT INTO demand_artifact (uid, digest, name) VALUES ('art_t', 'sha256:aa', 'm') RETURNING id"
+            "INSERT INTO demand_artifact (uid, handle, digest, name) VALUES ('art_t', 'm', 'sha256:aa', 'm') RETURNING id"
         ).fetchone()[0]
         cluster = conn.execute(
             "INSERT INTO supply_cluster (uid, name, region) VALUES ('clu_t', 'alpha', 'us-east-1') RETURNING id"
@@ -306,3 +307,29 @@ def test_deleting_a_subject_deletes_its_policy_attachments(scratch) -> None:
         assert [t for (t,) in conn.execute(attached).fetchall()] == ["project", "tenant"], "the orphan is gone"
         conn.execute("DELETE FROM bind_tenant WHERE id = %s", (tenant,))
         assert conn.execute(attached).fetchall() == [], "the cascaded project took its attachment too"
+
+
+def test_artifact_handles_are_backfilled_oldest_first_and_unique(scratch) -> None:
+    before, after = "8d2f6b0e1a57", "3b7e5d1c9a42"
+    _alembic(scratch, "upgrade", before)
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        for uid, digest, slug, name in [
+            ("art_a", "sha256:aa", "openai/gpt-oss-20b", "gpt-oss-20b"),
+            ("art_b", "sha256:bb", "openai/gpt-oss-20b", "gpt-oss-20b"),
+            ("art_c", "sha256:cc", "", "My Checkpoint"),
+        ]:
+            conn.execute(
+                "INSERT INTO demand_artifact (uid, digest, slug, name) VALUES (%s, %s, %s, %s)",
+                (uid, digest, slug, name),
+            )
+
+    _alembic(scratch, "upgrade", after)
+    with psycopg.connect(_dsn(scratch)) as conn:
+        handles = dict(conn.execute("SELECT uid, handle FROM demand_artifact").fetchall())
+    assert handles["art_a"] == "openai-gpt-oss-20b"
+    assert handles["art_b"] == handle.suffixed("openai-gpt-oss-20b", "sha256:bb")
+    assert handles["art_c"] == "my-checkpoint"
+
+    _alembic(scratch, "downgrade", before)
+    with psycopg.connect(_dsn(scratch)) as conn:
+        assert conn.execute("SELECT count(*) FROM demand_artifact").fetchone()[0] == 3

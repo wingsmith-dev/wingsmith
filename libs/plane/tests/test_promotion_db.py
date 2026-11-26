@@ -70,8 +70,8 @@ async def seed_demand(sessions) -> None:
         )
         await db.execute(
             text(
-                "insert into demand_artifact (id, uid, digest, name, kind)"
-                " values (:id, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
+                "insert into demand_artifact (id, uid, handle, digest, name, kind)"
+                " values (:id, :uid, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )

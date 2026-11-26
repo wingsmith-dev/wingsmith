@@ -75,8 +75,8 @@ async def seed_demand(sessions) -> None:
         )
         await db.execute(
             text(
-                "insert into demand_artifact (id, uid, digest, name, kind)"
-                " values (:id, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
+                "insert into demand_artifact (id, uid, handle, digest, name, kind)"
+                " values (:id, :uid, :uid, 'sha256:abc', 'gpt-oss-120b', 'weights')"
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )
@@ -1271,7 +1271,10 @@ async def test_adapter_references_resolve_in_order_in_one_lookup(sessions) -> No
     async with sessions.begin() as db:
         for name, digest in (("lora-a", "sha256:a1"), ("lora-b", "sha256:b1"), ("lora-b", "sha256:b2")):
             await db.execute(
-                text("insert into demand_artifact (uid, digest, name, kind) values (:uid, :digest, :name, 'weights')"),
+                text(
+                    "insert into demand_artifact (uid, handle, digest, name, kind)"
+                    " values (:uid, :uid, :digest, :name, 'weights')"
+                ),
                 {"uid": ids.new_uid(ids.ARTIFACT), "digest": digest, "name": name},
             )
     base = (await fetch(sessions, "select uid from demand_artifact where name = 'gpt-oss-120b'"))[0][0]

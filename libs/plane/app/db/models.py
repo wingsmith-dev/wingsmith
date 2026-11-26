@@ -328,6 +328,7 @@ class Artifact(BaseMixin):
     """
 
     __tablename__ = "demand_artifact"
+    __table_args__ = (UniqueConstraint("handle", name="uq_demand_artifact_handle"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -341,6 +342,10 @@ class Artifact(BaseMixin):
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
     """Machine name, lowercase with its organisation: `hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`.
     Derived once from the preferred location. Not unique; identity is the digest."""
+    handle: Mapped[str] = mapped_column(String(253), nullable=False)
+    """The unique, immutable name a reference or a manifest uses: `openai-gpt-oss-20b`. Derived from
+    the slug at create, with a digest suffix when another artifact holds it. See
+    `app.modules.artifacts.handle`."""
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")

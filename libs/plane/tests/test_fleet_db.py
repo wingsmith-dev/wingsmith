@@ -54,8 +54,8 @@ async def seed_artifact(db, name: str, base: uuid.UUID | None = None) -> tuple[u
     uid = ids.new_uid(ids.ARTIFACT)
     row = await insert(
         db,
-        "insert into demand_artifact (uid, digest, name, kind, base_artifact_id)"
-        " values (:uid, :digest, :name, 'weights', :base)",
+        "insert into demand_artifact (uid, handle, digest, name, kind, base_artifact_id)"
+        " values (:uid, :uid, :digest, :name, 'weights', :base)",
         uid=uid,
         digest=f"sha256:{uuid.uuid4().hex}",
         name=name,
