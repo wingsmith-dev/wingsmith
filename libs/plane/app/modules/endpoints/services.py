@@ -467,9 +467,17 @@ def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
 
 
 def _revision(endpoint: Endpoint) -> str:
-    """The value `If-Match` is checked against, derived from the last write."""
-    stamp = endpoint.updated_at or endpoint.created_at
-    return str(int(stamp.timestamp() * 1_000_000))
+    """The value `If-Match` is checked against: the spec generation."""
+    return str(endpoint.generation)
+
+
+_SPEC = ("slug", "visibility", "routing_strategy", "enabled", "surface", "labels")
+
+
+def _spec_of(endpoint: Endpoint, aliases: builtins.list[str]) -> tuple:
+    """What the endpoint's generation counts. Targets and failover order are left out: they
+    resolve to deployments at read time and change under drains with no endpoint write."""
+    return tuple(getattr(endpoint, key) for key in _SPEC), tuple(sorted(aliases))
 
 
 def _stamp(row) -> dt.datetime | None:
@@ -575,6 +583,7 @@ class EndpointService:
             labels=endpoint.labels,
             created_at=endpoint.created_at,
             updated_at=endpoint.updated_at,
+            generation=endpoint.generation,
             revision=_revision(endpoint),
         )
 
@@ -762,6 +771,7 @@ class EndpointService:
         if if_match is not None and if_match != _revision(endpoint):
             raise Conflict("endpoint changed since it was read", {"revision": _revision(endpoint)})
 
+        before = _spec_of(endpoint, alias_names(endpoint))
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         if "surface" in fields:
             check_surface(fields["surface"])
@@ -803,6 +813,8 @@ class EndpointService:
 
         for key, value in fields.items():
             setattr(endpoint, key, value)
+        if _spec_of(endpoint, aliases if aliases is not UNSET else alias_names(endpoint)) != before:
+            endpoint.generation += 1
 
         try:
             await self.db.commit()

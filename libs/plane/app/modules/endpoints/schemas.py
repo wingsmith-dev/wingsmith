@@ -205,6 +205,8 @@ class EndpointSchema(Struct):
     labels: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
+    generation: int
+    """Counts changes to the declared fields and aliases; targets resolve at read time and do not count."""
     revision: str
 
 

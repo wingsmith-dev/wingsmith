@@ -187,10 +187,11 @@ def test_label_selector_becomes_a_predicate_per_key(repo):
     assert "->>" not in sql(repo.list_query(limit=10))
 
 
-def test_revision_is_derived_from_the_last_write():
-    assert _revision(Endpoint(created_at=EPOCH, updated_at=None)) == str(int(EPOCH.timestamp() * 1_000_000))
-    later = Endpoint(created_at=EPOCH, updated_at=EPOCH + dt.timedelta(seconds=1))
-    assert _revision(later) != _revision(Endpoint(created_at=EPOCH, updated_at=None))
+def test_revision_is_the_spec_generation_not_the_last_write():
+    first = Endpoint(created_at=EPOCH, updated_at=None, generation=1)
+    later = Endpoint(created_at=EPOCH, updated_at=EPOCH + dt.timedelta(seconds=1), generation=1)
+    assert _revision(first) == _revision(later) == "1"
+    assert _revision(Endpoint(created_at=EPOCH, generation=2)) == "2"
 
 
 def test_list_query_never_touches_a_cluster_table(repo):
@@ -313,6 +314,7 @@ class FakeEndpoint:
         self.surface = surface or {}
         self.created_at = EPOCH
         self.updated_at = None
+        self.generation = 1
 
 
 class FakeTarget:
@@ -1441,6 +1443,28 @@ async def test_sending_an_alias_set_replaces_the_whole_set_and_sending_none_leav
     repo = FakeUpdateRepo(endpoint, alias_owners={"moonshotai/kimi-k3": endpoint.id})
     await updating(repo).update("end_1", EndpointUpdateRequest(aliases=[]))
     assert repo.replaced == (endpoint, [])
+
+
+@pytest.mark.asyncio
+async def test_a_replayed_update_leaves_the_generation_alone():
+    endpoint = FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
+    endpoint.labels = {"tier": "gold"}
+    repo = FakeUpdateRepo(endpoint, alias_owners={"moonshotai/kimi-k3": endpoint.id})
+    replay = EndpointUpdateRequest(
+        slug="kimi-k3", aliases=["moonshotai/kimi-k3"], labels={"tier": "gold"}, enabled=True
+    )
+    await updating(repo).update("end_1", replay)
+    assert endpoint.generation == 1
+
+
+@pytest.mark.asyncio
+async def test_a_changed_label_or_alias_moves_the_generation():
+    endpoint = FakeEndpoint(slug="kimi-k3")
+    repo = FakeUpdateRepo(endpoint)
+    await updating(repo).update("end_1", EndpointUpdateRequest(labels={"tier": "gold"}))
+    assert endpoint.generation == 2
+    await updating(repo).update("end_1", EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
+    assert endpoint.generation == 3
 
 
 @pytest.mark.asyncio
