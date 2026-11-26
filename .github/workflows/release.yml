@@ -91,6 +91,9 @@ jobs:
           - image: gateway
             context: libs
             file: libs/gateway/Dockerfile
+          - image: demo
+            context: .
+            file: dev/demo/Dockerfile
     env:
       IMAGE: ghcr.io/${{ needs.version.outputs.owner }}/${{ matrix.image }}
       VERSION: ${{ needs.version.outputs.version }}

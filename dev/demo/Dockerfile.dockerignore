@@ -1,0 +1,19 @@
+# Allowlist: the build context is the repository root, which holds a console tree with node_modules.
+*
+!libs/gateway
+!libs/agent
+!libs/transit
+!libs/packages/tunnel
+!libs/packages/contract/devices.json
+!libs/plane/pyproject.toml
+!libs/plane/uv.lock
+!libs/plane/README.md
+!libs/plane/app
+!libs/plane/migrations
+!libs/plane/alembic.ini
+!dev/fleet.py
+!dev/seed.py
+!dev/inference.py
+!dev/demo/entrypoint.sh
+**/__pycache__
+**/node_modules
