@@ -56,6 +56,7 @@ from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 from app.ingestion.statements import UnknownCluster
 from app.ingestion.statements import cluster_ref_clause
+from app.modules.artifacts.scope import visible
 from app.modules.workloads.services import resolved_engine_args
 
 
@@ -240,10 +241,19 @@ async def _components(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> l
 
 
 def _artifact_ids_query(cluster_id: UUID):
-    """Every artifact a cluster needs: its warm set, plus what its deployments serve."""
-    warm = select(WarmSet.artifact_id).where(WarmSet.cluster_id == cluster_id)
+    """Every artifact a cluster needs: its warm set, plus what its deployments serve.
+
+    A warm set belongs to no project, so it only ever carries public artifacts. A private one
+    reaches a cluster only through a workload of the project that owns it.
+    """
+    warm = (
+        select(WarmSet.artifact_id)
+        .join(Artifact, WarmSet.artifact_id == Artifact.id)
+        .where(WarmSet.cluster_id == cluster_id, visible())
+    )
     served = (
         select(Workload.artifact_id)
+        .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
         .join(Deployment, Deployment.workload_id == Workload.id)
         .where(Deployment.cluster_id == cluster_id)
     )
@@ -448,7 +458,7 @@ async def _deployments(
         .join(Workload, Deployment.workload_id == Workload.id)
         .join(Project, Workload.project_id == Project.id)
         .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
-        .join(Artifact, Workload.artifact_id == Artifact.id)
+        .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .order_by(Deployment.seq)
     )
@@ -477,10 +487,10 @@ async def _deployments(
         roles_by_workload.setdefault(role.workload_id, []).append(role)
 
     adapters = {
-        artifact_id: uid
-        for artifact_id, uid in (
+        artifact_id: (uid, owner)
+        for artifact_id, uid, owner in (
             await db.execute(
-                select(Artifact.id, Artifact.uid).where(
+                select(Artifact.id, Artifact.uid, Artifact.owner_project_id).where(
                     Artifact.id.in_({a for row in rows for a in (row[1].adapter_artifact_ids or [])})
                 )
             )
@@ -490,7 +500,12 @@ async def _deployments(
     out: list[DeploymentDesired] = []
     for row in rows:
         deployment, workload, project_uid, priority, artifact = row[:5]
-        artifact_ids = [artifact.uid] + [adapters[a] for a in (workload.adapter_artifact_ids or []) if a in adapters]
+        # An adapter private to another project never fans out with this workload.
+        artifact_ids = [artifact.uid] + [
+            adapters[a][0]
+            for a in (workload.adapter_artifact_ids or [])
+            if a in adapters and adapters[a][1] in (None, workload.project_id)
+        ]
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,
@@ -584,7 +599,7 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
         await db.execute(
             select(WarmSet, Artifact.uid)
             .join(Artifact, WarmSet.artifact_id == Artifact.id)
-            .where(WarmSet.cluster_id == cluster_id)
+            .where(WarmSet.cluster_id == cluster_id, visible())
             .order_by(WarmSet.priority.desc(), WarmSet.seq)
         )
     ).all()
@@ -594,7 +609,7 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     served = (
         await db.execute(
             select(Artifact.seq, Artifact.uid)
-            .join(Workload, Workload.artifact_id == Artifact.id)
+            .join(Workload, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .join(Deployment, Deployment.workload_id == Workload.id)
             .where(
                 Deployment.cluster_id == cluster_id,
