@@ -63,17 +63,14 @@ def derive_phase(deployments: list[Deployment]) -> str:
     return PHASE_ORDER[min(ranked)]
 
 
-def _revision(workload: Workload, deployments: list[Deployment]) -> str:
-    """The value `If-Match` is checked against, across the workload and its expansion.
+def _revision(workload: Workload) -> str:
+    """The value `If-Match` is checked against: the spec generation.
 
-    A workload is one row plus N, and a scale that only moved a share touches a
-    deployment and leaves `demand_workload.updated_at` where it was. Deriving the
-    revision from the workload alone would let that write go unnoticed by the next
-    conditional update, so the latest stamp anywhere in the object wins.
+    Only spec writes move it (see `spec.py`), so observation landing on the row or on its
+    deployments is never mistaken for a concurrent edit. Scale is spec, so a scale that only
+    moved a share still moves it.
     """
-    stamps = [workload.updated_at or workload.created_at]
-    stamps.extend(d.updated_at or d.created_at for d in deployments)
-    return str(int(max(stamps).timestamp() * 1_000_000))
+    return str(workload.generation)
 
 
 def _revision_view(row: WorkloadRevision) -> WorkloadRevisionSchema:

@@ -512,6 +512,8 @@ class WorkloadSchema(Struct):
     deadline_at: dt.datetime | None
     created_at: dt.datetime
     updated_at: dt.datetime | None
+    generation: int
+    """Counts changes to the declared spec. Observation never moves it."""
     revision: str
     deployments: list[WorkloadDeploymentSchema]
     artifact_tag: str | None

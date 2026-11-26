@@ -59,12 +59,14 @@ class FakeDeployment:
         self.admission_phase = phase
         self.created_at = stamp or EPOCH
         self.updated_at = None
+        self.generation = 1
 
 
 class FakeWorkload:
     def __init__(self, stamp: dt.datetime | None = None):
         self.created_at = stamp or EPOCH
         self.updated_at = None
+        self.generation = 1
 
 
 @pytest.fixture
@@ -275,12 +277,13 @@ def test_phase_is_the_least_advanced_deployment_unless_one_failed():
     assert derive_phase([FakeDeployment("failed"), FakeDeployment("pending")]) == "failed"
 
 
-def test_revision_moves_when_only_a_share_moved():
+def test_revision_is_the_spec_generation_and_ignores_write_stamps():
     workload = FakeWorkload()
-    quiet = _revision(workload, [FakeDeployment("running")])
-    scaled = FakeDeployment("running")
-    scaled.updated_at = EPOCH + dt.timedelta(seconds=1)
-    assert _revision(workload, [scaled]) != quiet
+    quiet = _revision(workload)
+    workload.updated_at = EPOCH + dt.timedelta(seconds=1)
+    assert _revision(workload) == quiet == "1"
+    workload.generation = 2
+    assert _revision(workload) == "2"
 
 
 def test_the_unit_of_scale_is_named_by_kind():
@@ -413,10 +416,6 @@ def test_the_list_offers_the_filters_a_person_actually_asks_for():
 def test_conditional_update_reads_if_match_from_the_header():
     parameter = inspect.signature(WorkloadRoutes.update_workload.fn).parameters["if_match"]
     assert parameter.default.header == "If-Match"
-
-
-def test_revision_is_derived_from_the_last_write_not_stored():
-    assert _revision(FakeWorkload(), []) == str(int(EPOCH.timestamp() * 1_000_000))
 
 
 def test_placement_rollup_reads_only_live_allocations_and_devices(repo):

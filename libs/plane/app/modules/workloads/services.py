@@ -55,6 +55,8 @@ from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 from app.modules.placement.repository import SUBJECT_WORKLOAD
 from app.modules.deployments.repository import bump_generation
 
+from .spec import spec_of
+from .spec import bump_spec
 from .views import UNITS
 from .views import _rollup
 from .views import _status
@@ -621,7 +623,8 @@ class WorkloadService:
             deadline_at=workload.deadline_at,
             created_at=workload.created_at,
             updated_at=workload.updated_at,
-            revision=_revision(workload, rows),
+            generation=workload.generation,
+            revision=_revision(workload),
             deployments=deployments,
             artifact_tag=artifact_tag,
         )
@@ -1151,7 +1154,7 @@ class WorkloadService:
         workload = row[0]
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         deployments = [d[0] for d in deployment_rows]
-        revision = _revision(workload, deployments)
+        revision = _revision(workload)
         if if_match is not None and if_match != revision:
             raise Conflict("workload changed since it was read", {"revision": revision})
 
@@ -1175,6 +1178,8 @@ class WorkloadService:
         roles = await self.repo.roles_of(workload)
         before_shape = placement_shape(workload, roles)
         before_digest = workload.serving_digest
+        before_spec = spec_of(workload, roles)
+        before_rendered = (dict(workload.overrides), list(workload.adapter_artifact_ids), dict(workload.labels))
         if "serving" in fields:
             patch = fields.pop("serving")
             current = workload.serving_topology or AGGREGATED
@@ -1203,15 +1208,20 @@ class WorkloadService:
 
         reshaped = placement_shape(workload, roles) != before_shape
         declared = set(data.to_dict(exclude_unset=True))
+        changed = spec_of(workload, roles) != before_spec
         rendered = (
             workload.serving_digest != before_digest
             or reshaped
-            or bool({"overrides", "adapter_artifacts", "labels"} & declared)
+            or (dict(workload.overrides), list(workload.adapter_artifact_ids), dict(workload.labels)) != before_rendered
         )
+        if changed:
+            bump_spec(workload)
         change = WorkloadChange()
         name = workload.name
         try:
             for deployment, deployment_row in zip(deployments, deployment_rows, strict=True):
+                if not changed:
+                    break
                 if rendered:
                     await bump_generation(self.db, deployment)
                 await self._record(
@@ -1361,6 +1371,8 @@ class WorkloadService:
         desired = workload.desired_scale if parameters.desired is None else parameters.desired
         check_scale(min_scale, desired, max_scale, workload.kind, workload.gang_size)
 
+        if (workload.min_scale, workload.max_scale, workload.desired_scale) != (min_scale, max_scale, desired):
+            bump_spec(workload)
         workload.min_scale = min_scale
         workload.max_scale = max_scale
         workload.desired_scale = desired
@@ -1391,6 +1403,7 @@ class WorkloadService:
         if workload.paused == paused:
             return WorkloadChange(result={"paused": paused, "unchanged": True})
         workload.paused = paused
+        bump_spec(workload)
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
 
         if paused:
@@ -1483,6 +1496,7 @@ class WorkloadService:
         if parameters.note is not None:
             await self._note(workload, parameters.note)
         after_unit = group_devices(workload.device_count, roles)
+        bump_spec(workload)
         workload.min_scale = min_scale
         workload.max_scale = max_scale
         workload.desired_scale = desired
