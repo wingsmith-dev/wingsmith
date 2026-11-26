@@ -1318,6 +1318,12 @@ Mutating requests accept `Idempotency-Key`. `PATCH` is a partial update; a field
 body is untouched, and null explicitly clears. Conditional updates use `If-Match` against the
 object's `revision`, and a mismatch is `409 conflict`.
 
+Workloads and endpoints carry a spec `generation`, and their `revision` is that number. Only a write
+that changes a declared value moves it: observation (ingestion, phase and start/finish rollups,
+`imported_args`) never does, and neither do endpoint targets, which resolve to deployments at read
+time. A replayed `PATCH` that restates the current values is a no-op: the generation stays, no
+deployment rolls and no `updated` event is recorded. Scale and pause are spec and move it.
+
 ## 9. Status
 
 **Draft.** §1–§5 are settled and clients should be written against them. §6's path list is settled

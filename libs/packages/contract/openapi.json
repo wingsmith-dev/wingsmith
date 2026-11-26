@@ -4768,6 +4768,9 @@
             },
             "type": "array"
           },
+          "generation": {
+            "type": "integer"
+          },
           "id": {
             "type": "string"
           },
@@ -4818,6 +4821,7 @@
           "created_at",
           "enabled",
           "failover_order",
+          "generation",
           "id",
           "labels",
           "name",
@@ -11949,6 +11953,9 @@
           "gang_size": {
             "type": "integer"
           },
+          "generation": {
+            "type": "integer"
+          },
           "id": {
             "type": "string"
           },
@@ -12046,6 +12053,7 @@
           "created_at",
           "deployments",
           "gang_size",
+          "generation",
           "id",
           "kind",
           "labels",
