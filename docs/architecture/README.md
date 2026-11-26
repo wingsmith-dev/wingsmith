@@ -757,3 +757,4 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
 | [0018](../decisions/0018-the-inference-tunnel-is-our-own-http2-role-reversal.md) | The inference tunnel is our own HTTP/2 role reversal, with its threat model |
 | [0019](../decisions/0019-an-artifact-is-named-by-a-handle-not-its-slug.md) | An artifact is named by a handle, not its slug |
 | [0020](../decisions/0020-deployments-render-under-a-workload-scoped-object-name.md) | Deployments render under a workload-scoped object name |
+| [0022](../decisions/0022-plane-kinds-are-manifests-beside-the-http-api.md) | Plane kinds are manifests beside the HTTP API |

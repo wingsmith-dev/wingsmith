@@ -15,6 +15,9 @@ protocol can change between minor versions.
 - Artifacts can be private to a project (`private: true` with `project` on create, read back as
   `owner_project_id`). Handle and digest are unique within the public catalogue or within one
   project, and a reference by handle or name reaches only public artifacts and the caller's own.
+- Workloads, endpoints and artifacts read as `plane.wingsmith.dev/v1alpha1` manifests at
+  `GET /v1/manifests/{kind}/{project}/{name}` (public artifacts at `/v1/manifests/artifacts/{name}`),
+  and `wings get <kind> <name> -o yaml` prints one.
 
 ### Changed
 
