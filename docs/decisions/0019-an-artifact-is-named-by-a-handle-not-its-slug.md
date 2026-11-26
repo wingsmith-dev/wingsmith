@@ -12,20 +12,28 @@ registered later. The gateway routes on the slug, so making it unique would brea
 
 ## Decision
 
-Add `Artifact.handle`: unique across the catalogue, immutable, DNS-subdomain shaped (lowercase
+Add `Artifact.handle`: unique within the artifact's scope, immutable, DNS-subdomain shaped (lowercase
 alphanumerics, `-`, `.`, at most 253 characters) so it can become a Kubernetes name unchanged.
 
 - Declared on create, or derived from the slug (else the name) with `/` and other separators
   folded to `-`. When the derived handle is taken, a suffix from the sha256 of the digest is added;
-  the digest is already unique, so the suffix is deterministic.
+  the digest is unique within the scope, so the suffix is deterministic.
 - There is no update field. A different handle is a different reference, and references in
   manifests must not move under them.
-- Unique globally rather than per project: artifacts are a catalogue, and shared ones have no
-  project.
-- References resolve by id, then handle, then name.
+- Scoped by `Artifact.owner_project_id`. NULL is the public catalogue, shared by every project;
+  set, the artifact is private to that project (a private Hugging Face repo, a fine-tune, a LoRA).
+  Two partial unique indexes enforce each of handle and digest: one over public rows, one over
+  `(owner_project_id, …)` for private rows. Digest dedup therefore stays inside a scope: a private
+  copy of a public model is its own row, and two projects never share a private one. `project_id`
+  stays what it was, who registered the artifact, and scopes nothing.
+- References resolve by id, then handle, then name, among the public artifacts and the caller's
+  project's private ones, private first. No reference by handle or name reaches another project's
+  private artifact. Reads by id, listings, and per-project credentials for pulling private weights
+  are not scoped yet; that is a later phase.
 - The migration backfills oldest first, so the first artifact registered keeps the plain handle.
 
 ## Consequences
 
-The slug stays what the gateway routes on and may still collide. A handle says nothing about the
+The slug stays what the gateway routes on and may still collide. A handle alone no longer names
+one artifact across the plane: a manifest's artifact reference is read in the manifest's project. A handle says nothing about the
 runtime that serves the artifact, so nothing here assumes Dynamo or any one worker.

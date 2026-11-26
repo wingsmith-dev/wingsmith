@@ -12,6 +12,9 @@ protocol can change between minor versions.
 - Artifacts carry a unique, immutable `handle` (`openai-gpt-oss-20b`), derived from the slug or
   declared at create, and accepted wherever an artifact reference is. Existing artifacts are
   backfilled oldest first.
+- Artifacts can be private to a project (`private: true` with `project` on create, read back as
+  `owner_project_id`). Handle and digest are unique within the public catalogue or within one
+  project, and a reference by handle or name reaches only public artifacts and the caller's own.
 
 ## [0.3.0] - 2026-11-26
 

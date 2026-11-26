@@ -295,7 +295,7 @@ Neither is expensive if designed in. Both are painful once placement assumes dev
 
 | Object | Kind | Holds |
 |---|---|---|
-| **Artifact** | declared | immutable, content-addressed weights: digest, unique `handle`, size, format, licence, one or more locations |
+| **Artifact** | declared | immutable, content-addressed weights: digest, `handle` unique per scope (public or one project), size, format, licence, one or more locations |
 | **Workload** | declared, plane-only | what you asked to run, globally: the artifact and a reproducible way to serve it (engine and version, quantization, TP/PP/EP, context length, KV and prefix cache configuration, engine arguments, the resulting device shape and class), plus kind (only `service` is accepted; `task` and `gang` are reserved), total scale bounds, priority, and which clusters it may use. Has many Deployments |
 | **Deployment** | declared | one workload on one cluster, with **that cluster's share** of the scale. The unit the operator reconciles, carrying the serving configuration inlined |
 | **Replica** | observed | a running instance on named devices, with readiness and engine version |
