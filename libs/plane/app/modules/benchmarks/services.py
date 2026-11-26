@@ -6,6 +6,7 @@ from typing import Any
 from typing import NamedTuple
 
 from sqlalchemy import Row
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from app.core.ids import OPERATION
 from app.core.ids import BENCHMARK_RUN
 from app.core.ids import BENCHMARK_REQUEST
 from app.core.ids import new_uid
+from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Operation
@@ -126,6 +128,8 @@ class Expansion(NamedTuple):
     image: str
     parameters: dict
     endpoint: Any
+    projects: dict = {}
+    """Project uid by id, for the targets whose artifact is private."""
 
 
 class Slot(NamedTuple):
@@ -493,7 +497,16 @@ class BenchmarkService:
             reason=data.reason,
         )
 
-        plan = Expansion(data=data, harness=harness, image=image, parameters=parameters, endpoint=endpoint)
+        owners = {
+            t.artifact.owner_project_id for t in targets or () if t.artifact is not None and t.artifact.owner_project_id
+        }
+        projects: dict = {}
+        if owners:
+            rows = await self.db.execute(select(Project.id, Project.uid).where(Project.id.in_(owners)))
+            projects = {row.id: row.uid for row in rows}
+        plan = Expansion(
+            data=data, harness=harness, image=image, parameters=parameters, endpoint=endpoint, projects=projects
+        )
         runs: list[BenchmarkRun] = []
         operations: list[tuple[Operation, BenchmarkRun]] = []
         for target in targets or [Target(None, None, None)]:
@@ -599,6 +612,9 @@ class BenchmarkService:
                     **harnesses.wire_parameters(plan.harness, resolved, plan.image, model, endpoint_model),
                     "benchmark_id": run_uid,
                     "deployment_id": target.deployment.uid,
+                    # A private artifact's tokenizer is cached under its project, which is the
+                    # only private directory the benchmark job may mount.
+                    **({"cache_project": plan.projects[owner]} if (owner := _owner(artifact)) in plan.projects else {}),
                 }
             },
             deadline_at=data.deadline,
@@ -894,6 +910,10 @@ def request_phase(phases: list[str]) -> str:
         if any(phase == terminal for phase in phases):
             return terminal
     return "succeeded"
+
+
+def _owner(artifact: Artifact | None):
+    return artifact.owner_project_id if artifact is not None else None
 
 
 def tokenizer_for(workload: Workload, artifact: Artifact) -> str:
