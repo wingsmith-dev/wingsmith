@@ -181,6 +181,15 @@ response follows are in [`API.md`](API.md).
 |---|---|---|
 | GET | `/v1/gateway/tenants` | ResolveTenants |
 
+## `/v1/manifests`
+
+| Method | Path | What |
+|---|---|---|
+| GET | `/v1/manifests/artifacts/{name}` | GetPublicArtifactManifest |
+| GET | `/v1/manifests/artifacts/{project}/{name}` | GetArtifactManifest |
+| GET | `/v1/manifests/endpoints/{project}/{name}` | GetEndpointManifest |
+| GET | `/v1/manifests/workloads/{project}/{name}` | GetWorkloadManifest |
+
 ## `/v1/metrics`
 
 | Method | Path | What |

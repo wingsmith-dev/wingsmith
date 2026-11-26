@@ -24,6 +24,7 @@ from app.modules.serving.routes import TenantServingRoutes
 from app.modules.tenants.routes import TenantRoutes
 from app.modules.artifacts.usage import ArtifactUsageRoutes
 from app.modules.clusters.routes import ClusterRoutes
+from app.modules.manifest.routes import ManifestRoutes
 from app.modules.policies.routes import PolicyRoutes
 from app.modules.projects.routes import ProjectRoutes
 from app.modules.artifacts.routes import ArtifactRoutes
@@ -57,6 +58,7 @@ V1_ROUTES = [
     PlacementRoutes,
     DiscoveredWorkloadRoutes,
     EndpointRoutes,
+    ManifestRoutes,
     TenantRoutes,
     GatewayRoutes,
     ProjectRoutes,

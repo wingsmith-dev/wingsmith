@@ -1370,6 +1370,40 @@
         "title": "ArtifactLocationSchema",
         "type": "object"
       },
+      "ArtifactManifest": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "kind": {
+            "default": "Artifact",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ArtifactSpec"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "metadata",
+          "spec"
+        ],
+        "title": "ArtifactManifest",
+        "type": "object"
+      },
       "ArtifactRefreshSchema": {
         "properties": {
           "artifact": {
@@ -1533,6 +1567,124 @@
           "verified"
         ],
         "title": "ArtifactSchema",
+        "type": "object"
+      },
+      "ArtifactSpec": {
+        "properties": {
+          "base_artifact": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "digest": {
+            "default": "",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "type": "string"
+          },
+          "format": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "default": "weights",
+            "type": "string"
+          },
+          "licence": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactLocationSchema"
+            },
+            "type": "array"
+          },
+          "parameter_count": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object"
+          },
+          "size_bytes": {
+            "default": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "default": "",
+            "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upstream": {
+            "$ref": "#/components/schemas/ArtifactUpstreamSchema"
+          }
+        },
+        "required": [],
+        "title": "ArtifactSpec",
+        "type": "object"
+      },
+      "ArtifactStatus": {
+        "properties": {
+          "residency": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "residency",
+          "verified"
+        ],
+        "title": "ArtifactStatus",
         "type": "object"
       },
       "ArtifactUpdateRequest": {
@@ -4747,6 +4899,40 @@
         "title": "EndpointCreateRequest",
         "type": "object"
       },
+      "EndpointManifest": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "kind": {
+            "default": "Endpoint",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/EndpointSpec"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EndpointStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "metadata",
+          "spec"
+        ],
+        "title": "EndpointManifest",
+        "type": "object"
+      },
       "EndpointSchema": {
         "properties": {
           "aliases": {
@@ -4834,6 +5020,65 @@
           "visibility"
         ],
         "title": "EndpointSchema",
+        "type": "object"
+      },
+      "EndpointSpec": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "failover_order": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routing_strategy": {
+            "default": "weighted",
+            "type": "string"
+          },
+          "slug": {
+            "default": "",
+            "type": "string"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/EndpointSurfaceSchema"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointTargetSpec"
+            },
+            "type": "array"
+          },
+          "visibility": {
+            "default": "private",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "EndpointSpec",
+        "type": "object"
+      },
+      "EndpointStatus": {
+        "properties": {
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointTargetStatus"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "EndpointStatus",
         "type": "object"
       },
       "EndpointSurfaceSchema": {
@@ -4991,6 +5236,56 @@
           "weight"
         ],
         "title": "EndpointTargetSchema",
+        "type": "object"
+      },
+      "EndpointTargetSpec": {
+        "properties": {
+          "deployment": {
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "role": {
+            "default": "primary",
+            "type": "string"
+          },
+          "served_model_name": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weight": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deployment"
+        ],
+        "title": "EndpointTargetSpec",
+        "type": "object"
+      },
+      "EndpointTargetStatus": {
+        "properties": {
+          "deployment": {
+            "type": "string"
+          },
+          "deployment_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment",
+          "deployment_id"
+        ],
+        "title": "EndpointTargetStatus",
         "type": "object"
       },
       "EndpointUpdateRequest": {
@@ -7121,6 +7416,81 @@
         "title": "NotificationTestResult",
         "type": "object"
       },
+      "ObjectMeta": {
+        "properties": {
+          "annotations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "creationTimestamp": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "generation": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceVersion": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uid": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ObjectMeta",
+        "type": "object"
+      },
       "OperationCreateRequest": {
         "properties": {
           "cluster": {
@@ -7570,6 +7940,45 @@
           "device_class"
         ],
         "title": "PlacementShapeRequest",
+        "type": "object"
+      },
+      "PlacementSpec": {
+        "properties": {
+          "allowed_clusters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowed_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cluster_floors": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "max_clusters": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strategy": {
+            "default": "pack",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "PlacementSpec",
         "type": "object"
       },
       "PolicyAttachmentRequest": {
@@ -9503,6 +9912,49 @@
         "title": "RuleSchema",
         "type": "object"
       },
+      "RuntimeSpec": {
+        "properties": {
+          "args": {
+            "type": "object"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "frontend_image": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "default": "dynamo",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "version"
+        ],
+        "title": "RuntimeSpec",
+        "type": "object"
+      },
       "SampleSchema": {
         "properties": {
           "metric": {
@@ -9531,6 +9983,25 @@
           "unit"
         ],
         "title": "SampleSchema",
+        "type": "object"
+      },
+      "ScaleSpec": {
+        "properties": {
+          "desired": {
+            "default": 1,
+            "type": "integer"
+          },
+          "max": {
+            "default": 1,
+            "type": "integer"
+          },
+          "min": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "title": "ScaleSpec",
         "type": "object"
       },
       "SeriesPointSchema": {
@@ -10443,6 +10914,93 @@
         },
         "required": [],
         "title": "ServingSchema",
+        "type": "object"
+      },
+      "ServingSpec": {
+        "properties": {
+          "adapters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "api": {
+            "$ref": "#/components/schemas/ServingSchema"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "cache": {
+            "$ref": "#/components/schemas/CacheSchema"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesSchema"
+          },
+          "context_length": {
+            "default": 0,
+            "type": "integer"
+          },
+          "dtype": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_batch_tokens": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overlay": {
+            "$ref": "#/components/schemas/OverlaySchema"
+          },
+          "parallelism": {
+            "$ref": "#/components/schemas/ParallelismSchema"
+          },
+          "quantization": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourcesSchema"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleSchema"
+            },
+            "type": "array"
+          },
+          "router": {
+            "$ref": "#/components/schemas/RouterSchema"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ShapeSchema"
+          },
+          "topology": {
+            "default": "aggregated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "shape"
+        ],
+        "title": "ServingSpec",
         "type": "object"
       },
       "SetupConfigSchema": {
@@ -11696,6 +12254,76 @@
         "title": "WorkloadDeploymentSchema",
         "type": "object"
       },
+      "WorkloadDeploymentStatus": {
+        "properties": {
+          "admission_phase": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "cluster": {
+            "type": "string"
+          },
+          "desired_replicas": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ready_replicas": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "admission_phase",
+          "authority",
+          "cluster",
+          "desired_replicas",
+          "enabled",
+          "name",
+          "ready_replicas"
+        ],
+        "title": "WorkloadDeploymentStatus",
+        "type": "object"
+      },
+      "WorkloadManifest": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "kind": {
+            "default": "Workload",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/WorkloadSpec"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkloadStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "metadata",
+          "spec"
+        ],
+        "title": "WorkloadManifest",
+        "type": "object"
+      },
       "WorkloadPlacementNodeSchema": {
         "properties": {
           "cluster": {
@@ -11892,6 +12520,22 @@
           "unit"
         ],
         "title": "WorkloadScaleSchema",
+        "type": "object"
+      },
+      "WorkloadScaleStatus": {
+        "properties": {
+          "placed": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "placed",
+          "ready"
+        ],
+        "title": "WorkloadScaleStatus",
         "type": "object"
       },
       "WorkloadSchema": {
@@ -12456,6 +13100,163 @@
         },
         "required": [],
         "title": "WorkloadServingUpdate",
+        "type": "object"
+      },
+      "WorkloadSpec": {
+        "properties": {
+          "cluster": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadline_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gang_size": {
+            "default": 1,
+            "type": "integer"
+          },
+          "kind": {
+            "default": "service",
+            "type": "string"
+          },
+          "overrides": {
+            "type": "object"
+          },
+          "paused": {
+            "default": false,
+            "type": "boolean"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/PlacementSpec"
+          },
+          "preemptible": {
+            "default": false,
+            "type": "boolean"
+          },
+          "priority_class": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeSpec"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/ScaleSpec"
+          },
+          "serving": {
+            "$ref": "#/components/schemas/ServingSpec"
+          }
+        },
+        "required": [
+          "runtime",
+          "serving"
+        ],
+        "title": "WorkloadSpec",
+        "type": "object"
+      },
+      "WorkloadStatus": {
+        "properties": {
+          "artifact_tag": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deployments": {
+            "items": {
+              "$ref": "#/components/schemas/WorkloadDeploymentStatus"
+            },
+            "type": "array"
+          },
+          "finished_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imported_args": {
+            "type": "object"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "resolved_engine_args": {
+            "type": "object"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/WorkloadScaleStatus"
+          },
+          "served_model_name": {
+            "type": "string"
+          },
+          "serving_digest": {
+            "type": "string"
+          },
+          "started_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "topology": {
+            "$ref": "#/components/schemas/TopologyViewSchema"
+          }
+        },
+        "required": [
+          "deployments",
+          "imported_args",
+          "phase",
+          "resolved_engine_args",
+          "scale",
+          "served_model_name",
+          "serving_digest",
+          "topology"
+        ],
+        "title": "WorkloadStatus",
         "type": "object"
       },
       "WorkloadUpdateRequest": {
@@ -23426,6 +24227,437 @@
         "summary": "ResolveTenants",
         "tags": [
           "Gateway"
+        ]
+      }
+    },
+    "/v1/manifests/artifacts/{name}": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ManifestsArtifactsNameGetPublicArtifactManifest",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactManifest"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetPublicArtifactManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/artifacts/{project}/{name}": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ManifestsArtifactsProjectNameGetArtifactManifest",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactManifest"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetArtifactManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/endpoints/{project}/{name}": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ManifestsEndpointsProjectNameGetEndpointManifest",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointManifest"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetEndpointManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/workloads/{project}/{name}": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ManifestsWorkloadsProjectNameGetWorkloadManifest",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadManifest"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetWorkloadManifest",
+        "tags": [
+          "Manifests"
         ]
       }
     },
