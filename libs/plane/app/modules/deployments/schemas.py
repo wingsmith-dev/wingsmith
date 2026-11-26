@@ -103,6 +103,8 @@ class DeploymentSchema(Struct):
 
     id: str
     name: str
+    object_name: str
+    """What it renders as inside its cluster (`kubectl get` finds it by this), unique there."""
     workload_id: str
     workload_name: str
     cluster_id: str

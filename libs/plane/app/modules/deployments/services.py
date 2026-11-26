@@ -201,6 +201,7 @@ class DeploymentService:
         return DeploymentSchema(
             id=deployment.uid,
             name=deployment.name,
+            object_name=deployment.object_name,
             workload_id=workload_uid,
             workload_name=workload_name,
             cluster_id=cluster_uid,
