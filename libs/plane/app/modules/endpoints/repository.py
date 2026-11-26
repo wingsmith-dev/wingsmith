@@ -204,15 +204,16 @@ class EndpointRepository:
         return at_most_one(list(result.scalars()), "project", ref)
 
     async def deployments_by_ref(
-        self, refs: builtins.list[str], tenant_id: UUID | None
+        self, refs: builtins.list[str], tenant_id: UUID | None, project_id: UUID
     ) -> dict[str, builtins.list[Deployment]]:
         """Every deployment each target reference could mean, inside one tenant, in one query.
 
         Scoped to the tenant that owns the endpoint: an endpoint routes to deployments
         of its own tenant's workloads, so a reference to anyone else's is not found,
-        not quietly routed to. A deployment name is unique only within a
-        cluster, so a bare name can still match several rows here; the caller refuses
-        that instead of choosing one.
+        not quietly routed to. A bare name is a workload name, which projects may share,
+        so it resolves inside the endpoint's own project; an id reaches across the tenant.
+        One name still matches a deployment per cluster; the caller refuses that instead
+        of choosing one.
         """
         if not refs:
             return {}
@@ -222,7 +223,7 @@ class EndpointRepository:
             select(Deployment)
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Project, Workload.project_id == Project.id)
-            .where(Deployment.uid.in_(uids) | Deployment.name.in_(names))
+            .where(Deployment.uid.in_(uids) | (Deployment.name.in_(names) & (Workload.project_id == project_id)))
             .order_by(Deployment.seq.asc())
         )
         if tenant_id is not None:

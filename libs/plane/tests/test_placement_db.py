@@ -1346,3 +1346,44 @@ async def test_two_projects_run_a_workload_of_one_name_on_one_cluster(sessions) 
     assert [d.cluster_name for d in edge.deployments] == ["alpha"]
     rows = await fetch(sessions, "select name, object_name from demand_deployment order by object_name")
     assert sorted(rows) == sorted([("qwen", f"qwen-{core.id[-8:]}"), ("qwen", f"qwen-{edge.id[-8:]}")])
+
+
+async def test_a_shared_workload_name_never_resolves_to_another_projects_deployment(sessions) -> None:
+    """A bare name is read inside a project, or else as the cluster object name, never across projects."""
+    from app.core.exceptions import NotFound
+    from app.modules.deployments.services import DeploymentService
+    from app.modules.endpoints.repository import EndpointRepository
+    from app.modules.benchmarks.repository import BenchmarkRepository
+
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into bind_project (uid, tenant_id, slug, name, default_priority_class_id)"
+                " select :uid, tenant_id, 'edge', 'Edge', default_priority_class_id from bind_project"
+            ),
+            {"uid": ids.new_uid(ids.PROJECT)},
+        )
+    async with sessions() as db:
+        core = await WorkloadService(db).create(create(name="qwen"))
+    async with sessions() as db:
+        edge = await WorkloadService(db).create(create(name="qwen", project="edge"))
+    core_dep, edge_dep = core.deployments[0], edge.deployments[0]
+
+    async with sessions() as db:
+        svc = DeploymentService(db)
+        assert (await svc.get("qwen", project="core")).id == core_dep.id
+        assert (await svc.get("qwen", project="edge")).id == edge_dep.id
+        assert (await svc.get(f"qwen-{edge.id[-8:]}")).id == edge_dep.id
+        with pytest.raises(NotFound):
+            await svc.get("qwen")
+
+        benchmarks = BenchmarkRepository(db)
+        assert [row[0].uid for row in await benchmarks.deployment_targets(f"qwen-{core.id[-8:]}")] == [core_dep.id]
+        assert await benchmarks.deployment_targets("qwen") == []
+
+        endpoints = EndpointRepository(db)
+        core_project = (await fetch(sessions, "select id from bind_project where slug = 'core'"))[0][0]
+        found = await endpoints.deployments_by_ref(["qwen"], None, core_project)
+        assert [d.uid for d in found["qwen"]] == [core_dep.id]

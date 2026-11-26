@@ -773,7 +773,7 @@ class FakeCreateRepo:
     async def project_by_ref(self, ref):
         return SimpleNamespace(id=uuid.uuid4(), uid="prj_1", tenant_id=uuid.uuid4())
 
-    async def deployments_by_ref(self, refs, tenant_id):
+    async def deployments_by_ref(self, refs, tenant_id, project_id=None):
         if self.deployment is None:
             return {}
         return {ref: [self.deployment] for ref in refs}
@@ -1462,7 +1462,7 @@ async def test_adding_an_alias_moves_the_revision_the_gateway_polls():
 
 
 class _TwoClusters(FakeCreateRepo):
-    async def deployments_by_ref(self, refs, tenant_id):
+    async def deployments_by_ref(self, refs, tenant_id, project_id=None):
         self.tenant_asked = tenant_id
         return {
             ref: [SimpleNamespace(id=uuid.uuid4(), uid="dep_a"), SimpleNamespace(id=uuid.uuid4(), uid="dep_b")]

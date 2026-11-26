@@ -625,7 +625,11 @@ class EndpointService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def _resolve(
-        self, targets: builtins.list[EndpointTargetRequest], failover: builtins.list[str], tenant_id: UUID | None
+        self,
+        targets: builtins.list[EndpointTargetRequest],
+        failover: builtins.list[str],
+        tenant_id: UUID | None,
+        project_id: UUID,
     ) -> tuple[builtins.list[EndpointTarget], builtins.list[UUID]]:
         """Turns target and failover references into rows and an ordered id array.
 
@@ -638,7 +642,7 @@ class EndpointService:
         does not route to is a routing table with a hole in it.
         """
         refs = [t.deployment for t in targets]
-        matches = await self.repo.deployments_by_ref(refs, tenant_id)
+        matches = await self.repo.deployments_by_ref(refs, tenant_id, project_id)
         missing = [ref for ref in refs if ref not in matches]
         if missing:
             raise NotFound("unknown deployment", {"missing": sorted(set(missing))})
@@ -706,7 +710,7 @@ class EndpointService:
         project = await self.repo.project_by_ref(data.project)
         if project is None:
             raise NotFound(f"no project {data.project!r}")
-        targets, failover_order = await self._resolve(data.targets, data.failover_order, project.tenant_id)
+        targets, failover_order = await self._resolve(data.targets, data.failover_order, project.tenant_id, project.id)
 
         # Defaulted from the weights behind the first target, then from the endpoint's own name.
         #
@@ -772,7 +776,7 @@ class EndpointService:
                 raise Invalid("failover order can only be changed alongside the targets it orders")
             check_targets(targets)
             tenant_id = await self.repo.tenant_of(endpoint.project_id)
-            rows, order = await self._resolve(targets, fields.pop("failover_order", []), tenant_id)
+            rows, order = await self._resolve(targets, fields.pop("failover_order", []), tenant_id, endpoint.project_id)
             endpoint.targets = []
             await self.db.flush()
             endpoint.targets = rows
