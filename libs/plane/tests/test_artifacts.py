@@ -1541,3 +1541,47 @@ def test_a_handle_has_no_update_field():
 def test_the_base_handle_is_dns_subdomain_shaped(slug, name, expected):
     assert handle.base(slug, name) == expected
     assert handle.valid(handle.base(slug, name))
+
+
+class RacingRepo(FakeRepo):
+    """Every handle check passes, but the insert loses the handle to a concurrent create."""
+
+    def __init__(self, constraint: str, losses: int = 1):
+        super().__init__()
+        self.constraint = constraint
+        self.losses = losses
+        self.tried: list[str] = []
+
+    async def add(self, artifact):
+        self.tried.append(artifact.handle)
+        if self.losses:
+            self.losses -= 1
+            raise IntegrityError("INSERT", {}, Exception(f'violates unique constraint "{self.constraint}"'))
+        return await super().add(artifact)
+
+
+async def test_a_derived_handle_lost_to_a_concurrent_create_moves_to_the_next_candidate():
+    repo = RacingRepo("uq_demand_artifact_handle")
+    result = await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert repo.tried == ["openai-gpt-oss-20b", handle.suffixed("openai-gpt-oss-20b", hf_model().digest)]
+    assert result.handle == repo.tried[-1]
+
+
+async def test_a_declared_handle_lost_to_a_concurrent_create_is_a_handle_conflict():
+    repo = RacingRepo("uq_demand_artifact_handle")
+    with pytest.raises(Conflict, match="handle 'gpt-oss'"):
+        await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", handle="gpt-oss"))
+
+
+async def test_any_other_integrity_error_is_still_a_digest_conflict():
+    repo = RacingRepo("uq_demand_artifact_digest")
+    with pytest.raises(Conflict, match="already exists") as err:
+        await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert "handle" not in str(err.value)
+
+
+async def test_running_out_of_handle_candidates_is_a_conflict_not_a_loop():
+    repo = RacingRepo("uq_demand_artifact_handle", losses=99)
+    with pytest.raises(Conflict, match="no free handle"):
+        await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert len(repo.tried) == len(handle.candidates("openai/gpt-oss-20b", "gpt-oss-20b", hf_model().digest))

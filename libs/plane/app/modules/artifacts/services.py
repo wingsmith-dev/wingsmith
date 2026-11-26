@@ -366,6 +366,15 @@ def check_locations(locations: list[ArtifactLocationRequest]) -> None:
         seen.add(item.uri)
 
 
+HANDLE_CONSTRAINT = "uq_demand_artifact_handle"
+
+
+def _broke_handle(exc: IntegrityError) -> bool:
+    cause = getattr(exc.orig, "__cause__", None)
+    name = getattr(cause, "constraint_name", None) or getattr(exc.orig, "constraint_name", None)
+    return name == HANDLE_CONSTRAINT if name else HANDLE_CONSTRAINT in str(exc.orig)
+
+
 class ArtifactService:
     def __init__(self, db: AsyncSession, hub: HuggingFaceClient | None = None) -> None:
         """`hub` is injected, not built here so a test can substitute a fake.
@@ -669,9 +678,27 @@ class ArtifactService:
             project_id = project.id
 
         slug = data.slug.strip().lower() or artifact_slug(data.digest, data.locations)
-        artifact_handle = await self._handle(data.handle, slug, data.name, data.digest)
+        lost: set[str] = set()
+        while True:
+            artifact_handle = await self._handle(data.handle, slug, data.name, data.digest, lost)
+            artifact = self._artifact(data, artifact_handle, slug, base_id, project_id)
+            try:
+                await self.repo.add(artifact)
+                await self.db.commit()
+            except IntegrityError as exc:
+                await self.db.rollback()
+                if not _broke_handle(exc):
+                    raise Conflict(f"artifact {data.digest!r} already exists") from exc
+                # A concurrent create took the handle between the check and the insert.
+                if data.handle.strip():
+                    raise Conflict(f"an artifact with handle {artifact_handle!r} already exists") from exc
+                lost.add(artifact_handle)
+                continue
+            return await self.get(artifact.uid)
 
-        artifact = Artifact(
+    @staticmethod
+    def _artifact(data: ArtifactCreateRequest, artifact_handle: str, slug: str, base_id, project_id) -> Artifact:
+        return Artifact(
             uid=new_uid(ARTIFACT),
             digest=data.digest,
             verified=data.verified,
@@ -692,15 +719,8 @@ class ArtifactService:
                 for loc in data.locations
             ],
         )
-        try:
-            await self.repo.add(artifact)
-            await self.db.commit()
-        except IntegrityError as exc:
-            await self.db.rollback()
-            raise Conflict(f"artifact {data.digest!r} already exists") from exc
-        return await self.get(artifact.uid)
 
-    async def _handle(self, declared: str, slug: str, name: str, digest: str) -> str:
+    async def _handle(self, declared: str, slug: str, name: str, digest: str, lost: set[str] = frozenset()) -> str:
         """The declared handle, refused when invalid or taken, else the first free derived one."""
         if declared := declared.strip():
             if not handle.valid(declared):
@@ -712,7 +732,7 @@ class ArtifactService:
                 raise Conflict(f"an artifact with handle {declared!r} already exists")
             return declared
         for candidate in handle.candidates(slug, name, digest):
-            if not await self.repo.handle_taken(candidate):
+            if candidate not in lost and not await self.repo.handle_taken(candidate):
                 return candidate
         raise Conflict(f"no free handle for artifact {digest!r}")
 
