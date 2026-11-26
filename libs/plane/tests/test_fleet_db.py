@@ -156,8 +156,8 @@ async def seed_deployment(
     workload = await seed_workload(db, demand, artifact)
     deployment = await insert(
         db,
-        "insert into demand_deployment (uid, workload_id, cluster_id, name, desired_replicas, admission_phase,"
-        " placed_at) values (:uid, :workload, :cluster, :name, :desired, :phase, :placed_at)",
+        "insert into demand_deployment (uid, workload_id, cluster_id, name, object_name, desired_replicas,"
+        " admission_phase, placed_at) values (:uid, :workload, :cluster, :name, :name, :desired, :phase, :placed_at)",
         uid=ids.new_uid(ids.DEPLOYMENT),
         workload=workload,
         cluster=cluster,

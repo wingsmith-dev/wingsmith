@@ -266,7 +266,8 @@ def test_benchmark_history_survives_its_deployment(scratch) -> None:
             (project, priority, artifact),
         ).fetchone()[0]
         deployment = conn.execute(
-            "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name) VALUES ('dep_t', %s, %s, 'w')"
+            "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, object_name)"
+            " VALUES ('dep_t', %s, %s, 'w', 'w')"
             " RETURNING id",
             (workload, cluster),
         ).fetchone()[0]
@@ -333,3 +334,53 @@ def test_artifact_handles_are_backfilled_oldest_first_and_unique(scratch) -> Non
     _alembic(scratch, "downgrade", before)
     with psycopg.connect(_dsn(scratch)) as conn:
         assert conn.execute("SELECT count(*) FROM demand_artifact").fetchone()[0] == 3
+
+
+def test_deployments_keep_their_name_as_object_name_and_may_share_a_name(scratch) -> None:
+    before, after = "3b7e5d1c9a42", "c41f2a7d8e63"
+    _alembic(scratch, "upgrade", before)
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        projects = [_project(conn)]
+        projects.append(
+            conn.execute(
+                "INSERT INTO bind_project (uid, tenant_id, name, slug)"
+                " SELECT 'prj_u', tenant_id, 'edge', 'edge' FROM bind_project RETURNING id"
+            ).fetchone()[0]
+        )
+        priority = conn.execute("SELECT id FROM bind_priority_class LIMIT 1").fetchone()[0]
+        cluster = conn.execute(
+            "INSERT INTO supply_cluster (uid, name, region) VALUES ('clu_t', 'alpha', 'us-east-1') RETURNING id"
+        ).fetchone()[0]
+        artifact = conn.execute(
+            "INSERT INTO demand_artifact (uid, digest, name) VALUES ('art_t', 'sha256:aa', 'm') RETURNING id"
+        ).fetchone()[0]
+        workloads = [
+            conn.execute(
+                "INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id, artifact_id,"
+                " serving_digest, engine, engine_runtime_version, context_length, device_class)"
+                " VALUES (%s, 'qwen', 'service', %s, %s, %s, 'svg_x', 'vllm', '1.0.0', 4096, 'h100-80gb-sxm')"
+                " RETURNING id",
+                (uid, project, priority, artifact),
+            ).fetchone()[0]
+            for uid, project in zip(("wkl_a", "wkl_b"), projects, strict=True)
+        ]
+        conn.execute(
+            "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name) VALUES ('dep_a', %s, %s, 'qwen')",
+            (workloads[0], cluster),
+        )
+
+    _alembic(scratch, "upgrade", after)
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        assert conn.execute("SELECT object_name FROM demand_deployment").fetchone()[0] == "qwen"
+        conn.execute(
+            "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, object_name)"
+            " VALUES ('dep_b', %s, %s, 'qwen', 'qwen-bbbbbbbb')",
+            (workloads[1], cluster),
+        )
+
+    refused = _alembic(scratch, "downgrade", before, check=False)
+    assert refused.returncode != 0
+    assert "dep_a" in refused.stderr and "dep_b" in refused.stderr
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        conn.execute("DELETE FROM demand_deployment WHERE uid = 'dep_b'")
+    _alembic(scratch, "downgrade", before)

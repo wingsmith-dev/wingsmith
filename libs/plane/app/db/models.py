@@ -652,7 +652,7 @@ class Deployment(BaseMixin):
 
     __tablename__ = "demand_deployment"
     __table_args__ = (
-        UniqueConstraint("cluster_id", "name", name="uq_demand_deployment_cluster_name"),
+        UniqueConstraint("cluster_id", "object_name", name="uq_demand_deployment_cluster_object_name"),
         UniqueConstraint("workload_id", "cluster_id", name="uq_demand_deployment_workload_cluster"),
     )
 
@@ -665,6 +665,10 @@ class Deployment(BaseMixin):
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    """The workload's name, for people and references. Not unique: two projects may share one."""
+    object_name: Mapped[str] = mapped_column(String(63), nullable=False)
+    """What the deployment renders as inside its cluster, unique there
+    (`app.modules.deployments.naming`). Rows from before it existed keep their old name."""
     min_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     max_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     desired_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")

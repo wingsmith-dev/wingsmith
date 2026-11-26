@@ -434,8 +434,8 @@ async def seed_deployment(sessions, cluster) -> None:
                   FROM p, c, a
                   ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
                 )
-                INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, generation)
-                SELECT :deployment, w.id, :cluster, 'gpt-oss-120b-prod', 7 FROM w
+                INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, object_name, generation)
+                SELECT :deployment, w.id, :cluster, 'gpt-oss-120b-prod', 'gpt-oss-120b-prod', 7 FROM w
                 ON CONFLICT (uid) DO UPDATE SET cluster_id = excluded.cluster_id
                 """
             ),
