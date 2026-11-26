@@ -666,9 +666,10 @@ class Deployment(BaseMixin):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     """The workload's name, for people and references. Not unique: two projects may share one."""
-    object_name: Mapped[str] = mapped_column(String(63), nullable=False)
+    object_name: Mapped[str] = mapped_column(String(253), nullable=False)
     """What the deployment renders as inside its cluster, unique there
-    (`app.modules.deployments.naming`). Rows from before it existed keep their old name."""
+    (`app.modules.deployments.naming`). Rows from before it existed keep their old name, and an
+    adopted deployment keeps the in-cluster name, so the column takes any Kubernetes object name."""
     min_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     max_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     desired_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")

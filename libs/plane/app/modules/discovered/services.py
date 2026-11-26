@@ -42,6 +42,8 @@ TRACKED = "tracked"
 IGNORED = "ignored"
 PROMOTED = "promoted"
 NEW = "new"
+NAME_MAX = 128
+"""The width of `demand_workload.name` and `demand_deployment.name`."""
 
 STATUSES = frozenset({NEW, TRACKED, IGNORED, DISMISSED, PROMOTED})
 
@@ -370,6 +372,11 @@ class DiscoveredWorkloadService:
         replicas = max(workload.replicas_desired, 0)
         now = dt.datetime.now(dt.UTC)
         name = data.name or workload.name
+        if len(name) > NAME_MAX:
+            raise Invalid(
+                f"{name!r} is longer than a workload name may be; name the adopted workload",
+                {"max": NAME_MAX},
+            )
         deployment_workload = Workload(
             uid=new_uid(WORKLOAD),
             name=name,
@@ -398,8 +405,9 @@ class DiscoveredWorkloadService:
             workload=deployment_workload,
             cluster_id=workload.cluster_id,
             name=name,
-            # The object is already running under this name; renaming it would render a second.
-            object_name=name,
+            # The object is already running under its in-cluster name; renaming it would render a
+            # second. `name` may be the caller's, so the object name is the workload's own.
+            object_name=workload.name,
             min_replicas=replicas,
             max_replicas=replicas,
             desired_replicas=replicas,

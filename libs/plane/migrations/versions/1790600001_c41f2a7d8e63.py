@@ -10,7 +10,8 @@ cluster, and the uniqueness moves to it; `name` stays the workload's, for people
 
 Existing rows keep their name as their object name: renaming would make the operator render a
 second object beside the one already running. New deployments get the workload-uid-suffixed name
-from `app.modules.deployments.naming`.
+from `app.modules.deployments.naming`. The column is as wide as a Kubernetes object name (253),
+so any existing name (at most 128) and any adopted in-cluster name fit unchanged.
 
 The downgrade refuses while two deployments in one cluster share a name, since the old constraint
 cannot hold them.
@@ -30,7 +31,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("demand_deployment", sa.Column("object_name", sa.String(length=63), nullable=True))
+    op.add_column("demand_deployment", sa.Column("object_name", sa.String(length=253), nullable=True))
     op.execute("UPDATE demand_deployment SET object_name = name")
     op.alter_column("demand_deployment", "object_name", nullable=False)
     op.drop_constraint("uq_demand_deployment_cluster_name", "demand_deployment", type_="unique")

@@ -337,6 +337,8 @@ def test_artifact_handles_are_backfilled_oldest_first_and_unique(scratch) -> Non
 
 
 def test_deployments_keep_their_name_as_object_name_and_may_share_a_name(scratch) -> None:
+    """A name past the 63 of a label still backfills: the old row is already in its cluster under it."""
+    long_name = "q" * 128
     before, after = "3b7e5d1c9a42", "c41f2a7d8e63"
     _alembic(scratch, "upgrade", before)
     with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
@@ -368,10 +370,18 @@ def test_deployments_keep_their_name_as_object_name_and_may_share_a_name(scratch
             "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name) VALUES ('dep_a', %s, %s, 'qwen')",
             (workloads[0], cluster),
         )
+        long_cluster = conn.execute(
+            "INSERT INTO supply_cluster (uid, name, region) VALUES ('clu_l', 'beta', 'us-east-1') RETURNING id"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name) VALUES ('dep_l', %s, %s, %s)",
+            (workloads[0], long_cluster, long_name),
+        )
 
     _alembic(scratch, "upgrade", after)
     with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
-        assert conn.execute("SELECT object_name FROM demand_deployment").fetchone()[0] == "qwen"
+        assert conn.execute("SELECT object_name FROM demand_deployment WHERE uid = 'dep_a'").fetchone()[0] == "qwen"
+        assert conn.execute("SELECT object_name FROM demand_deployment WHERE uid = 'dep_l'").fetchone()[0] == long_name
         conn.execute(
             "INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, object_name)"
             " VALUES ('dep_b', %s, %s, 'qwen', 'qwen-bbbbbbbb')",
