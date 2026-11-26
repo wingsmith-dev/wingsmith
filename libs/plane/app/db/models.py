@@ -562,6 +562,9 @@ class Workload(BaseMixin):
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
+    """Counts changes to the declared spec; only spec writers move it, never ingestion or rollups.
+    `revision` and `If-Match` read it. Not the per-deployment rollout counter (`Deployment.generation`)."""
 
     deployments: Mapped[list[Deployment]] = relationship("Deployment", back_populates="workload", lazy="noload")
     artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
@@ -868,6 +871,8 @@ class Endpoint(BaseMixin):
     """How the served API is exposed: which protocols answer, how callers authenticate, and the
     rate-limit policy the gateway reads. Never synced to a cluster."""
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
+    """Counts changes to the declared fields and aliases. Targets resolve at read time and do not count."""
 
     targets: Mapped[list[EndpointTarget]] = relationship(
         "EndpointTarget", back_populates="endpoint", lazy="noload", cascade="all, delete-orphan"
