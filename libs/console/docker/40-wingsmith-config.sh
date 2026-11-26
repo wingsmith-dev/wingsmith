@@ -24,7 +24,7 @@ case "$base" in
   *) echo "WINGSMITH_API_BASE_URL must be empty (same origin) or an http(s) URL, got '$base'" >&2; exit 1 ;;
 esac
 
-# The demo password is published on purpose. Same rule as the base URL: nothing that could break
+# The demo password is shown to every visitor. Same rule as the base URL: nothing that could break
 # out of the JS string.
 case "$demo_password" in
   *[\"\\\'\;\<\>\&]*) echo "WINGSMITH_DEMO_PASSWORD may not contain quotes, backslashes, ';', '<', '>' or '&'" >&2; exit 1 ;;
