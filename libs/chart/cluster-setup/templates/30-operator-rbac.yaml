@@ -26,8 +26,10 @@ imagePullSecrets:
 #                              cluster-wide (observation), write its own
 #                              state in the release namespace, and read that
 #                              state in the workload namespace (see below);
-#   readOnly: false            write DynamoGraphDeployments and prefetch Jobs in
-#                              the workload namespace (reconciliation);
+#   readOnly: false            write DynamoGraphDeployments, prefetch Jobs and
+#                              per-project token Secrets in the workload
+#                              namespace, and read token Secrets in the release
+#                              namespace (reconciliation);
 #   benchmark                  create benchmark Jobs, read their logs and find
 #                              the frontend Service, in the workload namespace;
 #   cordon or drain            patch nodes cluster-wide;
@@ -107,6 +109,10 @@ rules:
   - apiGroups: [nvidia.com]
     resources: [dynamographdeployments]
     verbs: [get, list, watch]
+  # The admin-applied Secrets a project's Hugging Face credential points at.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
   {{- end }}
 ---
 {{- include "cluster-setup.operatorRoleBinding" (list . .Release.Namespace) }}

@@ -326,6 +326,12 @@ benchmark.
   verbs: [get]
 {{- end }}
 {{- if $reconcile }}
+# The per-project Hugging Face token a private artifact's prefetch Job reads,
+# copied from a Secret the admin applied in the release namespace. Read
+# directly, never listed or watched, so the operator holds no Secret cache.
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [create, get, update]
 - apiGroups: [nvidia.com]
   resources: [dynamographdeployments]
   verbs: [create, delete, get, list, patch, update, watch]

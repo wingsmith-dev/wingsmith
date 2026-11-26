@@ -354,6 +354,21 @@ def test_managed_cluster_gets_reconcile_and_every_operation(chart):
     assert _grants(nodes, "pods/eviction", "create")
 
 
+def test_managed_cluster_copies_project_tokens_without_watching_secrets(chart):
+    roles = _operator_rules(render(chart, **{"cluster.readOnly": False}))
+    workloads = roles[("Role/wingsmith-operator", "dynamo")]
+    own = roles[("Role/wingsmith-operator", "wingsmith-system")]
+    assert _grants(workloads, "secrets", "create") and _grants(workloads, "secrets", "update")
+    assert _grants(own, "secrets", "get") and not _grants(own, "secrets", "create")
+    for rules in roles.values():
+        assert not _grants(rules, "secrets", "list") and not _grants(rules, "secrets", "watch")
+
+
+def test_read_only_cluster_reads_no_secrets(chart):
+    for rules in _operator_rules(render(chart)).values():
+        assert not _grants(rules, "secrets", "get")
+
+
 @pytest.mark.parametrize(
     "allowed, jobs, nodes, eviction",
     [

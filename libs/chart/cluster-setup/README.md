@@ -73,6 +73,25 @@ or frontend image in a private registry needs the same credential in the
 workload namespace: name it in `operator.engine.imagePullSecrets` or
 `frontend.imagePullSecrets`, and the chart copies the Secret there.
 
+### Private artifacts and project tokens
+
+A project's private Hugging Face repos are fetched with that project's token, which stays on the
+cluster. Apply it as a Secret in the release namespace, labelled for the project:
+
+```sh
+kubectl -n wingsmith-system create secret generic acme-hf --from-literal=HF_TOKEN=hf_...
+kubectl -n wingsmith-system label secret acme-hf wingsmith.dev/project=prj-01j9x2...
+```
+
+The label value is the project id with `-` for `_`. Then point the project at it from the plane:
+`PUT /v1/projects/{project}/credentials/hf` with `{"kind": "hf_token", "secret_ref": "acme-hf"}`.
+The operator copies the token to `hf-<project>` in the workload namespace and mounts it on the
+prefetch Job only; until the Secret exists and carries the label, the artifact's residency reads
+`CredentialUnavailable`. Private weights land under `/models/p/<project-id>/`, and serving pods
+mount only their own artifact's directory. See
+[ADR 0023](../../../docs/decisions/0023-private-artifacts-are-fetched-with-a-project-token-into-a-project-cache.md)
+for what this does and does not isolate.
+
 ## Frontend topology
 
 `frontend.mode` is the one switch, and it takes three values:
@@ -253,7 +272,8 @@ is a permission boundary and not only a setting the operator honours:
 | write its own CRDs, lease and events | always | release namespace |
 | read its own SyncedResources | always | workload namespace |
 | read Jobs and DynamoGraphDeployments | `readOnly: false` | release namespace |
-| write DynamoGraphDeployments, prefetch Jobs; delete stale DynamoComponentDeployments | `readOnly: false` | workload namespace |
+| read Secrets (project tokens, by name, never listed) | `readOnly: false` | release namespace |
+| write DynamoGraphDeployments, prefetch Jobs, project token Secrets; delete stale DynamoComponentDeployments | `readOnly: false` | workload namespace |
 | create benchmark Jobs, read their logs, list Services | `benchmark` allowed | workload namespace |
 | patch nodes | `cordon` or `drain` allowed | cluster |
 | evict pods | `drain` allowed | cluster |
