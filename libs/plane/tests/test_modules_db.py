@@ -71,9 +71,9 @@ from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
 from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
-from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.workloads.schemas import WorkloadRevisionUpdate
 from app.modules.workloads.schemas import WorkloadServingRequest
+from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.artifacts.services import ArtifactService
 from app.modules.components.schemas import ComponentCreateRequest
 from app.modules.components.schemas import ComponentUpdateRequest
