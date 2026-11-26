@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -77,6 +78,15 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "NoRuntimeImage",
 				fmt.Sprintf("no deployment on this cluster serving %s names an engine image to fetch it with; "+
 					"the download cannot start until one does", entry.ArtifactID))
+			continue
+		}
+		if err := r.ensureProjectToken(ctx, *artifact); err != nil {
+			var unavailable errTokenUnavailable
+			if !errors.As(err, &unavailable) {
+				return ctrl.Result{}, err
+			}
+			pending++
+			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "CredentialUnavailable", unavailable.reason)
 			continue
 		}
 		exhausted, err := r.ensurePrefetch(ctx, res, *artifact, image)
