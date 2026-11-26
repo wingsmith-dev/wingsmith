@@ -689,6 +689,126 @@ async def test_a_private_artifact_is_scoped_to_its_project(db: AsyncSession) -> 
     assert [a.uid for a in await repo.artifacts_by_ref(["gpt-oss", "lora"], search_id)] == [mine.id]
 
 
+async def two_projects_and_a_private_artifact(db: AsyncSession):
+    """`search` owns a private artifact; `chat` is a second project of the same tenant."""
+    await a_project(db, "search")
+    chat = await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    secret = await ArtifactService(db).create(
+        ArtifactCreateRequest(digest="sha256:5ec2", name="secret", handle="secret", project="search", private=True)
+    )
+    return chat, secret
+
+
+async def test_a_private_artifact_by_id_and_in_listings_stays_in_its_project(db: AsyncSession) -> None:
+    """Another project's private artifact is a 404 by id and absent from every listing."""
+    chat, secret = await two_projects_and_a_private_artifact(db)
+    service = ArtifactService(db)
+    public = await service.create(ArtifactCreateRequest(digest="sha256:0001", name="base", handle="base"))
+    child = await service.create(
+        ArtifactCreateRequest(
+            digest="sha256:0002", name="tune", project="search", private=True, base_artifact=public.id
+        )
+    )
+
+    for project in (None, "chat"):
+        with pytest.raises(NotFound):
+            await service.get(secret.id, project=project)
+        with pytest.raises(NotFound):
+            await service.usage(secret.id, project=project)
+        with pytest.raises(NotFound):
+            await service.delete(secret.id, project=project)
+        listed = {a.id for a in (await service.list(project=project)).items}
+        assert secret.id not in listed and child.id not in listed
+        assert (await service.usage(public.id, project=project)).downstream_count == 0
+    assert (await service.get(secret.id, project="search")).id == secret.id
+    assert {a.id for a in (await service.list(project="search")).items} == {secret.id, child.id}
+    assert (await service.usage(public.id, project="search")).downstream_count == 1
+    assert (await service.list(project="chat")).count == 0, "a project filter is about ownership, not attribution"
+
+
+async def test_a_workload_cannot_serve_or_adapt_another_projects_private_artifact(db: AsyncSession) -> None:
+    cluster, project, artifact = await an_environment(db)
+    await seed_free_devices(db, cluster.id)
+    chat = await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    secret = await ArtifactService(db).create(
+        ArtifactCreateRequest(digest="sha256:5ec2", name="secret", handle="secret", project="chat", private=True)
+    )
+    workloads = WorkloadService(db)
+    with pytest.raises(NotFound):
+        await workloads.create(
+            WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(secret.id), name="w1", project=project.id)
+        )
+    with pytest.raises(NotFound):
+        await workloads.create(
+            WorkloadCreateRequest(
+                cluster=cluster.id,
+                serving=a_serving(artifact.id),
+                name="w2",
+                project=project.id,
+                adapter_artifacts=[secret.id],
+            )
+        )
+    assert (await workloads.list(artifact=secret.id)).count == 0
+    assert (await workloads.list(artifact=secret.id, project=chat.id)).count == 0
+
+
+async def test_an_endpoint_never_routes_to_another_projects_private_weights(db: AsyncSession) -> None:
+    """Neither as a new target nor through a row written before the check existed."""
+    cluster, project, artifact, deployment = await a_deployment(db)
+    chat = await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    secret = await ArtifactService(db).create(
+        ArtifactCreateRequest(digest="sha256:5ec2", name="secret", project=project.id, private=True)
+    )
+    await db.execute(
+        text("UPDATE demand_workload SET artifact_id = (SELECT id FROM demand_artifact WHERE uid = :a)"),
+        {"a": secret.id},
+    )
+    await db.commit()
+    endpoints = EndpointService(db)
+    with pytest.raises(NotFound):
+        await endpoints.create(
+            EndpointCreateRequest(
+                name="theirs", project=chat.id, targets=[EndpointTargetRequest(deployment=deployment.id)]
+            )
+        )
+    mine = await endpoints.create(
+        EndpointCreateRequest(
+            name="mine", project=project.id, targets=[EndpointTargetRequest(deployment=deployment.id)]
+        )
+    )
+    assert (await endpoints.list(artifact=secret.id)).count == 0
+    assert [e.id for e in (await endpoints.list(artifact=secret.id, project=project.id)).items] == [mine.id]
+
+    # A target written before the check, from another project, resolves to no upstream.
+    await db.execute(
+        text("UPDATE demand_endpoint SET project_id = (SELECT id FROM bind_project WHERE uid = :p)"),
+        {"p": chat.id},
+    )
+    await db.commit()
+    table = await endpoints.resolved()
+    assert [e.upstreams for e in table.endpoints] == [[]]
+
+
+async def test_a_benchmark_never_reaches_another_projects_private_weights(db: AsyncSession) -> None:
+    """A workload of `search` pointed (by a row from before the check) at `chat`'s private artifact."""
+    from app.modules.benchmarks.repository import BenchmarkRepository
+
+    cluster, project, artifact, deployment = await a_deployment(db)
+    await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    secret = await ArtifactService(db).create(
+        ArtifactCreateRequest(digest="sha256:5ec2", name="secret", project="chat", private=True)
+    )
+    repo = BenchmarkRepository(db)
+    assert len(await repo.deployment_targets(deployment.id)) == 1
+    await db.execute(
+        text("UPDATE demand_workload SET artifact_id = (SELECT id FROM demand_artifact WHERE uid = :a)"),
+        {"a": secret.id},
+    )
+    await db.commit()
+    assert await repo.deployment_targets(deployment.id) == []
+    assert await repo.workload_targets(deployment.workload_id) == []
+
+
 async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSession) -> None:
     """The lifecycle the recipe used to have, on the object that absorbed it.
 
