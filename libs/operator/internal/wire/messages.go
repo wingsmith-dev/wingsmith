@@ -447,9 +447,11 @@ type DeploymentDeleted struct {
 
 // ArtifactSource is one place an artifact can be fetched from.
 type ArtifactSource struct {
-	Kind          string  `json:"kind"`
-	URI           string  `json:"uri"`
-	Priority      int     `json:"priority"`
+	Kind     string `json:"kind"`
+	URI      string `json:"uri"`
+	Priority int    `json:"priority"`
+	// CredentialRef is the secret reference of the credential this source is read with: a
+	// Secret name in the operator's namespace, never the value. Only private artifacts carry one.
 	CredentialRef *string `json:"credential_ref,omitempty"`
 }
 
@@ -464,6 +466,9 @@ type ArtifactDesired struct {
 	Licence    string           `json:"licence"`
 	Sources    []ArtifactSource `json:"sources"`
 	UpdatedAt  string           `json:"updated_at"`
+	// OwnerProject is the project a private artifact belongs to, empty for the public catalogue.
+	// A private artifact is cached under that project's directory and fetched with its token.
+	OwnerProject string `json:"owner_project,omitempty"`
 }
 
 // ComponentDesired declares what is installed in a cluster and at what version.

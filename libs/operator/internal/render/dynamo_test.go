@@ -868,7 +868,7 @@ func TestTheFrontendCanReadTheSnapshotTheWorkerIsPointedAt(t *testing.T) {
 
 	var mount *corev1.VolumeMount
 	for i := range spec.Containers[0].VolumeMounts {
-		if spec.Containers[0].VolumeMounts[i].MountPath == "/models" {
+		if spec.Containers[0].VolumeMounts[i].MountPath == "/models/hf" {
 			mount = &spec.Containers[0].VolumeMounts[i]
 		}
 	}

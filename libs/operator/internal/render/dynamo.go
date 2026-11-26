@@ -539,14 +539,16 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 	if !ok {
 		return nil
 	}
+	mount, err := modelCacheMount(in.Artifact, true)
+	if err != nil {
+		return nil
+	}
 	return []corev1.Container{{
 		Name:                     "localize-weights",
 		Image:                    image,
 		Command:                  []string{"sh", "-c", localizeScript, "localize", shared, local},
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-		VolumeMounts: append(localModelMount(opts, false), corev1.VolumeMount{
-			Name: "model-cache", MountPath: "/models", ReadOnly: true,
-		}),
+		VolumeMounts:             append(localModelMount(opts, false), mount),
 	}}
 }
 
@@ -594,6 +596,10 @@ func frontendLocalizeContainers(in Inputs, opts Options, image string) []corev1.
 	if !ok {
 		return nil
 	}
+	mount, err := modelCacheMount(in.Artifact, true)
+	if err != nil {
+		return nil
+	}
 	return []corev1.Container{{
 		Name:                     "stage-model-metadata",
 		Image:                    image,
@@ -602,7 +608,7 @@ func frontendLocalizeContainers(in Inputs, opts Options, image string) []corev1.
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: "local-model-cache", MountPath: LocalModels},
-			{Name: "model-cache", MountPath: "/models", ReadOnly: true},
+			mount,
 		},
 	}}
 }
@@ -842,6 +848,11 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 	shm := resource.MustParse("16Gi")
 	liveness, readiness := workerProbes()
 
+	cacheMount, err := modelCacheMount(in.Artifact, false)
+	if err != nil {
+		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
+	}
+
 	spec := &corev1.PodSpec{
 		ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
 		NodeSelector:     podNodeSelector(in, opts),
@@ -877,25 +888,25 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			LivenessProbe:            liveness,
 			ReadinessProbe:           readiness,
 			Env: append(fabricEnvFor(opts, hugePagesAllowed(requests)), []corev1.EnvVar{
-				{Name: "HF_HOME", Value: HFHome},
+				{Name: "HF_HOME", Value: hfHome(in.Artifact)},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
 				// fixed seed the frontend and the workers hash identical blocks differently
 				// and every cache hit is missed, silently, as a performance loss.
 				{Name: "PYTHONHASHSEED", Value: "0"},
 			}...),
-			EnvFrom: []corev1.EnvFromSource{{
-				SecretRef: &corev1.SecretEnvSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "hf-token-secret"},
-					Optional:             ptr(true),
-				},
-			}},
+			EnvFrom: servingEnvFrom(in.Artifact),
 			VolumeMounts: append(localModelMount(opts, true), []corev1.VolumeMount{
-				{Name: "model-cache", MountPath: "/models"},
+				cacheMount,
 				{Name: "dshm", MountPath: "/dev/shm"},
 			}...),
 			Resources: corev1.ResourceRequirements{Requests: requests, Limits: limits},
 		}},
+	}
+	if Private(in.Artifact) {
+		// No token on a private artifact's workers, so a cache miss must fail here instead of
+		// reaching the Hub anonymously.
+		spec.Containers[0].Env = append(spec.Containers[0].Env, corev1.EnvVar{Name: "HF_HUB_OFFLINE", Value: "1"})
 	}
 
 	if stageConfig != "" {
@@ -1008,9 +1019,11 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 				},
 			},
 		}}
-		spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: "model-cache", MountPath: "/models", ReadOnly: true},
+		mount, err := modelCacheMount(in.Artifact, true)
+		if err != nil {
+			return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
 		}
+		spec.Containers[0].VolumeMounts = []corev1.VolumeMount{mount}
 
 		// The workers advertise the node-local mirror, so the frontend has to be able to open
 		// that same path -- see frontendLocalizeScript. Nested inside the cache-claim branch
@@ -1656,18 +1669,23 @@ func modelRef(art wire.ArtifactDesired) (ref string, isPath bool, err error) {
 		if revision == "" {
 			return repo, false, nil
 		}
-		return HFSnapshotDir(repo, revision), true, nil
+		return snapshotDir(hfHome(art), repo, revision), true, nil
 	}
 	if art.ArtifactID == "" {
 		return "", false, fmt.Errorf("no artifact to serve")
 	}
-	return "/models/" + art.ArtifactID, true, nil
+	return pathDir(art), true, nil
 }
 
 // HFSnapshotDir is where huggingface_hub lays down one revision of a repo in the shared cache. It
 // must match hfScript's reconstruction, the writer of that directory.
 func HFSnapshotDir(repo, revision string) string {
-	return HFHome + "/hub/models--" + strings.ReplaceAll(repo, "/", "--") + "/snapshots/" + revision
+	return snapshotDir(HFHome, repo, revision)
+}
+
+// snapshotDir is HFSnapshotDir under any HF_HOME, a private artifact's project cache included.
+func snapshotDir(home, repo, revision string) string {
+	return home + "/hub/models--" + strings.ReplaceAll(repo, "/", "--") + "/snapshots/" + revision
 }
 
 // applyPodOverlay merges the serving block's pod configuration over the rendered spec by strategic

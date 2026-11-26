@@ -103,7 +103,7 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if v, ok := envValue(c, "HF_HUB_DISABLE_PROGRESS_BARS"); !ok || v != "1" {
 		t.Fatalf("HF_HUB_DISABLE_PROGRESS_BARS = %q, %v", v, ok)
 	}
-	if len(c.VolumeMounts) != 1 || c.VolumeMounts[0].MountPath != "/models" {
+	if len(c.VolumeMounts) != 1 || c.VolumeMounts[0].MountPath != "/models/hf" || c.VolumeMounts[0].SubPath != "hf" {
 		t.Fatalf("volume mounts = %+v", c.VolumeMounts)
 	}
 }

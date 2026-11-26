@@ -13,6 +13,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
 
 // benchmarkNamePrefix distinguishes a run's job from anything else rendered in the namespace.
@@ -152,11 +154,11 @@ const sharedCacheDir = "/models/hf"
 // With no tokenizer resolved at all there is nothing to look for, and the private cache is the
 // only safe answer: the harness will default the tokenizer to the served model name and needs
 // somewhere writable to fail or succeed on its own terms.
-func hfCachePreamble(tokenizer string) string {
+func hfCachePreamble(home, tokenizer string) string {
 	if tokenizer == "" {
 		return "export HF_HOME=" + runCacheDir
 	}
-	dir := sharedCacheDir + "/hub/models--" + strings.ReplaceAll(tokenizer, "/", "--")
+	dir := home + "/hub/models--" + strings.ReplaceAll(tokenizer, "/", "--")
 	return fmt.Sprintf(
 		"if [ -d %s ]; then export HF_HUB_OFFLINE=1; else export HF_HOME=%s; fi",
 		shellQuote(dir), runCacheDir,
@@ -215,7 +217,19 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 	}
 
 	harness := parameters["harness"]
-	preamble := hfCachePreamble(strings.TrimSpace(parameters["tokenizer"]))
+
+	// A run against a private artifact reads its tokenizer from that project's cache. The job
+	// mounts the public cache and that one project's directory, never the volume root.
+	home, mounts := sharedCacheDir, []corev1.VolumeMount{publicHFMount(true)}
+	if project := strings.TrimSpace(parameters["cache_project"]); project != "" {
+		scoped := wire.ArtifactDesired{ArtifactID: benchmarkID, OwnerProject: project}
+		mount, err := modelCacheMount(scoped, true)
+		if err != nil {
+			return nil, fmt.Errorf("benchmark %s: %w", benchmarkID, err)
+		}
+		home, mounts = hfHome(scoped), append(mounts, mount)
+	}
+	preamble := hfCachePreamble(home, strings.TrimSpace(parameters["tokenizer"]))
 
 	var script string
 	switch harness {
@@ -308,18 +322,17 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 						Args:            []string{script},
 						SecurityContext: jobContainerSecurityContext(),
 						Env: []corev1.EnvVar{
-							{Name: "HF_HOME", Value: sharedCacheDir},
+							{Name: "HF_HOME", Value: home},
 							{Name: "HOME", Value: runCacheDir},
 							{Name: "HF_HUB_DISABLE_PROGRESS_BARS", Value: "1"},
 							{Name: "WINGSMITH_BENCHMARK_ID", Value: benchmarkID},
 							{Name: "WINGSMITH_ARTIFACT_BASE", Value: bench.ArtifactBase},
 						},
 						EnvFrom: benchmarkEnvFrom(bench),
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: "model-cache", MountPath: "/models", ReadOnly: true},
-							{Name: "artifacts", MountPath: artifactDir},
-							{Name: "hf-cache", MountPath: runCacheDir},
-						},
+						VolumeMounts: append(mounts,
+							corev1.VolumeMount{Name: "artifacts", MountPath: artifactDir},
+							corev1.VolumeMount{Name: "hf-cache", MountPath: runCacheDir},
+						),
 						Resources: resources,
 					}},
 				},

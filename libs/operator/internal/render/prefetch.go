@@ -136,8 +136,8 @@ print("cached at", p, flush=True)
 // without the aws CLI would fail at runtime with a message about a missing binary, not
 // about the weights.
 //
-// TODO: credentials. ArtifactSource.CredentialRef names the secret this should read, and nothing
-// mounts or reads it yet, so only anonymous sources fetch today.
+// TODO: credentials for s3 and https sources. Only a private artifact's Hugging Face token is
+// mounted today (see hfTokenEnvFrom); other sources fetch anonymously.
 // TODO: verify ArtifactDesired.Digest once the digest algorithm over a multi-file artifact is
 // pinned down; checking the wrong thing is worse than checking nothing.
 const fetchScript = progressScript + `import sys, urllib.parse, urllib.request
@@ -193,6 +193,11 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 		return nil, err
 	}
 
+	mount, err := modelCacheMount(art, false)
+	if err != nil {
+		return nil, err
+	}
+
 	return &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -235,7 +240,7 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 						Args:            []string{command},
 						SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr(false)},
 						Env: []corev1.EnvVar{
-							{Name: "HF_HOME", Value: HFHome},
+							{Name: "HF_HOME", Value: hfHome(art)},
 							// The image's own home may belong to another uid; this one is
 							// writable by anyone.
 							{Name: "HOME", Value: "/tmp"},
@@ -244,13 +249,9 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 							// far the download has got instead.
 							{Name: "HF_HUB_DISABLE_PROGRESS_BARS", Value: "1"},
 						},
-						EnvFrom: []corev1.EnvFromSource{{
-							SecretRef: &corev1.SecretEnvSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "hf-token-secret"},
-								Optional:             ptr(true),
-							},
-						}},
-						VolumeMounts: []corev1.VolumeMount{{Name: "model-cache", MountPath: "/models"}},
+						// The only pod that ever holds a private artifact's token.
+						EnvFrom:      hfTokenEnvFrom(art, opts.Namespace),
+						VolumeMounts: []corev1.VolumeMount{mount},
 						Resources:    resources,
 					}},
 				},
@@ -458,7 +459,7 @@ func prefetchAnnotations(art wire.ArtifactDesired) map[string]string {
 //
 // A HuggingFace source wins over every other kind, whatever its priority, because it is the one
 // the engine can resolve by repo id against the shared HF_HOME; anything else has to land at a
-// path, and that path is /models/<artifact-id> so it agrees with what modelRef serves. Within a
+// path, and that path is pathDir so it agrees with what modelRef serves. Within a
 // kind the lowest Priority wins, since the plane numbers its preferred source 0.
 func prefetchCommand(art wire.ArtifactDesired) (string, error) {
 	hf, other := prefetchSource(art)
@@ -471,7 +472,7 @@ func prefetchCommand(art wire.ArtifactDesired) (string, error) {
 		if art.ArtifactID == "" {
 			return "", fmt.Errorf("artifact has no id to cache under")
 		}
-		return fmt.Sprintf(fetchScript, other.URI, "/models/"+art.ArtifactID), nil
+		return fmt.Sprintf(fetchScript, other.URI, pathDir(art)), nil
 	}
 	return "", fmt.Errorf("artifact %s declares no source to fetch from", art.ArtifactID)
 }
