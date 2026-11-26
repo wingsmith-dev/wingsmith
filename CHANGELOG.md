@@ -18,6 +18,9 @@ protocol can change between minor versions.
 - Workloads, endpoints and artifacts read as `plane.wingsmith.dev/v1alpha1` manifests at
   `GET /v1/manifests/{kind}/{project}/{name}` (public artifacts at `/v1/manifests/artifacts/{name}`),
   and `wings get <kind> <name> -o yaml` prints one.
+- Reads by id, `GET /v1/artifacts`, usage counts and every join from workloads, endpoints,
+  benchmarks, metrics, events, operations and cluster desired state see only public artifacts and
+  the named project's private ones; another project's private artifact is a 404.
 
 ### Changed
 

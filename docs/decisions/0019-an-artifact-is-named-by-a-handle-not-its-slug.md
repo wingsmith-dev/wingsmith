@@ -28,8 +28,10 @@ alphanumerics, `-`, `.`, at most 253 characters) so it can become a Kubernetes n
   stays what it was, who registered the artifact, and scopes nothing.
 - References resolve by id, then handle, then name, among the public artifacts and the caller's
   project's private ones, private first. No reference by handle or name reaches another project's
-  private artifact. Reads by id, listings, and per-project credentials for pulling private weights
-  are not scoped yet; that is a later phase.
+  private artifact. Reads by id, listings, usage and lineage counts, and every join from a
+  workload, endpoint, benchmark, metric, event, operation or desired-state frame are scoped the same
+  way, through one predicate (`artifacts/scope.py:visible`); out of scope reads as not found.
+  Per-project credentials for pulling private weights are a later phase.
 - The migration backfills oldest first, so the first artifact registered keeps the plain handle.
 
 ## Consequences
