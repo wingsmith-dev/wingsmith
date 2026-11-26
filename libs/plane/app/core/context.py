@@ -10,6 +10,8 @@ else. It is deny-by-default per kind:
 
 - `admin` reaches every route except the ones built for the gateway, so the
   tenant key-hash feed never reaches a console.
+  Under `READ_ONLY` it reaches them with safe methods only; the auth routes
+  are public, so signing in, refreshing and signing out still work.
 - `tenant` reaches `GET` under `TENANT_SURFACE` only.
 - `gateway` reaches the three routes in `GATEWAY_ROUTES` only.
 - `operator` reaches nothing: operator credentials open hub sessions only.
@@ -97,6 +99,9 @@ cluster identity; a human credential that can do that can sweep for tokens."""
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+"""What an admin may still send under `READ_ONLY`: an allowlist, so a method nobody listed is refused."""
+
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
@@ -126,6 +131,8 @@ def authorize(principal: Principal, method: str, route: str) -> None:
     if principal.kind == ADMIN:
         if any(_within(route, prefix) for prefix in SERVICE_ONLY):
             raise Forbidden("this route is for the gateway's service credential only")
+        if settings.READ_ONLY and method not in SAFE_METHODS:
+            raise Forbidden("this plane is read-only; admin changes are refused", {"read_only": True})
         return
     if principal.kind == TENANT:
         if method == "GET" and _within(route, TENANT_SURFACE):

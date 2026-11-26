@@ -237,6 +237,14 @@ class Settings:
     be disabled, nor the gateway, which still needs its own token.
     """
 
+    READ_ONLY: bool = False
+    """Refuse every state-changing HTTP request from an admin principal with `403`.
+
+    For a public demo whose admin password is published: visitors sign in and
+    browse, and nothing they do changes the plane. Sign-in, refresh and sign-out
+    still work, and tenant, gateway and hub traffic is untouched, so the fleet
+    keeps reporting. See `app.core.context.authorize`."""
+
     ADMIN_PASSWORD_HASH: str = ""
     """Bcrypt hash of the admin password. Generate one with `uv run python -m app.auth hash`
     (or `docker run --rm -it <plane image> python -m app.auth hash`), which prompts for the

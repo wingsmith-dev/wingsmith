@@ -118,6 +118,7 @@ else; a bare `DATABASE_URL` or `APP_ENV` is ignored.
 | `GATEWAY_SERVICE_TOKEN` | unset: falls back to `wingsmith-local-gateway-token` only when `APP_ENV=local` |
 | `ADMIN_AUTH` | unset: `disabled` when `APP_ENV=local`; always `enabled` otherwise |
 | `ADMIN_PASSWORD_HASH` | unset; required outside `local` |
+| `READ_ONLY` | `false`. `true` refuses every admin `POST`/`PUT`/`PATCH`/`DELETE` with `403` (sign-in, refresh and sign-out excepted); tenant, gateway and hub traffic is unaffected. For a public demo |
 | `SESSION_SIGNING_SECRET` | unset; required outside `local`, and a random per-process key in `local` |
 | `SESSION_TTL_SECONDS` / `REFRESH_TTL_SECONDS` | `900` / `604800` (absolute session lifetime) |
 | `TRUSTED_PROXIES` | unset: proxies whose `X-Forwarded-For` is believed when charging failed sign-ins |

@@ -27,11 +27,13 @@ from app.hub.server import serve_forever
 from app.hub.server import _resolve_connection
 from app.auth.routes import LOGIN_CEILING
 from app.auth.routes import TENANT_GUESSES
+from app.core.context import authorize
 from app.config.settings import Settings
 from app.config.settings import load
 from app.config.settings import api_host
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
+from app.core.exceptions import Forbidden
 from app.core.exceptions import NotAuthorized
 
 
@@ -1032,3 +1034,74 @@ def test_the_hash_command_refuses_a_short_password(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", StringIO("short\n"))
     assert main(["hash", "--stdin"]) == 1
     assert capsys.readouterr().out == ""
+
+
+# --- read-only mode -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_read_only_refuses_admin_writes(monkeypatch, method):
+    monkeypatch.setattr(settings, "READ_ONLY", True)
+    with pytest.raises(Forbidden) as refused:
+        authorize(AuthManager.admin_principal(), method, "/v1/clusters")
+    assert refused.value.detail == {"read_only": True}
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
+def test_read_only_allows_admin_reads(monkeypatch, method):
+    monkeypatch.setattr(settings, "READ_ONLY", True)
+    authorize(AuthManager.admin_principal(), method, "/v1/clusters")
+
+
+def test_read_only_leaves_tenant_and_gateway_unchanged(monkeypatch):
+    tenant = AuthManager.tenant_principal(tenant_uid="ten_01m1yd", slug="globex")
+    gateway = AuthManager.gateway_principal()
+    for flag in (False, True):
+        monkeypatch.setattr(settings, "READ_ONLY", flag)
+        authorize(tenant, "GET", "/v1/serving/models")
+        with pytest.raises(Forbidden):
+            authorize(tenant, "POST", "/v1/serving/models")
+        authorize(gateway, "POST", "/v1/clusters/tunnel-auth")
+        authorize(gateway, "GET", "/v1/gateway/tenants")
+
+
+def test_read_only_off_allows_admin_writes(monkeypatch):
+    monkeypatch.setattr(settings, "READ_ONLY", False)
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        authorize(AuthManager.admin_principal(), method, "/v1/clusters")
+
+
+def test_read_only_admin_write_is_403_over_http(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "READ_ONLY", True)
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
+        response = client.post("/v1/clusters", json={}, headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 403
+    assert response.json()["code"] == "forbidden"
+    assert "read-only" in response.json()["message"]
+
+
+def test_read_only_still_lets_admin_sign_in(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "READ_ONLY", True)
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
+        refused = client.post("/v1/auth/login", json={"password": "not it"})
+    assert refused.status_code == 401
+
+
+@pytest.mark.database
+def test_read_only_admin_signs_in_reads_and_signs_out(plane_db, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "READ_ONLY", True)
+    with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
+        login = client.post("/v1/auth/login", json={"password": PASSWORD})
+        assert login.status_code in (200, 201)
+        body = login.json()
+        auth = {"Authorization": f"Bearer {body['access_token']}"}
+        assert client.get("/v1/clusters", headers=auth).status_code == 200
+        assert client.post("/v1/clusters", json={}, headers=auth).status_code == 403
+        refreshed = client.post("/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
+        assert refreshed.status_code in (200, 201)
+        logout = client.post("/v1/auth/logout", json={"refresh_token": refreshed.json()["refresh_token"]})
+        assert logout.status_code in (200, 201, 204)

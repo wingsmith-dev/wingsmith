@@ -69,6 +69,7 @@ plane:
 | `WINGSMITH_APP_ENV` | all plane processes | `production` (the image default). Never `local` outside a laptop |
 | `WINGSMITH_ADMIN_PASSWORD_HASH` | api | bcrypt hash of the admin password, see below |
 | `WINGSMITH_SESSION_SIGNING_SECRET` | api | random secret that signs admin sessions |
+| `WINGSMITH_READ_ONLY` | api | `true` refuses admin writes with `403` (sign-in, refresh, sign-out still work). For a public demo only; default `false` |
 | `WINGSMITH_GATEWAY_SERVICE_TOKEN` | api, gateway | random secret the gateway authenticates to the plane with |
 | `WINGSMITH_HUB_PUBLIC_URL` | api | the `wss://` URL clusters reach the hub on; written into each cluster's setup values. Required outside `local`; `WINGSMITH_PUBLIC_HOST` does not stand in for it |
 | `WINGSMITH_TUNNEL_GATEWAY` | api | `host:port` of the gateway's tunnel listener, written into setup values |
