@@ -354,7 +354,7 @@ def test_deployments_keep_their_name_as_object_name_and_may_share_a_name(scratch
             "INSERT INTO supply_cluster (uid, name, region) VALUES ('clu_t', 'alpha', 'us-east-1') RETURNING id"
         ).fetchone()[0]
         artifact = conn.execute(
-            "INSERT INTO demand_artifact (uid, digest, name) VALUES ('art_t', 'sha256:aa', 'm') RETURNING id"
+            "INSERT INTO demand_artifact (uid, digest, name, handle) VALUES ('art_t', 'sha256:aa', 'm', 'm') RETURNING id"
         ).fetchone()[0]
         workloads = [
             conn.execute(
