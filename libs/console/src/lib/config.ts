@@ -3,7 +3,7 @@
  *
  * `index.html` loads `/config.js` before the app. The bundle ships a default one that sets
  * nothing; the standalone nginx image rewrites it at container start from `WINGSMITH_API_BASE_URL`
- * and `WINGSMITH_READ_ONLY`, so one image serves any plane. The `VITE_*` variables still apply as
+ * `WINGSMITH_READ_ONLY` and `WINGSMITH_DEMO_PASSWORD`, so one image serves any plane. The `VITE_*` variables still apply as
  * build-time defaults, which is how `pnpm dev` is configured.
  */
 export interface RuntimeConfig {
@@ -14,6 +14,11 @@ export interface RuntimeConfig {
   apiBaseUrl: string
   /** Start every new browser session in read-only mode. */
   readOnly: boolean
+  /**
+   * Public demo only: shown on the sign-in page and pre-filled. Empty means no notice. It ships to
+   * every visitor, so it must be a password that is meant to be published.
+   */
+  demoPassword: string
 }
 
 declare global {
@@ -28,6 +33,10 @@ function readBool(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value
   if (typeof value === "string" && value !== "") return value === "true"
   return undefined
+}
+
+function readPlain(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
 }
 
 function readString(value: unknown): string | undefined {
@@ -49,6 +58,10 @@ export function resolveConfig(
       "",
     readOnly:
       readBool(runtime?.readOnly) ?? readBool(env.VITE_READ_ONLY) ?? false,
+    demoPassword:
+      readPlain(runtime?.demoPassword) ??
+      readPlain(env.VITE_DEMO_PASSWORD) ??
+      "",
   }
 }
 

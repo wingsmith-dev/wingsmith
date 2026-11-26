@@ -12,6 +12,7 @@ import {
   InvalidError,
   NetworkError,
   NotAuthorizedError,
+  ForbiddenError,
   NotFoundError,
   PlaneError,
 } from "./transport"
@@ -273,5 +274,26 @@ describe("httpTransport 422 and 409", () => {
     const failure = httpTransport.request("POST", "/things", { body: {} })
     await expect(failure).rejects.toBeInstanceOf(PlaneError)
     await expect(failure).rejects.not.toBeInstanceOf(InvalidError)
+  })
+})
+
+describe("httpTransport 403", () => {
+  it("raises ForbiddenError carrying the plane's message", async () => {
+    plane(() =>
+      json(403, { code: "demo_read_only", message: "Demo is read-only." })
+    )
+    const failure = httpTransport.request("POST", "/things", { body: {} })
+    await expect(failure).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(failure).rejects.toMatchObject({
+      status: 403,
+      message: "Demo is read-only.",
+    })
+  })
+
+  it("falls back to a plain message when the body has none", async () => {
+    plane(() => new Response("<html>", { status: 403 }))
+    await expect(
+      httpTransport.request("POST", "/things", { body: {} })
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })

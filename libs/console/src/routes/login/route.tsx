@@ -2,6 +2,8 @@ import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { config } from "@/lib/config"
+import { DemoNotice } from "./DemoNotice"
 import { useAuthStore } from "@/modules/auth/store"
 import { WingsmithMark } from "@/components/layout/wingsmith-mark"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
@@ -29,7 +31,7 @@ function LoginPage() {
   const navigate = useNavigate()
 
   const [slug, setSlug] = useState("admin")
-  const [password, setPassword] = useState("")
+  const [password, setPassword] = useState(config.demoPassword)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -64,6 +66,8 @@ function LoginPage() {
             WINGSMITH
           </p>
         </div>
+
+        <DemoNotice password={config.demoPassword} />
 
         <div className="space-y-2">
           <Label htmlFor="slug">Account</Label>

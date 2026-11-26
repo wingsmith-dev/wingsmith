@@ -6,6 +6,7 @@ set -eu
 html=/usr/share/nginx/html
 base="${WINGSMITH_API_BASE_URL:-}"
 read_only="${WINGSMITH_READ_ONLY:-false}"
+demo_password="${WINGSMITH_DEMO_PASSWORD:-}"
 
 case "$read_only" in
   true|false) ;;
@@ -23,7 +24,14 @@ case "$base" in
   *) echo "WINGSMITH_API_BASE_URL must be empty (same origin) or an http(s) URL, got '$base'" >&2; exit 1 ;;
 esac
 
-printf 'window.__WINGSMITH_CONFIG__ = {"apiBaseUrl": "%s", "readOnly": %s}\n' "$base" "$read_only" \
+# The demo password is published on purpose. Same rule as the base URL: nothing that could break
+# out of the JS string.
+case "$demo_password" in
+  *[\"\\\'\;\<\>\&]*) echo "WINGSMITH_DEMO_PASSWORD may not contain quotes, backslashes, ';', '<', '>' or '&'" >&2; exit 1 ;;
+esac
+
+printf 'window.__WINGSMITH_CONFIG__ = {"apiBaseUrl": "%s", "readOnly": %s, "demoPassword": "%s"}\n' \
+  "$base" "$read_only" "$demo_password" \
   > "$html/config.js"
 
 # The API origin the CSP has to allow. Empty when the plane shares the console's origin.

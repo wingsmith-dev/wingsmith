@@ -39,6 +39,7 @@ Copy `.env.example` to `.env.local` for development. Every variable is optional.
 | `VITE_API_BASE_URL` | empty | Origin the browser calls for `/v1`. Empty means the console's own origin. |
 | `VITE_API_PROXY` | `http://localhost:8000` | Dev server only: where it forwards `/v1` and `/health`. Ignored when `VITE_API_BASE_URL` is set. |
 | `VITE_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
+| `VITE_DEMO_PASSWORD` | empty | Public demo: show the password on the sign-in page and pre-fill it. Empty shows nothing. |
 
 In development the dev server proxies `/v1` to the plane, so the browser makes no
 cross-origin requests and the plane's CORS allowlist does not need the dev origin.
@@ -52,6 +53,7 @@ plane is baked in: `docker/40-wingsmith-config.sh` writes `config.js` at contain
 |---|---|---|
 | `WINGSMITH_API_BASE_URL` | empty | Plane origin (plus optional path). Empty means same origin, behind one ingress. |
 | `WINGSMITH_READ_ONLY` | `false` | Start new browser sessions in read-only mode. |
+| `WINGSMITH_DEMO_PASSWORD` | empty | Public demo: show the password on the sign-in page and pre-fill it. Visible to every visitor; the plane must refuse writes from that session. |
 
 so one image serves any plane. Runtime values win over the `VITE_*` build-time ones. The
 image also sets a Content-Security-Policy (whose `connect-src` allows the configured plane

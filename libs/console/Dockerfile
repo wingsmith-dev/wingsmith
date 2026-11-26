@@ -19,7 +19,8 @@ FROM nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54
 # CSP from these at container start, so one image serves any plane. An empty base URL means the
 # API answers on the console's own origin (behind the same ingress).
 ENV WINGSMITH_API_BASE_URL="" \
-    WINGSMITH_READ_ONLY="false"
+    WINGSMITH_READ_ONLY="false" \
+    WINGSMITH_DEMO_PASSWORD=""
 
 # The router is client-side, so every path below / exists only once the bundle is running; the
 # server config falls back to index.html for anything that is not a built file.
