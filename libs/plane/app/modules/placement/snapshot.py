@@ -250,6 +250,7 @@ class WorkloadDemand(Snap):
     workload: str
     project: str
     name: str
+    """The object name the workload's deployments render under, checked for a clash per cluster."""
     device_class: str
     unit_device_count: int
     kind: str = "service"

@@ -26,6 +26,7 @@ from app.db.models import PriorityClass
 from app.core.lookup import at_most_one
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
+from app.modules.deployments.naming import object_name
 
 from .engine import place
 from .engine import expand
@@ -158,7 +159,9 @@ class PlacementService:
         demand = await self.demand(workload)
         capacity = snapshot
         if capacity is None:
-            capacity = await self.repo.capacity(workload.project_id, demand.device_class, workload.id, workload.name)
+            capacity = await self.repo.capacity(
+                workload.project_id, demand.device_class, workload.id, object_name(workload.name, workload.uid)
+            )
         decision = expand(demand, capacity)
         if not decision.splittable and not decision.shares:
             raise Invalid(decision.summary)
@@ -184,7 +187,7 @@ class PlacementService:
         return WorkloadDemand(
             workload=workload.uid,
             project=project.uid,
-            name=workload.name,
+            name=object_name(workload.name, workload.uid),
             device_class=workload.device_class,
             unit_device_count=max(workload.device_count, 1),
             kind=workload.kind,

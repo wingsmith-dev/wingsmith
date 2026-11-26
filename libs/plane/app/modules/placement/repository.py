@@ -362,9 +362,9 @@ class PlacementRepository:
         return counted
 
     async def _taken_names(self, name: str | None) -> dict[UUID, dict[str, str]]:
-        """Which clusters already hold a deployment of this name, and for which workload.
+        """Which clusters already hold a deployment of this object name, and for which workload.
 
-        A deployment name is unique per cluster, so expanding a workload onto a
+        An object name is unique per cluster, so expanding a workload onto a
         cluster where a *different* workload already holds that name cannot succeed.
         Only the one name being placed is read; the map is carried into the snapshot so
         the check costs the engine a dictionary lookup instead of a query.
@@ -373,9 +373,9 @@ class PlacementRepository:
             return {}
         rows = (
             await self.db.execute(
-                select(Deployment.cluster_id, Deployment.name, Workload.uid)
+                select(Deployment.cluster_id, Deployment.object_name, Workload.uid)
                 .join(Workload, Deployment.workload_id == Workload.id)
-                .where(Deployment.name == name)
+                .where(Deployment.object_name == name)
             )
         ).all()
         taken: dict[UUID, dict[str, str]] = {}

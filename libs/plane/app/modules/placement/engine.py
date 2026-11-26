@@ -171,16 +171,13 @@ def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: Cap
 
 
 def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rejection]:
-    """A deployment name is unique per cluster, so a taken one rules the cluster out.
+    """An object name is unique per cluster, so a taken one rules the cluster out.
 
-    Two deployments of the same workload in two clusters share a name and do not
-    collide; a name held by a *different* workload does, and placement rejects the
-    cluster instead of inventing a suffix that would then be the name nobody typed.
-
-    The namespace is the cluster's, not the tenant's: the deployment name is the
-    object name rendered into the cluster, so two tenants whose workloads share a
-    name cannot both run in one cluster. The rejection says the name is taken and
-    does not say by whom, so it names nothing that belongs to another tenant.
+    Two deployments of the same workload in two clusters share an object name and do
+    not collide; one held by a *different* workload does. Object names carry the
+    workload uid (`app.modules.deployments.naming`), so this only trips on a deployment
+    from before that, which kept its bare workload name. The rejection says the name is
+    taken and does not say by whom, so it names nothing that belongs to another tenant.
     """
     if request.deployment_name is None:
         return []

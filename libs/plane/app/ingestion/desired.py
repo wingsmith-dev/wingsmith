@@ -494,7 +494,7 @@ async def _deployments(
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,
-                name=deployment.name,
+                name=deployment.object_name,
                 cluster_id=cluster_uid,
                 project_id=project_uid,
                 lifecycle=workload.kind,
@@ -546,7 +546,7 @@ def _adopt(deployment: Deployment) -> Adopt | None:
     return Adopt(
         namespace=deployment.adopted_namespace,
         kind=deployment.adopted_kind or "deployment",
-        name=deployment.adopted_name or deployment.name,
+        name=deployment.adopted_name or deployment.object_name,
         spec_fingerprint=deployment.adopted_fingerprint or "",
     )
 
