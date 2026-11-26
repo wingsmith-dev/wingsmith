@@ -32,7 +32,7 @@ export function uuid(seed: number): string {
   ].join("-")
 }
 
-/** `revision` is a microsecond timestamp rendered as a string, never a number. */
-export function revision(iso: string): string {
-  return String(new Date(iso).getTime() * 1000)
+/** `revision` is the spec generation rendered as a string; mocks are never edited, so it is "1". */
+export function revision(): string {
+  return "1"
 }

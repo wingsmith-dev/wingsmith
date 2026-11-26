@@ -51,7 +51,7 @@ const iso = (minutesAgo: number) =>
   new Date(NOW - minutesAgo * 60_000).toISOString()
 
 const CREATED = iso(60)
-const REV = revision(CREATED)
+const REV = revision()
 
 interface NodeSpec {
   suffix: string
@@ -1091,7 +1091,7 @@ export const deployments: Deployment[] = [
     enabled: true,
     created_at: iso(120),
     updated_at: iso(8),
-    revision: revision(iso(120)),
+    revision: revision(),
     adopted_workload_id: null,
     adopted_fingerprint: null,
     authority: "managed",
@@ -1237,7 +1237,7 @@ export const deployments: Deployment[] = [
     enabled: true,
     created_at: iso(400),
     updated_at: iso(4),
-    revision: revision(iso(400)),
+    revision: revision(),
     adopted_workload_id: null,
     adopted_fingerprint: null,
     authority: "managed",
