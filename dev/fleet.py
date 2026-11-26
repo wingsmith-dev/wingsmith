@@ -60,6 +60,15 @@ empty. Against a plane with admin auth on, sign in and export the session token 
 never sees it: each cluster connects with its own enrolment token, minted below.
 """
 
+ADMIN_PASSWORD = os.environ.get("WINGSMITH_ADMIN_PASSWORD", "")
+"""The admin password, for a plane with admin auth on and no pre-minted `API_TOKEN`.
+
+When set (and `API_TOKEN` is not), `call` signs in as `admin` on first use and again whenever the
+plane answers 401, because a session token lives minutes and the fleet runs for days.
+"""
+
+_session: dict[str, str] = {}
+
 OPERATOR_VERSION = "0.0.0-fake"
 
 HEARTBEAT_SECONDS = float(os.environ.get("WINGSMITH_FLEET_HEARTBEAT", "10"))
@@ -188,10 +197,27 @@ class ApiError(RuntimeError):
         self.detail = detail
 
 
-def call(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+def login() -> str:
+    request = urllib.request.Request(
+        f"{API}/v1/auth/login",
+        data=json.dumps({"slug": "admin", "password": ADMIN_PASSWORD}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            token = json.loads(response.read())["access_token"]
+    except urllib.error.HTTPError as error:
+        raise ApiError("POST", "/auth/login", error.code, error.read().decode()) from error
+    _session["token"] = token
+    return token
+
+
+def call(method: str, path: str, body: dict[str, Any] | None = None, _retry: bool = True) -> Any:
     headers = {"Content-Type": "application/json"}
-    if API_TOKEN:
-        headers["Authorization"] = f"Bearer {API_TOKEN}"
+    token = API_TOKEN or (_session.get("token") or login() if ADMIN_PASSWORD else "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         f"{API}/v1{path}",
         data=None if body is None else json.dumps(body).encode(),
@@ -203,6 +229,9 @@ def call(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
             raw = response.read()
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as error:
+        if error.code == 401 and _retry and ADMIN_PASSWORD and not API_TOKEN:
+            _session.clear()
+            return call(method, path, body, _retry=False)
         raise ApiError(method, path, error.code, error.read().decode()) from error
 
 
