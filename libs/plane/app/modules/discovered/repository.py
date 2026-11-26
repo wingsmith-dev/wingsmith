@@ -146,7 +146,7 @@ class DiscoveredWorkloadRepository:
     async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
         """The weights a promotion says it is adopting, by id or by name, public or `project_id`'s own."""
         if is_uid(ref):
-            query = select(Artifact).where(Artifact.uid == ref)
+            query = select(Artifact).where(Artifact.uid == ref, visible(project_id))
         else:
             query = select(Artifact).where(Artifact.name == ref, visible(project_id))
         result = await self.db.execute(query.limit(2))

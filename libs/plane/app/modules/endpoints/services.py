@@ -939,6 +939,8 @@ class EndpointService:
                     uids[deployment.id] = deployment.uid
                 if not target.enabled or deployment is None or not deployment.enabled:
                     continue
+                if workload is not None and artifact is None:
+                    continue
                 if cluster is None or cluster.phase not in SERVING_PHASES:
                     continue
                 if serving is not None and not serving.enabled:

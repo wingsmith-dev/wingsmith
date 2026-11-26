@@ -34,6 +34,7 @@ from app.db.models import WorkloadRevision
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 from app.modules.artifacts.scope import visible
+from app.modules.artifacts.scope import visible_ids
 from app.modules.artifacts.scope import private_first
 
 
@@ -163,7 +164,8 @@ class WorkloadRepository:
         if kind is not None:
             query = query.where(Workload.kind == kind)
         if artifact is not None:
-            query = query.where(Workload.artifact_id.in_(ref_ids(Artifact, artifact)))
+            scope = None if project is None else ref_ids(Project, project, "slug")
+            query = query.where(Workload.artifact_id.in_(visible_ids(artifact, scope)))
         if serving_digest is not None:
             query = query.where(Workload.serving_digest == serving_digest)
         if device_class is not None:
@@ -312,8 +314,8 @@ class WorkloadRepository:
             await self.db.execute(
                 select(Artifact)
                 .where(
-                    Artifact.uid.in_(uids)
-                    | ((Artifact.handle.in_(names) | Artifact.name.in_(names)) & visible(project_id))
+                    (Artifact.uid.in_(uids) | Artifact.handle.in_(names) | Artifact.name.in_(names)),
+                    visible(project_id),
                 )
                 .order_by(private_first())
             )
@@ -342,11 +344,12 @@ class WorkloadRepository:
     async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
         """By id, handle or name. Names are not unique, so a name two artifacts share is refused.
 
-        A handle or name reaches the public catalogue and `project_id`'s private artifacts, and
+        Any of them reaches only the public catalogue and `project_id`'s private artifacts: another
+        project's private id is not found. A handle or name reaches the public catalogue and `project_id`'s private artifacts, and
         a private handle wins over a public one.
         """
         if is_uid(ref):
-            result = await self.db.execute(select(Artifact).where(Artifact.uid == ref).limit(1))
+            result = await self.db.execute(select(Artifact).where(Artifact.uid == ref, visible(project_id)).limit(1))
             return result.scalar_one_or_none()
         query = select(Artifact).where(Artifact.handle == ref, visible(project_id)).order_by(private_first())
         result = await self.db.execute(query.limit(1))

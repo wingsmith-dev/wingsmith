@@ -24,6 +24,8 @@ from app.db.models import ClusterServing
 from app.db.models import EndpointTarget
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
+from app.modules.artifacts.scope import visible
+from app.modules.artifacts.scope import visible_ids
 
 
 class EndpointRepository:
@@ -49,7 +51,7 @@ class EndpointRepository:
         column = Endpoint.uid if is_uid(ref) else Endpoint.name
         return self._base().where(column == ref)
 
-    def serving_artifact_query(self, artifact: str) -> Select:
+    def serving_artifact_query(self, artifact: str, project=None) -> Select:
         """The endpoints whose targets serve one artifact.
 
         Two hops (target to deployment to workload), expressed as a subquery so
@@ -62,7 +64,7 @@ class EndpointRepository:
             select(EndpointTarget.endpoint_id)
             .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .join(Workload, Deployment.workload_id == Workload.id)
-            .where(Workload.artifact_id.in_(ref_ids(Artifact, artifact)))
+            .where(Workload.artifact_id.in_(visible_ids(artifact, project)))
         )
 
     def serving_workload_query(self, workload: str) -> Select:
@@ -95,7 +97,8 @@ class EndpointRepository:
         if project is not None:
             query = query.where(Endpoint.project_id.in_(ref_ids(Project, project, "slug")))
         if artifact is not None:
-            query = query.where(Endpoint.id.in_(self.serving_artifact_query(artifact)))
+            scope = None if project is None else ref_ids(Project, project, "slug")
+            query = query.where(Endpoint.id.in_(self.serving_artifact_query(artifact, scope)))
         if workload is not None:
             query = query.where(Endpoint.id.in_(self.serving_workload_query(workload)))
         if search is not None:
@@ -164,7 +167,8 @@ class EndpointRepository:
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
-            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
+            # Visible to the endpoint's project: a target serving another project's private weights resolves to no artifact and is not routed.
+            .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Endpoint.project_id))
             .options(selectinload(Endpoint.aliases))
             .where(Endpoint.enabled.is_(True), Project.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
@@ -213,7 +217,8 @@ class EndpointRepository:
         not quietly routed to. A bare name is a workload name, which projects may share,
         so it resolves inside the endpoint's own project; an id reaches across the tenant.
         One name still matches a deployment per cluster; the caller refuses that instead
-        of choosing one.
+        of choosing one. A deployment serving another project's private artifact is not
+        found either: routing to it would expose those weights outside their project.
         """
         if not refs:
             return {}
@@ -223,7 +228,9 @@ class EndpointRepository:
             select(Deployment)
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Project, Workload.project_id == Project.id)
+            .join(Artifact, Workload.artifact_id == Artifact.id)
             .where(Deployment.uid.in_(uids) | (Deployment.name.in_(names) & (Workload.project_id == project_id)))
+            .where(visible(project_id))
             .order_by(Deployment.seq.asc())
         )
         if tenant_id is not None:
@@ -249,7 +256,7 @@ class EndpointRepository:
         """
         result = await self.db.execute(
             select(Artifact.slug)
-            .join(Workload, Workload.artifact_id == Artifact.id)
+            .join(Workload, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .join(Deployment, Deployment.workload_id == Workload.id)
             .where(Deployment.id == deployment_id)
             .limit(1)
