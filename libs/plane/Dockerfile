@@ -10,7 +10,7 @@ ARG CONSOLE=bundled
 FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0 AS console-none
 RUN mkdir -p /src/dist
 
-FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS console-bundled
+FROM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS console-bundled
 WORKDIR /src
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
