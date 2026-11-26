@@ -36,6 +36,7 @@ from app.db.models import Deployment
 from app.db.models import EndpointTarget
 from app.db.models import TopologyDomain
 from app.core.exceptions import Invalid
+from app.modules.artifacts.scope import visible
 
 
 SUBJECT_TABLES = {
@@ -79,7 +80,9 @@ def subject_subquery(ref: str):
     model = SUBJECT_TABLES.get(ref[:4])
     if model is None:
         raise Invalid(f"subject {ref!r} is not a kind events are written about", {"subject": ref})
-    return select(model.id).where(model.uid == ref)
+    query = select(model.id).where(model.uid == ref)
+    # No project scope on events, so a private artifact's timeline is not found by its id.
+    return query.where(visible()) if model is Artifact else query
 
 
 def workload_clause(ref: str):
@@ -110,7 +113,11 @@ def workload_clause(ref: str):
     """
     deployments = select(Deployment.id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
-    artifact = select(Artifact.id).join(Workload, Workload.artifact_id == Artifact.id).where(Workload.uid == ref)
+    artifact = (
+        select(Artifact.id)
+        .join(Workload, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
+        .where(Workload.uid == ref)
+    )
     clusters = (
         select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     )

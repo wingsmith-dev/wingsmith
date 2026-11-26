@@ -24,6 +24,7 @@ from app.db.models import EndpointTarget
 from app.db.models import ArtifactBaseline
 from app.db.models import BenchmarkRequest
 from app.core.filters import ref_ids
+from app.modules.artifacts.scope import visible
 from app.modules.deployments.naming import by_ref
 
 
@@ -127,7 +128,7 @@ class BenchmarkRepository:
         query = (
             select(Deployment, Workload, Artifact, Cluster.uid.label("cluster_uid"))
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Artifact, Workload.artifact_id == Artifact.id)
+            .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
             .where(by_ref(ref))
@@ -154,7 +155,7 @@ class BenchmarkRepository:
                 Workload.uid.label("workload_uid"),
             )
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Artifact, Workload.artifact_id == Artifact.id)
+            .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
             .where(column == ref)
@@ -179,7 +180,7 @@ class BenchmarkRepository:
             )
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
-            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
+            .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .where(column == ref)
         )
@@ -215,7 +216,7 @@ class BenchmarkRepository:
             )
             .outerjoin(Deployment, BenchmarkRun.deployment_id == Deployment.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
-            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
+            .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
         )
 

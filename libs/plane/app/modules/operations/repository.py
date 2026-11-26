@@ -29,6 +29,7 @@ from app.db.models import Operation
 from app.db.models import Deployment
 from app.core.filters import ref_ids
 from app.core.exceptions import Invalid
+from app.modules.artifacts.scope import visible
 
 
 TARGET_TABLES = {
@@ -134,7 +135,8 @@ def target_subquery(ref: str) -> Select:
     doing what it says. Creation is the path that refuses an ambiguous name.
     """
     parsed = parse_target(ref)
-    return select(parsed.model.id).where(parsed.column == parsed.value)
+    query = select(parsed.model.id).where(parsed.column == parsed.value)
+    return query.where(visible()) if parsed.model is Artifact else query
 
 
 class OperationRepository:
@@ -226,7 +228,9 @@ class OperationRepository:
             cluster_column = model.cluster_id
         else:
             cluster_column = null().label("cluster_id")
-        return select(model.id, model.uid, cluster_column).where(parsed.column == parsed.value)
+        query = select(model.id, model.uid, cluster_column).where(parsed.column == parsed.value)
+        # No project scope here, so only the public catalogue: a private artifact is not found.
+        return query.where(visible()) if model is Artifact else query
 
     async def resolve_targets(self, ref: str) -> "list[Row]":
         """Every row a target reference matches, so creation can answer for all of them.

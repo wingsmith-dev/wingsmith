@@ -78,6 +78,7 @@ from app.config.settings import settings
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 from app.core.exceptions import InvalidParameter
+from app.modules.artifacts.scope import visible
 from app.modules.deployments.naming import by_ref
 
 from .sla import Period
@@ -501,7 +502,7 @@ class MetricsService:
         query = (
             select(Deployment, Workload, Artifact)
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Artifact, Workload.artifact_id == Artifact.id)
+            .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .where(by_ref(ref))
         )
         row = (await self.db.execute(query)).first()
@@ -536,7 +537,7 @@ class MetricsService:
         """
         query = (
             select(Workload, Artifact)
-            .join(Artifact, Workload.artifact_id == Artifact.id)
+            .join(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .where(Workload.uid == ref if is_uid(ref) else Workload.name == ref)
         )
         if project is not None:
