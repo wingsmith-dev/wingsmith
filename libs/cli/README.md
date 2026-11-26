@@ -119,6 +119,12 @@ Plus CLI-local commands: `login`, `logout`, `context`, `config`, `whoami`, `expl
 current month to date, a `--month YYYY-MM`, or a `--from`/`--to` range, with the verdict against the
 success-rate objective its serving quota declares (`GET /v1/metrics/endpoints/{ref}/sla`).
 
+`wings get <kind> <name>` prints a Workload, Endpoint or Artifact as a `plane.wingsmith.dev/v1alpha1`
+manifest (`GET /v1/manifests/...`, ADR 0022): `spec` is what was declared, `status` what the plane
+derived. Workloads and endpoints are read in `--project`; an artifact in `--project` when it is
+private there, from the public catalogue otherwise. The kinds' JSON Schema, with its `x-immutable`
+and `x-defaulted` markers, is embedded at `internal/api/manifest-schema.json`.
+
 Declared state, observed state and operations stay separate at the CLI too. Draining a node is
 an operation (`wings operation create node.drain …`), not a flag on `node`, so it has a record of
 who asked, why, and how it ended.

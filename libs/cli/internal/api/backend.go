@@ -46,6 +46,7 @@ type Backend interface {
 	Endpoints(ctx context.Context, opts ListOpts) (Page[Endpoint], error)
 	Endpoint(ctx context.Context, ref string) (Endpoint, error)
 	EndpointSLA(ctx context.Context, ref string, q SLAQuery) (SLAReport, error)
+	Manifest(ctx context.Context, collection, project, name string) (Manifest, error)
 
 	Tenants(ctx context.Context, opts ListOpts) (Page[Tenant], error)
 	Tenant(ctx context.Context, ref string) (Tenant, error)
