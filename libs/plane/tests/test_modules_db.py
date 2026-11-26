@@ -71,6 +71,7 @@ from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
 from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
+from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.workloads.schemas import WorkloadRevisionUpdate
 from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.artifacts.services import ArtifactService
@@ -249,7 +250,12 @@ def assert_patched(before, after) -> None:
     assert after.updated_at is not None
     assert before.updated_at is None or after.updated_at >= before.updated_at
     assert after.revision != before.revision
-    assert after.revision == str(int(after.updated_at.timestamp() * 1_000_000))
+    if hasattr(after, "generation"):
+        # Workloads and endpoints version the spec, not the write (ADR 0021).
+        assert after.generation > before.generation
+        assert after.revision == str(after.generation)
+    else:
+        assert after.revision == str(int(after.updated_at.timestamp() * 1_000_000))
 
 
 # --------------------------------------------------------------------------- modules
@@ -2411,3 +2417,78 @@ async def test_the_patch_that_changes_aliases_reports_what_it_wrote(db: AsyncSes
 
     patched = await endpoints.update(created.id, EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
     assert patched.aliases == ["moonshotai/kimi-k3"]
+
+
+async def test_a_replayed_workload_update_is_a_no_op(db: AsyncSession) -> None:
+    """What a GitOps re-sync sends: every declared field, unchanged. Nothing rolls, nothing is recorded."""
+    _, _, _, deployment = await a_deployment(db)
+    service = WorkloadService(db)
+    first = await service.update(
+        deployment.workload_id, WorkloadUpdateRequest(labels={"tier": "gold"}, overrides={"env": {"A": "1"}})
+    )
+    rolled = (await DeploymentService(db).get(deployment.id)).generation
+    events = (await EventService(db).list(subject=deployment.id, limit=100)).count
+
+    replay = WorkloadUpdateRequest(
+        name=first.name,
+        serving=msgspec.convert((await service.revisions(first.id)).items[0].serving, WorkloadServingUpdate),
+        labels={"tier": "gold"},
+        overrides={"env": {"A": "1"}},
+        adapter_artifacts=[],
+        strategy=first.strategy,
+    )
+    again = await service.update(deployment.workload_id, replay, if_match=first.revision)
+
+    assert again.generation == first.generation
+    assert again.revision == first.revision
+    assert (await DeploymentService(db).get(deployment.id)).generation == rolled
+    assert (await EventService(db).list(subject=deployment.id, limit=100)).count == events
+
+
+async def test_spec_writes_move_the_generation_and_observation_does_not(db: AsyncSession) -> None:
+    _, _, _, deployment = await a_deployment(db)
+    service = WorkloadService(db)
+    created = await service.get(deployment.workload_id)
+    assert created.generation == 1
+
+    labelled = await service.update(created.id, WorkloadUpdateRequest(labels={"tier": "gold"}))
+    assert labelled.generation == 2
+    with pytest.raises(Conflict):
+        await service.update(created.id, WorkloadUpdateRequest(labels={"tier": "x"}), if_match=created.revision)
+
+    await db.execute(
+        text("UPDATE demand_workload SET imported_args = '{\"a\": 1}', started_at = now() WHERE uid = :uid"),
+        {"uid": created.id},
+    )
+    await db.commit()
+    observed = await service.get(created.id)
+    assert observed.revision == labelled.revision
+
+    await service.rescale(created.id, WorkloadScaleParameters(desired=1))
+    assert (await service.get(created.id)).generation == 2
+    await service.set_paused(created.id, True)
+    assert (await service.get(created.id)).generation == 3
+    await service.set_paused(created.id, True)
+    assert (await service.get(created.id)).generation == 3
+
+
+async def test_an_endpoint_generation_ignores_targets_and_replays(db: AsyncSession) -> None:
+    _, project, _, deployment = await a_deployment(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="chat", project=project.id, targets=[EndpointTargetRequest(deployment=deployment.id)]
+        )
+    )
+    assert created.generation == 1
+
+    retargeted = await endpoints.update(
+        created.id, EndpointUpdateRequest(targets=[EndpointTargetRequest(deployment=deployment.id, weight=50)])
+    )
+    assert retargeted.generation == 1
+
+    replay = EndpointUpdateRequest(
+        slug=created.slug, labels=created.labels, enabled=created.enabled, visibility=created.visibility
+    )
+    assert (await endpoints.update(created.id, replay, if_match=created.revision)).generation == 1
+    assert (await endpoints.update(created.id, EndpointUpdateRequest(labels={"a": "b"}))).generation == 2
