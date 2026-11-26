@@ -23,8 +23,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BIN = ROOT / "dev" / ".bin"
+PREBUILT = "WINGSMITH_DEMO_BIN" in os.environ
+"""Set in the demo image, which ships the three binaries built; `build()` then has nothing to do."""
+BIN = Path(os.environ["WINGSMITH_DEMO_BIN"]) if PREBUILT else ROOT / "dev" / ".bin"
 LOGS = BIN / "logs"
+LOG_TO_STDOUT = os.environ.get("WINGSMITH_DEMO_LOGS") == "stdout"
+"""Children inherit this process's stdout instead of writing files under `LOGS`, so `kubectl logs` sees them."""
+
+BIND = os.environ.get("WINGSMITH_DEMO_BIND", "127.0.0.1")
+"""The address the per-cluster engines and agent health endpoints listen on. They are only dialled from
+inside this process tree, so the default is right except where something else must probe them."""
+DIAL = "127.0.0.1" if BIND in ("", "0.0.0.0", "::") else BIND
 
 PLANE = os.environ.get("WINGSMITH_API", "http://localhost:8000").removesuffix("/v1")
 
@@ -32,6 +41,10 @@ GATEWAY = os.environ.get("WINGSMITH_DEMO_GATEWAY", "127.0.0.1:8080")
 """Where callers reach the gateway: its internal listener."""
 
 TUNNEL = os.environ.get("WINGSMITH_DEMO_TUNNEL", "127.0.0.1:8443")
+"""Where the gateway's tunnel listener binds."""
+
+TUNNEL_DIAL = os.environ.get("WINGSMITH_DEMO_TUNNEL_DIAL", TUNNEL)
+"""Where the agents dial it. Differs from `TUNNEL` when that binds `0.0.0.0`."""
 GATEWAY_METRICS = os.environ.get("WINGSMITH_DEMO_GATEWAY_METRICS", "127.0.0.1:9090")
 
 FRONTEND_PORTS = 9901
@@ -51,6 +64,8 @@ BINARIES = {
 
 async def build() -> None:
     """Builds the three binaries from this checkout, so the path is the code being looked at."""
+    if PREBUILT:
+        return
     BIN.mkdir(parents=True, exist_ok=True)
     LOGS.mkdir(parents=True, exist_ok=True)
     for name, (module, package) in BINARIES.items():
@@ -60,6 +75,9 @@ async def build() -> None:
 
 
 async def spawn(name: str, argv: list[str], env: dict[str, str] | None = None) -> asyncio.subprocess.Process:
+    if LOG_TO_STDOUT:
+        return await asyncio.create_subprocess_exec(*argv, env={**os.environ, **(env or {})})
+    LOGS.mkdir(parents=True, exist_ok=True)
     log = (LOGS / f"{name}.log").open("ab")
     return await asyncio.create_subprocess_exec(
         *argv, env={**os.environ, **(env or {})}, stdout=log, stderr=asyncio.subprocess.STDOUT
@@ -104,7 +122,8 @@ class Gateway:
                 "-resync",
                 "5s",
             ],
-            {"WINGSMITH_GATEWAY_SERVICE_TOKEN": LOCAL_GATEWAY_SERVICE_TOKEN},
+            # Overridable, because a plane outside `APP_ENV=local` does not accept the local default.
+            {"WINGSMITH_GATEWAY_SERVICE_TOKEN": os.environ.get("WINGSMITH_GATEWAY_SERVICE_TOKEN", LOCAL_GATEWAY_SERVICE_TOKEN)},
         )
         print(f"inference: gateway on http://{GATEWAY}, tunnel on {TUNNEL}, logs in {LOGS}")
 
@@ -121,8 +140,9 @@ class ClusterPath:
 
     def __init__(self, name: str, index: int) -> None:
         self.name = name
-        self.frontend = f"127.0.0.1:{FRONTEND_PORTS + index}"
-        self.health = f"127.0.0.1:{AGENT_HEALTH_PORTS + index}"
+        self.index = index
+        self.frontend = f"{BIND}:{FRONTEND_PORTS + index}"
+        self.health = f"{BIND}:{AGENT_HEALTH_PORTS + index}"
         self.engine: asyncio.subprocess.Process | None = None
         self.agent: asyncio.subprocess.Process | None = None
 
@@ -150,11 +170,11 @@ class ClusterPath:
             [str(BIN / "agent")],
             {
                 "WINGSMITH_CLUSTER_ID": cluster_id,
-                "WINGSMITH_TUNNEL_GATEWAY": TUNNEL,
+                "WINGSMITH_TUNNEL_GATEWAY": TUNNEL_DIAL,
                 "WINGSMITH_ENROLMENT_TOKEN": token,
                 # Loopback to loopback; there is nothing between them to terminate TLS for.
                 "WINGSMITH_TUNNEL_TLS": "false",
-                "WINGSMITH_INFERENCE_ENDPOINT": f"http://{self.frontend}",
+                "WINGSMITH_INFERENCE_ENDPOINT": f"http://{DIAL}:{FRONTEND_PORTS + self.index}",
                 "WINGSMITH_HEALTH_ADDR": self.health,
                 "WINGSMITH_LOG_FORMAT": "text",
             },
