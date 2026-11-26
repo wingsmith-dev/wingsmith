@@ -26,7 +26,7 @@ object already running: renaming either would make the operator render a second 
 
 ## Consequences
 
-`kubectl get` shows `qwen-7k2m9x4p` rather than `qwen` for new deployments. The placement
+`kubectl get` shows `qwen-7k2m9x4p`, not `qwen`, for new deployments. The placement
 name-taken check now reads `object_name` and only trips against a deployment from before this.
 The name is a cluster object name, not a Dynamo concept; a runtime without Kubernetes objects can
 use it as its process or unit name.

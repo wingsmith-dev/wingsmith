@@ -435,7 +435,7 @@ class ArtifactCreateRequest(Struct):
     base_artifact: str | None = None
     project: str | None = None
     private: bool = False
-    """Private to `project` rather than in the public catalogue. Its handle and digest are unique
+    """Private to `project`, not in the public catalogue. Its handle and digest are unique
     within that project only, and no other project's reference resolves to it. Fixed once created."""
     metadata: dict = {}
     locations: list[ArtifactLocationRequest] = []

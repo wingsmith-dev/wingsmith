@@ -4,7 +4,7 @@ The spec is every declared column plus the disaggregated roles. Status is the sh
 observed or derived values that ingestion and rollups write. A new column is spec by default, so
 forgetting to classify it costs a spurious generation, never a missed one.
 
-`serving_digest` is left out on purpose. It is derived from the declared columns, which are
+`serving_digest` is left out. It is derived from the declared columns, which are
 already compared, and how it is built may change (custom workers redefine it); the generation
 must not move or stay put because of that.
 """
