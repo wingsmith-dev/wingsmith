@@ -1,6 +1,6 @@
 name: release
 
-# A semver tag on main publishes that commit: the five images, multi-arch, at the tag's version and
+# A semver tag on main publishes that commit: the six images, multi-arch, at the tag's version and
 # no other tag, each signed keylessly with cosign and carrying an SBOM and provenance attestation,
 # and the chart at the same version. Nothing here runs for a branch or a pull request.
 
