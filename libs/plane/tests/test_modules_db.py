@@ -809,6 +809,137 @@ async def test_a_benchmark_never_reaches_another_projects_private_weights(db: As
     assert await repo.workload_targets(deployment.workload_id) == []
 
 
+async def private_weights_served_by_search(db: AsyncSession):
+    """`search` serves its own private artifact from an `hf://` location, and `chat` exists beside it."""
+    cluster, project, _, deployment = await a_deployment(db)
+    chat = await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    secret = await ArtifactService(db).create(
+        ArtifactCreateRequest(digest="sha256:5ec2", name="secret", project=project.id, private=True)
+    )
+    await db.execute(
+        text("UPDATE demand_workload SET artifact_id = (SELECT id FROM demand_artifact WHERE uid = :a)"),
+        {"a": secret.id},
+    )
+    await db.execute(
+        text(
+            "INSERT INTO demand_artifact_location (artifact_id, scheme, uri, preferred) "
+            "SELECT id, 'hf', 'hf://acme/secret@0123abcd', true FROM demand_artifact WHERE uid = :a"
+        ),
+        {"a": secret.id},
+    )
+    await db.commit()
+    return cluster, project, chat, secret
+
+
+async def artifact_frames(db: AsyncSession, cluster_id: str):
+    frames = [item async for item in stream_desired(db, cluster_id, "demand")]
+    return {payload.artifact_id: payload for kind, payload in frames if kind == "artifact.desired"}
+
+
+async def test_a_private_artifact_carries_its_projects_token_ref_and_never_the_token(db: AsyncSession) -> None:
+    from app.modules.credentials.schemas import CredentialPutRequest
+    from app.modules.credentials.services import CredentialService
+
+    cluster, project, _, secret = await private_weights_served_by_search(db)
+    frame = (await artifact_frames(db, cluster.id))[secret.id]
+    assert frame.owner_project == project.id
+    assert [s.credential_ref for s in frame.sources] == [None], "no credential declared yet"
+
+    await CredentialService(db).put(project.id, "hf", CredentialPutRequest(kind="hf_token", secret_ref="search-hf"))
+    frame = (await artifact_frames(db, cluster.id))[secret.id]
+    assert [s.credential_ref for s in frame.sources] == ["search-hf"]
+    assert "hf_" not in msgspec.json.encode(frame).decode().replace("hf_token", "")
+
+
+async def test_a_credential_is_forwarded_only_while_usable_and_only_to_its_own_project(db: AsyncSession) -> None:
+    from app.modules.credentials.schemas import CredentialPutRequest
+    from app.modules.credentials.services import CredentialService
+
+    cluster, project, chat, secret = await private_weights_served_by_search(db)
+    credentials = CredentialService(db)
+    await credentials.put(chat.id, "hf", CredentialPutRequest(kind="hf_token", secret_ref="chat-hf"))
+
+    # A location naming another project's credential never forwards it.
+    await db.execute(
+        text(
+            "UPDATE demand_artifact_location SET credential_id = "
+            "(SELECT id FROM ops_credential WHERE secret_ref = 'chat-hf')"
+        )
+    )
+    await db.commit()
+    assert [s.credential_ref for s in (await artifact_frames(db, cluster.id))[secret.id].sources] == [None]
+
+    # Its own project's credential named on the location is forwarded...
+    await credentials.put(project.id, "store", CredentialPutRequest(kind="hf_token", secret_ref="search-store"))
+    await db.execute(
+        text(
+            "UPDATE demand_artifact_location SET credential_id = "
+            "(SELECT id FROM ops_credential WHERE secret_ref = 'search-store')"
+        )
+    )
+    await db.commit()
+    assert [s.credential_ref for s in (await artifact_frames(db, cluster.id))[secret.id].sources] == ["search-store"]
+
+    # ...until it expires or is revoked.
+    await db.execute(text("UPDATE ops_credential SET expires_at = now() - interval '1 minute'"))
+    await db.commit()
+    assert [s.credential_ref for s in (await artifact_frames(db, cluster.id))[secret.id].sources] == [None]
+    await db.execute(text("UPDATE ops_credential SET expires_at = NULL, revoked_at = now()"))
+    await db.commit()
+    assert [s.credential_ref for s in (await artifact_frames(db, cluster.id))[secret.id].sources] == [None]
+
+
+async def test_a_public_artifact_carries_no_owner_and_no_credential_ref(db: AsyncSession) -> None:
+    cluster, _, artifact, _ = await a_deployment(db)
+    await db.execute(
+        text(
+            "INSERT INTO ops_credential (name, kind, scope_type, secret_ref) VALUES ('fleet', 'hf_token', 'fleet', 'x');"
+            "INSERT INTO demand_artifact_location (artifact_id, scheme, uri, preferred, credential_id) "
+            "SELECT a.id, 'hf', 'hf://openai/gpt-oss', true, c.id FROM demand_artifact a, ops_credential c"
+        )
+    )
+    await db.commit()
+    frame = (await artifact_frames(db, cluster.id))[artifact.id]
+    assert frame.owner_project is None
+    assert [s.credential_ref for s in frame.sources] == [None]
+
+
+async def test_a_benchmark_of_private_weights_names_the_project_cache_to_mount(db: AsyncSession) -> None:
+    from app.modules.benchmarks.schemas import BenchmarkRequestCreateRequest
+    from app.modules.benchmarks.services import BenchmarkService
+
+    cluster, project, _, _ = await private_weights_served_by_search(db)
+    deployment = (await DeploymentService(db).list()).items[0]
+    await BenchmarkService(db, actor="test", notifier=MemoryNotifier()).create_request(
+        BenchmarkRequestCreateRequest(level="deployment", target=deployment.id, harness="aiperf")
+    )
+    payload = (await db.execute(text("SELECT payload FROM ops_operation"))).scalar_one()
+    assert payload["parameters"]["cache_project"] == project.id
+
+
+async def test_project_credentials_are_put_listed_and_deleted(db: AsyncSession) -> None:
+    from app.modules.credentials.schemas import CredentialPutRequest
+    from app.modules.credentials.services import CredentialService
+
+    project = await a_project(db)
+    credentials = CredentialService(db)
+    created, was_new = await credentials.put(
+        project.id, "hf", CredentialPutRequest(kind="hf_token", secret_ref="search-hf")
+    )
+    assert was_new and (created.project, created.secret_ref) == (project.id, "search-hf")
+    replaced, was_new = await credentials.put(
+        "search", "hf", CredentialPutRequest(kind="hf_token", secret_ref="search-hf-2")
+    )
+    assert not was_new and replaced.secret_ref == "search-hf-2"
+    assert [c.name for c in (await credentials.list(project.id)).items] == ["hf"]
+    with pytest.raises(Invalid):
+        await credentials.put(project.id, "Not_A_Label", CredentialPutRequest(kind="hf_token", secret_ref="x"))
+    await credentials.delete(project.id, "hf")
+    assert (await credentials.list(project.id)).count == 0
+    with pytest.raises(NotFound):
+        await credentials.delete(project.id, "hf")
+
+
 async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSession) -> None:
     """The lifecycle the recipe used to have, on the object that absorbed it.
 
