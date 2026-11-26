@@ -467,7 +467,7 @@ def test_a_policy_name_collision_is_reported_as_the_policy_not_the_workload():
     assert "policy named 'wkl_abc-placement'" in str(conflict)
     assert "workload" in str(_conflict(_integrity("uq_demand_workload_project_name"), "gpt-oss", "core"))
     assert "deployment named 'gpt-oss'" in str(
-        _conflict(_integrity("uq_demand_deployment_cluster_name"), "gpt-oss", None)
+        _conflict(_integrity("uq_demand_deployment_cluster_object_name"), "gpt-oss", None)
     )
 
 

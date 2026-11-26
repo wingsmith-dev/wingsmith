@@ -47,6 +47,7 @@ from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 from app.modules.placement.locks import lock_placement
+from app.modules.deployments.naming import object_name
 from app.modules.placement.services import PlacementService
 from app.modules.placement.snapshot import PolicySnapshot
 from app.modules.placement.snapshot import CapacitySnapshot
@@ -127,7 +128,7 @@ MANAGED = "managed"
 
 WORKLOAD_NAME_CONSTRAINT = "uq_demand_workload_project_name"
 POLICY_NAME_CONSTRAINT = "bind_policy_name_key"
-DEPLOYMENT_NAME_CONSTRAINT = "uq_demand_deployment_cluster_name"
+DEPLOYMENT_NAME_CONSTRAINT = "uq_demand_deployment_cluster_object_name"
 
 
 def violated(exc: IntegrityError) -> str | None:
@@ -860,7 +861,7 @@ class WorkloadService:
             demand = await placement.demand(workload)
             workload_id = getattr(workload, "id", None)
             capacity = await placement.repo.capacity(
-                workload.project_id, demand.device_class, workload_id, workload.name
+                workload.project_id, demand.device_class, workload_id, object_name(workload.name, workload.uid)
             )
             snapshot = CapacitySnapshot(
                 clusters=tuple(c for c in capacity.clusters if exclude is None or c.uid != exclude),
@@ -976,6 +977,7 @@ class WorkloadService:
                 workload=workload,
                 cluster_id=clusters[share.cluster].id,
                 name=data.name,
+                object_name=object_name(data.name, workload.uid),
                 min_replicas=share.replicas,
                 max_replicas=share.replicas,
                 desired_replicas=share.replicas,
@@ -1301,6 +1303,7 @@ class WorkloadService:
                     workload=workload,
                     cluster_id=clusters[cluster_uid].id,
                     name=workload.name,
+                    object_name=object_name(workload.name, workload.uid),
                     min_replicas=share.replicas,
                     max_replicas=share.replicas,
                     desired_replicas=share.replicas,

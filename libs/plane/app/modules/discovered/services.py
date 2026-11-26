@@ -398,6 +398,8 @@ class DiscoveredWorkloadService:
             workload=deployment_workload,
             cluster_id=workload.cluster_id,
             name=name,
+            # The object is already running under this name; renaming it would render a second.
+            object_name=name,
             min_replicas=replicas,
             max_replicas=replicas,
             desired_replicas=replicas,

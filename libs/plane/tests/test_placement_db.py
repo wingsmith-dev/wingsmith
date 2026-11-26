@@ -1322,3 +1322,27 @@ async def test_a_workload_benchmark_tells_each_cluster_about_its_own_run(session
         rolled = await service.request_verdict(created.id)
         each = [await service.verdict(run) for run in created.runs]
     assert rolled.checks and rolled.checks == [check for verdict in each for check in verdict.checks]
+
+
+async def test_two_projects_run_a_workload_of_one_name_on_one_cluster(sessions) -> None:
+    """Deployments render under a workload-uid-suffixed object name, so the names do not clash."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into bind_project (uid, tenant_id, slug, name, default_priority_class_id)"
+                " select :uid, tenant_id, 'edge', 'Edge', default_priority_class_id from bind_project"
+            ),
+            {"uid": ids.new_uid(ids.PROJECT)},
+        )
+
+    async with sessions() as db:
+        core = await WorkloadService(db).create(create(name="qwen"))
+    async with sessions() as db:
+        edge = await WorkloadService(db).create(create(name="qwen", project="edge"))
+
+    assert [d.cluster_name for d in core.deployments] == ["alpha"]
+    assert [d.cluster_name for d in edge.deployments] == ["alpha"]
+    rows = await fetch(sessions, "select name, object_name from demand_deployment order by object_name")
+    assert sorted(rows) == sorted([("qwen", f"qwen-{core.id[-8:]}"), ("qwen", f"qwen-{edge.id[-8:]}")])
