@@ -9,6 +9,8 @@ already compared, and how it is built may change (custom workers redefine it); t
 must not move or stay put because of that.
 """
 
+import copy
+
 from decimal import Decimal
 
 import sqlalchemy as sa
@@ -37,13 +39,20 @@ SPEC = tuple(c.key for c in sa.inspect(Workload).column_attrs if c.key not in ST
 def spec_of(workload: Workload, roles: list[WorkloadRole]) -> tuple:
     """A comparable snapshot of the declared spec."""
     declared = tuple(_plain(getattr(workload, key)) for key in SPEC)
-    shaped = tuple(sorted(((r.role, r.weight, r.max_batch_tokens, r.engine_args) for r in roles), key=lambda r: r[0]))
+    shaped = tuple(
+        sorted(
+            ((r.role, r.weight, r.max_batch_tokens, copy.deepcopy(r.engine_args)) for r in roles), key=lambda r: r[0]
+        )
+    )
     return declared, shaped
 
 
 def _plain(value: object) -> object:
     # A Numeric column reads back as Decimal and is written as float; equal values must compare equal.
-    return float(value) if isinstance(value, Decimal) else value
+    # JSONB values are copied so an in-place mutation after the snapshot still reads as a change.
+    if isinstance(value, Decimal):
+        return float(value)
+    return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
 
 def bump_spec(workload: Workload) -> None:
