@@ -16,10 +16,8 @@ from .schemas import NOTE_ANNOTATION
 from .schemas import ScaleSpec
 from .schemas import ObjectMeta
 from .schemas import RuntimeSpec
-from .schemas import ServingSpec
 from .schemas import ArtifactSpec
 from .schemas import EndpointSpec
-from .schemas import WorkloadSpec
 from .schemas import PlacementSpec
 from .schemas import ArtifactStatus
 from .schemas import EndpointStatus
@@ -29,7 +27,9 @@ from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
 from .schemas import EndpointTargetSpec
 from .schemas import WorkloadScaleStatus
+from .schemas import WorkloadServingSpec
 from .schemas import EndpointTargetStatus
+from .schemas import WorkloadManifestSpec
 from .schemas import WorkloadDeploymentStatus
 
 
@@ -83,7 +83,7 @@ def workload_manifest(
             creation_timestamp=w.created_at,
             resource_version=w.revision,
         ),
-        spec=WorkloadSpec(
+        spec=WorkloadManifestSpec(
             kind=w.kind,
             gang_size=w.gang_size,
             cluster=refs.cluster(w.pinned_cluster_id),
@@ -107,7 +107,7 @@ def workload_manifest(
                 frontend_image=s.frontend_image,
                 args=s.engine_args,
             ),
-            serving=ServingSpec(
+            serving=WorkloadServingSpec(
                 artifact=refs.artifact(s.artifact_id),
                 adapters=[refs.artifact(a) for a in w.adapter_artifact_ids],
                 shape=s.shape,

@@ -47,7 +47,7 @@ func TestTheEmbeddedManifestSchemaCoversEveryKindAndCarriesItsMarkers(t *testing
 	var spec struct {
 		Properties map[string]map[string]any `json:"properties"`
 	}
-	if err := json.Unmarshal(doc.Defs["WorkloadSpec"], &spec); err != nil {
+	if err := json.Unmarshal(doc.Defs["WorkloadManifestSpec"], &spec); err != nil {
 		t.Fatal(err)
 	}
 	if spec.Properties["gang_size"]["x-immutable"] != true || spec.Properties["priority_class"]["x-defaulted"] != true {

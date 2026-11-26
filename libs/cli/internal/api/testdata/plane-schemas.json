@@ -1764,24 +1764,6 @@
   "structured_output_backend": "string?",
   "tool_call_parser": "string?"
  },
- "ServingSpec": {
-  "adapters": "[]string",
-  "api": "$ServingSchema",
-  "artifact": "string",
-  "cache": "$CacheSchema",
-  "capabilities": "$CapabilitiesSchema",
-  "context_length": "integer",
-  "dtype": "string?",
-  "max_batch_tokens": "integer?",
-  "overlay": "$OverlaySchema",
-  "parallelism": "$ParallelismSchema",
-  "quantization": "string?",
-  "resources": "$ResourcesSchema",
-  "roles": "[]$RoleSchema",
-  "router": "$RouterSchema",
-  "shape": "$ShapeSchema",
-  "topology": "string"
- },
  "SetupConfigSchema": {
   "chart_private": "boolean",
   "chart_ref": "string",
@@ -2014,8 +1996,23 @@
   "apiVersion": "string",
   "kind": "string",
   "metadata": "$ObjectMeta",
-  "spec": "$WorkloadSpec",
+  "spec": "$WorkloadManifestSpec",
   "status": "$WorkloadStatus?"
+ },
+ "WorkloadManifestSpec": {
+  "cluster": "string?",
+  "deadline_at": "string?",
+  "enabled": "boolean?",
+  "gang_size": "integer",
+  "kind": "string",
+  "overrides": "object",
+  "paused": "boolean",
+  "placement": "$PlacementSpec",
+  "preemptible": "boolean",
+  "priority_class": "string?",
+  "runtime": "$RuntimeSpec",
+  "scale": "$ScaleSpec",
+  "serving": "$WorkloadServingSpec"
  },
  "WorkloadPlacementNodeSchema": {
   "cluster": "string",
@@ -2139,6 +2136,24 @@
   "shape": "$ShapeSchema",
   "topology": "$TopologyViewSchema"
  },
+ "WorkloadServingSpec": {
+  "adapters": "[]string",
+  "api": "$ServingSchema",
+  "artifact": "string",
+  "cache": "$CacheSchema",
+  "capabilities": "$CapabilitiesSchema",
+  "context_length": "integer",
+  "dtype": "string?",
+  "max_batch_tokens": "integer?",
+  "overlay": "$OverlaySchema",
+  "parallelism": "$ParallelismSchema",
+  "quantization": "string?",
+  "resources": "$ResourcesSchema",
+  "roles": "[]$RoleSchema",
+  "router": "$RouterSchema",
+  "shape": "$ShapeSchema",
+  "topology": "string"
+ },
  "WorkloadServingUpdate": {
   "cache": "$CacheSchema",
   "capabilities": "$CapabilitiesSchema",
@@ -2159,21 +2174,6 @@
   "serving": "$ServingSchema",
   "shape": "$ShapeSchema",
   "topology": "$TopologySchema"
- },
- "WorkloadSpec": {
-  "cluster": "string?",
-  "deadline_at": "string?",
-  "enabled": "boolean?",
-  "gang_size": "integer",
-  "kind": "string",
-  "overrides": "object",
-  "paused": "boolean",
-  "placement": "$PlacementSpec",
-  "preemptible": "boolean",
-  "priority_class": "string?",
-  "runtime": "$RuntimeSpec",
-  "scale": "$ScaleSpec",
-  "serving": "$ServingSpec"
  },
  "WorkloadStatus": {
   "artifact_tag": "string?",

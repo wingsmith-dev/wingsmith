@@ -10916,93 +10916,6 @@
         "title": "ServingSchema",
         "type": "object"
       },
-      "ServingSpec": {
-        "properties": {
-          "adapters": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "api": {
-            "$ref": "#/components/schemas/ServingSchema"
-          },
-          "artifact": {
-            "type": "string"
-          },
-          "cache": {
-            "$ref": "#/components/schemas/CacheSchema"
-          },
-          "capabilities": {
-            "$ref": "#/components/schemas/CapabilitiesSchema"
-          },
-          "context_length": {
-            "default": 0,
-            "type": "integer"
-          },
-          "dtype": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "max_batch_tokens": {
-            "oneOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "overlay": {
-            "$ref": "#/components/schemas/OverlaySchema"
-          },
-          "parallelism": {
-            "$ref": "#/components/schemas/ParallelismSchema"
-          },
-          "quantization": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "resources": {
-            "$ref": "#/components/schemas/ResourcesSchema"
-          },
-          "roles": {
-            "items": {
-              "$ref": "#/components/schemas/RoleSchema"
-            },
-            "type": "array"
-          },
-          "router": {
-            "$ref": "#/components/schemas/RouterSchema"
-          },
-          "shape": {
-            "$ref": "#/components/schemas/ShapeSchema"
-          },
-          "topology": {
-            "default": "aggregated",
-            "type": "string"
-          }
-        },
-        "required": [
-          "artifact",
-          "shape"
-        ],
-        "title": "ServingSpec",
-        "type": "object"
-      },
       "SetupConfigSchema": {
         "properties": {
           "chart_private": {
@@ -12304,7 +12217,7 @@
             "$ref": "#/components/schemas/ObjectMeta"
           },
           "spec": {
-            "$ref": "#/components/schemas/WorkloadSpec"
+            "$ref": "#/components/schemas/WorkloadManifestSpec"
           },
           "status": {
             "oneOf": [
@@ -12322,6 +12235,88 @@
           "spec"
         ],
         "title": "WorkloadManifest",
+        "type": "object"
+      },
+      "WorkloadManifestSpec": {
+        "properties": {
+          "cluster": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadline_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gang_size": {
+            "default": 1,
+            "type": "integer"
+          },
+          "kind": {
+            "default": "service",
+            "type": "string"
+          },
+          "overrides": {
+            "type": "object"
+          },
+          "paused": {
+            "default": false,
+            "type": "boolean"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/PlacementSpec"
+          },
+          "preemptible": {
+            "default": false,
+            "type": "boolean"
+          },
+          "priority_class": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeSpec"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/ScaleSpec"
+          },
+          "serving": {
+            "$ref": "#/components/schemas/WorkloadServingSpec"
+          }
+        },
+        "required": [
+          "runtime",
+          "serving"
+        ],
+        "title": "WorkloadManifestSpec",
         "type": "object"
       },
       "WorkloadPlacementNodeSchema": {
@@ -12947,6 +12942,93 @@
         "title": "WorkloadServingSchema",
         "type": "object"
       },
+      "WorkloadServingSpec": {
+        "properties": {
+          "adapters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "api": {
+            "$ref": "#/components/schemas/ServingSchema"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "cache": {
+            "$ref": "#/components/schemas/CacheSchema"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesSchema"
+          },
+          "context_length": {
+            "default": 0,
+            "type": "integer"
+          },
+          "dtype": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_batch_tokens": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overlay": {
+            "$ref": "#/components/schemas/OverlaySchema"
+          },
+          "parallelism": {
+            "$ref": "#/components/schemas/ParallelismSchema"
+          },
+          "quantization": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourcesSchema"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleSchema"
+            },
+            "type": "array"
+          },
+          "router": {
+            "$ref": "#/components/schemas/RouterSchema"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ShapeSchema"
+          },
+          "topology": {
+            "default": "aggregated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "shape"
+        ],
+        "title": "WorkloadServingSpec",
+        "type": "object"
+      },
       "WorkloadServingUpdate": {
         "properties": {
           "cache": {
@@ -13100,88 +13182,6 @@
         },
         "required": [],
         "title": "WorkloadServingUpdate",
-        "type": "object"
-      },
-      "WorkloadSpec": {
-        "properties": {
-          "cluster": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "deadline_at": {
-            "oneOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "enabled": {
-            "oneOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "gang_size": {
-            "default": 1,
-            "type": "integer"
-          },
-          "kind": {
-            "default": "service",
-            "type": "string"
-          },
-          "overrides": {
-            "type": "object"
-          },
-          "paused": {
-            "default": false,
-            "type": "boolean"
-          },
-          "placement": {
-            "$ref": "#/components/schemas/PlacementSpec"
-          },
-          "preemptible": {
-            "default": false,
-            "type": "boolean"
-          },
-          "priority_class": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "runtime": {
-            "$ref": "#/components/schemas/RuntimeSpec"
-          },
-          "scale": {
-            "$ref": "#/components/schemas/ScaleSpec"
-          },
-          "serving": {
-            "$ref": "#/components/schemas/ServingSpec"
-          }
-        },
-        "required": [
-          "runtime",
-          "serving"
-        ],
-        "title": "WorkloadSpec",
         "type": "object"
       },
       "WorkloadStatus": {

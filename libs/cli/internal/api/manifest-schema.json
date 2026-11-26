@@ -1368,100 +1368,6 @@
    "title": "ServingSchema",
    "type": "object"
   },
-  "ServingSpec": {
-   "additionalProperties": false,
-   "description": "How the weights are served, independent of which runtime runs them.\n\n    `artifact` and `adapters` are artifact handles, resolved in the manifest's project, private\n    first, then public. `api` is the served API's behaviour (`serving` on the HTTP API).",
-   "properties": {
-    "adapters": {
-     "default": [],
-     "items": {
-      "type": "string"
-     },
-     "type": "array"
-    },
-    "api": {
-     "$ref": "#/$defs/ServingSchema"
-    },
-    "artifact": {
-     "type": "string"
-    },
-    "cache": {
-     "$ref": "#/$defs/CacheSchema"
-    },
-    "capabilities": {
-     "$ref": "#/$defs/CapabilitiesSchema"
-    },
-    "context_length": {
-     "default": 0,
-     "type": "integer"
-    },
-    "dtype": {
-     "anyOf": [
-      {
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "max_batch_tokens": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "overlay": {
-     "$ref": "#/$defs/OverlaySchema"
-    },
-    "parallelism": {
-     "$ref": "#/$defs/ParallelismSchema"
-    },
-    "quantization": {
-     "anyOf": [
-      {
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "resources": {
-     "$ref": "#/$defs/ResourcesSchema"
-    },
-    "roles": {
-     "default": [],
-     "items": {
-      "$ref": "#/$defs/RoleSchema"
-     },
-     "type": "array"
-    },
-    "router": {
-     "$ref": "#/$defs/RouterSchema"
-    },
-    "shape": {
-     "$ref": "#/$defs/ShapeSchema"
-    },
-    "topology": {
-     "default": "aggregated",
-     "type": "string"
-    }
-   },
-   "required": [
-    "artifact",
-    "shape"
-   ],
-   "title": "ServingSpec",
-   "type": "object"
-  },
   "ShapeSchema": {
    "additionalProperties": false,
    "description": "The hardware a workload implies, class first.\n\n    `device_class` is not optional and is not separable from the counts: a\n    tensor-parallel-8 configuration means nothing spread across an A100 and an\n    H100, so a count without a class is not a shape.\n\n    The topology pair sits here, not beside the scale numbers, because it is\n    a property of one replica's layout, the same way the counts are. It used to be\n    declared twice, once on the recipe and once as a nullable override on the\n    workload, and with one object there is one answer.",
@@ -1575,7 +1481,7 @@
      "$ref": "#/$defs/ObjectMeta"
     },
     "spec": {
-     "$ref": "#/$defs/WorkloadSpec"
+     "$ref": "#/$defs/WorkloadManifestSpec"
     },
     "status": {
      "anyOf": [
@@ -1596,24 +1502,7 @@
    "title": "WorkloadManifest",
    "type": "object"
   },
-  "WorkloadScaleStatus": {
-   "additionalProperties": false,
-   "properties": {
-    "placed": {
-     "type": "integer"
-    },
-    "ready": {
-     "type": "integer"
-    }
-   },
-   "required": [
-    "placed",
-    "ready"
-   ],
-   "title": "WorkloadScaleStatus",
-   "type": "object"
-  },
-  "WorkloadSpec": {
+  "WorkloadManifestSpec": {
    "additionalProperties": false,
    "description": "What the workload declares.\n\n    `enabled` is create-only and afterwards lives on each deployment, so a read leaves it null.",
    "properties": {
@@ -1696,14 +1585,125 @@
      "$ref": "#/$defs/ScaleSpec"
     },
     "serving": {
-     "$ref": "#/$defs/ServingSpec"
+     "$ref": "#/$defs/WorkloadServingSpec"
     }
    },
    "required": [
     "runtime",
     "serving"
    ],
-   "title": "WorkloadSpec",
+   "title": "WorkloadManifestSpec",
+   "type": "object"
+  },
+  "WorkloadScaleStatus": {
+   "additionalProperties": false,
+   "properties": {
+    "placed": {
+     "type": "integer"
+    },
+    "ready": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "placed",
+    "ready"
+   ],
+   "title": "WorkloadScaleStatus",
+   "type": "object"
+  },
+  "WorkloadServingSpec": {
+   "additionalProperties": false,
+   "description": "How the weights are served, independent of which runtime runs them.\n\n    `artifact` and `adapters` are artifact handles, resolved in the manifest's project, private\n    first, then public. `api` is the served API's behaviour (`serving` on the HTTP API).",
+   "properties": {
+    "adapters": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "api": {
+     "$ref": "#/$defs/ServingSchema"
+    },
+    "artifact": {
+     "type": "string"
+    },
+    "cache": {
+     "$ref": "#/$defs/CacheSchema"
+    },
+    "capabilities": {
+     "$ref": "#/$defs/CapabilitiesSchema"
+    },
+    "context_length": {
+     "default": 0,
+     "type": "integer"
+    },
+    "dtype": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "max_batch_tokens": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "overlay": {
+     "$ref": "#/$defs/OverlaySchema"
+    },
+    "parallelism": {
+     "$ref": "#/$defs/ParallelismSchema"
+    },
+    "quantization": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "resources": {
+     "$ref": "#/$defs/ResourcesSchema"
+    },
+    "roles": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/RoleSchema"
+     },
+     "type": "array"
+    },
+    "router": {
+     "$ref": "#/$defs/RouterSchema"
+    },
+    "shape": {
+     "$ref": "#/$defs/ShapeSchema"
+    },
+    "topology": {
+     "default": "aggregated",
+     "type": "string"
+    }
+   },
+   "required": [
+    "artifact",
+    "shape"
+   ],
+   "title": "WorkloadServingSpec",
    "type": "object"
   },
   "WorkloadStatus": {

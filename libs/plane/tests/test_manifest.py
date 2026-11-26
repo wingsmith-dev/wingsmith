@@ -15,14 +15,14 @@ def test_create_only_fields_are_marked_immutable() -> None:
         name: sorted(k for k, v in body.get("properties", {}).items() if v.get("x-immutable"))
         for name, body in defs.items()
     }
-    assert immutable["WorkloadSpec"] == ["cluster", "enabled", "gang_size", "kind"]
+    assert immutable["WorkloadManifestSpec"] == ["cluster", "enabled", "gang_size", "kind"]
     assert immutable["PlacementSpec"] == ["allowed_clusters", "allowed_regions"]
     assert immutable["ArtifactSpec"] == ["digest", "source"]
 
 
 def test_server_defaults_are_marked_so_a_diff_skips_them_when_undeclared() -> None:
     defs = json_schema()["$defs"]
-    assert _props(defs, "WorkloadSpec")["priority_class"]["x-defaulted"] is True
+    assert _props(defs, "WorkloadManifestSpec")["priority_class"]["x-defaulted"] is True
     assert _props(defs, "EndpointSpec")["slug"]["x-defaulted"] is True
     assert _props(defs, "ArtifactSpec")["slug"]["x-defaulted"] is True
 

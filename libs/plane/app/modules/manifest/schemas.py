@@ -87,7 +87,7 @@ class RuntimeSpec(Struct, kw_only=True):
     args: dict = {}
 
 
-class ServingSpec(Struct, kw_only=True):
+class WorkloadServingSpec(Struct, kw_only=True):
     """How the weights are served, independent of which runtime runs them.
 
     `artifact` and `adapters` are artifact handles, resolved in the manifest's project, private
@@ -132,7 +132,7 @@ class PlacementSpec(Struct, kw_only=True):
     allowed_clusters: Annotated[list[str], IMMUTABLE] = []
 
 
-class WorkloadSpec(Struct, kw_only=True):
+class WorkloadManifestSpec(Struct, kw_only=True):
     """What the workload declares.
 
     `enabled` is create-only and afterwards lives on each deployment, so a read leaves it null.
@@ -149,7 +149,7 @@ class WorkloadSpec(Struct, kw_only=True):
     scale: ScaleSpec = field(default_factory=ScaleSpec)
     placement: PlacementSpec = field(default_factory=PlacementSpec)
     runtime: RuntimeSpec
-    serving: ServingSpec
+    serving: WorkloadServingSpec
     overrides: dict = {}
 
 
@@ -188,7 +188,7 @@ class WorkloadManifest(Struct, kw_only=True):
     api_version: str = field(default=API_VERSION, name="apiVersion")
     kind: str = WORKLOAD
     metadata: ObjectMeta
-    spec: WorkloadSpec
+    spec: WorkloadManifestSpec
     status: WorkloadStatus | None = None
 
 
