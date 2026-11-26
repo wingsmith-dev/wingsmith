@@ -1,13 +1,16 @@
 # Changelog
 
 All notable changes to Wingsmith are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions will follow
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) once the first release is tagged. Until
-then, APIs, CRDs and the wire protocol can change without notice.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, APIs, CRDs and the wire
+protocol can change between minor versions.
 
 ## [Unreleased]
 
-The first public version of the repository. Nothing has been tagged or published yet.
+## [0.3.0] - 2026-11-26
+
+The first tagged release. Images for the plane, console, operator, agent, gateway and demo, and the
+`cluster-setup` chart, are published to GHCR.
 
 ### Added
 
