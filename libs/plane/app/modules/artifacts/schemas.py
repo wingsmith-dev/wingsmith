@@ -72,6 +72,7 @@ class ArtifactSchema(Struct):
     id: str
     digest: str
     verified: bool
+    handle: str
     name: str
     slug: str
     kind: str
@@ -413,6 +414,9 @@ class ArtifactCreateRequest(Struct):
 
     digest: str = ""
     source: str | None = None
+    handle: str = ""
+    """The unique name references use. Empty derives it from the slug, suffixed by the digest when
+    another artifact holds it. Lowercase letters, digits, `-` and `.`; fixed once created."""
     name: str = ""
     slug: str = ""
     """The model id this artifact answers to. Empty derives it from the preferred location.

@@ -21,6 +21,7 @@ from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.core.exceptions import PlaneError
+from app.modules.artifacts import handle
 from app.integrations.huggingface import HuggingFaceGated
 from app.integrations.huggingface import HuggingFaceModel
 from app.integrations.huggingface import HuggingFaceNotFound
@@ -171,8 +172,10 @@ def test_a_prefix_is_not_an_id_and_falls_through_to_a_name(repo):
     assert "demand_artifact.name = " in sql(repo.get_query("art_01hq"))
 
 
-def test_an_ambiguous_name_resolves_to_the_oldest_match(repo):
-    assert "ORDER BY demand_artifact.seq ASC" in sql(repo.get_query("gpt-oss-120b"))
+def test_a_handle_wins_and_an_ambiguous_name_resolves_to_the_oldest_match(repo):
+    text = sql(repo.get_query("gpt-oss-120b"))
+    assert "demand_artifact.handle = :handle_1 OR demand_artifact.name = :name_1" in text
+    assert "ORDER BY demand_artifact.handle = :handle_2 DESC, demand_artifact.seq ASC" in text
 
 
 def test_controller_exposes_full_crud():
@@ -339,8 +342,11 @@ class FakeRow:
 
 
 class FakeRepo:
-    def __init__(self, existing_digest: str | None = None, largest_device_mib: int | None = None):
+    def __init__(
+        self, existing_digest: str | None = None, largest_device_mib: int | None = None, taken: tuple[str, ...] = ()
+    ):
         self.existing_digest = existing_digest
+        self.taken = set(taken)
         self.added = None
         self.largest_device_mib = largest_device_mib
 
@@ -352,6 +358,9 @@ class FakeRepo:
         if digest == self.existing_digest:
             return Artifact(uid="art_01jexistingexistingexisti", digest=digest)
         return None
+
+    async def handle_taken(self, handle: str) -> bool:
+        return handle in self.taken
 
     async def add(self, artifact):
         artifact.created_at = EPOCH
@@ -1490,3 +1499,45 @@ def test_a_repo_whose_files_were_never_read_is_not_guessed_about():
 
     assert "tokenizer" not in messages
     assert "chat template" not in messages
+
+
+async def test_a_handle_is_derived_from_the_slug():
+    result = await service().create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert result.handle == "openai-gpt-oss-20b"
+
+
+async def test_a_taken_handle_gets_a_digest_suffix():
+    """One repo at two commits is two artifacts with one slug, and each needs its own handle."""
+    repo = FakeRepo(taken=("openai-gpt-oss-20b",))
+    result = await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert result.handle == handle.suffixed("openai-gpt-oss-20b", hf_model().digest)
+
+
+async def test_a_declared_handle_is_kept_and_refused_when_taken_or_malformed():
+    result = await service().create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", handle="gpt-oss"))
+    assert result.handle == "gpt-oss"
+    with pytest.raises(Conflict):
+        await service(repo=FakeRepo(taken=("gpt-oss",))).create(
+            ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", handle="gpt-oss")
+        )
+    for bad in ("GPT", "gpt_oss", "-gpt", "a" * 254):
+        with pytest.raises(Invalid):
+            await service().create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", handle=bad))
+
+
+def test_a_handle_has_no_update_field():
+    assert "handle" not in ArtifactUpdateRequest.__struct_fields__
+
+
+@pytest.mark.parametrize(
+    ("slug", "name", "expected"),
+    [
+        ("openai/gpt-oss-20b", "x", "openai-gpt-oss-20b"),
+        ("", "Qwen3.8 27B", "qwen3.8-27b"),
+        ("deepseek-ai/DeepSeek_V4..Flash", "", "deepseek-ai-deepseek-v4-flash"),
+        ("", "!!!", "artifact"),
+    ],
+)
+def test_the_base_handle_is_dns_subdomain_shaped(slug, name, expected):
+    assert handle.base(slug, name) == expected
+    assert handle.valid(handle.base(slug, name))

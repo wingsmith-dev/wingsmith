@@ -44,6 +44,7 @@ from app.integrations.huggingface import HuggingFaceClient
 from app.integrations.huggingface import HuggingFaceNotFound
 from app.integrations.huggingface import HuggingFaceUnavailable
 
+from . import handle
 from .resolve import FALLBACK_CONTEXT_LENGTH
 from .resolve import ResolvedArtifact
 from .resolve import slug_of
@@ -469,6 +470,7 @@ class ArtifactService:
             id=artifact.uid,
             digest=artifact.digest,
             verified=artifact.verified,
+            handle=artifact.handle,
             name=artifact.name,
             slug=artifact.slug,
             kind=artifact.kind,
@@ -666,12 +668,16 @@ class ArtifactService:
                 raise NotFound(f"no project {data.project!r}")
             project_id = project.id
 
+        slug = data.slug.strip().lower() or artifact_slug(data.digest, data.locations)
+        artifact_handle = await self._handle(data.handle, slug, data.name, data.digest)
+
         artifact = Artifact(
             uid=new_uid(ARTIFACT),
             digest=data.digest,
             verified=data.verified,
+            handle=artifact_handle,
             name=data.name,
-            slug=data.slug.strip().lower() or artifact_slug(data.digest, data.locations),
+            slug=slug,
             kind=data.kind,
             format=data.format,
             size_bytes=data.size_bytes,
@@ -693,6 +699,22 @@ class ArtifactService:
             await self.db.rollback()
             raise Conflict(f"artifact {data.digest!r} already exists") from exc
         return await self.get(artifact.uid)
+
+    async def _handle(self, declared: str, slug: str, name: str, digest: str) -> str:
+        """The declared handle, refused when invalid or taken, else the first free derived one."""
+        if declared := declared.strip():
+            if not handle.valid(declared):
+                raise Invalid(
+                    f"handle {declared!r} must be lowercase letters, digits, '-' and '.', "
+                    f"start and end alphanumeric, and be at most {handle.MAX_LENGTH} characters"
+                )
+            if await self.repo.handle_taken(declared):
+                raise Conflict(f"an artifact with handle {declared!r} already exists")
+            return declared
+        for candidate in handle.candidates(slug, name, digest):
+            if not await self.repo.handle_taken(candidate):
+                return candidate
+        raise Conflict(f"no free handle for artifact {digest!r}")
 
     async def update(self, ref: str, data: ArtifactUpdateRequest, if_match: str | None = None) -> ArtifactSchema:
         """Replaces the declared half, and the location set as a whole when it is given.
