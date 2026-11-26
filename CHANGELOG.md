@@ -18,6 +18,9 @@ protocol can change between minor versions.
 
 ### Changed
 
+- Workloads and endpoints carry a spec `generation`, and `revision` (what `If-Match` checks) is now
+  that number instead of the last-write stamp, so observation no longer reads as a concurrent edit.
+  A replayed workload `PATCH` that changes nothing rolls no deployment and records no event.
 - Deployments render under a cluster-unique `object_name` (workload name plus the tail of the
   workload id) instead of the bare workload name, so workloads of one name in different projects
   can share a cluster. Existing and adopted deployments keep their current name.
