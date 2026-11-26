@@ -323,16 +323,47 @@ class Pool(BaseMixin):
 class Artifact(BaseMixin):
     """Immutable, content-addressed bytes: weights, adapters, datasets, images.
 
-    Identity is the digest, so the same weights registered twice are one row. There is no catalog
-    in this schema; fine-tunes, quantized derivatives and adapters are all artifacts.
+    Identity is the digest, so the same weights registered twice are one row within a scope. There is
+    no catalog in this schema; fine-tunes, quantized derivatives and adapters are all artifacts.
+
+    The scope is `owner_project_id`: NULL is the public catalogue, shared by every project; set, the
+    artifact is private to that project. Handle and digest are unique within a scope, so a project
+    may hold a private copy of a public model and two projects may each hold their own.
     """
 
     __tablename__ = "demand_artifact"
-    __table_args__ = (UniqueConstraint("handle", name="uq_demand_artifact_handle"),)
+    __table_args__ = (
+        Index(
+            "uq_demand_artifact_public_handle",
+            "handle",
+            unique=True,
+            postgresql_where=text("owner_project_id IS NULL"),
+        ),
+        Index(
+            "uq_demand_artifact_private_handle",
+            "owner_project_id",
+            "handle",
+            unique=True,
+            postgresql_where=text("owner_project_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_demand_artifact_public_digest",
+            "digest",
+            unique=True,
+            postgresql_where=text("owner_project_id IS NULL"),
+        ),
+        Index(
+            "uq_demand_artifact_private_digest",
+            "owner_project_id",
+            "digest",
+            unique=True,
+            postgresql_where=text("owner_project_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    digest: Mapped[str] = mapped_column(String(128), nullable=False)
     # False when the digest is a reference, not content: `hf:org/model` for weights we
     # adopted by watching a cluster serve them. The row is a real artifact and workloads may point
     # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
@@ -343,8 +374,9 @@ class Artifact(BaseMixin):
     """Machine name, lowercase with its organisation: `hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`.
     Derived once from the preferred location. Not unique; identity is the digest."""
     handle: Mapped[str] = mapped_column(String(253), nullable=False)
-    """The unique, immutable name a reference or a manifest uses: `openai-gpt-oss-20b`. Derived from
-    the slug at create, with a digest suffix when another artifact holds it. See
+    """The immutable name a reference or a manifest uses: `openai-gpt-oss-20b`, unique within the
+    artifact's scope. Derived from the slug at create, with a digest suffix when another artifact
+    in the scope holds it. See
     `app.modules.artifacts.handle`."""
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -357,6 +389,11 @@ class Artifact(BaseMixin):
     project_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    owner_project_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    """The project this artifact is private to, or NULL for the public catalogue. Unlike
+    `project_id`, which only says who registered it, this scopes the handle and the digest."""
     upstream: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     """Facts about the model as its publisher states them, with who asserted them, from where and when.
     Asserted, never observed: nothing here reaches a cluster or is checked by ingestion."""

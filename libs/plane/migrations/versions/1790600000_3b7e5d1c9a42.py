@@ -1,4 +1,4 @@
-"""artifacts get a unique handle
+"""artifacts get a handle and an owner scope
 
 Revision ID: 3b7e5d1c9a42
 Revises: 8d2f6b0e1a57
@@ -7,6 +7,10 @@ Create Date: 2026-11-26 10:00:00.000000
 `slug` collides by design (one repo at two commits is two artifacts with one slug) and `name` is
 display text, so nothing named an artifact exactly except its uid. `handle` is that name: unique,
 DNS-subdomain shaped, and what a manifest's `metadata.name` will be.
+
+`owner_project_id` scopes it: NULL is the public catalogue, set is private to one project. Handle
+and digest are each unique within a scope (two partial unique indexes apiece), replacing the
+global unique on digest. Every existing row is public.
 
 Existing rows are backfilled oldest first, so the artifact registered first keeps the plain
 handle and later ones get a digest suffix. The derivation is a frozen copy of
@@ -52,9 +56,39 @@ def upgrade() -> None:
         taken.add(handle)
         bind.execute(sa.text("UPDATE demand_artifact SET handle = :h WHERE id = :id"), {"h": handle, "id": row.id})
     op.alter_column("demand_artifact", "handle", nullable=False)
-    op.create_unique_constraint("uq_demand_artifact_handle", "demand_artifact", ["handle"])
+    op.add_column(
+        "demand_artifact",
+        sa.Column(
+            "owner_project_id", sa.UUID(), sa.ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=True
+        ),
+    )
+    op.create_index("ix_demand_artifact_owner_project_id", "demand_artifact", ["owner_project_id"])
+    op.drop_constraint("demand_artifact_digest_key", "demand_artifact", type_="unique")
+    for column in ("handle", "digest"):
+        op.create_index(
+            f"uq_demand_artifact_public_{column}",
+            "demand_artifact",
+            [column],
+            unique=True,
+            postgresql_where=sa.text("owner_project_id IS NULL"),
+        )
+        op.create_index(
+            f"uq_demand_artifact_private_{column}",
+            "demand_artifact",
+            ["owner_project_id", column],
+            unique=True,
+            postgresql_where=sa.text("owner_project_id IS NOT NULL"),
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_demand_artifact_handle", "demand_artifact", type_="unique")
+    private = op.get_bind().execute(sa.text("SELECT count(*) FROM demand_artifact WHERE owner_project_id IS NOT NULL"))
+    if private.scalar():
+        raise RuntimeError("project-private artifacts exist; the old schema has no scope to hold them")
+    for column in ("handle", "digest"):
+        op.drop_index(f"uq_demand_artifact_private_{column}", table_name="demand_artifact")
+        op.drop_index(f"uq_demand_artifact_public_{column}", table_name="demand_artifact")
+    op.create_unique_constraint("demand_artifact_digest_key", "demand_artifact", ["digest"])
+    op.drop_index("ix_demand_artifact_owner_project_id", table_name="demand_artifact")
+    op.drop_column("demand_artifact", "owner_project_id")
     op.drop_column("demand_artifact", "handle")
