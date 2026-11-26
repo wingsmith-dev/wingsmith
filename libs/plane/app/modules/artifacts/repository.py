@@ -19,8 +19,13 @@ from app.db.models import ArtifactBaseline
 from app.db.supply import free_device_sum
 from app.core.filters import ref_ids
 
+from .scope import visible
+from .scope import same_scope
+from .scope import private_first
+
 
 Base = aliased(Artifact, name="base_artifact")
+Owner = aliased(Project, name="owner_project")
 
 
 class ArtifactRepository:
@@ -36,25 +41,33 @@ class ArtifactRepository:
 
     def _base(self) -> Select:
         return (
-            select(Artifact, Base.uid.label("base_uid"), Project.uid.label("project_uid"))
+            select(
+                Artifact,
+                Base.uid.label("base_uid"),
+                Project.uid.label("project_uid"),
+                Owner.uid.label("owner_project_uid"),
+            )
             .outerjoin(Base, Artifact.base_artifact_id == Base.id)
             .outerjoin(Project, Artifact.project_id == Project.id)
+            .outerjoin(Owner, Artifact.owner_project_id == Owner.id)
             .options(selectinload(Artifact.locations))
         )
 
-    def get_query(self, ref: str) -> Select:
+    def get_query(self, ref: str, project: str | None = None) -> Select:
         """An id or a name, per the contract. Prefixes are the client's problem.
 
-        The handle is unique and wins. An artifact name is not: two quantizations
-        of one base model are routinely named the same, so a name resolves to the
-        oldest match.
+        A name reaches the public catalogue and, given `project`, that project's private
+        artifacts, which come first. Within that the handle is unique and wins. An artifact
+        name is not: two quantizations of one base model are routinely named the same, so a
+        name resolves to the oldest match.
         """
         if is_uid(ref):
             return self._base().where(Artifact.uid == ref)
+        scope = None if project is None else ref_ids(Project, project, "slug")
         return (
             self._base()
-            .where(or_(Artifact.handle == ref, Artifact.name == ref))
-            .order_by((Artifact.handle == ref).desc(), Artifact.seq.asc())
+            .where(or_(Artifact.handle == ref, Artifact.name == ref), visible(scope))
+            .order_by(private_first(), (Artifact.handle == ref).desc(), Artifact.seq.asc())
         )
 
     def list_query(
@@ -85,9 +98,9 @@ class ArtifactRepository:
             query = query.where(Artifact.metadata_[key].astext == value)
         return query
 
-    async def get(self, ref: str, lock: bool = False) -> Row | None:
+    async def get(self, ref: str, lock: bool = False, project: str | None = None) -> Row | None:
         """`lock` holds the artifact row until the transaction ends, so an If-Match check and the write it guards agree."""
-        query = self.get_query(ref).limit(1)
+        query = self.get_query(ref, project).limit(1)
         if lock:
             query = query.with_for_update(of=Artifact).execution_options(populate_existing=True)
         result = await self.db.execute(query)
@@ -102,30 +115,34 @@ class ArtifactRepository:
         result = await self.db.execute(select(Project).where(column == ref).limit(1))
         return result.scalar_one_or_none()
 
-    async def artifact_by_ref(self, ref: str) -> Artifact | None:
+    async def artifact_by_ref(self, ref: str, project_id: UUID | None = None) -> Artifact | None:
+        """By id, or by handle or name among the public artifacts and `project_id`'s own."""
         if is_uid(ref):
             query = select(Artifact).where(Artifact.uid == ref)
         else:
             query = (
                 select(Artifact)
-                .where(or_(Artifact.handle == ref, Artifact.name == ref))
-                .order_by((Artifact.handle == ref).desc(), Artifact.seq.asc())
+                .where(or_(Artifact.handle == ref, Artifact.name == ref), visible(project_id))
+                .order_by(private_first(), (Artifact.handle == ref).desc(), Artifact.seq.asc())
             )
         result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none()
 
-    async def handle_taken(self, handle: str) -> bool:
-        result = await self.db.execute(select(Artifact.id).where(Artifact.handle == handle).limit(1))
+    async def handle_taken(self, handle: str, owner_project_id: UUID | None = None) -> bool:
+        """Whether the scope a new artifact is created in already holds this handle."""
+        query = select(Artifact.id).where(Artifact.handle == handle, same_scope(owner_project_id))
+        result = await self.db.execute(query.limit(1))
         return result.first() is not None
 
-    async def artifact_by_digest(self, digest: str) -> Artifact | None:
+    async def artifact_by_digest(self, digest: str, owner_project_id: UUID | None = None) -> Artifact | None:
         """Answers whether the catalogue already holds these exact bytes.
 
         Separate from `artifact_by_ref` because a digest is not a public ref: the
         contract resolves an artifact by uid or name, and the digest is what a
         resolved source produces before any of those are known.
         """
-        result = await self.db.execute(select(Artifact).where(Artifact.digest == digest).limit(1))
+        query = select(Artifact).where(Artifact.digest == digest, same_scope(owner_project_id))
+        result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none()
 
     def workload_usage_query(self, artifact: Artifact) -> Select:

@@ -366,13 +366,15 @@ def check_locations(locations: list[ArtifactLocationRequest]) -> None:
         seen.add(item.uri)
 
 
-HANDLE_CONSTRAINT = "uq_demand_artifact_handle"
+HANDLE_CONSTRAINTS = ("uq_demand_artifact_public_handle", "uq_demand_artifact_private_handle")
 
 
 def _broke_handle(exc: IntegrityError) -> bool:
     cause = getattr(exc.orig, "__cause__", None)
     name = getattr(cause, "constraint_name", None) or getattr(exc.orig, "constraint_name", None)
-    return name == HANDLE_CONSTRAINT if name else HANDLE_CONSTRAINT in str(exc.orig)
+    if name:
+        return name in HANDLE_CONSTRAINTS
+    return any(constraint in str(exc.orig) for constraint in HANDLE_CONSTRAINTS)
 
 
 class ArtifactService:
@@ -444,7 +446,7 @@ class ArtifactService:
         No commit happens when nothing moved, so a refresh that finds the source
         unchanged leaves `updated_at` alone and nobody's `If-Match` goes stale.
         """
-        artifact, _, _ = await self._one(ref)
+        artifact, *_ = await self._one(ref)
         source = source_of(artifact.metadata_, tuple(loc.uri for loc in artifact.locations))
         if source is None:
             raise Invalid(
@@ -474,7 +476,9 @@ class ArtifactService:
             notes=list(draft.notes),
         )
 
-    def schema(self, artifact: Artifact, base_uid: str | None, project_uid: str | None) -> ArtifactSchema:
+    def schema(
+        self, artifact: Artifact, base_uid: str | None, project_uid: str | None, owner_project_uid: str | None = None
+    ) -> ArtifactSchema:
         return ArtifactSchema(
             id=artifact.uid,
             digest=artifact.digest,
@@ -489,6 +493,7 @@ class ArtifactService:
             parameter_count=artifact.parameter_count,
             base_artifact_id=base_uid,
             project_id=project_uid,
+            owner_project_id=owner_project_uid,
             metadata=artifact.metadata_,
             created_at=artifact.created_at,
             updated_at=artifact.updated_at,
@@ -497,18 +502,21 @@ class ArtifactService:
             upstream=_upstream(artifact),
         )
 
-    async def _one(self, ref: str, lock: bool = False) -> tuple[Artifact, str | None, str | None]:
-        row = await self.repo.get(ref, lock=lock)
+    async def _one(
+        self, ref: str, lock: bool = False, project: str | None = None
+    ) -> tuple[Artifact, str | None, str | None, str | None]:
+        row = await self.repo.get(ref, lock=lock, project=project)
         if row is None:
             raise NotFound(f"no artifact {ref!r}")
-        return row[0], row.base_uid, row.project_uid
+        return row[0], row.base_uid, row.project_uid, row.owner_project_uid
 
-    async def get(self, ref: str) -> ArtifactSchema:
-        return self.schema(*await self._one(ref))
+    async def get(self, ref: str, project: str | None = None) -> ArtifactSchema:
+        """A name reaches the public catalogue, and `project`'s private artifacts first when given."""
+        return self.schema(*await self._one(ref, project=project))
 
     async def usage(self, ref: str) -> ArtifactUsageSchema:
         """What depends on this artifact, counted at read time."""
-        artifact, _, _ = await self._one(ref)
+        artifact, *_ = await self._one(ref)
         workloads, downstream = await self.repo.usage_counts(artifact)
         return ArtifactUsageSchema(
             artifact_id=artifact.uid,
@@ -539,7 +547,7 @@ class ArtifactService:
         if query.context_length is not None and query.context_length < 1:
             raise Invalid("context_length must be at least 1", {"context_length": query.context_length})
 
-        artifact, _, _ = await self._one(ref)
+        artifact, *_ = await self._one(ref)
         sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
         if sizing is not None and query.quantization:
             sizing = replace(sizing, quantization=query.quantization)
@@ -634,7 +642,7 @@ class ArtifactService:
             labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
-        items = [self.schema(r[0], r.base_uid, r.project_uid) for r in kept]
+        items = [self.schema(r[0], r.base_uid, r.project_uid, r.owner_project_uid) for r in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: ArtifactCreateRequest) -> ArtifactSchema:
@@ -663,25 +671,28 @@ class ArtifactService:
             raise Invalid("an artifact without a name cannot be found again")
         check_locations(data.locations)
 
-        base_id = None
-        if data.base_artifact is not None:
-            base = await self.repo.artifact_by_ref(data.base_artifact)
-            if base is None:
-                raise NotFound(f"no artifact {data.base_artifact!r}")
-            base_id = base.id
-
         project_id = None
         if data.project is not None:
             project = await self.repo.project_by_ref(data.project)
             if project is None:
                 raise NotFound(f"no project {data.project!r}")
             project_id = project.id
+        if data.private and project_id is None:
+            raise Invalid("a private artifact belongs to a project; name it in `project`")
+        owner_id = project_id if data.private else None
+
+        base_id = None
+        if data.base_artifact is not None:
+            base = await self.repo.artifact_by_ref(data.base_artifact, project_id)
+            if base is None:
+                raise NotFound(f"no artifact {data.base_artifact!r}")
+            base_id = base.id
 
         slug = data.slug.strip().lower() or artifact_slug(data.digest, data.locations)
         lost: set[str] = set()
         while True:
-            artifact_handle = await self._handle(data.handle, slug, data.name, data.digest, lost)
-            artifact = self._artifact(data, artifact_handle, slug, base_id, project_id)
+            artifact_handle = await self._handle(data.handle, slug, data.name, data.digest, owner_id, lost)
+            artifact = self._artifact(data, artifact_handle, slug, base_id, project_id, owner_id)
             try:
                 await self.repo.add(artifact)
                 await self.db.commit()
@@ -697,7 +708,9 @@ class ArtifactService:
             return await self.get(artifact.uid)
 
     @staticmethod
-    def _artifact(data: ArtifactCreateRequest, artifact_handle: str, slug: str, base_id, project_id) -> Artifact:
+    def _artifact(
+        data: ArtifactCreateRequest, artifact_handle: str, slug: str, base_id, project_id, owner_id
+    ) -> Artifact:
         return Artifact(
             uid=new_uid(ARTIFACT),
             digest=data.digest,
@@ -712,6 +725,7 @@ class ArtifactService:
             parameter_count=data.parameter_count,
             base_artifact_id=base_id,
             project_id=project_id,
+            owner_project_id=owner_id,
             metadata_=data.metadata,
             upstream=msgspec.to_builtins(data.upstream) if data.upstream else {},
             locations=[
@@ -720,19 +734,21 @@ class ArtifactService:
             ],
         )
 
-    async def _handle(self, declared: str, slug: str, name: str, digest: str, lost: set[str] = frozenset()) -> str:
-        """The declared handle, refused when invalid or taken, else the first free derived one."""
+    async def _handle(
+        self, declared: str, slug: str, name: str, digest: str, owner_id=None, lost: set[str] = frozenset()
+    ) -> str:
+        """The declared handle, refused when invalid or taken in the scope, else the first free derived one."""
         if declared := declared.strip():
             if not handle.valid(declared):
                 raise Invalid(
                     f"handle {declared!r} must be lowercase letters, digits, '-' and '.', "
                     f"start and end alphanumeric, and be at most {handle.MAX_LENGTH} characters"
                 )
-            if await self.repo.handle_taken(declared):
+            if await self.repo.handle_taken(declared, owner_id):
                 raise Conflict(f"an artifact with handle {declared!r} already exists")
             return declared
         for candidate in handle.candidates(slug, name, digest):
-            if candidate not in lost and not await self.repo.handle_taken(candidate):
+            if candidate not in lost and not await self.repo.handle_taken(candidate, owner_id):
                 return candidate
         raise Conflict(f"no free handle for artifact {digest!r}")
 
@@ -744,7 +760,7 @@ class ArtifactService:
         deletes, so keeping a location while changing its region would collide with
         the row it is about to replace.
         """
-        artifact, _, _ = await self._one(ref, lock=True)
+        artifact, *_ = await self._one(ref, lock=True)
         check_if_match(artifact, if_match, "artifact")
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
@@ -805,7 +821,7 @@ class ArtifactService:
         point of catching it is that "a workload still serves this" is an answer
         and an integrity error is not.
         """
-        artifact, _, _ = await self._one(ref)
+        artifact, *_ = await self._one(ref)
         try:
             await self.repo.delete(artifact)
             await self.db.commit()

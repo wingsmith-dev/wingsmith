@@ -639,6 +639,50 @@ async def test_artifacts_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
+async def test_a_private_artifact_is_scoped_to_its_project(db: AsyncSession) -> None:
+    """Handles and digests are unique per scope; a reference never reaches another project's artifact."""
+    search = await a_project(db, "search")
+    chat = await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="chat", name="Chat"))
+    service = ArtifactService(db)
+    public = await service.create(ArtifactCreateRequest(digest="sha256:aaaa", name="gpt-oss", handle="gpt-oss"))
+    mine = await service.create(
+        ArtifactCreateRequest(digest="sha256:aaaa", name="gpt-oss", handle="gpt-oss", project="search", private=True)
+    )
+    theirs = await service.create(
+        ArtifactCreateRequest(digest="sha256:aaaa", name="gpt-oss", project="chat", private=True)
+    )
+    assert theirs.handle == "gpt-oss", "a private handle is free while only other scopes hold it"
+    assert (public.owner_project_id, mine.owner_project_id, theirs.owner_project_id) == (None, search.id, chat.id)
+
+    with pytest.raises(Conflict):
+        await service.create(
+            ArtifactCreateRequest(digest="sha256:bbbb", name="x", handle="gpt-oss", project="search", private=True)
+        )
+    with pytest.raises(Conflict):
+        await service.create(ArtifactCreateRequest(digest="sha256:aaaa", name="dup"))
+
+    assert (await service.get("gpt-oss")).id == public.id
+    assert (await service.get("gpt-oss", project="search")).id == mine.id
+    assert (await service.get("gpt-oss", project="chat")).id == theirs.id
+
+    private_only = await service.create(
+        ArtifactCreateRequest(digest="sha256:cccc", name="lora", handle="lora", project="chat", private=True)
+    )
+    with pytest.raises(NotFound):
+        await service.get("lora")
+    with pytest.raises(NotFound):
+        await service.get("lora", project="search")
+    assert (await service.get("lora", project="chat")).id == private_only.id
+
+    from app.modules.workloads.repository import WorkloadRepository
+
+    repo = WorkloadRepository(db)
+    search_id = (await repo.project_by_ref("search")).id
+    assert await repo.artifact_by_ref("lora", search_id) is None
+    assert (await repo.artifact_by_ref("gpt-oss", search_id)).uid == mine.id
+    assert [a.uid for a in await repo.artifacts_by_ref(["gpt-oss", "lora"], search_id)] == [mine.id]
+
+
 async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSession) -> None:
     """The lifecycle the recipe used to have, on the object that absorbed it.
 

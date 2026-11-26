@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 import decimal
 import inspect
 import datetime as dt
@@ -175,7 +176,24 @@ def test_a_prefix_is_not_an_id_and_falls_through_to_a_name(repo):
 def test_a_handle_wins_and_an_ambiguous_name_resolves_to_the_oldest_match(repo):
     text = sql(repo.get_query("gpt-oss-120b"))
     assert "demand_artifact.handle = :handle_1 OR demand_artifact.name = :name_1" in text
-    assert "ORDER BY demand_artifact.handle = :handle_2 DESC, demand_artifact.seq ASC" in text
+    assert "demand_artifact.handle = :handle_2 DESC, demand_artifact.seq ASC" in text
+
+
+def test_a_name_without_a_project_reaches_only_the_public_catalogue(repo):
+    text = sql(repo.get_query("gpt-oss-120b"))
+    assert "demand_artifact.owner_project_id IS NULL" in text
+    assert "owner_project_id IN" not in text
+
+
+def test_a_name_with_a_project_reaches_its_private_artifacts_first(repo):
+    text = sql(repo.get_query("gpt-oss-120b", project="acme"))
+    assert "demand_artifact.owner_project_id IS NULL OR demand_artifact.owner_project_id IN (SELECT" in text
+    assert "ORDER BY CASE WHEN (demand_artifact.owner_project_id IS NULL)" in text
+
+
+def test_a_private_artifact_needs_a_project():
+    with pytest.raises(Invalid, match="project"):
+        asyncio.run(service().create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", private=True)))
 
 
 def test_controller_exposes_full_crud():
@@ -336,6 +354,7 @@ class FakeRow:
         self._artifact = artifact
         self.base_uid = None
         self.project_uid = None
+        self.owner_project_uid = None
 
     def __getitem__(self, index):
         return self._artifact
@@ -359,7 +378,7 @@ class FakeRepo:
             return Artifact(uid="art_01jexistingexistingexisti", digest=digest)
         return None
 
-    async def handle_taken(self, handle: str) -> bool:
+    async def handle_taken(self, handle: str, owner_project_id=None) -> bool:
         return handle in self.taken
 
     async def add(self, artifact):
@@ -368,7 +387,7 @@ class FakeRepo:
         self.added = artifact
         return artifact
 
-    async def get(self, ref: str, lock: bool = False):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None):
         return FakeRow(self.added)
 
 
@@ -609,7 +628,7 @@ class RefreshRepo:
         """What the fleet actually holds. `None` is a plane with no cluster enrolled yet."""
         return self.largest_device_mib
 
-    async def get(self, ref: str, lock: bool = False):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None):
         return FakeRow(self.artifact)
 
     async def artifact_by_digest(self, digest: str):
@@ -863,7 +882,7 @@ class FakeBaselineRepo:
         self.rows: list[ArtifactBaseline] = []
         self.next_seq = 1000
 
-    async def get(self, ref: str, lock: bool = False):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None):
         if ref in {self.artifact.uid, self.artifact.name}:
             return FakeRow(self.artifact)
         return None
@@ -1090,7 +1109,7 @@ class FitmentRepo:
         self.fleet = fleet if fleet is not None else [FleetRow("h100-80gb-sxm", 81559, 16, 16, 2)]
         self.domains = domains or {}
 
-    async def get(self, ref: str, lock: bool = False):
+    async def get(self, ref: str, lock: bool = False, project: str | None = None):
         return FakeRow(self.artifact)
 
     async def fleet_classes(self):
@@ -1561,14 +1580,14 @@ class RacingRepo(FakeRepo):
 
 
 async def test_a_derived_handle_lost_to_a_concurrent_create_moves_to_the_next_candidate():
-    repo = RacingRepo("uq_demand_artifact_handle")
+    repo = RacingRepo("uq_demand_artifact_public_handle")
     result = await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
     assert repo.tried == ["openai-gpt-oss-20b", handle.suffixed("openai-gpt-oss-20b", hf_model().digest)]
     assert result.handle == repo.tried[-1]
 
 
 async def test_a_declared_handle_lost_to_a_concurrent_create_is_a_handle_conflict():
-    repo = RacingRepo("uq_demand_artifact_handle")
+    repo = RacingRepo("uq_demand_artifact_public_handle")
     with pytest.raises(Conflict, match="handle 'gpt-oss'"):
         await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b", handle="gpt-oss"))
 
@@ -1581,7 +1600,7 @@ async def test_any_other_integrity_error_is_still_a_digest_conflict():
 
 
 async def test_running_out_of_handle_candidates_is_a_conflict_not_a_loop():
-    repo = RacingRepo("uq_demand_artifact_handle", losses=99)
+    repo = RacingRepo("uq_demand_artifact_public_handle", losses=99)
     with pytest.raises(Conflict, match="no free handle"):
         await service(repo=repo).create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
     assert len(repo.tried) == len(handle.candidates("openai/gpt-oss-20b", "gpt-oss-20b", hf_model().digest))

@@ -934,6 +934,10 @@
               }
             ]
           },
+          "private": {
+            "default": false,
+            "type": "boolean"
+          },
           "project": {
             "oneOf": [
               {
@@ -1455,6 +1459,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "owner_project_id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "parameter_count": {
             "oneOf": [
@@ -14955,6 +14969,24 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         ],

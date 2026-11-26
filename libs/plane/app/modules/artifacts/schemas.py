@@ -82,6 +82,8 @@ class ArtifactSchema(Struct):
     parameter_count: int | None
     base_artifact_id: str | None
     project_id: str | None
+    owner_project_id: str | None
+    """The project this artifact is private to; null for the public catalogue."""
     metadata: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
@@ -432,6 +434,9 @@ class ArtifactCreateRequest(Struct):
     parameter_count: int | None = None
     base_artifact: str | None = None
     project: str | None = None
+    private: bool = False
+    """Private to `project` rather than in the public catalogue. Its handle and digest are unique
+    within that project only, and no other project's reference resolves to it. Fixed once created."""
     metadata: dict = {}
     locations: list[ArtifactLocationRequest] = []
     upstream: ArtifactUpstreamRequest | None = None

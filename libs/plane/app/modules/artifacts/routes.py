@@ -77,8 +77,10 @@ class ArtifactRoutes(Controller):
         return Response(await svc.resolve(source))
 
     @get("/{ref:str}")
-    async def get_artifact(self, context: RequestContext, svc: ArtifactService, ref: str) -> Response[ArtifactSchema]:
-        return Response(await svc.get(ref))
+    async def get_artifact(
+        self, context: RequestContext, svc: ArtifactService, ref: str, project: str | None = None
+    ) -> Response[ArtifactSchema]:
+        return Response(await svc.get(ref, project=project))
 
     @get("/{ref:str}/usage")
     async def artifact_usage(
