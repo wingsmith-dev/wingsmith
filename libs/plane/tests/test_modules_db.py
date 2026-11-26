@@ -250,7 +250,7 @@ def assert_patched(before, after) -> None:
     assert after.updated_at is not None
     assert before.updated_at is None or after.updated_at >= before.updated_at
     assert after.revision != before.revision
-    if hasattr(after, "generation"):
+    if type(after).__name__ in ("WorkloadSchema", "EndpointSchema"):
         # Workloads and endpoints version the spec, not the write (ADR 0021).
         assert after.generation > before.generation
         assert after.revision == str(after.generation)
