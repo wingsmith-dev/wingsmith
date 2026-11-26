@@ -296,24 +296,30 @@ class WorkloadRepository:
         """The artifacts a list of references names, in the order given, in one query.
 
         A reference that names nothing is left out, so the caller can tell which were
-        missing; a name two artifacts share is refused, as `artifact_by_ref` refuses it.
+        missing. A handle names one artifact and wins over a name; a name two artifacts
+        share is refused, as `artifact_by_ref` refuses it.
         """
         if not refs:
             return []
         uids = [ref for ref in refs if is_uid(ref)]
         names = [ref for ref in refs if not is_uid(ref)]
         rows = (
-            await self.db.execute(select(Artifact).where(Artifact.uid.in_(uids) | Artifact.name.in_(names)))
+            await self.db.execute(
+                select(Artifact).where(Artifact.uid.in_(uids) | Artifact.handle.in_(names) | Artifact.name.in_(names))
+            )
         ).scalars()
-        by_ref: dict[str, list[Artifact]] = {}
+        exact: dict[str, Artifact] = {}
+        by_name: dict[str, list[Artifact]] = {}
         for artifact in rows:
             if artifact.uid in uids:
-                by_ref.setdefault(artifact.uid, []).append(artifact)
+                exact[artifact.uid] = artifact
+            if artifact.handle in names:
+                exact[artifact.handle] = artifact
             if artifact.name in names:
-                by_ref.setdefault(artifact.name, []).append(artifact)
+                by_name.setdefault(artifact.name, []).append(artifact)
         found: list[Artifact] = []
         for ref in refs:
-            artifact = at_most_one(by_ref.get(ref, []), "artifact", ref)
+            artifact = exact.get(ref) or at_most_one(by_name.get(ref, []), "artifact", ref)
             if artifact is not None:
                 found.append(artifact)
         return found
@@ -324,9 +330,14 @@ class WorkloadRepository:
         return result.scalar_one_or_none()
 
     async def artifact_by_ref(self, ref: str) -> Artifact | None:
-        """By id or by name. Artifact names are not unique, so a name two artifacts share is refused."""
-        column = Artifact.uid if is_uid(ref) else Artifact.name
-        result = await self.db.execute(select(Artifact).where(column == ref).limit(2))
+        """By id, handle or name. Names are not unique, so a name two artifacts share is refused."""
+        if is_uid(ref):
+            result = await self.db.execute(select(Artifact).where(Artifact.uid == ref).limit(1))
+            return result.scalar_one_or_none()
+        result = await self.db.execute(select(Artifact).where(Artifact.handle == ref).limit(1))
+        if (artifact := result.scalar_one_or_none()) is not None:
+            return artifact
+        result = await self.db.execute(select(Artifact).where(Artifact.name == ref).limit(2))
         return at_most_one(list(result.scalars()), "artifact", ref)
 
     async def artifact_of(self, workload: Workload) -> Artifact | None:

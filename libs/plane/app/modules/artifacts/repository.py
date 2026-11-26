@@ -45,13 +45,17 @@ class ArtifactRepository:
     def get_query(self, ref: str) -> Select:
         """An id or a name, per the contract. Prefixes are the client's problem.
 
-        An artifact name is not unique: two quantizations of one base model are
-        routinely named the same, so a name resolves to the oldest match. Only
-        the digest and the uid identify an artifact exactly.
+        The handle is unique and wins. An artifact name is not: two quantizations
+        of one base model are routinely named the same, so a name resolves to the
+        oldest match.
         """
         if is_uid(ref):
             return self._base().where(Artifact.uid == ref)
-        return self._base().where(Artifact.name == ref).order_by(Artifact.seq.asc())
+        return (
+            self._base()
+            .where(or_(Artifact.handle == ref, Artifact.name == ref))
+            .order_by((Artifact.handle == ref).desc(), Artifact.seq.asc())
+        )
 
     def list_query(
         self,
@@ -99,9 +103,20 @@ class ArtifactRepository:
         return result.scalar_one_or_none()
 
     async def artifact_by_ref(self, ref: str) -> Artifact | None:
-        column = Artifact.uid if is_uid(ref) else Artifact.name
-        result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
+        if is_uid(ref):
+            query = select(Artifact).where(Artifact.uid == ref)
+        else:
+            query = (
+                select(Artifact)
+                .where(or_(Artifact.handle == ref, Artifact.name == ref))
+                .order_by((Artifact.handle == ref).desc(), Artifact.seq.asc())
+            )
+        result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none()
+
+    async def handle_taken(self, handle: str) -> bool:
+        result = await self.db.execute(select(Artifact.id).where(Artifact.handle == handle).limit(1))
+        return result.first() is not None
 
     async def artifact_by_digest(self, digest: str) -> Artifact | None:
         """Answers whether the catalogue already holds these exact bytes.
