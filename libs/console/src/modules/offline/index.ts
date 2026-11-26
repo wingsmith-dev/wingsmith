@@ -1489,7 +1489,7 @@ registerFixtures([
         enabled: true,
         created_at: now,
         updated_at: null,
-        revision: revision(now),
+        revision: revision(),
         adopted_workload_id: workload.id,
         adopted_fingerprint: workload.spec_fingerprint,
         authority: "managed",
@@ -1598,7 +1598,7 @@ registerFixtures([
         deadline_at: null,
         created_at: now,
         updated_at: null,
-        revision: revision(now),
+        revision: revision(),
         deployments: [
           {
             id: created.id,
