@@ -2472,7 +2472,7 @@ async def test_spec_writes_move_the_generation_and_observation_does_not(db: Asyn
     assert (await service.get(created.id)).generation == 3
 
 
-async def test_an_endpoint_generation_ignores_targets_and_replays(db: AsyncSession) -> None:
+async def test_an_endpoint_generation_counts_retargets_but_not_replays(db: AsyncSession) -> None:
     _, project, _, deployment = await a_deployment(db)
     endpoints = EndpointService(db)
     created = await endpoints.create(
@@ -2482,13 +2482,17 @@ async def test_an_endpoint_generation_ignores_targets_and_replays(db: AsyncSessi
     )
     assert created.generation == 1
 
-    retargeted = await endpoints.update(
-        created.id, EndpointUpdateRequest(targets=[EndpointTargetRequest(deployment=deployment.id, weight=50)])
-    )
-    assert retargeted.generation == 1
+    same = EndpointUpdateRequest(targets=[EndpointTargetRequest(deployment=deployment.id)])
+    assert (await endpoints.update(created.id, same, if_match=created.revision)).generation == 1
+
+    retarget = EndpointUpdateRequest(targets=[EndpointTargetRequest(deployment=deployment.id, weight=50)])
+    retargeted = await endpoints.update(created.id, retarget, if_match=created.revision)
+    assert retargeted.generation == 2
+    with pytest.raises(Conflict):
+        await endpoints.update(created.id, retarget, if_match=created.revision)
 
     replay = EndpointUpdateRequest(
         slug=created.slug, labels=created.labels, enabled=created.enabled, visibility=created.visibility
     )
-    assert (await endpoints.update(created.id, replay, if_match=created.revision)).generation == 1
-    assert (await endpoints.update(created.id, EndpointUpdateRequest(labels={"a": "b"}))).generation == 2
+    assert (await endpoints.update(created.id, replay, if_match=retargeted.revision)).generation == 2
+    assert (await endpoints.update(created.id, EndpointUpdateRequest(labels={"a": "b"}))).generation == 3

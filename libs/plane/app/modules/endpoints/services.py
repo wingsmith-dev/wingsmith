@@ -475,9 +475,16 @@ _SPEC = ("slug", "visibility", "routing_strategy", "enabled", "surface", "labels
 
 
 def _spec_of(endpoint: Endpoint, aliases: builtins.list[str]) -> tuple:
-    """What the endpoint's generation counts. Targets and failover order are left out: they
-    resolve to deployments at read time and change under drains with no endpoint write."""
+    """What the endpoint's generation counts besides its targets, which `_targets_of` compares on
+    write: resolved deployments change under drains with no endpoint write, so only a PATCH that
+    replaces the declared set with a different one counts."""
     return tuple(getattr(endpoint, key) for key in _SPEC), tuple(sorted(aliases))
+
+
+def _targets_of(targets, order) -> tuple:
+    """A declared target set by value, so a replay with the same set compares equal."""
+    rows = sorted((str(t.deployment_id), t.weight, t.role, t.enabled, t.served_model_name) for t in targets)
+    return tuple(rows), tuple(str(u) for u in order or ())
 
 
 def _stamp(row) -> dt.datetime | None:
@@ -780,6 +787,7 @@ class EndpointService:
             fields.get("routing_strategy", endpoint.routing_strategy),
         )
 
+        retargeted = False
         if "targets" in fields or "failover_order" in fields:
             targets = fields.pop("targets", UNSET)
             if targets is UNSET:
@@ -787,6 +795,7 @@ class EndpointService:
             check_targets(targets)
             tenant_id = await self.repo.tenant_of(endpoint.project_id)
             rows, order = await self._resolve(targets, fields.pop("failover_order", []), tenant_id, endpoint.project_id)
+            retargeted = _targets_of(endpoint.targets, endpoint.failover_order) != _targets_of(rows, order)
             endpoint.targets = []
             await self.db.flush()
             endpoint.targets = rows
@@ -813,7 +822,7 @@ class EndpointService:
 
         for key, value in fields.items():
             setattr(endpoint, key, value)
-        if _spec_of(endpoint, aliases if aliases is not UNSET else alias_names(endpoint)) != before:
+        if _spec_of(endpoint, aliases if aliases is not UNSET else alias_names(endpoint)) != before or retargeted:
             endpoint.generation += 1
 
         try:
