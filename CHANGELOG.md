@@ -22,8 +22,17 @@ protocol can change between minor versions.
   benchmarks, metrics, events, operations and cluster desired state see only public artifacts and
   the named project's private ones; another project's private artifact is a 404.
 
+- Projects declare credentials at `PUT /v1/projects/{project}/credentials/{name}` (`kind:
+  hf_token`, `secret_ref` only). A private artifact is fetched with its project's token, which the
+  operator copies from an admin-applied, project-labelled Secret into `hf-<project>` and mounts on
+  the prefetch Job only. The token never reaches the plane's database or the hub (ADR 0023).
+
 ### Changed
 
+- The model cache keeps private artifacts under `/models/p/<project>/`, and serving, prefetch and
+  benchmark pods mount only their artifact's directory by `subPath` instead of the volume root.
+  Serving pods of a private artifact get no token and run with `HF_HUB_OFFLINE=1`. On a managed
+  cluster the operator now reads Secrets in its namespace and writes them in the workload namespace.
 - Workloads and endpoints carry a spec `generation`, and `revision` (what `If-Match` checks) is now
   that number instead of the last-write stamp, so observation no longer reads as a concurrent edit.
   A replayed workload `PATCH` that changes nothing rolls no deployment and records no event.
