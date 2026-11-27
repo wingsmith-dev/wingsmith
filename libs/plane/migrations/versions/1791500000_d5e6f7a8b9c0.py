@@ -4,7 +4,7 @@ Revision ID: d5e6f7a8b9c0
 Revises: d8e9f0a1b2c3
 Create Date: 2026-11-27 23:00:00.000000
 
-The durable, ordered change log for workloads, endpoints and artifacts (ADR 0037), the row that
+The durable, ordered change log for workloads, endpoints and artifacts (ADR 0038), the row that
 records how far it has been compacted, and `resource_version` on the three tables. Existing rows
 start at 0: no change has been logged for them yet, and the first write moves them onto the log.
 """

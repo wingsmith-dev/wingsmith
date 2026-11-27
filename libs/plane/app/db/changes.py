@@ -1,4 +1,4 @@
-"""The single write path for declared objects: record every change, commit once (ADR 0037).
+"""The single write path for declared objects: record every change, commit once (ADR 0038).
 
 Every writer of a `Workload`, `Endpoint` or `Artifact` calls `record_change` for each object it
 creates, modifies or deletes, before the transaction commits. Cascade deletes are not implicit:

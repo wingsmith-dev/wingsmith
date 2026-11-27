@@ -251,7 +251,7 @@ def assert_patched(before, after) -> None:
     assert before.updated_at is None or after.updated_at >= before.updated_at
     assert after.revision != before.revision
     if type(after).__name__ in ("WorkloadSchema", "EndpointSchema"):
-        # The spec moves `generation`; `revision` is the change-log seq (ADR 0037).
+        # The spec moves `generation`; `revision` is the change-log seq (ADR 0038).
         assert after.generation > before.generation
         assert int(after.revision) > int(before.revision)
     elif type(after).__name__ == "ArtifactSchema":

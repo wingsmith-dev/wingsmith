@@ -1824,7 +1824,7 @@ class ReactorState(BaseMixin):
 
 
 class ChangeLog(Base):
-    """One committed change to a `Workload`, `Endpoint` or `Artifact` (ADR 0037).
+    """One committed change to a `Workload`, `Endpoint` or `Artifact` (ADR 0038).
 
     A hint, never a body: what changed and how, in commit order. `seq` is global and is the
     `metadata.resourceVersion` of the object right after the change. Rows older than the retention

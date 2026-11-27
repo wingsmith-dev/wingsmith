@@ -1,4 +1,4 @@
-# 0037: A durable, ordered change log for declared objects
+# 0038: A durable, ordered change log for declared objects
 
 **Status:** accepted · 2026-11-27
 

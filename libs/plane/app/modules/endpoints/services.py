@@ -484,7 +484,7 @@ def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
 
 
 def _revision(endpoint: Endpoint) -> str:
-    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0037)."""
+    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0038)."""
     return str(endpoint.resource_version)
 
 
