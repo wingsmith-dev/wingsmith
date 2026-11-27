@@ -432,7 +432,10 @@ def test_nothing_in_this_repository_counts_anything(repo):
 def test_resolving_by_workload_walks_targets_to_deployments_in_one_statement(repo):
     text = sql(repo.workload_endpoints_query("summariser"))
     assert "SELECT demand_endpoint_target.endpoint_id" in text
-    assert "JOIN demand_deployment ON demand_endpoint_target.deployment_id = demand_deployment.id" in text
+    assert (
+        "JOIN demand_deployment ON demand_deployment.id = demand_endpoint_target.deployment_id OR demand_deployment.workload_id IN"
+        in text
+    )
     assert "demand_deployment.workload_id IN (SELECT demand_workload.id" in text
 
 
