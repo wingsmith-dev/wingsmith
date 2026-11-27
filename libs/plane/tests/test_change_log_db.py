@@ -89,16 +89,28 @@ async def test_seqs_become_visible_in_commit_order(db: AsyncSession, factory) ->
     assert [uid for _, _, uid, _ in log] == ["art_second", "art_first"]
 
 
+async def _a_backend_waits_on_an_advisory_lock(factory) -> None:
+    # pg_stat_activity is a per-transaction snapshot, so each poll ends its transaction.
+    query = text(
+        "SELECT count(*) FROM pg_stat_activity"
+        " WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND datname = current_database()"
+    )
+    async with factory() as probe:
+        while not (await probe.execute(query)).scalar_one():
+            await probe.rollback()
+            await asyncio.sleep(0.02)
+
+
 async def test_a_commit_waits_for_the_one_ahead_of_it(db: AsyncSession, factory) -> None:
     """The advisory lock serialises the insert-to-commit window, so seq order is commit order."""
     async with factory() as holder, factory() as writer:
         await holder.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": changes.LOCK_KEY})
         await _draft(writer, "sha256:3333", "waiting")
         pending = asyncio.create_task(writer.commit())
-        await asyncio.sleep(0.3)
+        await asyncio.wait_for(_a_backend_waits_on_an_advisory_lock(factory), 15)
         assert not pending.done()
         await holder.commit()
-        await asyncio.wait_for(pending, 5)
+        await asyncio.wait_for(pending, 15)
     assert [uid for _, _, uid, _ in await _log(db)] == ["art_waiting"]
 
 
