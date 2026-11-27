@@ -319,6 +319,7 @@ class FakeEndpoint:
         self.created_at = EPOCH
         self.updated_at = None
         self.generation = 1
+        self.applied_by = self.applied_by_principal = self.applied_at = None
 
 
 class FakeTarget:
