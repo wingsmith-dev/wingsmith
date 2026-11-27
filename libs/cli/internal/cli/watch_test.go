@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func obj(name, rv string) string {
@@ -77,5 +80,49 @@ func TestGetWithoutANameListsTheKind(t *testing.T) {
 	out, errOut, code := run(t, "get", "workloads", "-o", "json")
 	if code != 0 || !strings.Contains(out, `"items"`) {
 		t.Fatalf("exit %d: %s %s", code, out, errOut)
+	}
+}
+
+func TestGetWatchBacksOffWhenThePlaneClosesStreamsAtOnce(t *testing.T) {
+	watches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("watch") != "true" {
+			fmt.Fprintf(w, `{"kind":"WorkloadList","metadata":{"resourceVersion":"5"},"items":[]}`)
+			return
+		}
+		watches++
+		if watches == 3 {
+			fmt.Fprintf(w, "{\"type\":\"MODIFIED\",\"object\":%s}\n", obj("chat", "6"))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("WINGSMITH_FAKE", "0")
+	t.Setenv("WINGSMITH_SERVER", srv.URL)
+	t.Setenv("WINGSMITH_TOKEN", "wss1_test")
+	t.Setenv("WINGSMITH_PROJECT", "core")
+
+	stop := errors.New("stop")
+	var delays []time.Duration
+	orig := watchSleep
+	watchSleep = func(_ context.Context, d time.Duration) error {
+		delays = append(delays, d)
+		if len(delays) == 8 {
+			return stop
+		}
+		return nil
+	}
+	t.Cleanup(func() { watchSleep = orig })
+
+	_, errOut, code := run(t, "get", "workloads", "-w", "-o", "human")
+	if code == 0 {
+		t.Fatalf("want the stub's error to end the watch: %s", errOut)
+	}
+	want := []time.Duration{1, 2, 1, 2, 4, 8, 16, 30}
+	for i := range want {
+		want[i] *= time.Second
+	}
+	if fmt.Sprint(delays) != fmt.Sprint(want) {
+		t.Errorf("delays %v, want %v (reset after the event on the third watch)", delays, want)
 	}
 }

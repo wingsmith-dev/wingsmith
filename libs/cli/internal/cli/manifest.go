@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/api"
@@ -146,6 +148,7 @@ func watchManifests(app *App, cmd *cobra.Command, q api.ManifestQuery) error {
 		return err
 	}
 	rv := ""
+	delay := time.Duration(0)
 	for {
 		if rv == "" {
 			lctx, cancel := app.RequestContext()
@@ -164,9 +167,13 @@ func watchManifests(app *App, cmd *cobra.Command, q api.ManifestQuery) error {
 				return nil // the fake never changes on its own
 			}
 		}
+		events := 0
 		err := app.Backend.WatchManifests(ctx, q, rv, func(e api.WatchEvent) error {
 			if v := e.ResourceVersion(); v != "" {
 				rv = v
+			}
+			if e.Type != "ERROR" {
+				events++
 			}
 			return print(e)
 		})
@@ -178,6 +185,36 @@ func watchManifests(app *App, cmd *cobra.Command, q api.ManifestQuery) error {
 		case err != nil:
 			return err
 		}
+		// A stream that ends or expires without an event backs off, so a plane that closes
+		// watches straight away is not hammered with relists.
+		if events > 0 {
+			delay = 0
+			continue
+		}
+		delay = min(max(delay*2, watchBackoffMin), watchBackoffMax)
+		if err := watchSleep(ctx, delay); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+const (
+	watchBackoffMin = time.Second
+	watchBackoffMax = 30 * time.Second
+)
+
+// watchSleep waits out a watch backoff; tests replace it.
+var watchSleep = func(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 
