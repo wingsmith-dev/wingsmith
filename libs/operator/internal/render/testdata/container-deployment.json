@@ -112,7 +112,7 @@
             ],
             "readinessProbe": {
               "httpGet": {
-                "path": "/health",
+                "path": "/v1/models",
                 "port": "http"
               },
               "periodSeconds": 10,

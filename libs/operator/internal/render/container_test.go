@@ -108,7 +108,7 @@ func TestContainerInjectsTheModelAndHardensThePod(t *testing.T) {
 	if *sc.Privileged || *sc.AllowPrivilegeEscalation || sc.Capabilities.Drop[0] != "ALL" {
 		t.Errorf("security context = %+v", sc)
 	}
-	if c.ReadinessProbe == nil || c.ReadinessProbe.HTTPGet.Path != "/health" || c.ReadinessProbe.HTTPGet.Port.StrVal != "http" {
+	if c.ReadinessProbe == nil || c.ReadinessProbe.HTTPGet.Path != "/v1/models" || c.ReadinessProbe.HTTPGet.Port.StrVal != "http" {
 		t.Errorf("default readiness = %+v", c.ReadinessProbe)
 	}
 	if got := c.Resources.Limits[GPUResource]; got.Value() != 1 {
@@ -163,7 +163,7 @@ func TestContainerTagAllowedByOperatorFlag(t *testing.T) {
 func TestContainerDeclaredProbeIsKept(t *testing.T) {
 	in := containerInputs()
 	in.Deployment.Serving.Container.ReadinessProbe = map[string]any{
-		"httpGet":       map[string]any{"path": "/v1/models", "port": "http"},
+		"httpGet":       map[string]any{"path": "/ready", "port": "http"},
 		"periodSeconds": float64(5),
 	}
 	objs, err := Container(in, containerOptions())
@@ -171,7 +171,27 @@ func TestContainerDeclaredProbeIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := objs.Deployment.Spec.Template.Spec.Containers[0].ReadinessProbe
-	if p.HTTPGet.Path != "/v1/models" || p.PeriodSeconds != 5 {
+	if p.HTTPGet.Path != "/ready" || p.PeriodSeconds != 5 {
 		t.Errorf("readiness = %+v", p)
+	}
+}
+
+func TestContainerDefaultReadinessFollowsTheProtocol(t *testing.T) {
+	for protocol, want := range map[string]string{
+		"openai-chat":                 "/v1/models",
+		"openai-images":               "/health",
+		"openai-audio-speech":         "/health",
+		"openai-audio-transcriptions": "/health",
+		"openai-videos":               "/health",
+	} {
+		in := containerInputs()
+		in.Deployment.Serving.Container.Protocol = protocol
+		objs, err := Container(in, containerOptions())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := objs.Deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Path; got != want {
+			t.Errorf("%s readiness path = %s, want %s", protocol, got, want)
+		}
 	}
 }

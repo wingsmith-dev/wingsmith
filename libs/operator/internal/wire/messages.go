@@ -334,10 +334,11 @@ type ContainerSpec struct {
 	Args  []string        `json:"args,omitempty"`
 	Env   []EnvVar        `json:"env,omitempty"`
 	Ports []ContainerPort `json:"ports,omitempty"`
-	// Protocol is what the worker answers: `openai-chat` today.
+	// Protocol is what the worker answers: `openai-chat`, `openai-images`, `openai-audio-speech`,
+	// `openai-audio-transcriptions` or `openai-videos`. It picks the default readiness path.
 	Protocol string `json:"protocol"`
 	// The probes are corev1.Probe-shaped objects (camelCase keys, as in a pod spec). Nil readiness
-	// renders an httpGet on /health at port `http`.
+	// renders an httpGet at port `http` on /v1/models for openai-chat, /health otherwise.
 	ReadinessProbe map[string]any `json:"readiness_probe,omitempty"`
 	LivenessProbe  map[string]any `json:"liveness_probe,omitempty"`
 	StartupProbe   map[string]any `json:"startup_probe,omitempty"`

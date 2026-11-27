@@ -242,7 +242,7 @@ func workerContainer(in Inputs, c *wire.ContainerSpec, port int, modelPath strin
 	if readiness == nil {
 		readiness = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
-				Path: "/health", Port: intstr.FromString(ContainerHTTPPort),
+				Path: readinessPath(c.Protocol), Port: intstr.FromString(ContainerHTTPPort),
 			}},
 			PeriodSeconds:    10,
 			FailureThreshold: 3,
@@ -309,4 +309,16 @@ func probe(in map[string]any) (*corev1.Probe, error) {
 // Unstructured converts a typed object for server-side apply.
 func Unstructured(obj runtime.Object) (map[string]any, error) {
 	return runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+}
+
+// readinessPath is the default readiness probe path for a worker's protocol. Only the
+// OpenAI chat family is required to list its model on `/v1/models`; the media servers
+// (diffusers, SGLang-diffusion, Whisper and TTS wrappers) often do not, and answer `/health`.
+func readinessPath(protocol string) string {
+	switch protocol {
+	case "", "openai-chat":
+		return "/v1/models"
+	default:
+		return "/health"
+	}
 }
