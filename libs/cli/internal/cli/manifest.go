@@ -148,6 +148,10 @@ something to resolve. A document without metadata.namespace is applied in
 			for _, p := range plan {
 				out, created, err := app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc)
 				if err != nil {
+					// Earlier documents are already applied; say which before the failure.
+					for _, l := range lines {
+						fmt.Fprintln(cmd.ErrOrStderr(), l)
+					}
 					return err
 				}
 				verb := "configured"
