@@ -96,8 +96,9 @@ or `wings workload create qwen-vllm --artifact qwen3-8b --class h100-80 --device
 Both get port `http` 8000, readiness `GET /v1/models` (`openai-chat`) or `GET /health` (any other
 protocol), a startup probe on `/health` that allows 30 minutes to load, and metrics on
 `http:/metrics`. Declared `ports`, `env`, probes and `metrics` win over these; `image` and `command`
-are refused, since the preset owns them. A flag passed in `args` after the preset's own takes
-effect for both engines.
+are refused, since the preset owns them. `args` are appended after the preset's own flags and may
+not repeat the ones it sets (`--port`, `--host`, `--model`, `--model-path`, `--served-model-name`
+and the tensor-parallel flags); any other flag takes effect for both engines.
 
 `spec.runtime` is kept as you declared it (with `version` filled in on write, so a newer default
 never moves a stored workload). The worker that runs is in `status.runtime` on the manifest and in
@@ -113,7 +114,9 @@ operator's `allowedPrefixes` (or the host's `allowed_image_prefixes`) must inclu
 `docker.io/vllm/vllm-openai` and `docker.io/lmsysorg/sglang`.
 
 To add a release, resolve its digest anonymously and prepend the entry (keep old entries: a stored
-workload keeps its version, and its digest must not change under it):
+workload keeps its version, and its digest must not change under it). Prepending also makes the
+new entry the default for workloads created from then on; existing workloads stay on the version
+stored with them:
 
 ```sh
 repo=vllm/vllm-openai tag=v0.35.0

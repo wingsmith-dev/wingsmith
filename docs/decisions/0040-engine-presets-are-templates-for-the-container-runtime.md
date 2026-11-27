@@ -26,7 +26,9 @@ this is also the only way a host serves a text model.
   `preset@version` to `repo@sha256:...`, like `ENGINE_RUNTIME_REPOS` does for Dynamo. An entry
   without a digest refuses the workload. Entries are append-only: `serving_digest` hashes the
   declared spec, so a version's digest must never be edited in place (that would change what runs
-  without a rollout).
+  without a rollout). `libs/plane/tests/data/preset_images.txt` snapshots every shipped entry and
+  a test fails if one is removed or re-pointed. User `args` may not repeat the flags the preset
+  sets (port, host, model, served name, tensor parallelism).
 - **Tensor parallelism is the shape's device count**, since a container replica is one node.
 - **Readiness follows the protocol** (`/v1/models` for `openai-chat`, `/health` otherwise), with a
   long startup probe on `/health`; declared probes, ports, env and metrics win; image and command
