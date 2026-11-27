@@ -1330,7 +1330,7 @@
   },
   "RuntimeSpec": {
    "additionalProperties": false,
-   "description": "What process serves the weights: a tagged union on `kind`, `dynamo` when left out.\n\n    `dynamo`: `engine` and `version` pick the worker image unless `image` pins one, and `args`\n    is a map of the engine's own flags.\n\n    `container` (a custom worker): `image` is pinned by digest, `command` and `args` are lists\n    (`args` may use `$(WS_MODEL_PATH)`, `$(WS_SERVED_MODEL_NAME)`, `$(WS_PORT)`), `ports` names\n    one `http`, `protocol` is `openai-chat`, the probes are `corev1.Probe` objects, and\n    `metrics` is `{port, path}`. `engine`, `version` and `frontendImage` are not read.\n\n    Unset fields are left out of a read, so each kind shows only its own.",
+   "description": "What process serves the weights: a tagged union on `kind`, `dynamo` when left out.\n\n    `dynamo`: `engine` and `version` pick the worker image unless `image` pins one, and `args`\n    is a map of the engine's own flags.\n\n    `container` (a custom worker): `image` is pinned by digest, `command` and `args` are lists\n    (`args` may use `$(WS_MODEL_PATH)`, `$(WS_SERVED_MODEL_NAME)`, `$(WS_PORT)`), `ports` names\n    one `http`, `protocol` is one OpenAI API family (`openai-chat` by default, or `openai-images`,\n    `openai-audio-speech`, `openai-audio-transcriptions`, `openai-videos`) and implies the output\n    modality, the probes are `corev1.Probe` objects, and\n    `metrics` is `{port, path}`. `engine`, `version` and `frontendImage` are not read.\n\n    Unset fields are left out of a read, so each kind shows only its own.",
    "properties": {
     "args": {
      "anyOf": [
@@ -1438,7 +1438,13 @@
     "protocol": {
      "anyOf": [
       {
-       "type": "string"
+       "enum": [
+        "openai-audio-speech",
+        "openai-audio-transcriptions",
+        "openai-chat",
+        "openai-images",
+        "openai-videos"
+       ]
       },
       {
        "type": "null"

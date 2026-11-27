@@ -34,6 +34,7 @@ from app.db.models import Deployment
 from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.core.serving import OPENAI_CHAT
 from app.core.serving import is_container
 from app.core.serving import declared_router
 from app.core.serving import output_modality
@@ -392,7 +393,7 @@ def _container(workload: Workload) -> ContainerSpec | None:
     metrics = spec.get("metrics")
     return ContainerSpec(
         image=spec["image"],
-        protocol=spec.get("protocol") or "openai-chat",
+        protocol=spec.get("protocol") or OPENAI_CHAT,
         command=list(spec.get("command") or []),
         args=list(spec.get("args") or []),
         env=[EnvVar(name=e["name"], value=str(e.get("value") or "")) for e in spec.get("env") or []],

@@ -21,6 +21,7 @@ from app.core.serving import TEXT
 from app.core.serving import DYNAMO
 from app.core.serving import CONTAINER
 from app.core.serving import AGGREGATED
+from app.core.serving import PROTOCOL_MODALITY
 from app.core.serving import is_omni
 from app.core.serving import serving_digest
 from app.core.serving import declared_router
@@ -456,7 +457,11 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
         "memory_mib": data.resources.memory_mib,
         "disk_gib": data.resources.disk_gib,
         "overlay": msgspec.to_builtins(data.overlay),
-        "serving": stored_serving(data.serving),
+        "serving": stored_serving(
+            msgspec.structs.replace(data.serving, output_modality=PROTOCOL_MODALITY[data.runtime.container.protocol])
+            if container and data.runtime.container
+            else data.serving
+        ),
         "capabilities": msgspec.to_builtins(data.capabilities),
         "router": declared_router(msgspec.to_builtins(data.router)),
     }

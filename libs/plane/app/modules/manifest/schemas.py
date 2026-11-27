@@ -18,6 +18,7 @@ import typing
 import datetime as dt
 import functools
 
+from typing import Literal
 from typing import Annotated
 
 import msgspec
@@ -148,6 +149,12 @@ class ObjectMeta(Struct, kw_only=True):
 # --------------------------------------------------------------------------- Workload
 
 
+ContainerProtocol = Literal[
+    "openai-chat", "openai-images", "openai-audio-speech", "openai-audio-transcriptions", "openai-videos"
+]
+"""`app.core.serving.CONTAINER_PROTOCOLS` spelled as a type, so the published manifest schema lists them."""
+
+
 class RuntimeSpec(Struct, kw_only=True, omit_defaults=True):
     """What process serves the weights: a tagged union on `kind`, `dynamo` when left out.
 
@@ -156,7 +163,9 @@ class RuntimeSpec(Struct, kw_only=True, omit_defaults=True):
 
     `container` (a custom worker): `image` is pinned by digest, `command` and `args` are lists
     (`args` may use `$(WS_MODEL_PATH)`, `$(WS_SERVED_MODEL_NAME)`, `$(WS_PORT)`), `ports` names
-    one `http`, `protocol` is `openai-chat`, the probes are `corev1.Probe` objects, and
+    one `http`, `protocol` is one OpenAI API family (`openai-chat` by default, or `openai-images`,
+    `openai-audio-speech`, `openai-audio-transcriptions`, `openai-videos`) and implies the output
+    modality, the probes are `corev1.Probe` objects, and
     `metrics` is `{port, path}`. `engine`, `version` and `frontendImage` are not read.
 
     Unset fields are left out of a read, so each kind shows only its own.
@@ -171,7 +180,7 @@ class RuntimeSpec(Struct, kw_only=True, omit_defaults=True):
     command: list[str] = []
     env: list[EnvVarSchema] = []
     ports: list[ContainerPortSchema] = []
-    protocol: str | None = None
+    protocol: ContainerProtocol | None = None
     readiness_probe: dict | None = None
     liveness_probe: dict | None = None
     startup_probe: dict | None = None

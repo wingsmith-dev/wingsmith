@@ -27,6 +27,9 @@ def kind(prop: dict) -> str:
         types = [kind(p) for p in prop["oneOf"] if p.get("type") != "null"]
         nullable = any(p.get("type") == "null" for p in prop["oneOf"])
         return "|".join(types) + ("?" if nullable else "")
+    if isinstance(prop.get("type"), list):
+        types = [t for t in prop["type"] if t != "null"]
+        return "|".join(types) + ("?" if "null" in prop["type"] else "")
     if prop.get("type") == "array":
         return "[]" + kind(prop.get("items", {}))
     return prop.get("type", "any")

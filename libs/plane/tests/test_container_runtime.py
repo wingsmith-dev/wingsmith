@@ -1,6 +1,7 @@
 """P8.2: the `container` runtime on the plane: validation, digest, wire and manifest."""
 
 import json
+import typing
 import hashlib
 
 import pytest
@@ -8,8 +9,12 @@ import msgspec
 
 from app.config import settings
 from app.core.serving import DIGEST_FIELDS
+from app.core.serving import OUTPUT_MODALITIES
+from app.core.serving import PROTOCOL_MODALITY
+from app.core.serving import CONTAINER_PROTOCOLS
 from app.core.serving import _canonical
 from app.core.serving import serving_digest
+from app.core.serving import output_modality
 from app.core.exceptions import Invalid
 from app.ingestion.desired import _serving
 from app.modules.manifest.schemas import WorkloadManifest
@@ -17,6 +22,7 @@ from app.modules.workloads.schemas import EnvVarSchema
 from app.modules.workloads.schemas import RouterSchema
 from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import RuntimeSchema
+from app.modules.workloads.schemas import ServingSchema
 from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import ContainerSchema
 from app.modules.workloads.schemas import ContainerPortSchema
@@ -25,6 +31,7 @@ from app.modules.workloads.serving import apply_serving
 from app.modules.workloads.serving import serving_request
 from app.modules.manifest.translate import runtime_spec
 from app.modules.manifest.translate import workload_create
+from app.modules.workloads.validation import check_output
 from app.modules.workloads.validation import check_runtime
 
 from .test_serving import a_request
@@ -214,3 +221,52 @@ def _schema(workload, artifact):
         serving = serving_view(workload, artifact)
 
     return W
+
+
+@pytest.mark.parametrize(
+    ("protocol", "modality"),
+    [
+        ("openai-chat", None),
+        ("openai-images", "image"),
+        ("openai-audio-speech", "speech"),
+        ("openai-audio-transcriptions", "transcription"),
+        ("openai-videos", "video"),
+    ],
+)
+def test_a_media_protocol_implies_its_modality(protocol, modality):
+    artifact = an_artifact()
+    workload = a_workload()
+    request = a_container_request(container=a_container(protocol=protocol))
+    check_runtime(request)
+    check_output(request.engine, request.serving, protocol)
+    apply_serving(workload, request, artifact, [])
+
+    assert workload.serving.get("output_modality") == modality
+    assert output_modality(workload.serving) == (modality or "text")
+    assert _serving(workload, artifact).container.protocol == protocol
+    # The read carries the implied modality, and replaying it is accepted.
+    replay = serving_request(workload, artifact)
+    check_output(replay.engine, replay.serving, protocol)
+
+
+def test_a_container_cannot_claim_a_modality_its_protocol_does_not_emit():
+    request = a_container_request(
+        container=a_container(protocol="openai-audio-speech"), serving=ServingSchema(output_modality="image")
+    )
+    with pytest.raises(Invalid, match="protocol decides"):
+        check_output(request.engine, request.serving, "openai-audio-speech")
+
+
+@pytest.mark.parametrize("modality", ["speech", "transcription"])
+def test_audio_under_dynamo_omni_is_refused(modality):
+    with pytest.raises(Invalid, match="container worker"):
+        check_output("omni", ServingSchema(output_modality=modality))
+    with pytest.raises(Invalid):
+        check_output("vllm", ServingSchema(output_modality=modality))
+
+
+def test_the_manifest_lists_the_container_protocols():
+    from app.modules.manifest.schemas import ContainerProtocol
+
+    assert set(typing.get_args(ContainerProtocol)) == CONTAINER_PROTOCOLS
+    assert set(PROTOCOL_MODALITY.values()) <= OUTPUT_MODALITIES

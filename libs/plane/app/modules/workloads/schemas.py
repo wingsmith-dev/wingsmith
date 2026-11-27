@@ -6,6 +6,7 @@ from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
 from app.core.serving import AGGREGATED
+from app.core.serving import OPENAI_CHAT
 from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 
@@ -268,7 +269,8 @@ class ContainerSchema(Struct):
 
     `image` is pinned by digest (`repo@sha256:...`). `args` may use `$(WS_MODEL_PATH)` and the
     other injected variables. The probes are `corev1.Probe` objects with their Kubernetes keys;
-    readiness defaults to an httpGet on `/health` at port `http`.
+    readiness defaults to an httpGet at port `http` on `/v1/models` for `openai-chat` and on
+    `/health` for the media protocols. `protocol` implies `serving.output_modality`.
     """
 
     image: str
@@ -276,7 +278,7 @@ class ContainerSchema(Struct):
     args: list[str] = []
     env: list[EnvVarSchema] = []
     ports: list[ContainerPortSchema] = []
-    protocol: str = "openai-chat"
+    protocol: str = OPENAI_CHAT
     readiness_probe: dict | None = None
     liveness_probe: dict | None = None
     startup_probe: dict | None = None

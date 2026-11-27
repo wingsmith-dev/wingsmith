@@ -32,6 +32,7 @@ from app.core.serving import RUNTIME_KINDS
 from app.core.serving import SERVING_ROLES
 from app.core.serving import TOPOLOGY_FLAGS
 from app.core.serving import OUTPUT_MODALITIES
+from app.core.serving import PROTOCOL_MODALITY
 from app.core.serving import AMD64_ONLY_ENGINES
 from app.core.serving import SERVING_TOPOLOGIES
 from app.core.serving import CONTAINER_PROTOCOLS
@@ -515,7 +516,7 @@ def check_serving(
         )
 
 
-def check_output(engine: str, serving: ServingSchema) -> None:
+def check_output(engine: str, serving: ServingSchema, protocol: str | None = None) -> None:
     """Rejects an output modality the engine cannot emit, or a diffusion block it cannot read.
 
     The one place the plane knows something about an engine, and it knows it because the
@@ -530,11 +531,27 @@ def check_output(engine: str, serving: ServingSchema) -> None:
             f"unknown output_modality {modality!r}",
             {"output_modality": modality, "allowed": sorted(OUTPUT_MODALITIES)},
         )
+    if protocol is not None:
+        implied = PROTOCOL_MODALITY[protocol]
+        if modality not in (None, implied):
+            raise Invalid(
+                f"a {protocol} worker emits {implied}; the protocol decides output_modality",
+                {"protocol": protocol, "output_modality": modality},
+            )
+        if serving.diffusion is not None:
+            raise Invalid("a diffusion block is read only by the omni engine", {"protocol": protocol})
+        return
     if is_omni(engine):
         if modality in (None, TEXT):
             raise Invalid(
                 "the omni engine needs output_modality image or video: it is what "
                 "--output-modalities renders from, and the worker will not start without it",
+                {"engine": engine, "output_modality": modality},
+            )
+        if modality not in ("image", "video"):
+            raise Invalid(
+                f"the omni engine emits image or video under Dynamo, not {modality}; serve audio "
+                "from a container worker (protocol openai-audio-speech or openai-audio-transcriptions)",
                 {"engine": engine, "output_modality": modality},
             )
         diffusion = serving.diffusion
@@ -545,7 +562,8 @@ def check_output(engine: str, serving: ServingSchema) -> None:
         return
     if modality not in (None, TEXT):
         raise Invalid(
-            f"the {engine} engine emits text; image and video are the omni engine's",
+            f"the {engine} engine emits text; image and video are the omni engine's, "
+            "speech and transcription a container worker's",
             {"engine": engine, "output_modality": modality},
         )
     if serving.diffusion is not None:
@@ -682,7 +700,11 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         disk_gib=data.resources.disk_gib,
     )
     check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
-    check_output(data.engine, data.serving)
+    check_output(
+        data.engine,
+        data.serving,
+        data.runtime.container.protocol if data.runtime.kind == CONTAINER and data.runtime.container else None,
+    )
     check_host_architecture(data.engine, data.shape.device_class)
     check_router(data.router)
     check_quantization(data.quantization)

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import msgspec
 
+from app.core.serving import OPENAI_CHAT
 from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.endpoints.schemas import EndpointSchema
 from app.modules.endpoints.schemas import WorkloadRefSchema
@@ -398,7 +399,7 @@ def runtime_request(spec: WorkloadManifestSpec) -> RuntimeSchema:
             args=list(r.args) if isinstance(r.args, list) else [],
             env=[_snake(e, _EnvVarSchema) for e in r.env],
             ports=[_snake(p, _ContainerPortSchema) for p in r.ports],
-            protocol=r.protocol or "openai-chat",
+            protocol=r.protocol or OPENAI_CHAT,
             readiness_probe=r.readiness_probe,
             liveness_probe=r.liveness_probe,
             startup_probe=r.startup_probe,

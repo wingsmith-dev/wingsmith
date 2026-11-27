@@ -216,8 +216,22 @@ CONTAINER = "container"
 RUNTIME_KINDS = frozenset({DYNAMO, CONTAINER})
 """`Workload.runtime_kind`. A container workload stores `engine = CONTAINER` (P8.1 decision a)."""
 
-CONTAINER_PROTOCOLS = frozenset({"openai-chat"})
-"""What a container worker may answer in the P8.2 MVP; completions, embeddings and plain http follow."""
+OPENAI_CHAT = "openai-chat"
+PROTOCOL_MODALITY = {
+    OPENAI_CHAT: "text",
+    "openai-images": "image",
+    "openai-audio-speech": "speech",
+    "openai-audio-transcriptions": "transcription",
+    "openai-videos": "video",
+}
+"""What a container worker may answer, and the one output modality each protocol implies (P4.2).
+
+A protocol is one OpenAI API family, so the modality is never declared beside it: an
+`openai-images` worker is an image model, and the routing table says so.
+"""
+CONTAINER_PROTOCOLS = frozenset(PROTOCOL_MODALITY)
+MODELS_PROBE_PROTOCOLS = frozenset({OPENAI_CHAT})
+"""Protocols whose servers answer `GET /v1/models`, so readiness defaults to it; the rest probe `/health`."""
 
 
 def is_container(workload: object) -> bool:
@@ -245,8 +259,11 @@ It is the one engine here that emits images and video, not text, runs inside the
 """
 
 TEXT = "text"
-OUTPUT_MODALITIES = frozenset({TEXT, "image", "video"})
-"""What a workload's engine emits. `text` is every engine but omni; `image` and `video` are omni's.
+OUTPUT_MODALITIES = frozenset({TEXT, "image", "video", "speech", "transcription"})
+"""What a workload's engine emits. `text` is every Dynamo engine but omni; `image` and `video` are
+omni's. `speech` (TTS, `/v1/audio/speech`) and `transcription` (STT, `/v1/audio/transcriptions`)
+come only from a container worker whose protocol implies them: vLLM-Omni under Dynamo has no audio
+output path we have verified.
 
 A null `serving.output_modality` means text, and is how every workload declared before the field
 existed reads. The routing table carries the resolved value so the gateway can refuse a path the
