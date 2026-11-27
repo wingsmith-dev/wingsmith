@@ -764,3 +764,4 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
 | [0023](../decisions/0023-private-artifacts-are-fetched-with-a-project-token-into-a-project-cache.md) | Private artifacts are fetched with a project token into a project cache |
 | [0024](../decisions/0024-endpoint-names-are-per-project-slugs-are-global.md) | Endpoint names are per project, slugs are global |
 | [0029](../decisions/0029-manifests-are-applied-with-put.md) | Workload and Endpoint manifests are applied with PUT |
+| [0032](../decisions/0032-apply-merges-three-way-against-a-last-applied-record.md) | Apply merges three-way against a last-applied record |
