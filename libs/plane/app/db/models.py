@@ -911,7 +911,7 @@ class EndpointTarget(BaseMixin):
 
     `workload_name` is an object reference resolved at read time inside the endpoint's own project
     (ADR 0026): it expands to that workload's current deployments, it may name a workload that does
-    not exist yet, and deleting the workload leaves the reference unresolved rather than deleting it.
+    not exist yet, and deleting the workload leaves the reference in place, unresolved.
     Exactly one of the two is set.
     """
 
