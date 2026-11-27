@@ -3,6 +3,7 @@
 import pytest
 
 from app.api.app import create_app
+from app.core.exceptions import Invalid
 from app.modules.manifest.routes import ManifestRoutes
 from app.modules.manifest.schemas import API_VERSION
 from app.modules.manifest.schemas import json_schema
@@ -69,17 +70,19 @@ def test_workloads_and_endpoints_are_applied_with_put() -> None:
     assert "put" not in paths["/v1/manifests/artifacts/{project}/{name}"]
 
 
-@pytest.mark.parametrize("created, status", [(True, 201), (False, 200)])
+@pytest.mark.parametrize("result, status", [("created", 201), ("configured", 200), ("unchanged", 200)])
 @pytest.mark.parametrize(
     "handler, method", [("put_workload_manifest", "put_workload"), ("put_endpoint_manifest", "put_endpoint")]
 )
-async def test_put_answers_201_on_create_and_200_on_replace(handler, method, created, status) -> None:
+async def test_put_answers_201_on_create_and_200_on_replace_with_the_result_header(
+    handler, method, result, status
+) -> None:
     seen = {}
 
     class Svc:
-        async def _put(self, project, name, body, if_match):
-            seen.update(project=project, name=name, body=body, if_match=if_match)
-            return "manifest", created
+        async def _put(self, project, name, body, if_match, dry_run):
+            seen.update(project=project, name=name, body=body, if_match=if_match, dry_run=dry_run)
+            return "manifest", result
 
     setattr(Svc, method, Svc._put)
 
@@ -88,6 +91,13 @@ async def test_put_answers_201_on_create_and_200_on_replace(handler, method, cre
             return {"metadata": {"name": "n"}}
 
     fn = getattr(ManifestRoutes, handler).fn
-    response = await fn(None, request=Req(), svc=Svc(), project="p", name="n", data=None, if_match="7")
+    response = await fn(None, request=Req(), svc=Svc(), project="p", name="n", data=None, if_match="7", dry_run="All")
     assert (response.status_code, response.content) == (status, "manifest")
-    assert seen == {"project": "p", "name": "n", "body": {"metadata": {"name": "n"}}, "if_match": "7"}
+    assert response.headers["X-Wingsmith-Result"] == result
+    assert seen == {"project": "p", "name": "n", "body": {"metadata": {"name": "n"}}, "if_match": "7", "dry_run": True}
+
+
+async def test_put_refuses_a_dry_run_other_than_all() -> None:
+    fn = ManifestRoutes.put_workload_manifest.fn
+    with pytest.raises(Invalid):
+        await fn(None, request=None, svc=None, project="p", name="n", data=None, if_match=None, dry_run="Server")

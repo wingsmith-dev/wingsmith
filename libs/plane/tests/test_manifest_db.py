@@ -1,5 +1,7 @@
 """Manifests read through the services against a real Postgres: names, not ids, and namespaces held."""
 
+import json
+
 import pytest
 import msgspec
 
@@ -17,12 +19,15 @@ from app.modules.manifest.schemas import NOTE_ANNOTATION
 from app.modules.manifest.schemas import Scale
 from app.modules.manifest.schemas import ObjectMeta
 from app.modules.manifest.schemas import ScaleReplicas
+from app.modules.manifest.schemas import WorkloadManifest
 from app.modules.projects.schemas import ProjectCreateRequest
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.endpoints.schemas import EndpointCreateRequest
 from app.modules.endpoints.schemas import EndpointTargetRequest
+from app.modules.manifest.services import LAST_APPLIED
 from app.modules.manifest.services import ManifestService
+from app.modules.manifest.services import merge_removed
 from app.modules.projects.services import ProjectService
 from app.modules.artifacts.services import ArtifactService
 from app.modules.endpoints.services import EndpointService
@@ -250,12 +255,12 @@ async def test_put_workload_creates_then_replaces(db: AsyncSession) -> None:
     cluster, project, artifact, _ = await a_workload(db)
     svc = ManifestService(db)
     m, created = await svc.put_workload("search", "applied", _workload_body(artifact.handle, cluster.name))
-    assert created and m.metadata.generation == 1
+    assert created == "created" and m.metadata.generation == 1
     assert m.spec.cluster == cluster.name
 
     body = _workload_body(artifact.handle, cluster.name, preemptible=True)
     m2, created = await svc.put_workload("search", "applied", body)
-    assert not created and m2.spec.preemptible
+    assert created != "created" and m2.spec.preemptible
     assert m2.metadata.generation == 2
 
 
@@ -265,7 +270,7 @@ async def test_put_workload_replayed_bumps_nothing_and_rolls_nothing(db: AsyncSe
     before = await svc.workload("search", "gpt-oss-prod")
     rolled = await _deployment_generations(db, workload.id)
     after, created = await svc.put_workload("search", "gpt-oss-prod", _wire(before))
-    assert not created
+    assert created != "created"
     assert after.metadata.generation == before.metadata.generation
     assert after.metadata.resource_version == before.metadata.resource_version
     assert await _deployment_generations(db, workload.id) == rolled
@@ -376,10 +381,10 @@ async def test_put_endpoint_creates_replaces_and_replays(db: AsyncSession) -> No
     svc = ManifestService(db)
     body = _endpoint_body(slug="chat-model", targets=[{"deployment": deployment.object_name}])
     m, created = await svc.put_endpoint("search", "chat", body)
-    assert created and [t.deployment for t in m.spec.targets] == [deployment.object_name]
+    assert created == "created" and [t.deployment for t in m.spec.targets] == [deployment.object_name]
 
     again, created = await svc.put_endpoint("search", "chat", _wire(m))
-    assert not created and again.metadata.generation == m.metadata.generation
+    assert created != "created" and again.metadata.generation == m.metadata.generation
 
     body["spec"]["aliases"] = ["chat-alias"]
     changed, _ = await svc.put_endpoint("search", "chat", body)
@@ -392,7 +397,7 @@ async def test_put_endpoint_with_a_workload_ref_to_a_missing_workload_reads_as_a
     m, created = await ManifestService(db).put_endpoint(
         "search", "chat", _endpoint_body(slug="later", targets=[{"workloadRef": {"name": "not-yet"}}])
     )
-    assert created
+    assert created == "created"
     assert [(c.type, c.status) for c in m.status.conditions] == [("ResolvedRefs", "False")]
 
 
@@ -441,7 +446,7 @@ async def test_put_workload_created_paused_is_never_live(db: AsyncSession) -> No
     m, created = await ManifestService(db).put_workload(
         "search", "applied", _workload_body(artifact.handle, cluster.name, paused=True)
     )
-    assert created and m.spec.paused
+    assert created == "created" and m.spec.paused
     rows = (await db.execute(select(Deployment).join(Workload).where(Workload.name == "applied"))).scalars().all()
     assert rows and not any(d.enabled for d in rows)
 
@@ -510,3 +515,112 @@ async def test_put_refuses_a_runtime_kind_change_and_a_tagged_image(db: AsyncSes
     body["metadata"]["name"] = "applied"
     with pytest.raises(Invalid):
         await svc.put_workload("search", "applied", body)
+
+
+# --------------------------------------------------------------------------- last-applied (ADR 0031)
+
+
+async def test_put_records_last_applied_and_a_removed_field_resets_on_reapply(db: AsyncSession) -> None:
+    cluster, _, artifact, _ = await a_workload(db)
+    svc = ManifestService(db)
+    body = _workload_body(artifact.handle, cluster.name, preemptible=True, overrides={"a": 1})
+    m, result = await svc.put_workload("search", "applied", body)
+    assert result == "created"
+    assert json.loads(m.metadata.annotations[LAST_APPLIED]) == body
+    assert m.spec.preemptible
+
+    del body["spec"]["preemptible"], body["spec"]["overrides"]
+    m2, result = await svc.put_workload("search", "applied", body)
+    assert result == "configured"
+    assert (m2.spec.preemptible, m2.spec.overrides) == (False, {})
+    assert m2.spec.priority_class == m.spec.priority_class, "x-defaulted keeps the stored value"
+    assert json.loads(m2.metadata.annotations[LAST_APPLIED]) == body
+
+
+async def test_put_removing_an_immutable_field_the_last_apply_declared_is_a_422(db: AsyncSession) -> None:
+    cluster, _, artifact, _ = await a_workload(db)
+    svc = ManifestService(db)
+    body = _workload_body(artifact.handle, cluster.name)
+    await svc.put_workload("search", "applied", body)
+    del body["spec"]["cluster"]
+    with pytest.raises(Invalid) as exc:
+        await svc.put_workload("search", "applied", body)
+    assert exc.value.detail == {"field": "spec.cluster"}
+
+
+async def test_put_without_a_record_keeps_declared_only_behaviour(db: AsyncSession) -> None:
+    *_, workload = await a_workload(db, preemptible=True)
+    body = _wire(await ManifestService(db).workload("search", "gpt-oss-prod"))
+    assert LAST_APPLIED not in body["metadata"]["annotations"]
+    del body["spec"]["preemptible"]
+    m, result = await ManifestService(db).put_workload("search", "gpt-oss-prod", body)
+    assert m.spec.preemptible and result == "unchanged"
+    assert LAST_APPLIED in m.metadata.annotations, "the first apply starts the record"
+
+
+async def test_put_replayed_is_unchanged(db: AsyncSession) -> None:
+    cluster, _, artifact, _ = await a_workload(db)
+    svc = ManifestService(db)
+    body = _workload_body(artifact.handle, cluster.name)
+    await svc.put_workload("search", "applied", body)
+    _, result = await svc.put_workload("search", "applied", body)
+    assert result == "unchanged"
+    ep = _endpoint_body(slug="replay")
+    await svc.put_endpoint("search", "chat", ep)
+    _, result = await svc.put_endpoint("search", "chat", ep)
+    assert result == "unchanged"
+
+
+async def test_put_dry_run_persists_nothing_and_announces_nothing(db: AsyncSession, monkeypatch) -> None:
+    *_, workload = await a_workload(db, preemptible=False)
+    announced = []
+
+    async def record(self, *args):
+        announced.append(args)
+
+    monkeypatch.setattr(WorkloadService, "_announce", record)
+    svc = ManifestService(db)
+    before = await svc.workload("search", "gpt-oss-prod")
+    rolled = await _deployment_generations(db, workload.id)
+    body = _wire(before)
+    body["spec"]["preemptible"] = True
+    body["spec"]["serving"]["contextLength"] = before.spec.serving.context_length * 2
+    m, result = await svc.put_workload("search", "gpt-oss-prod", body, dry_run=True)
+    assert result == "configured" and m.spec.preemptible
+    assert m.metadata.generation == before.metadata.generation + 1, "the would-be object"
+    after = await svc.workload("search", "gpt-oss-prod")
+    assert (after.spec.preemptible, after.metadata.generation) == (False, before.metadata.generation)
+    assert LAST_APPLIED not in after.metadata.annotations
+    assert await _deployment_generations(db, workload.id) == rolled
+    assert announced == []
+
+    _, result = await svc.put_workload("search", "dry", {**body, "metadata": {"name": "dry"}}, dry_run=True)
+    assert result == "created"
+    with pytest.raises(NotFound):
+        await svc.workload("search", "dry")
+
+    await svc.put_workload("search", "gpt-oss-prod", body)
+    assert announced, "a real apply announces after commit"
+    assert await _deployment_generations(db, workload.id) != rolled
+
+
+def test_merge_removed_resets_skips_defaulted_and_exempt_paths() -> None:
+    last = {"metadata": {"name": "w"}, "spec": {"replicas": 3, "preemptible": True, "priorityClass": "x"}}
+    body = {"metadata": {"name": "w"}, "spec": {"runtime": {"engine": "e", "version": "1"}, "serving": SERVING}}
+    out = merge_removed(body, last, WorkloadManifest)
+    assert out["spec"]["preemptible"] is False
+    assert "replicas" not in out["spec"] and "priorityClass" not in out["spec"]
+    out = merge_removed(body, last, WorkloadManifest, exempt={("spec", "preemptible")})
+    assert "preemptible" not in out["spec"]
+
+
+def test_replicas_are_exempt_only_when_autoscaled(monkeypatch) -> None:
+    import app.modules.manifest.services as services
+
+    assert services.autoscaled(None) is False
+    last = {"metadata": {"name": "w"}, "spec": {"replicas": 3}}
+    body = {"metadata": {"name": "w"}, "spec": {"runtime": {"engine": "e", "version": "1"}, "serving": SERVING}}
+    assert "replicas" not in merge_removed(body, last, WorkloadManifest, exempt={("spec", "replicas")})["spec"]
+
+
+SERVING = {"artifact": "a", "shape": {"deviceClass": "h100"}}

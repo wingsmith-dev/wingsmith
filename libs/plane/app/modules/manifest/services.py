@@ -6,11 +6,16 @@ an id, and the object must live in exactly the namespace asked for. An artifact 
 project is reachable only under that project; a public one only without a namespace.
 """
 
+import copy
+import json
+import typing
 import datetime as dt
+import contextlib
 
 import msgspec
 
 from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import OPERATION
@@ -19,6 +24,7 @@ from app.db.models import Policy
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
+from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
@@ -115,7 +121,8 @@ class ManifestService:
             ),
             clusters=await self._names(Cluster.name, [w.pinned_cluster_id, *w.cluster_floors]),
         )
-        return workload_manifest(w, refs, placement, note)
+        record = await self.db.scalar(select(Workload.last_applied).where(Workload.uid == w.id))
+        return with_last_applied(workload_manifest(w, refs, placement, note), record)
 
     async def _owned_workload(self, project: str, name: str):
         owner = await self._project(project)
@@ -202,7 +209,8 @@ class ManifestService:
             deployments=await self._names(Deployment.object_name, deployments),
             workload_deployments=expanded,
         )
-        return endpoint_manifest(e, refs)
+        record = await self.db.scalar(select(Endpoint.last_applied).where(Endpoint.uid == e.id))
+        return with_last_applied(endpoint_manifest(e, refs), record)
 
     async def artifact(self, project: str | None, name: str) -> ArtifactManifest:
         owner = await self._project(project) if project is not None else None
@@ -252,17 +260,45 @@ class ManifestService:
             if await self.db.scalar(visible_ids(ref, owner.id).limit(1)) is None:
                 raise Invalid(f"{path}: no artifact {ref!r} visible to project {owner.slug!r}", {"field": path})
 
-    async def put_workload(
-        self, project: str, name: str, body: dict, if_match: str | None = None
-    ) -> tuple[WorkloadManifest, bool]:
-        """Creates or replaces a workload from its manifest. Returns it and whether it was created.
+    async def _hold(self, *services):
+        """Runs a write with every service commit made a flush and every announcement held back,
+        so create, replace and the last-applied record land in one transaction. `release` commits
+        and then announces; `discard` rolls back and announces nothing (`dryRun=All`)."""
+        held: list = []
+        for svc in services:
+            original = svc._announce
 
-        Replace diffs only what the manifest declares: a field it leaves out keeps the stored
-        value, and a declared field equal to it changes nothing, so replaying a manifest moves no
-        generation and rolls nothing. Create-only fields (`enabled`) are ignored on replace until
-        the last-applied record exists. A placement shortfall is accepted and reads as
-        `Unschedulable`. `replicas` left out leaves `desired_scale` where it is, which is also
-        what an autoscaler owning the count will need.
+            async def defer(*args, original=original):
+                held.append((original, args))
+
+            svc._announce = defer
+        self.db.commit = self.db.flush
+        hold = _Hold(self.db, held)
+        try:
+            yield hold
+        finally:
+            del self.db.commit
+            for svc in services:
+                del svc._announce
+
+    _hold = contextlib.asynccontextmanager(_hold)
+
+    async def _record(self, model, uid: str, body: dict) -> None:
+        await self.db.execute(update(model).where(model.uid == uid).values(last_applied=_applied(body)))
+
+    async def put_workload(
+        self, project: str, name: str, body: dict, if_match: str | None = None, dry_run: bool = False
+    ) -> tuple[WorkloadManifest, str]:
+        """Creates or replaces a workload from its manifest. Returns it and `created`,
+        `configured` or `unchanged` (ADR 0029, 0031).
+
+        Replace diffs what the manifest declares, three-way against the last-applied record: a
+        field the previous apply declared and this one leaves out goes back to its default
+        (`x-defaulted` ones keep the stored value, `x-immutable` ones are a 422), and any other
+        undeclared field keeps the stored value. Without a record, only declared fields count.
+        A declared field equal to the stored value changes nothing, so a replay moves no
+        generation and rolls nothing. The body is then stored as the record, in the same
+        transaction. `dry_run` does all of it and rolls back.
         """
         m = _decode(body, WorkloadManifest)
         owner = await self._project(project)
@@ -277,94 +313,104 @@ class ManifestService:
             )
         if m.spec.runtime.kind != "container" and (not m.spec.runtime.engine or not m.spec.runtime.version):
             raise Invalid("spec.runtime needs engine and version under kind dynamo", {"field": "spec.runtime"})
-        declared = Declared(body)
         try:
             current = await self.workload(project, name)
         except NotFound:
             current = None
 
         svc = WorkloadService(self.db)
-        if current is None:
-            await self._check_artifacts(
-                owner,
-                {"spec.serving.artifact": m.spec.serving.artifact}
-                | {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)},
-            )
-            await svc.create(workload_create(m, owner.uid), paused=bool(m.spec.paused))
-            return await self.workload(project, name), True
+        async with self._hold(svc) as hold:
+            if current is None:
+                await self._check_artifacts(
+                    owner,
+                    {"spec.serving.artifact": m.spec.serving.artifact}
+                    | {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)},
+                )
+                created = await svc.create(workload_create(m, owner.uid), paused=bool(m.spec.paused))
+                await self._record(Workload, created.id, body)
+                return await hold.done(self.workload(project, name), dry_run), "created"
 
-        if any(d.authority != MANAGED for d in current.status.deployments):
-            raise Conflict(
-                f"workload {name!r} is observed, not managed by the plane; adopt it before applying",
-                {"name": name},
-            )
-        # Hold the row for the whole replace and re-read it, so If-Match is checked against what
-        # this transaction writes over, whichever of spec, pause or scale it changes.
-        await svc._one(current.metadata.uid, lock=True)
-        current = await self.workload(project, name)
-        revision = self._expect(current, if_match, m.metadata.resource_version)
-        for path in IMMUTABLE_PATHS:
-            if declared.has("spec", *path) and _value(m.spec, path) != _value(current.spec, path):
-                raise Invalid(f"spec.{_dotted(path)} cannot change after create", {"field": f"spec.{_dotted(path)}"})
-        if declared.has("spec", "serving", "adapters") and m.spec.serving.adapters != current.spec.serving.adapters:
-            await self._check_artifacts(
-                owner, {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)}
-            )
+            if any(d.authority != MANAGED for d in current.status.deployments):
+                raise Conflict(
+                    f"workload {name!r} is observed, not managed by the plane; adopt it before applying",
+                    {"name": name},
+                )
+            # Hold the row for the whole replace and re-read it, so If-Match is checked against what
+            # this transaction writes over, whichever of spec, pause or scale it changes.
+            await svc._one(current.metadata.uid, lock=True)
+            current = await self.workload(project, name)
+            revision = self._expect(current, if_match, m.metadata.resource_version)
+            exempt = {("spec", "replicas")} if autoscaled(current) else set()
+            merged = merge_removed(body, last_applied(current), WorkloadManifest, exempt)
+            m = _decode(merged, WorkloadManifest)
+            declared = Declared(merged)
+            for path in IMMUTABLE_PATHS:
+                if declared.has("spec", *path) and _value(m.spec, path) != _value(current.spec, path):
+                    raise Invalid(
+                        f"spec.{_dotted(path)} cannot change after create", {"field": f"spec.{_dotted(path)}"}
+                    )
+            if declared.has("spec", "serving", "adapters") and m.spec.serving.adapters != current.spec.serving.adapters:
+                await self._check_artifacts(
+                    owner, {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)}
+                )
 
-        def changed(*path: str) -> bool:
-            return declared.has(*path) and _value(m, path) != _value(current, path)
+            def changed(*path: str) -> bool:
+                return declared.has(*path) and _value(m, path) != _value(current, path)
 
-        update: dict = {}
-        if changed("metadata", "labels"):
-            update["labels"] = dict(m.metadata.labels)
-        note = m.metadata.annotations.get(NOTE_ANNOTATION)
-        if declared.has("metadata", "annotations") and note != current.metadata.annotations.get(NOTE_ANNOTATION):
-            update["note"] = note
-        for key in ("priority_class", "preemptible", "deadline_at", "overrides"):
-            if changed("spec", key):
-                update[key] = getattr(m.spec, key)
-        for key in ("strategy", "cluster_floors", "max_clusters"):
-            if changed("spec", "placement", key):
-                update[key] = getattr(m.spec.placement, key)
-        if changed("spec", "serving", "adapters"):
-            update["adapter_artifacts"] = list(m.spec.serving.adapters)
-        container = is_container(m.spec)
-        serving = {
-            key: serving_value(m.spec, key)
-            for key, path in SERVING_FIELDS.items()
-            if changed("spec", *path) and not (container and key in DYNAMO_RUNTIME_FIELDS)
-        }
-        if container and runtime_request(m.spec) != runtime_request(current.spec):
-            serving["runtime"] = runtime_request(m.spec)
-        if changed("spec", "serving", "topology") or changed("spec", "serving", "roles"):
-            serving["topology"] = topology_request(m.spec.serving)
-        if serving:
-            update["serving"] = WorkloadServingUpdate(**serving)
-        changes = []
-        if update:
-            changes.append(
-                await svc.change_update(current.metadata.uid, WorkloadUpdateRequest(**update), if_match=revision)
+            update: dict = {}
+            if changed("metadata", "labels"):
+                update["labels"] = dict(m.metadata.labels)
+            note = m.metadata.annotations.get(NOTE_ANNOTATION)
+            if declared.has("metadata", "annotations") and note != current.metadata.annotations.get(NOTE_ANNOTATION):
+                update["note"] = note
+            for key in ("priority_class", "preemptible", "deadline_at", "overrides"):
+                if changed("spec", key):
+                    update[key] = getattr(m.spec, key)
+            for key in ("strategy", "cluster_floors", "max_clusters"):
+                if changed("spec", "placement", key):
+                    update[key] = getattr(m.spec.placement, key)
+            if changed("spec", "serving", "adapters"):
+                update["adapter_artifacts"] = list(m.spec.serving.adapters)
+            container = is_container(m.spec)
+            serving = {
+                key: serving_value(m.spec, key)
+                for key, path in SERVING_FIELDS.items()
+                if changed("spec", *path) and not (container and key in DYNAMO_RUNTIME_FIELDS)
+            }
+            if container and runtime_request(m.spec) != runtime_request(current.spec):
+                serving["runtime"] = runtime_request(m.spec)
+            if changed("spec", "serving", "topology") or changed("spec", "serving", "roles"):
+                serving["topology"] = topology_request(m.spec.serving)
+            if serving:
+                update["serving"] = WorkloadServingUpdate(**serving)
+            changes = []
+            if update:
+                changes.append(
+                    await svc.change_update(current.metadata.uid, WorkloadUpdateRequest(**update), if_match=revision)
+                )
+            if changed("spec", "paused"):
+                changes.append(await svc.change_paused(current.metadata.uid, m.spec.paused))
+            scale = current.spec.scale
+            desired = (
+                m.spec.replicas if declared.has("spec", "replicas") and m.spec.replicas is not None else scale.desired
             )
-        if changed("spec", "paused"):
-            changes.append(await svc.change_paused(current.metadata.uid, m.spec.paused))
-        scale = current.spec.scale
-        desired = m.spec.replicas if declared.has("spec", "replicas") and m.spec.replicas is not None else scale.desired
-        low = m.spec.scale.min if declared.has("spec", "scale", "min") else scale.min
-        high = m.spec.scale.max if declared.has("spec", "scale", "max") else scale.max
-        low, high = min(low, desired), max(high, desired)
-        if (low, high, desired) != (scale.min, scale.max, scale.desired):
-            parameters = WorkloadScaleParameters(min=low, max=high, desired=desired)
-            changes.append(await svc.change_scale(current.metadata.uid, parameters, refuse=False))
-        if changes:
-            await self.db.commit()
+            low = m.spec.scale.min if declared.has("spec", "scale", "min") else scale.min
+            high = m.spec.scale.max if declared.has("spec", "scale", "max") else scale.max
+            low, high = min(low, desired), max(high, desired)
+            if (low, high, desired) != (scale.min, scale.max, scale.desired):
+                parameters = WorkloadScaleParameters(min=low, max=high, desired=desired)
+                changes.append(await svc.change_scale(current.metadata.uid, parameters, refuse=False))
             for change in changes:
                 await svc.announce(change)
-        return await self.workload(project, name), False
+            await self._record(Workload, current.metadata.uid, body)
+            after = await hold.done(self.workload(project, name), dry_run)
+        return after, _result(current, after)
 
     async def put_endpoint(
-        self, project: str, name: str, body: dict, if_match: str | None = None
-    ) -> tuple[EndpointManifest, bool]:
-        """Creates or replaces an endpoint from its manifest, diffing only declared fields.
+        self, project: str, name: str, body: dict, if_match: str | None = None, dry_run: bool = False
+    ) -> tuple[EndpointManifest, str]:
+        """Creates or replaces an endpoint from its manifest, three-way against the last-applied
+        record like a workload.
 
         A `workloadRef` may name a workload that does not exist yet; it reads as `ResolvedRefs`
         False until it does. A slug another endpoint holds is a 409.
@@ -372,40 +418,158 @@ class ManifestService:
         m = _decode(body, EndpointManifest)
         owner = await self._project(project)
         self._identity(m, project, owner, name)
-        declared = Declared(body)
         svc = EndpointService(self.db)
         try:
             current = await self.endpoint(project, name)
         except NotFound:
             current = None
 
-        if current is None:
-            created = await svc.create(endpoint_create(m, owner.uid))
-            if declared.has("spec", "surface"):
-                await svc.update(created.id, EndpointUpdateRequest(surface=endpoint_surface(m.spec)))
-            return await self.endpoint(project, name), True
+        async with self._hold() as hold:
+            if current is None:
+                created = await svc.create(endpoint_create(m, owner.uid))
+                if Declared(body).has("spec", "surface"):
+                    await svc.update(created.id, EndpointUpdateRequest(surface=endpoint_surface(m.spec)))
+                await self._record(Endpoint, created.id, body)
+                return await hold.done(self.endpoint(project, name), dry_run), "created"
 
-        revision = self._expect(current, if_match, m.metadata.resource_version)
+            await svc._one(current.metadata.uid, lock=True)
+            current = await self.endpoint(project, name)
+            revision = self._expect(current, if_match, m.metadata.resource_version)
+            merged = merge_removed(body, last_applied(current), EndpointManifest)
+            m = _decode(merged, EndpointManifest)
+            declared = Declared(merged)
 
-        def changed(*path: str) -> bool:
-            return declared.has(*path) and _value(m, path) != _value(current, path)
+            def changed(*path: str) -> bool:
+                return declared.has(*path) and _value(m, path) != _value(current, path)
 
-        update: dict = {}
-        if changed("metadata", "labels"):
-            update["labels"] = dict(m.metadata.labels)
-        for key in ("slug", "visibility", "routing_strategy", "enabled", "aliases"):
-            if changed("spec", key):
-                update[key] = getattr(m.spec, key)
-        if changed("spec", "surface"):
-            update["surface"] = endpoint_surface(m.spec)
-        if changed("spec", "targets") or changed("spec", "failover_order"):
-            spec = m.spec if declared.has("spec", "targets") else current.spec
-            update["targets"] = endpoint_targets(spec)
-            order = m.spec if declared.has("spec", "failover_order") else current.spec
-            update["failover_order"] = list(order.failover_order)
-        if update:
-            await svc.update(current.metadata.uid, EndpointUpdateRequest(**update), if_match=revision)
-        return await self.endpoint(project, name), False
+            update: dict = {}
+            if changed("metadata", "labels"):
+                update["labels"] = dict(m.metadata.labels)
+            for key in ("slug", "visibility", "routing_strategy", "enabled", "aliases"):
+                if changed("spec", key):
+                    update[key] = getattr(m.spec, key)
+            if changed("spec", "surface"):
+                update["surface"] = endpoint_surface(m.spec)
+            if changed("spec", "targets") or changed("spec", "failover_order"):
+                spec = m.spec if declared.has("spec", "targets") else current.spec
+                update["targets"] = endpoint_targets(spec)
+                order = m.spec if declared.has("spec", "failover_order") else current.spec
+                update["failover_order"] = list(order.failover_order)
+            if update:
+                await svc.update(current.metadata.uid, EndpointUpdateRequest(**update), if_match=revision)
+            await self._record(Endpoint, current.metadata.uid, body)
+            after = await hold.done(self.endpoint(project, name), dry_run)
+        return after, _result(current, after)
+
+
+class _Hold:
+    def __init__(self, db: AsyncSession, held: list) -> None:
+        self.db = db
+        self.held = held
+
+    async def done(self, read, dry_run: bool):
+        """Reads the would-be object, then commits and announces, or rolls back."""
+        out = await read
+        if dry_run:
+            await self.db.rollback()
+            self.held.clear()
+            return out
+        await AsyncSession.commit(self.db)
+        for announce, args in self.held:
+            await announce(*args)
+        self.held.clear()
+        return out
+
+
+LAST_APPLIED = "plane.wingsmith.dev/last-applied"
+"""The body the last apply sent, as compact JSON, like `kubectl.kubernetes.io/last-applied-configuration`."""
+
+_READ_ONLY_META = ("uid", "generation", "creationTimestamp", "resourceVersion")
+
+
+def _applied(body: dict) -> dict:
+    """The body as the record keeps it: no status, no read-only metadata, no record of a record."""
+    out = {k: v for k, v in body.items() if k != "status"}
+    meta = {k: v for k, v in (out.get("metadata") or {}).items() if k not in _READ_ONLY_META}
+    if isinstance(meta.get("annotations"), dict):
+        meta["annotations"] = {k: v for k, v in meta["annotations"].items() if k != LAST_APPLIED}
+    out["metadata"] = meta
+    return out
+
+
+def last_applied(m) -> dict | None:
+    raw = m.metadata.annotations.get(LAST_APPLIED)
+    return json.loads(raw) if raw else None
+
+
+def with_last_applied(m, record: dict | None):
+    if record is not None:
+        m.metadata.annotations = m.metadata.annotations | {
+            LAST_APPLIED: json.dumps(record, sort_keys=True, separators=(",", ":"))
+        }
+    return m
+
+
+def autoscaled(current: WorkloadManifest) -> bool:
+    """Whether an autoscaler owns `spec.replicas`, which an apply then never unsets (HPA rule).
+    No autoscaler exists yet (P1 decision 5), so nothing is."""
+    return False
+
+
+def _result(before, after) -> str:
+    def seen(m):
+        notes = {k: v for k, v in m.metadata.annotations.items() if k != LAST_APPLIED}
+        return m.metadata.generation, m.metadata.labels, notes
+
+    return "unchanged" if seen(before) == seen(after) else "configured"
+
+
+_SKIP_REMOVED = {("spec", "enabled"), ("status",)}
+"""Never reset by removal: `enabled` is create-only and a read cannot say what it was."""
+
+
+def merge_removed(body: dict, last: dict | None, cls, exempt=frozenset()) -> dict:
+    """The body with every field the last apply declared and this one leaves out set to its
+    default, as if declared. `x-defaulted` fields and `exempt` paths are left out instead, so
+    they keep the stored value; an `x-immutable` one is a 422. Maps are user data and are
+    replaced whole, so only struct fields are walked."""
+    body = _applied(body)
+    if not last:
+        return body
+    out = copy.deepcopy(body)
+    model = _decode(out, cls)
+
+    def walk(prev: dict, node: dict, obj, path: tuple) -> None:
+        fields = {f.encode_name: f for f in msgspec.structs.fields(type(obj))}
+        hints = typing.get_type_hints(type(obj), include_extras=True)
+        for key, was in prev.items():
+            f = fields.get(key)
+            if f is None:
+                continue
+            here = (*path, f.name)
+            if here in exempt or here in _SKIP_REMOVED:
+                continue
+            if key not in node:
+                marks = _marks(hints[f.name])
+                if "x-defaulted" in marks:
+                    continue
+                if "x-immutable" in marks:
+                    raise Invalid(f"{_dotted(here)} cannot be removed after create", {"field": _dotted(here)})
+                node[key] = msgspec.to_builtins(getattr(obj, f.name))
+                continue
+            child = getattr(obj, f.name)
+            if isinstance(child, msgspec.Struct) and isinstance(was, dict) and isinstance(node[key], dict):
+                walk(was, node[key], child, here)
+
+    walk(last, out, model, ())
+    return out
+
+
+def _marks(hint) -> set[str]:
+    out = set()
+    for meta in getattr(hint, "__metadata__", ()):
+        out |= set((getattr(meta, "extra_json_schema", None) or {}).keys())
+    return out
 
 
 IMMUTABLE_PATHS = (
