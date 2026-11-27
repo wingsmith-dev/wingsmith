@@ -171,6 +171,7 @@ def test_framework_404_and_405_carry_contract_codes():
 
 # POST routes that create a resource. Every other POST is an action on an existing one and answers 200.
 CREATES = {
+    "/v1/gateway/media-jobs",
     "/v1/alert-thresholds",
     "/v1/artifacts",
     "/v1/artifacts/{ref:str}/baselines",

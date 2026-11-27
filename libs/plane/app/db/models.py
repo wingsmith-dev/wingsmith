@@ -1864,14 +1864,14 @@ class MediaJob(BaseMixin):
     """One async media generation (ADR 0041). Run by a gateway worker under a lease; the output
     lives in object storage at `object_key`, never in this row."""
 
-    __tablename__ = "media_job"
+    __tablename__ = "demand_media_job"
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_media_job_idempotency"),
         CheckConstraint(
             "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="ck_media_job_status"
         ),
-        Index("ix_media_job_claim", "status", "lease_expires_at"),
-        Index("ix_media_job_retention", "retention_until"),
+        Index("ix_demand_media_job_claim", "status", "lease_expires_at"),
+        Index("ix_demand_media_job_retention", "retention_until"),
     )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)

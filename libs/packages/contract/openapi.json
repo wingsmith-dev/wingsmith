@@ -26737,7 +26737,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -26752,7 +26752,7 @@
                 }
               }
             },
-            "description": "Document created, URL follows",
+            "description": "Request fulfilled, document follows",
             "headers": {
               "Content-Security-Policy": {
                 "deprecated": false,
@@ -26982,7 +26982,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -26990,7 +26990,7 @@
                 }
               }
             },
-            "description": "Document created, URL follows",
+            "description": "Request fulfilled, document follows",
             "headers": {
               "Content-Security-Policy": {
                 "deprecated": false,
@@ -27093,7 +27093,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27101,7 +27101,7 @@
                 }
               }
             },
-            "description": "Document created, URL follows",
+            "description": "Request fulfilled, document follows",
             "headers": {
               "Content-Security-Policy": {
                 "deprecated": false,
@@ -27204,7 +27204,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27212,7 +27212,7 @@
                 }
               }
             },
-            "description": "Document created, URL follows",
+            "description": "Request fulfilled, document follows",
             "headers": {
               "Content-Security-Policy": {
                 "deprecated": false,

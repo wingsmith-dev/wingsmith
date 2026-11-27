@@ -20,6 +20,7 @@ SUPPLY = {
 }
 
 DEMAND = {
+    "demand_media_job",
     "demand_artifact",
     "demand_artifact_location",
     "demand_artifact_baseline",

@@ -20,6 +20,7 @@ from app.core.context import SERVICE_ONLY
 from app.core.context import PUBLIC_ROUTES
 from app.core.context import GATEWAY_ROUTES
 from app.core.context import TENANT_SURFACE
+from app.core.context import GATEWAY_PREFIXES
 from app.core.context import authorize
 from app.core.context import is_public
 from app.core.exceptions import Forbidden
@@ -57,6 +58,13 @@ def _routes() -> list[tuple[str, str]]:
                 continue
             found.add((method, route.path))
     return sorted(found)
+
+
+def _gateway_may(method: str, path: str) -> bool:
+    template = _template(path)
+    return (method, template) in GATEWAY_ROUTES or any(
+        template == prefix or template.startswith(f"{prefix}/") for prefix in GATEWAY_PREFIXES
+    )
 
 
 PROTECTED = [(method, path) for method, path in _routes() if not is_public(_template(path))]
@@ -108,8 +116,8 @@ def test_every_route_refuses_an_unknown_bearer(client, method, path):
     assert response.status_code == 401, (method, path)
 
 
-@pytest.mark.parametrize(("method", "path"), [(m, p) for m, p in PROTECTED if (m, _template(p)) not in GATEWAY_ROUTES])
-def test_the_gateway_is_refused_everywhere_but_its_three_routes(client, method, path):
+@pytest.mark.parametrize(("method", "path"), [(m, p) for m, p in PROTECTED if not _gateway_may(m, p)])
+def test_the_gateway_is_refused_everywhere_but_its_own_routes(client, method, path):
     response = _call(client, method, path, GATEWAY_TOKEN)
     assert response.status_code == 403, (method, path)
     assert response.json()["code"] == "forbidden"

@@ -20,6 +20,7 @@ from app.db import engine as db_engine
 from app.config import settings
 from app.api.app import create_app
 from app.core.context import GATEWAY_ROUTES
+from app.core.context import GATEWAY_PREFIXES
 
 
 GATEWAY_TOKEN = "route-contract-gateway-token"
@@ -60,7 +61,7 @@ def _template(path: str) -> str:
 def _headers(method: str, path: str) -> dict[str, str]:
     """The gateway's credential on its own routes, where an admin is refused; none elsewhere,
     which is the admin while admin auth is off."""
-    if (method, path) in GATEWAY_ROUTES:
+    if (method, path) in GATEWAY_ROUTES or any(path.startswith(prefix) for prefix in GATEWAY_PREFIXES):
         return {"Authorization": f"Bearer {GATEWAY_TOKEN}"}
     return {}
 

@@ -1,4 +1,4 @@
-"""media_job table and bind_project.media_retention_days (ADR 0041)
+"""demand_media_job table and bind_project.media_retention_days (ADR 0041)
 
 Revision ID: f7a8b9c0d1e2
 Revises: e6f7a8b9c0d1
@@ -22,7 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_table(
-        "media_job",
+        "demand_media_job",
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("seq", sa.BigInteger(), sa.Identity(always=False, start=1000), nullable=False),
@@ -61,17 +61,17 @@ def upgrade() -> None:
         sa.UniqueConstraint("tenant_id", "idempotency_key", name="uq_media_job_idempotency"),
         sa.UniqueConstraint("uid"),
     )
-    op.create_index("ix_media_job_claim", "media_job", ["status", "lease_expires_at"], unique=False)
-    op.create_index(op.f("ix_media_job_project_id"), "media_job", ["project_id"], unique=False)
-    op.create_index("ix_media_job_retention", "media_job", ["retention_until"], unique=False)
-    op.create_index(op.f("ix_media_job_tenant_id"), "media_job", ["tenant_id"], unique=False)
+    op.create_index("ix_demand_media_job_claim", "demand_media_job", ["status", "lease_expires_at"], unique=False)
+    op.create_index(op.f("ix_demand_media_job_project_id"), "demand_media_job", ["project_id"], unique=False)
+    op.create_index("ix_demand_media_job_retention", "demand_media_job", ["retention_until"], unique=False)
+    op.create_index(op.f("ix_demand_media_job_tenant_id"), "demand_media_job", ["tenant_id"], unique=False)
     op.add_column("bind_project", sa.Column("media_retention_days", sa.Integer(), server_default="7", nullable=False))
 
 
 def downgrade() -> None:
     op.drop_column("bind_project", "media_retention_days")
-    op.drop_index(op.f("ix_media_job_tenant_id"), table_name="media_job")
-    op.drop_index("ix_media_job_retention", table_name="media_job")
-    op.drop_index(op.f("ix_media_job_project_id"), table_name="media_job")
-    op.drop_index("ix_media_job_claim", table_name="media_job")
-    op.drop_table("media_job")
+    op.drop_index(op.f("ix_demand_media_job_tenant_id"), table_name="demand_media_job")
+    op.drop_index("ix_demand_media_job_retention", table_name="demand_media_job")
+    op.drop_index(op.f("ix_demand_media_job_project_id"), table_name="demand_media_job")
+    op.drop_index("ix_demand_media_job_claim", table_name="demand_media_job")
+    op.drop_table("demand_media_job")

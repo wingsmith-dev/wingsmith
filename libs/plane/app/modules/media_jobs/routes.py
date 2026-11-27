@@ -35,7 +35,7 @@ class MediaJobRoutes(Controller):
         job, created = await svc.create(data)
         return Response(job, status_code=201 if created else 200)
 
-    @post("/claim")
+    @post("/claim", status_code=200)
     async def claim_media_job(
         self, context: RequestContext, svc: MediaJobService, data: MediaJobClaimRequest
     ) -> Response[MediaJobSchema | None]:
@@ -51,20 +51,20 @@ class MediaJobRoutes(Controller):
     ) -> Response[MediaJobSchema]:
         return Response(await svc.get(uid, tenant))
 
-    @post("/{uid:str}/cancel")
+    @post("/{uid:str}/cancel", status_code=200)
     async def cancel_media_job(
         self, context: RequestContext, svc: MediaJobService, uid: str, tenant: str | None = None
     ) -> Response[MediaJobSchema]:
         return Response(await svc.cancel(uid, tenant), status_code=200)
 
-    @post("/{uid:str}/heartbeat")
+    @post("/{uid:str}/heartbeat", status_code=200)
     async def heartbeat_media_job(
         self, context: RequestContext, svc: MediaJobService, uid: str, data: MediaJobHeartbeatRequest
     ) -> Response[MediaJobHeartbeatSchema]:
         """Extends the lease. `409` when the worker no longer holds it; it must stop."""
         return Response(await svc.heartbeat(uid, data), status_code=200)
 
-    @post("/{uid:str}/complete")
+    @post("/{uid:str}/complete", status_code=200)
     async def complete_media_job(
         self, context: RequestContext, svc: MediaJobService, uid: str, data: MediaJobCompleteRequest
     ) -> Response[MediaJobSchema]:

@@ -11,8 +11,8 @@ from app.config import settings
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.modules.projects.schemas import ProjectCreateRequest
-from app.modules.projects.services import ProjectService
 from app.modules.endpoints.schemas import EndpointCreateRequest
+from app.modules.projects.services import ProjectService
 from app.modules.endpoints.services import EndpointService
 from app.modules.media_jobs.schemas import MediaJobClaimRequest
 from app.modules.media_jobs.schemas import MediaJobCreateRequest
@@ -159,9 +159,7 @@ class FakeStore:
 async def finished(svc: MediaJobService, tenant: str, endpoint: str, key: str):
     job, _ = await svc.create(a_job(tenant, endpoint))
     await svc.claim(MediaJobClaimRequest(worker="gw"), now=T0)
-    return await svc.complete(
-        job.id, MediaJobCompleteRequest(worker="gw", status="succeeded", object_key=key), now=T0
-    )
+    return await svc.complete(job.id, MediaJobCompleteRequest(worker="gw", status="succeeded", object_key=key), now=T0)
 
 
 async def test_retention_deletes_the_object_then_the_row(db: AsyncSession) -> None:

@@ -1195,6 +1195,61 @@
  "ManifestListMeta": {
   "resourceVersion": "string"
  },
+ "MediaJobClaimRequest": {
+  "kinds": "[]string?",
+  "worker": "string"
+ },
+ "MediaJobCompleteRequest": {
+  "content_type": "string?",
+  "error": "object?",
+  "object_key": "string?",
+  "size_bytes": "integer?",
+  "status": "string",
+  "units": "object?",
+  "upstream_seconds": "number?",
+  "worker": "string"
+ },
+ "MediaJobCreateRequest": {
+  "endpoint": "string",
+  "idempotency_key": "string?",
+  "kind": "string",
+  "model": "string",
+  "path": "string",
+  "request": "object",
+  "tenant": "string"
+ },
+ "MediaJobHeartbeatRequest": {
+  "progress": "integer?",
+  "worker": "string"
+ },
+ "MediaJobHeartbeatSchema": {
+  "cancel_requested": "boolean",
+  "lease_expires_at": "string"
+ },
+ "MediaJobSchema": {
+  "attempts": "integer",
+  "cancel_requested": "boolean",
+  "completed_at": "string?",
+  "content_type": "string?",
+  "created_at": "string",
+  "endpoint": "string?",
+  "error": "object?",
+  "expires_at": "string?",
+  "id": "string",
+  "kind": "string",
+  "model": "string",
+  "object_key": "string?",
+  "path": "string",
+  "progress": "integer",
+  "project": "string",
+  "request": "object?",
+  "size_bytes": "integer?",
+  "started_at": "string?",
+  "status": "string",
+  "tenant": "string",
+  "units": "object?",
+  "upstream_seconds": "number?"
+ },
  "MetricRuleSchema": {
   "comparison": "string",
   "for_seconds": "integer",
