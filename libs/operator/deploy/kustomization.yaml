@@ -4,6 +4,8 @@ resources:
   - 00-namespace.yaml
   - crd/wingsmith.dev_syncedresources.yaml
   - crd/wingsmith.dev_streamcheckpoints.yaml
+  # Dev only. rbac/role.yaml is controller-gen's union of every kubebuilder:rbac marker, granted
+  # cluster-wide. Clusters install the chart, which scopes the operator's access per namespace.
   - rbac/role.yaml
   - 10-rbac.yaml
   - 20-config.yaml
