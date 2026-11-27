@@ -142,3 +142,19 @@ func TestTheRTXEditionsAreDistinctClasses(t *testing.T) {
 		seen[class.Class] = product
 	}
 }
+
+// TestNVMLSharesTheDCGMNames: nvmlDeviceGetName is what DCGM reports as modelName, so a host that
+// reads NVML directly resolves the same card to the same class without a third alias list.
+func TestNVMLSharesTheDCGMNames(t *testing.T) {
+	table := Load()
+	for _, name := range []string{"NVIDIA H100 80GB HBM3", "NVIDIA H100 PCIe"} {
+		nvml, ok := table.Lookup(DialectNVML, name)
+		if !ok {
+			t.Fatalf("nvml did not resolve %q", name)
+		}
+		dcgm, _ := table.Lookup(DialectDCGM, name)
+		if nvml.Class != dcgm.Class {
+			t.Fatalf("%q resolved to %s under nvml and %s under dcgm", name, nvml.Class, dcgm.Class)
+		}
+	}
+}

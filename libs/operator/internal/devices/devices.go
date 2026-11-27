@@ -22,6 +22,10 @@ var tableJSON []byte
 const (
 	DialectGFD  = "gfd"
 	DialectDCGM = "dcgm"
+	// DialectNVML is nvmlDeviceGetName, which is where DCGM's modelName comes from. It shares the
+	// DCGM aliases instead of carrying a third copy of every name; a class may still list "nvml"
+	// aliases of its own for a driver that spells a card differently.
+	DialectNVML = "nvml"
 )
 
 // Class is one card variant. Memory and form factor are part of the identity: an h100-80gb-sxm
@@ -84,6 +88,16 @@ func Parse(raw []byte) (*Table, error) {
 			}
 			for _, alias := range aliases {
 				byAlias[Normalize(alias)] = class
+			}
+		}
+		nvml, ok := table.index[DialectNVML]
+		if !ok {
+			nvml = map[string]Class{}
+			table.index[DialectNVML] = nvml
+		}
+		for _, alias := range class.Aliases[DialectDCGM] {
+			if _, taken := nvml[Normalize(alias)]; !taken {
+				nvml[Normalize(alias)] = class
 			}
 		}
 	}
