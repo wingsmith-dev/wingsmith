@@ -293,6 +293,9 @@ class FakeRepo:
     async def resolved(self, ref=None):
         return self.rows
 
+    async def matches(self, ref, project=None, lock=False):
+        return [r for r in self.rows if ref in (r[0].uid, r[0].name)][:1]
+
 
 class FakeEndpoint:
     id = 1
@@ -791,8 +794,8 @@ class FakeCreateRepo:
         self.added = endpoint
         return endpoint
 
-    async def get(self, ref, lock=False):
-        return _CreatedRow((self.added,))
+    async def matches(self, ref, project=None, lock=False):
+        return [_CreatedRow((self.added,))]
 
     async def deployment_uids(self, ids):
         return {}
@@ -1360,8 +1363,8 @@ class FakeUpdateRepo(FakeCreateRepo):
         self.endpoint = endpoint
         self.added = endpoint
 
-    async def get(self, ref, lock=False):
-        return _CreatedRow((self.endpoint,))
+    async def matches(self, ref, project=None, lock=False):
+        return [_CreatedRow((self.endpoint,))]
 
 
 def updating(repo) -> EndpointService:

@@ -23,9 +23,12 @@ from app.db.models import BenchmarkRun
 from app.db.models import EndpointTarget
 from app.db.models import ArtifactBaseline
 from app.db.models import BenchmarkRequest
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 from app.modules.artifacts.scope import visible
 from app.modules.deployments.naming import by_ref
+from app.modules.endpoints.repository import AMBIGUOUS_HINT
+from app.modules.endpoints.repository import ref_query
 
 
 class BenchmarkRepository:
@@ -171,7 +174,6 @@ class BenchmarkRepository:
         is routed by weight and measures whatever the gateway chose, so these
         rows become the request's coverage snapshot, not N runs.
         """
-        column = Endpoint.uid if is_uid(ref) else Endpoint.name
         query = (
             select(Endpoint, Deployment, Workload, Artifact, Cluster.uid.label("cluster_uid"))
             .outerjoin(
@@ -182,9 +184,12 @@ class BenchmarkRepository:
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
-            .where(column == ref)
+            .where(Endpoint.id.in_(ref_query(ref)))
         )
-        return list((await self.db.execute(query)).all())
+        rows = list((await self.db.execute(query)).all())
+        # A bare name two projects share: refused, not measured on whichever came back first.
+        at_most_one(list({row[0].id: row[0] for row in rows}.values()), "endpoint", ref, AMBIGUOUS_HINT)
+        return rows
 
     def facts_query(self, ref: str) -> Select:
         """One run with everything a verdict needs that is not on its own row.

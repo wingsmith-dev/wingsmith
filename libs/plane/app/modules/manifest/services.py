@@ -90,7 +90,7 @@ class ManifestService:
     async def endpoint(self, project: str, name: str) -> EndpointManifest:
         owner = await self._project(project)
         try:
-            e = await EndpointService(self.db).get(name)
+            e = await EndpointService(self.db).get(name, owner.uid)
         except NotFound:
             raise NotFound(f"no endpoint {name!r} in project {project!r}") from None
         if e.name != name or e.project_id != owner.uid:

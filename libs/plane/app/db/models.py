@@ -842,25 +842,26 @@ class Endpoint(BaseMixin):
     `routing_strategy` and `failover_order` are stored and returned; cross-cluster failover is on
     the roadmap.
 
-    `name` is globally unique while there is one tenant. It becomes `(project_id, name)` when a
-    second tenant appears, and the gateway's routing key has to include the project then.
+    `name` is unique per project, like a workload's. `slug` is the routing key and is global
+    (ADR 0024): the gateway routes on it and on the aliases, never on the name.
 
     The name the engine answers to is `Artifact.slug`; the gateway rewrites between the two (see
     `app.core.serving.served_model`).
     """
 
     __tablename__ = "demand_endpoint"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_demand_endpoint_project_name"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     project_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    """The internal handle. In URLs, in metrics labels, in the console; unique, and not patchable,
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    """The internal handle. In URLs, in metrics labels, in the console; unique per project, and not patchable,
     because an endpoint exists so that deployments can be replaced without anybody noticing and
     renaming it spends exactly that."""
-    slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True, server_default="")
     """The model id clients send, such as `openai/gpt-oss-20b`. Patchable, unlike `name`.
     Defaults to the artifact's slug."""
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")

@@ -194,13 +194,14 @@ class MetricsRoutes(Controller):
         step: str | None = None,
         span: int = 3600,
         series: bool = False,
+        project: str | None = None,
     ) -> Response[MetricsSchema]:
         """One endpoint, measured at the front door, not inside a cluster.
 
         `cluster` is null on the answer: an endpoint is global, and a request that
         was refused before it was routed belongs to no cluster.
         """
-        return Response(await svc.endpoint(ref, window, step, span, series))
+        return Response(await svc.endpoint(ref, window, step, span, series, project))
 
     @get("/endpoints/{ref:str}/sla")
     async def endpoint_sla(
@@ -211,13 +212,14 @@ class MetricsRoutes(Controller):
         month: str | None = None,
         start: dt.datetime | None = PERIOD_FROM,
         end: dt.datetime | None = PERIOD_TO,
+        project: str | None = None,
     ) -> Response[SlaReportSchema]:
         """One endpoint's service level over a period, against the objective its quota declares.
 
         `month` is `YYYY-MM` in UTC; `from`/`to` are ISO 8601. Neither is the
         current calendar month, measured up to now.
         """
-        return Response(await svc.endpoint_sla(ref, PeriodQuery(month=month, start=start, end=end)))
+        return Response(await svc.endpoint_sla(ref, PeriodQuery(month=month, start=start, end=end), project=project))
 
     @get("/deployments/{ref:str}")
     async def deployment_metrics(

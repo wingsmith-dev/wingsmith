@@ -77,13 +77,16 @@ class EndpointRoutes(Controller):
 
     @get("/{ref:str}/resolved")
     async def resolve_one(
-        self, context: RequestContext, svc: EndpointService, ref: str
+        self, context: RequestContext, svc: EndpointService, ref: str, project: str | None = None
     ) -> Response[ResolvedTableSchema]:
-        return Response(await svc.resolved(ref))
+        return Response(await svc.resolved(ref, project))
 
     @get("/{ref:str}")
-    async def get_endpoint(self, context: RequestContext, svc: EndpointService, ref: str) -> Response[EndpointSchema]:
-        return Response(await svc.get(ref))
+    async def get_endpoint(
+        self, context: RequestContext, svc: EndpointService, ref: str, project: str | None = None
+    ) -> Response[EndpointSchema]:
+        """`{ref}` is an `end_` id or a name; a name is unique per project, so a shared one needs `project`."""
+        return Response(await svc.get(ref, project))
 
     @patch("/{ref:str}")
     async def update_endpoint(
@@ -93,9 +96,12 @@ class EndpointRoutes(Controller):
         ref: str,
         data: EndpointUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        project: str | None = None,
     ) -> Response[EndpointSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match))
+        return Response(await svc.update(ref, data, if_match=if_match, project=project))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_endpoint(self, context: RequestContext, svc: EndpointService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_endpoint(
+        self, context: RequestContext, svc: EndpointService, ref: str, project: str | None = None
+    ) -> None:
+        await svc.delete(ref, project)

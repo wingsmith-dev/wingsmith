@@ -168,7 +168,9 @@ class ScriptedSession:
 
     async def execute(self, query):
         rows = self._results.pop(0)
-        return SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: rows[0] if rows else None))
+        return SimpleNamespace(
+            scalars=lambda: SimpleNamespace(first=lambda: rows[0] if rows else None, all=lambda: rows[:1])
+        )
 
 
 def with_backend(backend):

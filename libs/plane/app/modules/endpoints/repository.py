@@ -28,6 +28,25 @@ from app.modules.artifacts.scope import visible
 from app.modules.artifacts.scope import visible_ids
 
 
+def ref_query(ref: str, project: str | None = None) -> Select:
+    """The endpoint ids a reference names: an id, or a name that is unique only within its project."""
+    column = Endpoint.uid if is_uid(ref) else Endpoint.name
+    query = select(Endpoint.id).where(column == ref)
+    if project is not None:
+        query = query.where(Endpoint.project_id.in_(ref_ids(Project, project, "slug")))
+    return query
+
+
+AMBIGUOUS_HINT = "say which with `project`"
+
+
+async def endpoint_by_ref(db: AsyncSession, ref: str, project: str | None = None) -> Endpoint | None:
+    """The one endpoint a reference names, None when none, a 400 when a bare name is in several projects."""
+    query = select(Endpoint).where(Endpoint.id.in_(ref_query(ref, project))).limit(2)
+    found = (await db.execute(query)).scalars().all()
+    return at_most_one(found, "endpoint", ref, AMBIGUOUS_HINT)
+
+
 class EndpointRepository:
     """Reads endpoints and the deployments behind them. No cluster ever appears.
 
@@ -46,10 +65,9 @@ class EndpointRepository:
             .options(selectinload(Endpoint.targets), selectinload(Endpoint.aliases))
         )
 
-    def get_query(self, ref: str) -> Select:
-        """An id or a name. An endpoint name is globally unique, so both are exact."""
-        column = Endpoint.uid if is_uid(ref) else Endpoint.name
-        return self._base().where(column == ref)
+    def get_query(self, ref: str, project: str | None = None) -> Select:
+        """An id, or a name that is unique only within its project."""
+        return self._base().where(Endpoint.id.in_(ref_query(ref, project)))
 
     def serving_artifact_query(self, artifact: str, project=None) -> Select:
         """The endpoints whose targets serve one artifact.
@@ -110,7 +128,7 @@ class EndpointRepository:
     def deployment_uid_query(self, deployment_ids: list) -> Select:
         return select(Deployment.id, Deployment.uid).where(Deployment.id.in_(deployment_ids))
 
-    def resolved_query(self, ref: str | None = None) -> Select:
+    def resolved_query(self, ref: UUID | None = None) -> Select:
         """Endpoints joined out to the addresses their targets sit behind.
 
         An outer join all the way down, by design: a target whose cluster has
@@ -174,21 +192,32 @@ class EndpointRepository:
             .order_by(Endpoint.seq.asc())
         )
         if ref is not None:
-            column = Endpoint.uid if is_uid(ref) else Endpoint.name
-            query = query.where(column == ref)
+            query = query.where(Endpoint.id == ref)
         return query
 
-    async def resolved(self, ref: str | None = None) -> builtins.list[Row]:
+    async def resolved(self, ref: UUID | None = None) -> builtins.list[Row]:
         result = await self.db.execute(self.resolved_query(ref))
         return list(result.all())
 
-    async def get(self, ref: str, lock: bool = False) -> Row | None:
-        """`lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds."""
-        query = self.get_query(ref).limit(1)
+    async def matches(self, ref: str, project: str | None = None, lock: bool = False) -> builtins.list[Row]:
+        """Every endpoint a reference could mean, capped at two so "one" and "several" differ.
+
+        `lock` holds the row until the transaction ends, re-read, so an `If-Match` compared under it holds.
+        """
+        query = self.get_query(ref, project).limit(2)
         if lock:
             query = query.with_for_update(of=Endpoint).execution_options(populate_existing=True)
         result = await self.db.execute(query)
-        return result.first()
+        return list(result.all())
+
+    async def candidates(self, name: str) -> builtins.list[Row]:
+        """Every endpoint answering to a bare name, with its project, for the ambiguity error."""
+        result = await self.db.execute(
+            select(Endpoint.uid, Project.slug)
+            .join(Project, Endpoint.project_id == Project.id)
+            .where(Endpoint.name == name)
+        )
+        return list(result.all())
 
     async def list(self, **kwargs) -> builtins.list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))

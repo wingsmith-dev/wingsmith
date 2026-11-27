@@ -601,18 +601,25 @@ class EndpointService:
             ids.extend(endpoint.failover_order)
         return ids
 
-    async def _one(self, ref: str, lock: bool = False):
-        row = await self.repo.get(ref, lock=lock)
-        if row is None:
+    async def _one(self, ref: str, project: str | None = None, lock: bool = False):
+        """A name is unique per project, so a bare one shared by two projects has to say which."""
+        found = await self.repo.matches(ref, project, lock=lock)
+        if not found:
             raise NotFound(f"no endpoint {ref!r}")
-        return row
+        if len(found) > 1:
+            candidates = await self.repo.candidates(ref)
+            raise Invalid(
+                f"{ref!r} names an endpoint in more than one project; say which with `project`",
+                {"candidates": [{"id": uid, "project": slug} for uid, slug in candidates]},
+            )
+        return found[0]
 
     async def _render(self, endpoint: Endpoint, project_uid: str) -> EndpointSchema:
         uids = await self.repo.deployment_uids(self._referenced([endpoint]))
         return self.schema(endpoint, project_uid, uids)
 
-    async def get(self, ref: str) -> EndpointSchema:
-        row = await self._one(ref)
+    async def get(self, ref: str, project: str | None = None) -> EndpointSchema:
+        row = await self._one(ref, project)
         return await self._render(row[0], row.project_uid)
 
     async def list(
@@ -700,14 +707,17 @@ class EndpointService:
         Aliases and canonical slugs are one namespace, and no database constraint can say so: the
         unique index on `alias` stops two endpoints claiming one alias and nothing else. The four
         refusals here are the rest of it: an alias equal to this endpoint's own slug, an alias
-        equal to any other endpoint's slug, an alias another endpoint already holds, and the
-        symmetric case of a slug moved onto somebody else's alias.
+        equal to any other endpoint's slug, an alias another endpoint already holds, the symmetric
+        case of a slug moved onto somebody else's alias, and a slug another endpoint already has
+        (the unique index on `slug` is the backstop for that one).
 
         It has to be a refusal and not a preference, because the gateway resolves a duplicate key
         by keeping whichever binding it indexed first. That is the right behaviour there (order-
         dependent routing is worse than a loud misconfiguration), but it means the plane is the
         only place the ambiguity can actually be prevented.
         """
+        if await self.repo.name_exists(slug, exclude_id=endpoint_id):
+            raise Conflict(f"{slug!r} is already another endpoint's model id", {"slug": slug})
         owner = await self.repo.get_alias_owner(slug)
         if owner is not None and owner != endpoint_id:
             raise Conflict(f"{slug!r} is already an alias of another endpoint", {"slug": slug})
@@ -762,10 +772,12 @@ class EndpointService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict(f"endpoint {data.name!r} already exists") from exc
+            raise Conflict(f"endpoint {data.name!r} already exists in project {data.project!r}") from exc
         return await self.get(endpoint.uid)
 
-    async def update(self, ref: str, data: EndpointUpdateRequest, if_match: str | None = None) -> EndpointSchema:
+    async def update(
+        self, ref: str, data: EndpointUpdateRequest, if_match: str | None = None, project: str | None = None
+    ) -> EndpointSchema:
         """Replaces the declared half, and the target set as a whole when it is given.
 
         The replacement empties the collection and flushes before attaching the new
@@ -773,7 +785,7 @@ class EndpointService:
         every insert before the deletes, so re-weighting a target the endpoint
         already has would collide with the row it is about to replace.
         """
-        row = await self._one(ref, lock=True)
+        row = await self._one(ref, project, lock=True)
         endpoint = row[0]
         if if_match is not None and if_match != _revision(endpoint):
             raise Conflict("endpoint changed since it was read", {"revision": _revision(endpoint)})
@@ -805,18 +817,21 @@ class EndpointService:
             # Lowercased and never emptied. This is the public model id, so a caller who clears it
             # has said nothing about what clients should send, and the accurate reading of that is
             # "leave it" instead of "serve under the empty string".
-            slug = str(fields.pop("slug")).strip().lower()
-            if slug:
-                endpoint.slug = slug
+            slug = str(fields.pop("slug")).strip().lower() or endpoint.slug
+        else:
+            slug = endpoint.slug
 
         aliases = fields.pop("aliases", UNSET)
         if aliases is not UNSET:
             aliases = normalise_aliases(aliases)
+        # Checked before the slug is assigned: the checks query, and an autoflush of the new slug
+        # would hit the unique index first and surface as a bare integrity error.
         await self._check_namespace(
-            endpoint.slug,
+            slug,
             aliases if aliases is not UNSET else alias_names(endpoint),
             endpoint_id=endpoint.id,
         )
+        endpoint.slug = slug
         if aliases is not UNSET:
             await self.repo.replace_aliases(endpoint, aliases)
 
@@ -832,17 +847,17 @@ class EndpointService:
             raise Conflict("endpoint conflicts with an existing one") from exc
         return await self.get(endpoint.uid)
 
-    async def delete(self, ref: str) -> None:
+    async def delete(self, ref: str, project: str | None = None) -> None:
         """Deletes the endpoint and its targets; the deployments behind it stay.
 
         A target is the association, not the thing associated. Removing a public
         name must never take the capacity serving it with it.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, project)
         await self.repo.delete(row[0])
         await self.db.commit()
 
-    async def resolved(self, ref: str | None = None) -> ResolvedTableSchema:
+    async def resolved(self, ref: str | None = None, project: str | None = None) -> ResolvedTableSchema:
         """The routing table: every enabled endpoint, with its targets as addresses.
 
         Derived on every read and stored nowhere. The endpoint is what somebody
@@ -898,7 +913,7 @@ class EndpointService:
         it, so the fleet-wide numbers travel and `limit_scope` says how to read
         them.
         """
-        rows = await self.repo.resolved(ref)
+        rows = await self.repo.resolved(None if ref is None else (await self._one(ref, project))[0].id)
         if ref is not None and not rows:
             raise NotFound(f"no endpoint {ref!r}")
 

@@ -20,6 +20,7 @@ from app.db.models import EndpointTarget
 from app.db.models import AllocationDevice
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
+from app.modules.endpoints.repository import endpoint_by_ref
 
 
 def _project_ids(ref: str) -> Select:
@@ -275,8 +276,7 @@ class ServingQuotaRepository:
         return list(result.all())
 
     async def endpoint_by_ref(self, ref: str) -> Endpoint | None:
-        result = await self.db.execute(select(Endpoint).where(Endpoint.id.in_(ref_ids(Endpoint, ref))).limit(1))
-        return result.scalar_one_or_none()
+        return await endpoint_by_ref(self.db, ref)
 
     async def add(self, quota: ServingQuota) -> ServingQuota:
         self.db.add(quota)

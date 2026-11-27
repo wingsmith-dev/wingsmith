@@ -521,10 +521,13 @@ class EmptySession:
     def first(self):
         return None
 
+    def all(self):
+        return []
+
 
 def test_the_endpoint_route_declares_every_parameter_the_console_sends():
     """An undeclared parameter is a 400 from `reject_unknown_params`, not an ignored one."""
-    assert query_params("/v1/metrics/endpoints/{ref:str}") == {"window", "step", "span", "series"}
+    assert query_params("/v1/metrics/endpoints/{ref:str}") == {"window", "step", "span", "series", "project"}
 
 
 def test_the_serving_route_declares_every_parameter_the_console_sends():

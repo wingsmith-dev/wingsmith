@@ -80,6 +80,7 @@ from app.core.exceptions import NotFound
 from app.core.exceptions import InvalidParameter
 from app.modules.artifacts.scope import visible
 from app.modules.deployments.naming import by_ref
+from app.modules.endpoints.repository import endpoint_by_ref
 
 from .sla import Period
 from .sla import PeriodQuery
@@ -773,6 +774,7 @@ class MetricsService:
         step: str | None = None,
         span: int = 3600,
         series: bool = False,
+        project: str | None = None,
     ) -> MetricsSchema:
         """One endpoint as the front door saw it, which is the only place it is visible.
 
@@ -786,8 +788,7 @@ class MetricsService:
         sample instead of a zero. An endpoint nobody has called is not 100%
         available and is not 0% available either.
         """
-        query = select(Endpoint).where(Endpoint.uid == ref if is_uid(ref) else Endpoint.name == ref)
-        endpoint = (await self.db.execute(query)).scalars().first()
+        endpoint = await endpoint_by_ref(self.db, ref, project)
         if endpoint is None:
             raise NotFound(f"no endpoint {ref!r}")
         source = self._gateway()
@@ -820,7 +821,9 @@ class MetricsService:
             answer.unavailable = TENANT_UNAVAILABLE
         return answer
 
-    async def endpoint_sla(self, ref: str, query: PeriodQuery, now: dt.datetime | None = None) -> SlaReportSchema:
+    async def endpoint_sla(
+        self, ref: str, query: PeriodQuery, now: dt.datetime | None = None, project: str | None = None
+    ) -> SlaReportSchema:
         """One endpoint's service level over a period, against what its quota promised.
 
         The quota is one indexed read in this database, joined onto a measurement
@@ -830,8 +833,7 @@ class MetricsService:
         a malformed one is refused without touching the store.
         """
         period = resolve_period(query, now or dt.datetime.now(dt.UTC))
-        query_endpoint = select(Endpoint).where(Endpoint.uid == ref if is_uid(ref) else Endpoint.name == ref)
-        endpoint = (await self.db.execute(query_endpoint)).scalars().first()
+        endpoint = await endpoint_by_ref(self.db, ref, project)
         if endpoint is None:
             raise NotFound(f"no endpoint {ref!r}")
         quota = (
