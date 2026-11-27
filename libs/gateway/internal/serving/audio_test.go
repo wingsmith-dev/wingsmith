@@ -123,6 +123,26 @@ func TestAMediaRequestHasAnUpstreamDeadline(t *testing.T) {
 	if _, ok := r.Context().Deadline(); ok {
 		t.Fatal("a text request has no deadline")
 	}
+	r, cancel = withUpstreamDeadline(httptest.NewRequest(http.MethodPost, "/v1/audio/speech", nil))
+	defer cancel()
+	if _, ok := r.Context().Deadline(); ok {
+		t.Fatal("streamed speech has no whole-request deadline")
+	}
+}
+
+func TestAudioUnitsFallBackToUpstreamWallTime(t *testing.T) {
+	tr := &mediaFacts{kind: mediaTranscription, haveOutputs: true, upstream: 3 * time.Second}
+	if got := tr.units()["transcription_seconds"]; got != 3 {
+		t.Fatalf("transcription_seconds = %v", got)
+	}
+	tr.haveAudioSeconds, tr.audioSeconds = true, 7
+	if got := tr.units()["transcription_seconds"]; got != 7 {
+		t.Fatalf("a stated duration wins, got %v", got)
+	}
+	sp := &mediaFacts{kind: mediaSpeech, haveOutputs: true, characters: 10, upstream: 1500 * time.Millisecond}
+	if got := sp.units()["speech_seconds"]; got != 1.5 {
+		t.Fatalf("speech_seconds = %v", got)
+	}
 }
 
 func quotaRoute(t *testing.T, address, modality string, limits *plane.Limits) routing.Route {

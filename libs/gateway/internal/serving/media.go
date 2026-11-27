@@ -124,16 +124,28 @@ func (m *mediaFacts) units() map[string]float64 {
 		}
 	case mediaSpeech:
 		out := map[string]float64{"speech_characters": float64(m.characters)}
-		if m.haveAudioSeconds {
-			out["speech_seconds"] = m.audioSeconds
+		if s, ok := m.audioSecondsOrWall(); ok {
+			out["speech_seconds"] = s
 		}
 		return out
 	case mediaTranscription:
-		if m.haveAudioSeconds {
-			return map[string]float64{"transcription_seconds": m.audioSeconds}
+		if s, ok := m.audioSecondsOrWall(); ok {
+			return map[string]float64{"transcription_seconds": s}
 		}
 	}
 	return nil
+}
+
+// audioSecondsOrWall is the audio duration the worker stated, or the upstream wall time when it
+// stated none, so a worker that omits duration still spends against `unit_limits`.
+func (m *mediaFacts) audioSecondsOrWall() (float64, bool) {
+	if m.haveAudioSeconds {
+		return m.audioSeconds, true
+	}
+	if m.upstream > 0 {
+		return m.upstream.Seconds(), true
+	}
+	return 0, false
 }
 
 // mediaKindFor says whether a request is a media generation, and which kind.

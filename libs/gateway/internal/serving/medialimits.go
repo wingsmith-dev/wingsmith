@@ -17,12 +17,13 @@ type pathLimit struct {
 // a prompt or a speech `input` is a small JSON body, an image edit or a transcription carries an
 // upload (25 MiB is OpenAI's own audio file limit). The timeouts are whole-request deadlines on a
 // synchronous answer: an image is about two minutes on any GPU we place one on, a transcription of
-// a long file or a video takes longer. Text paths have neither: a generation legitimately runs for
+// a long file or a video takes longer. Speech streams its audio as it goes, so like text it has no
+// deadline and is bounded by the write idle timeout. Text paths have neither: a generation legitimately runs for
 // minutes and is bounded by the write idle timeout instead.
 var mediaPathLimits = map[string]pathLimit{
 	"/v1/images/generations":   {maxBytes: 1 << 20, timeout: 120 * time.Second},
 	"/v1/images/edits":         {maxBytes: 50 << 20, timeout: 120 * time.Second},
-	"/v1/audio/speech":         {maxBytes: 1 << 20, timeout: 120 * time.Second},
+	"/v1/audio/speech":         {maxBytes: 1 << 20},
 	"/v1/audio/transcriptions": {maxBytes: 25<<20 + 1<<20, timeout: 300 * time.Second},
 	"/v1/audio/translations":   {maxBytes: 25<<20 + 1<<20, timeout: 300 * time.Second},
 	"/v1/videos":               {maxBytes: 50 << 20, timeout: 600 * time.Second},
