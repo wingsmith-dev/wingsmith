@@ -26,6 +26,7 @@ import (
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint/crdstore"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/config"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/declare"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/health"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 	kubeobserve "github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe/kube"
@@ -121,6 +122,23 @@ func run() error {
 	}
 	cursor := crdstore.NewCRDStore(directClient, cfg.Namespace)
 
+	// Workload resources this cluster declares to the plane (ADR 0042). Skipped, not fatal, when
+	// the CRD is not installed: an older chart has none, and the watch would never sync.
+	manifests := declare.NewChannel(15 * time.Second)
+	if cfg.DeclareWorkloads {
+		if _, err := discoveryClient.ServerResourcesForGroupVersion(declare.APIVersion); err != nil {
+			log.Info("not syncing Workload resources: the plane.wingsmith.dev CRD is not installed", "error", err)
+		} else if err := (&declare.Reconciler{
+			Client:         mgr.GetClient(),
+			Plane:          manifests,
+			Cluster:        cfg.ClusterID,
+			DefaultProject: cfg.DefaultProject,
+			Log:            log.With("controller", "declare"),
+		}).SetupWithManager(mgr); err != nil {
+			return err
+		}
+	}
+
 	store := &reconcile.Store{
 		Client:            mgr.GetClient(),
 		Reader:            mgr.GetAPIReader(),
@@ -197,12 +215,16 @@ func run() error {
 		BackoffMin:        cfg.BackoffMin,
 		BackoffMax:        cfg.BackoffMax,
 		SendQueueSize:     cfg.SendQueueSize,
-		Handler:           reconcile.WithReporter(operate.WithExecutor(observe.WithObserver(store, observer), executor), reconciler),
-		Checkpointer:      checkpoint.Adapt(cursor),
-		Logger:            log,
+		Handler: declare.WithChannel(
+			reconcile.WithReporter(operate.WithExecutor(observe.WithObserver(store, observer), executor), reconciler),
+			manifests,
+		),
+		Checkpointer: checkpoint.Adapt(cursor),
+		Logger:       log,
 	})
 
 	observer.Bind(client)
+	manifests.Bind(client)
 	executor.Bind(client)
 	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains
 	// (New starts it), but a SIGTERM would stop the process with steps still queued and nothing

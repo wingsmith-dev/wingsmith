@@ -767,6 +767,43 @@ type BenchmarkObserved struct {
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
+// ---------------------------------------------------------------------------- manifests
+
+// ManifestApply is a Workload custom resource from this cluster, applied to the plane as the
+// manifest Body (ADR 0042). Namespace and UID name the resource; the hub derives the field manager
+// k8s:<cluster>/<namespace> from them. Generation is the resource's own, echoed on the result.
+type ManifestApply struct {
+	Kind       string         `json:"kind"`
+	Project    string         `json:"project"`
+	Name       string         `json:"name"`
+	Namespace  string         `json:"namespace"`
+	UID        string         `json:"uid"`
+	Body       map[string]any `json:"body"`
+	Generation int64          `json:"generation"`
+}
+
+// ManifestDelete says the custom resource is being deleted. The plane deletes its object, or
+// releases it when another manager owns it now.
+type ManifestDelete struct {
+	Kind      string `json:"kind"`
+	Project   string `json:"project"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	UID       string `json:"uid"`
+}
+
+// ManifestResult answers a ManifestApply or ManifestDelete, correlated by ReplyTo.
+type ManifestResult struct {
+	Result          string   `json:"result"`
+	Generation      *int64   `json:"generation,omitempty"`
+	UID             string   `json:"uid,omitempty"`
+	RV              string   `json:"rv,omitempty"`
+	PlaneGeneration *int64   `json:"plane_generation,omitempty"`
+	Manager         string   `json:"manager,omitempty"`
+	AllowedClusters []string `json:"allowed_clusters,omitempty"`
+	Error           string   `json:"error,omitempty"`
+}
+
 // MessageTypes maps every wire type to a constructor for its payload. A type absent here is
 // unknown to this operator and its frames are logged and dropped.
 var MessageTypes = map[string]func() any{
@@ -801,4 +838,7 @@ var MessageTypes = map[string]func() any{
 	"operation.observed":  func() any { return &OperationObserved{} },
 	"operation.cancel":    func() any { return &OperationCancel{} },
 	"benchmark.observed":  func() any { return &BenchmarkObserved{} },
+	"manifest.apply":      func() any { return &ManifestApply{} },
+	"manifest.delete":     func() any { return &ManifestDelete{} },
+	"manifest.result":     func() any { return &ManifestResult{} },
 }

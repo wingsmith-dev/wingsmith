@@ -1,0 +1,154 @@
+# Hand-written (ADR 0042). The Workload manifest `wings apply` sends, as a custom resource in a
+# member cluster; the operator syncs it to the plane. spec is the plane's manifest spec, checked
+# loosely here and fully by the plane, which reports what it refuses in status.conditions.
+# Generated from the plane's JSON Schema in a later phase (P1.17).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: workloads.plane.wingsmith.dev
+spec:
+  group: plane.wingsmith.dev
+  names:
+    kind: Workload
+    listKind: WorkloadList
+    plural: workloads
+    singular: workload
+    shortNames: [wwl]
+    categories: [wingsmith]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Synced
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Synced")].status
+        - name: Reason
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Synced")].reason
+        - name: Plane-UID
+          type: string
+          priority: 1
+          jsonPath: .status.planeUID
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: The plane's Workload manifest spec, in camelCase. Placement defaults to this cluster only.
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              required: [serving]
+              properties:
+                cluster:
+                  type: string
+                replicas:
+                  type: integer
+                  minimum: 0
+                paused:
+                  type: boolean
+                priorityClass:
+                  type: string
+                preemptible:
+                  type: boolean
+                runtime:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  properties:
+                    kind:
+                      type: string
+                      enum: [dynamo, container]
+                    engine:
+                      type: string
+                    version:
+                      type: string
+                serving:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  required: [artifact]
+                  properties:
+                    artifact:
+                      type: string
+                placement:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  properties:
+                    strategy:
+                      type: string
+                    allowedClusters:
+                      description: Clusters placement may use. Absent means this cluster only; list others to spread.
+                      type: array
+                      items:
+                        type: string
+                    allowedRegions:
+                      type: array
+                      items:
+                        type: string
+                scale:
+                  type: object
+                  properties:
+                    min:
+                      type: integer
+                      minimum: 0
+                    max:
+                      type: integer
+                      minimum: 0
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                planeUID:
+                  type: string
+                planeResourceVersion:
+                  type: string
+                planeGeneration:
+                  type: integer
+                  format: int64
+                fieldManager:
+                  type: string
+                placement:
+                  description: The effective placement the plane holds, defaulted when spec.placement is absent.
+                  type: object
+                  properties:
+                    allowedClusters:
+                      type: array
+                      items:
+                        type: string
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status, lastTransitionTime, reason, message]
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

@@ -101,6 +101,13 @@ type Config struct {
 	// WorkloadNamespace is where rendered inference workloads go, kept apart from Namespace.
 	WorkloadNamespace string
 
+	// DeclareWorkloads syncs the plane.wingsmith.dev Workload resources in this cluster to the
+	// plane (ADR 0042). It needs the Workload CRD installed and is skipped when it is not.
+	DeclareWorkloads bool
+	// DefaultProject is the plane project a namespace without the plane.wingsmith.dev/project
+	// label declares into. Empty means such namespaces are not synced.
+	DefaultProject string
+
 	// PoolLabelKey and GPUPoolValue name the node label that selects accelerator nodes. How a
 	// cluster labels its pools is a local fact, not something the plane declares.
 	PoolLabelKey string
@@ -280,6 +287,8 @@ func Load() (*Config, error) {
 		LeaderElection:            l.bool("WINGSMITH_LEADER_ELECTION", true),
 		Namespace:                 env("WINGSMITH_NAMESPACE", "wingsmith-system"),
 		WorkloadNamespace:         env("WINGSMITH_WORKLOAD_NAMESPACE", "dynamo"),
+		DeclareWorkloads:          l.bool("WINGSMITH_DECLARE_WORKLOADS", true),
+		DefaultProject:            env("WINGSMITH_DEFAULT_PROJECT", ""),
 		PoolLabelKey:              env("WINGSMITH_POOL_LABEL_KEY", "wingsmith.dev/pool"),
 		GPUPoolValue:              env("WINGSMITH_GPU_POOL_VALUE", "gpu"),
 		CachePoolValue:            env("WINGSMITH_CACHE_POOL_VALUE", "cache"),

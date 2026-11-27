@@ -14,20 +14,21 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - nodes
   verbs:
   - get
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
   - watch
 - apiGroups:
   - ""
@@ -146,6 +147,30 @@ rules:
   - dynamographdeployments/status
   verbs:
   - get
+- apiGroups:
+  - plane.wingsmith.dev
+  resources:
+  - workloads
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - plane.wingsmith.dev
+  resources:
+  - workloads/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - plane.wingsmith.dev
+  resources:
+  - workloads/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - wingsmith.dev
   resources:

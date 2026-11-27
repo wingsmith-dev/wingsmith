@@ -11,10 +11,13 @@ import (
 	"log/slog"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -75,12 +78,26 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 				cfg.Namespace:         {},
 				cfg.WorkloadNamespace: {},
 			},
+			ByObject: declaredCache(cfg),
 		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build manager: %w", err)
 	}
 	return mgr, nil
+}
+
+// declaredCache widens the cache to every namespace for the Workload resources a cluster declares to
+// the plane (ADR 0042): they live wherever their project namespaces are.
+func declaredCache(cfg *config.Config) map[client.Object]cache.ByObject {
+	if !cfg.DeclareWorkloads {
+		return nil
+	}
+	w := &unstructured.Unstructured{}
+	w.SetGroupVersionKind(schema.GroupVersionKind{Group: "plane.wingsmith.dev", Version: "v1alpha1", Kind: "Workload"})
+	return map[client.Object]cache.ByObject{
+		w: {Namespaces: map[string]cache.Config{cache.AllNamespaces: {}}},
+	}
 }
 
 // SetupWithManager registers every controller this operator runs and returns the reconciler.
