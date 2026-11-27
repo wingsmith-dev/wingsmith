@@ -38,7 +38,7 @@ linters:
 
       # Findings that predate this config, each named so it can be fixed and its entry deleted.
       # New code gets no entry here: fix the finding instead.
-      - path: libs/operator/internal/observe/dcgm\.go
+      - path: libs/operator/internal/observe/kube/dcgm\.go
         linters: [errcheck]
         text: io\.Copy
       - path: libs/cli/internal/config/config\.go

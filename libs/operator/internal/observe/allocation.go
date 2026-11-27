@@ -1,7 +1,6 @@
 package observe
 
 import (
-	"strings"
 	"sync"
 )
 
@@ -15,23 +14,6 @@ type PodDevices map[string][]string
 // PodKey is how a pod is named in a PodDevices map.
 func PodKey(namespace, name string) string {
 	return namespace + "/" + name
-}
-
-func contains(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-	return false
-}
-
-func sortStrings(in []string) {
-	for i := 1; i < len(in); i++ {
-		for j := i; j > 0 && strings.Compare(in[j-1], in[j]) > 0; j-- {
-			in[j-1], in[j] = in[j], in[j-1]
-		}
-	}
 }
 
 // DeviceIndex is the most recent pod-to-accelerator binding, shared between the loop that reads it
