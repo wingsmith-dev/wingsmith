@@ -487,6 +487,7 @@ chart-sync-crds:
     set -euo pipefail
     cp {{_operator}}/deploy/crd/wingsmith.dev_syncedresources.yaml {{_chart}}/crds/
     cp {{_operator}}/deploy/crd/wingsmith.dev_streamcheckpoints.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/plane.wingsmith.dev_workloads.yaml {{_chart}}/crds/
     echo "synced CRDs into {{_chart}}/crds"
 
 # Subchart tarballs are not vendored; template checks for them regardless of condition, so a

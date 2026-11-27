@@ -327,6 +327,8 @@ def test_read_only_renders_no_write_rbac_outside_the_release_namespace(chart):
         if ns == "wingsmith-system":
             continue
         for rule in rules:
+            if rule["apiGroups"] == ["plane.wingsmith.dev"]:
+                continue  # status and the sync finalizer on the user's own Workload resources (ADR 0042)
             assert not WRITE_VERBS & set(rule["verbs"]), (role, rule)
 
 
@@ -336,6 +338,9 @@ def test_no_cluster_wide_write_and_leases_are_namespaced(chart):
         if role.startswith("ClusterRole/"):
             for rule in rules:
                 writes = WRITE_VERBS & set(rule["verbs"])
+                if rule["apiGroups"] == ["plane.wingsmith.dev"]:
+                    assert not {"create", "delete"} & writes, rule
+                    continue
                 assert not writes or set(rule["resources"]) <= {"nodes", "pods/eviction"}, rule
             assert not _grants(rules, "leases", "update")
             assert not _grants(rules, "jobs", "create")
@@ -804,3 +809,23 @@ def test_pod_monitor_needs_the_flag_and_the_crd(chart):
     served = _pod_monitor_render(chart, "--api-versions", "monitoring.coreos.com/v1/PodMonitor")
     assert 'WINGSMITH_POD_MONITOR_ENABLED: "true"' in served
     assert "podmonitors" in served
+
+
+def test_declared_workloads_get_operator_rbac_and_aggregated_roles(chart):
+    docs = render(chart, **{"cluster.defaultProject": "search"})
+    role = get(docs, "ClusterRole", "wingsmith-operator")
+    groups = {(g, r) for rule in role["rules"] for g in rule["apiGroups"] for r in rule["resources"]}
+    assert {("plane.wingsmith.dev", "workloads/status"), ("plane.wingsmith.dev", "workloads/finalizers")} <= groups
+    edit = get(docs, "ClusterRole", "wingsmith-edit")
+    assert edit["metadata"]["labels"]["rbac.authorization.k8s.io/aggregate-to-edit"] == "true"
+    assert get(docs, "ClusterRole", "wingsmith-view")["metadata"]["labels"]["rbac.authorization.k8s.io/aggregate-to-view"]
+    config = get(docs, "ConfigMap", "wingsmith-operator", docs_namespace(docs))
+    assert config["data"]["WINGSMITH_DEFAULT_PROJECT"] == "search"
+
+    off = render(chart, **{"cluster.declareWorkloads": False})
+    role = get(off, "ClusterRole", "wingsmith-operator")
+    assert not any("plane.wingsmith.dev" in rule["apiGroups"] for rule in role["rules"])
+
+
+def docs_namespace(docs: list[dict]) -> str:
+    return next(d["metadata"]["namespace"] for d in docs if d["kind"] == "ConfigMap")

@@ -18,6 +18,8 @@ data:
   WINGSMITH_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
   WINGSMITH_NAMESPACE: {{ .Release.Namespace | quote }}
   WINGSMITH_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
+  WINGSMITH_DECLARE_WORKLOADS: {{ .Values.cluster.declareWorkloads | quote }}
+  WINGSMITH_DEFAULT_PROJECT: {{ .Values.cluster.defaultProject | quote }}
   WINGSMITH_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
   # "0" is the operator's own off switch.
   WINGSMITH_METRICS_ADDR: {{ ternary (printf ":%v" .Values.operator.metrics.port) "0" .Values.operator.metrics.enabled | quote }}

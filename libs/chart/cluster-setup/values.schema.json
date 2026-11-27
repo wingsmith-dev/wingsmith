@@ -38,6 +38,8 @@
             { "type": "array", "items": { "$ref": "#/definitions/operation" } }
           ]
         },
+        "declareWorkloads": { "type": "boolean" },
+        "defaultProject": { "type": "string" },
         "logLevel": { "enum": ["debug", "info", "warn", "error"] },
         "logFormat": { "enum": ["json", "text"] }
       }

@@ -52,6 +52,23 @@ rules:
   - apiGroups: [apps]
     resources: [deployments, statefulsets]
     verbs: [get, list, watch]
+  {{- if .Values.cluster.declareWorkloads }}
+  # Workload resources declared to the plane (ADR 0042), in any project namespace:
+  # read them and their namespace's project label, write only status and the
+  # plane.wingsmith.dev/sync finalizer.
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads/status]
+    verbs: [get, update, patch]
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads/finalizers]
+    verbs: [update]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -169,3 +186,33 @@ subjects:
     name: wingsmith-operator
     namespace: {{ .Release.Namespace }}
 {{- end }}
+---
+# Users' access to Workload resources, aggregated into the built-in edit/admin and
+# view roles, and also usable on their own (bind wingsmith-edit in a namespace).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wingsmith-edit
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads/status]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wingsmith-view
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: [plane.wingsmith.dev]
+    resources: [workloads, workloads/status]
+    verbs: [get, list, watch]

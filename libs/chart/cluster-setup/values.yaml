@@ -30,6 +30,13 @@ cluster:
   # including benchmark, which runs a harness image from
   # `operator.benchmark.images` in the workload namespace.
   allowedOperations: ""
+  # Wingsmith Workload resources (plane.wingsmith.dev/v1alpha1) in this cluster are
+  # synced to the plane by the operator (ADR 0042). A namespace declares into the
+  # project its `plane.wingsmith.dev/project` label names; `defaultProject`, when
+  # set, is used for namespaces without the label. The project must also be linked
+  # to this cluster on the plane (`PUT /v1/clusters/{cluster}/projects/{project}`).
+  declareWorkloads: true
+  defaultProject: ""
   logLevel: info
   logFormat: json
 

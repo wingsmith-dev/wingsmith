@@ -5,6 +5,14 @@ All notable changes to the cluster-setup chart. The chart follows
 version may break values or CRDs, and every such change is listed under
 **Breaking** with what to do.
 
+## Unreleased
+
+### Added
+
+- CRD `workloads.plane.wingsmith.dev`, operator RBAC for it, aggregated `wingsmith-edit` and
+  `wingsmith-view` roles, and `cluster.declareWorkloads` / `cluster.defaultProject` (ADR 0042).
+  Helm does not upgrade `crds/`: apply the new CRD by hand on an existing install.
+
 ## 0.3.0
 
 The first public release. Earlier versions were internal and are not supported
