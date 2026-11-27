@@ -22,14 +22,16 @@ had the same problem.
   carrying these annotations has them dropped, like the record. `app.kubernetes.io/managed-by` is
   left alone: labels are the user's spec.
 - **The guard.** While `applied_by` is set, a `PATCH /v1/workloads/{ref}`, a
-  `PATCH /v1/endpoints/{ref}`, a workload operation (`POST /v1/operations`), or a PUT naming another
-  manager is a 409 whose message and `detail.manager` name the manager. `workload.drain` stays
+  `PATCH /v1/endpoints/{ref}`, a workload operation (`POST /v1/operations`), a `PUT .../scale`
+  (imperative unless it names a `?fieldManager`), or a PUT naming another manager is a 409 whose message and `detail.manager` name the manager. `workload.drain` stays
   allowed: it moves no spec. A PUT from the same manager, or onto an object nobody manages, passes.
 - **Taking over.** `?force=true` on any of those clears `applied_by`, the principal, the time and
   `last_applied`, then makes the change. The takeover files a succeeded `workload.takeover` or
   `endpoint.takeover` operation (who, from which manager, to which) in the same transaction. A
   forced PUT then records its own manager and, with no record to merge against, compares declared
-  fields only.
+  fields only. The guard locks the row it reads, so a write racing a first apply waits for it.
+- **Who may force.** Any principal with write access may force, as with `kubectl apply
+  --force-conflicts`. Only admins can write today; revisit once principals are project-scoped (P3.6).
 - **Observed workloads.** A PUT onto a workload with observed deployments is a 422 ("observed,
   adopt it first"), not a 409: no amount of retrying or forcing makes it applicable.
 - `wings apply --field-manager <name>` and `--force-conflicts` send the two parameters; the
