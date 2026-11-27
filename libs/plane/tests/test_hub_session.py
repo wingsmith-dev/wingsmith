@@ -665,7 +665,7 @@ async def test_frames_are_routed_by_kind() -> None:
 
 
 async def test_silence_past_the_liveness_timeout_closes_the_connection() -> None:
-    harness = Harness(config=SessionConfig(ping_interval=0.02, liveness_timeout=0.05, send_queue_size=64))
+    harness = Harness(config=SessionConfig(ping_interval=0.1, liveness_timeout=0.5, send_queue_size=64))
     await harness.start()
     await harness.hello()
 
