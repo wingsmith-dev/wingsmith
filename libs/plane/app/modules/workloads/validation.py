@@ -7,6 +7,7 @@ nothing else, so create, update, reshape and promotion all refuse the same thing
 
 from __future__ import annotations
 
+import re
 import math
 
 from dataclasses import replace
@@ -575,7 +576,9 @@ def check_host_architecture(engine: str, device_class: str) -> None:
 
 
 INJECTED_ENV = frozenset({"WS_MODEL_PATH", "WS_SERVED_MODEL_NAME", "WS_PORT", "HF_HUB_OFFLINE"})
-"""What the platform sets on every container worker; a declared env var may not override them."""
+"""What the platform sets on every container worker; a declared env var may not override them.
+The whole `WS_` namespace is reserved the same way."""
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 PROBE_KEYS = frozenset(
     {
@@ -631,7 +634,9 @@ def check_runtime(data: WorkloadServingRequest) -> None:
         if not 1 <= port.container_port <= 65535:
             raise Invalid(f"port {port.name} is out of range", {"port": port.container_port})
     for env in c.env:
-        if not env.name or env.name in INJECTED_ENV:
+        if not ENV_NAME.fullmatch(env.name or ""):
+            raise Invalid(f"env {env.name!r} is not a valid variable name", {"name": env.name})
+        if env.name in INJECTED_ENV or env.name.startswith("WS_"):
             raise Invalid(f"env {env.name!r} is set by the platform", {"name": env.name})
     for key in ("readiness_probe", "liveness_probe", "startup_probe"):
         probe = getattr(c, key)
