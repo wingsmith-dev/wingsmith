@@ -199,7 +199,7 @@ func (d *Driver) wake() {
 // Run adopts what is already running and reconciles until ctx ends.
 func (d *Driver) Run(ctx context.Context) error {
 	if err := d.load(); err != nil {
-		// Refuse to start rather than read an unreadable checkpoint as "nothing declared",
+		// Refuse to start instead of reading an unreadable checkpoint as "nothing declared",
 		// which would tear down every replica on the machine.
 		return err
 	}

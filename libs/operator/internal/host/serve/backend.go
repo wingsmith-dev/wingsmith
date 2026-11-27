@@ -440,7 +440,7 @@ func (b *Backend) Inventory(ctx context.Context) (backend.Inventory, error) {
 	return b.Supply.Inventory(ctx)
 }
 
-// crashLoopRestarts is how many restarts read as a crash loop rather than a slow start.
+// crashLoopRestarts is how many restarts read as a crash loop and not a slow start.
 const crashLoopRestarts = 3
 
 // Observe implements backend.Backend: readiness is the declared probe, run from here against the
