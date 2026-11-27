@@ -786,10 +786,10 @@ class EndpointService:
         by keeping whichever binding it indexed first. That is the right behaviour there (order-
         dependent routing is worse than a loud misconfiguration), but it means the plane is the
         only place the ambiguity can actually be prevented.
+
+        The caller must already hold `lock_public_ids` on every id checked here, taken once and
+        sorted before any check, so concurrent writers acquire their locks in one global order.
         """
-        # Serializes writers claiming any of these ids until commit: the checks below span two
-        # tables, so without it two concurrent writes could both pass and both land.
-        await self.repo.lock_public_ids([slug, *aliases])
         if await self.repo.name_exists(slug, exclude_id=endpoint_id):
             raise Conflict(f"{slug!r} is already another endpoint's model id", {"slug": slug})
         owner = await self.repo.get_alias_owner(slug)
@@ -832,16 +832,17 @@ class EndpointService:
                 slug = await self.repo.workload_artifact_slug(project.id, first.workload_name)
         if not slug:
             slug = str(data.name).strip().lower()
-        if not declared:
-            # Taken before `_taken`, so two concurrent defaulted creates of one slug serialize and
-            # the second moves aside instead of failing the namespace check with a 409.
-            await self.repo.lock_public_ids([slug])
-        if not declared and await self._taken(slug):
+        aliases = normalise_aliases(data.aliases)
+        fallback = None if declared else default_slug_in(project.slug, slug)
+        # Every id this create can claim, locked once and sorted before any check: two concurrent
+        # writers then serialize in one global order, and a second defaulted create of one slug
+        # moves aside instead of failing the namespace check with a 409.
+        await self.repo.lock_public_ids([slug, *aliases, *([fallback] if fallback else [])])
+        if fallback and await self._taken(slug):
             # Only a default moves aside: a second project serving the same model gets its own id
             # instead of a 409. A declared slug that clashes is still refused below.
-            slug = default_slug_in(project.slug, slug)
+            slug = fallback
 
-        aliases = normalise_aliases(data.aliases)
         await self._check_namespace(slug, aliases)
 
         endpoint = Endpoint(
@@ -918,11 +919,9 @@ class EndpointService:
             aliases = normalise_aliases(aliases)
         # Checked before the slug is assigned: the checks query, and an autoflush of the new slug
         # would hit the unique index first and surface as a bare integrity error.
-        await self._check_namespace(
-            slug,
-            aliases if aliases is not UNSET else alias_names(endpoint),
-            endpoint_id=endpoint.id,
-        )
+        claimed = aliases if aliases is not UNSET else alias_names(endpoint)
+        await self.repo.lock_public_ids([slug, *claimed])
+        await self._check_namespace(slug, claimed, endpoint_id=endpoint.id)
         endpoint.slug = slug
         if aliases is not UNSET:
             await self.repo.replace_aliases(endpoint, aliases)
