@@ -434,6 +434,33 @@ class ArtifactManifest(Struct, kw_only=True):
     status: ArtifactStatus | None = None
 
 
+class ManifestListMeta(Struct, kw_only=True):
+    """`resourceVersion` is the change-log seq every item is current as of: watch from it."""
+
+    resource_version: str
+
+
+class WorkloadManifestList(Struct, kw_only=True):
+    api_version: str = API_VERSION
+    kind: str = "WorkloadList"
+    metadata: ManifestListMeta
+    items: list[WorkloadManifest]
+
+
+class EndpointManifestList(Struct, kw_only=True):
+    api_version: str = API_VERSION
+    kind: str = "EndpointList"
+    metadata: ManifestListMeta
+    items: list[EndpointManifest]
+
+
+class ArtifactManifestList(Struct, kw_only=True):
+    api_version: str = API_VERSION
+    kind: str = "ArtifactList"
+    metadata: ManifestListMeta
+    items: list[ArtifactManifest]
+
+
 MANIFESTS = {WORKLOAD: WorkloadManifest, ENDPOINT: EndpointManifest, ARTIFACT: ArtifactManifest}
 
 

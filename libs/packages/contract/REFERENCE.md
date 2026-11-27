@@ -191,10 +191,15 @@ response follows are in [`API.md`](API.md).
 
 | Method | Path | What |
 |---|---|---|
+| GET | `/v1/manifests/artifacts` | Lists every Artifact (`ArtifactList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/artifacts/{name}` | GetPublicArtifactManifest |
 | GET | `/v1/manifests/artifacts/{project}/{name}` | GetArtifactManifest |
+| GET | `/v1/manifests/endpoints` | Lists every Endpoint (`EndpointList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
+| GET | `/v1/manifests/endpoints/{project}` | Lists every Endpoint (`EndpointList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/endpoints/{project}/{name}` | GetEndpointManifest |
 | PUT | `/v1/manifests/endpoints/{project}/{name}` | PutEndpointManifest |
+| GET | `/v1/manifests/workloads` | Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
+| GET | `/v1/manifests/workloads/{project}` | Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/workloads/{project}/{name}` | GetWorkloadManifest |
 | PUT | `/v1/manifests/workloads/{project}/{name}` | PutWorkloadManifest |
 | GET | `/v1/manifests/workloads/{project}/{name}/scale` | GetWorkloadScale |

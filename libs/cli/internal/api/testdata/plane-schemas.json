@@ -247,6 +247,12 @@
   "spec": "$ArtifactSpec",
   "status": "$ArtifactStatus?"
  },
+ "ArtifactManifestList": {
+  "apiVersion": "string",
+  "items": "[]$ArtifactManifest",
+  "kind": "string",
+  "metadata": "$ManifestListMeta"
+ },
  "ArtifactRefreshSchema": {
   "artifact": "$ArtifactSchema",
   "changed": "[]string",
@@ -956,6 +962,12 @@
   "spec": "$EndpointSpec",
   "status": "$EndpointStatus?"
  },
+ "EndpointManifestList": {
+  "apiVersion": "string",
+  "items": "[]$EndpointManifest",
+  "kind": "string",
+  "metadata": "$ManifestListMeta"
+ },
  "EndpointSchema": {
   "aliases": "[]string",
   "applied_at": "string?",
@@ -1177,6 +1189,9 @@
  },
  "LogoutRequest": {
   "refresh_token": "string"
+ },
+ "ManifestListMeta": {
+  "resourceVersion": "string"
  },
  "MetricRuleSchema": {
   "comparison": "string",
@@ -2249,6 +2264,12 @@
   "metadata": "$ObjectMeta",
   "spec": "$WorkloadManifestSpec",
   "status": "$WorkloadStatus?"
+ },
+ "WorkloadManifestList": {
+  "apiVersion": "string",
+  "items": "[]$WorkloadManifest",
+  "kind": "string",
+  "metadata": "$ManifestListMeta"
  },
  "WorkloadManifestSpec": {
   "cluster": "string?",

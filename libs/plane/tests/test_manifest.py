@@ -55,6 +55,11 @@ def test_the_api_version_is_the_plane_group_not_the_operators() -> None:
 def test_the_manifest_routes_are_addressed_by_namespace_and_name() -> None:
     paths = {p for p in create_app().openapi_schema.to_schema()["paths"] if p.startswith("/v1/manifests")}
     assert paths == {
+        "/v1/manifests/workloads",
+        "/v1/manifests/workloads/{project}",
+        "/v1/manifests/endpoints",
+        "/v1/manifests/endpoints/{project}",
+        "/v1/manifests/artifacts",
         "/v1/manifests/workloads/{project}/{name}",
         "/v1/manifests/workloads/{project}/{name}/scale",
         "/v1/manifests/endpoints/{project}/{name}",

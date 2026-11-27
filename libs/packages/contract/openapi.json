@@ -1434,6 +1434,33 @@
         "title": "ArtifactManifest",
         "type": "object"
       },
+      "ArtifactManifestList": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactManifest"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "default": "ArtifactList",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ManifestListMeta"
+          }
+        },
+        "required": [
+          "items",
+          "metadata"
+        ],
+        "title": "ArtifactManifestList",
+        "type": "object"
+      },
       "ArtifactRefreshSchema": {
         "properties": {
           "artifact": {
@@ -5608,6 +5635,33 @@
         "title": "EndpointManifest",
         "type": "object"
       },
+      "EndpointManifestList": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointManifest"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "default": "EndpointList",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ManifestListMeta"
+          }
+        },
+        "required": [
+          "items",
+          "metadata"
+        ],
+        "title": "EndpointManifestList",
+        "type": "object"
+      },
       "EndpointSchema": {
         "properties": {
           "aliases": {
@@ -7712,6 +7766,18 @@
           "refresh_token"
         ],
         "title": "LogoutRequest",
+        "type": "object"
+      },
+      "ManifestListMeta": {
+        "properties": {
+          "resourceVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceVersion"
+        ],
+        "title": "ManifestListMeta",
         "type": "object"
       },
       "MetricRuleSchema": {
@@ -13800,6 +13866,33 @@
           "spec"
         ],
         "title": "WorkloadManifest",
+        "type": "object"
+      },
+      "WorkloadManifestList": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkloadManifest"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "default": "WorkloadList",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ManifestListMeta"
+          }
+        },
+        "required": [
+          "items",
+          "metadata"
+        ],
+        "title": "WorkloadManifestList",
         "type": "object"
       },
       "WorkloadManifestSpec": {
@@ -26241,6 +26334,196 @@
         ]
       }
     },
+    "/v1/manifests/artifacts": {
+      "get": {
+        "deprecated": false,
+        "description": "Lists every Artifact (`ArtifactList`), current as of `metadata.resourceVersion`, or with\n`?watch=true` streams changes as JSON lines (`{\"type\": \"ADDED|MODIFIED|DELETED|BOOKMARK|ERROR\",\n\"object\": ...}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current\nobject first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`\nmid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`\n`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,\nat most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429.",
+        "operationId": "V1ManifestsArtifactsListArtifactManifests",
+        "parameters": [
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "watch",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "resourceVersion",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "labelSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "fieldSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "timeoutSeconds",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "allowWatchBookmarks",
+            "required": false,
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactManifestList"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListArtifactManifests",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
     "/v1/manifests/artifacts/{name}": {
       "get": {
         "deprecated": false,
@@ -26447,6 +26730,395 @@
           }
         },
         "summary": "GetArtifactManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/endpoints": {
+      "get": {
+        "deprecated": false,
+        "description": "Lists every Endpoint (`EndpointList`), current as of `metadata.resourceVersion`, or with\n`?watch=true` streams changes as JSON lines (`{\"type\": \"ADDED|MODIFIED|DELETED|BOOKMARK|ERROR\",\n\"object\": ...}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current\nobject first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`\nmid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`\n`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,\nat most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429.",
+        "operationId": "V1ManifestsEndpointsListEndpointManifests",
+        "parameters": [
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "watch",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "resourceVersion",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "labelSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "fieldSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "timeoutSeconds",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "allowWatchBookmarks",
+            "required": false,
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointManifestList"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListEndpointManifests",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/endpoints/{project}": {
+      "get": {
+        "deprecated": false,
+        "description": "Lists every Endpoint (`EndpointList`), current as of `metadata.resourceVersion`, or with\n`?watch=true` streams changes as JSON lines (`{\"type\": \"ADDED|MODIFIED|DELETED|BOOKMARK|ERROR\",\n\"object\": ...}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current\nobject first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`\nmid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`\n`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,\nat most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429.",
+        "operationId": "V1ManifestsEndpointsProjectListProjectEndpointManifests",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "watch",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "resourceVersion",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "labelSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "fieldSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "timeoutSeconds",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "allowWatchBookmarks",
+            "required": false,
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointManifestList"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListProjectEndpointManifests",
         "tags": [
           "Manifests"
         ]
@@ -26739,6 +27411,395 @@
           }
         },
         "summary": "PutEndpointManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/workloads": {
+      "get": {
+        "deprecated": false,
+        "description": "Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with\n`?watch=true` streams changes as JSON lines (`{\"type\": \"ADDED|MODIFIED|DELETED|BOOKMARK|ERROR\",\n\"object\": ...}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current\nobject first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`\nmid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`\n`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,\nat most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429.",
+        "operationId": "V1ManifestsWorkloadsListWorkloadManifests",
+        "parameters": [
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "watch",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "resourceVersion",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "labelSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "fieldSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "timeoutSeconds",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "allowWatchBookmarks",
+            "required": false,
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadManifestList"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListWorkloadManifests",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/workloads/{project}": {
+      "get": {
+        "deprecated": false,
+        "description": "Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with\n`?watch=true` streams changes as JSON lines (`{\"type\": \"ADDED|MODIFIED|DELETED|BOOKMARK|ERROR\",\n\"object\": ...}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current\nobject first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`\nmid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`\n`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,\nat most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429.",
+        "operationId": "V1ManifestsWorkloadsProjectListProjectWorkloadManifests",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "watch",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "resourceVersion",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "labelSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "fieldSelector",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "timeoutSeconds",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "allowWatchBookmarks",
+            "required": false,
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadManifestList"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ListProjectWorkloadManifests",
         "tags": [
           "Manifests"
         ]

@@ -5,15 +5,22 @@ from litestar import get
 from litestar import put
 from litestar.di import Provide
 from litestar.params import Parameter
+from litestar.response import Stream
 
+from app.db.engine import session_factory
 from app.core.context import RequestContext
 from app.core.ownership import field_manager
 from app.core.exceptions import Invalid
+from app.core.exceptions import InvalidParameter
 
+from . import watch as watching
 from .schemas import Scale
 from .schemas import ArtifactManifest
 from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
+from .schemas import ArtifactManifestList
+from .schemas import EndpointManifestList
+from .schemas import WorkloadManifestList
 from .services import ManifestService
 
 
@@ -32,6 +39,38 @@ def _dry_run(value: str | None) -> bool:
     return True
 
 
+async def _list_or_watch(
+    collection: str,
+    project: str | None,
+    watch: bool,
+    resource_version: str | None,
+    label_selector: str | None,
+    field_selector: str | None,
+    timeout_seconds: int | None,
+) -> Response:
+    selector = watching.parse_selector(label_selector, field_selector, None)
+    sessions = session_factory()
+    if not watch:
+        return Response(await watching.list_manifests(sessions, collection, project, selector))
+    rv = None
+    if resource_version not in (None, "", "0"):
+        if not resource_version.isdigit():
+            raise InvalidParameter("resourceVersion must be a number", {"field": "resourceVersion"})
+        rv = int(resource_version)
+    w = watching.Watch(sessions, collection, project, selector, rv, watching.timeout_of(timeout_seconds))
+    await w.check()
+    return Stream(await watching.stream(w), media_type="application/json")
+
+
+LIST_DOC = """Lists every {kind} (`{list}`), current as of `metadata.resourceVersion`, or with
+`?watch=true` streams changes as JSON lines (`{{"type": "ADDED|MODIFIED|DELETED|BOOKMARK|ERROR",
+"object": ...}}`, ADR 0039). A watch resumes after `resourceVersion` (unset: an `ADDED` per current
+object first); an RV the change log has compacted is a 410, or an `ERROR` event with a 410 `Status`
+mid-stream: relist and watch again. `labelSelector` takes `k=v` and `k!=v` terms, `fieldSelector`
+`metadata.name=` and `metadata.namespace=`. `timeoutSeconds` ends the stream (default about 300,
+at most 1800); `BOOKMARK`s carry the current RV every 30s. A full plane answers 429."""
+
+
 def _applied(m, result: str) -> Response:
     return Response(m, status_code=201 if result == "created" else 200, headers={RESULT_HEADER: result})
 
@@ -47,6 +86,80 @@ class ManifestRoutes(Controller):
     tags = ["Manifests"]
     path = "/manifests"
     dependencies = {"svc": Provide(manifest_svc_generator)}
+
+    @get("/workloads", description=LIST_DOC.format(kind="Workload", list="WorkloadList"))
+    async def list_workload_manifests(
+        self,
+        watch: bool = False,
+        resource_version: str | None = Parameter(query="resourceVersion", default=None),
+        label_selector: str | None = Parameter(query="labelSelector", default=None),
+        field_selector: str | None = Parameter(query="fieldSelector", default=None),
+        timeout_seconds: int | None = Parameter(query="timeoutSeconds", default=None, ge=1),
+        allow_watch_bookmarks: bool = Parameter(query="allowWatchBookmarks", default=True),
+    ) -> Response[WorkloadManifestList]:
+        return await _list_or_watch(
+            "workloads", None, watch, resource_version, label_selector, field_selector, timeout_seconds
+        )
+
+    @get("/workloads/{project:str}", description=LIST_DOC.format(kind="Workload", list="WorkloadList"))
+    async def list_project_workload_manifests(
+        self,
+        project: str,
+        watch: bool = False,
+        resource_version: str | None = Parameter(query="resourceVersion", default=None),
+        label_selector: str | None = Parameter(query="labelSelector", default=None),
+        field_selector: str | None = Parameter(query="fieldSelector", default=None),
+        timeout_seconds: int | None = Parameter(query="timeoutSeconds", default=None, ge=1),
+        allow_watch_bookmarks: bool = Parameter(query="allowWatchBookmarks", default=True),
+    ) -> Response[WorkloadManifestList]:
+        return await _list_or_watch(
+            "workloads", project, watch, resource_version, label_selector, field_selector, timeout_seconds
+        )
+
+    @get("/endpoints", description=LIST_DOC.format(kind="Endpoint", list="EndpointList"))
+    async def list_endpoint_manifests(
+        self,
+        watch: bool = False,
+        resource_version: str | None = Parameter(query="resourceVersion", default=None),
+        label_selector: str | None = Parameter(query="labelSelector", default=None),
+        field_selector: str | None = Parameter(query="fieldSelector", default=None),
+        timeout_seconds: int | None = Parameter(query="timeoutSeconds", default=None, ge=1),
+        allow_watch_bookmarks: bool = Parameter(query="allowWatchBookmarks", default=True),
+    ) -> Response[EndpointManifestList]:
+        return await _list_or_watch(
+            "endpoints", None, watch, resource_version, label_selector, field_selector, timeout_seconds
+        )
+
+    @get("/endpoints/{project:str}", description=LIST_DOC.format(kind="Endpoint", list="EndpointList"))
+    async def list_project_endpoint_manifests(
+        self,
+        project: str,
+        watch: bool = False,
+        resource_version: str | None = Parameter(query="resourceVersion", default=None),
+        label_selector: str | None = Parameter(query="labelSelector", default=None),
+        field_selector: str | None = Parameter(query="fieldSelector", default=None),
+        timeout_seconds: int | None = Parameter(query="timeoutSeconds", default=None, ge=1),
+        allow_watch_bookmarks: bool = Parameter(query="allowWatchBookmarks", default=True),
+    ) -> Response[EndpointManifestList]:
+        return await _list_or_watch(
+            "endpoints", project, watch, resource_version, label_selector, field_selector, timeout_seconds
+        )
+
+    @get("/artifacts", description=LIST_DOC.format(kind="Artifact", list="ArtifactList"))
+    async def list_artifact_manifests(
+        self,
+        watch: bool = False,
+        resource_version: str | None = Parameter(query="resourceVersion", default=None),
+        label_selector: str | None = Parameter(query="labelSelector", default=None),
+        field_selector: str | None = Parameter(query="fieldSelector", default=None),
+        timeout_seconds: int | None = Parameter(query="timeoutSeconds", default=None, ge=1),
+        allow_watch_bookmarks: bool = Parameter(query="allowWatchBookmarks", default=True),
+    ) -> Response[ArtifactManifestList]:
+        """Artifacts in every scope; narrow with `fieldSelector=metadata.namespace=<project>`
+        (`/artifacts/{name}` is the public artifact read)."""
+        return await _list_or_watch(
+            "artifacts", None, watch, resource_version, label_selector, field_selector, timeout_seconds
+        )
 
     @get("/workloads/{project:str}/{name:str}")
     async def get_workload_manifest(
