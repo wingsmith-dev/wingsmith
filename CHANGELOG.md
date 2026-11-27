@@ -33,6 +33,8 @@ protocol can change between minor versions.
   benchmark pods mount only their artifact's directory by `subPath` instead of the volume root.
   Serving pods of a private artifact get no token and run with `HF_HUB_OFFLINE=1`. On a managed
   cluster the operator now reads Secrets in its namespace and writes them in the workload namespace.
+  Upgrading: a private artifact already cached under `/models/hf` or `/models/<id>` is re-fetched
+  into `/models/p/<project>/`, and the old copy is orphaned; remove it by hand.
 - Workloads and endpoints carry a spec `generation`, and `revision` (what `If-Match` checks) is now
   that number instead of the last-write stamp, so observation no longer reads as a concurrent edit.
   A replayed workload `PATCH` that changes nothing rolls no deployment and records no event.

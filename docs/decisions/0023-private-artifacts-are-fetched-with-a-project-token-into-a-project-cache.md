@@ -48,3 +48,6 @@ workload namespace on a managed cluster, read directly and never listed or watch
 deployments keep their current render until their next change, since the reconciler compares
 inputs and not rendered output. Resolving a private repo's metadata on the plane at artifact
 registration still uses the plane's own token (`WINGSMITH_HF_TOKEN`).
+
+On upgrade, a private artifact already cached under `/models/hf` or `/models/<id>` is re-fetched
+into `/models/p/<project>/`, and the old copy is orphaned; remove it by hand.
