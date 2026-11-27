@@ -51,8 +51,11 @@ Apply it with `wings apply -f my-worker.yaml`, or create the same thing with
 
 ## Rules
 
-- The image is pinned by digest. Tags need `CONTAINER_IMAGE_TAGS_ALLOWED=true` on the plane, and the
-  image must match the operator's allowed image prefixes when those are set.
+- The image is pinned by digest. Tags need `CONTAINER_IMAGE_TAGS_ALLOWED=true` on the plane and
+  `operator.images.containerTagsAllowed: true` (`WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED`) on the
+  cluster; either one off refuses them.
+- The operator must have `operator.images.allowedPrefixes` (`WINGSMITH_ALLOWED_IMAGE_PREFIXES`) set
+  and the image must fall under it. With the list empty, every container workload is refused.
 - One port is named `http`. Probes are Kubernetes probes without `exec`.
 - The pod runs as non-root with every capability dropped, no privilege escalation, no host
   network, no hostPath and no service-account token.

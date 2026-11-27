@@ -20,7 +20,15 @@ contract; this records the model decisions the MVP (P8.2) took.
   and benchmark link is byte-identical.
 - **Images are digest-pinned.** A tag is refused unless the admin flag
   `CONTAINER_IMAGE_TAGS_ALLOWED` is set, so a pushed tag cannot change what a cluster runs. The
-  operator still enforces its `AllowedImagePrefixes`.
+  operator checks again on its side: a tag is refused unless the cluster sets
+  `WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED` (default off), since a plane setting is not a cluster's
+  bound.
+- **Container renders fail closed on images.** Dynamo renders treat an empty
+  `WINGSMITH_ALLOWED_IMAGE_PREFIXES` as allow-all; a container render with no prefix list is
+  refused, because the image is arbitrary user code rather than an engine the plane pins.
+- **Path components are validated.** Artifact ids must match the plane id shape (one component, no
+  `/` or `..`) before they become a cache directory or volume subPath, as owner projects already
+  were.
 - **The platform owns the model location and the sandbox.** It mounts the artifact's cache
   directory read-only (the P1.4b subPath), sets `WS_MODEL_PATH`, `WS_SERVED_MODEL_NAME`, `WS_PORT`
   and `HF_HUB_OFFLINE=1`, and `args` reference them as `$(VAR)`. The pod runs non-root with every
@@ -30,7 +38,8 @@ contract; this records the model decisions the MVP (P8.2) took.
   deployment; the container renderer applies an `apps/v1` Deployment and a Service labelled
   `wingsmith.dev/runtime=container` and `wingsmith.dev/role=frontend`, observes the worker pods,
   prunes renamed objects and deletes by deployment id. The agent treats a `role=frontend` Service
-  with a deployment id as that deployment's frontend.
+  with a deployment id, `wingsmith.dev/runtime=container` and the operator's
+  `wingsmith.dev/managed-by` label as that deployment's frontend; anything else is ignored.
 - **Runtimes are discovered, and placement gates on them.** The operator reports `runtimes` on
   `cluster.observed` (`container`, plus `dynamo` when `DynamoGraphDeployment` is served). A cluster
   without Dynamo takes container workloads only; unknown runtimes read as Dynamo-capable.
