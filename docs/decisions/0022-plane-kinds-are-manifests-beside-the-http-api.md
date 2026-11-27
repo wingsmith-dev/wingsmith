@@ -20,7 +20,8 @@ as msgspec structs in `app/modules/manifest/` and read at `GET /v1/manifests/{ki
   plane kinds are never installed as CRDs.
 - **Metadata is Kubernetes-shaped** (`name`, `namespace`, `labels`, `annotations`, and read-only
   `uid`, `generation`, `creationTimestamp`, `resourceVersion` = `revision`). `namespace` is the
-  project slug. `spec` and `status` keep the plane's snake_case field names.
+  project slug. ~~`spec` and `status` keep the plane's snake_case field names.~~ Superseded by
+  ADR 0028: every manifest field is camelCase.
 - **Identity is a name.** An Artifact's name is its handle. A public Artifact has no namespace and
   is read at `/v1/manifests/artifacts/{name}`; a private one only under its own project. References
   in a spec are names too: artifact handles, cluster names, deployment object names.

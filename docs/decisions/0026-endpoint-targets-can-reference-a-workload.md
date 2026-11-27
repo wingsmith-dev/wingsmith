@@ -12,10 +12,9 @@ workload" and keeps meaning that, and one that can be applied before the workloa
 ## Decision
 
 - **A target is a deployment or a workload ref, exactly one.** `targets: [{workload_ref: {name},
-  weight}]` on the JSON API and in `spec.targets` of the Endpoint manifest. Stored as
+  weight}]` on the JSON API, and as `workloadRef` in `spec.targets` of the Endpoint manifest (ADR 0028). Stored as
   `workload_name` on `demand_endpoint_target` with a check constraint that exactly one of
-  `deployment_id` and `workload_name` is set. Deployment targets are unchanged. The manifest keeps
-  the plane's snake_case in `spec` (ADR 0022), so the field is `workload_ref`, not `workloadRef`.
+  `deployment_id` and `workload_name` is set. Deployment targets are unchanged.
 - **Same project only.** The ref is a name, resolved inside the endpoint's own project, like a
   same-namespace object ref. A workload of that name in another project never resolves.
 - **Resolved at read time.** The routing table joins the ref to every current deployment of the
