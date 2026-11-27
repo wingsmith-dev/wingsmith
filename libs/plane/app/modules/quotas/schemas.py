@@ -79,7 +79,8 @@ class QuotaUpdateRequest(Struct):
 class ResolvedLimitsSchema(Struct):
     """The traffic ceiling for one endpoint, flattened for a hop that holds it in memory.
 
-    Declared only, and not read by the gateway yet, so nothing enforces it today.
+    The gateway enforces `unit_limits` (P4.2); the request and token rates are declared only and not
+    read yet.
     There is no observed counterpart on this payload because its
     reader is the thing doing the observing, and handing the gateway back its own
     measurements would be a round trip whose only possible effect is to be stale.
@@ -105,6 +106,9 @@ class ResolvedLimitsSchema(Struct):
     queue_timeout_ms: int | None
     limit_scope: str
     enforced: bool
+    unit_limits: dict[str, int] = {}
+    """Media units per minute (`image_units`, `video_seconds`, `speech_characters`,
+    `speech_seconds`, `transcription_seconds`); divided like the rates under `divided`."""
 
 
 class ServingQuotaStandardSchema(Struct):
@@ -155,6 +159,7 @@ class ServingQuotaSchema(Struct):
     availability_objective: str
     objective_window_seconds: int
     enforced: bool
+    unit_limits: dict[str, int]
     created_at: dt.datetime
     updated_at: dt.datetime | None
     revision: str
@@ -181,6 +186,7 @@ class ServingQuotaCreateRequest(Struct):
     availability_objective: str = DEFAULT_AVAILABILITY_OBJECTIVE
     objective_window_seconds: int = 600
     enforced: bool = False
+    unit_limits: dict[str, int] = {}
 
 
 class ServingQuotaUpdateRequest(Struct):
@@ -204,6 +210,7 @@ class ServingQuotaUpdateRequest(Struct):
     availability_objective: str | UnsetType = UNSET
     objective_window_seconds: int | UnsetType = UNSET
     enforced: bool | UnsetType = UNSET
+    unit_limits: dict[str, int] | UnsetType = UNSET
 
 
 class ResolvedServingQuotaSchema(Struct):

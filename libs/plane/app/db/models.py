@@ -1171,6 +1171,10 @@ class ServingQuota(BaseMixin):
     )
     objective_window_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="600")
     enforced: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    unit_limits: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """Media units per minute, keyed by `app.modules.quotas.services.MEDIA_UNITS` (P4.2): what an
+    image, video or audio endpoint sells in place of tokens. Spent on the gateway's own
+    `wingsmith_gateway_generated_total` counters; an absent unit is unlimited."""
 
     endpoint: Mapped[Endpoint] = relationship("Endpoint", lazy="noload")
 

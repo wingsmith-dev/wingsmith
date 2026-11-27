@@ -70,6 +70,7 @@ class FakeQuota:
             "availability_objective": "availability-2026.1",
             "objective_window_seconds": 600,
             "enforced": False,
+            "unit_limits": {},
         }
         defaults.update(kwargs)
         for key, value in defaults.items():
@@ -731,3 +732,20 @@ async def test_a_stale_if_match_is_a_conflict_and_touches_no_field():
         await svc.update("sqt_x", ServingQuotaUpdateRequest(committed_rpm=50), if_match="1")
     assert quota.committed_rpm == 1_000
     assert svc.db.commits == 0
+
+
+def test_media_unit_limits_divide_like_the_rates_and_starve_like_them():
+    quota = divided(unit_limits={"image_units": 7, "speech_characters": 2})
+    shares = [effective_limits(quota, 3, i).unit_limits for i in range(3)]
+    assert [s["image_units"] for s in shares] == [3, 2, 2]
+    assert [s["speech_characters"] for s in shares] == [1, 1, 0]
+    assert starved_replicas(quota, 3) == 1
+    assert declared_limits(quota).unit_limits == {"image_units": 7, "speech_characters": 2}
+
+
+def test_media_unit_limits_name_a_known_unit_and_a_positive_number():
+    with pytest.raises(Invalid, match="unknown media unit"):
+        validate_serving({"unit_limits": {"tokens": 5}})
+    with pytest.raises(Invalid, match="must be positive"):
+        validate_serving({"unit_limits": {"video_seconds": 0}})
+    validate_serving({"unit_limits": {"transcription_seconds": 600}})

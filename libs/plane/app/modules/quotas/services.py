@@ -270,6 +270,13 @@ reason.
 """
 
 
+MEDIA_UNITS = frozenset(
+    {"image_units", "video_seconds", "speech_characters", "speech_seconds", "transcription_seconds"}
+)
+"""What a media endpoint's `unit_limits` may name: the gateway's `wingsmith_gateway_generated_total`
+units that are billable (P4.1 decision b). `image_units` is images times their size tier."""
+
+
 def replica_share(limit: int | None, replicas: int, index: int) -> int | None:
     """One replica's slice of a fleet-wide limit, under `divided`.
 
@@ -323,7 +330,7 @@ def starved_replicas(quota: ServingQuota, replicas: int) -> int:
         return 0
     short = [
         replicas - limit
-        for limit in (getattr(quota, name) for name in DIVISIBLE_LIMITS)
+        for limit in [*(getattr(quota, name) for name in DIVISIBLE_LIMITS), *(quota.unit_limits or {}).values()]
         if limit is not None and limit < replicas
     ]
     return max(short, default=0)
@@ -342,6 +349,7 @@ def declared_limits(quota: ServingQuota) -> ResolvedLimitsSchema:
         queue_timeout_ms=quota.queue_timeout_ms,
         limit_scope=quota.limit_scope,
         enforced=quota.enforced,
+        unit_limits=dict(quota.unit_limits or {}),
     )
 
 
@@ -365,6 +373,11 @@ def effective_limits(quota: ServingQuota, replicas: int = 1, index: int = 0) -> 
         queue_timeout_ms=quota.queue_timeout_ms,
         limit_scope=quota.limit_scope,
         enforced=quota.enforced,
+        unit_limits={
+            unit: share
+            for unit, limit in sorted((quota.unit_limits or {}).items())
+            if (share := replica_share(limit, replicas, index)) is not None
+        },
     )
 
 
@@ -464,6 +477,12 @@ def validate_serving(fields: dict, surface: dict | None = None) -> None:
             {"objective_window_seconds": window},
         )
 
+    for unit, limit in (fields.get("unit_limits") or {}).items():
+        if unit not in MEDIA_UNITS:
+            raise Invalid(f"unknown media unit {unit!r}", {"allowed": sorted(MEDIA_UNITS)})
+        if limit <= 0:
+            raise Invalid(f"unit_limits.{unit} must be positive", {unit: limit})
+
     if fields.get("max_output_tokens") is not None and not output_length_params(surface):
         raise Invalid(
             "max_output_tokens needs the endpoint's surface to name where a requested length is read from",
@@ -549,6 +568,7 @@ class ServingQuotaService:
             availability_objective=quota.availability_objective,
             objective_window_seconds=quota.objective_window_seconds,
             enforced=quota.enforced,
+            unit_limits=dict(quota.unit_limits or {}),
             created_at=quota.created_at,
             updated_at=quota.updated_at,
             revision=_serving_revision(quota),

@@ -1681,7 +1681,8 @@
   "max_output_tokens": "integer?",
   "on_exceed": "string",
   "queue_timeout_ms": "integer?",
-  "ramp_up_seconds": "integer"
+  "ramp_up_seconds": "integer",
+  "unit_limits": "object"
  },
  "ResolvedServingQuotaSchema": {
   "availability_objective": "string",
@@ -1930,7 +1931,8 @@
   "project": "string?",
   "queue_timeout_ms": "integer?",
   "ramp_up_seconds": "integer",
-  "success_rate_objective": "number?"
+  "success_rate_objective": "number?",
+  "unit_limits": "object"
  },
  "ServingQuotaSchema": {
   "availability_objective": "string",
@@ -1953,6 +1955,7 @@
   "revision": "string",
   "standard": "$ServingQuotaStandardSchema",
   "success_rate_objective": "number?",
+  "unit_limits": "object",
   "updated_at": "string?"
  },
  "ServingQuotaStandardSchema": {
@@ -1972,7 +1975,8 @@
   "on_exceed": "string",
   "queue_timeout_ms": "integer?",
   "ramp_up_seconds": "integer",
-  "success_rate_objective": "number?"
+  "success_rate_objective": "number?",
+  "unit_limits": "object"
  },
  "ServingSchema": {
   "context_overflow": "string",

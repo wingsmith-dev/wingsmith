@@ -10486,6 +10486,12 @@
           },
           "ramp_up_seconds": {
             "type": "integer"
+          },
+          "unit_limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -11167,13 +11173,17 @@
             "type": "array"
           },
           "protocol": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "openai-chat",
+              "openai-images",
+              "openai-audio-speech",
+              "openai-audio-transcriptions",
+              "openai-videos",
+              null
+            ],
+            "type": [
+              "null",
+              "string"
             ]
           },
           "readinessProbe": {
@@ -11956,6 +11966,12 @@
                 "type": "null"
               }
             ]
+          },
+          "unit_limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -12076,6 +12092,12 @@
               }
             ]
           },
+          "unit_limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
           "updated_at": {
             "oneOf": [
               {
@@ -12101,7 +12123,8 @@
           "project",
           "ramp_up_seconds",
           "revision",
-          "standard"
+          "standard",
+          "unit_limits"
         ],
         "title": "ServingQuotaSchema",
         "type": "object"
@@ -12236,6 +12259,16 @@
               },
               {
                 "type": "null"
+              }
+            ]
+          },
+          "unit_limits": {
+            "oneOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
               }
             ]
           }
