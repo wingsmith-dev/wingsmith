@@ -35,7 +35,7 @@ what the file says, with Kubernetes semantics people already know.
 
 ## Consequences
 
-A workload replace that changes spec fields and the replica count commits in two steps (the update,
-then the scale), so a failure between them can leave the spec applied and the count not; reapplying
-converges. Conditions keep `lastTransitionTime` null: they are derived on read and no transition
+A workload replace locks the workload row, checks `If-Match` under that lock, and commits the spec
+update, pause and scale in one transaction, so it applies whole or not at all. A create with
+`paused: true` is paused in the create's own transaction. Conditions keep `lastTransitionTime` null: they are derived on read and no transition
 history is stored yet. Pruning, field ownership and `wings diff` wait for the last-applied record.
