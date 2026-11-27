@@ -2471,6 +2471,16 @@
           "parameters": {
             "type": "object"
           },
+          "project": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "oneOf": [
               {
@@ -10815,6 +10825,16 @@
           "on_exceed": {
             "default": "reject",
             "type": "string"
+          },
+          "project": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "queue_timeout_ms": {
             "oneOf": [

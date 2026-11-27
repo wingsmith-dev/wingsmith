@@ -587,12 +587,13 @@ class ServingQuotaService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: ServingQuotaCreateRequest) -> ServingQuotaSchema:
-        endpoint = await self.repo.endpoint_by_ref(data.endpoint)
+        endpoint = await self.repo.endpoint_by_ref(data.endpoint, data.project)
         if endpoint is None:
             raise NotFound(f"no endpoint {data.endpoint!r}")
 
         fields = data.to_dict()
         fields.pop("endpoint")
+        fields.pop("project")
         validate_serving(fields, endpoint.surface)
 
         quota = ServingQuota(uid=new_uid(SERVING_QUOTA), endpoint_id=endpoint.id, **fields)

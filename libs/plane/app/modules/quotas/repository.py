@@ -275,8 +275,8 @@ class ServingQuotaRepository:
         result = await self.db.execute(self.list_query(**kwargs))
         return list(result.all())
 
-    async def endpoint_by_ref(self, ref: str) -> Endpoint | None:
-        return await endpoint_by_ref(self.db, ref)
+    async def endpoint_by_ref(self, ref: str, project: str | None = None) -> Endpoint | None:
+        return await endpoint_by_ref(self.db, ref, project)
 
     async def add(self, quota: ServingQuota) -> ServingQuota:
         self.db.add(quota)

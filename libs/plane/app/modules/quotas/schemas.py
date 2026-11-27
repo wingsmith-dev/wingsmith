@@ -162,9 +162,12 @@ class ServingQuotaSchema(Struct):
 
 
 class ServingQuotaCreateRequest(Struct):
-    """Never auto-created. A serving quota is a number somebody sold."""
+    """Never auto-created. A serving quota is a number somebody sold.
+
+    `project` says which endpoint a bare name means when two projects share it (ADR 0024)."""
 
     endpoint: str
+    project: str | None = None
     committed_rpm: int | None = None
     committed_tpm: int | None = None
     max_concurrent_requests: int | None = None

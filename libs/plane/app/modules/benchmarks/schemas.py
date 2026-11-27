@@ -344,6 +344,8 @@ class BenchmarkRequestCreateRequest(Struct):
 
     level: str
     target: str
+    project: str | None = None
+    """Which project a bare endpoint name means when two projects share it (ADR 0024)."""
     harness: str = "aiperf"
     image: str | None = None
     mode: str = "single"

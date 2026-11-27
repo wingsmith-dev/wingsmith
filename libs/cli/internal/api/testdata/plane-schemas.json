@@ -417,6 +417,7 @@
   "level": "string",
   "mode": "string",
   "parameters": "object",
+  "project": "string?",
   "reason": "string?",
   "steps": "[]integer",
   "target": "string",
@@ -1753,6 +1754,7 @@
   "max_output_tokens": "integer?",
   "objective_window_seconds": "integer",
   "on_exceed": "string",
+  "project": "string?",
   "queue_timeout_ms": "integer?",
   "ramp_up_seconds": "integer",
   "success_rate_objective": "number?"

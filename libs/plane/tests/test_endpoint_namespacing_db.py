@@ -88,3 +88,22 @@ async def test_a_slug_another_endpoint_holds_as_an_alias_is_refused(db: AsyncSes
     await svc.create(EndpointCreateRequest(name="chat", project=first, slug="model-a", aliases=["openai/gpt-oss"]))
     with pytest.raises(Conflict, match="alias"):
         await svc.create(EndpointCreateRequest(name="chat", project=second, slug="openai/gpt-oss"))
+
+
+async def test_serving_quotas_and_benchmarks_take_the_project_for_a_shared_name(db: AsyncSession) -> None:
+    from app.modules.quotas.schemas import ServingQuotaCreateRequest
+    from app.modules.quotas.services import ServingQuotaService
+    from app.modules.benchmarks.repository import BenchmarkRepository
+
+    first, second = await two_projects(db)
+    svc = EndpointService(db)
+    await svc.create(EndpointCreateRequest(name="chat", project=first, slug="model-a"))
+    b = await svc.create(EndpointCreateRequest(name="chat", project=second, slug="model-b"))
+    with pytest.raises(Invalid, match="project"):
+        await BenchmarkRepository(db).endpoint_targets("chat")
+    assert (await BenchmarkRepository(db).endpoint_targets("chat", second))[0][0].uid == b.id
+    quotas = ServingQuotaService(db)
+    with pytest.raises(Invalid, match="project"):
+        await quotas.create(ServingQuotaCreateRequest(endpoint="chat"))
+    created = await quotas.create(ServingQuotaCreateRequest(endpoint="chat", project=second))
+    assert created.endpoint == b.id

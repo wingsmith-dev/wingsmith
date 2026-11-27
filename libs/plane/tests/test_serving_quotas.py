@@ -614,7 +614,7 @@ class FakeRepo:
     async def resolved(self, endpoint=None, workload=None):
         return self.rows
 
-    async def endpoint_by_ref(self, ref):
+    async def endpoint_by_ref(self, ref, project=None):
         return self.endpoint
 
 

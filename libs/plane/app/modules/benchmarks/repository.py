@@ -166,7 +166,7 @@ class BenchmarkRepository:
         )
         return list((await self.db.execute(query)).all())
 
-    async def endpoint_targets(self, ref: str) -> list[Row]:
+    async def endpoint_targets(self, ref: str, project: str | None = None) -> list[Row]:
         """The endpoint a reference names, and everything currently enabled behind it.
 
         Plural rows for one endpoint: the endpoint repeats and each row carries
@@ -184,7 +184,7 @@ class BenchmarkRepository:
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
-            .where(Endpoint.id.in_(ref_query(ref)))
+            .where(Endpoint.id.in_(ref_query(ref, project)))
         )
         rows = list((await self.db.execute(query)).all())
         # A bare name two projects share: refused, not measured on whichever came back first.

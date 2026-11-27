@@ -626,7 +626,7 @@ class BenchmarkService:
             return await self._deployment_target(data.target)
         if data.level == harnesses.WORKLOAD:
             return await self._workload_targets(data.target)
-        return await self._endpoint_target(data.target)
+        return await self._endpoint_target(data.target, data.project)
 
     async def _deployment_target(self, ref: str) -> tuple[list[Target], None, list[dict]]:
         """The one deployment a reference names, or an error saying which way it failed.
@@ -675,7 +675,7 @@ class BenchmarkService:
             raise Conflict(f"every deployment of workload {ref!r} is disabled", {"workload": ref})
         return targets, None, [_coverage(target) for target in targets]
 
-    async def _endpoint_target(self, ref: str) -> tuple[list[Target], Any, list[dict]]:
+    async def _endpoint_target(self, ref: str, project: str | None = None) -> tuple[list[Target], Any, list[dict]]:
         """One run against the public name, and a snapshot of everything behind it.
 
         The coverage list is where the per-upstream expansion went. A request to
@@ -685,7 +685,7 @@ class BenchmarkService:
         for. One run, and the coverage records what the name resolved to at the
         moment it was asked.
         """
-        rows = await self.repo.endpoint_targets(ref)
+        rows = await self.repo.endpoint_targets(ref, project)
         if not rows:
             raise NotFound(f"no endpoint {ref!r}")
         endpoint = rows[0][0]
