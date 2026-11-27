@@ -99,8 +99,13 @@ Readiness is the workload's `readinessProbe` (`httpGet` only; default `GET /heal
 by `wingsmith-host` against the loopback port. The tunnel routes a request for a deployment to its
 ready replicas in turn; there is no shared frontend on a host.
 
-A change of generation, serving digest or layout replaces each replica in place (old container
-removed first, since it holds the GPUs the new one needs), so a host rollout has a gap per replica.
+A change of generation, serving digest or layout replaces each replica. When the host has enough
+free GPUs for one more replica, the new container starts beside the old one, the route moves once it
+is ready, and the old one is removed after that, so there is no gap. Otherwise the old container is
+removed first, since it holds the GPUs the new one needs, and the rollout has a gap per replica.
+
+Pausing the workload stops its containers on the host and frees their GPUs; resuming starts them
+again.
 
 ### Weights
 

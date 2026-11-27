@@ -70,6 +70,11 @@ protocol can change between minor versions.
 
 ### Changed
 
+- Host rollouts start the new container beside the old one when the box has the GPUs for it, and
+  move the route only once the new one is ready; otherwise they replace in place as before. A
+  paused deployment on a host stops its containers and frees their GPUs.
+- A container worker's env names must be valid identifiers outside the reserved `WS_` namespace,
+  checked by the plane and by hosts.
 - A PUT onto an observed workload is a 422 ("observed, adopt it first"), not a 409 (ADR 0033).
 
 - Manifests (`plane.wingsmith.dev/v1alpha1`) are camelCase in `spec` and `status` as well as
@@ -104,6 +109,8 @@ protocol can change between minor versions.
 
 ### Fixed
 
+- Hosts sync the allocation map and declared-state checkpoint to disk before renaming them into
+  place, so a power loss cannot leave an empty file.
 - Endpoints whose targets are workload refs now report their replicas in the serving view, count
   as serving in the fleet summary, and show up in quota and benchmark reporting and the quota
   `?workload=` filter.

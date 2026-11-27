@@ -16,17 +16,29 @@ how the data path reaches a replica.
   not the Docker SDK: the SDK's dependency tree is larger than the handful of calls used (list,
   create, start, inspect, remove, pull), and the host binary keeps no Kubernetes or Moby imports.
 - **One container per replica, `ws-<deployment>-<replica>`**, labelled with the deployment id,
-  generation, serving digest, layout and granted GPU UUIDs. A slot whose labels match the
-  declaration is left alone; otherwise the old container is removed before the new one is created,
+  generation, serving digest, layout, workload slug and granted GPU UUIDs. A slot whose labels
+  match the declaration is left alone. Otherwise, when the free GPUs cover one more replica, the new
+  container starts beside the old one under a suffixed name (`ws-<deployment>-<replica>-g<gen>`);
+  the old one stays routed until the new one passes its probe, and is removed on the pass after the
+  route moves. Without the free GPUs the old container is removed before the new one is created,
   because it holds the GPUs the new one needs. Prune removes every container of the deployment
   outside the current slots (rename, scale-down).
+- **Paused deployments are withdrawn, not forgotten.** On a cluster the plane disables a paused
+  workload's deployments and the operator deletes them. A host that receives `lifecycle: paused`
+  removes the containers and releases their GPUs, and keeps the declaration for the resume.
 - **GPU grants are a JSON map under an exclusive flock** in the state directory, keyed by container
   name. Labels carry the same grant, so a lost file is rebuilt from what is running on startup.
   SQLite was not worth a cgo dependency for a map of a few entries.
 - **The operator's security rules apply unchanged**: the image allowlist fails closed, images must be
   digest-pinned unless tags are allowed, artifact, project and Hugging Face ids are validated before
-  they become paths, and exec probes are refused. Containers run with `no-new-privileges`, all
-  capabilities dropped, a read-only root and the model cache mounted read-only.
+  they become paths, and exec probes are refused. Declared env names must be valid identifiers
+  outside the `WS_` namespace and `HF_HUB_OFFLINE`, so a deployment cannot override what the host
+  injects. Containers run with `no-new-privileges`, all capabilities dropped, a read-only root and
+  the model cache mounted read-only. No user is set: the container contract has no `runAsUser`, and
+  engine images often need root, so the image's own user applies. If the contract gains one, the
+  host passes it through without inventing a default.
+- **State files are written durably**: the allocation map and the declared-state checkpoint are
+  written to a temporary file that is synced, renamed into place, and the directory synced.
 - **Readiness is the declared httpGet probe, run by wingsmith-host** against the replica's port,
   which Docker publishes on 127.0.0.1 on an ephemeral port. Phases and reasons are the rollout
   vocabulary in MESSAGES.md; no new reason was added. Missing weights report `WeightsNotResident`,
@@ -43,5 +55,6 @@ how the data path reaches a replica.
 
 - Serving is opt-in per host (`serve` in host.json or `run --serve`), so hosts enrolled under 0030
   stay supply-only until their operator turns it on.
-- A host rollout is replace-in-place with a gap per replica; there is no surge capacity on one box.
+- A host rollout has no gap when the box has a replica's worth of free GPUs, and a gap per replica
+  when it does not.
 - Every project on a host shares one Docker daemon. Multi-tenant isolation is not supported.
