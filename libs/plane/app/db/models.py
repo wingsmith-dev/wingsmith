@@ -1841,7 +1841,7 @@ class ChangeLog(Base):
     op: Mapped[str] = mapped_column(String(16), nullable=False)
     generation: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False, index=True
     )
 
 

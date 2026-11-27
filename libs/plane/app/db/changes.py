@@ -251,6 +251,7 @@ def _write_log(session: Session) -> None:
                 uid=change.uid,
                 op=change.op,
                 generation=generation,
+                created_at=func.clock_timestamp(),
             )
             .returning(ChangeLog.seq)
         ).scalar_one()
@@ -287,20 +288,38 @@ async def since(db: AsyncSession, after: int, limit: int) -> tuple[list[ChangeLo
     return list(rows), through
 
 
-async def compact(db: AsyncSession, older_than: dt.timedelta) -> int:
+COMPACT_BATCH = 10_000
+
+
+async def compact(db: AsyncSession, older_than: dt.timedelta, batch: int = COMPACT_BATCH) -> int:
     """Deletes changes older than `older_than` and moves `compacted_through` past them. Returns
-    the new `compacted_through`. Commits."""
+    the new `compacted_through`. Commits once per batch.
+
+    Seq-monotonic: it stops at the first row at or after the cutoff, so a row that is still inside
+    the window is never compacted past, even if a later seq is older (it should not be, since
+    `created_at` is stamped under the log lock, but rows written before that were stamped at
+    transaction start)."""
     cutoff = dt.datetime.now(dt.UTC) - older_than
-    newest_old = await db.scalar(select(func.max(ChangeLog.seq)).where(ChangeLog.created_at < cutoff))
-    if newest_old is not None:
+    first_new = await db.scalar(select(func.min(ChangeLog.seq)).where(ChangeLog.created_at >= cutoff))
+    newest_old = select(func.max(ChangeLog.seq))
+    if first_new is not None:
+        newest_old = newest_old.where(ChangeLog.seq < first_new)
+    through = await db.scalar(newest_old)
+    if through is not None:
         await db.execute(
             pg_insert(ChangeLogState)
-            .values(id=1, compacted_through=newest_old)
+            .values(id=1, compacted_through=through)
             .on_conflict_do_update(
                 index_elements=[ChangeLogState.id],
-                set_={"compacted_through": func.greatest(ChangeLogState.compacted_through, newest_old)},
+                set_={"compacted_through": func.greatest(ChangeLogState.compacted_through, through)},
             )
         )
-        await db.execute(delete(ChangeLog).where(ChangeLog.seq <= newest_old))
+        await db.commit()
+        while True:
+            chunk = select(ChangeLog.seq).where(ChangeLog.seq <= through).order_by(ChangeLog.seq).limit(batch)
+            deleted = await db.execute(delete(ChangeLog).where(ChangeLog.seq.in_(chunk.scalar_subquery())))
+            await db.commit()
+            if deleted.rowcount < batch:
+                break
     await db.commit()
     return await compacted_through(db)
