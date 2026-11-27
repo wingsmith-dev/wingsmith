@@ -162,14 +162,14 @@ export function EndpointDetailPage() {
       map.set(target.deployment_id, { deployment, workload, artifact, region })
     }
     return map
-  }, [endpoint?.targets, deploymentOptions, workloadOptions, artifactOptions])
+  }, [endpoint, deploymentOptions, workloadOptions, artifactOptions])
 
   /** The serving block and artifact behind the primary target, for the right-hand card. */
   const backing = useMemo<ResolvedTarget | undefined>(() => {
     const targets = deploymentTargets(endpoint)
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
     return primary ? resolved.get(primary.deployment_id) : undefined
-  }, [endpoint?.targets, resolved])
+  }, [endpoint, resolved])
 
   /** The distinct regions this endpoint's targets land in: its region affinity. */
   const regions = useMemo(() => {
@@ -179,7 +179,7 @@ export function EndpointDetailPage() {
       if (region) seen.add(region)
     }
     return [...seen]
-  }, [endpoint?.targets, resolved])
+  }, [endpoint, resolved])
 
   /** What the header dot reports. See `servingHealth`. */
   const health = useMemo(
