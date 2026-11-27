@@ -78,6 +78,10 @@ class Settings:
     arrangement safe, and running both is a waste instead of a hazard.
     """
 
+    CHANGE_LOG_RETENTION_SECONDS: float = 86_400.0
+    """How long `change_log` rows are kept (ADR 0035). A watcher resuming from an older
+    `resourceVersion` gets 410 Gone and relists. Compacted on the reactor's slow pass."""
+
     REACTOR_INTERVAL_SECONDS: float = 60.0
     """How often conditions are re-evaluated and the event log is drained.
 

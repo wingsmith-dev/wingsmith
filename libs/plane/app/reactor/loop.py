@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.db import changes
 from app.config import settings
 from app.db.engine import session_factory
 from app.db.models import Event
@@ -424,6 +425,11 @@ async def _repair(sessions: async_sessionmaker[AsyncSession], moment: dt.datetim
             await reconcile.replace_short_workloads(db)
         except Exception:
             logger.warning("reactor.reconcile.workloads_failed", exc_info=True)
+    async with sessions() as db:
+        try:
+            await changes.compact(db, dt.timedelta(seconds=settings.CHANGE_LOG_RETENTION_SECONDS))
+        except Exception:
+            logger.warning("reactor.changes.compact_failed", exc_info=True)
 
 
 async def reactor_loop(instance: str, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:
