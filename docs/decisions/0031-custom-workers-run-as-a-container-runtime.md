@@ -25,7 +25,7 @@ contract; this records the model decisions the MVP (P8.2) took.
   bound.
 - **Container renders fail closed on images.** Dynamo renders treat an empty
   `WINGSMITH_ALLOWED_IMAGE_PREFIXES` as allow-all; a container render with no prefix list is
-  refused, because the image is arbitrary user code rather than an engine the plane pins.
+  refused: the image is user code, not an engine the plane pins.
 - **Path components are validated.** Artifact ids must match the plane id shape (one component, no
   `/` or `..`) before they become a cache directory or volume subPath, as owner projects already
   were.
