@@ -22,9 +22,12 @@ export type EditSection =
 export function EditButton({
   label,
   onClick,
+  disabledReason,
 }: {
   label: string
   onClick: () => void
+  /** Set while a manifest manages the workload (ADR 0033). */
+  disabledReason?: string
 }) {
   return (
     <WriteAction>
@@ -32,7 +35,8 @@ export function EditButton({
         variant="ghost"
         size="icon-sm"
         aria-label={label}
-        title={label}
+        title={disabledReason ?? label}
+        disabled={!!disabledReason}
         onClick={onClick}
       >
         <IconPencil />

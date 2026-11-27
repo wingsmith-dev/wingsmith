@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest"
 
 import { workloads } from "@/modules/offline/data"
-import { servingArgs, workloadOperationalStatus } from "./display"
+import {
+  managedReason,
+  servingArgs,
+  workloadOperationalStatus,
+} from "./display"
 
 import type { ServingBehavior, Workload } from "./types"
 
@@ -195,5 +199,13 @@ describe("workload operational status", () => {
       phase: "starting",
       needsAttention: false,
     })
+  })
+})
+
+describe("managedReason", () => {
+  it("explains a managed object and says nothing otherwise", () => {
+    expect(managedReason("wings-cli")).toContain("Managed by wings-cli")
+    expect(managedReason(null)).toBeUndefined()
+    expect(managedReason(undefined)).toBeUndefined()
   })
 })

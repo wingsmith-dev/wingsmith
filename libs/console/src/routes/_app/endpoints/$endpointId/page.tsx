@@ -26,6 +26,8 @@ import {
   Truncated,
 } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
+import { ManagedBy } from "@/components/demand/managed-by"
+import { managedReason } from "@/modules/demand/display"
 import { RefreshButton } from "@/components/layout/refresh-button"
 import { StatusDot, StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
@@ -198,6 +200,8 @@ export function EndpointDetailPage() {
     [endpoint, resolved]
   )
 
+  const locked = managedReason(endpoint?.applied_by)
+
   const setEnabled = (enabled: boolean) => {
     if (!endpoint) return
     update.mutate(
@@ -274,10 +278,25 @@ export function EndpointDetailPage() {
         }
         actions={
           endpoint && (
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <ManagedBy
+                kind="endpoint"
+                name={endpoint.name}
+                manager={endpoint.applied_by}
+                principal={endpoint.applied_by_principal}
+                pending={update.isPending}
+                error={update.error}
+                onTakeOver={(done) =>
+                  update.mutate(
+                    { ref: endpoint.id, body: {}, force: true },
+                    { onSuccess: done }
+                  )
+                }
+              />
               <Button
                 variant="outline"
-                disabled={update.isPending}
+                disabled={update.isPending || !!locked}
+                title={locked}
                 onClick={() =>
                   endpoint.enabled ? setPausing(true) : setEnabled(true)
                 }
@@ -396,6 +415,8 @@ export function EndpointDetailPage() {
                           variant="ghost"
                           size="icon-sm"
                           aria-label="Edit endpoint"
+                          title={locked}
+                          disabled={!!locked}
                           onClick={() => setEditing(true)}
                         >
                           <IconPencil />
@@ -468,6 +489,8 @@ export function EndpointDetailPage() {
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Edit routing"
+                            title={locked}
+                            disabled={!!locked}
                             onClick={() => setEditing(true)}
                           >
                             <IconPencil />

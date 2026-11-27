@@ -4,6 +4,7 @@ import { Panel } from "@/components/layout/panel"
 import { cn } from "@/lib/utils"
 import { servingOverrides } from "@/modules/demand/display"
 import type { Workload } from "@/modules/demand/types"
+import { managedReason } from "@/modules/demand/display"
 import { EditButton } from "./EditButton"
 
 /**
@@ -52,7 +53,11 @@ export function EngineArgsPanel({
             ]}
           />
           {onEdit && (
-            <EditButton label="Edit engine arguments" onClick={onEdit} />
+            <EditButton
+              label="Edit engine arguments"
+              disabledReason={managedReason(workload.applied_by)}
+              onClick={onEdit}
+            />
           )}
         </div>
       }

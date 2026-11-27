@@ -594,6 +594,10 @@ export interface WorkloadDeployment {
 export interface Workload {
   id: string
   name: string
+  /** The field manager that applied it last (`wings-cli` by default); null when nothing manages it. */
+  applied_by?: string | null
+  applied_by_principal?: string | null
+  applied_at?: string | null
   kind: WorkloadKind
   phase: WorkloadPhase
   project_id: string
@@ -817,6 +821,10 @@ export interface EndpointPolicy {
 export interface Endpoint {
   id: string
   name: string
+  /** The field manager that applied it last (`wings-cli` by default); null when nothing manages it. */
+  applied_by?: string | null
+  applied_by_principal?: string | null
+  applied_at?: string | null
   /** The model id clients send. Defaults from the first target's artifact. */
   slug: string
   /** Other ids that reach this endpoint; one namespace with all slugs. Records key on `slug`. */

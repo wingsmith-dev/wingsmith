@@ -7,6 +7,7 @@ import { StatRow, StatTile } from "@/components/layout/stat-tile"
 import type { Workload, WorkloadPlacement } from "@/modules/demand/types"
 import { replicaColumns } from "./Columns"
 import { SeeAllEvents, staticList } from "./Common"
+import { managedReason } from "@/modules/demand/display"
 import { EditButton } from "./EditButton"
 import { GpuNodeCard, LegendSwatch } from "./Performance"
 
@@ -79,6 +80,7 @@ export function PlacementView({
             title="Scheduling constraints"
             action={
               <EditButton
+                disabledReason={managedReason(workload.applied_by)}
                 label="Edit placement policy"
                 onClick={() => onEditPlacement()}
               />

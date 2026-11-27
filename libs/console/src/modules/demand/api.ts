@@ -196,10 +196,12 @@ export function createWorkload(body: WorkloadCreateRequest): Promise<Workload> {
 export function updateWorkload(
   ref: string,
   body: WorkloadUpdateRequest,
-  revision?: string
+  revision?: string,
+  force?: boolean
 ): Promise<Workload> {
   return api.patch<Workload>(`/workloads/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
+    query: force ? { force: true } : undefined,
   })
 }
 
@@ -279,10 +281,12 @@ export function createEndpoint(body: EndpointCreateRequest): Promise<Endpoint> {
 export function updateEndpoint(
   ref: string,
   body: EndpointUpdateRequest,
-  revision?: string
+  revision?: string,
+  force?: boolean
 ): Promise<Endpoint> {
   return api.patch<Endpoint>(`/endpoints/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
+    query: force ? { force: true } : undefined,
   })
 }
 

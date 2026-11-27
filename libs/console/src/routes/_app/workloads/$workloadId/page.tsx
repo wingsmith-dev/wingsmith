@@ -54,6 +54,7 @@ import {
 import {
   useArtifact,
   useDeleteWorkload,
+  useUpdateWorkload,
   useEndpoints,
   useWorkload,
   useWorkloadPlacement,
@@ -66,6 +67,8 @@ import {
 import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
 import { useOperations, useWorkloadEvents } from "@/modules/machinery/queries"
 import { workloadEndpointColumns } from "./Columns"
+import { ManagedBy } from "@/components/demand/managed-by"
+import { managedReason } from "@/modules/demand/display"
 import { SeeAllEvents } from "./Common"
 import { type EditSection, EditButton } from "./EditButton"
 import {
@@ -134,6 +137,7 @@ export function WorkloadDetailPage() {
   const events = useWorkloadEvents(workload?.id, settled)
   const recentEvents = events.items?.slice(0, RECENT_EVENTS)
   const remove = useDeleteWorkload()
+  const takeOver = useUpdateWorkload()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<EditSection>(null)
   const [doomed, setDoomed] = useState(false)
@@ -158,6 +162,7 @@ export function WorkloadDetailPage() {
   }
 
   const scale = workload?.scale
+  const locked = managedReason(workload?.applied_by)
   const operational = workload ? workloadOperationalStatus(workload) : null
 
   return (
@@ -185,9 +190,34 @@ export function WorkloadDetailPage() {
         }
         actions={
           workload && (
-            <div className="flex gap-2">
-              <Button onClick={() => setScaling(true)}>Scale</Button>
-              <Button variant="outline" onClick={() => setPausing(true)}>
+            <div className="flex items-center gap-2">
+              <ManagedBy
+                kind="workload"
+                name={workload.name}
+                manager={workload.applied_by}
+                principal={workload.applied_by_principal}
+                pending={takeOver.isPending}
+                error={takeOver.error}
+                onTakeOver={(done) =>
+                  takeOver.mutate(
+                    { ref: workload.id, body: {}, force: true },
+                    { onSuccess: done }
+                  )
+                }
+              />
+              <Button
+                disabled={!!locked}
+                title={locked}
+                onClick={() => setScaling(true)}
+              >
+                Scale
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!!locked}
+                title={locked}
+                onClick={() => setPausing(true)}
+              >
                 {workload.paused ? "Resume" : "Pause"}
               </Button>
               <Button
@@ -201,11 +231,21 @@ export function WorkloadDetailPage() {
                 Drain
               </Button>
               {isDisaggregated(workload) && (
-                <Button variant="outline" onClick={() => setRatioOpen(true)}>
+                <Button
+                  variant="outline"
+                  disabled={!!locked}
+                  title={locked}
+                  onClick={() => setRatioOpen(true)}
+                >
                   Ratio
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setReshaping(true)}>
+              <Button
+                variant="outline"
+                disabled={!!locked}
+                title={locked}
+                onClick={() => setReshaping(true)}
+              >
                 Reshape
               </Button>
               <Button variant="destructive" onClick={() => setDoomed(true)}>
@@ -400,6 +440,7 @@ export function WorkloadDetailPage() {
                           Configuration
                         </PanelLink>
                         <EditButton
+                          disabledReason={locked}
                           label="Edit engine and hardware"
                           onClick={() => setEditing("engine")}
                         />
@@ -449,6 +490,7 @@ export function WorkloadDetailPage() {
                     title="Details"
                     action={
                       <EditButton
+                        disabledReason={locked}
                         label="Edit details"
                         onClick={() => setEditing("details")}
                       />
@@ -501,6 +543,7 @@ export function WorkloadDetailPage() {
                     description="How these weights are served. There is no object behind it: two workloads configured the same way carry the same digest."
                     action={
                       <EditButton
+                        disabledReason={locked}
                         label="Edit engine and hardware"
                         onClick={() => setEditing("engine")}
                       />
@@ -600,12 +643,14 @@ export function WorkloadDetailPage() {
 
                   <ServingBehaviorCard
                     serving={workload.serving.serving}
-                    onEdit={() => setEditing("serving")}
+                    onEdit={locked ? undefined : () => setEditing("serving")}
                   />
 
                   <CapabilitiesCard
                     capabilities={workload.serving.capabilities}
-                    onEdit={() => setEditing("capabilities")}
+                    onEdit={
+                      locked ? undefined : () => setEditing("capabilities")
+                    }
                   />
                 </div>
 

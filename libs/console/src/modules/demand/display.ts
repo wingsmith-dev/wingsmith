@@ -707,3 +707,10 @@ export function emptyUpstream(): ArtifactUpstream {
     recorded_at: null,
   }
 }
+
+/** Why an edit control is off while a manifest manages the object. */
+export function managedReason(manager: string | null | undefined) {
+  return manager
+    ? `Managed by ${manager}: change it there, or take it over first`
+    : undefined
+}

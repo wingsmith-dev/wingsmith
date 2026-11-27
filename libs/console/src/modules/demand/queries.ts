@@ -341,7 +341,9 @@ export function useUpdateWorkload() {
       ref: string
       body: WorkloadUpdateRequest
       revision?: string
-    }) => updateWorkload(vars.ref, vars.body, vars.revision),
+      /** Takes a manifest-managed object over (ADR 0033). */
+      force?: boolean
+    }) => updateWorkload(vars.ref, vars.body, vars.revision, vars.force),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["workloads"] })
       client.invalidateQueries({ queryKey: ["deployments"] })
@@ -468,7 +470,9 @@ export function useUpdateEndpoint() {
       ref: string
       body: EndpointUpdateRequest
       revision?: string
-    }) => updateEndpoint(vars.ref, vars.body, vars.revision),
+      /** Takes a manifest-managed object over (ADR 0033). */
+      force?: boolean
+    }) => updateEndpoint(vars.ref, vars.body, vars.revision, vars.force),
     onSuccess: () => client.invalidateQueries({ queryKey: ["endpoints"] }),
   })
 }
