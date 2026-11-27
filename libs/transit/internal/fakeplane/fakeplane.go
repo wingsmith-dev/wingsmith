@@ -180,6 +180,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/endpoints/resolved", s.resolvedTable)
 	mux.HandleFunc("GET /v1/gateway/tenants", s.tenantTable)
 	mux.HandleFunc("POST /v1/clusters/tunnel-auth", s.tunnelAuth)
+	// The media job queue (ADR 0041) holds nothing here: a claim finds no job, anything else is
+	// unavailable rather than unknown.
+	mux.HandleFunc("POST /v1/gateway/media-jobs/claim", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1/gateway/media-jobs", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "media jobs are not faked", http.StatusServiceUnavailable)
+	})
+	mux.HandleFunc("/v1/gateway/media-jobs/", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "media jobs are not faked", http.StatusServiceUnavailable)
+	})
 	return mux
 }
 
