@@ -32,6 +32,7 @@ from app.modules.quotas.services import declared_limits
 from .schemas import RuleSchema
 from .schemas import PolicySchema
 from .schemas import EndpointSchema
+from .schemas import WorkloadRefSchema
 from .schemas import ResolvedTableSchema
 from .schemas import EndpointTargetSchema
 from .schemas import EndpointCreateRequest
@@ -41,6 +42,7 @@ from .schemas import EndpointUpdateRequest
 from .schemas import ParameterPolicySchema
 from .schemas import ResolvedEndpointSchema
 from .schemas import ResolvedUpstreamSchema
+from .schemas import EndpointConditionSchema
 from .repository import EndpointRepository
 
 
@@ -65,16 +67,25 @@ def check_targets(targets: list[EndpointTargetRequest]) -> None:
     enabled targets whose weights sum to zero is an endpoint that accepts traffic
     and sends it nowhere, which reads as an outage, not as configuration.
     """
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     live = 0
     for target in targets:
+        if (target.deployment is None) == (target.workload_ref is None):
+            raise Invalid("a target names a deployment or a workload_ref, exactly one of them")
+        key = (
+            ("deployment", target.deployment)
+            if target.deployment is not None
+            else ("workload", target.workload_ref.name)
+        )
+        if not key[1]:
+            raise Invalid(f"a target's {key[0]} name cannot be empty")
         if target.weight < 0:
-            raise Invalid("a target weight cannot be negative", {"deployment": target.deployment})
+            raise Invalid("a target weight cannot be negative", {key[0]: key[1]})
         if target.role not in ROLES:
             raise Invalid(f"unknown role {target.role!r}", {"allowed": sorted(ROLES)})
-        if target.deployment in seen:
-            raise Invalid(f"deployment {target.deployment!r} appears twice", {"deployment": target.deployment})
-        seen.add(target.deployment)
+        if key in seen:
+            raise Invalid(f"{key[0]} {key[1]!r} appears twice", {key[0]: key[1]})
+        seen.add(key)
         if target.enabled:
             live += target.weight
     if targets and not live:
@@ -483,8 +494,34 @@ def _spec_of(endpoint: Endpoint, aliases: builtins.list[str]) -> tuple:
 
 def _targets_of(targets, order) -> tuple:
     """A declared target set by value, so a replay with the same set compares equal."""
-    rows = sorted((str(t.deployment_id), t.weight, t.role, t.enabled, t.served_model_name) for t in targets)
+    rows = sorted(
+        (str(t.deployment_id), t.workload_name or "", t.weight, t.role, t.enabled, t.served_model_name) for t in targets
+    )
     return tuple(rows), tuple(str(u) for u in order or ())
+
+
+def split_weight(weight: int, count: int) -> list[int]:
+    """A workload ref's weight over its `count` routable deployments: an even integer split, the
+    remainder going one each to the first deployments by id, so the parts always sum to `weight`."""
+    base, extra = divmod(weight, count)
+    return [base + (1 if i < extra else 0) for i in range(count)]
+
+
+RESOLVED_REFS = "ResolvedRefs"
+
+
+def ref_conditions(missing: builtins.list[str]) -> builtins.list[EndpointConditionSchema]:
+    """`ResolvedRefs` over the workload refs. A missing one is reported, not refused (ADR 0026)."""
+    if not missing:
+        return [EndpointConditionSchema(type=RESOLVED_REFS, status="True", reason="ResolvedRefs")]
+    return [
+        EndpointConditionSchema(
+            type=RESOLVED_REFS,
+            status="False",
+            reason="WorkloadNotFound",
+            message="no workload " + ", ".join(repr(n) for n in sorted(missing)) + " in the endpoint's project",
+        )
+    ]
 
 
 def _stamp(row) -> dt.datetime | None:
@@ -564,7 +601,14 @@ class EndpointService:
         self.db = db
         self.repo = EndpointRepository(db)
 
-    def schema(self, endpoint: Endpoint, project_uid: str, uids: dict[UUID, str]) -> EndpointSchema:
+    def schema(
+        self,
+        endpoint: Endpoint,
+        project_uid: str,
+        uids: dict[UUID, str],
+        existing: set[tuple[UUID, str]] = frozenset(),
+    ) -> EndpointSchema:
+        refs = [t.workload_name for t in endpoint.targets if t.workload_name is not None]
         return EndpointSchema(
             id=endpoint.uid,
             name=endpoint.name,
@@ -576,14 +620,15 @@ class EndpointService:
             aliases=alias_names(endpoint),
             targets=[
                 EndpointTargetSchema(
-                    deployment_id=uids[t.deployment_id],
+                    deployment_id=uids[t.deployment_id] if t.deployment_id is not None else None,
+                    workload_ref=WorkloadRefSchema(name=t.workload_name) if t.workload_name is not None else None,
                     weight=t.weight,
                     role=t.role,
                     enabled=t.enabled,
                     served_model_name=t.served_model_name,
                 )
                 for t in endpoint.targets
-                if t.deployment_id in uids
+                if t.workload_name is not None or t.deployment_id in uids
             ],
             failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
             surface=endpoint_surface(endpoint.surface),
@@ -592,12 +637,13 @@ class EndpointService:
             updated_at=endpoint.updated_at,
             generation=endpoint.generation,
             revision=_revision(endpoint),
+            conditions=ref_conditions([n for n in refs if (endpoint.project_id, n) not in existing]),
         )
 
     def _referenced(self, endpoints: builtins.list[Endpoint]) -> builtins.list[UUID]:
         ids: list[UUID] = []
         for endpoint in endpoints:
-            ids.extend(t.deployment_id for t in endpoint.targets)
+            ids.extend(t.deployment_id for t in endpoint.targets if t.deployment_id is not None)
             ids.extend(endpoint.failover_order)
         return ids
 
@@ -614,9 +660,14 @@ class EndpointService:
             )
         return found[0]
 
+    async def _existing(self, endpoints: builtins.list[Endpoint]) -> set[tuple[UUID, str]]:
+        return await self.repo.existing_workloads(
+            {(e.project_id, t.workload_name) for e in endpoints for t in e.targets if t.workload_name is not None}
+        )
+
     async def _render(self, endpoint: Endpoint, project_uid: str) -> EndpointSchema:
         uids = await self.repo.deployment_uids(self._referenced([endpoint]))
-        return self.schema(endpoint, project_uid, uids)
+        return self.schema(endpoint, project_uid, uids, await self._existing([endpoint]))
 
     async def get(self, ref: str, project: str | None = None) -> EndpointSchema:
         row = await self._one(ref, project)
@@ -644,7 +695,8 @@ class EndpointService:
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         uids = await self.repo.deployment_uids(self._referenced([r[0] for r in kept]))
-        items = [self.schema(r[0], r.project_uid, uids) for r in kept]
+        existing = await self._existing([r[0] for r in kept])
+        items = [self.schema(r[0], r.project_uid, uids, existing) for r in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def _resolve(
@@ -664,7 +716,7 @@ class EndpointService:
         every deployment there is: an endpoint that fails over to something it
         does not route to is a routing table with a hole in it.
         """
-        refs = [t.deployment for t in targets]
+        refs = [t.deployment for t in targets if t.deployment is not None]
         matches = await self.repo.deployments_by_ref(refs, tenant_id, project_id)
         missing = [ref for ref in refs if ref not in matches]
         if missing:
@@ -679,7 +731,8 @@ class EndpointService:
 
         rows = [
             EndpointTarget(
-                deployment_id=found[t.deployment].id,
+                deployment_id=found[t.deployment].id if t.deployment is not None else None,
+                workload_name=t.workload_ref.name if t.workload_ref is not None else None,
                 weight=t.weight,
                 role=t.role,
                 enabled=t.enabled,
@@ -747,7 +800,11 @@ class EndpointService:
         # open. Declaring one is then unambiguously a request for an alias.
         slug = (data.slug or "").strip().lower()
         if not slug and targets:
-            slug = await self.repo.artifact_slug(targets[0].deployment_id)
+            first = targets[0]
+            if first.deployment_id is not None:
+                slug = await self.repo.artifact_slug(first.deployment_id)
+            else:
+                slug = await self.repo.workload_artifact_slug(project.id, first.workload_name)
         if not slug:
             slug = str(data.name)
 
@@ -941,6 +998,8 @@ class EndpointService:
             uids: dict[UUID, str] = {}
 
             served: list[str] = [_alias_term(alias) for alias in aliases]
+            # A workload ref's weight is split over the upstreams it actually produced.
+            produced: dict[UUID, list[ResolvedUpstreamSchema]] = {}
             for row in grouped[endpoint_id]:
                 target, deployment, cluster = row.EndpointTarget, row.Deployment, row.Cluster
                 serving, artifact, workload = row.ClusterServing, row.Artifact, row.Workload
@@ -981,6 +1040,11 @@ class EndpointService:
                         output_modality=output_modality(workload.serving) if workload is not None else TEXT,
                     )
                 )
+                if target.workload_name is not None:
+                    produced.setdefault(target.id, []).append(upstreams[-1])
+            for split in produced.values():
+                for upstream, weight in zip(split, split_weight(split[0].weight, len(split)), strict=True):
+                    upstream.weight = weight
 
             stamps.extend(own)
             resolved_names.extend(served)

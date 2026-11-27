@@ -121,6 +121,7 @@ def test_failover_order_is_an_ordered_list_of_deployments():
 def test_targets_are_the_weighted_many_to_many():
     assert set(EndpointTargetSchema.__struct_fields__) == {
         "deployment_id",
+        "workload_ref",
         "weight",
         "role",
         "enabled",
@@ -326,6 +327,7 @@ class FakeTarget:
         self.role = role
         self.enabled = enabled
         self.served_model_name = served_model_name
+        self.workload_name = None
         self.created_at = EPOCH
         self.updated_at = None
 
@@ -767,6 +769,9 @@ class FakeCreateRepo:
 
     async def get_alias_owner(self, alias):
         return self.alias_owners.get(alias)
+
+    async def existing_workloads(self, pairs):
+        return set()
 
     async def name_exists(self, slug, exclude_id=None):
         owner = self.slugs.get(slug)
@@ -1517,3 +1522,12 @@ async def test_targets_resolve_inside_the_endpoints_tenant():
 
 async def _value(value):
     return value
+
+
+def test_a_workload_refs_weight_splits_evenly_and_sums_to_the_whole() -> None:
+    from app.modules.endpoints.services import split_weight
+
+    assert split_weight(100, 1) == [100]
+    assert split_weight(100, 3) == [34, 33, 33]
+    assert split_weight(1, 2) == [1, 0]
+    assert sum(split_weight(7, 4)) == 7

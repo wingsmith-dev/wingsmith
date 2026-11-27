@@ -8,16 +8,27 @@ from app.core.schemas import UnsetType
 from app.modules.quotas.schemas import ResolvedLimitsSchema
 
 
+class WorkloadRefSchema(Struct):
+    """A workload by name, always in the endpoint's own project (ADR 0026)."""
+
+    name: str
+
+
 class EndpointTargetSchema(Struct):
-    """One deployment behind one endpoint, with a traffic weight.
+    """One deployment, or one workload by name, behind one endpoint, with a traffic weight.
 
     The deployment is named by id and nothing about the cluster it sits on is
     repeated here. Which cluster a target runs in is a property of the deployment
     and is answered by reading it; copying it onto the endpoint would give a
     global object a per-cluster field and put the split back where it started.
+
+    Exactly one of `deployment_id` and `workload_ref` is set. A workload ref resolves at read time
+    to that workload's current deployments and may name a workload that does not exist yet; the
+    endpoint's `conditions` say so.
     """
 
-    deployment_id: str
+    deployment_id: str | None
+    workload_ref: WorkloadRefSchema | None
     weight: int
     role: str
     enabled: bool
@@ -182,6 +193,15 @@ class EndpointSurfaceSchema(Struct):
     policy: PolicySchema | None = None
 
 
+class EndpointConditionSchema(Struct):
+    """A Kubernetes-style condition: `status` is `"True"`, `"False"` or `"Unknown"`."""
+
+    type: str
+    status: str
+    reason: str
+    message: str = ""
+
+
 class EndpointSchema(Struct):
     """The stable public name clients call. Global and plane-only.
 
@@ -208,16 +228,23 @@ class EndpointSchema(Struct):
     generation: int
     """Counts changes to the declared fields and aliases; targets resolve at read time and do not count."""
     revision: str
+    conditions: list[EndpointConditionSchema] = []
+    """`ResolvedRefs`: `False` with reason `WorkloadNotFound` while a workload ref names no workload
+    in the endpoint's project. Derived on read; never an error."""
 
 
 class EndpointTargetRequest(Struct):
-    """One deployment behind one endpoint.
+    """One deployment, or one workload by name, behind one endpoint.
+
+    Give exactly one of `deployment` and `workload_ref`. A workload ref is accepted when no such
+    workload exists yet and starts routing once it does; it never reaches another project.
 
     `served_model_name` corrects what the engine answers to when the plane derived it wrong.
     Null, the default, means the deployment's own answer stands.
     """
 
-    deployment: str
+    deployment: str | None = None
+    workload_ref: WorkloadRefSchema | None = None
     weight: int = 100
     role: str = "primary"
     enabled: bool = True

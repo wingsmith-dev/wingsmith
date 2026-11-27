@@ -904,22 +904,32 @@ class EndpointAlias(BaseMixin):
 
 
 class EndpointTarget(BaseMixin):
-    """One deployment behind one endpoint, with a traffic weight.
+    """One deployment, or one workload by name, behind one endpoint, with a traffic weight.
 
     `deployment_id` cascades, and nothing retargets the endpoint at a replacement deployment:
-    re-point the endpoint after moving a workload.
+    re-point the endpoint after moving a workload, or target the workload by name instead.
+
+    `workload_name` is an object reference resolved at read time inside the endpoint's own project
+    (ADR 0026): it expands to that workload's current deployments, it may name a workload that does
+    not exist yet, and deleting the workload leaves the reference unresolved rather than deleting it.
+    Exactly one of the two is set.
     """
 
     __tablename__ = "demand_endpoint_target"
-    __table_args__ = (UniqueConstraint("endpoint_id", "deployment_id", name="uq_demand_endpoint_target"),)
+    __table_args__ = (
+        UniqueConstraint("endpoint_id", "deployment_id", name="uq_demand_endpoint_target"),
+        UniqueConstraint("endpoint_id", "workload_name", name="uq_demand_endpoint_target_workload"),
+        CheckConstraint("(deployment_id IS NULL) <> (workload_name IS NULL)", name="ck_demand_endpoint_target_one_ref"),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     endpoint_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    deployment_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=False, index=True
+    deployment_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    workload_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
     role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="primary")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

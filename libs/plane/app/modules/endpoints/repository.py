@@ -6,7 +6,9 @@ from uuid import UUID
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import or_
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,11 +95,20 @@ class EndpointRepository:
         workload, expressed as a subquery so the reverse index stays one round
         trip instead of a fan-out over every endpoint's target list.
         """
-        return (
+        by_deployment = (
             select(EndpointTarget.endpoint_id)
             .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .where(Deployment.workload_id.in_(ref_ids(Workload, workload)))
         )
+        by_name = (
+            select(EndpointTarget.endpoint_id)
+            .join(Endpoint, Endpoint.id == EndpointTarget.endpoint_id)
+            .join(
+                Workload, (Workload.project_id == Endpoint.project_id) & (Workload.name == EndpointTarget.workload_name)
+            )
+            .where(Workload.id.in_(ref_ids(Workload, workload)))
+        )
+        return by_deployment.union(by_name)
 
     def list_query(
         self,
@@ -128,7 +139,7 @@ class EndpointRepository:
     def deployment_uid_query(self, deployment_ids: list) -> Select:
         return select(Deployment.id, Deployment.uid).where(Deployment.id.in_(deployment_ids))
 
-    def resolved_query(self, ref: UUID | None = None) -> Select:
+    def resolved_query(self, endpoint: UUID | None = None) -> Select:
         """Endpoints joined out to the addresses their targets sit behind.
 
         An outer join all the way down, by design: a target whose cluster has
@@ -150,6 +161,11 @@ class EndpointRepository:
         hops are NOT NULL FKs and 1:1, so they multiply no rows; they are outer
         joins only because everything below `EndpointTarget` already is.
 
+        A target that names a workload (ADR 0026) joins that workload by name inside the
+        endpoint's own project, never another, and then every deployment of it: one row per
+        deployment, which is the expansion. A name with no such workload yields one row with no
+        deployment, the same shape as a target whose deployment is gone.
+
         The workload also carries `serving_digest`, which is what the resolution's
         revision is versioned by; see `_revision_of`.
 
@@ -164,6 +180,7 @@ class EndpointRepository:
         a disabled endpoint: the gateway's table carries no project flag, so this
         is the only place a project can be switched off.
         """
+        ref = aliased(Workload, name="ref_workload")
         query = (
             select(
                 Endpoint,
@@ -180,7 +197,14 @@ class EndpointRepository:
             .join(Project, Project.id == Endpoint.project_id)
             .join(Tenant, Tenant.id == Project.tenant_id)
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
-            .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .outerjoin(
+                ref,
+                (ref.project_id == Endpoint.project_id) & (ref.name == EndpointTarget.workload_name),
+            )
+            .outerjoin(
+                Deployment,
+                or_(EndpointTarget.deployment_id == Deployment.id, Deployment.workload_id == ref.id),
+            )
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
@@ -189,10 +213,10 @@ class EndpointRepository:
             .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Endpoint.project_id))
             .options(selectinload(Endpoint.aliases))
             .where(Endpoint.enabled.is_(True), Project.enabled.is_(True))
-            .order_by(Endpoint.seq.asc())
+            .order_by(Endpoint.seq.asc(), Deployment.uid.asc())
         )
-        if ref is not None:
-            query = query.where(Endpoint.id == ref)
+        if endpoint is not None:
+            query = query.where(Endpoint.id == endpoint)
         return query
 
     async def resolved(self, ref: UUID | None = None) -> builtins.list[Row]:
@@ -229,6 +253,19 @@ class EndpointRepository:
             return {}
         result = await self.db.execute(self.deployment_uid_query(deployment_ids))
         return {row.id: row.uid for row in result.all()}
+
+    async def existing_workloads(self, pairs: set[tuple[UUID, str]]) -> set[tuple[UUID, str]]:
+        """Which (project id, workload name) references name a workload, in one statement."""
+        if not pairs:
+            return set()
+        names = {name for _, name in pairs}
+        projects = {project for project, _ in pairs}
+        result = await self.db.execute(
+            select(Workload.project_id, Workload.name).where(
+                Workload.name.in_(names), Workload.project_id.in_(projects)
+            )
+        )
+        return {(row.project_id, row.name) for row in result.all()} & pairs
 
     async def project_by_ref(self, ref: str) -> Project | None:
         """By id or by slug. A slug is unique per tenant, so one two tenants share is refused."""
@@ -288,6 +325,16 @@ class EndpointRepository:
             .join(Workload, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .join(Deployment, Deployment.workload_id == Workload.id)
             .where(Deployment.id == deployment_id)
+            .limit(1)
+        )
+        return (result.scalar_one_or_none() or "").strip()
+
+    async def workload_artifact_slug(self, project_id: UUID, name: str) -> str:
+        """`artifact_slug` for a workload ref: empty when the workload does not exist yet."""
+        result = await self.db.execute(
+            select(Artifact.slug)
+            .join(Workload, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
+            .where(Workload.project_id == project_id, Workload.name == name)
             .limit(1)
         )
         return (result.scalar_one_or_none() or "").strip()
