@@ -562,6 +562,45 @@ type ServingSpec struct {
 	// and GroupDevices, the devices one replica of every role takes together.
 	Topology ServingTopology `json:"topology"`
 	Router   ServingRouter   `json:"router"`
+	// Runtime is dynamo (the engine fields above) or a custom container.
+	Runtime ServingRuntime `json:"runtime"`
+}
+
+// ServingRuntime is what runs the weights: kind dynamo, or kind container with
+// the worker in Container.
+type ServingRuntime struct {
+	Kind      string            `json:"kind"`
+	Container *ServingContainer `json:"container"`
+}
+
+// ServingContainer is a custom worker. The plane mounts the weights read-only at
+// $WS_MODEL_PATH and routes to the port named http.
+type ServingContainer struct {
+	Image          string                 `json:"image"`
+	Command        []string               `json:"command"`
+	Args           []string               `json:"args"`
+	Env            []ServingEnvVar        `json:"env"`
+	Ports          []ServingContainerPort `json:"ports"`
+	Protocol       string                 `json:"protocol"`
+	ReadinessProbe map[string]any         `json:"readiness_probe"`
+	LivenessProbe  map[string]any         `json:"liveness_probe"`
+	StartupProbe   map[string]any         `json:"startup_probe"`
+	Metrics        *ServingMetrics        `json:"metrics"`
+}
+
+type ServingEnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type ServingContainerPort struct {
+	Name          string `json:"name"`
+	ContainerPort int    `json:"container_port"`
+}
+
+type ServingMetrics struct {
+	Port string `json:"port"`
+	Path string `json:"path"`
 }
 
 // ServingRole is one role of a disaggregated topology (prefill, decode) and
@@ -618,6 +657,8 @@ type ServingRequest struct {
 	// invalid.
 	Behaviour    *ServingBehaviour    `json:"serving,omitempty"`
 	Capabilities *ServingCapabilities `json:"capabilities,omitempty"`
+	// Runtime is nil for a Dynamo workload, so the plane's default stands.
+	Runtime *ServingRuntime `json:"runtime,omitempty"`
 }
 
 // WorkloadScale is the declared total and what the shares actually add up to.

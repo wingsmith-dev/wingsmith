@@ -598,6 +598,10 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		outputModality       string
 		modelClass           string
 		samplingDefaults     []string
+		runtimeKind          string
+		image                string
+		containerPort        int
+		containerArgs        []string
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -619,14 +623,22 @@ An image or video model runs on --engine omni (Dynamo's vLLM-Omni worker) and
 needs --output-modality image|video instead of --context-length. --model-class
 and --sampling-default go into the worker's stage configuration; the second is
 how a distilled model gets its step count, because omni defaults every model to
-50 inference steps.`,
+50 inference steps.
+
+--runtime container runs a custom worker instead of Dynamo: --image (pinned by
+digest) serving openai-chat on --port, with the weights mounted read-only at
+$WS_MODEL_PATH. --arg passes its arguments, which may use $(WS_MODEL_PATH),
+$(WS_SERVED_MODEL_NAME) and $(WS_PORT).`,
 		Example: `  wings workload create assistant --project core --artifact gpt-oss-120b \
     --class h100-80 --context-length 8192 --scale 2
   wings workload create assistant-tp8 --project core --artifact gpt-oss-120b \
     --class h100-80 --devices 8 --tensor-parallel 8 --context-length 32768
   wings workload create flux-schnell --project core --artifact flux.1-schnell \
     --class h100-80 --engine omni --engine-runtime-version 1.4.1 \
-    --output-modality image --sampling-default num_inference_steps=4`,
+    --output-modality image --sampling-default num_inference_steps=4
+  wings workload create my-worker --project core --artifact qwen3-8b --class l40s-48 \
+    --runtime container --image ghcr.io/acme/worker@sha256:... \
+    --arg --model --arg '$(WS_MODEL_PATH)'`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {
@@ -635,7 +647,11 @@ how a distilled model gets its step count, because omni defaults every model to
 			}
 			project := app.Project
 			omni := isOmniEngine(engine)
-			if class == "" || (!omni && contextLength <= 0) {
+			runtime, err := containerRuntime(runtimeKind, image, containerPort, containerArgs)
+			if err != nil {
+				return err
+			}
+			if class == "" || (!omni && runtime == nil && contextLength <= 0) {
 				return errs.New(errs.CodeInputRequired, "a workload needs --class and --context-length").
 					WithCause("a device count without a device class is not a shape, and the engine is told a context length either way")
 			}
@@ -645,6 +661,9 @@ how a distilled model gets its step count, because omni defaults every model to
 			}
 			if !omni && (outputModality != "" || modelClass != "" || len(samplingDefaults) > 0) {
 				return errs.New(errs.CodeUsage, "--output-modality, --model-class and --sampling-default are for --engine omni")
+			}
+			if runtime != nil {
+				engine = ""
 			}
 			behaviour, err := omniBehaviour(outputModality, modelClass, samplingDefaults)
 			if err != nil {
@@ -706,6 +725,7 @@ how a distilled model gets its step count, because omni defaults every model to
 				},
 				Overlay:   api.ServingOverlay{PodSpec: map[string]any{}, Dynamo: map[string]any{}},
 				Behaviour: behaviour,
+				Runtime:   runtime,
 			}
 			if cmd.Flags().Changed("max-batch-tokens") {
 				serving.MaxBatchTokens = &maxBatchTokens
@@ -790,7 +810,37 @@ how a distilled model gets its step count, because omni defaults every model to
 	fl.StringVar(&modelClass, "model-class", "", "omni pipeline class, e.g. LTX2Pipeline (default: inferred by omni)")
 	fl.StringArrayVar(&samplingDefaults, "sampling-default", nil,
 		"omni default sampling parameter (KEY=VALUE, repeatable), e.g. num_inference_steps=8")
+	fl.StringVar(&runtimeKind, "runtime", "dynamo", "dynamo|container")
+	fl.StringVar(&image, "image", "", "the custom worker's image, pinned by digest (--runtime container)")
+	fl.IntVar(&containerPort, "port", 8000, "the port the custom worker serves on (--runtime container)")
+	fl.StringArrayVar(&containerArgs, "arg", nil, "a custom worker argument (repeatable, --runtime container)")
 	return cmd
+}
+
+// containerRuntime is the runtime block --runtime container sends, nil under
+// dynamo so the plane's default stands.
+func containerRuntime(kind, image string, port int, args []string) (*api.ServingRuntime, error) {
+	switch kind {
+	case "", "dynamo":
+		if image != "" || len(args) > 0 {
+			return nil, errs.New(errs.CodeUsage, "--image and --arg are for --runtime container")
+		}
+		return nil, nil
+	case "container":
+	default:
+		return nil, errs.New(errs.CodeUsage, "--runtime is dynamo or container, not %q", kind)
+	}
+	if image == "" {
+		return nil, errs.New(errs.CodeInputRequired, "--runtime container needs --image")
+	}
+	return &api.ServingRuntime{Kind: "container", Container: &api.ServingContainer{
+		Image:    image,
+		Command:  []string{},
+		Args:     append([]string{}, args...),
+		Env:      []api.ServingEnvVar{},
+		Ports:    []api.ServingContainerPort{{Name: "http", ContainerPort: port}},
+		Protocol: "openai-chat",
+	}}, nil
 }
 
 // isOmniEngine is the plane's and the operator's set of spellings for vLLM-Omni.

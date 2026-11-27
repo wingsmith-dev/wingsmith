@@ -104,6 +104,10 @@
           "queue_threshold": null,
           "queue_policy": null,
           "kv_overlap_score_credit": null
+        },
+        "runtime": {
+          "kind": "dynamo",
+          "container": null
         }
       },
       "adapter_artifact_ids": [],
@@ -261,6 +265,10 @@
           "queue_threshold": null,
           "queue_policy": null,
           "kv_overlap_score_credit": null
+        },
+        "runtime": {
+          "kind": "dynamo",
+          "container": null
         }
       },
       "adapter_artifact_ids": [],
@@ -418,6 +426,10 @@
           "queue_threshold": null,
           "queue_policy": null,
           "kv_overlap_score_credit": null
+        },
+        "runtime": {
+          "kind": "dynamo",
+          "container": null
         }
       },
       "adapter_artifact_ids": [],
