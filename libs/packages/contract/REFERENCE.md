@@ -86,6 +86,12 @@ response follows are in [`API.md`](API.md).
 | GET | `/v1/benchmarks/{ref}` | GetRun |
 | GET | `/v1/benchmarks/{ref}/verdict` | GetVerdict |
 
+## `/v1/changes`
+
+| Method | Path | What |
+|---|---|---|
+| GET | `/v1/changes` | ListChanges |
+
 ## `/v1/clusters`
 
 | Method | Path | What |

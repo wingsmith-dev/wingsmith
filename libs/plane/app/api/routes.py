@@ -6,6 +6,7 @@ from app.api.spa import ConsoleRoutes
 from app.api.spa import has_console
 from app.api.metrics import PrometheusRoutes
 from app.core.routes import HealthRoutes
+from app.core.change_routes import ChangeRoutes
 from app.core.system_routes import SystemRoutes
 from app.modules.fleet.routes import FleetRoutes
 from app.modules.nodes.routes import NodeRoutes
@@ -60,6 +61,7 @@ V1_ROUTES = [
     DiscoveredWorkloadRoutes,
     EndpointRoutes,
     ManifestRoutes,
+    ChangeRoutes,
     TenantRoutes,
     GatewayRoutes,
     ProjectRoutes,

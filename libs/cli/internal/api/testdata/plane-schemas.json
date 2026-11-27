@@ -551,6 +551,20 @@
   "tool_calling_supported": "boolean",
   "tool_choice_modes": "[]string"
  },
+ "ChangeListSchema": {
+  "compacted_through": "string",
+  "items": "[]$ChangeSchema",
+  "resource_version": "string"
+ },
+ "ChangeSchema": {
+  "generation": "integer?",
+  "kind": "string",
+  "name": "string",
+  "namespace": "string?",
+  "op": "string",
+  "resource_version": "string",
+  "uid": "string"
+ },
  "ClusterCreateRequest": {
   "capabilities": "object",
   "display_name": "string?",
