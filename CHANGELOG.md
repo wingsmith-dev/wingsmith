@@ -9,6 +9,13 @@ protocol can change between minor versions.
 
 ### Added
 
+- Custom workers: a workload can declare `spec.runtime.kind: container` (HTTP API
+  `serving.runtime`) with a digest-pinned image, command, args, env, ports, probes and metrics. The
+  operator renders a Deployment and Service with the model mounted read-only at `$WS_MODEL_PATH`;
+  the agent routes to it by `wingsmith.dev/role=frontend`. MVP: `openai-chat`, aggregated, one node.
+  Operators report discovered `runtimes`, and clusters without Dynamo take container workloads only.
+  `wings workload create --runtime container --image ...` (ADR 0031).
+
 - `PUT /v1/manifests/{workloads|endpoints}/{project}/{name}` creates (201) or replaces (200) an
   object from its manifest: only declared fields are compared, so a replay changes nothing;
   `If-Match`/`metadata.resourceVersion` conflicts are 409, immutable field changes 422; replica

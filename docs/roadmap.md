@@ -21,8 +21,9 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **Quota floors and fair share.** A Quota records a guaranteed floor, a limit and an over-quota
   weight, but placement uses it only as a ceiling on what the project may hold. The floor is not
   reserved against other projects, and idle capacity is not shared out by weight.
-- **Engines other than NVIDIA Dynamo.** The wire carries Wingsmith's own objects so a second renderer
-  is possible, but Dynamo (with vLLM, SGLang or TensorRT-LLM inside it) is the only one.
+- **Engines other than NVIDIA Dynamo.** A workload can run a custom container (`runtime.kind:
+  container`) on Kubernetes, but only aggregated, single-node and `openai-chat`. Completions,
+  embeddings, plain HTTP, gang workers and host execution are still to come.
 - **Endpoint-level benchmarks.** Harnesses declare an `endpoint` level (conformance with its
   failover probe, evalscope against a served endpoint, an LLM judge credential), but nothing
   executes a run at that level. The plane serves only the `deployment` and `workload` levels and
