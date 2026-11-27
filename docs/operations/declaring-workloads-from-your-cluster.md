@@ -1,17 +1,18 @@
 # Declaring workloads from your cluster
 
-A member cluster can declare Wingsmith workloads as Kubernetes resources. Apply a `Workload`
-(`plane.wingsmith.dev/v1alpha1`) with kubectl, Argo CD or Flux; the Wingsmith operator in that
+A member cluster can declare Wingsmith workloads and endpoints as Kubernetes resources. Apply a
+`Workload` or `Endpoint` (`plane.wingsmith.dev/v1alpha1`) with kubectl, Argo CD or Flux; the Wingsmith operator in that
 cluster applies it to the plane and reports back in the resource's status (ADR 0042). The document
 is the same one `wings apply -f` takes.
 
 ## Set up
 
-1. Install or upgrade the cluster-setup chart. It installs the `workloads.plane.wingsmith.dev` CRD,
-   the operator RBAC for it, and two aggregated roles: `wingsmith-edit` (folded into the built-in
+1. Install or upgrade the cluster-setup chart. It installs the `workloads.plane.wingsmith.dev` and
+   `endpoints.plane.wingsmith.dev` CRDs, the operator RBAC for them, and two aggregated roles: `wingsmith-edit` (folded into the built-in
    `edit`/`admin`) and `wingsmith-view` (folded into `view`). Helm does not upgrade CRDs in
-   `crds/`; on an existing install apply `crds/plane.wingsmith.dev_workloads.yaml` once and restart
-   the operator. `cluster.declareWorkloads: false` turns the feature off.
+   `crds/`; on an existing install apply `crds/plane.wingsmith.dev_workloads.yaml` and
+   `crds/plane.wingsmith.dev_endpoints.yaml` once and restart the operator. A kind whose CRD is
+   missing is skipped. `cluster.declareWorkloads: false` turns the feature off.
 2. Link the project to the cluster on the plane, naming the namespaces allowed to declare into it.
    A cluster can only declare into linked projects, and only from listed namespaces:
 
@@ -62,6 +63,23 @@ kubectl wait workload/chat -n team-a --for=condition=Synced
 The plane object is `search/chat`, managed by `k8s:<cluster>/team-a`. Another namespace or a
 `wings apply` declaring the same name gets a conflict instead of overwriting it.
 
+An Endpoint names its targets in the same project, by workload or by deployment:
+
+```yaml
+apiVersion: plane.wingsmith.dev/v1alpha1
+kind: Endpoint
+metadata:
+  name: chat
+  namespace: team-a
+spec:
+  slug: chat
+  targets:
+    - workloadRef: {name: chat}
+```
+
+It is synced the same way (same allowlist, manager, finalizer and `deletionPolicy`); it has no
+placement.
+
 **Placement** defaults to this cluster only. To let placement use others, list them:
 `spec.placement.allowedClusters: [alpha, beta]`. The list can change later; it takes effect at the
 next expansion. The resource's spec is never rewritten; the effective list is in
@@ -74,11 +92,17 @@ next expansion. The resource's spec is never rewritten; the effective list is in
 | `observedGeneration` | the resource generation the plane last answered for |
 | `planeUID`, `planeResourceVersion`, `planeGeneration` | the plane object as last applied |
 | `Synced` | the plane accepted this generation: `True/Applied`; `False` with `ManagerConflict` (another field manager owns the plane object), `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `NamespaceNotAllowed` (namespace not on the link's allowlist), `PlaneError`; `Unknown/PlaneUnreachable` |
-| `Ready` | serving. `Unknown/AwaitingStatus` for now: serving status from the plane arrives in a later release |
+| `Ready` | serving, as the plane derives it. Workload: `True/ReplicasReady` when every desired replica is ready, else `False` with `ReplicasNotReady` or `Paused`. Endpoint: `True/Routable` when at least one target has a ready replica, else `False` with `NoReadyTargets` or `Disabled` |
+| `PlacementDrift` | Workload: `True/OutsideAllowedClusters` while replicas run on clusters outside `allowedClusters` (they are not moved) |
+| `Unschedulable` | Workload: `True/InsufficientCapacity` while placement placed fewer replicas than asked |
 | `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`, `NamespaceNotAllowed`), or `DeleteFailing` after 10 failed plane deletes |
-| `Reconciling` | `True` while waiting on the plane or on serving status |
+| `Reconciling` | `True` while waiting on the plane or until `Ready` is True |
+| `placement.clusters`, `replicas` | Workload: desired and ready replicas per cluster, and placed/ready in total |
+| `targets` | Endpoint: the deployments its targets resolve to |
 
-`kubectl get workloads` shows Synced, Ready and Age. The conditions follow kstatus: Stalled=True is
+Status follows the plane: when a plane object this cluster declared changes, serving included, the
+plane tells the operator, which refreshes the resource within seconds. `kubectl get workloads` and
+`kubectl get endpoints.plane.wingsmith.dev` show Synced, Ready and Age. The conditions follow kstatus: Stalled=True is
 failed, Reconciling=True is in progress. A resource the operator has not written status to yet has
 no conditions, which kstatus reads as Current; wait on `condition=Synced`, not on kstatus
 alone right after an apply.
@@ -121,18 +145,24 @@ The plane workload then stays. It carries `plane.wingsmith.dev/origin-cluster`, 
 and `origin-uid` in its last-applied record (`plane.wingsmith.dev/last-applied`), so leftovers from a
 cluster can be found and deleted with `wings` or the API.
 
+**Deleting from outside the cluster.** `DELETE /v1/manifests/workloads/{project}/{name}` (and
+`/endpoints/...`) on an object a cluster declared is a 409 naming `k8s:<cluster>/<namespace>`: the
+custom resource would apply it again. Delete the resource instead, or pass `?force=true`.
+
 ## Argo CD
 
 Point an Application at a directory of Workload manifests; nothing Argo-specific is needed in the
 files, and since the operator writes only status and finalizers there is no drift. Add the health
-check from `libs/operator/deploy/argocd/workload-health.lua` to `argocd-cm` (no status is
-Progressing, Stalled or Synced=False is Degraded, Ready=True is Healthy, anything else
-Progressing):
+check from `libs/operator/deploy/argocd/workload-health.lua` to `argocd-cm` for both kinds (no
+status is Progressing, Stalled or Synced=False is Degraded, Ready=True is Healthy, anything else
+Progressing with Ready's message):
 
 ```yaml
 data:
   resource.customizations.health.plane.wingsmith.dev_Workload: |
     # contents of workload-health.lua
+  resource.customizations.health.plane.wingsmith.dev_Endpoint: |
+    # the same contents
 ```
 
 ```yaml

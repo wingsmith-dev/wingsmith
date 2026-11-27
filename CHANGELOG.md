@@ -9,6 +9,19 @@ protocol can change between minor versions.
 
 ### Added
 
+- Endpoint resources in member clusters (ADR 0042): the cluster-setup chart installs
+  `endpoints.plane.wingsmith.dev`, synced like Workload (same namespace allowlist, finalizer,
+  `deletionPolicy`, RBAC and Argo CD health check). On an existing install apply
+  `crds/plane.wingsmith.dev_endpoints.yaml` once.
+- Serving status reaches cluster-declared resources: manifests carry a derived `Ready` condition
+  (workload: every desired replica ready; endpoint: at least one target serving), a deployment's
+  phase or ready count moving logs a change on its workload and endpoints, and the hub sends
+  `manifest.changed` for this cluster's objects so the operator refreshes `Ready`, `PlacementDrift`,
+  `Unschedulable`, `status.placement.clusters` and `status.replicas` (endpoints: `status.targets`).
+  `manifest.result` carries the plane `status`.
+- `DELETE /v1/manifests/{workloads|endpoints}/{project}/{name}` with a field manager check: an
+  object another manager applied (another `--field-manager`, or a member cluster) is a 409 naming
+  it unless `?force=true`.
 - Cluster-project links carry a namespace allowlist (ADR 0042, migration `b9c0d1e2f3a4`):
   `PUT /v1/clusters/{ref}/projects/{project}` takes `{"namespaces": [...]}` and `GET` returns it.
   Only listed namespaces may declare; others get `Synced=False/NamespaceNotAllowed`. Existing links

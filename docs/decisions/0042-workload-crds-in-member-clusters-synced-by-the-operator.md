@@ -65,6 +65,31 @@ member cluster and the operator, which already holds a session to the plane, syn
   reapplies every resource; the plane's server-side diff answers `unchanged`, so replays move
   nothing.
 
+## Amendment: Endpoint CRD and serving status (P1.16, 2026-11-27)
+
+- **`endpoints.plane.wingsmith.dev`**, same pattern as Workload: one reconciler per kind, same
+  namespace label and allowlist, finalizer, `deletionPolicy` and conditions; no placement default.
+  The wire `kind` takes `Endpoint`; the hub calls `put_endpoint` / `delete_endpoint`, with the same
+  manager derivation and scoping, so a cluster token reaches only linked projects from allowlisted
+  namespaces for both kinds.
+- **Ready comes from the plane.** The manifest read derives `Ready`: a workload is ready when every
+  desired replica is (`Paused`, `ReplicasNotReady` otherwise); an endpoint when it is enabled and at
+  least one resolved target has a ready replica (`Routable`, `NoReadyTargets`, `Disabled`). `wings
+  get`, the HTTP watch and the custom resources read the same condition.
+- **Status down through the change log.** Ingestion logs a `MODIFIED` change on a workload and on
+  every endpoint routing to it when a deployment's phase or ready count moves, so the ADR 0039 log
+  carries serving changes. Each hub session reads that log (the watch's LISTEN fanout, outside its
+  slot cap) for objects managed by `k8s:<this cluster>/` and sends `manifest.changed {kind, project,
+  name, namespace}`; the operator reconciles that resource, which reapplies it (a no-op on the plane)
+  and writes the `status` the `manifest.result` now carries: `Ready`, `PlacementDrift`,
+  `Unschedulable`, `placement.clusters`, `replicas` (endpoints: `targets`). Reconciling stays True
+  until Ready is; Stalled is only for refusals. One code path for status, at the cost of one no-op
+  apply per serving change, bounded by the controller's rate limiter. A lost frame is caught by the
+  periodic resync.
+- **Manifest DELETE over HTTP checks the manager.** `DELETE /v1/manifests/{workloads|endpoints}/
+  {project}/{name}` is a 409 naming the manager when another one applied the object, unless
+  `?force=true`. Imperative deletes (`DELETE /v1/workloads/{ref}`) are unchanged.
+
 ## Consequences
 
 - One manifest file works for `wings apply` and `kubectl apply`.
@@ -72,5 +97,5 @@ member cluster and the operator, which already holds a session to the plane, syn
   finalizer by hand; the plane object is then left behind and found by its origin annotations.
 - The loose schema (`x-kubernetes-preserve-unknown-fields`) means typos surface as
   `Synced=False/Invalid` after admission, not as an API-server refusal, until P1.17.
-- Deferred: Endpoint CRD and status from the plane watch (P1.16), generated schema/CEL, force
+- Deferred: generated schema/CEL, force
   annotation (P1.17), Artifact CRD and per-field ownership (P1.18). Hosts keep `wings apply`.
