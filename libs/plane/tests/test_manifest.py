@@ -38,6 +38,7 @@ def test_the_manifest_routes_are_addressed_by_namespace_and_name() -> None:
     paths = {p for p in create_app().openapi_schema.to_schema()["paths"] if p.startswith("/v1/manifests")}
     assert paths == {
         "/v1/manifests/workloads/{project}/{name}",
+        "/v1/manifests/workloads/{project}/{name}/scale",
         "/v1/manifests/endpoints/{project}/{name}",
         "/v1/manifests/artifacts/{project}/{name}",
         "/v1/manifests/artifacts/{name}",
