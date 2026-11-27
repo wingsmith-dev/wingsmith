@@ -736,7 +736,7 @@ type Workload struct {
 	// artifact's slug. It is reported, never declared.
 	ServedModelName string  `json:"served_model_name"`
 	ArtifactTag     *string `json:"artifact_tag"`
-	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0033).
+	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0034).
 	AppliedBy          *string              `json:"applied_by"`
 	AppliedByPrincipal *string              `json:"applied_by_principal"`
 	AppliedAt          *time.Time           `json:"applied_at"`
@@ -1005,7 +1005,7 @@ type Endpoint struct {
 	Revision  string          `json:"revision"`
 	// Conditions carries ResolvedRefs, False while a workload ref names no workload.
 	Conditions []EndpointCondition `json:"conditions"`
-	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0033).
+	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0034).
 	AppliedBy          *string    `json:"applied_by"`
 	AppliedByPrincipal *string    `json:"applied_by_principal"`
 	AppliedAt          *time.Time `json:"applied_at"`

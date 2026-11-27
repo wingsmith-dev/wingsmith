@@ -36,7 +36,7 @@ import (
 var version = "dev"
 
 const usage = `usage:
-  wingsmith-host enrol <token> --plane <wss://hub-url> --cluster <name> [--config path] [--token-file path]
+  wingsmith-host enrol <token> --plane <wss://hub-url> --cluster <name> [--gateway host:port] [--config path] [--token-file path]
   wingsmith-host run [--config path] [--serve]
   wingsmith-host inventory
   wingsmith-host version
@@ -76,6 +76,7 @@ func enrol(args []string) error {
 	fs.StringVar(&cfg.TokenPath, "token-file", host.DefaultTokenPath, "where to write the token (0600)")
 	fs.StringVar(&cfg.StateDir, "state-dir", host.DefaultStateDir, "where the resume cursor and host state live")
 	fs.StringVar(&cfg.CAFile, "ca-file", "", "PEM bundle to verify the hub with, instead of the system roots")
+	fs.StringVar(&cfg.Gateway, "gateway", "", "the tunnel gateway host:port, needed to serve")
 	insecure := fs.Bool("insecure", false, "allow a ws:// hub URL (local development only)")
 	// The token is positional and comes first; flag stops at the first non-flag, so split it off.
 	if len(args) == 0 || len(args[0]) == 0 || args[0][0] == '-' {

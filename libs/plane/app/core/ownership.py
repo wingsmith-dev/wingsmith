@@ -1,4 +1,4 @@
-"""Who manages an applied object, and the guard that keeps other writers off it (ADR 0033).
+"""Who manages an applied object, and the guard that keeps other writers off it (ADR 0034).
 
 A PUT records its field manager (`?fieldManager=`, `wings-cli` by default) on the object. From
 then on a console PATCH, a workload operation, or a PUT from another manager is a 409 naming the

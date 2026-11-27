@@ -766,3 +766,4 @@ Behaviour that is true today and worth knowing before you depend on it. Unbuilt 
 | [0029](../decisions/0029-manifests-are-applied-with-put.md) | Workload and Endpoint manifests are applied with PUT |
 | [0032](../decisions/0032-apply-merges-three-way-against-a-last-applied-record.md) | Apply merges three-way against a last-applied record |
 | [0033](../decisions/0033-an-applied-object-has-one-field-manager.md) | An applied object has one field manager |
+| [0034](../decisions/0034-hosts-serve-containers-through-the-docker-engine-api.md) | Hosts serve containers through the Docker Engine API |

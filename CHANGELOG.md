@@ -15,7 +15,13 @@ protocol can change between minor versions.
   operation other than drain, or a PUT from another manager is then a 409 naming the manager;
   `?force=true` takes the object over and files a `*.takeover` operation. `wings apply
   --field-manager` and `--force-conflicts`; the console shows "Managed by" with a "Take over" action
-  (ADR 0033).
+- Hosts serve container workloads (`runtime.kind: container`). With `serve: true` and a `gateway`
+  in host.json, `wingsmith-host run` creates one Docker container per replica with GPUs pinned by
+  UUID, the model cache mounted read-only, the port on 127.0.0.1 only, no capabilities and a
+  read-only root; readiness runs the workload's httpGet probe; and the same binary holds the
+  data-path tunnel. Placement now takes container workloads on hosts that report the runtime and
+  still refuses Dynamo there. Weights must be in the cache by hand until host prefetch lands
+  (ADR 0034).
 - `wings apply -f file|dir|- [-R]` and `wings diff`. The plane keeps the last manifest applied to
   each Workload and Endpoint (`plane.wingsmith.dev/last-applied`) and merges against it, so a field
   removed from the file is reset on the next apply. PUT takes `?dryRun=All` and answers
