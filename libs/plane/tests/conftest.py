@@ -175,7 +175,7 @@ async def fetch(sessions, sql: str, params=None) -> list:
         return result.all()
 
 
-# ── Change-log guard (ADR 0035) ───────────────────────────────────────────────
+# ── Change-log guard (ADR 0037) ───────────────────────────────────────────────
 # Every commit that app code makes after writing a Workload, Endpoint or Artifact must carry a
 # recorded change for each object written. Seeding from tests is exempt: only commits awaited from
 # an `app.` module are checked. The origin is taken at `AsyncSession.commit`, because the sync

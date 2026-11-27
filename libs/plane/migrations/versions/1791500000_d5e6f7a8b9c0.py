@@ -1,10 +1,10 @@
 """change log and resource_version
 
 Revision ID: d5e6f7a8b9c0
-Revises: c4d5e6f7a8b9
+Revises: d8e9f0a1b2c3
 Create Date: 2026-11-27 23:00:00.000000
 
-The durable, ordered change log for workloads, endpoints and artifacts (ADR 0035), the row that
+The durable, ordered change log for workloads, endpoints and artifacts (ADR 0037), the row that
 records how far it has been compacted, and `resource_version` on the three tables. Existing rows
 start at 0: no change has been logged for them yet, and the first write moves them onto the log.
 """
@@ -17,7 +17,7 @@ from alembic import op
 
 
 revision: str = "d5e6f7a8b9c0"
-down_revision: str | None = "c4d5e6f7a8b9"
+down_revision: str | None = "d8e9f0a1b2c3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

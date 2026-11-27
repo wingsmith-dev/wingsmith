@@ -1,4 +1,4 @@
-"""The single write path (ADR 0035): a writer that skips `record_change` fails the suite."""
+"""The single write path (ADR 0037): a writer that skips `record_change` fails the suite."""
 
 import pytest
 

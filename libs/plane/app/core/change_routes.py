@@ -1,4 +1,4 @@
-"""`GET /v1/changes`: the change log as ordered hints (ADR 0035).
+"""`GET /v1/changes`: the change log as ordered hints (ADR 0037).
 
 A stub for the watch that P1.10 streams: changes after `since`, oldest first, each a hint naming
 the object, never its body. A `since` the log has compacted past is 410 Gone; relist and resume

@@ -1,4 +1,4 @@
-"""The durable change log (ADR 0035): ordering, rollback, tombstones, resourceVersion, compaction."""
+"""The durable change log (ADR 0037): ordering, rollback, tombstones, resourceVersion, compaction."""
 
 import asyncio
 import datetime as dt

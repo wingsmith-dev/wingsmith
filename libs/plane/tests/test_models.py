@@ -86,7 +86,7 @@ def test_metadata_contains_every_expected_table() -> None:
 
 
 LOG_TABLES = {"change_log", "change_log_state"}
-"""The change log is keyed by its own seq, which is the point of it (ADR 0035), not by the mixin's."""
+"""The change log is keyed by its own seq, which is the point of it (ADR 0037), not by the mixin's."""
 
 
 def test_metadata_contains_no_unexpected_tables() -> None:

@@ -64,7 +64,7 @@ def derive_phase(deployments: list[Deployment]) -> str:
 
 
 def _revision(workload: Workload) -> str:
-    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0035).
+    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0037).
 
     Any logged write moves it, status and rollups included, as Kubernetes' `resourceVersion` does;
     `generation` stays the spec counter.
