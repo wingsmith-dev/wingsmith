@@ -29,6 +29,11 @@ protocol can change between minor versions.
 
 ### Changed
 
+- Endpoint names are unique per project instead of globally. A bare name two projects share needs
+  `?project=` (or the id) on endpoint reads, writes, metrics and SLA; `wings` retries it in the
+  default project. Endpoint slugs are now unique, and a slug another endpoint has as its slug or
+  alias is refused with 409; the migration stops and lists any existing duplicates (ADR 0024).
+
 - The model cache keeps private artifacts under `/models/p/<project>/`, and serving, prefetch and
   benchmark pods mount only their artifact's directory by `subPath` instead of the volume root.
   Serving pods of a private artifact get no token and run with `HF_HUB_OFFLINE=1`. On a managed
