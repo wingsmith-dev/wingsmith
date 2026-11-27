@@ -128,7 +128,8 @@ replica waiting for the lease reports not ready because it holds no hub session.
 | `WINGSMITH_PREFETCH_CPU` / `WINGSMITH_PREFETCH_MEMORY` / `WINGSMITH_PREFETCH_MEMORY_LIMIT` | none | prefetch job resources |
 | `WINGSMITH_MODEL_CACHE_PVC` / `WINGSMITH_LOCAL_MODEL_CACHE_DIR` | `model-cache` / none | where weights are cached |
 | `WINGSMITH_ENGINE_PULL_SECRETS` | none | image pull secrets for engine workers |
-| `WINGSMITH_ALLOWED_IMAGE_PREFIXES` | none | registries or repositories every engine, frontend and prefetch image must come from; empty allows any |
+| `WINGSMITH_ALLOWED_IMAGE_PREFIXES` | none | registries or repositories every engine, frontend and prefetch image must come from; empty allows any image, except container workloads, which are refused |
+| `WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED` | `false` | let container workload images be named by tag; off, they must be pinned by `@sha256:` |
 | `WINGSMITH_FRONTEND_ENABLED` | `false` | render one frontend per model |
 | `WINGSMITH_FRONTEND_IMAGE` / `WINGSMITH_FRONTEND_REPLICAS` / `WINGSMITH_FRONTEND_PULL_SECRETS` | none / `2` / none | the frontend's image, count and pull secrets |
 | `WINGSMITH_FRONTEND_CPU` / `WINGSMITH_FRONTEND_MEMORY` / `WINGSMITH_FRONTEND_MEMORY_LIMIT` | none | frontend resources |

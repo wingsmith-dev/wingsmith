@@ -42,7 +42,8 @@ data:
   WINGSMITH_CACHE_POOL_VALUE: cache
   WINGSMITH_CACHE_TAINT_KEY: wingsmith.dev/cache
   # Registries or repositories engine, frontend and prefetch images must come from,
-  # comma-separated. Empty allows any image the plane names.
+  # comma-separated. Empty allows any image the plane names, except container workloads, which
+  # are refused until this is set.
   WINGSMITH_ALLOWED_IMAGE_PREFIXES: ""
   # The in-cluster DCGM exporter's metrics URL, scraped for device identity only (ADR 0007).
   # Empty disables the scrape; device ids then come from the wingsmith.dev/device-uuids annotation

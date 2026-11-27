@@ -60,8 +60,15 @@ func golden(t *testing.T, name string, v any) {
 	}
 }
 
+// containerOptions are testOptions with the prefix list a container render requires.
+func containerOptions() Options {
+	opts := testOptions()
+	opts.ImagePrefixes = []string{"ghcr.io/acme"}
+	return opts
+}
+
 func TestContainerGolden(t *testing.T) {
-	objs, err := Container(containerInputs(), testOptions())
+	objs, err := Container(containerInputs(), containerOptions())
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -70,7 +77,7 @@ func TestContainerGolden(t *testing.T) {
 }
 
 func TestContainerInjectsTheModelAndHardensThePod(t *testing.T) {
-	objs, err := Container(containerInputs(), testOptions())
+	objs, err := Container(containerInputs(), containerOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +126,8 @@ func TestContainerInjectsTheModelAndHardensThePod(t *testing.T) {
 
 func TestContainerRefuses(t *testing.T) {
 	cases := map[string]func(*Inputs, *Options){
+		"no allowed prefixes":                func(_ *Inputs, o *Options) { o.ImagePrefixes = nil },
+		"image by tag":                       func(in *Inputs, _ *Options) { in.Deployment.Serving.Container.Image = "ghcr.io/acme/worker:1.0" },
 		"image outside the allowed prefixes": func(_ *Inputs, o *Options) { o.ImagePrefixes = []string{"nvcr.io"} },
 		"no http port": func(in *Inputs, _ *Options) {
 			in.Deployment.Serving.Container.Ports = []wire.ContainerPort{{Name: "grpc", ContainerPort: 9000}}
@@ -133,12 +142,21 @@ func TestContainerRefuses(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
-			in, opts := containerInputs(), testOptions()
+			in, opts := containerInputs(), containerOptions()
 			mutate(&in, &opts)
 			if _, err := Container(in, opts); err == nil {
 				t.Fatal("rendered; want a refusal")
 			}
 		})
+	}
+}
+
+func TestContainerTagAllowedByOperatorFlag(t *testing.T) {
+	in, opts := containerInputs(), containerOptions()
+	in.Deployment.Serving.Container.Image = "ghcr.io/acme/worker:1.0"
+	opts.ContainerImageTagsAllowed = true
+	if _, err := Container(in, opts); err != nil {
+		t.Fatalf("render: %v", err)
 	}
 }
 
@@ -148,7 +166,7 @@ func TestContainerDeclaredProbeIsKept(t *testing.T) {
 		"httpGet":       map[string]any{"path": "/v1/models", "port": "http"},
 		"periodSeconds": float64(5),
 	}
-	objs, err := Container(in, testOptions())
+	objs, err := Container(in, containerOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

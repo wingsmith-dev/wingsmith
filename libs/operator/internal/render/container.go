@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -72,6 +73,14 @@ func Container(in Inputs, opts Options) (ContainerObjects, error) {
 	}
 	if Disaggregated(dep) || in.Layout.nodes() > 1 {
 		return ContainerObjects{}, fmt.Errorf("deployment %s: the container runtime runs one aggregated pod per replica", dep.DeploymentID)
+	}
+	// A container worker runs an arbitrary image the plane names, so unlike the Dynamo render it
+	// fails closed: no prefix list means no container workloads.
+	if len(opts.ImagePrefixes) == 0 {
+		return ContainerObjects{}, fmt.Errorf("deployment %s: container workloads need WINGSMITH_ALLOWED_IMAGE_PREFIXES set on the operator (chart: operator.images.allowedPrefixes)", dep.DeploymentID)
+	}
+	if !strings.Contains(c.Image, "@sha256:") && !opts.ContainerImageTagsAllowed {
+		return ContainerObjects{}, fmt.Errorf("deployment %s: image %s must be pinned by digest (@sha256:...); set WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED on the operator to allow tags", dep.DeploymentID, c.Image)
 	}
 	if !imageAllowed(c.Image, opts.ImagePrefixes) {
 		return ContainerObjects{}, fmt.Errorf("deployment %s: image %s is outside the allowed prefixes", dep.DeploymentID, c.Image)

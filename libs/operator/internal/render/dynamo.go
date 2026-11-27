@@ -132,6 +132,10 @@ type Options struct {
 	// it can be told to run.
 	ImagePrefixes []string
 
+	// ContainerImageTagsAllowed lets a container runtime deployment name an image by tag. Off, the
+	// default, a container image must be pinned by digest whatever the plane allows.
+	ContainerImageTagsAllowed bool
+
 	// FrontendGlobalNamespace sets globalDynamoNamespace on every component of the graph, the
 	// workers as well as the frontend: a frontend in a narrower namespace than its workers would
 	// discover none of them. Nil means true, the shared Dynamo namespace. Only read when
@@ -1673,6 +1677,9 @@ func modelRef(art wire.ArtifactDesired) (ref string, isPath bool, err error) {
 	}
 	if art.ArtifactID == "" {
 		return "", false, fmt.Errorf("no artifact to serve")
+	}
+	if err := checkArtifactID(art); err != nil {
+		return "", false, err
 	}
 	return pathDir(art), true, nil
 }
