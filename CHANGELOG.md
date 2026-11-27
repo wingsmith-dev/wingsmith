@@ -9,6 +9,13 @@ protocol can change between minor versions.
 
 ### Added
 
+- Ownership of applied objects. A PUT records its field manager (`?fieldManager=`, default
+  `wings-cli`), principal and time on the Workload or Endpoint, shown as
+  `plane.wingsmith.dev/applied-by*` annotations and `applied_by*` fields. A console PATCH, a workload
+  operation other than drain, or a PUT from another manager is then a 409 naming the manager;
+  `?force=true` takes the object over and files a `*.takeover` operation. `wings apply
+  --field-manager` and `--force-conflicts`; the console shows "Managed by" with a "Take over" action
+  (ADR 0033).
 - `wings apply -f file|dir|- [-R]` and `wings diff`. The plane keeps the last manifest applied to
   each Workload and Endpoint (`plane.wingsmith.dev/last-applied`) and merges against it, so a field
   removed from the file is reset on the next apply. PUT takes `?dryRun=All` and answers
@@ -56,6 +63,8 @@ protocol can change between minor versions.
   the prefetch Job only. The token never reaches the plane's database or the hub (ADR 0023).
 
 ### Changed
+
+- A PUT onto an observed workload is a 422 ("observed, adopt it first"), not a 409 (ADR 0033).
 
 - Manifests (`plane.wingsmith.dev/v1alpha1`) are camelCase in `spec` and `status` as well as
   `metadata` (`workloadRef`, `servedModelName`, `readyReplicas`), and conditions carry
