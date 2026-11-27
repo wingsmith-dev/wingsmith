@@ -26,8 +26,12 @@ spec:
         - name: Synced
           type: string
           jsonPath: .status.conditions[?(@.type=="Synced")].status
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
         - name: Reason
           type: string
+          priority: 1
           jsonPath: .status.conditions[?(@.type=="Synced")].reason
         - name: Plane-UID
           type: string
@@ -53,6 +57,11 @@ spec:
               x-kubernetes-preserve-unknown-fields: true
               required: [serving]
               properties:
+                deletionPolicy:
+                  description: Delete (default) deletes the plane workload with this resource; Orphan leaves it. Not sent to the plane.
+                  type: string
+                  enum: [Delete, Orphan]
+                  default: Delete
                 cluster:
                   type: string
                 replicas:

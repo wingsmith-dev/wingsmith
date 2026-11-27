@@ -17,8 +17,10 @@ protocol can change between minor versions.
   (`PUT /v1/clusters/{ref}/projects/{project}`, migration `a8b9c0d1e2f3`). Placement defaults to
   this cluster only, sent on the wire and echoed in status. Finalizer `plane.wingsmith.dev/sync`
   deletes (or releases) the plane object; status carries `observedGeneration`, `planeUID`,
-  `planeResourceVersion` and `Synced`/`Conflict`/`Ready`/`Stalled`/`Reconciling` conditions;
-  reconnects relist and reapply. Aggregated `wingsmith-edit`/`wingsmith-view` roles. See
+  `planeResourceVersion` and `Synced`/`Ready`/`Stalled`/`Reconciling` conditions (Ready stays
+  Unknown until serving status is wired); `spec.deletionPolicy: Orphan` keeps the plane object;
+  reconnects relist and reapply. Aggregated `wingsmith-edit`/`wingsmith-view` roles and an Argo CD
+  health check (`libs/operator/deploy/argocd/workload-health.lua`). See
   docs/operations/declaring-workloads-from-your-cluster.md.
 
 - Async media jobs (ADR 0041). With `WINGSMITH_MEDIA_S3_*` set, `POST /v1/videos` queues a job in

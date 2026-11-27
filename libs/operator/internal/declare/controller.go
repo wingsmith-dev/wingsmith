@@ -42,7 +42,6 @@ const (
 	Finalizer      = "plane.wingsmith.dev/sync"
 	ConditionSync  = "Synced"
 	ConditionReady = "Ready"
-	ConditionClash = "Conflict"
 	// Stalled and Reconciling are the kstatus abnormal-true conditions: Argo CD, Flux and
 	// `kubectl wait` read Stalled=True as failed and Reconciling=True as in progress.
 	ConditionStalled     = "Stalled"
@@ -56,6 +55,10 @@ const (
 	ReasonUnreachable = "PlaneUnreachable"
 	ReasonPlaneError  = "PlaneError"
 	ReasonDeleting    = "Deleting"
+	ReasonAwaiting    = "AwaitingStatus"
+
+	// DeletionOrphan in spec.deletionPolicy leaves the plane object when the resource goes.
+	DeletionOrphan = "Orphan"
 )
 
 // Reconciler applies each Workload resource in a project namespace to the plane.
@@ -96,8 +99,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		// Not a project namespace (any more): nothing to sync, and nothing to hold back.
 		return reconcile.Result{}, r.release(ctx, obj)
 	}
+	before := obj.DeepCopy()
 	if controllerutil.AddFinalizer(obj, Finalizer) {
-		if err := r.Client.Update(ctx, obj); err != nil {
+		if err := r.Client.Patch(ctx, obj, client.MergeFrom(before)); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
@@ -140,6 +144,8 @@ func (r *Reconciler) body(obj *unstructured.Unstructured, project string) map[st
 	if spec == nil {
 		spec = map[string]any{}
 	}
+	// The resource's own lifecycle, not part of the plane manifest.
+	delete(spec, "deletionPolicy")
 	_, pinned := spec["cluster"]
 	_, clusters, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedClusters")
 	_, regions, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedRegions")
@@ -176,7 +182,7 @@ func (r *Reconciler) finalize(ctx context.Context, obj *unstructured.Unstructure
 	if !controllerutil.ContainsFinalizer(obj, Finalizer) {
 		return reconcile.Result{}, nil
 	}
-	if project == "" {
+	if policy, _, _ := unstructured.NestedString(obj.Object, "spec", "deletionPolicy"); project == "" || policy == DeletionOrphan {
 		return reconcile.Result{}, r.release(ctx, obj)
 	}
 	result, err := r.Plane.Delete(ctx, &wire.ManifestDelete{
@@ -201,8 +207,9 @@ func (r *Reconciler) finalize(ctx context.Context, obj *unstructured.Unstructure
 }
 
 func (r *Reconciler) release(ctx context.Context, obj *unstructured.Unstructured) error {
+	before := obj.DeepCopy()
 	if controllerutil.RemoveFinalizer(obj, Finalizer) {
-		return r.Client.Update(ctx, obj)
+		return r.Client.Patch(ctx, obj, client.MergeFrom(before))
 	}
 	return nil
 }
@@ -228,12 +235,12 @@ func (r *Reconciler) report(ctx context.Context, obj *unstructured.Unstructured,
 			st.obj["fieldManager"] = res.Manager
 			st.obj["placement"] = map[string]any{"allowedClusters": toAnySlice(res.AllowedClusters)}
 			st.set(ConditionSync, metav1.ConditionTrue, ReasonApplied, "applied to the plane: "+res.Result)
-			st.set(ConditionClash, metav1.ConditionFalse, ReasonApplied, "")
-			st.set(ConditionReady, metav1.ConditionTrue, ReasonApplied, "the plane holds this generation")
-			st.drop(ConditionStalled, ConditionReconciling)
+			// Ready means serving, which the plane does not report back yet (P1.16).
+			st.set(ConditionReady, metav1.ConditionUnknown, ReasonAwaiting, "serving status is not reported yet")
+			st.set(ConditionReconciling, metav1.ConditionTrue, ReasonAwaiting, "waiting for serving status")
+			st.drop(ConditionStalled)
 		case "conflict":
 			st.set(ConditionSync, metav1.ConditionFalse, ReasonConflict, res.Error)
-			st.set(ConditionClash, metav1.ConditionTrue, ReasonConflict, res.Error)
 			st.stalled(ReasonConflict, res.Error)
 		case "invalid", "forbidden":
 			reason := ReasonInvalid
@@ -243,7 +250,6 @@ func (r *Reconciler) report(ctx context.Context, obj *unstructured.Unstructured,
 				reason = ReasonObserved
 			}
 			st.set(ConditionSync, metav1.ConditionFalse, reason, res.Error)
-			st.set(ConditionClash, metav1.ConditionFalse, reason, "")
 			st.stalled(reason, res.Error)
 		default:
 			retry = r.Retry
@@ -290,6 +296,7 @@ func (s *status) stalled(reason, msg string) {
 }
 
 func (r *Reconciler) write(ctx context.Context, obj *unstructured.Unstructured, edit func(*status), after time.Duration) (reconcile.Result, error) {
+	before := obj.DeepCopy()
 	raw, _, _ := unstructured.NestedMap(obj.Object, "status")
 	if raw == nil {
 		raw = map[string]any{}
@@ -320,7 +327,7 @@ func (r *Reconciler) write(ctx context.Context, obj *unstructured.Unstructured, 
 	if err := unstructured.SetNestedField(obj.Object, raw, "status"); err != nil {
 		return reconcile.Result{}, err
 	}
-	if err := r.Client.Status().Update(ctx, obj); err != nil {
+	if err := r.Client.Status().Patch(ctx, obj, client.MergeFrom(before)); err != nil {
 		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}

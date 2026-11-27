@@ -187,8 +187,11 @@ func TestApplyDefaultsPlacementOnTheWireAndReportsStatus(t *testing.T) {
 	if s := condition(t, u, ConditionSync); s == nil || s.Status != metav1.ConditionTrue {
 		t.Fatalf("Synced = %+v", s)
 	}
-	if s := condition(t, u, ConditionReady); s == nil || s.Status != metav1.ConditionTrue {
+	if s := condition(t, u, ConditionReady); s == nil || s.Status != metav1.ConditionUnknown || s.Reason != ReasonAwaiting {
 		t.Fatalf("Ready = %+v", s)
+	}
+	if s := condition(t, u, ConditionReconciling); s == nil || s.Status != metav1.ConditionTrue {
+		t.Fatalf("Reconciling = %+v", s)
 	}
 }
 
@@ -228,9 +231,6 @@ func TestConflictIsReported(t *testing.T) {
 	s := condition(t, u, ConditionSync)
 	if s == nil || s.Status != metav1.ConditionFalse || s.Reason != ReasonConflict {
 		t.Fatalf("Synced = %+v", s)
-	}
-	if cl := condition(t, u, ConditionClash); cl == nil || cl.Status != metav1.ConditionTrue {
-		t.Fatalf("Conflict = %+v", cl)
 	}
 	if st := condition(t, u, ConditionStalled); st == nil || st.Status != metav1.ConditionTrue {
 		t.Fatalf("Stalled = %+v", st)
@@ -303,6 +303,23 @@ func TestFinalizerDeletesThePlaneObjectFirst(t *testing.T) {
 	err := c.Get(context.Background(), types.NamespacedName{Namespace: "team-a", Name: "chat"}, gone)
 	if err == nil {
 		t.Fatal("resource still present after the finalizer ran")
+	}
+}
+
+func TestOrphanPolicyKeepsThePlaneObject(t *testing.T) {
+	s := spec()
+	s["deletionPolicy"] = DeletionOrphan
+	r, c, plane := setup(t, namespace("team-a", "search"), workload("team-a", "chat", s))
+	reconcileOnce(t, r, "team-a", "chat")
+	if _, found := plane.applies[0].Body["spec"].(map[string]any)["deletionPolicy"]; found {
+		t.Fatal("deletionPolicy sent to the plane")
+	}
+	if err := c.Delete(context.Background(), get(t, c, "team-a", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	reconcileOnce(t, r, "team-a", "chat")
+	if len(plane.deletes) != 0 {
+		t.Fatal("orphan policy deleted the plane object")
 	}
 }
 

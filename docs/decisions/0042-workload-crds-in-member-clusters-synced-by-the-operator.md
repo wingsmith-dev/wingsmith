@@ -42,16 +42,20 @@ member cluster and the operator, which already holds a session to the plane, syn
   placement policy, bumps the spec generation, and takes effect at the next expansion, like
   `strategy`; running deployments are not moved by the write. No schema migration: the policy row
   already existed. `allowedRegions` stays immutable.
-- **Deletion.** Finalizer `plane.wingsmith.dev/sync`. The operator sends `manifest.delete`; the
+- **Deletion.** Finalizer `plane.wingsmith.dev/sync`. `spec.deletionPolicy: Delete|Orphan`
+  (default Delete, Karmada/OCM style, stripped from the body sent to the plane); Orphan releases
+  without deleting. The operator sends `manifest.delete`; the
   plane deletes the object if this manager applied it, otherwise releases it (`released`, left in
   place). `absent` and `forbidden` also release the finalizer.
-- **Status.** The operator writes only `.status` and `metadata.finalizers`: `observedGeneration`,
-  `planeUID`, `planeResourceVersion`, `planeGeneration`, `fieldManager`, `placement`, and
-  conditions `Synced` (True `Applied`; False `ManagerConflict`, `Observed`, `Invalid`,
-  `Forbidden`, `PlaneError`; Unknown `PlaneUnreachable`), `Conflict`, `Ready`, and the kstatus
-  pair `Stalled` (a refusal) / `Reconciling` (waiting on the plane), so Argo CD, Flux and
-  `kubectl wait` can wait on a resource. `Ready` here means the plane holds this generation, not
-  that replicas serve; serving status from the plane watch is P1.16.
+- **Status.** The operator writes only `.status` and `metadata.finalizers`, as merge patches:
+  `observedGeneration`, `planeUID`, `planeResourceVersion`, `planeGeneration`, `fieldManager`,
+  `placement`, and conditions `Synced` (acceptance: True `Applied`; False `ManagerConflict`,
+  `Observed`, `Invalid`, `Forbidden`, `PlaneError`; Unknown `PlaneUnreachable`), `Ready` (serving;
+  `Unknown/AwaitingStatus` until P1.16 brings serving status from the plane watch), and the kstatus
+  pair `Stalled` (terminal refusal) / `Reconciling` (waiting on the plane or on serving status). No
+  separate `Conflict` condition: `Synced=False/ManagerConflict` is it. Printer columns Synced,
+  Ready, Age. An Argo CD Lua health check ships in `libs/operator/deploy/argocd/`; a fresh resource
+  without status reads Current to kstatus.
 - **Offline and reconnect.** Requests are not queued while the hub session is down: the resource
   goes `Synced=Unknown/PlaneUnreachable` and is retried every 30s. Every reconnect relists and
   reapplies every resource; the plane's server-side diff answers `unchanged`, so replays move
@@ -62,5 +66,7 @@ member cluster and the operator, which already holds a session to the plane, syn
 - One manifest file works for `wings apply` and `kubectl apply`.
 - A resource stuck Terminating while the plane is unreachable can be let go by removing the
   finalizer by hand; the plane object is then left behind and found by its origin annotations.
-- Deferred: Endpoint CRD and status from the plane watch (P1.16), generated schema/CEL, force and
-  orphan annotations (P1.17), Artifact CRD and per-field ownership (P1.18). Hosts keep `wings apply`.
+- The loose schema (`x-kubernetes-preserve-unknown-fields`) means typos surface as
+  `Synced=False/Invalid` after admission, not as an API-server refusal, until P1.17.
+- Deferred: Endpoint CRD and status from the plane watch (P1.16), generated schema/CEL, force
+  annotation (P1.17), Artifact CRD and per-field ownership (P1.18). Hosts keep `wings apply`.

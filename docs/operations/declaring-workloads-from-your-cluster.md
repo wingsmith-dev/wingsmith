@@ -64,17 +64,27 @@ next expansion. The resource's spec is never rewritten; the effective list is in
 |---|---|
 | `observedGeneration` | the resource generation the plane last answered for |
 | `planeUID`, `planeResourceVersion`, `planeGeneration` | the plane object as last applied |
-| `Synced` | `True/Applied`; `False` with `ManagerConflict`, `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `PlaneError`; `Unknown/PlaneUnreachable` |
-| `Conflict` | `True` while another field manager owns the plane object |
-| `Ready` | the plane holds this generation (not that replicas serve yet) |
-| `Stalled` / `Reconciling` | kstatus: a refusal that needs an edit / waiting on the plane |
+| `Synced` | the plane accepted this generation: `True/Applied`; `False` with `ManagerConflict` (another field manager owns the plane object), `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `PlaneError`; `Unknown/PlaneUnreachable` |
+| `Ready` | serving. `Unknown/AwaitingStatus` for now: serving status from the plane arrives in a later release |
+| `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`) |
+| `Reconciling` | `True` while waiting on the plane or on serving status |
+
+`kubectl get workloads` shows Synced, Ready and Age. The conditions follow kstatus: Stalled=True is
+failed, Reconciling=True is in progress. A resource the operator has not written status to yet has
+no conditions, which kstatus reads as Current; wait on `condition=Synced` rather than on kstatus
+alone right after an apply.
+
+**Schema.** The CRD checks the spec loosely (unknown fields are kept) and the plane validates it
+fully, so a typo is reported as `Synced=False/Invalid` after the apply rather than refused by the
+API server. A generated schema replaces it in a later release.
 
 While the plane is unreachable the operator retries every 30s, and after every reconnect it
 reapplies every resource; unchanged ones are no-ops on the plane.
 
 ## Delete
 
-Deleting the resource deletes the plane workload first (finalizer `plane.wingsmith.dev/sync`). If
+Deleting the resource deletes the plane workload first (finalizer `plane.wingsmith.dev/sync`).
+`spec.deletionPolicy: Orphan` (default `Delete`) leaves the plane workload in place instead. If
 someone has since taken the plane object over (`wings apply --force-conflicts`, console Take over),
 it is released and left in place.
 
@@ -94,8 +104,16 @@ cluster can be found and deleted with `wings` or the API.
 ## Argo CD
 
 Point an Application at a directory of Workload manifests; nothing Argo-specific is needed in the
-files. Argo CD reads `Ready`/`Stalled`/`Reconciling` through its kstatus-compatible health
-fallback, and since the operator writes only status and finalizers there is no drift.
+files, and since the operator writes only status and finalizers there is no drift. Add the health
+check from `libs/operator/deploy/argocd/workload-health.lua` to `argocd-cm` (no status is
+Progressing, Stalled or Synced=False is Degraded, Ready=True is Healthy, anything else
+Progressing):
+
+```yaml
+data:
+  resource.customizations.health.plane.wingsmith.dev_Workload: |
+    # contents of workload-health.lua
+```
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -116,5 +134,16 @@ spec:
     automated: {prune: true, selfHeal: true}
 ```
 
-A custom health check reading `Synced` and `Conflict` ships later (P1.17). Flux Kustomizations
-with `wait: true` use the same conditions.
+## Flux
+
+A Kustomization with `wait: true` reads kstatus; to wait for acceptance rather than serving, add:
+
+```yaml
+spec:
+  wait: true
+  healthCheckExprs:
+    - apiVersion: plane.wingsmith.dev/v1alpha1
+      kind: Workload
+      current: status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'True')
+      failed: status.conditions.filter(e, e.type == 'Stalled').all(e, e.status == 'True')
+```
