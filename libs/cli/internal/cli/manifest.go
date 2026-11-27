@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -241,7 +242,17 @@ are not applied yet: register artifacts with 'wings artifact create'.`,
   wings apply -f deploy/ -R
   cat chat.yaml | wings apply -f -`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			// An error must not exit 1, which means "differs": emit it here and
+			// lift an unmapped or internal code to 2.
+			defer func() {
+				var status exitStatus
+				if err == nil || errors.As(err, &status) || errs.As(err).ExitCode() >= 2 {
+					return
+				}
+				app.Out.EmitError(cmdPath(cmd), err)
+				err = exitStatus(2)
+			}()
 			docs, err := src.read(cmd.InOrStdin())
 			if err != nil {
 				return err

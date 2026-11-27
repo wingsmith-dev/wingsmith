@@ -207,3 +207,28 @@ func TestApplyIfMatchSendsTheHeaderForOneDocumentOnly(t *testing.T) {
 		t.Fatalf("two documents: exit %d, want 2", code)
 	}
 }
+
+func TestDiffExitsAboveOneWhenThePlaneFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	t.Cleanup(srv.Close)
+	garbled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	t.Cleanup(garbled.Close)
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+	file := filepath.Join(t.TempDir(), "m.yaml")
+	writeFile(t, file, doc("Workload", "chat", "{}"))
+	t.Setenv("WINGSMITH_FAKE", "0")
+	t.Setenv("WINGSMITH_TOKEN", "wss1_test")
+	t.Setenv("WINGSMITH_PROJECT", "core")
+	for name, url := range map[string]string{"500": srv.URL, "unreachable": down.URL, "unparsable": garbled.URL} {
+		t.Setenv("WINGSMITH_SERVER", url)
+		if _, errOut, code := run(t, "diff", "-f", file); code <= 1 || errOut == "" {
+			t.Errorf("%s: exit %d, want >1, stderr %q", name, code, errOut)
+		}
+	}
+}
