@@ -141,6 +141,7 @@ type servingLimits struct {
 	availability    string
 	successRate     float64
 	enforced        bool
+	units           []string
 }
 
 func (l *servingLimits) bind(cmd *cobra.Command) {
@@ -157,12 +158,28 @@ func (l *servingLimits) bind(cmd *cobra.Command) {
 	fl.Float64Var(&l.successRate, "success-rate-objective", 0, "success-rate objective, 0 to 1")
 	fl.StringVar(&l.availability, "availability-objective", "", "availability objective version")
 	fl.IntVar(&l.objectiveWindow, "objective-window-seconds", 0, "window the objectives are measured over")
-	fl.BoolVar(&l.enforced, "enforced", false, "mark the limits to be enforced (nothing enforces serving quotas yet)")
+	fl.BoolVar(&l.enforced, "enforced", false, "enforce the limits; off only counts them (the gateway enforces --unit-limit only)")
+	fl.StringArrayVar(&l.units, "unit-limit", nil,
+		"media units a minute, UNIT=N (repeatable): image_units, video_seconds, speech_characters, speech_seconds, transcription_seconds")
 }
 
-func (l *servingLimits) create(cmd *cobra.Command, endpoint string) api.ServingQuotaCreate {
+func (l *servingLimits) create(cmd *cobra.Command, endpoint string) (api.ServingQuotaCreate, error) {
 	req := api.ServingQuotaCreate{Endpoint: endpoint}
 	changed := cmd.Flags().Changed
+	if changed("unit-limit") {
+		parsed, err := api.ParseKV(l.units, "unit-limit")
+		if err != nil {
+			return req, err
+		}
+		req.UnitLimits = map[string]int{}
+		for unit, value := range parsed {
+			n, err := strconv.Atoi(value)
+			if err != nil || n <= 0 {
+				return req, errs.New(errs.CodeUsage, "--unit-limit %s=%s is not a positive whole number", unit, value)
+			}
+			req.UnitLimits[unit] = n
+		}
+	}
 	if changed("committed-rpm") {
 		req.CommittedRPM = &l.rpm
 	}
@@ -202,11 +219,11 @@ func (l *servingLimits) create(cmd *cobra.Command, endpoint string) api.ServingQ
 	if changed("enforced") {
 		req.Enforced = &l.enforced
 	}
-	return req
+	return req, nil
 }
 
-func (l *servingLimits) update(cmd *cobra.Command) api.ServingQuotaUpdate {
-	c := l.create(cmd, "")
+func (l *servingLimits) update(cmd *cobra.Command) (api.ServingQuotaUpdate, error) {
+	c, err := l.create(cmd, "")
 	return api.ServingQuotaUpdate{
 		CommittedRPM: c.CommittedRPM, CommittedTPM: c.CommittedTPM,
 		MaxConcurrentRequests: c.MaxConcurrentRequests, MaxOutputTokens: c.MaxOutputTokens,
@@ -214,7 +231,8 @@ func (l *servingLimits) update(cmd *cobra.Command) api.ServingQuotaUpdate {
 		QueueTimeoutMS: c.QueueTimeoutMS, LimitScope: c.LimitScope,
 		SuccessRateObjective: c.SuccessRateObjective, AvailabilityObjective: c.AvailabilityObjective,
 		ObjectiveWindowSeconds: c.ObjectiveWindowSeconds, Enforced: c.Enforced,
-	}
+		UnitLimits: c.UnitLimits,
+	}, err
 }
 
 func newServingQuotaCreateCmd(app *App) *cobra.Command {
@@ -226,9 +244,10 @@ func newServingQuotaCreateCmd(app *App) *cobra.Command {
 		Long: `Commit a serving quota on an endpoint. An endpoint carries at most one, so
 this is a create and 'wings serving-quota set' is how it is changed afterwards.
 
-Every limit left unset stays uncommitted. The limits are advisory: the gateway
-does not read serving quotas yet, so --enforced only records that they should be
-enforced once something does.`,
+Every limit left unset stays uncommitted. The request and token limits are
+advisory: the gateway does not read them yet. --unit-limit budgets (media units a
+minute) are enforced by the gateway when --enforced is set, and only counted
+otherwise.`,
 		Example: `  wings serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000
   wings serving-quota create chat --max-concurrent 256 --on-exceed queue --queue-timeout-ms 5000 --enforced`,
 		Args: cobra.ExactArgs(1),
@@ -239,7 +258,11 @@ enforced once something does.`,
 			if err != nil {
 				return err
 			}
-			quota, err := app.Backend.CreateServingQuota(ctx, limits.create(cmd, endpoint.ID))
+			req, err := limits.create(cmd, endpoint.ID)
+			if err != nil {
+				return err
+			}
+			quota, err := app.Backend.CreateServingQuota(ctx, req)
 			if err != nil {
 				return err
 			}
@@ -275,7 +298,11 @@ An axis cannot be returned to uncommitted here: that is a different intent, and
 			if err != nil {
 				return err
 			}
-			updated, err := app.Backend.UpdateServingQuota(ctx, quota.ID, limits.update(cmd))
+			req, err := limits.update(cmd)
+			if err != nil {
+				return err
+			}
+			updated, err := app.Backend.UpdateServingQuota(ctx, quota.ID, req)
 			if err != nil {
 				return err
 			}

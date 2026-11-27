@@ -602,6 +602,7 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		image                string
 		containerPort        int
 		containerArgs        []string
+		protocol             string
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -626,9 +627,12 @@ how a distilled model gets its step count, because omni defaults every model to
 50 inference steps.
 
 --runtime container runs a custom worker instead of Dynamo: --image (pinned by
-digest) serving openai-chat on --port, with the weights mounted read-only at
+digest) serving --protocol on --port, with the weights mounted read-only at
 $WS_MODEL_PATH. --arg passes its arguments, which may use $(WS_MODEL_PATH),
-$(WS_SERVED_MODEL_NAME) and $(WS_PORT).`,
+$(WS_SERVED_MODEL_NAME) and $(WS_PORT). The protocol implies what the worker
+emits: openai-chat (text), openai-images, openai-audio-speech (TTS),
+openai-audio-transcriptions (STT) or openai-videos. Audio is served this way
+only: omni under Dynamo emits image or video.`,
 		Example: `  wings workload create assistant --project core --artifact gpt-oss-120b \
     --class h100-80 --context-length 8192 --scale 2
   wings workload create assistant-tp8 --project core --artifact gpt-oss-120b \
@@ -647,7 +651,7 @@ $(WS_SERVED_MODEL_NAME) and $(WS_PORT).`,
 			}
 			project := app.Project
 			omni := isOmniEngine(engine)
-			runtime, err := containerRuntime(runtimeKind, image, containerPort, containerArgs)
+			runtime, err := containerRuntime(runtimeKind, image, containerPort, containerArgs, protocol)
 			if err != nil {
 				return err
 			}
@@ -814,16 +818,17 @@ $(WS_SERVED_MODEL_NAME) and $(WS_PORT).`,
 	fl.StringVar(&image, "image", "", "the custom worker's image, pinned by digest (--runtime container)")
 	fl.IntVar(&containerPort, "port", 8000, "the port the custom worker serves on (--runtime container)")
 	fl.StringArrayVar(&containerArgs, "arg", nil, "a custom worker argument (repeatable, --runtime container)")
+	fl.StringVar(&protocol, "protocol", "", "the API the custom worker answers (--runtime container): "+strings.Join(containerProtocols, "|"))
 	return cmd
 }
 
 // containerRuntime is the runtime block --runtime container sends, nil under
 // dynamo so the plane's default stands.
-func containerRuntime(kind, image string, port int, args []string) (*api.ServingRuntime, error) {
+func containerRuntime(kind, image string, port int, args []string, protocol string) (*api.ServingRuntime, error) {
 	switch kind {
 	case "", "dynamo":
-		if image != "" || len(args) > 0 {
-			return nil, errs.New(errs.CodeUsage, "--image and --arg are for --runtime container")
+		if image != "" || len(args) > 0 || protocol != "" {
+			return nil, errs.New(errs.CodeUsage, "--image, --arg and --protocol are for --runtime container")
 		}
 		return nil, nil
 	case "container":
@@ -833,14 +838,25 @@ func containerRuntime(kind, image string, port int, args []string) (*api.Serving
 	if image == "" {
 		return nil, errs.New(errs.CodeInputRequired, "--runtime container needs --image")
 	}
+	if protocol == "" {
+		protocol = containerProtocols[0]
+	}
+	if !slices.Contains(containerProtocols, protocol) {
+		return nil, errs.New(errs.CodeUsage, "--protocol is one of %s, not %q", strings.Join(containerProtocols, ", "), protocol)
+	}
 	return &api.ServingRuntime{Kind: "container", Container: &api.ServingContainer{
 		Image:    image,
 		Command:  []string{},
 		Args:     append([]string{}, args...),
 		Env:      []api.ServingEnvVar{},
 		Ports:    []api.ServingContainerPort{{Name: "http", ContainerPort: port}},
-		Protocol: "openai-chat",
+		Protocol: protocol,
 	}}, nil
+}
+
+// containerProtocols are the plane's CONTAINER_PROTOCOLS, the default first.
+var containerProtocols = []string{
+	"openai-chat", "openai-images", "openai-audio-speech", "openai-audio-transcriptions", "openai-videos",
 }
 
 // isOmniEngine is the plane's and the operator's set of spellings for vLLM-Omni.

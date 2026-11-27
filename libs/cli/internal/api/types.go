@@ -1183,6 +1183,7 @@ type ServingQuota struct {
 	AvailabilityObjective  string               `json:"availability_objective"`
 	ObjectiveWindowSeconds int                  `json:"objective_window_seconds"`
 	Enforced               bool                 `json:"enforced"`
+	UnitLimits             map[string]int       `json:"unit_limits"`
 	CreatedAt              time.Time            `json:"created_at"`
 	UpdatedAt              *time.Time           `json:"updated_at"`
 	Revision               string               `json:"revision"`
@@ -1204,6 +1205,8 @@ type ResolvedLimits struct {
 	QueueTimeoutMS        *int   `json:"queue_timeout_ms"`
 	LimitScope            string `json:"limit_scope"`
 	Enforced              bool   `json:"enforced"`
+	// UnitLimits are media units per minute; the gateway enforces them (P4.2).
+	UnitLimits map[string]int `json:"unit_limits"`
 }
 
 // ResolvedServingQuota is what one endpoint's commitment means for a fleet of a
@@ -1301,6 +1304,9 @@ type ServingQuotaCreate struct {
 	AvailabilityObjective  string   `json:"availability_objective,omitempty"`
 	ObjectiveWindowSeconds *int     `json:"objective_window_seconds,omitempty"`
 	Enforced               *bool    `json:"enforced,omitempty"`
+	// UnitLimits are media units per minute (image_units, video_seconds, speech_characters,
+	// speech_seconds, transcription_seconds). Nil leaves them as they are.
+	UnitLimits map[string]int `json:"unit_limits,omitempty"`
 }
 
 // ServingQuotaUpdate is a partial update: an absent field is untouched. The
@@ -1320,6 +1326,9 @@ type ServingQuotaUpdate struct {
 	AvailabilityObjective  string   `json:"availability_objective,omitempty"`
 	ObjectiveWindowSeconds *int     `json:"objective_window_seconds,omitempty"`
 	Enforced               *bool    `json:"enforced,omitempty"`
+	// UnitLimits are media units per minute (image_units, video_seconds, speech_characters,
+	// speech_seconds, transcription_seconds). Nil leaves them as they are.
+	UnitLimits map[string]int `json:"unit_limits,omitempty"`
 }
 
 // Serving quota vocabulary, as the plane spells it.
