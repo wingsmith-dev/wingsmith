@@ -3,4 +3,6 @@ useDefault = true
 
 [allowlist]
 description = "Fixed fake credentials in tests"
-regexes = ['''(hgr|ws)_(pat|rt)_0123456789abcdef''', '''(hgr|ws)_pat_secret''']
+regexes = ['''(hgr|ws)_(pat|rt)_0123456789abcdef''', '''(hgr|ws)_pat_secret''',
+  # AWS's public SigV4 documentation example keys (libs/gateway/internal/objectstore/s3_test.go)
+  '''^AKIAIOSFODNN7EXAMPLE$''', '''^wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY$''']
