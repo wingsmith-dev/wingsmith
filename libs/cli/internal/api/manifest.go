@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	_ "embed"
+	"net/http"
 	"net/url"
 )
 
@@ -38,4 +39,13 @@ func (c *Client) Manifest(ctx context.Context, collection, project, name string)
 	var out Manifest
 	err := c.get(ctx, path+"/"+url.PathEscape(name), nil, &out)
 	return out, err
+}
+
+// ApplyManifest creates or replaces one Workload or Endpoint with PUT and returns
+// the object as the plane now holds it, and whether the PUT created it.
+func (c *Client) ApplyManifest(ctx context.Context, collection, project, name string, m Manifest) (Manifest, bool, error) {
+	path := "/v1/manifests/" + collection + "/" + url.PathEscape(project) + "/" + url.PathEscape(name)
+	var out Manifest
+	status, err := c.sendStatus(ctx, http.MethodPut, path, nil, m, nil, &out)
+	return out, status == http.StatusCreated, err
 }

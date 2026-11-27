@@ -678,29 +678,35 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 }
 
 func (c *Client) send(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) error {
+	_, err := c.sendStatus(ctx, method, path, q, body, headers, out)
+	return err
+}
+
+// sendStatus is send, also returning the status code, for a caller that tells 201 from 200.
+func (c *Client) sendStatus(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) (int, error) {
 	resp, payload, err := c.do(ctx, method, path, q, body, headers)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if resp.StatusCode == http.StatusUnauthorized && c.canRefresh(path) {
 		if err := c.refresh(ctx); err != nil {
-			return err
+			return 0, err
 		}
 		resp, payload, err = c.do(ctx, method, path, q, body, headers)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if resp.StatusCode >= 400 {
-		return httpError(resp, payload)
+		return resp.StatusCode, httpError(resp, payload)
 	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
-		return nil
+		return resp.StatusCode, nil
 	}
 	if err := json.Unmarshal(payload, out); err != nil {
-		return errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
+		return resp.StatusCode, errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
 	}
-	return nil
+	return resp.StatusCode, nil
 }
 
 func (c *Client) canRefresh(path string) bool {
