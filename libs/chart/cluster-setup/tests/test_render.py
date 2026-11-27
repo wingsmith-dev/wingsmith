@@ -787,3 +787,20 @@ def test_serving_egress_admits_only_the_cluster_paths(chart):
     assert {"to": [{"ipBlock": {"cidr": "10.0.0.10/32"}}]} in rules
     assert {"to": [{"ipBlock": {"cidr": "198.51.100.0/24"}}]} in rules
     assert len(rules) == 5
+
+
+def _pod_monitor_render(chart: pathlib.Path, *extra: str) -> str:
+    cmd = ["helm", "template", "rel", str(chart), "-n", "wingsmith-system",
+           *_args({"operator.workerMetrics.podMonitor": True, "cluster.readOnly": False}, True), *extra]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_pod_monitor_needs_the_flag_and_the_crd(chart):
+    without_crd = _pod_monitor_render(chart)
+    assert "WINGSMITH_POD_MONITOR_ENABLED" not in without_crd
+    assert "podmonitors" not in without_crd
+    served = _pod_monitor_render(chart, "--api-versions", "monitoring.coreos.com/v1/PodMonitor")
+    assert 'WINGSMITH_POD_MONITOR_ENABLED: "true"' in served
+    assert "podmonitors" in served

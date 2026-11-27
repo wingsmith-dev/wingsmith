@@ -145,6 +145,12 @@
             "containerTagsAllowed": { "type": "boolean" }
           }
         },
+        "workerMetrics": {
+          "type": "object",
+          "properties": {
+            "podMonitor": { "type": "boolean" }
+          }
+        },
         "benchmark": {
           "type": "object",
           "properties": {

@@ -71,6 +71,9 @@ data:
   {{- if .Values.operator.images.containerTagsAllowed }}
   WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED: "true"
   {{- end }}
+  {{- if include "cluster-setup.podMonitor" . }}
+  WINGSMITH_POD_MONITOR_ENABLED: "true"
+  {{- end }}
   {{- with .Values.operator.benchmark.images }}
   WINGSMITH_BENCHMARK_IMAGES: {{ join "," . | quote }}
   {{- end }}

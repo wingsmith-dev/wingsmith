@@ -271,6 +271,12 @@ operator:
     # Container workload images must be pinned by digest (`@sha256:`) unless
     # this is true, whatever the plane allows.
     containerTagsAllowed: false
+  workerMetrics:
+    # Render a PodMonitor beside each container (custom worker) workload that
+    # declares metrics. Applied only when the cluster serves the
+    # monitoring.coreos.com/v1 PodMonitor CRD (prometheus-operator); pods carry
+    # prometheus.io/scrape annotations either way.
+    podMonitor: false
   benchmark:
     # The harness images a benchmark may run, matched exactly. Empty keeps the
     # operator's default, the aiperf and evalscope images the plane pins. To
@@ -596,7 +602,7 @@ monitoring:
     # and `container_*` match nothing today (this chart ships no node-exporter and
     # no kube-state-metrics) and stay listed so adding either needs no write-path
     # change.
-    keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|dynamo_.*|up|kubelet_volume_stats_.*"
+    keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|sglang:.*|dynamo_.*|up|kubelet_volume_stats_.*"
     # The default needs nothing set: the username is `cluster.id` and the password
     # is the enrolment Secret, whose bcrypt verifier the plane published to the
     # write ingress when it minted the token (ADR 0012). The token therefore

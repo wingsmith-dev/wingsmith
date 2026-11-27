@@ -345,6 +345,12 @@ benchmark.
 - apiGroups: [""]
   resources: [services]
   verbs: [create, delete, get, list, patch, update, watch]
+{{- if include "cluster-setup.podMonitor" . }}
+# A PodMonitor beside each container worker that declares metrics.
+- apiGroups: [monitoring.coreos.com]
+  resources: [podmonitors]
+  verbs: [create, delete, get, list, patch, update]
+{{- end }}
 # Not an object this operator renders. It is where the Dynamo operator writes
 # down that it could not do what a graph deployment asked, and the graph's own
 # condition only names the child instead of repeating why. `delete` is here for
@@ -387,3 +393,8 @@ subjects:
     name: wingsmith-operator
     namespace: {{ $.Release.Namespace }}
 {{- end -}}
+
+{{/* Whether container workers get a PodMonitor: asked for, and the CRD is served. */}}
+{{- define "cluster-setup.podMonitor" -}}
+{{- if and .Values.operator.workerMetrics.podMonitor (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PodMonitor") -}}true{{- end -}}
+{{- end }}

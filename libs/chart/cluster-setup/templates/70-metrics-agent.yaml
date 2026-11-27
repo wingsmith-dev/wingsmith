@@ -177,6 +177,34 @@ data:
             target_label: node
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
+      # Custom workers (runtime: container, P8.3), found by the operator's
+      # wingsmith.dev/runtime label and the prometheus.io annotations it sets
+      # from the workload's declared metrics port and path.
+      - job_name: container-workers
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [{{ include "cluster-setup.workloadNamespace" . | quote }}]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_wingsmith_dev_runtime]
+            regex: container
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: "true"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            regex: (.+)
+            target_label: __metrics_path__
+          - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            regex: (.+);(\d+)
+            replacement: '${1}:${2}'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_wingsmith_dev_deployment_id]
+            target_label: wingsmith_deployment_id
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
 ---
 apiVersion: apps/v1
 kind: Deployment
