@@ -84,7 +84,7 @@ class ManifestRoutes(Controller):
         if_match: str | None = Parameter(header="If-Match", default=None),
         dry_run: str | None = Parameter(query="dryRun", default=None),
     ) -> Response[WorkloadManifest]:
-        """Creates (201) or replaces (200) the workload the manifest declares (ADR 0029, 0031).
+        """Creates (201) or replaces (200) the workload the manifest declares (ADR 0029, 0032).
 
         Three-way against the last-applied record: a field the last apply declared and this one
         leaves out is reset. A replay changes nothing. `X-Wingsmith-Result` is `created`,

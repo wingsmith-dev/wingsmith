@@ -517,7 +517,7 @@ async def test_put_refuses_a_runtime_kind_change_and_a_tagged_image(db: AsyncSes
         await svc.put_workload("search", "applied", body)
 
 
-# --------------------------------------------------------------------------- last-applied (ADR 0031)
+# --------------------------------------------------------------------------- last-applied (ADR 0032)
 
 
 async def test_put_records_last_applied_and_a_removed_field_resets_on_reapply(db: AsyncSession) -> None:

@@ -290,7 +290,7 @@ class ManifestService:
         self, project: str, name: str, body: dict, if_match: str | None = None, dry_run: bool = False
     ) -> tuple[WorkloadManifest, str]:
         """Creates or replaces a workload from its manifest. Returns it and `created`,
-        `configured` or `unchanged` (ADR 0029, 0031).
+        `configured` or `unchanged` (ADR 0029, 0032).
 
         Replace diffs what the manifest declares, three-way against the last-applied record: a
         field the previous apply declared and this one leaves out goes back to its default
