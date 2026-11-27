@@ -279,9 +279,7 @@ class ManifestService:
                 {"spec.serving.artifact": m.spec.serving.artifact}
                 | {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)},
             )
-            created = await svc.create(workload_create(m, owner.uid))
-            if m.spec.paused:
-                await svc._commit(await svc.change_paused(created.id, True))
+            await svc.create(workload_create(m, owner.uid), paused=bool(m.spec.paused))
             return await self.workload(project, name), True
 
         if any(d.authority != MANAGED for d in current.status.deployments):
@@ -289,6 +287,10 @@ class ManifestService:
                 f"workload {name!r} is observed, not managed by the plane; adopt it before applying",
                 {"name": name},
             )
+        # Hold the row for the whole replace and re-read it, so If-Match is checked against what
+        # this transaction writes over, whichever of spec, pause or scale it changes.
+        await svc._one(current.metadata.uid, lock=True)
+        current = await self.workload(project, name)
         revision = self._expect(current, if_match, m.metadata.resource_version)
         for path in IMMUTABLE_PATHS:
             if declared.has("spec", *path) and _value(m.spec, path) != _value(current.spec, path):
@@ -320,10 +322,11 @@ class ManifestService:
             serving["topology"] = topology_request(m.spec.serving)
         if serving:
             update["serving"] = WorkloadServingUpdate(**serving)
-        if update:
-            await svc.update(current.metadata.uid, WorkloadUpdateRequest(**update), if_match=revision)
-
         changes = []
+        if update:
+            changes.append(
+                await svc.change_update(current.metadata.uid, WorkloadUpdateRequest(**update), if_match=revision)
+            )
         if changed("spec", "paused"):
             changes.append(await svc.change_paused(current.metadata.uid, m.spec.paused))
         scale = current.spec.scale

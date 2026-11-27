@@ -873,7 +873,7 @@ class WorkloadService:
             )
         return await placement.expand(workload, snapshot)
 
-    async def create(self, data: WorkloadCreateRequest) -> WorkloadSchema:
+    async def create(self, data: WorkloadCreateRequest, paused: bool = False) -> WorkloadSchema:
         """Creates a workload and the deployments placement expanded it into.
 
         A declared `allowed_regions` or `allowed_clusters` becomes a real Policy attached
@@ -1052,6 +1052,8 @@ class WorkloadService:
                         "placement_reason": decision.summary or "",
                     },
                 )
+            if paused:
+                await self.change_paused(workload.uid, True)
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
@@ -1126,6 +1128,13 @@ class WorkloadService:
         return resolved
 
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
+        """`change_update`, committed and announced."""
+        change = await self.change_update(ref, data, if_match)
+        await self.db.commit()
+        await self.announce(change)
+        return await self.get(change.result["workload"])
+
+    async def change_update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadChange:
         """A partial update of what was asked for, globally.
 
         Scale is not here and cannot be: changing it re-expands the workload across
@@ -1247,13 +1256,13 @@ class WorkloadService:
                         {"placed": placed, "would_place": replaced.placed or 0, "summary": replaced.result["summary"]},
                     )
                 change.merge(replaced)
-            await self.db.commit()
+            await self.db.flush()
         except IntegrityError as exc:
             await self.db.rollback()
             raise _conflict(exc, name, None) from exc
 
-        await self.announce(change)
-        return await self.get(workload.uid)
+        change.result["workload"] = workload.uid
+        return change
 
     async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> WorkloadChange:
         """Re-expands a workload and moves the per-cluster deployments onto the answer.

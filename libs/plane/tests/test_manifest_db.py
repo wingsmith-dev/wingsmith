@@ -402,3 +402,54 @@ async def test_put_endpoint_with_a_slug_another_endpoint_holds_is_a_conflict(db:
     await svc.put_endpoint("search", "one", _endpoint_body("one", slug="taken"))
     with pytest.raises(Conflict):
         await svc.put_endpoint("search", "two", _endpoint_body("two", slug="taken"))
+
+
+async def test_put_workload_replicas_only_with_a_stale_revision_is_a_conflict(db: AsyncSession) -> None:
+    await a_workload(db, max_scale=5, desired_scale=1)
+    svc = ManifestService(db)
+    stale = await svc.workload("search", "gpt-oss-prod")
+    await svc.put_scale("search", "gpt-oss-prod", _scale(2))
+    body = _wire(stale)
+    body["spec"]["replicas"] = 3
+    with pytest.raises(Conflict):
+        await svc.put_workload("search", "gpt-oss-prod", body, if_match=stale.metadata.resource_version)
+    assert (await svc.workload("search", "gpt-oss-prod")).spec.replicas == 2
+
+
+async def test_put_workload_failing_scale_leaves_the_spec_unchanged(db: AsyncSession, monkeypatch) -> None:
+    await a_workload(db, max_scale=5, desired_scale=1)
+    svc = ManifestService(db)
+    before = await svc.workload("search", "gpt-oss-prod")
+    body = _wire(before)
+    body["spec"]["preemptible"] = not before.spec.preemptible
+    body["spec"]["replicas"] = 3
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("scale failed")
+
+    monkeypatch.setattr(WorkloadService, "change_scale", boom)
+    with pytest.raises(RuntimeError):
+        await svc.put_workload("search", "gpt-oss-prod", body)
+    await db.rollback()
+    after = await svc.workload("search", "gpt-oss-prod")
+    assert after.metadata.generation == before.metadata.generation
+    assert after.spec.preemptible == before.spec.preemptible
+
+
+async def test_put_workload_created_paused_is_never_live(db: AsyncSession) -> None:
+    cluster, _, artifact, _ = await a_workload(db)
+    m, created = await ManifestService(db).put_workload(
+        "search", "applied", _workload_body(artifact.handle, cluster.name, paused=True)
+    )
+    assert created and m.spec.paused
+    rows = (await db.execute(select(Deployment).join(Workload).where(Workload.name == "applied"))).scalars().all()
+    assert rows and not any(d.enabled for d in rows)
+
+
+async def test_put_workload_annotations_without_the_note_clear_it(db: AsyncSession) -> None:
+    await a_workload(db, note="first cut")
+    svc = ManifestService(db)
+    body = _wire(await svc.workload("search", "gpt-oss-prod"))
+    body["metadata"]["annotations"] = {}
+    m, _ = await svc.put_workload("search", "gpt-oss-prod", body)
+    assert NOTE_ANNOTATION not in m.metadata.annotations
