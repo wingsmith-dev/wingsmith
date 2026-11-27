@@ -143,3 +143,36 @@ async def test_compaction_makes_old_resume_points_gone(db: AsyncSession) -> None
     rows, _ = await changes.since(db, through + 1, 10)
     assert rows == []
     assert await changes.current(db) > through
+
+
+async def _age(db: AsyncSession, seq: int, interval: str) -> None:
+    await db.execute(
+        text(f"UPDATE change_log SET created_at = now() - interval '{interval}' WHERE seq = :s"), {"s": seq}
+    )
+
+
+async def test_compaction_stops_at_the_first_row_inside_the_window(db: AsyncSession) -> None:
+    first = await an_artifact(db)
+    second = await an_artifact(db, digest="sha256:cccc", name="second")
+    third = await an_artifact(db, digest="sha256:dddd", name="third")
+    await _age(db, int(first.revision), "2 days")
+    await _age(db, int(third.revision), "2 days")  # stamped old, but its seq is past a fresh row
+    await db.commit()
+    through = await changes.compact(db, dt.timedelta(days=1))
+    assert through == int(first.revision)
+    assert [r[0] for r in await _log(db)] == [int(second.revision), int(third.revision)]
+
+
+async def test_compaction_deletes_in_batches_and_never_moves_back(db: AsyncSession) -> None:
+    for i in range(5):
+        await an_artifact(db, digest=f"sha256:{i:04d}", name=f"a{i}")
+    await db.execute(text("UPDATE change_log SET created_at = now() - interval '2 days'"))
+    await db.commit()
+    newest = await changes.current(db)
+    through = await changes.compact(db, dt.timedelta(days=1), batch=2)
+    assert through == newest and await _log(db) == []
+    await an_artifact(db, digest="sha256:eeee", name="fresh")
+    assert await changes.compact(db, dt.timedelta(days=1)) == through
+    await db.execute(text("UPDATE change_log_state SET compacted_through = :t"), {"t": through + 100})
+    await db.commit()
+    assert await changes.compact(db, dt.timedelta(seconds=0)) == through + 100
