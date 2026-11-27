@@ -607,3 +607,40 @@ func TestDiscoveryAgeCountsFromTheLastAnswer(t *testing.T) {
 		t.Fatalf("a configured endpoint aged %s, want 0", got)
 	}
 }
+
+// TestAContainerWorkersServiceIsItsDeploymentsFrontend covers P8.2: a custom worker's Service is
+// found by role=frontend and its deployment id, on the port named http.
+func TestAContainerWorkersServiceIsItsDeploymentsFrontend(t *testing.T) {
+	worker := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-worker", Namespace: testNamespace, Labels: map[string]string{
+			RoleLabel: roleFrontend, DeploymentIDLabel: "dep_01c0nt", "wingsmith.dev/runtime": "container",
+		}},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{DeploymentIDLabel: "dep_01c0nt", "wingsmith.dev/runtime": "container"},
+			Ports:    []corev1.ServicePort{{Name: "metrics", Port: 9100}, {Name: "http", Port: 9000}},
+		},
+	}
+	// role=frontend without a deployment id is not a frontend: it would otherwise become the
+	// shared fallback for every request.
+	stray := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "stray", Namespace: testNamespace, Labels: map[string]string{RoleLabel: roleFrontend}},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 80}}},
+	}
+	resolver, err := New(Config{Namespace: testNamespace, Services: services(t, worker, stray)})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	if err := resolver.Refresh(context.Background()); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	got, err := resolver.URLFor("dep_01c0nt")
+	if err != nil {
+		t.Fatalf("URLFor: %v", err)
+	}
+	if want := "http://my-worker.wingsmith-serving.svc.cluster.local:9000"; got.String() != want {
+		t.Fatalf("URLFor = %q, want %q", got, want)
+	}
+	if _, err := resolver.URL(); err == nil {
+		t.Fatal("a role=frontend Service with no deployment id became the shared frontend")
+	}
+}

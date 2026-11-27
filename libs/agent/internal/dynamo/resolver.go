@@ -389,7 +389,7 @@ func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ 
 		if r.namespace != "" && service.Namespace != r.namespace {
 			continue
 		}
-		if service.Spec.Selector[ComponentLabel] != componentFrontend {
+		if !isFrontend(service) {
 			continue
 		}
 		key := deploymentOf(service)
@@ -422,6 +422,23 @@ func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ 
 		discovered.byDeployment[key] = address
 	}
 	return discovered, true, errors.Join(conflicts...)
+}
+
+// RoleLabel and roleFrontend mark a Service the operator rendered as a deployment's own frontend
+// outside Dynamo: a custom worker (`runtime: container`) answers requests itself.
+const (
+	RoleLabel    = "wingsmith.dev/role"
+	roleFrontend = "frontend"
+)
+
+// isFrontend says a Service fronts a model: Dynamo's frontend component, or a Service labelled
+// role=frontend for one deployment. The second always names its deployment, so it is never taken
+// for the cluster's shared frontend.
+func isFrontend(service corev1.Service) bool {
+	if service.Spec.Selector[ComponentLabel] == componentFrontend {
+		return true
+	}
+	return service.Labels[RoleLabel] == roleFrontend && service.Labels[DeploymentIDLabel] != ""
 }
 
 // deploymentOf reads the routing key off a frontend Service, or empty for the
