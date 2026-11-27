@@ -1,7 +1,22 @@
 #!/bin/sh
 # Creates the service user and its directories, then reloads systemd. It never enables or starts
-# the unit: a host serves only after its operator enrols it and turns the service on.
+# the unit: a host serves only after its operator enrols it and turns the service on. On an upgrade
+# it stops a running agent around the ownership fix and starts it again; replica containers keep
+# running and the agent adopts them.
 set -e
+
+# deb passes "configure <old-version>" (old version empty on a fresh install), rpm the count of
+# installed versions (2 on an upgrade).
+upgrade=false
+case "$1" in
+configure) [ -n "$2" ] && upgrade=true ;;
+2) upgrade=true ;;
+esac
+restart=false
+if $upgrade && [ -d /run/systemd/system ] && systemctl is-active --quiet wingsmith-host.service; then
+	systemctl stop wingsmith-host.service
+	restart=true
+fi
 
 if ! getent group wingsmith >/dev/null; then
 	groupadd --system wingsmith
@@ -30,4 +45,7 @@ chown root:wingsmith /etc/wingsmith/host.json 2>/dev/null || true
 
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
+fi
+if $restart; then
+	systemctl start wingsmith-host.service
 fi
