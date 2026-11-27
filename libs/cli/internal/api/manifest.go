@@ -41,11 +41,43 @@ func (c *Client) Manifest(ctx context.Context, collection, project, name string)
 	return out, err
 }
 
+// ApplyOptions are a PUT's optional parts: a dry run and an If-Match revision.
+type ApplyOptions struct {
+	DryRun  bool
+	IfMatch string
+}
+
+// Apply results, from the plane's X-Wingsmith-Result header.
+const (
+	ApplyCreated    = "created"
+	ApplyConfigured = "configured"
+	ApplyUnchanged  = "unchanged"
+)
+
 // ApplyManifest creates or replaces one Workload or Endpoint with PUT and returns
-// the object as the plane now holds it, and whether the PUT created it.
-func (c *Client) ApplyManifest(ctx context.Context, collection, project, name string, m Manifest) (Manifest, bool, error) {
+// the object as the plane now holds it (or would, on a dry run) and whether it was
+// created, configured or unchanged.
+func (c *Client) ApplyManifest(ctx context.Context, collection, project, name string, m Manifest, opts ApplyOptions) (Manifest, string, error) {
 	path := "/v1/manifests/" + collection + "/" + url.PathEscape(project) + "/" + url.PathEscape(name)
+	var q url.Values
+	if opts.DryRun {
+		q = url.Values{"dryRun": {"All"}}
+	}
+	var headers map[string]string
+	if opts.IfMatch != "" {
+		headers = map[string]string{"If-Match": opts.IfMatch}
+	}
 	var out Manifest
-	status, err := c.sendStatus(ctx, http.MethodPut, path, nil, m, nil, &out)
-	return out, status == http.StatusCreated, err
+	resp, err := c.sendResponse(ctx, http.MethodPut, path, q, m, headers, &out)
+	if err != nil {
+		return out, "", err
+	}
+	result := resp.Header.Get("X-Wingsmith-Result")
+	if result == "" {
+		result = ApplyConfigured
+		if resp.StatusCode == http.StatusCreated {
+			result = ApplyCreated
+		}
+	}
+	return out, result, nil
 }

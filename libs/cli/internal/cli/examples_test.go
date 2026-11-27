@@ -54,8 +54,11 @@ var preconditions = map[string][]string{
 
 // unrunnable are examples the fake cannot carry out, and why.
 var unrunnable = map[string]string{
-	"apply -f chat.yaml": "it reads a file the user wrote",
-	"benchmark run chat --param concurrency=64 --wait":                           "the fake never executes a benchmark, so --wait polls until it times out",
+	"apply -f chat.yaml":                               "it reads a file the user wrote",
+	"apply -f deploy/ -R":                              "it reads a directory the user wrote",
+	"diff -f chat.yaml":                                "it reads a file the user wrote",
+	"diff -f deploy/ -R && echo up to date":            "it reads a directory the user wrote",
+	"benchmark run chat --param concurrency=64 --wait": "the fake never executes a benchmark, so --wait polls until it times out",
 	"benchmark run chat --param concurrency=64 --param request_count=500 --wait": "the fake never executes a benchmark, so --wait polls until it times out",
 }
 

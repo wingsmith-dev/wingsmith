@@ -59,7 +59,7 @@ spec: {}
 	if err := os.WriteFile(file, []byte(doc+"---\nkind: Artifact\nmetadata: {name: gpt}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, errOut, code := run(t, "apply", "-f", file); code != 2 || !strings.Contains(errOut, "cannot be applied yet") {
+	if _, errOut, code := run(t, "apply", "-f", file, "-o", "human"); code != 1 || !strings.Contains(errOut, "cannot be applied yet") {
 		t.Errorf("artifact: exit %d %s", code, errOut)
 	}
 	if _, errOut, code := run(t, "apply"); code != 2 || !strings.Contains(errOut, "file") {

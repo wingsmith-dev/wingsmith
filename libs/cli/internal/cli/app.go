@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"slices"
@@ -137,6 +138,10 @@ func Execute() int {
 	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return 0
+	}
+	var status exitStatus
+	if errors.As(err, &status) {
+		return int(status)
 	}
 	if app.Out == nil {
 		app.bootstrapFallback()

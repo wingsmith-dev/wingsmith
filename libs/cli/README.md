@@ -126,9 +126,16 @@ JSON API (ADR 0028). Workloads and endpoints are read in `--project`; an artifac
 private there, from the public catalogue otherwise. The kinds' JSON Schema, with its `x-immutable`
 and `x-defaulted` markers, is embedded at `internal/api/manifest-schema.json`.
 
-`wings apply -f file.yaml` PUTs each Workload, then each Endpoint, in the file (ADR 0029): the
-plane creates the object or replaces the fields the manifest declares, and applying the same file
-again changes nothing. Artifact documents are refused for now; `wings diff` and pruning come later.
+`wings apply -f file|dir|- [-R]` PUTs each Workload, then each Endpoint, then in file order
+(ADR 0029, 0031). The plane keeps the last manifest applied to each object and merges against it:
+a field removed from the file goes back to its default, a field never declared keeps its stored
+value, and applying the same file again prints `unchanged`. A failed document does not stop the
+rest; every result is printed and apply exits 1 if any failed. `--if-match <resourceVersion>`
+makes a single-document apply conditional. Artifact documents are refused for now.
+
+`wings diff -f ...` shows what apply would change: it reads each object, asks the plane for the
+result of a dry-run PUT (`?dryRun=All`, nothing kept) and prints a unified YAML diff of spec and
+metadata without the plane-managed keys. Exit 0 means no change, 1 a change, above 1 an error.
 
 Declared state, observed state and operations stay separate at the CLI too. Draining a node is
 an operation (`wings operation create node.drain …`), not a flag on `node`, so it has a record of

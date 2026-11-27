@@ -43,10 +43,12 @@ func (b *Backend) Manifest(ctx context.Context, collection, project, name string
 }
 
 // ApplyManifest echoes the manifest back, created when the fake holds no object by that name.
-func (b *Backend) ApplyManifest(ctx context.Context, collection, project, name string, m api.Manifest) (api.Manifest, bool, error) {
+func (b *Backend) ApplyManifest(ctx context.Context, collection, project, name string, m api.Manifest, opts api.ApplyOptions) (api.Manifest, string, error) {
 	if collection != "workloads" && collection != "endpoints" {
-		return nil, false, errs.New(errs.CodeUsage, "unknown manifest collection %q", collection)
+		return nil, "", errs.New(errs.CodeUsage, "unknown manifest collection %q", collection)
 	}
-	_, err := b.Manifest(ctx, collection, project, name)
-	return m, err != nil, nil
+	if _, err := b.Manifest(ctx, collection, project, name); err != nil {
+		return m, api.ApplyCreated, nil
+	}
+	return m, api.ApplyConfigured, nil
 }

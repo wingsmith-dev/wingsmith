@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -99,127 +102,362 @@ func writeManifestYAML(w io.Writer, m api.Manifest) error {
 	return err
 }
 
+// exitStatus ends a command with a status and nothing more to print: the
+// command already reported what happened (apply's failed documents, diff's diff).
+type exitStatus int
+
+func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// manifestSources are the -f and -R flags apply and diff share.
+type manifestSources struct {
+	files     []string
+	recursive bool
+}
+
+func (m *manifestSources) bind(cmd *cobra.Command) {
+	cmd.Flags().StringArrayVarP(&m.files, "file", "f", nil, "manifest file or directory, YAML or JSON, several documents allowed; - reads stdin (repeatable)")
+	cmd.Flags().BoolVarP(&m.recursive, "recursive", "R", false, "read directories given to -f recursively")
+}
+
+// read returns every document from every source, in the order given: files in
+// a directory by name, subdirectories only with -R.
+func (m *manifestSources) read(stdin io.Reader) ([]sourced, error) {
+	if len(m.files) == 0 {
+		return nil, errs.New(errs.CodeUsage, "needs a manifest file").WithFlag("file")
+	}
+	var out []sourced
+	add := func(name string, data []byte) error {
+		docs, err := parseManifests(data)
+		if err != nil {
+			return errs.Wrap(err, errs.CodeUsage, "%s: %s", name, errs.As(err).Message)
+		}
+		for _, d := range docs {
+			out = append(out, sourced{source: name, doc: d})
+		}
+		return nil
+	}
+	for _, f := range m.files {
+		if f == "-" {
+			data, err := io.ReadAll(stdin)
+			if err != nil {
+				return nil, errs.Wrap(err, errs.CodeUsage, "cannot read stdin")
+			}
+			if err := add("stdin", data); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		info, err := os.Stat(f)
+		if err != nil {
+			return nil, errs.Wrap(err, errs.CodeUsage, "cannot read %s", f)
+		}
+		paths := []string{f}
+		if info.IsDir() {
+			if paths, err = manifestFiles(f, m.recursive); err != nil {
+				return nil, errs.Wrap(err, errs.CodeUsage, "cannot read %s", f)
+			}
+		}
+		for _, p := range paths {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return nil, errs.Wrap(err, errs.CodeUsage, "cannot read %s", p)
+			}
+			if err := add(p, data); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, errs.New(errs.CodeUsage, "no manifests in %s", strings.Join(m.files, ", "))
+	}
+	return out, nil
+}
+
+// manifestFiles lists the .yaml, .yml and .json files under dir, sorted by path.
+func manifestFiles(dir string, recursive bool) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if p != dir && !recursive {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(p)) {
+		case ".yaml", ".yml", ".json":
+			out = append(out, p)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
+type sourced struct {
+	source string
+	doc    api.Manifest
+}
+
+func (a *App) projectFlag() string {
+	if a.projectSet {
+		return a.Project
+	}
+	return ""
+}
+
+// applyOutcome is one document's result, in apply's JSON output.
+type applyOutcome struct {
+	Ref    string       `json:"ref"`
+	Source string       `json:"source"`
+	Result string       `json:"result,omitempty"`
+	Error  *errs.Error  `json:"error,omitempty"`
+	Object api.Manifest `json:"object,omitempty"`
+}
+
 func newApplyCmd(app *App) *cobra.Command {
-	var file string
+	var src manifestSources
+	var ifMatch string
 	cmd := &cobra.Command{
-		Use:   "apply -f <file>",
+		Use:   "apply -f <file|dir|->",
 		Short: "Create or replace Workloads and Endpoints from manifests",
-		Long: `Send each manifest in a YAML or JSON file to the plane with PUT, which creates
-the object or replaces what it declares. Fields a manifest leaves out keep their
-stored values, and applying the same file twice changes nothing.
+		Long: `Send each manifest to the plane with PUT, which creates the object or replaces
+what it declares. The plane keeps the last manifest applied to each object, so a
+field removed from the file goes back to its default on the next apply; a field
+never declared keeps its stored value, and applying the same file twice changes
+nothing. Each object prints as created, configured or unchanged.
 
 Workloads are applied before Endpoints, so an endpoint's workloadRef has
-something to resolve. A document without metadata.namespace is applied in
---project. Artifact manifests are not applied yet: register artifacts with
-'wings artifact create'.`,
+something to resolve, and otherwise in file order. A document that fails does
+not stop the rest: every result is printed and apply exits 1 if any failed.
+
+A document without metadata.namespace is applied in --project. A document with
+metadata.resourceVersion is applied only if the object is still at that
+revision; --if-match does the same for a single document. Artifact manifests
+are not applied yet: register artifacts with 'wings artifact create'.`,
 		Example: `  wings apply -f chat.yaml
+  wings apply -f deploy/ -R
   cat chat.yaml | wings apply -f -`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
-				return errs.New(errs.CodeUsage, "apply needs a file").WithFlag("file")
-			}
-			var data []byte
-			var err error
-			if file == "-" {
-				data, err = io.ReadAll(cmd.InOrStdin())
-			} else {
-				data, err = os.ReadFile(file)
-			}
-			if err != nil {
-				return errs.Wrap(err, errs.CodeUsage, "cannot read %s", file)
-			}
-			docs, err := parseManifests(data)
+			docs, err := src.read(cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
-			project := ""
-			if app.projectSet {
-				project = app.Project
-			}
-			plan, err := applyPlan(docs, project)
-			if err != nil {
-				return err
+			plan := applyPlan(docs, app.projectFlag())
+			if ifMatch != "" && len(plan) != 1 {
+				return errs.New(errs.CodeUsage, "--if-match needs exactly one document, not %d", len(plan)).WithFlag("if-match")
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			var applied []api.Manifest
-			var names, lines []string
+			var outcomes []applyOutcome
+			var names []string
+			failed := 0
 			for _, p := range plan {
-				out, created, err := app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc)
+				o := applyOutcome{Ref: p.ref, Source: p.source}
+				err := p.err
+				if err == nil {
+					o.Object, o.Result, err = app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{IfMatch: ifMatch})
+				}
 				if err != nil {
-					// Earlier documents are already applied; say which before the failure.
-					for _, l := range lines {
-						fmt.Fprintln(cmd.ErrOrStderr(), l)
-					}
-					return err
+					o.Error, o.Object = errs.As(err), nil
+					failed++
+				} else {
+					names = append(names, p.ref)
 				}
-				verb := "configured"
-				if created {
-					verb = "created"
-				}
-				ref := fmt.Sprintf("%s/%s", strings.TrimSuffix(p.collection, "s"), p.name)
-				applied = append(applied, out)
-				names = append(names, ref)
-				lines = append(lines, ref+" "+verb)
+				outcomes = append(outcomes, o)
 			}
-			return app.Emit(&output.Result{
+			stderr := cmd.ErrOrStderr()
+			err = app.Emit(&output.Result{
 				Command: cmdPath(cmd),
-				Data:    applied,
+				Data:    outcomes,
 				Names:   names,
 				Human: func(w io.Writer, s ui.Style, width int) {
-					for _, l := range lines {
-						fmt.Fprintln(w, l)
+					for _, o := range outcomes {
+						if o.Error != nil {
+							fmt.Fprintf(stderr, "%s failed: %s\n", o.Ref, o.Error.Message)
+							continue
+						}
+						fmt.Fprintln(w, o.Ref+" "+o.Result)
 					}
 				},
 			})
+			if err != nil {
+				return err
+			}
+			if failed > 0 {
+				return exitStatus(1)
+			}
+			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "manifest file, YAML or JSON, several documents allowed; - reads stdin")
+	src.bind(cmd)
+	cmd.Flags().StringVar(&ifMatch, "if-match", "", "apply only if the object is still at this resourceVersion")
 	return group(cmd, "demand")
 }
 
-type applyItem struct {
-	collection, project, name string
-	doc                       api.Manifest
+func newDiffCmd(app *App) *cobra.Command {
+	var src manifestSources
+	cmd := &cobra.Command{
+		Use:   "diff -f <file|dir|->",
+		Short: "Show what apply would change",
+		Long: `Read each object as the plane holds it, ask the plane what applying the
+manifest would make it (a dry-run PUT that keeps nothing), and print a unified
+YAML diff of the two: spec and metadata, without the plane-managed keys and
+status. An object that does not exist yet diffs against nothing.
+
+Exits 0 when nothing would change, 1 when something would, and above 1 on an
+error, like diff(1).`,
+		Example: `  wings diff -f chat.yaml
+  wings diff -f deploy/ -R && echo up to date`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			docs, err := src.read(cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			plan := applyPlan(docs, app.projectFlag())
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			var out strings.Builder
+			differs := false
+			for _, p := range plan {
+				if p.err != nil {
+					return p.err
+				}
+				live, err := app.Backend.Manifest(ctx, p.collection, p.project, p.name)
+				if e := errs.As(err); err != nil && e.Code == errs.CodeNotFound {
+					live, err = nil, nil
+				}
+				if err != nil {
+					return err
+				}
+				merged, _, err := app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{DryRun: true})
+				if err != nil {
+					return err
+				}
+				a, err := diffYAML(live)
+				if err != nil {
+					return err
+				}
+				b, err := diffYAML(merged)
+				if err != nil {
+					return err
+				}
+				if d := unifiedDiff("live/"+p.ref, "merged/"+p.ref, a, b); d != "" {
+					differs = true
+					out.WriteString(d)
+				}
+			}
+			fmt.Fprint(cmd.OutOrStdout(), out.String())
+			if differs {
+				return exitStatus(1)
+			}
+			return nil
+		},
+	}
+	src.bind(cmd)
+	return group(cmd, "demand")
 }
 
-// applyPlan checks every document before anything is sent, then orders them:
-// Workloads, then Endpoints.
-func applyPlan(docs []api.Manifest, project string) ([]applyItem, error) {
-	var workloads, endpoints []applyItem
-	for i, doc := range docs {
+// managedMetadata are the keys the plane writes, which a diff leaves out.
+var managedMetadata = []string{"uid", "generation", "creationTimestamp", "resourceVersion"}
+
+const lastAppliedAnnotation = "plane.wingsmith.dev/last-applied"
+
+// diffYAML is the part of a manifest diff compares, as YAML: no status and no
+// plane-managed metadata. A nil manifest is the empty string.
+func diffYAML(m api.Manifest) (string, error) {
+	if m == nil {
+		return "", nil
+	}
+	view := api.Manifest{}
+	for k, v := range m {
+		if k != "status" {
+			view[k] = v
+		}
+	}
+	if meta, ok := m["metadata"].(map[string]any); ok {
+		trimmed := map[string]any{}
+		for k, v := range meta {
+			trimmed[k] = v
+		}
+		for _, k := range managedMetadata {
+			delete(trimmed, k)
+		}
+		if notes, ok := trimmed["annotations"].(map[string]any); ok {
+			kept := map[string]any{}
+			for k, v := range notes {
+				if k != lastAppliedAnnotation {
+					kept[k] = v
+				}
+			}
+			trimmed["annotations"] = kept
+			if len(kept) == 0 {
+				delete(trimmed, "annotations")
+			}
+		}
+		view["metadata"] = trimmed
+	}
+	var b bytes.Buffer
+	if err := writeManifestYAML(&b, view); err != nil {
+		return "", errs.Wrap(err, errs.CodeInternal, "cannot render manifest")
+	}
+	return b.String(), nil
+}
+
+type applyItem struct {
+	collection, project, name, ref, source string
+	doc                                    api.Manifest
+	// err is why the document cannot be sent; apply reports it and moves on.
+	err error
+}
+
+// applyPlan orders the documents Workloads first, then Endpoints, each in file
+// order. A document that cannot be sent keeps its place with err set.
+func applyPlan(docs []sourced, project string) []applyItem {
+	var workloads, endpoints, bad []applyItem
+	for i, d := range docs {
+		doc := d.doc
 		kind, _ := doc["kind"].(string)
 		meta, _ := doc["metadata"].(map[string]any)
 		name, _ := meta["name"].(string)
-		if name == "" {
-			return nil, errs.New(errs.CodeUsage, "document %d has no metadata.name", i+1)
-		}
 		namespace, _ := meta["namespace"].(string)
 		if namespace == "" {
 			namespace = project
 		}
-		item := applyItem{project: namespace, name: name, doc: doc}
-		switch kind {
-		case "Workload":
+		item := applyItem{project: namespace, name: name, doc: doc, source: d.source}
+		item.ref = fmt.Sprintf("%s/%s", strings.ToLower(kind), name)
+		switch {
+		case name == "":
+			item.ref = fmt.Sprintf("%s document %d", d.source, i+1)
+			item.err = errs.New(errs.CodeUsage, "document %d has no metadata.name", i+1)
+		case kind == "Workload":
 			item.collection = "workloads"
-			workloads = append(workloads, item)
-		case "Endpoint":
+		case kind == "Endpoint":
 			item.collection = "endpoints"
-			endpoints = append(endpoints, item)
-		case "Artifact":
-			return nil, errs.New(errs.CodeUsage, "artifact/%s: Artifact manifests cannot be applied yet", name).
+		case kind == "Artifact":
+			item.err = errs.New(errs.CodeUsage, "artifact/%s: Artifact manifests cannot be applied yet", name).
 				WithFix("Register the artifact instead", "wings artifact create")
 		default:
-			return nil, errs.New(errs.CodeUsage, "document %d has unknown kind %q", i+1, kind).
+			item.err = errs.New(errs.CodeUsage, "document %d has unknown kind %q", i+1, kind).
 				WithCause("kinds: Workload, Endpoint")
 		}
-		if namespace == "" {
-			return nil, errs.New(errs.CodeUsage, "%s/%s has no metadata.namespace", strings.ToLower(kind), name).
-				WithFlag("project")
+		if item.err == nil && namespace == "" {
+			item.err = errs.New(errs.CodeUsage, "%s has no metadata.namespace", item.ref).WithFlag("project")
+		}
+		switch {
+		case item.err != nil:
+			bad = append(bad, item)
+		case item.collection == "workloads":
+			workloads = append(workloads, item)
+		default:
+			endpoints = append(endpoints, item)
 		}
 	}
-	return append(workloads, endpoints...), nil
+	return append(append(workloads, endpoints...), bad...)
 }
 
 // parseManifests reads one or more YAML (or JSON) documents into JSON-shaped maps.

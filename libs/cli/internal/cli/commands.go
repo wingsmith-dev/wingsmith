@@ -23,6 +23,7 @@ func register(app *App, root *cobra.Command) {
 		endpointNoun().command(app),
 		newGetCmd(app),
 		newApplyCmd(app),
+		newDiffCmd(app),
 
 		tenantNoun().command(app),
 		projectNoun().command(app),

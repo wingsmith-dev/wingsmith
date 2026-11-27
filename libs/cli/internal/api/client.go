@@ -684,29 +684,39 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 
 // sendStatus is send, also returning the status code, for a caller that tells 201 from 200.
 func (c *Client) sendStatus(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) (int, error) {
+	resp, err := c.sendResponse(ctx, method, path, q, body, headers, out)
+	if resp == nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
+}
+
+// sendResponse is send, also returning the response, for a caller that reads its headers.
+// The response is nil only when no answer came.
+func (c *Client) sendResponse(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) (*http.Response, error) {
 	resp, payload, err := c.do(ctx, method, path, q, body, headers)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if resp.StatusCode == http.StatusUnauthorized && c.canRefresh(path) {
 		if err := c.refresh(ctx); err != nil {
-			return 0, err
+			return nil, err
 		}
 		resp, payload, err = c.do(ctx, method, path, q, body, headers)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	if resp.StatusCode >= 400 {
-		return resp.StatusCode, httpError(resp, payload)
+		return resp, httpError(resp, payload)
 	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
-		return resp.StatusCode, nil
+		return resp, nil
 	}
 	if err := json.Unmarshal(payload, out); err != nil {
-		return resp.StatusCode, errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
+		return resp, errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
 	}
-	return resp.StatusCode, nil
+	return resp, nil
 }
 
 func (c *Client) canRefresh(path string) bool {
