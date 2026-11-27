@@ -88,7 +88,11 @@ func (f *fakeDocker) serve(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if match {
-				out = append(out, ContainerSummary{ID: c.id, Names: []string{"/" + c.name}, Image: c.spec.Image, Labels: c.spec.Labels})
+				state := "exited"
+				if c.running {
+					state = "running"
+				}
+				out = append(out, ContainerSummary{ID: c.id, Names: []string{"/" + c.name}, Image: c.spec.Image, Labels: c.spec.Labels, State: state})
 			}
 		}
 		_ = json.NewEncoder(w).Encode(out)

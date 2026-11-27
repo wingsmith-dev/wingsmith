@@ -27,6 +27,9 @@ func newCacheRig(t *testing.T) *cacheRig {
 	if err := os.RemoveAll(filepath.Join(r.models, "hf")); err != nil {
 		t.Fatal(err)
 	}
+	old := tokenOwnerUID
+	tokenOwnerUID = uint32(os.Geteuid())
+	t.Cleanup(func() { tokenOwnerUID = old })
 	cr := &cacheRig{rig: r, creds: t.TempDir(), now: time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC), used: 10}
 	cr.cache = &Cache{
 		Docker: r.b.Docker, Policy: r.b.Policy, Root: r.models, CredentialsDir: cr.creds, Log: r.b.Log,
@@ -110,8 +113,11 @@ func TestPrefetchLifecycleAndResidency(t *testing.T) {
 		!strings.Contains(spec.Cmd[0], "snapshot_download") || !strings.Contains(spec.Cmd[0], `"org/model", "rev1"`) {
 		t.Fatalf("spec = %+v", spec)
 	}
-	if want := filepath.Join(cr.models, "hf") + ":/models/hf"; !slices.Equal(spec.HostConfig.Binds, []string{want}) {
-		t.Fatalf("binds = %v, want only %s read-write", spec.HostConfig.Binds, want)
+	repo := "hf/hub/models--org--model"
+	locks := "hf/hub/.locks/models--org--model"
+	want := []string{filepath.Join(cr.models, repo) + ":/models/" + repo, filepath.Join(cr.models, locks) + ":/models/" + locks}
+	if !slices.Equal(spec.HostConfig.Binds, want) {
+		t.Fatalf("binds = %v, want only the repo and its locks read-write: %v", spec.HostConfig.Binds, want)
 	}
 	if !slices.Contains(spec.Env, "HF_HOME=/models/hf") || !spec.HostConfig.ReadonlyRootfs ||
 		!slices.Equal(spec.HostConfig.CapDrop, []string{"ALL"}) || spec.HostConfig.RestartPolicy.Name != "no" {
@@ -220,7 +226,25 @@ func TestPrivateArtifactTokenResolution(t *testing.T) {
 		t.Fatalf("loose token file: %+v", out)
 	}
 
-	if err := os.Chmod(tokenFile, 0o600); err != nil {
+	// A symlink is refused even when its target is a proper token file.
+	real := filepath.Join(t.TempDir(), "real.token")
+	if err := os.WriteFile(real, []byte("hf_secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	out = cr.cache.Sync(ctx, in)
+	if len(out) != 1 || out[0].Reason != "CredentialUnavailable" || !strings.Contains(out[0].Message, "symlink") {
+		t.Fatalf("symlinked token file: %+v", out)
+	}
+	if err := os.Remove(tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenFile, []byte("hf_secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cr.cache.Sync(ctx, in)
@@ -232,7 +256,8 @@ func TestPrivateArtifactTokenResolution(t *testing.T) {
 	if !slices.Contains(spec.Env, "HF_TOKEN=hf_secret") || !slices.Contains(spec.Env, "HF_HOME=/models/p/prj_1/hf") {
 		t.Fatalf("env = %v", spec.Env)
 	}
-	if want := filepath.Join(cr.models, "p/prj_1") + ":/models/p/prj_1"; !slices.Equal(spec.HostConfig.Binds, []string{want}) {
+	repo, locks := "p/prj_1/hf/hub/models--acme--secret", "p/prj_1/hf/hub/.locks/models--acme--secret"
+	if want := []string{filepath.Join(cr.models, repo) + ":/models/" + repo, filepath.Join(cr.models, locks) + ":/models/" + locks}; !slices.Equal(spec.HostConfig.Binds, want) {
 		t.Fatalf("binds = %v", spec.HostConfig.Binds)
 	}
 
@@ -320,6 +345,38 @@ func TestRestartCollectsAndCleansPartials(t *testing.T) {
 	}
 }
 
+// A cache filled by hand (or from before markers) and mounted by a running replica is adopted on
+// upgrade, never deleted and fetched over.
+func TestHandFilledCacheIsAdopted(t *testing.T) {
+	cr := newCacheRig(t)
+	ctx := context.Background()
+	cr.cache.Image = image
+	weights := filepath.Join(cr.models, "art_h", "model.safetensors")
+	if err := os.MkdirAll(filepath.Dir(weights), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(weights, []byte("hand-filled"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cr.docker.containers["r1"] = &fakeContainer{id: "r1", name: "ws-x-0", running: true, spec: ContainerCreate{
+		Image: image, Labels: map[string]string{LabelManagedBy: managedBy, LabelModelPath: "art_h"}}}
+	arts := map[string]wire.ArtifactDesired{"art_h": urlArtifact("art_h")}
+
+	out := cr.cache.Sync(ctx, SyncInput{Warm: warm("art_h"), Artifacts: arts})
+	if len(out) != 1 || out[0].Reason != "Resident" {
+		t.Fatalf("= %+v", out)
+	}
+	if len(cr.prefetches()) != 0 {
+		t.Fatal("fetched over a hand-filled cache")
+	}
+	if raw, err := os.ReadFile(weights); err != nil || string(raw) != "hand-filled" {
+		t.Fatalf("hand-filled weights touched: %q %v", raw, err)
+	}
+	if !cr.cache.Resident(arts["art_h"]) {
+		t.Fatal("adopted weights not resident")
+	}
+}
+
 func TestEvictionKeepsWarmAndMounted(t *testing.T) {
 	cr := newCacheRig(t)
 	ctx := context.Background()
@@ -370,8 +427,17 @@ func TestEvictionKeepsWarmAndMounted(t *testing.T) {
 		t.Fatal("evicted weights still on disk")
 	}
 
-	// A replica without the model-path label stops eviction outright.
-	cr.docker.containers["r2"] = &fakeContainer{id: "r2", name: "ws-y-0", spec: ContainerCreate{
+	// A stopped replica does not hold its weights: art_mounted goes once its replica stops.
+	cr.docker.containers["r1"].running = false
+	base = 80
+	out = cr.cache.Sync(ctx, SyncInput{Warm: warm("art_warm"), Artifacts: arts})
+	if len(out) != 1 || out[0].ArtifactID != "art_mounted" || out[0].Reason != "Evicted" {
+		t.Fatalf("stopped replica's weights: %+v", out)
+	}
+	cr.docker.containers["r1"].running = true
+
+	// A running replica without the model-path label stops eviction outright; a stopped one does not.
+	cr.docker.containers["r2"] = &fakeContainer{id: "r2", name: "ws-y-0", running: true, spec: ContainerCreate{
 		Image: image, Labels: map[string]string{LabelManagedBy: managedBy}}}
 	base = 80
 	if out := cr.cache.Sync(ctx, SyncInput{Artifacts: arts}); len(out) != 0 {

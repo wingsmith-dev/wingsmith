@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -229,31 +230,12 @@ func (c *Cache) token(art wire.ArtifactDesired) (string, error) {
 		return "", nil
 	}
 	// modelFor has validated OwnerProject, so it is one path component.
-	path := filepath.Join(dir, art.OwnerProject+".token")
-	tok, err := readToken(path)
+	file := filepath.Join(dir, art.OwnerProject+".token")
+	tok, err := readToken(file)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("artifact %s is private to project %s and needs its token in %s", art.ArtifactID, art.OwnerProject, path)
+		return "", fmt.Errorf("artifact %s is private to project %s and needs its token in %s", art.ArtifactID, art.OwnerProject, file)
 	}
 	return tok, err
-}
-
-func readToken(path string) (string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return "", fmt.Errorf("%s is readable by group or others; chmod 600 it", path)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	tok := strings.TrimSpace(string(raw))
-	if tok == "" {
-		return "", fmt.Errorf("%s is empty", path)
-	}
-	return tok, nil
 }
 
 // SyncInput is the declared state one cache pass works from.
@@ -328,6 +310,11 @@ func (c *Cache) Sync(ctx context.Context, in SyncInput) []wire.CacheObserved {
 			continue
 		}
 		if m, ok := c.readMarker(id); ok && m.Path == t.model.path && cached(c.root(), t.model) {
+			report(id, "resident", "Resident", "the weights are on this host", m.Bytes)
+			continue
+		}
+		if !t.hf && !running[id] && c.adopt(t) {
+			m, _ := c.readMarker(id)
 			report(id, "resident", "Resident", "the weights are on this host", m.Bytes)
 			continue
 		}
@@ -478,6 +465,7 @@ func (c *Cache) collect(ctx context.Context, wanted map[string]bool, arts map[st
 				c.log().Warn("could not write the completion marker", "artifact", id, "error", err)
 				continue
 			}
+			_ = os.Remove(c.fetchingPath(id))
 			c.mu.Lock()
 			delete(c.failures, id)
 			c.mu.Unlock()
@@ -492,27 +480,115 @@ func (c *Cache) collect(ctx context.Context, wanted map[string]bool, arts map[st
 
 func prefetchName(id string) string { return "ws-prefetch-" + id }
 
+// fetchingPath is the breadcrumb a plain download leaves while it runs. It marks what is under the
+// artifact's path as the host's own partial download, which a retry may delete; without it the
+// contents were put there by someone else (an operator filling the cache by hand) and are adopted.
+func (c *Cache) fetchingPath(id string) string {
+	return filepath.Join(c.root(), filepath.FromSlash(markerDir), id+".fetching")
+}
+
+// adopt records weights already under a plain artifact's path that no download of ours left: a
+// cache filled by hand, or one from before markers existed. The check is the cheap one, a
+// non-empty directory, plus the declared size when the artifact has one.
+func (c *Cache) adopt(t target) bool {
+	id := t.art.ArtifactID
+	if _, err := os.Stat(c.fetchingPath(id)); err == nil || !cached(c.root(), t.model) {
+		return false
+	}
+	size := dirSize(c.host(t.size))
+	if t.art.SizeBytes > 0 && size < t.art.SizeBytes {
+		return false
+	}
+	now := c.now()
+	if err := c.writeMarker(marker{ArtifactID: id, Path: t.model.path, Bytes: size, CompletedAt: now, LastUsedAt: now}); err != nil {
+		c.log().Warn("could not write the completion marker", "artifact", id, "error", err)
+		return false
+	}
+	c.log().Info("adopted weights already in the cache", "artifact", id, "path", t.model.path)
+	return true
+}
+
+// replicaPaths is every model path a replica container, in any state, is labelled with. ok is
+// false when one has no label, so what it mounts is unknown.
+func (c *Cache) replicaPaths(ctx context.Context, live bool) (paths map[string]bool, ok bool, err error) {
+	list, err := c.Docker.List(ctx, map[string]string{LabelManagedBy: managedBy})
+	if err != nil {
+		return nil, false, err
+	}
+	paths, ok = map[string]bool{}, true
+	for _, ct := range list {
+		if live && ct.State != "running" && ct.State != "restarting" {
+			continue
+		}
+		p, has := ct.Labels[LabelModelPath]
+		if !has {
+			ok = false
+			continue
+		}
+		paths[p] = true
+	}
+	return paths, ok, nil
+}
+
+// prefetchBinds are the only host paths a prefetch container gets, all read-write: the Hugging
+// Face repo's own directory and its lock directory, or the plain artifact's own directory. Never
+// HF_HOME or the project directory, so one download cannot touch another artifact's files.
+func (c *Cache) prefetchBinds(t target) []string {
+	dirs := prefetchDirs(t)
+	out := make([]string, len(dirs))
+	for i, d := range dirs {
+		out[i] = c.host(d) + ":" + containerModelRoot + "/" + d
+	}
+	return out
+}
+
+func prefetchDirs(t target) []string {
+	if !t.hf {
+		return []string{t.model.path}
+	}
+	hub, repo := path.Split(t.size)
+	return []string{t.size, hub + ".locks/" + repo}
+}
+
 // start launches the download. Only the artifact's own cache subtree is mounted, read-write; the
 // token travels as an environment variable of this one container and is never written to disk by
 // the host.
 func (c *Cache) start(ctx context.Context, t target, img, token string) error {
 	id := t.art.ArtifactID
 	if !t.hf {
-		// A plain download writes straight to its final name, so whatever an interrupted one
-		// left behind cannot be trusted. A Hugging Face download resumes from its .incomplete
-		// blobs and is left alone.
-		if err := os.RemoveAll(c.host(t.model.path)); err != nil {
+		// A plain download writes straight to its final name, so what an interrupted one left
+		// behind cannot be trusted. Only that is deleted: the breadcrumb says the contents are
+		// ours, and no replica may have the path mounted. Anything else was adopted by Sync.
+		if _, err := os.Stat(c.fetchingPath(id)); err == nil && cached(c.root(), t.model) {
+			paths, ok, err := c.replicaPaths(ctx, false)
+			if err != nil {
+				return err
+			}
+			if !ok || paths[t.model.path] {
+				return fmt.Errorf("%s holds a partial download but a replica may mount it; not deleting it", t.model.path)
+			}
+			if err := os.RemoveAll(c.host(t.model.path)); err != nil {
+				return err
+			}
+		}
+		if err := os.MkdirAll(filepath.Dir(c.fetchingPath(id)), 0o700); err != nil {
+			return err
+		}
+		if err := writeDurable(c.fetchingPath(id), []byte(t.model.path)); err != nil {
 			return err
 		}
 	}
-	if err := os.MkdirAll(c.host(t.model.dir), 0o755); err != nil {
-		return err
+	for _, d := range prefetchDirs(t) {
+		if err := os.MkdirAll(c.host(d), 0o755); err != nil {
+			return err
+		}
 	}
 	hfHome := containerModelRoot + "/hf"
 	if t.art.OwnerProject != "" {
 		hfHome = containerModelRoot + "/p/" + t.art.OwnerProject + "/hf"
 	}
-	env := []string{"HF_HOME=" + hfHome, "HOME=/tmp", "HF_HUB_DISABLE_PROGRESS_BARS=1"}
+	// The xet chunk cache would otherwise land in HF_HOME, which is not mounted.
+	env := []string{"HF_HOME=" + hfHome, "HF_XET_CACHE=/tmp/xet", "HOME=/tmp", "HF_HUB_DISABLE_PROGRESS_BARS=1"}
 	if token != "" {
 		env = append(env, "HF_TOKEN="+token)
 	}
@@ -526,7 +602,7 @@ func (c *Cache) start(ctx context.Context, t target, img, token string) error {
 			LabelProject: t.art.OwnerProject,
 		},
 		HostConfig: HostConfig{
-			Binds:          []string{c.host(t.model.dir) + ":" + containerModelRoot + "/" + t.model.dir},
+			Binds:          c.prefetchBinds(t),
 			SecurityOpt:    []string{"no-new-privileges"},
 			CapDrop:        []string{"ALL"},
 			ReadonlyRootfs: true,
@@ -570,20 +646,17 @@ func (c *Cache) evict(ctx context.Context, wanted map[string]bool) []string {
 	if err != nil || total == 0 || float64(used)/float64(total) <= high {
 		return nil
 	}
-	replicas, err := c.Docker.List(ctx, map[string]string{LabelManagedBy: managedBy})
+	// Only a running or restarting replica holds its weights; a stopped one's are fair game and
+	// it fetches them again when it starts.
+	mounted, ok, err := c.replicaPaths(ctx, true)
 	if err != nil {
 		return nil
 	}
-	mounted := map[string]bool{}
-	for _, ct := range replicas {
-		p, ok := ct.Labels[LabelModelPath]
-		if !ok {
-			// A replica from before the label existed: what it mounts is unknown, so nothing
-			// is safe to remove until it is replaced.
-			c.log().Warn("cache over its high watermark but a replica has no model-path label; not evicting", "container", ct.Name())
-			return nil
-		}
-		mounted[p] = true
+	if !ok {
+		// A live replica from before the label existed: what it mounts is unknown, so nothing
+		// is safe to remove until it is replaced.
+		c.log().Warn("cache over its high watermark but a running replica has no model-path label; not evicting")
+		return nil
 	}
 	markers := c.markers()
 	// Touch what is mounted, so LRU order follows use, not completion.
