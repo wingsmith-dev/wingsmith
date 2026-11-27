@@ -472,6 +472,9 @@ func prefetchCommand(art wire.ArtifactDesired) (string, error) {
 		if art.ArtifactID == "" {
 			return "", fmt.Errorf("artifact has no id to cache under")
 		}
+		if err := checkArtifactID(art); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf(fetchScript, other.URI, pathDir(art)), nil
 	}
 	return "", fmt.Errorf("artifact %s declares no source to fetch from", art.ArtifactID)

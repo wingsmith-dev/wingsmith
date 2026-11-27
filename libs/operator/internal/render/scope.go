@@ -37,6 +37,17 @@ const ProjectLabel = "wingsmith.dev/project"
 // plane mints `prj_` plus lowercase base32; anything else is refused, not put on a path.
 var projectID = regexp.MustCompile(`^[a-z0-9][a-z0-9_]{0,62}$`)
 
+// artifactID is the shape of a plane id (`art_<ULID>` and friends): one path component, never
+// "..", since the id becomes a directory and a volume subPath.
+var artifactID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+func checkArtifactID(art wire.ArtifactDesired) error {
+	if !artifactID.MatchString(art.ArtifactID) {
+		return fmt.Errorf("artifact id %q is not a valid id", art.ArtifactID)
+	}
+	return nil
+}
+
 // ProjectTokenSecret is the Secret a project's Hugging Face token is materialised into. A function
 // of the namespace and the project, not of the single workload namespace, so per-project
 // namespaces can come later without renaming anything.
@@ -50,6 +61,11 @@ func Private(art wire.ArtifactDesired) bool { return art.OwnerProject != "" }
 // cacheDir is the directory under /models an artifact's bytes live in, relative to the volume
 // root: the subPath a pod mounts it by.
 func cacheDir(art wire.ArtifactDesired) (string, error) {
+	if art.ArtifactID != "" {
+		if err := checkArtifactID(art); err != nil {
+			return "", err
+		}
+	}
 	if Private(art) {
 		if !projectID.MatchString(art.OwnerProject) {
 			return "", fmt.Errorf("artifact %s: owner project %q is not a valid project id", art.ArtifactID, art.OwnerProject)

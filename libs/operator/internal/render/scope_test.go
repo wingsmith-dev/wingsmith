@@ -117,6 +117,27 @@ func TestPrefetchRefusesAProjectIDThatIsNotOne(t *testing.T) {
 	}
 }
 
+func TestRefusesAnArtifactIDThatIsNotOne(t *testing.T) {
+	for _, id := range []string{"../projects/other", "..", "a/b", "art_x/../../p/other"} {
+		for _, owner := range []string{"", testProject} {
+			art := wire.ArtifactDesired{
+				ArtifactID:   id,
+				OwnerProject: owner,
+				Sources:      []wire.ArtifactSource{{Kind: "s3", URI: "s3://acme/weights.safetensors"}},
+			}
+			if _, err := PrefetchJob(art, prefetchImage, testOptions()); err == nil {
+				t.Errorf("prefetch rendered for artifact id %q (owner %q)", id, owner)
+			}
+			if _, _, err := modelRef(art); err == nil {
+				t.Errorf("modelRef accepted artifact id %q (owner %q)", id, owner)
+			}
+			if _, err := modelCacheMount(art, true); err == nil {
+				t.Errorf("mount accepted artifact id %q (owner %q)", id, owner)
+			}
+		}
+	}
+}
+
 // Serving pods of a private artifact read the project's cache offline, with no token and no
 // mount of the volume root.
 func TestPrivateServingPodsMountOnlyTheirProjectAndHoldNoToken(t *testing.T) {
