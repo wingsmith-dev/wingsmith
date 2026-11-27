@@ -1384,11 +1384,11 @@ class WorkloadService:
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         if refuse:
             return await self._reconcile(workload, deployment_rows)
+        placed = sum(r[0].desired_replicas for r in deployment_rows)
         try:
             async with self.db.begin_nested():
                 return await self._reconcile(workload, deployment_rows)
         except Invalid as exc:
-            placed = sum(r[0].desired_replicas for r in deployment_rows)
             return WorkloadChange(result={"summary": str(exc), "unschedulable": True}, placed=placed)
 
     async def rescale(self, ref: str, parameters: WorkloadScaleParameters) -> dict:
