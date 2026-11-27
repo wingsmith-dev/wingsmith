@@ -77,7 +77,10 @@ type ClusterObserved struct {
 	Devices      int    `json:"devices"`
 	ReadOnly     bool   `json:"read_only"`
 	Multinode    bool   `json:"multinode"`
-	ObservedAt   string `json:"observed_at"`
+	// Runtimes are the serving runtimes discovered on the cluster. Absent is unknown, which the
+	// plane reads as Dynamo-capable.
+	Runtimes   []string `json:"runtimes,omitempty"`
+	ObservedAt string   `json:"observed_at"`
 }
 
 // NodeCondition is one observed condition on a node. Cordon state is not a condition; it is the
@@ -303,6 +306,60 @@ type ServingSpec struct {
 	// Diffusion is the per-deployment pipeline configuration of an omni worker, nil when none is
 	// declared.
 	Diffusion *DiffusionSpec `json:"diffusion,omitempty"`
+
+	// Runtime is `dynamo` or `container`. Empty reads as dynamo, so a deployment from a plane that
+	// predates custom workers renders exactly as before.
+	Runtime string `json:"runtime,omitempty"`
+
+	// Container is the worker a `container` runtime runs, nil under dynamo. The engine fields
+	// above are not read for it.
+	Container *ContainerSpec `json:"container,omitempty"`
+}
+
+// RuntimeContainer is the custom-worker runtime (P8): one plain container per replica.
+const RuntimeContainer = "container"
+
+// IsContainer says whether this serving block runs a custom container instead of Dynamo.
+func (s ServingSpec) IsContainer() bool {
+	return s.Runtime == RuntimeContainer && s.Container != nil
+}
+
+// ContainerSpec is a custom worker: an image the platform runs with the model mounted read-only
+// at WS_MODEL_PATH, answering `Protocol` on the port named `http`.
+type ContainerSpec struct {
+	// Image is digest-pinned unless the plane's admin flag allowed a tag.
+	Image   string   `json:"image"`
+	Command []string `json:"command,omitempty"`
+	// Args may reference $(WS_MODEL_PATH), $(WS_SERVED_MODEL_NAME) and $(WS_PORT).
+	Args  []string        `json:"args,omitempty"`
+	Env   []EnvVar        `json:"env,omitempty"`
+	Ports []ContainerPort `json:"ports,omitempty"`
+	// Protocol is what the worker answers: `openai-chat` today.
+	Protocol string `json:"protocol"`
+	// The probes are corev1.Probe-shaped objects (camelCase keys, as in a pod spec). Nil readiness
+	// renders an httpGet on /health at port `http`.
+	ReadinessProbe map[string]any `json:"readiness_probe,omitempty"`
+	LivenessProbe  map[string]any `json:"liveness_probe,omitempty"`
+	StartupProbe   map[string]any `json:"startup_probe,omitempty"`
+	Metrics        *MetricsSpec   `json:"metrics,omitempty"`
+}
+
+// EnvVar is one literal environment variable of a custom worker.
+type EnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// ContainerPort is one port a custom worker listens on. The one named `http` is the serving port.
+type ContainerPort struct {
+	Name          string `json:"name"`
+	ContainerPort int    `json:"container_port"`
+}
+
+// MetricsSpec is where a custom worker serves Prometheus metrics.
+type MetricsSpec struct {
+	Port string `json:"port"`
+	Path string `json:"path"`
 }
 
 // DiffusionSpec is what vLLM-Omni reads from a stage-config file. The operator writes the file and

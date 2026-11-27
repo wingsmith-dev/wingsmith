@@ -66,6 +66,11 @@ state, the session stays healthy, and the workload sits at zero replicas with no
 it. Like `distribution` it is inert: stored and displayed, never branched on. It defaults to false,
 so an operator built before this field reads as a normal one, which is what it is.
 
+**`runtimes` lists the serving runtimes the operator discovered**: `container` always, and
+`dynamo` when the API server serves `DynamoGraphDeployment`. Placement reads it: a cluster without
+`dynamo` takes container workloads only. Absent (an older operator, or a discovery that failed)
+is unknown and keeps the cluster Dynamo-capable, so no cluster loses what it serves.
+
 **`multinode` is the one observed field on this frame that placement reads.** It says a
 leader-worker backend (Grove or LeaderWorkerSet) is installed, so Dynamo can render a replica
 whose devices do not fit on one machine. It is discovered from the API groups the cluster serves,
@@ -284,6 +289,17 @@ right often enough to be the right default, since the Dynamo runtime image carri
 and the engines together, and it is reached only after the two places that could have said
 something better both declined. An empty string is not an override at any level and is treated as
 absent, per §2.
+
+**`serving.runtime` picks what runs the weights: absent (or `dynamo`), or `container`.** Under
+`container` the serving block carries `serving.container`: `image` (digest-pinned), `command`,
+`args`, `env` (`[{name, value}]`), `ports` (`[{name, container_port}]`, one named `http`),
+`protocol` (`openai-chat`), `readiness_probe` / `liveness_probe` / `startup_probe` as
+`corev1.Probe` objects with their Kubernetes keys, and `metrics` (`{port, path}`). The engine
+fields are not read for it. The operator renders an `apps/v1` Deployment and a Service labelled
+`wingsmith.dev/role=frontend`, mounts the artifact's cache directory read-only, and sets
+`WS_MODEL_PATH`, `WS_SERVED_MODEL_NAME`, `WS_PORT` and `HF_HUB_OFFLINE=1`; `args` may use
+`$(VAR)`. Both fields are absent on a Dynamo deployment, so its frame and render are unchanged
+(ADR 0031).
 
 **The frontend's router is declared on the serving block, one typed field per setting.**
 `serving.router` carries `mode`, `queue_threshold`, `queue_policy` and `kv_overlap_score_credit`, and

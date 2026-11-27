@@ -4285,6 +4285,148 @@
         "title": "ConfigSchema",
         "type": "object"
       },
+      "ContainerMetrics": {
+        "properties": {
+          "path": {
+            "default": "/metrics",
+            "type": "string"
+          },
+          "port": {
+            "default": "http",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "ContainerMetrics",
+        "type": "object"
+      },
+      "ContainerMetricsSchema": {
+        "properties": {
+          "path": {
+            "default": "/metrics",
+            "type": "string"
+          },
+          "port": {
+            "default": "http",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "ContainerMetricsSchema",
+        "type": "object"
+      },
+      "ContainerPort": {
+        "properties": {
+          "containerPort": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "containerPort",
+          "name"
+        ],
+        "title": "ContainerPort",
+        "type": "object"
+      },
+      "ContainerPortSchema": {
+        "properties": {
+          "container_port": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "container_port",
+          "name"
+        ],
+        "title": "ContainerPortSchema",
+        "type": "object"
+      },
+      "ContainerSchema": {
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "env": {
+            "items": {
+              "$ref": "#/components/schemas/EnvVarSchema"
+            },
+            "type": "array"
+          },
+          "image": {
+            "type": "string"
+          },
+          "liveness_probe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContainerMetricsSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/ContainerPortSchema"
+            },
+            "type": "array"
+          },
+          "protocol": {
+            "default": "openai-chat",
+            "type": "string"
+          },
+          "readiness_probe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startup_probe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "ContainerSchema",
+        "type": "object"
+      },
       "CredentialPutRequest": {
         "properties": {
           "expires_at": {
@@ -5984,6 +6126,38 @@
         },
         "required": [],
         "title": "EndpointUpdateRequest",
+        "type": "object"
+      },
+      "EnvVar": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "EnvVar",
+        "type": "object"
+      },
+      "EnvVarSchema": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "EnvVarSchema",
         "type": "object"
       },
       "EventSchema": {
@@ -10847,13 +11021,63 @@
         "title": "RuleSchema",
         "type": "object"
       },
+      "RuntimeSchema": {
+        "properties": {
+          "container": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContainerSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "default": "dynamo",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "RuntimeSchema",
+        "type": "object"
+      },
       "RuntimeSpec": {
         "properties": {
           "args": {
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "engine": {
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "env": {
+            "items": {
+              "$ref": "#/components/schemas/EnvVar"
+            },
+            "type": "array"
           },
           "frontendImage": {
             "oneOf": [
@@ -10876,17 +11100,83 @@
             ]
           },
           "kind": {
-            "default": "dynamo",
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "livenessProbe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContainerMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/ContainerPort"
+            },
+            "type": "array"
+          },
+          "protocol": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readinessProbe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startupProbe": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "engine",
-          "version"
-        ],
+        "required": [],
         "title": "RuntimeSpec",
         "type": "object"
       },
@@ -13913,6 +14203,7 @@
             ]
           },
           "engine": {
+            "default": "",
             "type": "string"
           },
           "engine_args": {
@@ -13929,6 +14220,7 @@
             ]
           },
           "engine_runtime_version": {
+            "default": "",
             "type": "string"
           },
           "frontend_image": {
@@ -13976,6 +14268,9 @@
           "router": {
             "$ref": "#/components/schemas/RouterSchema"
           },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeSchema"
+          },
           "serving": {
             "$ref": "#/components/schemas/ServingSchema"
           },
@@ -13988,8 +14283,6 @@
         },
         "required": [
           "artifact",
-          "engine",
-          "engine_runtime_version",
           "shape"
         ],
         "title": "WorkloadServingRequest",
@@ -14085,6 +14378,9 @@
           },
           "router": {
             "$ref": "#/components/schemas/RouterSchema"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeSchema"
           },
           "serving": {
             "$ref": "#/components/schemas/ServingSchema"
@@ -14329,6 +14625,13 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RouterSchema"
+              }
+            ]
+          },
+          "runtime": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeSchema"
               }
             ]
           },

@@ -85,6 +85,52 @@
         "default_sampling_params": {
           "num_inference_steps": 8
         }
+      },
+      "runtime": "dynamo",
+      "container": {
+        "image": "ghcr.io/acme/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "protocol": "openai-chat",
+        "command": [
+          "serve"
+        ],
+        "args": [
+          "--model",
+          "$(WS_MODEL_PATH)"
+        ],
+        "env": [
+          {
+            "name": "LOG_LEVEL",
+            "value": "info"
+          }
+        ],
+        "ports": [
+          {
+            "name": "http",
+            "container_port": 8000
+          }
+        ],
+        "readiness_probe": {
+          "httpGet": {
+            "path": "/health",
+            "port": "http"
+          }
+        },
+        "liveness_probe": {
+          "tcpSocket": {
+            "port": "http"
+          }
+        },
+        "startup_probe": {
+          "httpGet": {
+            "path": "/health",
+            "port": "http"
+          },
+          "failureThreshold": 60
+        },
+        "metrics": {
+          "port": "http",
+          "path": "/metrics"
+        }
       }
     },
     "lifecycle": "service",
