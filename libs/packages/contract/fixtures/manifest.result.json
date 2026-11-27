@@ -16,6 +16,7 @@
     "allowed_clusters": [
       "alpha"
     ],
+    "reason": "ManagerConflict",
     "error": "workload 'chat' is managed by 'k8s:alpha/team-b'; retry with force=true to take it over"
   }
 }
