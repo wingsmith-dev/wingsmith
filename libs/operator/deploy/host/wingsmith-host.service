@@ -9,6 +9,9 @@ After=network-online.target nvidia-persistenced.service
 
 [Service]
 Type=simple
+# Runs as root on purpose for the supply-only phase: NVML needs the nvidia device nodes and the
+# sandboxing below narrows what root can touch.
+# TODO(P2.6): run as a dedicated wingsmith user in the video group.
 ExecStart=/usr/local/bin/wingsmith-host run --config /etc/wingsmith/host.json
 Restart=always
 RestartSec=5
@@ -19,10 +22,13 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/wingsmith
-# NVML opens /dev/nvidia*; supply-only needs no other device access.
-DeviceAllow=/dev/nvidiactl r
-DeviceAllow=char-nvidia r
-DeviceAllow=/dev/nvidia-uvm r
+# NVML and nvidia-smi open /dev/nvidia* read-write to issue ioctls; no other device access.
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=char-nvidia rw
+DeviceAllow=char-nvidia-frontend rw
+DeviceAllow=char-nvidia-uvm rw
+DeviceAllow=char-nvidia-caps rw
+DeviceAllow=/dev/nvidia-uvm rw
 
 [Install]
 WantedBy=multi-user.target
