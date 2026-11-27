@@ -192,6 +192,25 @@ removed first, since it holds the GPUs the new one needs, and the rollout has a 
 Pausing the workload stops its containers on the host and frees their GPUs; resuming starts them
 again.
 
+### Worker metrics
+
+A replica whose workload declares `metrics` (every vLLM or SGLang preset does) serves them on
+loopback: the metrics port is published on `127.0.0.1` beside `http` when it is a different port.
+Set `"metrics_targets_listen": "127.0.0.1:9479"` in host.json (loopback only) and the agent serves
+the running replicas as a Prometheus HTTP service-discovery document at `GET /metrics/targets`,
+each target labelled `wingsmith_deployment_id`, `wingsmith_project_id`, `wingsmith_replica`,
+`wingsmith_runtime` and `wingsmith_serving_digest`, with `__metrics_path__` set to the declared
+path. A Prometheus or agent on the same host scrapes them with:
+
+```yaml
+scrape_configs:
+  - job_name: wingsmith-workers
+    http_sd_configs:
+      - url: http://127.0.0.1:9479/metrics/targets
+```
+
+Nothing listens unless the field is set, and the replicas stay unreachable from off the host.
+
 ### Weights
 
 The host keeps its own model cache under `/var/lib/wingsmith/models` (`model_root`), laid out as in

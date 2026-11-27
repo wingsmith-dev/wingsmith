@@ -9,6 +9,14 @@ protocol can change between minor versions.
 
 ### Added
 
+- Engine presets for container workers (ADR 0040). `runtime: {kind: container, preset: vllm|sglang,
+  version, args}` expands on the plane into a digest-pinned official image from
+  `ENGINE_PRESET_IMAGES`, the serve command with tensor parallelism from the shape, readiness by
+  protocol, a startup probe and metrics; the expansion shows in `status.runtime` and
+  `serving.runtime.resolved`. `wings workload create --preset vllm --version 0.34.0`. Container
+  workers' metrics are scraped by the chart's metrics agent (`vllm:*`, `sglang:*` kept), an optional
+  `PodMonitor` renders behind `operator.workerMetrics.podMonitor` when the CRD exists, and a host
+  serves its replicas' loopback metrics endpoints as Prometheus HTTP SD on `metrics_targets_listen`.
 - List and watch manifests over HTTP (ADR 0039). `GET /v1/manifests/{workloads,endpoints}[/{project}]`
   and `/v1/manifests/artifacts` list a kind with the `resourceVersion` the items are current as of;
   `?watch=true&resourceVersion=` streams Kubernetes-style JSON-line events from there, with
