@@ -75,7 +75,7 @@ def _labels(labels: dict) -> dict[str, str]:
 def workload_conditions(w: WorkloadSchema) -> list[Condition]:
     """Derived from the scale rollup, so it can never disagree with it.
 
-    A paused workload places nothing on purpose and is not unschedulable.
+    A paused workload is placed nowhere by design and is not unschedulable.
     """
     if w.paused or w.scale.placed >= w.scale.desired:
         return [Condition(type=UNSCHEDULABLE, status="False", reason="Placed")]
