@@ -10,6 +10,7 @@ Without the variable, or with no server behind it, a database test fails instead
 
 import os
 import re
+import sys
 import uuid
 import subprocess
 
@@ -25,11 +26,17 @@ import pytest
 import psycopg
 
 from sqlalchemy import text
+from sqlalchemy import event
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 from sqlalchemy.engine import URL
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.db.changes import KINDS
+from app.db.changes import pending
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,3 +173,73 @@ async def fetch(sessions, sql: str, params=None) -> list:
     async with sessions() as db:
         result = await db.execute(text(sql), params or {})
         return result.all()
+
+
+# ── Change-log guard (ADR 0035) ───────────────────────────────────────────────
+# Every commit that app code makes after writing a Workload, Endpoint or Artifact must carry a
+# recorded change for each object written. Seeding from tests is exempt: only commits awaited from
+# an `app.` module are checked. The origin is taken at `AsyncSession.commit`, because the sync
+# commit runs in a greenlet whose stack does not reach the awaiting coroutines.
+
+_TOUCHED = "test_change_guard"
+_FROM_APP = "test_change_guard_from_app"
+_async_commit = AsyncSession.commit
+
+
+def _from_app() -> bool:
+    frame = sys._getframe(2)
+    while frame is not None:
+        name = frame.f_globals.get("__name__", "")
+        if name.startswith("app.") and name != "app.db.changes":
+            return True
+        if name.startswith("tests."):
+            return False
+        frame = frame.f_back
+    return False
+
+
+async def _guarded_commit(self) -> None:
+    self.sync_session.info[_FROM_APP] = _from_app()
+    await _async_commit(self)
+
+
+AsyncSession.commit = _guarded_commit
+
+
+@event.listens_for(Session, "after_flush")
+def _guard_flush(session, _context) -> None:
+    touched = session.info.setdefault(_TOUCHED, set())
+    for obj in (*session.new, *session.deleted):
+        if type(obj) in KINDS:
+            touched.add((KINDS[type(obj)], obj.id))
+    for obj in session.dirty:
+        if type(obj) in KINDS and session.is_modified(obj, include_collections=False):
+            touched.add((KINDS[type(obj)], obj.id))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _guard_bulk(state) -> None:
+    if not (state.is_update or state.is_delete):
+        return
+    for mapper in state.all_mappers:
+        if mapper.class_ in KINDS:
+            state.session.info.setdefault(_TOUCHED, set()).add((KINDS[mapper.class_], "bulk"))
+
+
+@event.listens_for(Session, "before_commit")
+def _guard_commit(session) -> None:
+    session.flush()
+    touched = session.info.pop(_TOUCHED, set())
+    if not touched or not session.info.pop(_FROM_APP, False):
+        return
+    recorded = set(pending(session))
+    kinds = {kind for kind, _ in recorded}
+    missing = {t for t in touched if (t not in recorded if t[1] != "bulk" else t[0] not in kinds)}
+    assert not missing, f"committed writes with no change_log record: {sorted(map(str, missing))}"
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _guard_end(session, transaction) -> None:
+    if transaction.parent is None:
+        session.info.pop(_TOUCHED, None)
+        session.info.pop(_FROM_APP, None)
