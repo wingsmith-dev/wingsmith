@@ -15,6 +15,7 @@ class Verdict(Struct, frozen=True, kw_only=True):
 
 CLUSTER_PHASE = "cluster_phase"
 CLUSTER_UNREACHABLE = "cluster_unreachable"
+CLUSTER_KIND = "cluster_kind"
 POLICY_REGION = "policy_region"
 POLICY_RESIDENCY = "policy_residency"
 POLICY_DEVICE_CLASS = "policy_device_class"

@@ -32,6 +32,8 @@ MetricsLabel = Annotated[str, Meta(max_length=63, pattern=r"^([A-Za-z0-9]([-A-Za
 DisplayName = Annotated[str, Meta(max_length=200)]
 
 ClusterPhase = Literal["pending", "active", "draining", "disabled"]
+ClusterKind = Literal["kubernetes", "host"]
+"""Declared at registration, never changed: a host and a Kubernetes cluster enrol different agents."""
 """Declared intent. Unknown values are refused when the body is decoded."""
 
 LabelKey = Annotated[str, Meta(min_length=1, max_length=253)]
@@ -99,6 +101,7 @@ class ClusterSchema(Struct):
     zone: str | None
     residency: str | None
     phase: str
+    kind: str
     labels: dict
     capabilities: dict
     enrolled_at: dt.datetime | None
@@ -200,6 +203,7 @@ class ClusterCreateRequest(Struct):
     zone: LabelValue | None = None
     residency: LabelValue | None = None
     phase: ClusterPhase = "pending"
+    kind: ClusterKind = "kubernetes"
     labels: Labels = {}
     capabilities: Capabilities = {}
     metrics_label: MetricsLabel | None | UnsetType = UNSET

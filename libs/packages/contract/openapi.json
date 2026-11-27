@@ -3363,6 +3363,14 @@
               }
             ]
           },
+          "kind": {
+            "default": "kubernetes",
+            "enum": [
+              "kubernetes",
+              "host"
+            ],
+            "type": "string"
+          },
           "labels": {
             "additionalProperties": {
               "type": "string"
@@ -3527,6 +3535,9 @@
           "id": {
             "type": "string"
           },
+          "kind": {
+            "type": "string"
+          },
           "labels": {
             "type": "object"
           },
@@ -3604,6 +3615,7 @@
           "capabilities",
           "created_at",
           "id",
+          "kind",
           "labels",
           "name",
           "phase",

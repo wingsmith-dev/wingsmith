@@ -8,6 +8,7 @@
       "zone": "us-east-1b",
       "residency": "us",
       "phase": "active",
+      "kind": "kubernetes",
       "labels": {
         "tier": "prod",
         "fabric": "nvswitch"
@@ -46,6 +47,7 @@
       "zone": null,
       "residency": "us",
       "phase": "active",
+      "kind": "kubernetes",
       "labels": {
         "tier": "prod"
       },
@@ -81,6 +83,7 @@
       "zone": "euw1-az1",
       "residency": "eu",
       "phase": "draining",
+      "kind": "kubernetes",
       "labels": {
         "tier": "prod",
         "residency": "eu"

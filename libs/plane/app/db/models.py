@@ -44,6 +44,7 @@ class Cluster(BaseMixin):
     """
 
     __tablename__ = "supply_cluster"
+    __table_args__ = (CheckConstraint("kind IN ('kubernetes', 'host')", name="ck_supply_cluster_kind"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -53,6 +54,10 @@ class Cluster(BaseMixin):
     zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     residency: Mapped[str | None] = mapped_column(String(64), nullable=True)
     phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="kubernetes")
+    """What runs the cluster: `kubernetes` (the operator) or `host` (one bare Linux machine running
+    wingsmith-host, exactly one node). Declared at registration and immutable; the observed
+    `distribution` is only displayed, this is what the plane branches on."""
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     enrolled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -124,6 +124,7 @@ class ClusterSnapshot(Snap):
     region: str
     phase: str = "active"
     reachable: bool = True
+    kind: str = "kubernetes"
     zone: str | None = None
     residency: str | None = None
     devices: tuple[DeviceSnapshot, ...] = ()

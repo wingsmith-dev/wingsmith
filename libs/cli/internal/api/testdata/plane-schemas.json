@@ -554,6 +554,7 @@
  "ClusterCreateRequest": {
   "capabilities": "object",
   "display_name": "string?",
+  "kind": "string",
   "labels": "object",
   "metrics_label": "string?",
   "name": "string",
@@ -584,6 +585,7 @@
   "display_name": "string?",
   "enrolled_at": "string?",
   "id": "string",
+  "kind": "string",
   "labels": "object",
   "metrics_label": "string?",
   "name": "string",

@@ -451,6 +451,8 @@ class DatabaseSink:
         match frame.type:
             case "node.observed":
                 assert isinstance(payload, NodeObserved)
+                if await db.scalar(statements.cluster_kind(cluster_id)) == "host":
+                    await db.execute(statements.retire_other_host_nodes(cluster_id, payload))
                 await db.execute(statements.upsert_node(cluster_id, payload))
                 return NODE, statements.observed_uid(payload.node_id, "nod_")
             case "device.observed":

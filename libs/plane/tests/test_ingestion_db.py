@@ -146,6 +146,46 @@ async def test_a_node_is_inserted_and_keeps_its_uid_when_re_observed(sessions, c
     assert rows == [(NODE, False, "not_ready")], "a rediscovered node must keep the id it was first given"
 
 
+async def test_a_host_enrols_as_a_cluster_of_kind_host_with_one_node(sessions) -> None:
+    """A host registers through the same API as a cluster, declared kind=host, and its
+    wingsmith-host reports through the same ingestion path. A renamed machine replaces its node
+    instead of adding a second one; a Kubernetes cluster keeps both."""
+    from app.modules.clusters.schemas import ClusterCreateRequest
+    from app.modules.clusters.services import ClusterService
+
+    async with sessions() as db:
+        created = await ClusterService(db).create(
+            ClusterCreateRequest(name="gpu-box-1", region="eu-west-1", kind="host")
+        )
+    assert created.kind == "host"
+
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("node.observed", created.id))
+    await sink.apply_observed(
+        observed("node.observed", created.id, node_id="nod_01j9x2bbbbbbbbbbbbbbbbbbbq", name="gpu-box-1-renamed")
+    )
+    rows = await fetch(
+        sessions,
+        "SELECT c.kind, n.name FROM supply_node n JOIN supply_cluster c ON c.id = n.cluster_id WHERE c.uid = :uid",
+        {"uid": created.id},
+    )
+    assert rows == [("host", "gpu-box-1-renamed")]
+
+    async with sessions() as db:
+        assert (await ClusterService(db).get(created.id)).kind == "host"
+
+
+async def test_a_kubernetes_cluster_keeps_every_node(sessions, cluster) -> None:
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("node.observed"))
+    await sink.apply_observed(observed("node.observed", node_id="nod_01j9x2bbbbbbbbbbbbbbbbbbbq", name="other"))
+    rows = await fetch(
+        sessions,
+        "SELECT c.kind, count(*) FROM supply_node n JOIN supply_cluster c ON c.id = n.cluster_id GROUP BY c.kind",
+    )
+    assert rows == [("kubernetes", 2)]
+
+
 async def test_a_device_frame_resolves_its_node(sessions, cluster) -> None:
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))

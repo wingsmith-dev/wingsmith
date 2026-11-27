@@ -220,6 +220,17 @@ def node_condition(payload: NodeObserved) -> str:
     return "ready"
 
 
+def cluster_kind(cluster_id: UUID) -> Select:
+    return select(Cluster.kind).where(Cluster.id == cluster_id)
+
+
+def retire_other_host_nodes(cluster_id: UUID, payload: NodeObserved) -> Delete:
+    """Keeps a host at exactly one node: a host's node is the machine, so a node under a new name
+    (the hostname changed) replaces the old one instead of joining it. Only issued for a cluster
+    of kind host."""
+    return delete(Node).where(Node.cluster_id == cluster_id, Node.name != payload.name)
+
+
 def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
     """Writes one observed node.
 

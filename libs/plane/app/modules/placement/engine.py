@@ -9,6 +9,7 @@ import logging
 from msgspec import structs
 
 from .decision import NAME_TAKEN
+from .decision import CLUSTER_KIND
 from .decision import CLUSTER_PHASE
 from .decision import POLICY_REGION
 from .decision import QUOTA_EXHAUSTED
@@ -196,6 +197,16 @@ def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[R
 def _health_reasons(cluster: ClusterSnapshot) -> list[Rejection]:
     """Declared phase and observed reachability, checked as the two axes they are."""
     reasons: list[Rejection] = []
+    if cluster.kind == "host":
+        # A host reports supply but has no serving backend yet (P2.4). Refusing here keeps it
+        # visible as capacity while saying, per candidate, why nothing lands on it.
+        reasons.append(
+            Rejection(
+                code=CLUSTER_KIND,
+                message=f"cluster {cluster.name} is a host; hosts do not serve workloads yet",
+                detail={"kind": cluster.kind},
+            )
+        )
     if cluster.phase not in PLACEABLE_PHASES:
         reasons.append(
             Rejection(

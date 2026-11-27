@@ -130,6 +130,7 @@ class PlacementRepository:
                 name=cluster.name,
                 region=cluster.region,
                 phase=cluster.phase,
+                kind=cluster.kind,
                 reachable=bool(reachable),
                 zone=cluster.zone,
                 residency=cluster.residency,

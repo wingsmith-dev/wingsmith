@@ -132,6 +132,7 @@ type Cluster struct {
 	Zone         *string         `json:"zone"`
 	Residency    *string         `json:"residency"`
 	Phase        string          `json:"phase"`
+	Kind         string          `json:"kind"`
 	Labels       map[string]any  `json:"labels"`
 	Capabilities map[string]any  `json:"capabilities"`
 	EnrolledAt   *time.Time      `json:"enrolled_at"`
