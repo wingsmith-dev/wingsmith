@@ -165,10 +165,23 @@ class ManifestService:
             raise NotFound(f"no endpoint {name!r} in project {project!r}") from None
         if e.name != name or e.project_id != owner.uid:
             raise NotFound(f"no endpoint {name!r} in project {project!r}")
+        names = [t.workload_ref.name for t in e.targets if t.workload_ref is not None]
+        expanded: dict[str, list[str]] = {}
+        if names:
+            rows = await self.db.execute(
+                select(Workload.name, Deployment.uid)
+                .join(Deployment, Deployment.workload_id == Workload.id)
+                .where(Workload.project_id == owner.id, Workload.name.in_(names))
+                .order_by(Deployment.uid)
+            )
+            for name, uid in rows.all():
+                expanded.setdefault(name, []).append(uid)
         deployments = [t.deployment_id for t in e.targets] + list(e.failover_order)
+        deployments += [uid for uids in expanded.values() for uid in uids]
         refs = Refs(
             projects={owner.uid: owner.slug},
             deployments=await self._names(Deployment.object_name, deployments),
+            workload_deployments=expanded,
         )
         return endpoint_manifest(e, refs)
 

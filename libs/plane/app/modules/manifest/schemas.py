@@ -234,10 +234,19 @@ class Scale(Struct, kw_only=True):
 # --------------------------------------------------------------------------- Endpoint
 
 
-class EndpointTargetSpec(Struct, kw_only=True):
-    """Today's target shape: a deployment by its object name. P1.6 adds targeting a workload."""
+class WorkloadRef(Struct, kw_only=True):
+    """A workload by name in the endpoint's own namespace, like a same-namespace object ref."""
 
-    deployment: str
+    name: str
+
+
+class EndpointTargetSpec(Struct, kw_only=True):
+    """A deployment by its object name, or a workload by `workload_ref` (ADR 0026): exactly one.
+    A workload ref routes to that workload's current deployments, its weight split evenly over
+    them, and may name a workload that does not exist yet."""
+
+    deployment: str | None = None
+    workload_ref: WorkloadRef | None = None
     weight: int = 100
     role: str = "primary"
     enabled: bool = True
@@ -258,12 +267,17 @@ class EndpointSpec(Struct, kw_only=True):
 class EndpointTargetStatus(Struct, kw_only=True):
     deployment: str
     deployment_id: str
+    workload: str | None = None
+    """Set when the deployment came from a workload ref."""
 
 
 class EndpointStatus(Struct, kw_only=True):
-    """The deployments the targets resolved to. Upstream addresses are `/v1/endpoints/{ref}/resolved`."""
+    """The deployments the targets resolved to. Upstream addresses are `/v1/endpoints/{ref}/resolved`.
+
+    `ResolvedRefs` is `False` while a workload ref names no workload in the namespace."""
 
     targets: list[EndpointTargetStatus]
+    conditions: list[Condition] = []
 
 
 class EndpointManifest(Struct, kw_only=True):

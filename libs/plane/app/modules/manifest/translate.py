@@ -20,6 +20,7 @@ from .schemas import ScaleSpec
 from .schemas import ObjectMeta
 from .schemas import RuntimeSpec
 from .schemas import ScaleStatus
+from .schemas import WorkloadRef
 from .schemas import ArtifactSpec
 from .schemas import EndpointSpec
 from .schemas import PlacementSpec
@@ -46,6 +47,8 @@ class Refs:
     artifacts: dict[str, str] = field(default_factory=dict)
     clusters: dict[str, str] = field(default_factory=dict)
     deployments: dict[str, str] = field(default_factory=dict)
+    workload_deployments: dict[str, list[str]] = field(default_factory=dict)
+    """A workload ref's name to the uids of its current deployments; absent when it names none."""
 
     def project(self, uid: str | None) -> str | None:
         return None if uid is None else self.projects.get(uid, uid)
@@ -56,8 +59,8 @@ class Refs:
     def cluster(self, uid: str | None) -> str | None:
         return None if uid is None else self.clusters.get(uid, uid)
 
-    def deployment(self, uid: str) -> str:
-        return self.deployments.get(uid, uid)
+    def deployment(self, uid: str | None) -> str | None:
+        return None if uid is None else self.deployments.get(uid, uid)
 
 
 @dataclass
@@ -219,6 +222,7 @@ def endpoint_manifest(e: EndpointSchema, refs: Refs) -> EndpointManifest:
             targets=[
                 EndpointTargetSpec(
                     deployment=refs.deployment(t.deployment_id),
+                    workload_ref=WorkloadRef(name=t.workload_ref.name) if t.workload_ref is not None else None,
                     weight=t.weight,
                     role=t.role,
                     enabled=t.enabled,
@@ -233,7 +237,17 @@ def endpoint_manifest(e: EndpointSchema, refs: Refs) -> EndpointManifest:
             targets=[
                 EndpointTargetStatus(deployment=refs.deployment(t.deployment_id), deployment_id=t.deployment_id)
                 for t in e.targets
+                if t.deployment_id is not None
             ]
+            + [
+                EndpointTargetStatus(deployment=refs.deployment(uid), deployment_id=uid, workload=t.workload_ref.name)
+                for t in e.targets
+                if t.workload_ref is not None
+                for uid in refs.workload_deployments.get(t.workload_ref.name, [])
+            ],
+            conditions=[
+                Condition(type=c.type, status=c.status, reason=c.reason, message=c.message) for c in e.conditions
+            ],
         ),
     )
 
