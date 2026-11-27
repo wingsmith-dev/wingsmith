@@ -222,3 +222,16 @@ def test_field_manager_defaults_and_validates() -> None:
         field_manager("bad name!")
     with pytest.raises(InvalidParameter):
         field_manager("x" * 129)
+
+
+async def test_scale_on_a_managed_workload_is_a_conflict_unless_forced(db: AsyncSession) -> None:
+    from tests.test_manifest_db import _scale
+
+    await _applied_workload(db)
+    svc = ManifestService(db, actor="alice")
+    with pytest.raises(Conflict):
+        await svc.put_scale("search", "gpt-oss-prod", _scale(3))
+    s = await svc.put_scale("search", "gpt-oss-prod", _scale(3), force=True)
+    assert s.spec.replicas == 3
+    (op,) = await _takeovers(db, "workload")
+    assert (op.requested_by, op.payload["from"]) == ("alice", "wings-cli")

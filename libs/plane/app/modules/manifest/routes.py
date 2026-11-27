@@ -69,10 +69,16 @@ class ManifestRoutes(Controller):
         name: str,
         data: Scale,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        manager: str | None = Parameter(query="fieldManager", default=None),
+        force: bool = False,
     ) -> Response[Scale]:
         """Sets the replica count. A shortfall is accepted and shown as `Unschedulable`;
         a stale `If-Match` is a 409 (ADR 0025)."""
-        return Response(await svc.put_scale(project, name, data, if_match))
+        return Response(
+            await svc.put_scale(
+                project, name, data, if_match, force=force, manager=None if manager is None else field_manager(manager)
+            )
+        )
 
     @put("/workloads/{project:str}/{name:str}", status_code=200)
     async def put_workload_manifest(

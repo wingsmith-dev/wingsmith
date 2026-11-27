@@ -148,7 +148,16 @@ class ManifestService:
         owner, w = await self._owned_workload(project, name)
         return scale_view(w, owner.slug)
 
-    async def put_scale(self, project: str, name: str, data: Scale, if_match: str | None = None) -> Scale:
+    async def put_scale(
+        self,
+        project: str,
+        name: str,
+        data: Scale,
+        if_match: str | None = None,
+        *,
+        force: bool = False,
+        manager: str | None = None,
+    ) -> Scale:
         """Writes `spec.replicas` as the workload's `desired_scale` (ADR 0025).
 
         Spec, so it moves `generation` and honours `If-Match` (or `metadata.resourceVersion`);
@@ -158,6 +167,7 @@ class ManifestService:
         """
         owner, w = await self._owned_workload(project, name)
         svc = WorkloadService(self.db)
+        await guard(self.db, Workload, w.id, kind="workload", actor=self.actor, force=force, manager=manager)
         row = await svc._one(w.id, lock=True)
         workload = row[0]
         expected = if_match if if_match is not None else data.metadata.resource_version
