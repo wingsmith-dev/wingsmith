@@ -81,7 +81,9 @@ that could not have detected a backend either.
 intentionally neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because
 an operator needs to know what they are running and there is no neutral way to say it, and it is
 bounded by being inert: the plane stores it and displays it and nothing branches on it. A plane
-that reads `distribution` to decide what to send has broken rule 2.
+that reads `distribution` to decide what to send has broken rule 2. A bare Linux machine running
+`wingsmith-host` reports `host`; what the plane branches on is the cluster's declared `kind`
+(ADR 0030).
 
 **The machine shape is stated in neutral units.** `cpu_cores` is a count and `memory_mib` is
 mebibytes, resolved by the operator, instead of the orchestrator's own quantity strings. The plane

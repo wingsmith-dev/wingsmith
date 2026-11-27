@@ -35,9 +35,8 @@ Dynamo, no API server.
 
 ## Consequences
 
-- `wire`, `sync`, `devices` and `backend` have no Kubernetes imports. `checkpoint` does, through
-  `crd.go`, and `observe` does, through its Kubernetes discoverer and taint conversion; the host
-  agent will need those split out (CRD store and kube discoverer into their own packages)
-  before it can link without client-go.
+- `wire`, `sync`, `devices`, `backend`, `checkpoint` and `observe` have no Kubernetes imports. The
+  CRD cursor store is `checkpoint/crdstore` and the Kubernetes discoverer is `observe/kube`
+  (split out in P2.3, ADR 0030).
 - Moving the gates behind the seam is left to P2.4, when there is a second implementation to
   shape them against.

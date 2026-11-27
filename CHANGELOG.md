@@ -14,6 +14,9 @@ protocol can change between minor versions.
   `If-Match`/`metadata.resourceVersion` conflicts are 409, immutable field changes 422; replica
   shortfalls are reported as `Unschedulable`. `wings apply -f file.yaml` applies Workloads, then
   Endpoints (ADR 0029). Endpoint deployment targets accept the deployment's object name.
+- `wingsmith-host`: a bare Linux GPU machine enrols as a cluster of `kind: host` with one node and
+  reports its GPUs from NVML (falling back to `nvidia-smi -q -x`). Supply only: placement refuses
+  hosts with `cluster_kind` until they can serve. Clusters carry a declared `kind` (ADR 0030).
 - Operator: a `Backend` seam (apply, observe, inventory) with Kubernetes/Dynamo as its
   implementation, and a file-backed resume cursor for the coming host agent (ADR 0027).
 - Endpoint targets can name a workload in the endpoint's project (`workload_ref: {name}`), resolved
