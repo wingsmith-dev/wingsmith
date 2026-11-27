@@ -17,6 +17,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -122,23 +124,35 @@ func run() error {
 	}
 	cursor := crdstore.NewCRDStore(directClient, cfg.Namespace)
 
-	// Workload resources this cluster declares to the plane (ADR 0042). Skipped, not fatal, when
-	// the CRD is not installed: an older chart has none, and the watch would never sync.
+	// Workload and Endpoint resources this cluster declares to the plane (ADR 0042). Skipped, not
+	// fatal, when a CRD is not installed: an older chart has none, and the watch would never sync.
 	manifests := declare.NewChannel(15 * time.Second)
 	if cfg.DeclareWorkloads {
-		if _, err := discoveryClient.ServerResourcesForGroupVersion(declare.APIVersion); err != nil {
-			log.Info("not syncing Workload resources: the plane.wingsmith.dev CRD is not installed", "error", err)
-		} else if err := (&declare.Reconciler{
-			Client:         mgr.GetClient(),
-			Plane:          manifests,
-			Cluster:        cfg.ClusterID,
-			DefaultProject: cfg.DefaultProject,
-			Log:            log.With("controller", "declare"),
-			QPS:            cfg.DeclareQPS,
-			Burst:          cfg.DeclareBurst,
-			Concurrency:    cfg.DeclareConcurrency,
-		}).SetupWithManager(mgr); err != nil {
-			return err
+		resources, err := discoveryClient.ServerResourcesForGroupVersion(declare.APIVersion)
+		if err != nil {
+			log.Info("not syncing declared resources: the plane.wingsmith.dev CRDs are not installed", "error", err)
+		}
+		for _, gvk := range []schema.GroupVersionKind{declare.WorkloadGVK, declare.EndpointGVK} {
+			if resources == nil || !servesKind(resources, gvk.Kind) {
+				if resources != nil {
+					log.Info("not syncing declared resources of this kind: its CRD is not installed", "kind", gvk.Kind)
+				}
+				continue
+			}
+			if err := (&declare.Reconciler{
+				GVK:            gvk,
+				Client:         mgr.GetClient(),
+				Plane:          manifests,
+				Changes:        manifests.Changes(gvk.Kind),
+				Cluster:        cfg.ClusterID,
+				DefaultProject: cfg.DefaultProject,
+				Log:            log.With("controller", "declare", "kind", gvk.Kind),
+				QPS:            cfg.DeclareQPS,
+				Burst:          cfg.DeclareBurst,
+				Concurrency:    cfg.DeclareConcurrency,
+			}).SetupWithManager(mgr); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -330,4 +344,14 @@ func tlsConfig(cfg *config.Config) (*tls.Config, error) {
 	}
 	t.RootCAs = pool
 	return t, nil
+}
+
+// servesKind reports whether the API group version lists kind: the CRD is installed.
+func servesKind(list *metav1.APIResourceList, kind string) bool {
+	for _, r := range list.APIResources {
+		if r.Kind == kind {
+			return true
+		}
+	}
+	return false
 }

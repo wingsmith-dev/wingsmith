@@ -33,6 +33,7 @@ type fakePlane struct {
 	applies  []*wire.ManifestApply
 	deletes  []*wire.ManifestDelete
 	connects uint64
+	status   map[string]any // the plane status an accepted apply answers with
 }
 
 func newFakePlane() *fakePlane { return &fakePlane{owner: map[string]string{}} }
@@ -57,7 +58,7 @@ func (p *fakePlane) Apply(_ context.Context, m *wire.ManifestApply) (*wire.Manif
 	clusters, _, _ := unstructured.NestedStringSlice(m.Body, "spec", "placement", "allowedClusters")
 	return &wire.ManifestResult{
 		Result: result, Generation: &g, UID: "wkl_1", RV: "42", Manager: "k8s:alpha/" + m.Namespace,
-		AllowedClusters: clusters,
+		AllowedClusters: clusters, Status: p.status,
 	}, nil
 }
 
@@ -112,7 +113,10 @@ func setup(t *testing.T, objs ...client.Object) (*Reconciler, client.Client, *fa
 	}
 	scheme.AddKnownTypeWithName(WorkloadGVK, &unstructured.Unstructured{})
 	scheme.AddKnownTypeWithName(WorkloadGVK.GroupVersion().WithKind("WorkloadList"), &unstructured.UnstructuredList{})
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(newWorkload()).Build()
+	scheme.AddKnownTypeWithName(EndpointGVK, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(EndpointGVK.GroupVersion().WithKind("EndpointList"), &unstructured.UnstructuredList{})
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+		WithStatusSubresource(newWorkload(), newObject(EndpointGVK)).Build()
 	plane := newFakePlane()
 	r := &Reconciler{
 		Client: c, Plane: plane, Cluster: "alpha", Log: slog.New(slog.NewTextHandler(io.Discard, nil)),

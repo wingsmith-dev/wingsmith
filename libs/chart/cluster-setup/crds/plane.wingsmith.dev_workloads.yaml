@@ -135,13 +135,33 @@ spec:
                   type: integer
                   format: int64
                 placement:
-                  description: The effective placement the plane holds, defaulted when spec.placement is absent.
+                  description: The effective placement the plane holds, defaulted when spec.placement is absent, and where replicas run.
                   type: object
                   properties:
                     allowedClusters:
                       type: array
                       items:
                         type: string
+                    clusters:
+                      description: Replicas per cluster, from the plane.
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          cluster:
+                            type: string
+                          desiredReplicas:
+                            type: integer
+                          readyReplicas:
+                            type: integer
+                replicas:
+                  description: Placed and ready replicas, from the plane; spec.replicas is the desired count.
+                  type: object
+                  properties:
+                    placed:
+                      type: integer
+                    ready:
+                      type: integer
                 conditions:
                   type: array
                   x-kubernetes-list-type: map

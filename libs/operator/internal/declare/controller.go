@@ -34,10 +34,16 @@ import (
 // +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=workloads,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=workloads/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=workloads/finalizers,verbs=update
+// +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=endpoints,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=endpoints/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=plane.wingsmith.dev,resources=endpoints/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
-// The resource this package syncs, and the names it writes.
-var WorkloadGVK = schema.GroupVersionKind{Group: "plane.wingsmith.dev", Version: "v1alpha1", Kind: "Workload"}
+// The resources this package syncs, and the names it writes.
+var (
+	WorkloadGVK = schema.GroupVersionKind{Group: "plane.wingsmith.dev", Version: "v1alpha1", Kind: "Workload"}
+	EndpointGVK = schema.GroupVersionKind{Group: "plane.wingsmith.dev", Version: "v1alpha1", Kind: "Endpoint"}
+)
 
 const (
 	APIVersion     = "plane.wingsmith.dev/v1alpha1"
@@ -63,6 +69,10 @@ const (
 	// ReasonNamespaceNotAllowed: the project link does not list this namespace.
 	ReasonNamespaceNotAllowed = "NamespaceNotAllowed"
 
+	// ConditionPlacementDrift and ConditionUnschedulable are copied from the plane's status.
+	ConditionPlacementDrift = "PlacementDrift"
+	ConditionUnschedulable  = "Unschedulable"
+
 	// DeleteStallAfter is how many failed plane deletes leave the resource Stalled. It keeps
 	// retrying (at the backoff cap); patching spec.deletionPolicy to Orphan releases it.
 	DeleteStallAfter = 10
@@ -71,8 +81,10 @@ const (
 	DeletionOrphan = "Orphan"
 )
 
-// Reconciler applies each Workload resource in a project namespace to the plane.
+// Reconciler applies each Workload or Endpoint resource in a project namespace to the plane.
 type Reconciler struct {
+	// GVK is the kind this reconciler syncs; WorkloadGVK when unset.
+	GVK    schema.GroupVersionKind
 	Client client.Client
 	Plane  Plane
 	// Cluster is this cluster's id as the plane knows it: the default allowed cluster.
@@ -87,17 +99,33 @@ type Reconciler struct {
 	// QPS and Burst feed the work queue's bucket limiter and Concurrency caps parallel
 	// reconciles, so a reconnect relisting every resource does not flood the plane.
 	QPS, Burst, Concurrency int
+	// Changes names resources whose plane object changed (manifest.changed): each is reconciled,
+	// which reapplies it and writes the serving status the plane answers with.
+	Changes <-chan *wire.ManifestChanged
 }
 
-func newWorkload() *unstructured.Unstructured {
+func newWorkload() *unstructured.Unstructured { return newObject(WorkloadGVK) }
+
+func newObject(gvk schema.GroupVersionKind) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{}
-	u.SetGroupVersionKind(WorkloadGVK)
+	u.SetGroupVersionKind(gvk)
 	return u
 }
 
+func (r *Reconciler) gvk() schema.GroupVersionKind {
+	if r.GVK.Kind == "" {
+		return WorkloadGVK
+	}
+	return r.GVK
+}
+
+func (r *Reconciler) kind() string { return r.gvk().Kind }
+
+func (r *Reconciler) newObject() *unstructured.Unstructured { return newObject(r.gvk()) }
+
 // Reconcile implements reconcile.Reconciler.
 func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	obj := newWorkload()
+	obj := r.newObject()
 	if err := r.Client.Get(ctx, req.NamespacedName, obj); err != nil {
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
@@ -119,7 +147,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		}
 	}
 	result, err := r.Plane.Apply(ctx, &wire.ManifestApply{
-		Kind:       "Workload",
+		Kind:       r.kind(),
 		Project:    project,
 		Name:       obj.GetName(),
 		Namespace:  obj.GetNamespace(),
@@ -159,11 +187,8 @@ func (r *Reconciler) body(obj *unstructured.Unstructured, project string) map[st
 	}
 	// The resource's own lifecycle, not part of the plane manifest.
 	delete(spec, "deletionPolicy")
-	_, pinned := spec["cluster"]
-	_, clusters, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedClusters")
-	_, regions, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedRegions")
-	if !pinned && !clusters && !regions {
-		_ = unstructured.SetNestedStringSlice(spec, []string{r.Cluster}, "placement", "allowedClusters")
+	if r.kind() == WorkloadGVK.Kind {
+		r.defaultPlacement(spec)
 	}
 	meta := map[string]any{"name": obj.GetName(), "namespace": project}
 	if labels := obj.GetLabels(); len(labels) > 0 {
@@ -180,7 +205,17 @@ func (r *Reconciler) body(obj *unstructured.Unstructured, project string) map[st
 	if len(annotations) > 0 {
 		meta["annotations"] = toAny(annotations)
 	}
-	return map[string]any{"apiVersion": APIVersion, "kind": "Workload", "metadata": meta, "spec": spec}
+	return map[string]any{"apiVersion": APIVersion, "kind": r.kind(), "metadata": meta, "spec": spec}
+}
+
+// defaultPlacement is this cluster only, unless the workload names a cluster or placement itself.
+func (r *Reconciler) defaultPlacement(spec map[string]any) {
+	_, pinned := spec["cluster"]
+	_, clusters, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedClusters")
+	_, regions, _ := unstructured.NestedFieldNoCopy(spec, "placement", "allowedRegions")
+	if !pinned && !clusters && !regions {
+		_ = unstructured.SetNestedStringSlice(spec, []string{r.Cluster}, "placement", "allowedClusters")
+	}
 }
 
 func toAny(m map[string]string) map[string]any {
@@ -199,7 +234,7 @@ func (r *Reconciler) finalize(ctx context.Context, obj *unstructured.Unstructure
 		return reconcile.Result{}, r.release(ctx, obj)
 	}
 	result, err := r.Plane.Delete(ctx, &wire.ManifestDelete{
-		Kind: "Workload", Project: project, Name: obj.GetName(), Namespace: obj.GetNamespace(), UID: string(obj.GetUID()),
+		Kind: r.kind(), Project: project, Name: obj.GetName(), Namespace: obj.GetNamespace(), UID: string(obj.GetUID()),
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -213,7 +248,7 @@ func (r *Reconciler) finalize(ctx context.Context, obj *unstructured.Unstructure
 		// this cluster's to delete. invalid: the plane does not know the object (gone, or a kind
 		// or name it never accepted), so there is nothing left to delete. Holding the resource
 		// Terminating would fix neither.
-		r.Log.Info("workload released", "namespace", obj.GetNamespace(), "name", obj.GetName(), "result", result.Result)
+		r.Log.Info("resource released", "kind", r.kind(), "namespace", obj.GetNamespace(), "name", obj.GetName(), "result", result.Result)
 		return reconcile.Result{}, r.release(ctx, obj)
 	}
 	// conflict or a plane error: retry with exponential backoff, and after DeleteStallAfter
@@ -271,12 +306,9 @@ func (r *Reconciler) report(ctx context.Context, obj *unstructured.Unstructured,
 				st.obj["planeGeneration"] = *res.PlaneGeneration
 			}
 			st.obj["fieldManager"] = res.Manager
-			st.obj["placement"] = map[string]any{"allowedClusters": toAnySlice(res.AllowedClusters)}
 			st.set(ConditionSync, metav1.ConditionTrue, ReasonApplied, "applied to the plane: "+res.Result)
-			// Ready means serving, which the plane does not report back yet (P1.16).
-			st.set(ConditionReady, metav1.ConditionUnknown, ReasonAwaiting, "serving status is not reported yet")
-			st.set(ConditionReconciling, metav1.ConditionTrue, ReasonAwaiting, "waiting for serving status")
 			st.drop(ConditionStalled)
+			r.serving(st, res)
 		case "conflict":
 			st.set(ConditionSync, metav1.ConditionFalse, ReasonConflict, res.Error)
 			st.stalled(ReasonConflict, res.Error)
@@ -299,6 +331,120 @@ func (r *Reconciler) report(ctx context.Context, obj *unstructured.Unstructured,
 		}
 	}, retry)
 	return result, err
+}
+
+// serving writes what the plane reports about serving: Ready (workload: every desired replica
+// ready; endpoint: routable), PlacementDrift and Unschedulable as the plane derives them, and where
+// replicas run. Reconciling stays True until Ready is.
+func (r *Reconciler) serving(st *status, res *wire.ManifestResult) {
+	if r.kind() == WorkloadGVK.Kind {
+		placement := map[string]any{"allowedClusters": toAnySlice(res.AllowedClusters)}
+		if res.Status != nil {
+			placement["clusters"] = clusters(res.Status)
+			if scale, ok := res.Status["scale"].(map[string]any); ok {
+				st.obj["replicas"] = map[string]any{"placed": scale["placed"], "ready": scale["ready"]}
+			}
+		}
+		st.obj["placement"] = placement
+	} else if res.Status != nil {
+		st.obj["targets"] = targets(res.Status)
+	}
+	plane := planeConditions(res.Status)
+	ready, ok := plane[ConditionReady]
+	if !ok {
+		// A plane too old to say: acceptance is all there is to report.
+		st.set(ConditionReady, metav1.ConditionUnknown, ReasonAwaiting, "the plane does not report serving status")
+		st.set(ConditionReconciling, metav1.ConditionTrue, ReasonAwaiting, "waiting for serving status")
+		return
+	}
+	st.set(ConditionReady, ready.Status, ready.Reason, ready.Message)
+	if ready.Status == metav1.ConditionTrue {
+		st.drop(ConditionReconciling)
+	} else {
+		st.set(ConditionReconciling, metav1.ConditionTrue, ready.Reason, "waiting for serving: "+ready.Message)
+	}
+	for _, t := range []string{ConditionPlacementDrift, ConditionUnschedulable} {
+		if c, ok := plane[t]; ok {
+			st.set(t, c.Status, c.Reason, c.Message)
+		} else {
+			st.drop(t)
+		}
+	}
+}
+
+func planeConditions(status map[string]any) map[string]metav1.Condition {
+	out := map[string]metav1.Condition{}
+	list, _ := status["conditions"].([]any)
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		t, _ := m["type"].(string)
+		s, _ := m["status"].(string)
+		reason, _ := m["reason"].(string)
+		msg, _ := m["message"].(string)
+		if t == "" || reason == "" {
+			continue
+		}
+		out[t] = metav1.Condition{Type: t, Status: metav1.ConditionStatus(s), Reason: reason, Message: msg}
+	}
+	return out
+}
+
+// clusters sums the plane's deployments per cluster.
+func clusters(status map[string]any) []any {
+	list, _ := status["deployments"].([]any)
+	order := []string{}
+	sums := map[string][2]int64{}
+	for _, item := range list {
+		d, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := d["cluster"].(string)
+		if _, seen := sums[name]; !seen {
+			order = append(order, name)
+		}
+		s := sums[name]
+		s[0] += number(d["desiredReplicas"])
+		s[1] += number(d["readyReplicas"])
+		sums[name] = s
+	}
+	out := make([]any, 0, len(order))
+	for _, name := range order {
+		out = append(out, map[string]any{"cluster": name, "desiredReplicas": sums[name][0], "readyReplicas": sums[name][1]})
+	}
+	return out
+}
+
+func targets(status map[string]any) []any {
+	list, _ := status["targets"].([]any)
+	out := make([]any, 0, len(list))
+	for _, item := range list {
+		t, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		entry := map[string]any{"deployment": t["deployment"]}
+		if w, ok := t["workload"].(string); ok && w != "" {
+			entry["workload"] = w
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func number(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	}
+	return 0
 }
 
 func toAnySlice(in []string) []any {
@@ -392,10 +538,17 @@ func (r *Reconciler) SetupWithManager(mgr manager.Manager) error {
 	})); err != nil {
 		return err
 	}
+	if r.Changes != nil {
+		if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			return r.watchChanges(ctx, reconnects)
+		})); err != nil {
+			return err
+		}
+	}
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("declare-workload").
+		Named("declare-"+strings.ToLower(r.kind())).
 		WithOptions(r.controllerOptions()).
-		For(newWorkload()).
+		For(r.newObject()).
 		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.inNamespace)).
 		WatchesRawSource(source.Channel(reconnects, &handler.TypedEnqueueRequestForObject[*unstructured.Unstructured]{})).
 		Complete(r)
@@ -429,9 +582,9 @@ func (r *Reconciler) inNamespace(ctx context.Context, o client.Object) []reconci
 
 func (r *Reconciler) requests(ctx context.Context, opts ...client.ListOption) []reconcile.Request {
 	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(WorkloadGVK.GroupVersion().WithKind("WorkloadList"))
+	list.SetGroupVersionKind(r.gvk().GroupVersion().WithKind(r.kind() + "List"))
 	if err := r.Client.List(ctx, list, opts...); err != nil {
-		r.Log.Warn("list workloads", "error", err)
+		r.Log.Warn("list declared resources", "kind", r.kind(), "error", err)
 		return nil
 	}
 	out := make([]reconcile.Request, 0, len(list.Items))
@@ -441,7 +594,7 @@ func (r *Reconciler) requests(ctx context.Context, opts ...client.ListOption) []
 	return out
 }
 
-// Relist reconciles every Workload resource: the reapply after a reconnect. Replays are no-ops on
+// Relist reconciles every resource of this kind: the reapply after a reconnect. Replays are no-ops on
 // the plane, which answers unchanged.
 func (r *Reconciler) Relist(ctx context.Context) []reconcile.Request { return r.requests(ctx) }
 
@@ -461,7 +614,7 @@ func (r *Reconciler) watchReconnects(ctx context.Context, out chan<- event.Typed
 		}
 		seen = now
 		for _, req := range r.Relist(ctx) {
-			u := newWorkload()
+			u := r.newObject()
 			u.SetNamespace(req.Namespace)
 			u.SetName(req.Name)
 			select {
@@ -473,5 +626,27 @@ func (r *Reconciler) watchReconnects(ctx context.Context, out chan<- event.Typed
 	}
 }
 
+// watchChanges turns manifest.changed frames into reconciles of the resource they name. The
+// frame's namespace is the resource's, derived by the plane from its field manager.
+func (r *Reconciler) watchChanges(ctx context.Context, out chan<- event.TypedGenericEvent[*unstructured.Unstructured]) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case m := <-r.Changes:
+			u := r.newObject()
+			u.SetNamespace(m.Namespace)
+			u.SetName(m.Name)
+			select {
+			case out <- event.TypedGenericEvent[*unstructured.Unstructured]{Object: u}:
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	}
+}
+
 // String names the reconciler in logs.
-func (r *Reconciler) String() string { return fmt.Sprintf("declare(cluster=%s)", r.Cluster) }
+func (r *Reconciler) String() string {
+	return fmt.Sprintf("declare(kind=%s, cluster=%s)", r.kind(), r.Cluster)
+}

@@ -53,20 +53,20 @@ rules:
     resources: [deployments, statefulsets]
     verbs: [get, list, watch]
   {{- if .Values.cluster.declareWorkloads }}
-  # Workload resources declared to the plane (ADR 0042), in any project namespace:
+  # Workload and Endpoint resources declared to the plane (ADR 0042), in any project namespace:
   # read them and their namespace's project label, write only status and the
   # plane.wingsmith.dev/sync finalizer.
   - apiGroups: [""]
     resources: [namespaces]
     verbs: [get, list, watch]
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads]
+    resources: [workloads, endpoints]
     verbs: [get, list, watch, update, patch]
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads/status]
+    resources: [workloads/status, endpoints/status]
     verbs: [get, update, patch]
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads/finalizers]
+    resources: [workloads/finalizers, endpoints/finalizers]
     verbs: [update]
   {{- end }}
 ---
@@ -199,10 +199,10 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
 rules:
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads]
+    resources: [workloads, endpoints]
     verbs: [get, list, watch, create, update, patch, delete, deletecollection]
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads/status]
+    resources: [workloads/status, endpoints/status]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -214,5 +214,5 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
   - apiGroups: [plane.wingsmith.dev]
-    resources: [workloads, workloads/status]
+    resources: [workloads, workloads/status, endpoints, endpoints/status]
     verbs: [get, list, watch]

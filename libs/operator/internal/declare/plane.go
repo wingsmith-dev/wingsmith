@@ -1,6 +1,7 @@
-// Package declare syncs the Wingsmith Workload resources a member cluster holds to the plane
-// (ADR 0042): kubectl, Argo CD or Flux apply them here, the operator applies them there as field
-// manager k8s:<cluster>/<namespace>, and reports the plane's answer in each resource's status.
+// Package declare syncs the Wingsmith Workload and Endpoint resources a member cluster holds to the
+// plane (ADR 0042): kubectl, Argo CD or Flux apply them here, the operator applies them there as
+// field manager k8s:<cluster>/<namespace>, and reports the plane's answer and serving status in each
+// resource's status.
 package declare
 
 import (
@@ -17,9 +18,10 @@ import (
 
 // Wire types this package speaks.
 const (
-	TypeApply  = "manifest.apply"
-	TypeDelete = "manifest.delete"
-	TypeResult = "manifest.result"
+	TypeApply   = "manifest.apply"
+	TypeDelete  = "manifest.delete"
+	TypeResult  = "manifest.result"
+	TypeChanged = "manifest.changed"
 )
 
 // ErrUnreachable is a request the plane did not answer: no session, or no reply in time.
@@ -47,11 +49,52 @@ type Channel struct {
 	mu      sync.Mutex
 	sender  Sender
 	pending map[string]chan *wire.ManifestResult
+	changed map[string]chan *wire.ManifestChanged
 }
+
+// changedBuffer is how many manifest.changed frames per kind wait for the reconciler. A frame that
+// finds it full is dropped: the periodic resync reapplies every resource anyway.
+const changedBuffer = 1024
 
 // NewChannel returns a Channel with no session bound yet; requests fail ErrUnreachable until Bind.
 func NewChannel(timeout time.Duration) *Channel {
-	return &Channel{Timeout: timeout, pending: map[string]chan *wire.ManifestResult{}}
+	return &Channel{
+		Timeout: timeout,
+		pending: map[string]chan *wire.ManifestResult{},
+		changed: map[string]chan *wire.ManifestChanged{},
+	}
+}
+
+// Changes is where manifest.changed frames for one kind arrive.
+func (c *Channel) Changes(kind string) <-chan *wire.ManifestChanged {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.changesLocked(kind)
+}
+
+func (c *Channel) changesLocked(kind string) chan *wire.ManifestChanged {
+	ch, ok := c.changed[kind]
+	if !ok {
+		ch = make(chan *wire.ManifestChanged, changedBuffer)
+		c.changed[kind] = ch
+	}
+	return ch
+}
+
+// DeliverChanged queues a manifest.changed frame for its kind's reconciler.
+func (c *Channel) DeliverChanged(e *syncpkg.Envelope) error {
+	var m wire.ManifestChanged
+	if err := json.Unmarshal(e.Payload, &m); err != nil {
+		return nil //nolint:nilerr // a poison frame is dropped, never retried (PROTOCOL 6b)
+	}
+	c.mu.Lock()
+	ch := c.changesLocked(m.Kind)
+	c.mu.Unlock()
+	select {
+	case ch <- &m:
+	default:
+	}
+	return nil
 }
 
 // Bind attaches the hub session. Separate from NewChannel because the session is built with the
@@ -138,7 +181,7 @@ func (c *Channel) Deliver(e *syncpkg.Envelope) error {
 	return nil
 }
 
-// WithChannel routes manifest.result frames to the channel and everything else to inner.
+// WithChannel routes manifest.result and manifest.changed frames to the channel and everything else to inner.
 func WithChannel(inner syncpkg.Handler, c *Channel) syncpkg.Handler {
 	return &tee{inner: inner, channel: c}
 }
@@ -149,8 +192,11 @@ type tee struct {
 }
 
 func (t *tee) Handle(ctx context.Context, e *syncpkg.Envelope) error {
-	if e.Type == TypeResult {
+	switch e.Type {
+	case TypeResult:
 		return t.channel.Deliver(e)
+	case TypeChanged:
+		return t.channel.DeliverChanged(e)
 	}
 	return t.inner.Handle(ctx, e)
 }

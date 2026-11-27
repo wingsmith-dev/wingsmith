@@ -769,7 +769,7 @@ type BenchmarkObserved struct {
 
 // ---------------------------------------------------------------------------- manifests
 
-// ManifestApply is a Workload custom resource from this cluster, applied to the plane as the
+// ManifestApply is a Workload or Endpoint custom resource from this cluster, applied to the plane as the
 // manifest Body (ADR 0042). Namespace and UID name the resource; the hub derives the field manager
 // k8s:<cluster>/<namespace> from them. Generation is the resource's own, echoed on the result.
 type ManifestApply struct {
@@ -804,6 +804,18 @@ type ManifestResult struct {
 	Error           string   `json:"error,omitempty"`
 	// Reason refines a refusal: NamespaceNotAllowed for a namespace off the link's allowlist.
 	Reason string `json:"reason,omitempty"`
+	// Status is the plane object's manifest status on an accepted apply: serving, placement and
+	// conditions, as `wings get` shows them.
+	Status map[string]any `json:"status,omitempty"`
+}
+
+// ManifestChanged says a plane object this cluster declared changed, serving status included. The
+// operator reapplies the resource named by Namespace/Name and writes the status the result carries.
+type ManifestChanged struct {
+	Kind      string `json:"kind"`
+	Project   string `json:"project"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
 // MessageTypes maps every wire type to a constructor for its payload. A type absent here is
@@ -843,4 +855,5 @@ var MessageTypes = map[string]func() any{
 	"manifest.apply":      func() any { return &ManifestApply{} },
 	"manifest.delete":     func() any { return &ManifestDelete{} },
 	"manifest.result":     func() any { return &ManifestResult{} },
+	"manifest.changed":    func() any { return &ManifestChanged{} },
 }

@@ -150,6 +150,7 @@ rules:
 - apiGroups:
   - plane.wingsmith.dev
   resources:
+  - endpoints
   - workloads
   verbs:
   - get
@@ -160,12 +161,14 @@ rules:
 - apiGroups:
   - plane.wingsmith.dev
   resources:
+  - endpoints/finalizers
   - workloads/finalizers
   verbs:
   - update
 - apiGroups:
   - plane.wingsmith.dev
   resources:
+  - endpoints/status
   - workloads/status
   verbs:
   - get

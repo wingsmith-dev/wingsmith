@@ -1,0 +1,144 @@
+# Hand-written (ADR 0042). The Endpoint manifest `wings apply` sends, as a custom resource in a
+# member cluster; the operator syncs it to the plane. spec is the plane's manifest spec, checked
+# loosely here and fully by the plane, which reports what it refuses in status.conditions.
+# Generated from the plane's JSON Schema in a later phase (P1.17).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: endpoints.plane.wingsmith.dev
+spec:
+  group: plane.wingsmith.dev
+  names:
+    kind: Endpoint
+    listKind: EndpointList
+    plural: endpoints
+    singular: endpoint
+    shortNames: [wep]
+    categories: [wingsmith]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Synced
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Synced")].status
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+        - name: Reason
+          type: string
+          priority: 1
+          jsonPath: .status.conditions[?(@.type=="Synced")].reason
+        - name: Plane-UID
+          type: string
+          priority: 1
+          jsonPath: .status.planeUID
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: The plane's Endpoint manifest spec, in camelCase. Targets name deployments or workloads in the same project.
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                deletionPolicy:
+                  description: Delete (default) deletes the plane endpoint with this resource; Orphan leaves it. Not sent to the plane.
+                  type: string
+                  enum: [Delete, Orphan]
+                  default: Delete
+                slug:
+                  type: string
+                visibility:
+                  type: string
+                routingStrategy:
+                  type: string
+                enabled:
+                  type: boolean
+                aliases:
+                  type: array
+                  items:
+                    type: string
+                targets:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                    properties:
+                      deployment:
+                        type: string
+                      workloadRef:
+                        type: object
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
+                      weight:
+                        type: integer
+                        minimum: 0
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                planeUID:
+                  type: string
+                planeResourceVersion:
+                  type: string
+                planeGeneration:
+                  type: integer
+                  format: int64
+                fieldManager:
+                  type: string
+                deleteAttempts:
+                  description: Failed plane deletes while Terminating; Stalled is set after 10.
+                  type: integer
+                  format: int64
+                targets:
+                  description: The deployments the targets resolve to, from the plane.
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      deployment:
+                        type: string
+                      workload:
+                        type: string
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status, lastTransitionTime, reason, message]
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

@@ -39,6 +39,10 @@ func TestArgoCDHealthCheck(t *testing.T) {
 			"metadata": map[string]any{"generation": 1},
 			"status":   map[string]any{"observedGeneration": 1, "conditions": []any{cond("Synced", "True", ""), cond("Ready", "True", "")}},
 		}, "Healthy"},
+		{"accepted, not serving yet", map[string]any{
+			"metadata": map[string]any{"generation": 1},
+			"status":   map[string]any{"observedGeneration": 1, "conditions": []any{cond("Synced", "True", ""), cond("Ready", "False", "1 of 2 ready")}},
+		}, "Progressing"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

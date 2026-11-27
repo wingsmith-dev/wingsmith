@@ -1,5 +1,5 @@
--- Argo CD health for plane.wingsmith.dev/Workload (ADR 0042). Install under
--- resource.customizations.health.plane.wingsmith.dev_Workload in argocd-cm.
+-- Argo CD health for plane.wingsmith.dev Workload and Endpoint (ADR 0042). Install under both
+-- resource.customizations.health.plane.wingsmith.dev_Workload and _Endpoint in argocd-cm.
 local hs = {status = "Progressing", message = "waiting for the operator"}
 if obj.status == nil or obj.status.conditions == nil then
   return hs
@@ -22,7 +22,10 @@ end
 if cond.Ready ~= nil and cond.Ready.status == "True" then
   return {status = "Healthy", message = cond.Ready.message}
 end
-if cond.Synced ~= nil then
+-- Accepted but not serving yet (replicas starting, no routable target): say why.
+if cond.Ready ~= nil and cond.Ready.status == "False" then
+  hs.message = cond.Ready.message
+elseif cond.Synced ~= nil then
   hs.message = cond.Synced.message
 end
 return hs
