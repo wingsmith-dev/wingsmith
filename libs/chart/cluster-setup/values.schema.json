@@ -141,7 +141,8 @@
         "images": {
           "type": "object",
           "properties": {
-            "allowedPrefixes": { "$ref": "#/definitions/stringList" }
+            "allowedPrefixes": { "$ref": "#/definitions/stringList" },
+            "containerTagsAllowed": { "type": "boolean" }
           }
         },
         "benchmark": {

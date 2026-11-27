@@ -68,6 +68,9 @@ data:
   {{- with .Values.operator.images.allowedPrefixes }}
   WINGSMITH_ALLOWED_IMAGE_PREFIXES: {{ join "," . | quote }}
   {{- end }}
+  {{- if .Values.operator.images.containerTagsAllowed }}
+  WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED: "true"
+  {{- end }}
   {{- with .Values.operator.benchmark.images }}
   WINGSMITH_BENCHMARK_IMAGES: {{ join "," . | quote }}
   {{- end }}

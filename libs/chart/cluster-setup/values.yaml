@@ -264,8 +264,13 @@ operator:
     # come from, matched at a path, tag or digest boundary, e.g.
     # `nvcr.io/nvidia/ai-dynamo` or `registry.example.com/`. The operator
     # refuses to render anything else. Empty allows any image. Include the
-    # per-model frontend's registry too, or no model renders.
+    # per-model frontend's registry too, or no model renders. Container
+    # (custom worker) workloads fail closed: with this empty the operator
+    # refuses every one of them, so list your worker registry here to use them.
     allowedPrefixes: []
+    # Container workload images must be pinned by digest (`@sha256:`) unless
+    # this is true, whatever the plane allows.
+    containerTagsAllowed: false
   benchmark:
     # The harness images a benchmark may run, matched exactly. Empty keeps the
     # operator's default, the aiperf and evalscope images the plane pins. To
