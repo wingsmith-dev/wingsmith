@@ -23,7 +23,7 @@ rm -f dist/wingsmith-host
 docker run --rm \
 	-v "$goroot:/usr/local/go:ro" \
 	-v "$(go env GOMODCACHE):/gomod" \
-	-v "$PWD:/src" -w /src \
+	-v "$(cd ../.. && pwd):/src" -w /src/libs/operator \
 	-e GOMODCACHE=/gomod -e GOCACHE=/tmp/gocache -e GOFLAGS=-mod=readonly -e CGO_ENABLED=1 \
 	-e GOTOOLCHAIN=local -e VERSION \
 	--user 0 "$BUILD_IMAGE" sh -ec '

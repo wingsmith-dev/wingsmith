@@ -6,8 +6,8 @@
 
 ADR 0030 ran `wingsmith-host` as root for supply only, with a TODO to drop that. ADR 0034 made the
 host drive Docker through the Engine API socket, and ADR 0035 added prefetch containers that write
-into the agent's model cache. P2.6 ships the agent as `.deb` and `.rpm` packages, so the account it
-runs as and the files it owns are now set by the package rather than by each operator.
+into the agent's model cache. P2.6 ships the agent as `.deb` and `.rpm` packages, so the package
+now sets the account it runs as and the files it owns.
 
 ## Decision
 
