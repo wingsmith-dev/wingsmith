@@ -35,6 +35,13 @@ class Conflict(PlaneError):
     status = 409
 
 
+class Gone(PlaneError):
+    """A resume point older than what the plane still keeps; relist and start again (410)."""
+
+    code = "gone"
+    status = 410
+
+
 class Invalid(PlaneError):
     """A well-formed request that asks for something the plane will not do (422)."""
 

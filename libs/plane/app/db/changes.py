@@ -10,6 +10,7 @@ commits, or rolls back for a dry run, so a manifest PUT composes several service
 transaction.
 """
 
+import datetime as dt
 import contextlib
 
 from uuid import UUID
@@ -17,15 +18,26 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from collections.abc import Awaitable
 
+from sqlalchemy import func
+from sqlalchemy import text
 from sqlalchemy import event
+from sqlalchemy import delete
+from sqlalchemy import insert
+from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import object_session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
+from app.db.models import ChangeLog
+from app.db.models import ChangeLogState
+from app.core.exceptions import Gone
 
 
 ADDED = "ADDED"
@@ -200,3 +212,95 @@ def _forget(session: Session, transaction) -> None:
         session.info.pop(_CHANGES, None)
         session.info.pop(_FLUSHED, None)
 
+
+LOCK_KEY = 0x77_73_63_6C  # "wscl": the one advisory lock every logging commit takes
+"""Held from the log insert to the end of the commit, so seqs become visible in commit order: a
+reader that has seen seq N will never later see a smaller one appear."""
+
+CHANNEL = "wingsmith_changes"
+"""`NOTIFY` on this channel after a logging commit, with the highest seq as payload. A wakeup only;
+the log is what listeners read."""
+
+
+@event.listens_for(Session, "before_commit")
+def _write_log(session: Session) -> None:
+    """Appends the recorded changes to `change_log` and stamps each live row's `resource_version`,
+    as the last statements of the transaction."""
+    if not session.info.get(_CHANGES):
+        return
+    session.flush()
+    flushed = session.info.get(_FLUSHED, set())
+    changes = [
+        c for c in session.info.get(_CHANGES, {}).values() if c.op != MODIFIED or c.forced or (c.kind, c.id) in flushed
+    ]
+    if not changes:
+        return
+    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": LOCK_KEY})
+    seq = 0
+    for change in changes:
+        obj = change.obj
+        generation = change.generation
+        if change.op != DELETED and not isinstance(obj, Artifact):
+            generation = obj.generation
+        seq = session.execute(
+            insert(ChangeLog)
+            .values(
+                kind=change.kind,
+                project_id=change.project_id,
+                name=change.name,
+                uid=change.uid,
+                op=change.op,
+                generation=generation,
+            )
+            .returning(ChangeLog.seq)
+        ).scalar_one()
+        if change.op == DELETED:
+            continue
+        table = type(obj).__table__
+        session.execute(update(table).where(table.c.id == change.id).values(resource_version=seq))
+        if obj in session:
+            set_committed_value(obj, "resource_version", seq)
+    session.execute(text("SELECT pg_notify(:channel, :seq)"), {"channel": CHANNEL, "seq": str(seq)})
+
+
+async def current(db: AsyncSession) -> int:
+    """The newest committed seq, or how far the log was compacted when it is empty. A list read
+    after this returns at least everything up to it, which is the RV the list reports."""
+    newest = await db.scalar(select(func.max(ChangeLog.seq)))
+    return newest if newest is not None else await compacted_through(db)
+
+
+async def compacted_through(db: AsyncSession) -> int:
+    return await db.scalar(select(ChangeLogState.compacted_through).where(ChangeLogState.id == 1)) or 0
+
+
+async def since(db: AsyncSession, after: int, limit: int) -> tuple[list[ChangeLog], int]:
+    """Changes with seq above `after`, oldest first, and how far the log is compacted. Raises
+    `Gone` when `after` is at or below that point: the caller must relist."""
+    through = await compacted_through(db)
+    if through and after <= through:
+        raise Gone(
+            f"resourceVersion {after} is too old; the change log is compacted through {through}",
+            {"compacted_through": through},
+        )
+    rows = await db.scalars(select(ChangeLog).where(ChangeLog.seq > after).order_by(ChangeLog.seq).limit(limit))
+    return list(rows), through
+
+
+async def compact(db: AsyncSession, older_than: dt.timedelta) -> int:
+    """Deletes changes older than `older_than` and moves `compacted_through` past them. Returns
+    the new `compacted_through`. Commits."""
+    cutoff = dt.datetime.now(dt.UTC) - older_than
+    newest_old = await db.scalar(select(func.max(ChangeLog.seq)).where(ChangeLog.created_at < cutoff))
+    if newest_old is not None:
+        await db.execute(
+            pg_insert(ChangeLogState)
+            .values(id=1, compacted_through=newest_old)
+            .on_conflict_do_update(
+                index_elements=[ChangeLogState.id],
+                set_={"compacted_through": func.greatest(ChangeLogState.compacted_through, newest_old)},
+            )
+        )
+        await db.execute(delete(ChangeLog).where(ChangeLog.seq <= newest_old))
+    await db.commit()
+    return await compacted_through(db)
