@@ -21,6 +21,21 @@ PRESETS = frozenset({VLLM, SGLANG})
 PRESET_PORT = 8000
 STARTUP_FAILURES = 180
 """Startup probe budget at a 10 s period: 30 minutes for weights to load and graphs to compile."""
+RESERVED_FLAGS = frozenset(
+    {
+        "--port",
+        "--host",
+        "--model",
+        "--model-path",
+        "--served-model-name",
+        "--tensor-parallel-size",
+        "--tp-size",
+        "--tp",
+        "-tp",
+    }
+)
+"""Flags the preset sets itself (vLLM and SGLang spellings). Engines take the last occurrence, so a
+user arg repeating one would silently move the port, model or parallelism the plane relies on."""
 
 
 def preset_images() -> dict[str, dict[str, str]]:
@@ -81,14 +96,21 @@ def _http_get(path: str, **extra) -> dict:
 def expand(container: ContainerSchema, tensor_parallel: int) -> ContainerSchema:
     """A declared container with a preset, as the full worker it stands for. No preset: unchanged.
 
-    The preset owns image and command; declared `args` are appended after its own, so a flag given
-    twice takes the declared value. Declared ports, env, probes and metrics win over the defaults.
+    The preset owns image, command and the flags in `RESERVED_FLAGS`; declared `args` are appended
+    after its own and may not repeat a reserved flag. Declared ports, env, probes and metrics win
+    over the defaults.
     Tensor parallelism is the shape's device count: one replica is one node.
     """
     if not container.preset:
         return container
     if container.image or container.command:
         raise Invalid("a preset picks the image and command; declare args instead", {"preset": container.preset})
+    reserved = sorted({a.partition("=")[0] for a in container.args} & RESERVED_FLAGS)
+    if reserved:
+        raise Invalid(
+            f"the {container.preset} preset sets {', '.join(reserved)} itself; remove it from args",
+            {"preset": container.preset, "args": reserved},
+        )
     image = preset_image(container.preset, container.version)
     command, args = _serve_args(container.preset, max(tensor_parallel, 1))
     ready = "/v1/models" if container.protocol in MODELS_PROBE_PROTOCOLS else "/health"

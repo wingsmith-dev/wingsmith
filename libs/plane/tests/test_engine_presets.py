@@ -155,3 +155,38 @@ def test_a_preset_manifest_round_trips_with_the_expansion_in_status():
     assert declared["preset"] == "sglang" and "image" not in declared
     resolved = msgspec.to_builtins(runtime_spec(W, resolved=True))
     assert resolved["image"] == SGLANG and "preset" not in resolved
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--port",
+        "--host=0.0.0.0",
+        "--model",
+        "--model-path",
+        "--served-model-name=x",
+        "--tensor-parallel-size",
+        "--tp-size=2",
+        "--tp",
+        "-tp",
+    ],
+)
+@pytest.mark.parametrize("preset", ["vllm", "sglang"])
+def test_args_may_not_override_preset_flags(preset, flag):
+    with pytest.raises(Invalid, match=flag.partition("=")[0]):
+        expand(ContainerSchema(preset=preset, args=["--max-model-len", "8192", flag, "9"]), 1)
+
+
+def test_shipped_preset_images_are_append_only():
+    from pathlib import Path
+
+    from app.config.settings import Settings
+
+    def entries(items):
+        pairs = (e.strip().partition("=") for e in items)
+        return {k: v for k, _, v in pairs if k and not k.startswith("#")}
+
+    shipped = entries((Path(__file__).parent / "data" / "preset_images.txt").read_text().splitlines())
+    current = entries(Settings.ENGINE_PRESET_IMAGES.split(","))
+    changed = {k: v for k, v in shipped.items() if current.get(k) != v}
+    assert not changed, f"shipped preset entries removed or re-pointed: {changed}"
