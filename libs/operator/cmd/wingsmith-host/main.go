@@ -182,17 +182,24 @@ func run(args []string) error {
 		if socket == "" {
 			socket = serve.DefaultDockerSocket
 		}
+		docker := serve.NewDockerClient(socket)
+		policy := serve.Policy{ImagePrefixes: cfg.AllowedImagePrefixes, TagsAllowed: cfg.ContainerImageTagsAllowed}
 		driver = serve.NewDriver(&serve.Driver{
 			Backend: &serve.Backend{
-				Docker:      serve.NewDockerClient(socket),
+				Docker:      docker,
 				Allocations: alloc,
-				Policy:      serve.Policy{ImagePrefixes: cfg.AllowedImagePrefixes, TagsAllowed: cfg.ContainerImageTagsAllowed},
+				Policy:      policy,
 				ClusterID:   cfg.Cluster,
 				ModelRoot:   cfg.ModelRoot,
 				GPUs:        healthyGPUs(discoverer),
 				Supply:      observer,
 				CDI:         cfg.CDI,
-				Log:         log,
+				Cache: &serve.Cache{
+					Docker: docker, Policy: policy, Root: cfg.ModelRoot, CredentialsDir: cfg.CredentialsDir,
+					Image: cfg.PrefetchImage, MaxConcurrent: cfg.MaxPrefetches,
+					HighWatermark: cfg.CacheHighWatermark, LowWatermark: cfg.CacheLowWatermark, Log: log,
+				},
+				Log: log,
 			},
 			ClusterID: cfg.Cluster,
 			StatePath: filepath.Join(cfg.StateDir, "desired.json"),

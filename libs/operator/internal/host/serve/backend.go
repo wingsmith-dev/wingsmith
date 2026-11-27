@@ -38,6 +38,9 @@ type Backend struct {
 	// CDI requests GPUs as CDI devices (nvidia.com/gpu=<uuid>) instead of through the NVIDIA
 	// runtime hook.
 	CDI bool
+	// Cache is the prefetching model cache. When set, a deployment waits for its artifact's
+	// completion marker; when nil, any non-empty weights directory is accepted.
+	Cache *Cache
 	// Probe is the client readiness probes run with. Nil uses a 2s timeout.
 	Probe *http.Client
 	Log   *slog.Logger
@@ -254,6 +257,7 @@ func (b *Backend) create(p plan, replica int, gpus []string) ContainerCreate {
 			LabelWorkload:   p.workload,
 			LabelGPUs:       strings.Join(gpus, ","),
 			LabelPort:       strconv.Itoa(p.port),
+			LabelModelPath:  p.model.path,
 		},
 		ExposedPorts: exposed,
 		HostConfig:   hc,
@@ -330,8 +334,12 @@ func (b *Backend) Apply(ctx context.Context, d backend.Desired) (backend.Applied
 	if err != nil {
 		return backend.Applied{}, err
 	}
-	if !cached(b.modelRoot(), p.model) {
-		return backend.Applied{}, fmt.Errorf("%w: %s is missing or empty (prefetch on hosts is not available yet; populate it by hand)",
+	if b.Cache != nil && !b.Cache.Resident(d.Artifact) {
+		return backend.Applied{}, fmt.Errorf("%w: %s has not finished downloading",
+			ErrWeightsNotCached, filepath.Join(b.modelRoot(), filepath.FromSlash(p.model.path)))
+	}
+	if b.Cache == nil && !cached(b.modelRoot(), p.model) {
+		return backend.Applied{}, fmt.Errorf("%w: %s is missing or empty",
 			ErrWeightsNotCached, filepath.Join(b.modelRoot(), filepath.FromSlash(p.model.path)))
 	}
 	if d.Hold != nil {

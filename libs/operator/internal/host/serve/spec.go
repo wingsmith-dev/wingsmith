@@ -66,8 +66,8 @@ var (
 	envRef            = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
 )
 
-// ErrWeightsNotCached is a deployment whose weights are not in the host cache. Prefetch is P2.5;
-// until then the cache is populated by hand and the deployment waits.
+// ErrWeightsNotCached is a deployment whose weights are not in the host cache yet; it waits for
+// the prefetch (cache.go).
 var ErrWeightsNotCached = errors.New("weights not cached on this host")
 
 // Policy is the operator's image policy, applied the same way on a host.

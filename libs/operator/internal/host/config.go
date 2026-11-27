@@ -51,6 +51,19 @@ type Config struct {
 	DockerSocket string `json:"docker_socket,omitempty"`
 	// CDI requests GPUs as CDI devices instead of through the NVIDIA runtime hook.
 	CDI bool `json:"cdi,omitempty"`
+
+	// Model cache (P2.5).
+	// PrefetchImage fetches every artifact; empty uses the image of a deployment serving it.
+	PrefetchImage string `json:"prefetch_image,omitempty"`
+	// CredentialsDir holds <project>.token (and _default.token) Hugging Face tokens, mode 0600;
+	// /etc/wingsmith/credentials when empty.
+	CredentialsDir string `json:"credentials_dir,omitempty"`
+	// MaxPrefetches bounds concurrent downloads; 2 when zero.
+	MaxPrefetches int `json:"max_prefetches,omitempty"`
+	// CacheHighWatermark and CacheLowWatermark are the fractions of the cache filesystem in use
+	// at which eviction starts and stops; 0.90 and 0.80 when zero.
+	CacheHighWatermark float64 `json:"cache_high_watermark,omitempty"`
+	CacheLowWatermark  float64 `json:"cache_low_watermark,omitempty"`
 }
 
 // ValidateServing refuses a serving config that could not route a request.
@@ -60,6 +73,10 @@ func (c *Config) ValidateServing() error {
 	}
 	if strings.TrimSpace(c.Gateway) == "" {
 		return errors.New("serve is on but gateway (the tunnel host:port) is not set in the host config")
+	}
+	if c.CacheHighWatermark < 0 || c.CacheHighWatermark > 1 || c.CacheLowWatermark < 0 || c.CacheLowWatermark > 1 ||
+		(c.CacheHighWatermark > 0 && c.CacheLowWatermark > c.CacheHighWatermark) {
+		return errors.New("cache_high_watermark and cache_low_watermark must be fractions between 0 and 1, low below high")
 	}
 	return nil
 }

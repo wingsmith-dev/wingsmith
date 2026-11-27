@@ -21,6 +21,8 @@ const (
 	typeDeploymentDesired  = "deployment.desired"
 	typeDeploymentDeleted  = "deployment.deleted"
 	typeArtifactDesired    = "artifact.desired"
+	typeCacheDesired       = "cache.desired"
+	typeCacheObserved      = "cache.observed"
 	typeDeploymentObserved = "deployment.observed"
 	typeReplicaObserved    = "replica.observed"
 	typeAllocationObserved = "allocation.observed"
@@ -51,6 +53,7 @@ type Driver struct {
 	mu        sync.Mutex
 	deps      map[string]wire.DeploymentDesired
 	artifacts map[string]wire.ArtifactDesired
+	warm      wire.CacheDesired
 	// epoch is the set re-declared since a resync began; nil outside one.
 	epoch    map[string]bool
 	reported map[string]string
@@ -113,6 +116,12 @@ func (d *Driver) Handle(_ context.Context, e *syncpkg.Envelope) error {
 			return nil
 		}
 		d.artifacts[p.ArtifactID] = p
+	case typeCacheDesired:
+		var p wire.CacheDesired
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return nil
+		}
+		d.warm = p
 	case syncpkg.TypeResyncBegin:
 		d.epoch = map[string]bool{}
 	case syncpkg.TypeStreamEnd:
@@ -137,13 +146,14 @@ func (d *Driver) Handle(_ context.Context, e *syncpkg.Envelope) error {
 type checkpoint struct {
 	Deployments map[string]wire.DeploymentDesired `json:"deployments"`
 	Artifacts   map[string]wire.ArtifactDesired   `json:"artifacts"`
+	Warm        wire.CacheDesired                 `json:"warm"`
 }
 
 func (d *Driver) saveLocked() {
 	if d.StatePath == "" {
 		return
 	}
-	raw, err := json.Marshal(checkpoint{Deployments: d.deps, Artifacts: d.artifacts})
+	raw, err := json.Marshal(checkpoint{Deployments: d.deps, Artifacts: d.artifacts, Warm: d.warm})
 	if err == nil {
 		err = writeDurable(d.StatePath, raw)
 	}
@@ -175,6 +185,7 @@ func (d *Driver) load() error {
 	for k, v := range c.Artifacts {
 		d.artifacts[k] = v
 	}
+	d.warm = c.Warm
 	return nil
 }
 
@@ -228,7 +239,19 @@ func (d *Driver) Pass(ctx context.Context) {
 		arts[k] = v
 	}
 	resyncing := d.epoch != nil
+	warm := d.warm
 	d.mu.Unlock()
+
+	// The cache goes first, so a download that finished since the last pass serves in this one.
+	if c := d.Backend.Cache; c != nil {
+		for _, o := range c.Sync(ctx, SyncInput{Warm: warm, Artifacts: arts, Deployments: deps}) {
+			o.ClusterID = d.ClusterID
+			if err := d.Reporter.Send(typeCacheObserved, o.ArtifactID, o); err != nil {
+				d.Log.Warn("could not report cache residency", "artifact", o.ArtifactID, "error", err)
+				c.Forget(o.ArtifactID)
+			}
+		}
+	}
 
 	declared := map[string]bool{}
 	for _, dep := range deps {
