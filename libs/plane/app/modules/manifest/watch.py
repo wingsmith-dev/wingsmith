@@ -229,9 +229,13 @@ class Fanout:
         self.waiters: set[asyncio.Event] = set()
         self.task: asyncio.Task | None = None
 
-    def subscribe(self) -> asyncio.Event:
+    def admit(self) -> None:
+        """429 when every slot is taken; a cheap pre-check before a stream starts."""
         if len(self.waiters) >= self.cap:
             raise TooManyRequests(f"this plane already serves {self.cap} watches", {"limit": self.cap})
+
+    def subscribe(self) -> asyncio.Event:
+        self.admit()
         event = asyncio.Event()
         self.waiters.add(event)
         if self.task is None or self.task.done():
@@ -428,31 +432,38 @@ def timeout_of(requested: int | None) -> float:
     return float(min(requested, MAX_TIMEOUT_SECONDS))
 
 
-async def stream(watch: Watch, hub: Fanout | None = None) -> "_Lines":
-    """The watch as JSON lines. Holds a watch slot (429 when none is free) for its whole life."""
+async def stream(watch: Watch, hub: Fanout | None = None) -> AsyncIterator[bytes]:
+    """The watch as JSON lines. A slot is taken when iteration starts and released when it ends,
+    so a stream dropped before it is iterated holds nothing. Callers pre-check with `admit()`; a
+    slot lost to a race is an `ERROR` event with a 429 `Status`."""
     hub = hub or fanout()
-    wakeup = hub.subscribe()
-    queue: asyncio.Queue = asyncio.Queue(QUEUE_SIZE)
-    done = object()
-
-    async def put(event: dict) -> None:
-        await asyncio.wait_for(queue.put(event), SLOW_SECONDS)
-
-    async def run() -> None:
-        try:
-            await watch.produce(wakeup, put)
-        except TimeoutError:
-            logger.info("manifest.watch.slow_client collection=%s", watch.collection)
-            return
-        except Exception:
-            logger.exception("manifest.watch.failed collection=%s", watch.collection)
-            with contextlib.suppress(asyncio.QueueFull):
-                queue.put_nowait(_status(500, "InternalError", "the watch failed; relist and watch again"))
-        finally:
-            with contextlib.suppress(asyncio.QueueFull):
-                queue.put_nowait(done)
 
     async def lines() -> AsyncIterator[bytes]:
+        try:
+            wakeup = hub.subscribe()
+        except TooManyRequests as e:
+            yield _line(_status(429, "TooManyRequests", e.message))
+            return
+        queue: asyncio.Queue = asyncio.Queue(QUEUE_SIZE)
+        done = object()
+
+        async def put(event: dict) -> None:
+            await asyncio.wait_for(queue.put(event), SLOW_SECONDS)
+
+        async def run() -> None:
+            try:
+                await watch.produce(wakeup, put)
+            except TimeoutError:
+                logger.info("manifest.watch.slow_client collection=%s", watch.collection)
+                return
+            except Exception:
+                logger.exception("manifest.watch.failed collection=%s", watch.collection)
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(_status(500, "InternalError", "the watch failed; relist and watch again"))
+            finally:
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(done)
+
         producer = asyncio.create_task(run())
         try:
             while True:
@@ -464,31 +475,15 @@ async def stream(watch: Watch, hub: Fanout | None = None) -> "_Lines":
                     continue
                 if event is done:
                     return
-                yield json.dumps(event, separators=(",", ":")).encode() + b"\n"
+                yield _line(event)
         finally:
             producer.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await producer
             hub.unsubscribe(wakeup)
 
-    return _Lines(lines(), lambda: hub.unsubscribe(wakeup))
+    return lines()
 
 
-class _Lines:
-    """The stream, releasing its watch slot on close even if it was never iterated."""
-
-    def __init__(self, lines: AsyncIterator[bytes], release: Callable[[], None]) -> None:
-        self.lines = lines
-        self.release = release
-
-    def __aiter__(self) -> "_Lines":
-        return self
-
-    async def __anext__(self) -> bytes:
-        return await self.lines.__anext__()
-
-    async def aclose(self) -> None:
-        try:
-            await self.lines.aclose()
-        finally:
-            self.release()
+def _line(event: dict) -> bytes:
+    return json.dumps(event, separators=(",", ":")).encode() + b"\n"

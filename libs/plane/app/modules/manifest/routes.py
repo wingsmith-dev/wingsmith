@@ -59,6 +59,7 @@ async def _list_or_watch(
         rv = int(resource_version)
     w = watching.Watch(sessions, collection, project, selector, rv, watching.timeout_of(timeout_seconds))
     await w.check()
+    watching.fanout().admit()
     return Stream(await watching.stream(w), media_type="application/json")
 
 

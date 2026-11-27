@@ -4,6 +4,7 @@ bookmarks, selectors and the watch cap."""
 import json
 import asyncio
 import datetime as dt
+import contextlib
 
 import pytest
 
@@ -189,8 +190,44 @@ async def test_selectors_filter_lists_and_watches(db: AsyncSession, factory) -> 
 
 async def test_the_watch_cap_refuses_one_more(factory) -> None:
     hub = Hub(cap=1)
-    first = await watching.stream(a_watch(factory, 0), hub)
+    first = await watching.stream(a_watch(factory, 0, timeout=5), hub)
+    reader = asyncio.create_task(anext(first))
+    await asyncio.sleep(0.1)
+    assert len(hub.waiters) == 1
     with pytest.raises(TooManyRequests):
-        await watching.stream(a_watch(factory, 0), hub)
+        hub.admit()
+    late = [json.loads(line) async for line in await watching.stream(a_watch(factory, 0), hub)]
+    assert late[0]["object"]["code"] == 429
+    reader.cancel()
+    with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+        await reader
     await first.aclose()
     assert hub.waiters == set()
+
+
+async def test_a_stream_dropped_before_iterating_holds_no_slot(factory) -> None:
+    hub = Hub(cap=1)
+    for _ in range(5):
+        lines = await watching.stream(a_watch(factory, 0), hub)
+        assert hub.waiters == set()
+        del lines
+    hub.admit()
+
+
+async def test_slots_are_released_on_timeout_410_and_failure(db: AsyncSession, factory) -> None:
+    hub = Hub(cap=1)
+    await events_of(a_watch(factory, await changes.current(db), timeout=0.1), hub)
+    assert hub.waiters == set()
+
+    through = await _compact_first(db)
+    events = [json.loads(line) async for line in await watching.stream(a_watch(factory, through), hub)]
+    assert events[-1]["object"]["code"] == 410 and hub.waiters == set()
+
+    broken = a_watch(factory, 0)
+
+    async def boom(*_):
+        raise RuntimeError("boom")
+
+    broken.batch = boom
+    events = [json.loads(line) async for line in await watching.stream(broken, hub)]
+    assert events[-1]["object"]["code"] == 500 and hub.waiters == set()
