@@ -11,6 +11,7 @@ from app.db.engine import Base
 SUPPLY = {
     "supply_cluster",
     "supply_cluster_serving",
+    "supply_cluster_project",
     "supply_cluster_sync_state",
     "supply_node",
     "supply_device",

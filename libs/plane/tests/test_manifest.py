@@ -20,7 +20,7 @@ def test_create_only_fields_are_marked_immutable() -> None:
         for name, body in defs.items()
     }
     assert immutable["WorkloadManifestSpec"] == ["cluster", "enabled", "gangSize", "kind"]
-    assert immutable["PlacementSpec"] == ["allowedClusters", "allowedRegions"]
+    assert immutable["PlacementSpec"] == ["allowedRegions"], "allowedClusters is mutable (ADR 0042)"
     assert immutable["ArtifactSpec"] == ["digest", "source"]
 
 
