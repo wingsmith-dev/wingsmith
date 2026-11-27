@@ -109,18 +109,56 @@ again.
 
 ### Weights
 
-Prefetch on hosts is not available yet. The weights must already be in the cache, laid out as in a
-cluster: a pinned Hugging Face artifact under
-`/var/lib/wingsmith/models/hf/hub/models--<org>--<repo>/snapshots/<revision>` (a private one under
-`p/<project>/hf/...`), any other artifact under `/var/lib/wingsmith/models/<artifact-id>`. Until
-the directory exists and is not empty, the deployment stays `pending` with reason
-`WeightsNotResident` and a message naming the path. One way to fill it:
+The host keeps its own model cache under `/var/lib/wingsmith/models` (`model_root`), laid out as in
+a cluster: a pinned Hugging Face artifact under `hf/hub/models--<org>--<repo>/snapshots/<revision>`
+(a private one under `p/<project>/hf/...`), any other artifact under `<artifact-id>` (private:
+`p/<project>/<artifact-id>`).
+
+Every artifact in the plane's warm set, and every artifact a declared deployment serves, is fetched
+by a short-lived container named `ws-prefetch-<artifact-id>`. It runs the same download script as the
+cluster prefetch Job, in `prefetch_image` if set and otherwise in the image of a deployment serving
+the artifact; either must pass `allowed_image_prefixes`. Only the artifact's cache subtree is
+mounted, read-write, and the container has no capabilities and a read-only root. At most
+`max_prefetches` (default 2) run at once. When one exits cleanly and left the weights directory
+non-empty, the host writes a completion marker under `.wingsmith/artifacts/` (a directory no
+container mounts) and removes the container. A deployment starts only once its artifact has a
+marker; until then it is `pending` with `WeightsNotResident`. Each artifact's state is reported as
+`cache.observed` (`fetching`, `resident`, or `absent` with a reason such as `PrefetchFailed`,
+`CredentialUnavailable`, `NoRuntimeImage`, `ImageNotAllowed`), so the plane shows why it waits.
+
+A failed download is retried with backoff (1 minute doubling to 30). After a restart, a prefetch
+container that finished while the host was down is collected as usual; a Hugging Face download
+resumes from its partial files, and any other download starts again from an empty directory.
+
+Weights copied in by hand are not trusted on their own: the first pass runs the prefetch, which
+for Hugging Face verifies what is there and fetches only what is missing, then writes the marker.
+
+#### Tokens for private artifacts
+
+Tokens never come from the plane. An admin drops them on the host, as on a cluster they apply the
+project's Secret:
 
 ```sh
-HF_HOME=/var/lib/wingsmith/models/hf huggingface-cli download <org>/<repo> --revision <revision>
+install -d -m 700 /etc/wingsmith/credentials
+install -m 600 /dev/stdin /etc/wingsmith/credentials/<project-id>.token <<< "hf_..."
 ```
+
+A private artifact whose source names a credential is fetched with `<project-id>.token` and is
+refused with `CredentialUnavailable` while that file is missing. Public artifacts use
+`_default.token` if present. A file readable by group or others is refused. The token reaches only
+the prefetch container, as `HF_TOKEN`; serving containers run with `HF_HUB_OFFLINE=1` and no token.
+The directory is `credentials_dir` in host.json.
+
+#### Eviction
+
+When the cache filesystem is above `cache_high_watermark` (default 0.90) of its size, the host
+removes resident artifacts, least recently used first, until it is at `cache_low_watermark`
+(default 0.80). It never removes an artifact in the warm set, one a declared deployment serves, or
+one mounted by any replica container on the host. A Hugging Face repo directory is removed whole
+only when no other artifact or replica uses it; otherwise only the snapshot goes. Replica containers
+created before this version carry no model-path label, and while one exists the host does not evict.
 
 ### Not supported
 
 Multi-tenant isolation (every project's containers share the host), Dynamo, disaggregated or
-multi-node replicas, rootless Podman, prefetch and eviction, and NVLink topology.
+multi-node replicas, rootless Podman, cache quotas per project, and NVLink topology.

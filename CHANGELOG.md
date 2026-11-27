@@ -20,8 +20,13 @@ protocol can change between minor versions.
   UUID, the model cache mounted read-only, the port on 127.0.0.1 only, no capabilities and a
   read-only root; readiness runs the workload's httpGet probe; and the same binary holds the
   data-path tunnel. Placement now takes container workloads on hosts that report the runtime and
-  still refuses Dynamo there. Weights must be in the cache by hand until host prefetch lands
-  (ADR 0034).
+  still refuses Dynamo there (ADR 0034).
+- Host model cache. `wingsmith-host` fetches warm-set and served artifacts with a short-lived
+  prefetch container (engine image, only the artifact's subtree mounted read-write, bounded by
+  `max_prefetches`), marks completion atomically, reports `cache.observed`, retries with backoff,
+  resumes after a restart, and evicts least-recently-used artifacts outside the warm set and not
+  mounted between configurable watermarks. Private artifacts read their project's token from
+  `/etc/wingsmith/credentials/<project>.token` on the host and are refused without it (ADR 0035).
 - `wings apply -f file|dir|- [-R]` and `wings diff`. The plane keeps the last manifest applied to
   each Workload and Endpoint (`plane.wingsmith.dev/last-applied`) and merges against it, so a field
   removed from the file is reset on the next apply. PUT takes `?dryRun=All` and answers
