@@ -587,6 +587,26 @@ Reasons the operator sets: `NoRuntimeImage`, `ArtifactNotDeclared`, `PrefetchPen
 `Fetching`, `Resident`. The plane files each transition as a `cache.<state>` event against the
 artifact, which is what puts the download on the timeline of every workload waiting on it.
 
+## Manifests: cluster-declared workloads
+
+| Type | Direction | Payload |
+|---|---|---|
+| `manifest.apply` | op → hub | `kind` (`Workload`), `project`, `name`, `namespace`, `uid`, `body`, `generation`: a Workload custom resource from the member cluster, as the manifest `wings apply` would send |
+| `manifest.delete` | op → hub | `kind`, `project`, `name`, `namespace`, `uid`: the custom resource is being deleted |
+| `manifest.result` | hub → op | `result`, `generation`, `uid`, `rv`, `plane_generation`, `manager`, `allowed_clusters`, `error`. `reply_to` is the apply's or delete's id |
+
+The operator watches Workload resources in namespaces labelled `plane.wingsmith.dev/project` and
+applies each through `ManifestService`, exactly as `PUT /v1/manifests/workloads/{project}/{name}`
+would, as field manager `k8s:<cluster>/<namespace>` (ADR 0042). The hub derives the manager from the
+authenticated cluster and the frame's `namespace`; nothing in the frame names it. A project the
+cluster is not linked to (`PUT /v1/clusters/{ref}/projects/{project}`) is answered `forbidden`.
+
+`result` is `created`, `configured` or `unchanged` for an apply, `deleted`, `released` (another
+manager owns it now; left in place) or `absent` for a delete, and `conflict`, `forbidden`, `invalid`
+or `error` (retryable) otherwise. Both requests are sequenced and idempotent: a replay after resume,
+or the operator's relist on reconnect, applies the same body and answers `unchanged`. A result whose
+`reply_to` the operator no longer waits on is dropped.
+
 ## Operations
 
 | Type | Direction | Payload |

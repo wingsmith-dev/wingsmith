@@ -28,6 +28,7 @@ from app.hub.dispatch import listen_loop
 from app.hub.identity import instance_id
 from app.hub.standing import DatabaseStanding
 from app.reactor.loop import reactor_loop
+from app.hub.manifests import ManifestHandler
 from app.hub.ownership import DatabaseClaimStore
 from app.config.settings import validate
 from app.modules.clusters.repository import ClusterRepository
@@ -51,6 +52,9 @@ unlike `REGISTRY`, which by design is not shared.
 
 STANDING = DatabaseStanding()
 """Whether a cluster may hold a session: registered, not disabled, and still on the token it opened with."""
+
+MANIFESTS = ManifestHandler()
+"""Applies the manifests clusters declare from their own Workload resources (ADR 0042)."""
 
 LIVE = LiveSessions()
 """Connections this process can push declared state to right now, keyed by cluster.
@@ -131,6 +135,7 @@ async def _handler(connection: ServerConnection) -> None:
         live=LIVE,
         standing=STANDING,
         credential=digest,
+        manifests=MANIFESTS,
     ).run()
 
 

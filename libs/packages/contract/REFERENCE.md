@@ -105,6 +105,9 @@ response follows are in [`API.md`](API.md).
 | DELETE | `/v1/clusters/{ref}` | DeleteCluster |
 | POST | `/v1/clusters/{ref}/enrolment-token` | IssueEnrolmentToken |
 | GET | `/v1/clusters/{ref}/headroom` | GetHeadroom |
+| GET | `/v1/clusters/{ref}/projects` | ListClusterProjects |
+| PUT | `/v1/clusters/{ref}/projects/{project}` | LinkClusterProject |
+| DELETE | `/v1/clusters/{ref}/projects/{project}` | UnlinkClusterProject |
 | GET | `/v1/clusters/{ref}/rollup` | GetRollup |
 | PUT | `/v1/clusters/{ref}/serving` | SetServing |
 | DELETE | `/v1/clusters/{ref}/serving` | ClearServing |

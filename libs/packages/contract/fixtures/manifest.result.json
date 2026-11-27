@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "type": "manifest.result",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc9c",
+  "ts": "2026-08-19T14:31:45.012Z",
+  "seq": 8872,
+  "ack": 4501,
+  "reply_to": "01j9x2e5g7qk8v3b0yhn4tzc9a",
+  "payload": {
+    "result": "conflict",
+    "generation": 3,
+    "uid": "wkl_01j9x2bbbbbbbbbbbbbbbbbbbb",
+    "rv": "10422",
+    "plane_generation": 4,
+    "manager": "k8s:alpha/team-a",
+    "allowed_clusters": [
+      "alpha"
+    ],
+    "error": "workload 'chat' is managed by 'k8s:alpha/team-b'; retry with force=true to take it over"
+  }
+}

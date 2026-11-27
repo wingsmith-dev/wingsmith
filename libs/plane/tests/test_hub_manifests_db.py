@@ -1,0 +1,117 @@
+"""Workloads a member cluster declares over the wire (ADR 0042): scoping, manager, origin, delete."""
+
+import pytest
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from app.db.models import Policy
+from app.db.models import Workload
+from app.hub.messages import ManifestApply
+from app.hub.messages import ManifestDelete
+from app.hub.manifests import ORIGIN_UID
+from app.hub.manifests import ORIGIN_CLUSTER
+from app.hub.manifests import ManifestHandler
+from app.modules.manifest.schemas import API_VERSION
+from app.modules.clusters.services import ClusterProjectService
+from app.modules.manifest.services import LAST_APPLIED
+from app.modules.manifest.services import ManifestService
+from app.modules.workloads.services import constraint_name
+
+from tests.test_modules_db import a_cluster
+from tests.test_modules_db import an_environment
+from tests.test_modules_db import seed_free_devices
+
+
+pytestmark = pytest.mark.database
+
+
+def _body(artifact: str, clusters: list[str], **spec) -> dict:
+    return {
+        "apiVersion": API_VERSION,
+        "kind": "Workload",
+        "metadata": {"name": "chat", "labels": {"team": "a"}},
+        "spec": {
+            "runtime": {"engine": "vllm", "version": "0.6.0"},
+            "serving": {"artifact": artifact, "contextLength": 8192, "shape": {"deviceClass": "h100"}},
+            "placement": {"allowedClusters": clusters},
+            **spec,
+        },
+    }
+
+
+def _apply(body: dict, namespace: str = "team-a", generation: int = 1) -> ManifestApply:
+    return ManifestApply(
+        kind="Workload",
+        project="search",
+        name="chat",
+        namespace=namespace,
+        uid="cr-1",
+        body=body,
+        generation=generation,
+    )
+
+
+async def _setup(db: AsyncSession, link: bool = True):
+    cluster, project, artifact = await an_environment(db)
+    await seed_free_devices(db, cluster.id)
+    if link:
+        await ClusterProjectService(db).link(cluster.name, project.slug)
+    return cluster, artifact, ManifestHandler(async_sessionmaker(db.bind, expire_on_commit=False))
+
+
+async def test_an_unlinked_project_is_refused(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db, link=False)
+    result = await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    assert result.result == "forbidden"
+    assert await db.scalar(select(Workload.id).where(Workload.name == "chat")) is None
+
+
+async def test_apply_records_its_own_manager_and_origin_and_replays_unchanged(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    body = _body(artifact.handle, [cluster.id])
+    first = await handler.handle(cluster.id, _apply(body))
+    assert first.result == "created", first.error
+    assert first.manager == f"k8s:{cluster.name}/team-a"
+    assert first.allowed_clusters == [cluster.name] and first.generation == 1
+    again = await handler.handle(cluster.id, _apply(body))
+    assert again.result == "unchanged" and again.rv == first.rv
+
+    m = await ManifestService(db).workload("search", "chat")
+    assert m.metadata.annotations["plane.wingsmith.dev/applied-by"] == first.manager
+    assert ORIGIN_CLUSTER in m.metadata.annotations[LAST_APPLIED]
+    assert ORIGIN_UID in m.metadata.annotations[LAST_APPLIED]
+
+
+async def test_another_namespace_is_another_manager_and_conflicts(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    assert (await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))).result == "created"
+    other = await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name]), namespace="team-b"))
+    assert other.result == "conflict" and "k8s:" in other.error
+
+
+async def test_allowed_clusters_is_mutable(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    second = await a_cluster(db, name="beta")
+    await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    widened = await handler.handle(
+        cluster.id, _apply(_body(artifact.handle, [cluster.name, second.name]), generation=2)
+    )
+    assert widened.result == "configured", widened.error
+    assert widened.allowed_clusters == [cluster.name, second.name]
+    w = await db.scalar(select(Workload).where(Workload.name == "chat"))
+    policy = await db.scalar(select(Policy).where(Policy.name == constraint_name(w.uid)))
+    await db.refresh(policy)
+    assert len(policy.allowed_cluster_ids) == 2
+
+
+async def test_delete_removes_its_own_and_releases_anothers(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    gone = ManifestDelete(kind="Workload", project="search", name="chat", namespace="team-b", uid="cr-2")
+    assert (await handler.handle(cluster.id, gone)).result == "released"
+    assert await db.scalar(select(Workload.id).where(Workload.name == "chat")) is not None
+    mine = ManifestDelete(kind="Workload", project="search", name="chat", namespace="team-a", uid="cr-1")
+    assert (await handler.handle(cluster.id, mine)).result == "deleted"
+    assert (await handler.handle(cluster.id, mine)).result == "absent"

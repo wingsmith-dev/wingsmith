@@ -51,11 +51,15 @@ from app.hub.messages import Envelope
 from app.hub.messages import StreamEnd
 from app.hub.messages import RawEnvelope
 from app.hub.messages import ResyncBegin
+from app.hub.messages import ManifestApply
+from app.hub.messages import ManifestDelete
+from app.hub.messages import ManifestResult
 from app.hub.messages import operator_release
 from app.hub.messages import supported_envelope
 from app.hub.messages import supported_operator
 from app.hub.standing import Standing
 from app.hub.standing import OpenStanding
+from app.hub.manifests import ManifestHandler
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 from app.modules.clusters.enrolment import schedule_promote_on_enrolment
@@ -213,6 +217,7 @@ class OperatorSession:
         "desired",
         "instance",
         "live",
+        "manifests",
         "principal",
         "registry",
         "_agent_kind",
@@ -234,7 +239,10 @@ class OperatorSession:
         live: LiveSessions | None = None,
         standing: Standing | None = None,
         credential: str | None = None,
+        manifests: ManifestHandler | None = None,
     ) -> None:
+        self.manifests = manifests
+        """Applies the manifests the cluster declares (ADR 0042). `None` answers them `error`."""
         self.connection = connection
         self.principal = principal
         self.standing: Standing = OpenStanding() if standing is None else standing
@@ -741,6 +749,15 @@ class OperatorSession:
                 await self.sink.record_operation(self._sink_frame(envelope))
             case "workload.discovered":
                 await self.sink.apply_observed(self._sink_frame(envelope))
+            case "manifest.apply" | "manifest.delete":
+                assert isinstance(payload, ManifestApply | ManifestDelete)
+                if self.manifests is None:
+                    result = ManifestResult(result="error", error="this hub does not take manifests")
+                else:
+                    result = await self.manifests.handle(cluster_id, payload)
+                await self._send("manifest.result", result, reply_to=envelope.id)
+            case "manifest.result":
+                raise ProtocolViolation("manifest.result is hub to operator only")
             case _:
                 if envelope.type.endswith(_EVENT_SUFFIX):
                     await self.sink.record_event(self._sink_frame(envelope))

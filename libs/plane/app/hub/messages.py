@@ -1025,6 +1025,54 @@ class BenchmarkObserved(Struct):
     log_tail: str | None = None
 
 
+class ManifestApply(Struct):
+    """A Wingsmith manifest declared in the member cluster, applied to the plane (ADR 0042).
+
+    Operator to plane. `body` is the manifest as `wings apply` would send it, with
+    `metadata.namespace` set to `project`. `namespace` and `uid` name the custom resource it came
+    from: the hub derives the field manager `k8s:<cluster>/<namespace>` from them and the
+    authenticated cluster, never from the frame. `generation` is the resource's own, echoed on the
+    result so the operator can set `observedGeneration`. Answered by `manifest.result`.
+    """
+
+    kind: Literal["Workload"]
+    project: str
+    name: str
+    namespace: str
+    uid: str
+    body: dict
+    generation: int
+
+
+class ManifestDelete(Struct):
+    """The custom resource is being deleted: delete the plane object, or release it when another
+    manager owns it now. Operator to plane; answered by `manifest.result`."""
+
+    kind: Literal["Workload"]
+    project: str
+    name: str
+    namespace: str
+    uid: str
+
+
+class ManifestResult(Struct):
+    """The plane's answer to `manifest.apply` or `manifest.delete`, replying to its id.
+
+    `result` is `created`, `configured` or `unchanged` for an apply; `deleted`, `released` or
+    `absent` for a delete; `conflict` (another field manager owns it), `forbidden` (the project is
+    not linked to this cluster), `invalid` or `error` (retryable) otherwise, with `error` saying why.
+    """
+
+    result: str
+    generation: int | None = None
+    uid: str | None = None
+    rv: str | None = None
+    plane_generation: int | None = None
+    manager: str | None = None
+    allowed_clusters: list[str] | None = None
+    error: str | None = None
+
+
 MESSAGE_TYPES: dict[str, type[Struct]] = {
     "hello": Hello,
     "welcome": Welcome,
@@ -1057,6 +1105,9 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "operation.observed": OperationObserved,
     "operation.cancel": OperationCancel,
     "benchmark.observed": BenchmarkObserved,
+    "manifest.apply": ManifestApply,
+    "manifest.delete": ManifestDelete,
+    "manifest.result": ManifestResult,
 }
 
 
