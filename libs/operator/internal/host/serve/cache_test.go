@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -443,5 +444,24 @@ func TestEvictionKeepsWarmAndMounted(t *testing.T) {
 	base = 80
 	if out := cr.cache.Sync(ctx, SyncInput{Artifacts: arts}); len(out) != 0 {
 		t.Fatalf("evicted beside an unlabelled replica: %+v", out)
+	}
+}
+
+func TestMkdirSharedIgnoresUmask(t *testing.T) {
+	old := syscall.Umask(0o027)
+	defer syscall.Umask(old)
+	root := t.TempDir()
+	c := &Cache{Root: root}
+	if err := c.mkdirShared("hf/hub/models--a--b"); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"hf", "hf/hub", "hf/hub/models--a--b"} {
+		fi, err := os.Stat(filepath.Join(root, d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o755 {
+			t.Fatalf("%s is %v, want 0755", d, fi.Mode().Perm())
+		}
 	}
 }

@@ -125,6 +125,25 @@ func (c *Cache) now() time.Time {
 
 func (c *Cache) host(rel string) string { return filepath.Join(c.root(), filepath.FromSlash(rel)) }
 
+// mkdirShared creates rel under the cache root and sets it and every directory between it and the
+// root to 0755. The unit's UMask=0027 would leave them 0750, which a replica image running as
+// another non-root uid cannot traverse.
+func (c *Cache) mkdirShared(rel string) error {
+	dir := c.host(rel)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	root := filepath.Clean(c.root())
+	for d := dir; ; d = filepath.Dir(d) {
+		if err := os.Chmod(d, 0o755); err != nil {
+			return err
+		}
+		if d == root || filepath.Dir(d) == d {
+			return nil
+		}
+	}
+}
+
 // targetFor validates the artifact with the serving rules (modelFor) and picks its source.
 func targetFor(art wire.ArtifactDesired) (target, error) {
 	m, err := modelFor(art)
@@ -579,7 +598,7 @@ func (c *Cache) start(ctx context.Context, t target, img, token string) error {
 		}
 	}
 	for _, d := range prefetchDirs(t) {
-		if err := os.MkdirAll(c.host(d), 0o755); err != nil {
+		if err := c.mkdirShared(d); err != nil {
 			return err
 		}
 	}
