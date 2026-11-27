@@ -9,6 +9,9 @@ protocol can change between minor versions.
 
 ### Added
 
+- Endpoint targets can name a workload in the endpoint's project (`workload_ref: {name}`), resolved
+  at read time to its current deployments with the weight split evenly over them. A ref to a
+  missing workload is accepted and reported as a `ResolvedRefs` condition (ADR 0026).
 - Artifacts carry a unique, immutable `handle` (`openai-gpt-oss-20b`), derived from the slug or
   declared at create, and accepted wherever an artifact reference is. Existing artifacts are
   backfilled oldest first.
