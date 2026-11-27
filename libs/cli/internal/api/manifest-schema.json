@@ -619,8 +619,15 @@
   },
   "EndpointStatus": {
    "additionalProperties": false,
-   "description": "The deployments the targets resolved to. Upstream addresses are `/v1/endpoints/{ref}/resolved`.",
+   "description": "The deployments the targets resolved to. Upstream addresses are `/v1/endpoints/{ref}/resolved`.\n\n    `ResolvedRefs` is `False` while a workload ref names no workload in the namespace.",
    "properties": {
+    "conditions": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/Condition"
+     },
+     "type": "array"
+    },
     "targets": {
      "items": {
       "$ref": "#/$defs/EndpointTargetStatus"
@@ -736,10 +743,18 @@
   },
   "EndpointTargetSpec": {
    "additionalProperties": false,
-   "description": "Today's target shape: a deployment by its object name. P1.6 adds targeting a workload.",
+   "description": "A deployment by its object name, or a workload by `workload_ref` (ADR 0026): exactly one.\n    A workload ref routes to that workload's current deployments, its weight split evenly over\n    them, and may name a workload that does not exist yet.",
    "properties": {
     "deployment": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "enabled": {
      "default": true,
@@ -763,11 +778,20 @@
     "weight": {
      "default": 100,
      "type": "integer"
+    },
+    "workload_ref": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/WorkloadRef"
+      }
+     ],
+     "default": null
     }
    },
-   "required": [
-    "deployment"
-   ],
+   "required": [],
    "title": "EndpointTargetSpec",
    "type": "object"
   },
@@ -779,6 +803,17 @@
     },
     "deployment_id": {
      "type": "string"
+    },
+    "workload": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     }
    },
    "required": [
@@ -1632,6 +1667,20 @@
     "serving"
    ],
    "title": "WorkloadManifestSpec",
+   "type": "object"
+  },
+  "WorkloadRef": {
+   "additionalProperties": false,
+   "description": "A workload by name in the endpoint's own namespace, like a same-namespace object ref.",
+   "properties": {
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "WorkloadRef",
    "type": "object"
   },
   "WorkloadScaleStatus": {

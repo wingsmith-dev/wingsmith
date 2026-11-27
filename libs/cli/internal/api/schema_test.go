@@ -69,6 +69,8 @@ var wireTypes = []struct {
 	{PromoteRequest{}, "PromoteRequest", true},
 	{EndpointTarget{}, "EndpointTargetSchema", false},
 	{Endpoint{}, "EndpointSchema", false},
+	{WorkloadRef{}, "WorkloadRefSchema", false},
+	{EndpointCondition{}, "EndpointConditionSchema", false},
 	{EndpointSurface{}, "EndpointSurfaceSchema", false},
 	{EndpointPolicy{}, "endpoints_schemas_PolicySchema", false},
 	{PolicyRule{}, "RuleSchema", false},

@@ -987,7 +987,7 @@ func (b *Backend) workloadsBehind(endpoint string) []string {
 		}
 		for _, target := range e.Targets {
 			for _, d := range b.state.Deployments {
-				if d.ID == target.DeploymentID && !seen[d.WorkloadID] {
+				if target.DeploymentID != nil && d.ID == *target.DeploymentID && !seen[d.WorkloadID] {
 					seen[d.WorkloadID] = true
 					out = append(out, d.WorkloadID)
 				}

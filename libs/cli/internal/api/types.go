@@ -918,13 +918,15 @@ type PromoteRequest struct {
 	PriorityClass string `json:"priority_class,omitempty"`
 }
 
-// EndpointTarget is one deployment behind one endpoint, with a traffic
-// weight. Which cluster it runs in is a property of the deployment.
+// EndpointTarget is one deployment, or one workload by name, behind one
+// endpoint, with a traffic weight. Exactly one of DeploymentID and WorkloadRef
+// is set. Which cluster it runs in is a property of the deployment.
 type EndpointTarget struct {
-	DeploymentID string `json:"deployment_id"`
-	Weight       int    `json:"weight"`
-	Role         string `json:"role"`
-	Enabled      bool   `json:"enabled"`
+	DeploymentID *string      `json:"deployment_id"`
+	WorkloadRef  *WorkloadRef `json:"workload_ref"`
+	Weight       int          `json:"weight"`
+	Role         string       `json:"role"`
+	Enabled      bool         `json:"enabled"`
 	// ServedModelName is the id the deployment's engine answers to, nil until
 	// the plane can resolve it.
 	ServedModelName *string `json:"served_model_name"`
@@ -955,6 +957,21 @@ type Endpoint struct {
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt *time.Time      `json:"updated_at"`
 	Revision  string          `json:"revision"`
+	// Conditions carries ResolvedRefs, False while a workload ref names no workload.
+	Conditions []EndpointCondition `json:"conditions"`
+}
+
+// WorkloadRef names a workload in the endpoint's own project.
+type WorkloadRef struct {
+	Name string `json:"name"`
+}
+
+// EndpointCondition is a Kubernetes-style condition on an endpoint.
+type EndpointCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
 }
 
 // EndpointSurface is what this name exposes: which protocols answer at it, how a caller

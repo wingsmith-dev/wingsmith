@@ -50,7 +50,8 @@
             "created_at": "2026-08-19T18:52:43.854292Z",
             "updated_at": null,
             "revision": "1787165563854292",
-            "generation": 1
+            "generation": 1,
+            "conditions": []
         }
     ],
     "count": 1,

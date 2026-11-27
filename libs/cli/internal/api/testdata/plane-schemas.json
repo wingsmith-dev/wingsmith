@@ -840,6 +840,12 @@
   "spec_fingerprint": "string?",
   "status": "string"
  },
+ "EndpointConditionSchema": {
+  "message": "string",
+  "reason": "string",
+  "status": "string",
+  "type": "string"
+ },
  "EndpointCreateRequest": {
   "aliases": "[]string",
   "enabled": "boolean",
@@ -861,6 +867,7 @@
  },
  "EndpointSchema": {
   "aliases": "[]string",
+  "conditions": "[]$EndpointConditionSchema",
   "created_at": "string",
   "enabled": "boolean",
   "failover_order": "[]string",
@@ -888,6 +895,7 @@
   "visibility": "string"
  },
  "EndpointStatus": {
+  "conditions": "[]$Condition",
   "targets": "[]$EndpointTargetStatus"
  },
  "EndpointSurfaceSchema": {
@@ -902,29 +910,33 @@
   "streaming_transport": "string?"
  },
  "EndpointTargetRequest": {
-  "deployment": "string",
+  "deployment": "string?",
   "enabled": "boolean",
   "role": "string",
   "served_model_name": "string?",
-  "weight": "integer"
+  "weight": "integer",
+  "workload_ref": "$WorkloadRefSchema?"
  },
  "EndpointTargetSchema": {
-  "deployment_id": "string",
+  "deployment_id": "string?",
   "enabled": "boolean",
   "role": "string",
   "served_model_name": "string?",
-  "weight": "integer"
+  "weight": "integer",
+  "workload_ref": "$WorkloadRefSchema?"
  },
  "EndpointTargetSpec": {
-  "deployment": "string",
+  "deployment": "string?",
   "enabled": "boolean",
   "role": "string",
   "served_model_name": "string?",
-  "weight": "integer"
+  "weight": "integer",
+  "workload_ref": "$WorkloadRef?"
  },
  "EndpointTargetStatus": {
   "deployment": "string",
-  "deployment_id": "string"
+  "deployment_id": "string",
+  "workload": "string?"
  },
  "EndpointUpdateRequest": {
   "aliases": "[]string",
@@ -2060,6 +2072,12 @@
   "nodes": "[]$WorkloadPlacementNodeSchema",
   "replicas": "[]$WorkloadReplicaPlacementSchema",
   "workload": "string"
+ },
+ "WorkloadRef": {
+  "name": "string"
+ },
+ "WorkloadRefSchema": {
+  "name": "string"
  },
  "WorkloadReplicaPlacementSchema": {
   "allocation": "string",

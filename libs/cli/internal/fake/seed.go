@@ -423,8 +423,8 @@ func seed() *state {
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
 		Aliases: []string{"gpt-oss-120b"},
 		Targets: []api.EndpointTarget{
-			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
-			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},
+			{DeploymentID: &depRunning, Weight: 90, Role: "primary", Enabled: true},
+			{DeploymentID: &depPending, Weight: 10, Role: "canary", Enabled: false},
 		},
 		FailoverOrder: []string{depRunning, depPending},
 		Surface: api.EndpointSurface{

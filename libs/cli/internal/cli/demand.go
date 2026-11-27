@@ -1224,8 +1224,13 @@ without clients noticing.`,
 					ui.Column{Title: "failover", Align: ui.AlignRight},
 				)
 				for _, target := range e.Targets {
-					t.Row(target.DeploymentID, target.Role, strconv.Itoa(target.Weight),
-						boolWord(target.Enabled), failoverPosition(e, target.DeploymentID))
+					name, position := "", ""
+					if target.DeploymentID != nil {
+						name, position = *target.DeploymentID, failoverPosition(e, *target.DeploymentID)
+					} else if target.WorkloadRef != nil {
+						name = "workload/" + target.WorkloadRef.Name
+					}
+					t.Row(name, target.Role, strconv.Itoa(target.Weight), boolWord(target.Enabled), position)
 				}
 				t.Render(w)
 			}
@@ -1233,10 +1238,10 @@ without clients noticing.`,
 			renderSurface(app, w, s, e.Surface)
 		},
 		next: func(e api.Endpoint) []errs.Action {
-			if len(e.Targets) == 0 {
+			if len(e.Targets) == 0 || e.Targets[0].DeploymentID == nil {
 				return nil
 			}
-			return []errs.Action{{Description: "Its primary deployment", Command: "wings deployment get " + e.Targets[0].DeploymentID}}
+			return []errs.Action{{Description: "Its primary deployment", Command: "wings deployment get " + *e.Targets[0].DeploymentID}}
 		},
 		extra: func(app *App) []*cobra.Command {
 			return []*cobra.Command{newEndpointSLACmd(app)}

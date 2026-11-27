@@ -4952,6 +4952,30 @@
         "title": "DiscoveredWorkloadSchema",
         "type": "object"
       },
+      "EndpointConditionSchema": {
+        "properties": {
+          "message": {
+            "default": "",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "status",
+          "type"
+        ],
+        "title": "EndpointConditionSchema",
+        "type": "object"
+      },
       "EndpointCreateRequest": {
         "properties": {
           "aliases": {
@@ -5044,6 +5068,12 @@
           "aliases": {
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointConditionSchema"
             },
             "type": "array"
           },
@@ -5174,6 +5204,12 @@
       },
       "EndpointStatus": {
         "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array"
+          },
           "targets": {
             "items": {
               "$ref": "#/components/schemas/EndpointTargetStatus"
@@ -5279,7 +5315,14 @@
       "EndpointTargetRequest": {
         "properties": {
           "deployment": {
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "enabled": {
             "default": true,
@@ -5302,18 +5345,33 @@
           "weight": {
             "default": 100,
             "type": "integer"
+          },
+          "workload_ref": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkloadRefSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "deployment"
-        ],
+        "required": [],
         "title": "EndpointTargetRequest",
         "type": "object"
       },
       "EndpointTargetSchema": {
         "properties": {
           "deployment_id": {
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "enabled": {
             "type": "boolean"
@@ -5333,10 +5391,19 @@
           },
           "weight": {
             "type": "integer"
+          },
+          "workload_ref": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkloadRefSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "deployment_id",
           "enabled",
           "role",
           "weight"
@@ -5347,7 +5414,14 @@
       "EndpointTargetSpec": {
         "properties": {
           "deployment": {
-            "type": "string"
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "enabled": {
             "default": true,
@@ -5370,11 +5444,19 @@
           "weight": {
             "default": 100,
             "type": "integer"
+          },
+          "workload_ref": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkloadRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "deployment"
-        ],
+        "required": [],
         "title": "EndpointTargetSpec",
         "type": "object"
       },
@@ -5385,6 +5467,16 @@
           },
           "deployment_id": {
             "type": "string"
+          },
+          "workload": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -12578,6 +12670,30 @@
           "workload"
         ],
         "title": "WorkloadPlacementSchema",
+        "type": "object"
+      },
+      "WorkloadRef": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WorkloadRef",
+        "type": "object"
+      },
+      "WorkloadRefSchema": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WorkloadRefSchema",
         "type": "object"
       },
       "WorkloadReplicaPlacementSchema": {
