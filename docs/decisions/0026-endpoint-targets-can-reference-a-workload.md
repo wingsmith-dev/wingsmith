@@ -24,7 +24,9 @@ workload" and keeps meaning that, and one that can be applied before the workloa
   deployment.
 - **Weight is split evenly** over the deployments the ref produced after those filters: an integer
   split, the remainder one each to the first deployments by id, so the parts sum to the declared
-  weight.
+  weight. Each part is floored at 1, because the gateway lifts a 0 weight to 1: a weight below the
+  deployment count would otherwise get a larger share than declared without the plane seeing it. Such
+  a ref's parts sum to the deployment count instead.
 - **Unresolved is a condition, not an error.** A ref to a workload that does not exist is accepted.
   The endpoint reads with `ResolvedRefs` `False`, reason `WorkloadNotFound`, on the JSON API
   (`conditions`) and in the manifest's `status.conditions`, and it routes as soon as the workload

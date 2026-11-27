@@ -512,15 +512,17 @@ def constraint_of(exc: IntegrityError) -> str | None:
 
 def default_slug_in(project: str, slug: str) -> str:
     """A defaulted slug another endpoint already holds, prefixed with the project and made
-    DNS-safe (lowercase letters, digits, `-` and `.`)."""
-    return re.sub(r"[^a-z0-9.-]+", "-", f"{project}-{slug}".lower()).strip("-")
+    DNS-safe (lowercase letters, digits, `-` and `.`) and capped at the slug column's 255."""
+    return re.sub(r"[^a-z0-9.-]+", "-", f"{project}-{slug}".lower())[:255].strip("-.")
 
 
 def split_weight(weight: int, count: int) -> list[int]:
     """A workload ref's weight over its `count` routable deployments: an even integer split, the
-    remainder going one each to the first deployments by id, so the parts always sum to `weight`."""
+    remainder going one each to the first deployments by id. Each part is floored at 1: the gateway
+    lifts a 0 weight to 1 anyway, so a 0 here would hand a small ref more share than it declared
+    without the plane knowing. Below `count` the parts sum to `count`, not `weight` (ADR 0026)."""
     base, extra = divmod(weight, count)
-    return [base + (1 if i < extra else 0) for i in range(count)]
+    return [max(1, base + (1 if i < extra else 0)) for i in range(count)]
 
 
 RESOLVED_REFS = "ResolvedRefs"
@@ -830,6 +832,10 @@ class EndpointService:
                 slug = await self.repo.workload_artifact_slug(project.id, first.workload_name)
         if not slug:
             slug = str(data.name).strip().lower()
+        if not declared:
+            # Taken before `_taken`, so two concurrent defaulted creates of one slug serialize and
+            # the second moves aside instead of failing the namespace check with a 409.
+            await self.repo.lock_public_ids([slug])
         if not declared and await self._taken(slug):
             # Only a default moves aside: a second project serving the same model gets its own id
             # instead of a 409. A declared slug that clashes is still refused below.

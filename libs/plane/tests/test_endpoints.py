@@ -1532,7 +1532,8 @@ def test_a_workload_refs_weight_splits_evenly_and_sums_to_the_whole() -> None:
 
     assert split_weight(100, 1) == [100]
     assert split_weight(100, 3) == [34, 33, 33]
-    assert split_weight(1, 2) == [1, 0]
+    assert split_weight(1, 2) == [1, 1]
+    assert split_weight(1, 3) == [1, 1, 1]
     assert sum(split_weight(7, 4)) == 7
 
 
@@ -1540,6 +1541,7 @@ def test_a_moved_aside_default_slug_is_dns_safe() -> None:
     from app.modules.endpoints.services import default_slug_in
 
     assert default_slug_in("Search", "openai/gpt-oss-20b") == "search-openai-gpt-oss-20b"
+    assert len(default_slug_in("p", "a" * 300)) == 255
 
 
 def test_an_integrity_error_is_read_for_its_constraint_name() -> None:

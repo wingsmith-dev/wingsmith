@@ -62,6 +62,15 @@ protocol can change between minor versions.
   is read as the cluster object name; pass `project` to `GET /deployments/{ref}` to look one up
   by workload name. Endpoint targets resolve bare names inside the endpoint's own project.
 
+### Fixed
+
+- Endpoints whose targets are workload refs now report their replicas in the serving view, count
+  as serving in the fleet summary, and show up in quota and benchmark reporting and the quota
+  `?workload=` filter.
+- A workload ref's weight split floors every part at 1, matching what the gateway routes (ADR 0026).
+- A moved-aside default slug is capped at 255 characters, and concurrent creates defaulting to the
+  same slug serialize so the second one moves aside instead of failing with a 409.
+
 ## [0.3.0] - 2026-11-26
 
 The first tagged release. Images for the plane, console, operator, agent, gateway and demo, and the
