@@ -1354,7 +1354,7 @@ class WorkloadService:
         await self.announce(change)
         return change.result
 
-    async def change_scale(self, ref: str, parameters: WorkloadScaleParameters) -> WorkloadChange:
+    async def change_scale(self, ref: str, parameters: WorkloadScaleParameters, refuse: bool = True) -> WorkloadChange:
         """Changes what was asked for, then re-expands it across clusters. Does not commit.
 
         The totals are validated against the kind before anything is placed, so a
@@ -1363,6 +1363,11 @@ class WorkloadService:
 
         Absent parameters leave their bound alone. Sending only `desired` is the
         common case and must not silently widen or narrow the range around it.
+
+        `refuse=False` is the declarative path (`/scale`, PUT): a placement refusal keeps
+        the new totals and the shares already placed, and the shortfall reads as an
+        `Unschedulable` condition on the workload's status instead of an error (ADR 0023).
+        Totals that contradict each other are still refused either way.
         """
         row = await self._one(ref, lock=True)
         workload = row[0]
@@ -1377,7 +1382,14 @@ class WorkloadService:
         workload.max_scale = max_scale
         workload.desired_scale = desired
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
-        return await self._reconcile(workload, deployment_rows)
+        if refuse:
+            return await self._reconcile(workload, deployment_rows)
+        try:
+            async with self.db.begin_nested():
+                return await self._reconcile(workload, deployment_rows)
+        except Invalid as exc:
+            placed = sum(r[0].desired_replicas for r in deployment_rows)
+            return WorkloadChange(result={"summary": str(exc), "unschedulable": True}, placed=placed)
 
     async def rescale(self, ref: str, parameters: WorkloadScaleParameters) -> dict:
         """`change_scale`, committed and announced."""
