@@ -225,8 +225,15 @@ class MediaJobService:
         return await self._one(MediaJob.id == claimed, with_request=True)
 
     @staticmethod
-    def _leased(uid: str, worker: str):
-        return and_(MediaJob.uid == uid, MediaJob.status == "running", MediaJob.lease_owner == worker)
+    def _leased(uid: str, worker: str, lease: int):
+        # The worker id is shared by every slot of a replica, so `attempts` (bumped on each claim)
+        # is what tells this claim from a later one.
+        return and_(
+            MediaJob.uid == uid,
+            MediaJob.status == "running",
+            MediaJob.lease_owner == worker,
+            MediaJob.attempts == lease,
+        )
 
     async def heartbeat(
         self, uid: str, data: MediaJobHeartbeatRequest, now: dt.datetime | None = None
@@ -239,7 +246,7 @@ class MediaJobService:
         cancel = (
             await self.db.execute(
                 update(MediaJob)
-                .where(self._leased(uid, data.worker))
+                .where(self._leased(uid, data.worker, data.lease))
                 .values(**values)
                 .returning(MediaJob.cancel_requested)
             )
@@ -257,7 +264,7 @@ class MediaJobService:
         done = (
             await self.db.execute(
                 update(MediaJob)
-                .where(self._leased(uid, data.worker))
+                .where(self._leased(uid, data.worker, data.lease))
                 .values(
                     status=data.status,
                     progress=100 if data.status == "succeeded" else MediaJob.progress,

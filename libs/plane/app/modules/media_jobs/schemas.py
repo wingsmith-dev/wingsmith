@@ -54,6 +54,8 @@ class MediaJobClaimRequest(Struct):
 
 class MediaJobHeartbeatRequest(Struct):
     worker: str
+    lease: int
+    """The claim's `attempts`: it fences a stale claim off from the one after it, even on one worker."""
     progress: int | None = None
 
 
@@ -64,6 +66,7 @@ class MediaJobHeartbeatSchema(Struct):
 
 class MediaJobCompleteRequest(Struct):
     worker: str
+    lease: int
     status: Literal["succeeded", "failed", "cancelled"]
     object_key: str | None = None
     content_type: str | None = None

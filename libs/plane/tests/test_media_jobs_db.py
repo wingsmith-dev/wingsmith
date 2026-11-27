@@ -61,7 +61,7 @@ async def test_a_job_runs_from_queued_to_succeeded_and_gets_its_projects_retenti
     assert claimed.request == {"model": "video", "prompt": "a cat", "seconds": "4"}
     assert await svc.claim(MediaJobClaimRequest(worker="gw-2"), now=T0) is None
 
-    beat = await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1", progress=40), now=T0)
+    beat = await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1", lease=1, progress=40), now=T0)
     assert not beat.cancel_requested
     assert (await svc.get(job.id, tenant)).progress == 40
 
@@ -69,6 +69,7 @@ async def test_a_job_runs_from_queued_to_succeeded_and_gets_its_projects_retenti
         job.id,
         MediaJobCompleteRequest(
             worker="gw-1",
+            lease=1,
             status="succeeded",
             object_key=f"media/search/{job.id}",
             content_type="video/mp4",
@@ -97,11 +98,33 @@ async def test_an_expired_lease_requeues_until_attempts_run_out(db: AsyncSession
 
     # The worker that lost its lease can no longer report.
     with pytest.raises(Conflict):
-        await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1"), now=moment)
+        await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1", lease=1), now=moment)
 
     assert await svc.claim(MediaJobClaimRequest(worker="gw-x"), now=moment) is None
     failed = await svc.get(job.id, None)
     assert failed.status == "failed" and failed.error["code"] == "lease_expired"
+
+
+async def test_a_stale_claim_on_the_same_worker_cannot_report(db: AsyncSession) -> None:
+    """Every slot of a replica shares the worker id; the lease token fences the old claim off."""
+    tenant, endpoint = await an_endpoint(db, "acme", "search", "video-a")
+    svc = MediaJobService(db)
+    job, _ = await svc.create(a_job(tenant, endpoint))
+    first = await svc.claim(MediaJobClaimRequest(worker="gw-1"), now=T0)
+    later = T0 + dt.timedelta(seconds=settings.MEDIA_JOB_LEASE_SECONDS + 1)
+    second = await svc.claim(MediaJobClaimRequest(worker="gw-1"), now=later)
+    assert first is not None and second is not None and second.attempts == first.attempts + 1
+
+    with pytest.raises(Conflict):
+        await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1", lease=first.attempts), now=later)
+    with pytest.raises(Conflict):
+        await svc.complete(
+            job.id,
+            MediaJobCompleteRequest(worker="gw-1", lease=first.attempts, status="succeeded", object_key="k"),
+            now=later,
+        )
+    await svc.heartbeat(job.id, MediaJobHeartbeatRequest(worker="gw-1", lease=second.attempts), now=later)
+    assert (await svc.get(job.id, None)).status == "running"
 
 
 async def test_an_idempotency_key_returns_the_first_job(db: AsyncSession) -> None:
@@ -124,7 +147,7 @@ async def test_cancel_stops_a_queued_job_and_flags_a_running_one(db: AsyncSessio
     assert (await svc.cancel(queued.id, tenant, now=T0)).status == "cancelled"
     flagged = await svc.cancel(running.id, tenant, now=T0)
     assert flagged.status == "running" and flagged.cancel_requested
-    assert (await svc.heartbeat(running.id, MediaJobHeartbeatRequest(worker="gw-2"), now=T0)).cancel_requested
+    assert (await svc.heartbeat(running.id, MediaJobHeartbeatRequest(worker="gw-2", lease=1), now=T0)).cancel_requested
 
 
 async def test_a_tenant_sees_and_submits_only_its_own(db: AsyncSession) -> None:
@@ -159,7 +182,9 @@ class FakeStore:
 async def finished(svc: MediaJobService, tenant: str, endpoint: str, key: str):
     job, _ = await svc.create(a_job(tenant, endpoint))
     await svc.claim(MediaJobClaimRequest(worker="gw"), now=T0)
-    return await svc.complete(job.id, MediaJobCompleteRequest(worker="gw", status="succeeded", object_key=key), now=T0)
+    return await svc.complete(
+        job.id, MediaJobCompleteRequest(worker="gw", lease=1, status="succeeded", object_key=key), now=T0
+    )
 
 
 async def test_retention_deletes_the_object_then_the_row(db: AsyncSession) -> None:

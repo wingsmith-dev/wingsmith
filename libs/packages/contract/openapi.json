@@ -7840,6 +7840,9 @@
               }
             ]
           },
+          "lease": {
+            "type": "integer"
+          },
           "object_key": {
             "oneOf": [
               {
@@ -7893,6 +7896,7 @@
           }
         },
         "required": [
+          "lease",
           "status",
           "worker"
         ],
@@ -7943,6 +7947,9 @@
       },
       "MediaJobHeartbeatRequest": {
         "properties": {
+          "lease": {
+            "type": "integer"
+          },
           "progress": {
             "oneOf": [
               {
@@ -7958,6 +7965,7 @@
           }
         },
         "required": [
+          "lease",
           "worker"
         ],
         "title": "MediaJobHeartbeatRequest",
