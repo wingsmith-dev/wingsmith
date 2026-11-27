@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -50,6 +51,28 @@ type Backend struct {
 	ready map[string][]int
 	// routed is, per deployment, the containers the last Observe handed the resolver.
 	routed map[string]map[string]bool
+	// targets is, per deployment, the metrics endpoints of its running replicas.
+	targets map[string][]MetricsTarget
+}
+
+// MetricsTarget is one replica's metrics endpoint in Prometheus http_sd form: a loopback
+// address and the labels a scrape config keeps (`__metrics_path__` is the declared path).
+type MetricsTarget struct {
+	Targets []string          `json:"targets"`
+	Labels  map[string]string `json:"labels"`
+}
+
+// metricsPort is the container port a worker's declared metrics port name maps to, or 0.
+func metricsPort(c *wire.ContainerSpec) int {
+	if c == nil || c.Metrics == nil {
+		return 0
+	}
+	for _, p := range c.Ports {
+		if p.Name == c.Metrics.Port {
+			return p.ContainerPort
+		}
+	}
+	return 0
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -223,6 +246,10 @@ func (b *Backend) create(p plan, replica int, gpus []string) ContainerCreate {
 		// Engines share tensors through /dev/shm; Docker's 64MiB default fails multi-GPU loads.
 		ShmSize:       1 << 30,
 		RestartPolicy: RestartPolicy{Name: "unless-stopped"},
+	}
+	// A metrics port other than http is published on loopback too, for a local scraper.
+	if mp := metricsPort(c); mp > 0 && mp != p.port {
+		hc.PortBindings[tcp(mp)] = []PortBinding{{HostIP: "127.0.0.1", HostPort: ""}}
 	}
 	if len(gpus) > 0 {
 		if b.CDI {
@@ -496,6 +523,7 @@ func (b *Backend) Delete(ctx context.Context, deploymentID string) error {
 		}
 	}
 	b.setReady(deploymentID, nil, nil)
+	b.setTargets(deploymentID, nil)
 	return nil
 }
 
@@ -561,6 +589,8 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 		freshNames, oldNames []string
 	}
 	slots := map[string]*serving{}
+	var targets []MetricsTarget
+	mport := metricsPort(dep.Serving.Container)
 	var trouble *wire.LastError
 	reason := ""
 	for _, c := range existing {
@@ -584,6 +614,21 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 		hostPort := publishedPort(info, pr.Port)
 		ok := info.State.Running && hostPort > 0 && b.probe(ctx, pr, hostPort)
 		phase := "pending"
+		if info.State.Running && mport > 0 {
+			if hp := publishedPort(info, mport); hp > 0 {
+				targets = append(targets, MetricsTarget{
+					Targets: []string{"127.0.0.1:" + strconv.Itoa(hp)},
+					Labels: map[string]string{
+						"__metrics_path__":         dep.Serving.Container.Metrics.Path,
+						"wingsmith_deployment_id":  dep.DeploymentID,
+						"wingsmith_project_id":     dep.ProjectID,
+						"wingsmith_replica":        c.Name(),
+						"wingsmith_runtime":        wire.RuntimeContainer,
+						"wingsmith_serving_digest": c.Labels[LabelDigest],
+					},
+				})
+			}
+		}
 		switch {
 		case ok:
 			phase = "running"
@@ -667,6 +712,7 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 	}
 	sort.Ints(ready)
 	b.setReady(dep.DeploymentID, ready, names)
+	b.setTargets(dep.DeploymentID, targets)
 	return out, nil
 }
 
@@ -726,6 +772,45 @@ func (b *Backend) setReady(id string, ports []int, names []string) {
 		routed[n] = true
 	}
 	b.routed[id] = routed
+}
+
+func (b *Backend) setTargets(id string, targets []MetricsTarget) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.targets == nil {
+		b.targets = map[string][]MetricsTarget{}
+	}
+	if len(targets) == 0 {
+		delete(b.targets, id)
+		return
+	}
+	b.targets[id] = targets
+}
+
+// MetricsTargets is every running replica's metrics endpoint, sorted, for http_sd.
+func (b *Backend) MetricsTargets() []MetricsTarget {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ids := make([]string, 0, len(b.targets))
+	for id := range b.targets {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := []MetricsTarget{}
+	for _, id := range ids {
+		out = append(out, b.targets[id]...)
+	}
+	return out
+}
+
+// ServeMetricsTargets answers GET with MetricsTargets as a Prometheus http_sd document.
+func (b *Backend) ServeMetricsTargets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(b.MetricsTargets())
 }
 
 // isRouted says the last Observe sent the resolver to this container.

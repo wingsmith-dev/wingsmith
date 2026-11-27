@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -268,5 +269,15 @@ func TestObserverTickReportsAHost(t *testing.T) {
 	}
 	if count[observe.TypeClusterObserved] != 1 || count[observe.TypeNodeObserved] != 1 || count[observe.TypeDeviceObserved] != 2 || count[observe.TypeCapacityObserved] == 0 {
 		t.Fatalf("frames %v", count)
+	}
+}
+
+func TestMetricsTargetsListenIsLoopbackOnly(t *testing.T) {
+	for addr, ok := range map[string]bool{"127.0.0.1:9479": true, "localhost:9479": true, "[::1]:9479": true, "0.0.0.0:9479": false, "10.0.0.1:9479": false, "9479": false} {
+		c := Config{Serve: true, Gateway: "gw:443", AllowedImagePrefixes: []string{"ghcr.io/x"}, MetricsTargetsListen: addr}
+		err := c.ValidateServing()
+		if refused := err != nil && strings.Contains(err.Error(), "metrics_targets_listen"); refused == ok {
+			t.Errorf("%s: err = %v", addr, err)
+		}
 	}
 }

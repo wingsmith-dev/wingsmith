@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -55,6 +56,9 @@ type Config struct {
 	DockerSocket string `json:"docker_socket,omitempty"`
 	// CDI requests GPUs as CDI devices instead of through the NVIDIA runtime hook.
 	CDI bool `json:"cdi,omitempty"`
+	// MetricsTargetsListen is a loopback host:port where the agent serves its replicas' metrics
+	// endpoints as a Prometheus http_sd document (GET /metrics/targets). Empty serves nothing.
+	MetricsTargetsListen string `json:"metrics_targets_listen,omitempty"`
 
 	// Model cache (P2.5).
 	// PrefetchImage fetches every artifact; empty uses the image of a deployment serving it.
@@ -74,6 +78,12 @@ type Config struct {
 func (c *Config) ValidateServing() error {
 	if !c.Serve {
 		return nil
+	}
+	if a := c.MetricsTargetsListen; a != "" {
+		h, _, err := net.SplitHostPort(a)
+		if ip := net.ParseIP(h); err != nil || (h != "localhost" && (ip == nil || !ip.IsLoopback())) {
+			return fmt.Errorf("metrics_targets_listen %q must be a loopback host:port", a)
+		}
 	}
 	if strings.TrimSpace(c.Gateway) == "" {
 		return errors.New("serve is on but gateway (the tunnel host:port) is not set in the host config")

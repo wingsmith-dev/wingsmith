@@ -488,3 +488,37 @@ func TestDriverReportsWeightsNotResident(t *testing.T) {
 		t.Fatalf("= %+v", got)
 	}
 }
+
+func TestObserveListsMetricsTargets(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	dep := deployment()
+	dep.Serving.Container.Metrics = &wire.MetricsSpec{Port: "http", Path: "/metrics"}
+	if _, err := r.b.Apply(ctx, desired(dep)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.b.Observe(ctx, dep); err != nil {
+		t.Fatal(err)
+	}
+	got := r.b.MetricsTargets()
+	if len(got) != 2 {
+		t.Fatalf("targets = %+v, want one per replica", got)
+	}
+	want := "127.0.0.1:" + strconv.Itoa(r.port)
+	if got[0].Targets[0] != want || got[0].Labels["__metrics_path__"] != "/metrics" || got[0].Labels["wingsmith_deployment_id"] != "dep_1" {
+		t.Fatalf("target = %+v", got[0])
+	}
+
+	rec := httptest.NewRecorder()
+	r.b.ServeMetricsTargets(rec, httptest.NewRequest(http.MethodGet, "/metrics/targets", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("http_sd = %d %s", rec.Code, rec.Body.String())
+	}
+
+	if err := r.b.Delete(ctx, "dep_1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.b.MetricsTargets()) != 0 {
+		t.Fatal("a deleted deployment keeps its targets")
+	}
+}

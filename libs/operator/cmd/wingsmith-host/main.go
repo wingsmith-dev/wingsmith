@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -230,6 +231,9 @@ func run(args []string) error {
 			CAFile: cfg.GatewayCAFile, Plaintext: cfg.GatewayPlaintext, Log: log,
 		}
 		tasks = append(tasks, driver.Run, func(ctx context.Context) error { return hostlink.Run(ctx, link, routes) })
+		if addr := cfg.MetricsTargetsListen; addr != "" {
+			tasks = append(tasks, func(ctx context.Context) error { return serveMetricsTargets(ctx, addr, driver.Backend) })
+		}
 	}
 	errc := make(chan error, len(tasks))
 	for _, task := range tasks {
@@ -246,6 +250,24 @@ func run(args []string) error {
 	}
 	log.Info("host stopped")
 	return err
+}
+
+// serveMetricsTargets serves the replicas' metrics endpoints as Prometheus http_sd on a loopback
+// address, until ctx ends. The replicas themselves listen on loopback only.
+func serveMetricsTargets(ctx context.Context, addr string, b *serve.Backend) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics/targets", b.ServeMetricsTargets)
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+	}()
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("metrics targets on %s: %w", addr, err)
+	}
+	return ctx.Err()
 }
 
 // healthyGPUs reads the node name and its healthy accelerators for allocation.
