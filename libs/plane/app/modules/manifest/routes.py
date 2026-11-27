@@ -82,6 +82,20 @@ class ManifestRoutes(Controller):
     ) -> Response[EndpointManifest]:
         return Response(await svc.endpoint(project, name))
 
+    @put("/endpoints/{project:str}/{name:str}", status_code=200)
+    async def put_endpoint_manifest(
+        self,
+        request: Request,
+        svc: ManifestService,
+        project: str,
+        name: str,
+        data: EndpointManifest,
+        if_match: str | None = Parameter(header="If-Match", default=None),
+    ) -> Response[EndpointManifest]:
+        """Creates (201) or replaces (200) the endpoint the manifest declares (ADR 0029)."""
+        m, created = await svc.put_endpoint(project, name, await request.json(), if_match)
+        return Response(m, status_code=201 if created else 200)
+
     @get("/artifacts/{project:str}/{name:str}")
     async def get_artifact_manifest(
         self, context: RequestContext, svc: ManifestService, project: str, name: str

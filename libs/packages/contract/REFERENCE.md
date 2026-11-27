@@ -188,6 +188,7 @@ response follows are in [`API.md`](API.md).
 | GET | `/v1/manifests/artifacts/{name}` | GetPublicArtifactManifest |
 | GET | `/v1/manifests/artifacts/{project}/{name}` | GetArtifactManifest |
 | GET | `/v1/manifests/endpoints/{project}/{name}` | GetEndpointManifest |
+| PUT | `/v1/manifests/endpoints/{project}/{name}` | PutEndpointManifest |
 | GET | `/v1/manifests/workloads/{project}/{name}` | GetWorkloadManifest |
 | PUT | `/v1/manifests/workloads/{project}/{name}` | PutWorkloadManifest |
 | GET | `/v1/manifests/workloads/{project}/{name}/scale` | GetWorkloadScale |

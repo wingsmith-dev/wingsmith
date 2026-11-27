@@ -291,7 +291,8 @@ class EndpointRepository:
         Scoped to the tenant that owns the endpoint: an endpoint routes to deployments
         of its own tenant's workloads, so a reference to anyone else's is not found,
         not quietly routed to. A bare name is a workload name, which projects may share,
-        so it resolves inside the endpoint's own project; an id reaches across the tenant.
+        so it resolves inside the endpoint's own project, as does an object name (what a manifest
+        writes); an id reaches across the tenant.
         One name still matches a deployment per cluster; the caller refuses that instead
         of choosing one. A deployment serving another project's private artifact is not
         found either: routing to it would expose those weights outside their project.
@@ -305,7 +306,13 @@ class EndpointRepository:
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Project, Workload.project_id == Project.id)
             .join(Artifact, Workload.artifact_id == Artifact.id)
-            .where(Deployment.uid.in_(uids) | (Deployment.name.in_(names) & (Workload.project_id == project_id)))
+            .where(
+                Deployment.uid.in_(uids)
+                | (
+                    (Deployment.name.in_(names) | Deployment.object_name.in_(names))
+                    & (Workload.project_id == project_id)
+                )
+            )
             .where(visible(project_id))
             .order_by(Deployment.seq.asc())
         )
@@ -314,7 +321,7 @@ class EndpointRepository:
         rows = (await self.db.execute(query)).scalars().all()
         found: dict[str, list[Deployment]] = {}
         for deployment in rows:
-            for ref in (deployment.uid, deployment.name):
+            for ref in {deployment.uid, deployment.name, deployment.object_name}:
                 if ref in refs:
                     found.setdefault(ref, []).append(deployment)
         return found

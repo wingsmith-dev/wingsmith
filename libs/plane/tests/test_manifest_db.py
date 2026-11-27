@@ -323,6 +323,8 @@ async def test_put_refuses_a_namespace_or_name_that_does_not_match_the_path(db: 
     body["metadata"] = {"name": "other", "namespace": "search"}
     with pytest.raises(Invalid):
         await svc.put_workload("search", "applied", body)
+    with pytest.raises(Invalid):
+        await svc.put_endpoint("search", "chat", {"metadata": {"name": "chat", "namespace": "chat"}, "spec": {}})
 
 
 async def test_put_workload_refuses_a_missing_or_hidden_artifact(db: AsyncSession) -> None:
@@ -358,3 +360,45 @@ async def test_put_workload_accepts_unschedulable_replicas_as_a_condition(db: As
     assert m.spec.replicas == 20
     (condition,) = m.status.conditions
     assert (condition.type, condition.status) == ("Unschedulable", "True")
+
+
+def _endpoint_body(name: str = "chat", **spec) -> dict:
+    return {
+        "apiVersion": API_VERSION,
+        "kind": "Endpoint",
+        "metadata": {"name": name, "namespace": "search"},
+        "spec": spec,
+    }
+
+
+async def test_put_endpoint_creates_replaces_and_replays(db: AsyncSession) -> None:
+    _, _, _, deployment = await a_deployment(db)
+    svc = ManifestService(db)
+    body = _endpoint_body(slug="chat-model", targets=[{"deployment": deployment.object_name}])
+    m, created = await svc.put_endpoint("search", "chat", body)
+    assert created and [t.deployment for t in m.spec.targets] == [deployment.object_name]
+
+    again, created = await svc.put_endpoint("search", "chat", _wire(m))
+    assert not created and again.metadata.generation == m.metadata.generation
+
+    body["spec"]["aliases"] = ["chat-alias"]
+    changed, _ = await svc.put_endpoint("search", "chat", body)
+    assert changed.spec.aliases == ["chat-alias"]
+    assert changed.metadata.generation == m.metadata.generation + 1
+
+
+async def test_put_endpoint_with_a_workload_ref_to_a_missing_workload_reads_as_a_condition(db: AsyncSession) -> None:
+    await a_project(db, "search")
+    m, created = await ManifestService(db).put_endpoint(
+        "search", "chat", _endpoint_body(slug="later", targets=[{"workloadRef": {"name": "not-yet"}}])
+    )
+    assert created
+    assert [(c.type, c.status) for c in m.status.conditions] == [("ResolvedRefs", "False")]
+
+
+async def test_put_endpoint_with_a_slug_another_endpoint_holds_is_a_conflict(db: AsyncSession) -> None:
+    await a_project(db, "search")
+    svc = ManifestService(db)
+    await svc.put_endpoint("search", "one", _endpoint_body("one", slug="taken"))
+    with pytest.raises(Conflict):
+        await svc.put_endpoint("search", "two", _endpoint_body("two", slug="taken"))

@@ -29,6 +29,7 @@ from app.core.exceptions import NotFound
 from app.modules.artifacts.scope import visible
 from app.modules.artifacts.scope import visible_ids
 from app.modules.workloads.views import _revision
+from app.modules.endpoints.schemas import EndpointUpdateRequest
 from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
 from app.modules.workloads.schemas import WorkloadScaleParameters
@@ -49,7 +50,10 @@ from .translate import Refs
 from .translate import Placement
 from .translate import scale_view
 from .translate import serving_value
+from .translate import endpoint_create
 from .translate import workload_create
+from .translate import endpoint_surface
+from .translate import endpoint_targets
 from .translate import topology_request
 from .translate import artifact_manifest
 from .translate import endpoint_manifest
@@ -335,6 +339,52 @@ class ManifestService:
             for change in changes:
                 await svc.announce(change)
         return await self.workload(project, name), False
+
+    async def put_endpoint(
+        self, project: str, name: str, body: dict, if_match: str | None = None
+    ) -> tuple[EndpointManifest, bool]:
+        """Creates or replaces an endpoint from its manifest, diffing only declared fields.
+
+        A `workloadRef` may name a workload that does not exist yet; it reads as `ResolvedRefs`
+        False until it does. A slug another endpoint holds is a 409.
+        """
+        m = _decode(body, EndpointManifest)
+        owner = await self._project(project)
+        self._identity(m, project, owner, name)
+        declared = Declared(body)
+        svc = EndpointService(self.db)
+        try:
+            current = await self.endpoint(project, name)
+        except NotFound:
+            current = None
+
+        if current is None:
+            created = await svc.create(endpoint_create(m, owner.uid))
+            if declared.has("spec", "surface"):
+                await svc.update(created.id, EndpointUpdateRequest(surface=endpoint_surface(m.spec)))
+            return await self.endpoint(project, name), True
+
+        revision = self._expect(current, if_match, m.metadata.resource_version)
+
+        def changed(*path: str) -> bool:
+            return declared.has(*path) and _value(m, path) != _value(current, path)
+
+        update: dict = {}
+        if changed("metadata", "labels"):
+            update["labels"] = dict(m.metadata.labels)
+        for key in ("slug", "visibility", "routing_strategy", "enabled", "aliases"):
+            if changed("spec", key):
+                update[key] = getattr(m.spec, key)
+        if changed("spec", "surface"):
+            update["surface"] = endpoint_surface(m.spec)
+        if changed("spec", "targets") or changed("spec", "failover_order"):
+            spec = m.spec if declared.has("spec", "targets") else current.spec
+            update["targets"] = endpoint_targets(spec)
+            order = m.spec if declared.has("spec", "failover_order") else current.spec
+            update["failover_order"] = list(order.failover_order)
+        if update:
+            await svc.update(current.metadata.uid, EndpointUpdateRequest(**update), if_match=revision)
+        return await self.endpoint(project, name), False
 
 
 IMMUTABLE_PATHS = (

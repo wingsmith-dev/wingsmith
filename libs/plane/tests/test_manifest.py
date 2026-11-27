@@ -64,12 +64,15 @@ def test_the_manifest_routes_are_addressed_by_namespace_and_name() -> None:
 
 def test_workloads_and_endpoints_are_applied_with_put() -> None:
     paths = create_app().openapi_schema.to_schema()["paths"]
-    assert {"get", "put"} <= set(paths["/v1/manifests/workloads/{project}/{name}"])
+    for kind in ("workloads", "endpoints"):
+        assert {"get", "put"} <= set(paths[f"/v1/manifests/{kind}/{{project}}/{{name}}"])
     assert "put" not in paths["/v1/manifests/artifacts/{project}/{name}"]
 
 
 @pytest.mark.parametrize("created, status", [(True, 201), (False, 200)])
-@pytest.mark.parametrize("handler, method", [("put_workload_manifest", "put_workload")])
+@pytest.mark.parametrize(
+    "handler, method", [("put_workload_manifest", "put_workload"), ("put_endpoint_manifest", "put_endpoint")]
+)
 async def test_put_answers_201_on_create_and_200_on_replace(handler, method, created, status) -> None:
     seen = {}
 

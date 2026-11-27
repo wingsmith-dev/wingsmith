@@ -12,6 +12,10 @@ import msgspec
 
 from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.endpoints.schemas import EndpointSchema
+from app.modules.endpoints.schemas import WorkloadRefSchema
+from app.modules.endpoints.schemas import EndpointCreateRequest
+from app.modules.endpoints.schemas import EndpointSurfaceSchema as _EndpointSurfaceSchema
+from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.workloads.schemas import RoleSchema as _RoleSchema
 from app.modules.workloads.schemas import CacheSchema as _CacheSchema
 from app.modules.workloads.schemas import ShapeSchema as _ShapeSchema
@@ -382,4 +386,38 @@ def workload_create(m: WorkloadManifest, project: str) -> WorkloadCreateRequest:
         overrides=s.overrides,
         labels=dict(m.metadata.labels),
         note=m.metadata.annotations.get(NOTE_ANNOTATION),
+    )
+
+
+def endpoint_targets(spec: EndpointSpec) -> list[EndpointTargetRequest]:
+    return [
+        EndpointTargetRequest(
+            deployment=t.deployment,
+            workload_ref=WorkloadRefSchema(name=t.workload_ref.name) if t.workload_ref is not None else None,
+            weight=t.weight,
+            role=t.role,
+            enabled=t.enabled,
+            served_model_name=t.served_model_name,
+        )
+        for t in spec.targets
+    ]
+
+
+def endpoint_surface(spec: EndpointSpec) -> dict:
+    return msgspec.to_builtins(_snake(spec.surface, _EndpointSurfaceSchema))
+
+
+def endpoint_create(m: EndpointManifest, project: str) -> EndpointCreateRequest:
+    s = m.spec
+    return EndpointCreateRequest(
+        name=m.metadata.name,
+        project=project,
+        slug=s.slug,
+        visibility=s.visibility,
+        routing_strategy=s.routing_strategy,
+        enabled=s.enabled,
+        aliases=list(s.aliases),
+        targets=endpoint_targets(s),
+        failover_order=list(s.failover_order),
+        labels=dict(m.metadata.labels),
     )
