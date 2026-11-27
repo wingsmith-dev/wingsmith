@@ -326,7 +326,7 @@ def test_a_workload_that_ran_keeps_the_earliest_time_any_cluster_started() -> No
     observed = structs.replace(payload("deployment.observed"), phase="running")
     sql, _ = compile_sql(statements.roll_up_workload_started(WORKLOAD_ID, observed))
     assert "UPDATE demand_workload" in sql
-    assert "least" in sql.lower() and "coalesce" in sql.lower()
+    assert "demand_workload.started_at IS NULL OR demand_workload.started_at >" in sql
 
 
 def test_admission_never_writes_when_it_started() -> None:

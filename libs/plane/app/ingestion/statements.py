@@ -15,6 +15,7 @@ from sqlalchemy import Delete
 from sqlalchemy import Insert
 from sqlalchemy import Select
 from sqlalchemy import Update
+from sqlalchemy import or_
 from sqlalchemy import func
 from sqlalchemy import delete
 from sqlalchemy import select
@@ -471,13 +472,16 @@ def roll_up_workload_started(workload_id: UUID, payload: DeploymentObserved) -> 
     arrive in no particular order, and every one of them may only move the value
     backwards, never forwards.
 
-    A workload that ran and stopped still ran, so nothing ever clears this.
+    A workload that ran and stopped still ran, so nothing ever clears this. Returns the id only
+    when the value moved, so the caller logs a change for real moves and not for every frame.
     """
     moment = parse_ts(payload.observed_at)
     return (
         update(Workload)
         .where(Workload.id == workload_id)
-        .values(started_at=func.least(func.coalesce(Workload.started_at, moment), moment))
+        .where(or_(Workload.started_at.is_(None), Workload.started_at > moment))
+        .values(started_at=moment)
+        .returning(Workload.id)
     )
 
 

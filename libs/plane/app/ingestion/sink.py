@@ -31,10 +31,13 @@ from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import Deployment
 from app.db.models import HubClusterClaim
 from app.ingestion import statements
+from app.db.changes import MODIFIED
+from app.db.changes import record_change
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
@@ -530,7 +533,7 @@ class DatabaseSink:
                 if advance is not None:
                     await db.execute(advance)
                     if statements.ADMISSION_PHASE_FOR_OBSERVED.get(payload.phase) == "running":
-                        await db.execute(statements.roll_up_workload_started(deployment[1], payload))
+                        await roll_up_started(db, deployment[1], payload)
                 return None
             case "replica.observed":
                 assert isinstance(payload, ReplicaObserved)
@@ -908,3 +911,12 @@ class DatabaseDesiredSource:
         async with self.sessions() as db:
             async for item in open_operations(db, cluster_id):
                 yield item
+
+
+async def roll_up_started(db: AsyncSession, workload_id: UUID, payload: DeploymentObserved) -> None:
+    """Moves the workload's `started_at` back to this frame's, logging a change only when it moved."""
+    moved = await db.scalar(statements.roll_up_workload_started(workload_id, payload))
+    if moved is not None:
+        workload = await db.get(Workload, moved)
+        if workload is not None:
+            record_change(db, workload, MODIFIED, force=True)
