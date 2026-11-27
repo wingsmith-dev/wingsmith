@@ -54,6 +54,10 @@ NAMESPACE_NOT_ALLOWED = "NamespaceNotAllowed"
 POLL_SECONDS = 5.0
 """How often the change feed reads the log when no notification woke it first."""
 
+MIN_INTERVAL = 1.0
+"""The least time between two reads of the log by one cluster's feed. Every commit wakes every
+connected cluster's feed, so on a busy plane this caps each to one read a second, not one a commit."""
+
 
 def manager_for(cluster: str, namespace: str) -> str:
     return f"k8s:{cluster}/{namespace}"
@@ -128,7 +132,11 @@ class ManifestHandler:
             return ManifestResult(result="error", generation=generation, error=str(exc) or type(exc).__name__)
 
     async def feed(
-        self, cluster_ref: str, wakeup: asyncio.Event | None = None, poll: float = POLL_SECONDS
+        self,
+        cluster_ref: str,
+        wakeup: asyncio.Event | None = None,
+        poll: float = POLL_SECONDS,
+        min_interval: float = MIN_INTERVAL,
     ) -> AsyncIterator[ManifestChanged]:
         """The objects this cluster declared, each time one changes: the change log the manifest
         watch reads (ADR 0039), from its head at the time of the call. Changes to objects other
@@ -175,6 +183,7 @@ class ManifestHandler:
             if wakeup is None:
                 await asyncio.sleep(poll)
             else:
+                await asyncio.sleep(min_interval)
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(wakeup.wait(), poll)
 
