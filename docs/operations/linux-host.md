@@ -11,8 +11,56 @@ so placement refuses container workloads there with `cluster_runtime`.
 
 ## Requirements
 
-- Linux, x86_64 or arm64, with the NVIDIA driver installed (`nvidia-smi` works).
+- Linux, x86_64 or arm64, with glibc 2.28 or later (RHEL/Rocky 8+, Debian 10+, Ubuntu 20.04+) and
+  the NVIDIA driver installed (`nvidia-smi` works).
+- systemd.
+- Docker, to serve (see [Prerequisites](#prerequisites)); a supply-only host does not need it.
 - Outbound access to the hub's `wss://` URL.
+
+## Install
+
+Each release attaches `wingsmith-host` packages for amd64 and arm64 to its
+[GitHub release](https://github.com/wingsmith-dev/wingsmith/releases), with
+`wingsmith-host-SHA256SUMS`. There is no apt or rpm repository yet.
+
+```sh
+VERSION=0.1.0 ARCH=amd64   # or arm64
+base=https://github.com/wingsmith-dev/wingsmith/releases/download/v$VERSION
+# Debian / Ubuntu
+curl -fLO "$base/wingsmith-host_${VERSION}_${ARCH}.deb"
+sudo apt install "./wingsmith-host_${VERSION}_${ARCH}.deb"
+# RHEL / Rocky / Fedora (the rpm names arm64 aarch64 and amd64 x86_64)
+curl -fLO "$base/wingsmith-host-${VERSION}-1.x86_64.rpm"
+sudo dnf install "./wingsmith-host-${VERSION}-1.x86_64.rpm"
+```
+
+The package installs `/usr/bin/wingsmith-host`, the unit
+`/usr/lib/systemd/system/wingsmith-host.service` and a placeholder `/etc/wingsmith/host.json`, and
+its post-install step:
+
+- creates the `wingsmith` system user and group, and adds the user to the `docker` group if it
+  exists (install Docker first, or run `usermod -aG docker wingsmith` afterwards);
+- creates `/etc/wingsmith` (root:wingsmith, 0750), `/etc/wingsmith/credentials` (wingsmith, 0700)
+  and `/var/lib/wingsmith` (wingsmith, 0750);
+- runs `systemctl daemon-reload`. It does not enable or start the service.
+
+### Who the agent runs as
+
+The unit runs the agent as `wingsmith`, with the `docker` group as a supplementary group so it can
+reach the Engine API socket. **Membership of the `docker` group is root-equivalent:** anything that
+can talk to the Docker socket can start a privileged container with the host's filesystem mounted.
+The agent is the only member the package adds; treat the host's `docker` group like root's
+password. The unit's sandbox (an empty capability bounding set, a read-only `/usr` and `/etc`,
+`ProtectKernel*`, `ProtectControlGroups`, `RestrictSUIDSGID`, `LockPersonality`, and device access
+limited to `/dev/nvidia*` for NVML) limits what the agent process itself can do, not what the
+Docker daemon does on its behalf.
+
+Credential files (the enrolment token and `credentials/*.token`) must be regular files, mode 0600,
+owned by root or by the account the agent runs as; anything else is refused. Prefetch containers
+run as the agent's uid:gid so the agent can later evict what they wrote.
+
+Podman's Docker-compatible API should work with `docker_socket` pointed at its socket, but neither
+rootful nor rootless Podman is tested yet.
 
 ## Enrol
 
@@ -26,11 +74,44 @@ so placement refuses container workloads there with `cluster_runtime`.
    ```
 
    This writes the token to `/etc/wingsmith/token` (mode 0600, `--token-file` to move it) and the
-   config to `/etc/wingsmith/host.json` (`--config`). `--ca-file` pins a private CA.
-4. Install the example unit from `libs/operator/deploy/host/wingsmith-host.service` and run
-   `systemctl enable --now wingsmith-host`.
+   config to `/etc/wingsmith/host.json` (`--config`). `--ca-file` pins a private CA. Run as root
+   with the `wingsmith` user present, it hands the token to that user.
+4. `sudo systemctl enable --now wingsmith-host`, then `journalctl -u wingsmith-host -f`.
 
 `wingsmith-host inventory` prints what the host would report, without connecting.
+
+## Upgrade
+
+Install the newer package over the old one and restart the agent:
+
+```sh
+sudo apt install ./wingsmith-host_${NEW}_${ARCH}.deb   # or dnf install ./wingsmith-host-….rpm
+sudo systemctl restart wingsmith-host
+```
+
+The package keeps `/etc/wingsmith/host.json`, the token and `/var/lib/wingsmith`. Replica
+containers keep running and serving through the restart: they belong to Docker, and the agent
+adopts them by label when it comes back. A host first installed from a bare binary running as root
+can move to the package the same way; the post-install step hands the token and state to
+`wingsmith`. Remove the old unit from `/etc/systemd/system` if you installed one there, since it
+overrides the packaged unit.
+
+## Uninstall
+
+```sh
+sudo apt remove wingsmith-host      # or: sudo dnf remove wingsmith-host
+```
+
+This stops and disables the agent. Replica and prefetch containers are left to Docker; remove them
+with `docker rm -f $(docker ps -aq --filter label=wingsmith.dev/managed-by)` if you are done with
+them. To purge everything else, including the enrolment token and the model cache:
+
+```sh
+sudo rm -rf /etc/wingsmith /var/lib/wingsmith
+sudo userdel wingsmith
+```
+
+Delete the cluster on the plane (`DELETE /v1/clusters/gpu-box-1`) to revoke its token.
 
 ## What it reports
 
@@ -54,7 +135,7 @@ unreachable: the declared state is checkpointed in `/var/lib/wingsmith/desired.j
 ### Prerequisites
 
 - Docker Engine 24 or later, with the daemon socket at `/var/run/docker.sock` (`docker_socket` to
-  move it). Podman's Docker-compatible API may work and is not tested.
+  move it). The `wingsmith` user must be in the `docker` group (see [Who the agent runs as](#who-the-agent-runs-as)).
 - The [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
   configured for Docker (`nvidia-ctk runtime configure --runtime=docker`, then restart Docker).
   `docker run --rm --gpus all ubuntu nvidia-smi` should list the cards. To request GPUs as CDI
@@ -139,13 +220,12 @@ Tokens never come from the plane. An admin drops them on the host, as on a clust
 project's Secret:
 
 ```sh
-install -d -m 700 /etc/wingsmith/credentials
-install -m 600 /dev/stdin /etc/wingsmith/credentials/<project-id>.token <<< "hf_..."
+sudo install -m 600 -o wingsmith -g wingsmith /dev/stdin /etc/wingsmith/credentials/<project-id>.token <<< "hf_..."
 ```
 
 A private artifact whose source names a credential is fetched with `<project-id>.token` and is
 refused with `CredentialUnavailable` while that file is missing. Public artifacts use
-`_default.token` if present. A file readable by group or others is refused. The token reaches only
+`_default.token` if present. A file not mode 0600, or not owned by root or `wingsmith`, is refused. The token reaches only
 the prefetch container, as `HF_TOKEN`; serving containers run with `HF_HUB_OFFLINE=1` and no token.
 The directory is `credentials_dir` in host.json.
 

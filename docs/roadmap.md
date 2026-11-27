@@ -82,7 +82,10 @@ There are no dates. Order within a section is roughly the order the work is expe
 - **Metrics from the hub and reactor.** Only the API process serves `/metrics` (see
   [METRICS.md](../libs/plane/METRICS.md)); the hub and reactor processes expose none yet.
 - **Published images and charts.** Nothing is published yet. Build the images into your own
-  registry.
+  registry. Linux host packages (`.deb`, `.rpm`) attach to each tagged GitHub release; there is no
+  apt or rpm repository yet.
+- **Rootless Podman on hosts.** `wingsmith-host` talks to Docker; Podman's Docker-compatible API is
+  untested, and a rootless setup (no `docker` group, which is root-equivalent) is not supported.
 - **CRD versioning and conversion.** The CRDs are `v1alpha1` in the interim `wingsmith.dev` group, with
   no conversion webhooks. Upgrades between versions may require deleting and recreating them until
   a stable version exists.

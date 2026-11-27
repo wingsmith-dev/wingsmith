@@ -9,6 +9,15 @@ protocol can change between minor versions.
 
 ### Added
 
+- Linux host packages and hardening (P2.6). Tagged releases attach `wingsmith-host` `.deb` and
+  `.rpm` packages for amd64 and arm64 that install the binary, the systemd unit and a placeholder
+  config, and create a `wingsmith` system user in the `docker` group with `/etc/wingsmith` and
+  `/var/lib/wingsmith` (they never start the service). The unit now runs as that user with an
+  empty capability bounding set and tighter sandboxing. Credential files must be mode 0600 and
+  owned by root or the agent's own user, everywhere; `enrol` hands the token to `wingsmith`, and
+  prefetch containers run as the agent's uid:gid. See docs/operations/linux-host.md for install,
+  upgrade and uninstall.
+
 - Audio and media custom workers (P4.2). Container `protocol` takes `openai-images`,
   `openai-audio-speech`, `openai-audio-transcriptions` and `openai-videos` beside `openai-chat`,
   each implying an output modality (`speech` and `transcription` are new); readiness defaults to
