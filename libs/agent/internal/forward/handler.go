@@ -1,4 +1,8 @@
-package dynamo
+// Package forward is the agent's proxy: every request that arrives over a tunnel is forwarded to
+// the address a Target resolves for the deployment the gateway named. How addresses are found
+// (Kubernetes Service discovery, or a host's loopback ports) is the Target's business, so this
+// package links nothing from Kubernetes.
+package forward
 
 import (
 	"context"
@@ -13,6 +17,23 @@ import (
 
 	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
+
+// ErrNoFrontend means no address is known yet. It is intentionally distinct from
+// a failure to talk to the API server: the cluster answered, and the answer was
+// that this cluster is not serving anything.
+var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
+
+// ErrNoDeploymentFrontend means this cluster is serving, but not this
+// deployment: frontends were discovered, none of them is the one the request
+// names, and there is no shared frontend to fall back to.
+//
+// Separate from ErrNoFrontend because the two facts are different and a reader
+// has to tell them apart. "This cluster serves nothing" is a cluster that has
+// not come up, and every model on it is affected. "This model's frontend has not
+// come up" is one deployment mid-rollout while everything beside it answers
+// normally: the ordinary shape of the seconds after a deployment is created,
+// and the one case where retrying the same request shortly is exactly right.
+var ErrNoDeploymentFrontend = errors.New("no inference frontend for this deployment in this cluster")
 
 // Target is the address lookup the handler needs. The Resolver in this package
 // satisfies it; a caller holding the address some other way can pass its own.

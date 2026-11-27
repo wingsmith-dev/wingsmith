@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/forward"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -656,3 +658,10 @@ func TestAContainerWorkersServiceIsItsDeploymentsFrontend(t *testing.T) {
 		t.Fatalf("an unowned role=frontend Service was routed to: %s", got)
 	}
 }
+
+// The Resolver is asserted to answer per deployment at compile time, and that
+// is not decoration. main.go hands the handler a *Resolver as a Target, so a Resolver
+// that stopped satisfying DeploymentTarget would still build, still start, and
+// still serve: every request quietly falling back to the shared frontend, with
+// nothing in a log saying the per-model routing had stopped happening.
+var _ forward.DeploymentTarget = (*Resolver)(nil)

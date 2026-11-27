@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/forward"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -55,22 +57,12 @@ const defaultPort = 8000
 // path.
 const defaultInterval = 30 * time.Second
 
-// ErrNoFrontend means no address is known yet. It is intentionally distinct from
-// a failure to talk to the API server: the cluster answered, and the answer was
-// that this cluster is not serving anything.
-var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
-
-// ErrNoDeploymentFrontend means this cluster is serving, but not this
-// deployment: frontends were discovered, none of them is the one the request
-// names, and there is no shared frontend to fall back to.
-//
-// Separate from ErrNoFrontend because the two facts are different and a reader
-// has to tell them apart. "This cluster serves nothing" is a cluster that has
-// not come up, and every model on it is affected. "This model's frontend has not
-// come up" is one deployment mid-rollout while everything beside it answers
-// normally: the ordinary shape of the seconds after a deployment is created,
-// and the one case where retrying the same request shortly is exactly right.
-var ErrNoDeploymentFrontend = errors.New("no inference frontend for this deployment in this cluster")
+// ErrNoFrontend and ErrNoDeploymentFrontend are the forwarding handler's, so any resolver it is
+// handed reports the same two facts.
+var (
+	ErrNoFrontend           = forward.ErrNoFrontend
+	ErrNoDeploymentFrontend = forward.ErrNoDeploymentFrontend
+)
 
 // ErrAmbiguousFrontend marks a discovery pass in which more than one Service
 // claimed the same deployment, or more than one claimed to be the shared

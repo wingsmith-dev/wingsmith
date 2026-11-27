@@ -26,6 +26,7 @@ import (
 
 	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/agent"
 	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/dynamo"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/forward"
 	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
@@ -65,8 +66,8 @@ func run() error {
 	// SIGTERM has to drain instead: the server's Shutdown sends GOAWAY and lets the streams
 	// already accepted finish, each of which is a generation somebody is reading.
 	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{
-		Handler: dynamo.NewHandler(resolver, tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout),
-			dynamo.WithObserver(metrics)),
+		Handler: forward.NewHandler(resolver, tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout),
+			forward.WithObserver(metrics)),
 		Limits:      tunnel.Limits{MaxConcurrentStreams: uint32(cfg.MaxConcurrentStreams)}, //nolint:gosec // bounded by validate
 		BaseContext: context.Background(),
 	})

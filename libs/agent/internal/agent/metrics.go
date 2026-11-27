@@ -143,12 +143,12 @@ func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
-// RequestStarted counts a request in flight. It implements dynamo.Observer.
+// RequestStarted counts a request in flight. It implements forward.Observer.
 func (m *Metrics) RequestStarted() {
 	m.inFlight.Inc()
 }
 
-// RequestFinished records a request that has ended. It implements dynamo.Observer.
+// RequestFinished records a request that has ended. It implements forward.Observer.
 func (m *Metrics) RequestFinished(outcome, code string, elapsed time.Duration) {
 	m.inFlight.Dec()
 	m.requests.WithLabelValues(outcome, code).Inc()

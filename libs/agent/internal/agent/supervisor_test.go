@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/dynamo"
+	"github.com/wingsmith-dev/wingsmith/libs/agent/internal/forward"
 	"github.com/wingsmith-dev/wingsmith/libs/packages/tunnel"
 )
 
@@ -36,7 +37,7 @@ func TestTunnelCarriesARequestToTheClusterFrontend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dynamo.New: %v", err)
 	}
-	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{Handler: dynamo.NewHandler(resolver, 0)})
+	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{Handler: forward.NewHandler(resolver, 0)})
 	if err != nil {
 		t.Fatalf("tunnel.NewConnector: %v", err)
 	}

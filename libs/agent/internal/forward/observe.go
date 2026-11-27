@@ -1,4 +1,4 @@
-package dynamo
+package forward
 
 import (
 	"context"
