@@ -133,9 +133,54 @@ func (a *Allocations) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := a.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	return writeDurable(a.path, raw)
+}
+
+// Free counts the healthy GPUs nobody holds.
+func (a *Allocations) Free(healthy []string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	held := map[string]bool{}
+	for _, g := range a.m {
+		for _, u := range g.GPUs {
+			held[u] = true
+		}
+	}
+	n := 0
+	for _, u := range healthy {
+		if !held[u] {
+			n++
+		}
+	}
+	return n
+}
+
+// writeDurable replaces path with raw so that a crash leaves the old file or the new one: the
+// temporary file is synced before the rename and the directory after it.
+func writeDurable(path string, raw []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, a.path)
+	if _, err := f.Write(raw); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	return dir.Sync()
 }

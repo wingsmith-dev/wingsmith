@@ -145,10 +145,7 @@ func (d *Driver) saveLocked() {
 	}
 	raw, err := json.Marshal(checkpoint{Deployments: d.deps, Artifacts: d.artifacts})
 	if err == nil {
-		tmp := d.StatePath + ".tmp"
-		if err = os.WriteFile(tmp, raw, 0o600); err == nil {
-			err = os.Rename(tmp, d.StatePath)
-		}
+		err = writeDurable(d.StatePath, raw)
 	}
 	if err != nil {
 		d.Log.Warn("could not checkpoint declared state", "error", err)
@@ -255,7 +252,13 @@ func (d *Driver) Pass(ctx context.Context) {
 }
 
 func (d *Driver) reconcile(ctx context.Context, dep wire.DeploymentDesired, arts map[string]wire.ArtifactDesired) {
-	if dep.Lifecycle == "paused" || dep.Authority == "observed" {
+	if dep.Authority == "observed" {
+		return
+	}
+	// A paused deployment is withdrawn as the plane withdraws a disabled one from a cluster: its
+	// containers stop and its GPUs go back, while the declaration is kept for the resume.
+	if dep.Lifecycle == "paused" {
+		d.teardown(ctx, dep.DeploymentID)
 		return
 	}
 	var art wire.ArtifactDesired

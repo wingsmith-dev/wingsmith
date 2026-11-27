@@ -237,8 +237,18 @@ func TestRolloutReplacesPrunesAndDeletes(t *testing.T) {
 	if err := r.b.Prune(ctx, dep, applied.Name); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.names(); !slices.Equal(got, []string{"ws-qwen-chat-0"}) {
+	// A free card lets the new replica start beside the old one, which goes once it is routed.
+	if got := r.names(); !slices.Equal(got, []string{"ws-qwen-chat-0", "ws-qwen-chat-0-g2"}) {
 		t.Fatalf("after scale-down = %v", got)
+	}
+	if _, err := r.b.Observe(ctx, dep); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.b.Apply(ctx, desired(dep)); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.names(); !slices.Equal(got, []string{"ws-qwen-chat-0-g2"}) {
+		t.Fatalf("after the switch = %v", got)
 	}
 	for _, c := range r.docker.containers {
 		if c.spec.Labels[LabelGeneration] != "2" {
@@ -318,6 +328,15 @@ func TestApplyRefusals(t *testing.T) {
 			d.Deployment.Serving.Container.ReadinessProbe = map[string]any{"exec": map[string]any{"command": []string{"true"}}}
 		}, "exec probes"},
 		"multi-node": {func(_ *rig, d *backend.Desired) { d.Layout.NodesPerReplica = 2 }, "aggregated"},
+		"env overrides WS_PORT": {func(_ *rig, d *backend.Desired) {
+			d.Deployment.Serving.Container.Env = []wire.EnvVar{{Name: "WS_PORT", Value: "1"}}
+		}, "set by the platform"},
+		"env in the WS_ namespace": {func(_ *rig, d *backend.Desired) {
+			d.Deployment.Serving.Container.Env = []wire.EnvVar{{Name: "WS_ANYTHING", Value: "1"}}
+		}, "set by the platform"},
+		"env name with =": {func(_ *rig, d *backend.Desired) {
+			d.Deployment.Serving.Container.Env = []wire.EnvVar{{Name: "A=B", Value: "1"}}
+		}, "not a valid name"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

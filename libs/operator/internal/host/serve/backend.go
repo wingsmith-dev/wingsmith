@@ -45,6 +45,8 @@ type Backend struct {
 
 	mu    sync.Mutex
 	ready map[string][]int
+	// routed is, per deployment, the containers the last Observe handed the resolver.
+	routed map[string]map[string]bool
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -146,6 +148,11 @@ func (b *Backend) plan(d backend.Desired) (plan, error) {
 	if err := b.Policy.checkImage(dep.DeploymentID, c.Image); err != nil {
 		return plan{}, err
 	}
+	for _, e := range c.Env {
+		if !envNamePattern.MatchString(e.Name) || envReserved(e.Name) {
+			return plan{}, reject("deployment %s: env %q is not a valid name or is set by the platform", dep.DeploymentID, e.Name)
+		}
+	}
 	port := 0
 	for _, p := range c.Ports {
 		if p.Name == httpPort {
@@ -244,6 +251,7 @@ func (b *Backend) create(p plan, replica int, gpus []string) ContainerCreate {
 			LabelDigest:     dep.Serving.Digest,
 			LabelLayout:     p.layout,
 			LabelReplica:    strconv.Itoa(replica),
+			LabelWorkload:   p.workload,
 			LabelGPUs:       strings.Join(gpus, ","),
 			LabelPort:       strconv.Itoa(p.port),
 		},
@@ -286,9 +294,37 @@ func (b *Backend) Adopt(ctx context.Context) error {
 	return b.Allocations.Adopt(live)
 }
 
+// slotOf is the replica slot of workload a container fills. Containers created before the
+// workload label existed are matched by their name.
+func slotOf(c ContainerSummary, workload string) (int, bool) {
+	i, err := strconv.Atoi(c.Labels[LabelReplica])
+	if err != nil || i < 0 {
+		return 0, false
+	}
+	if w, ok := c.Labels[LabelWorkload]; ok {
+		return i, w == workload
+	}
+	return i, c.Name() == containerName(workload, i)
+}
+
+// freshName is the slot's plain name when free, and otherwise one suffixed with the generation.
+func freshName(workload string, replica int, generation int64, taken map[string]bool) string {
+	base := containerName(workload, replica)
+	if !taken[base] {
+		return base
+	}
+	name := fmt.Sprintf("%s-g%d", base, generation)
+	for k := 2; taken[name]; k++ {
+		name = fmt.Sprintf("%s-g%d-%d", base, generation, k)
+	}
+	return name
+}
+
 // Apply implements backend.Backend. Each replica slot is kept if its container was built from
-// these inputs, and otherwise replaced: the old one is removed first, because the accelerators
-// it holds are the ones the new one needs.
+// these inputs, and otherwise replaced. When the free GPUs cover a replica the new container
+// starts beside the old one, which is removed on a later pass, once Observe has found the new one
+// ready and moved the route to it. Otherwise the old one is removed first, because the
+// accelerators it holds are the ones the new one needs.
 func (b *Backend) Apply(ctx context.Context, d backend.Desired) (backend.Applied, error) {
 	p, err := b.plan(d)
 	if err != nil {
@@ -307,25 +343,51 @@ func (b *Backend) Apply(ctx context.Context, d backend.Desired) (backend.Applied
 	if err != nil {
 		return backend.Applied{}, err
 	}
-	byName := map[string]ContainerSummary{}
-	for _, c := range existing {
-		byName[c.Name()] = c
-	}
 	n := replicas(p.dep)
+	taken := map[string]bool{}
+	slots := map[int][]ContainerSummary{}
+	for _, c := range existing {
+		taken[c.Name()] = true
+		if i, ok := slotOf(c, p.workload); ok && i < n {
+			slots[i] = append(slots[i], c)
+		}
+	}
 	changed := false
 	for i := range n {
-		name := containerName(p.workload, i)
-		if c, ok := byName[name]; ok {
-			if current(c, p) {
-				continue
-			}
-			if err := b.remove(ctx, c); err != nil {
-				return backend.Applied{}, err
+		var cur *ContainerSummary
+		var stale []ContainerSummary
+		for _, c := range slots[i] {
+			if cur == nil && current(c, p) {
+				cur = &c
+			} else {
+				stale = append(stale, c)
 			}
 		}
+		if cur != nil {
+			if len(stale) == 0 || !b.isRouted(p.dep.DeploymentID, cur.Name()) {
+				continue
+			}
+			for _, c := range stale {
+				if err := b.remove(ctx, c); err != nil {
+					return backend.Applied{}, err
+				}
+			}
+			changed = true
+			continue
+		}
+		if len(stale) > 0 && !b.surge(ctx, p) {
+			for _, c := range stale {
+				if err := b.remove(ctx, c); err != nil {
+					return backend.Applied{}, err
+				}
+				delete(taken, c.Name())
+			}
+		}
+		name := freshName(p.workload, i, p.dep.Generation, taken)
 		if err := b.start(ctx, p, i, name); err != nil {
 			return backend.Applied{}, err
 		}
+		taken[name] = true
 		changed = true
 	}
 	if changed {
@@ -333,6 +395,18 @@ func (b *Backend) Apply(ctx context.Context, d backend.Desired) (backend.Applied
 			"replicas", n, "runtime", wire.RuntimeContainer)
 	}
 	return backend.Applied{Name: p.workload, Unchanged: !changed}, nil
+}
+
+// surge says the free GPUs cover one more replica of p beside the ones running.
+func (b *Backend) surge(ctx context.Context, p plan) bool {
+	if p.devices <= 0 {
+		return true
+	}
+	_, healthy, err := b.GPUs(ctx)
+	if err != nil {
+		return false
+	}
+	return b.Allocations.Free(healthy) >= p.devices
 }
 
 func (b *Backend) start(ctx context.Context, p plan, replica int, name string) error {
@@ -383,19 +457,17 @@ func (b *Backend) remove(ctx context.Context, c ContainerSummary) error {
 	return b.Allocations.Release(c.Name())
 }
 
-// Prune implements backend.Backend: every container of the deployment that is not one of the
-// current workload's replica slots goes, which covers a rename and a scale-down.
+// Prune implements backend.Backend: every container of the deployment outside the current
+// workload's replica slots goes, which covers a rename and a scale-down. A slot's outgoing
+// container during a rollout is Apply's to remove.
 func (b *Backend) Prune(ctx context.Context, dep wire.DeploymentDesired, workload string) error {
 	existing, err := b.list(ctx, dep.DeploymentID)
 	if err != nil {
 		return err
 	}
-	keep := map[string]bool{}
-	for i := range replicas(dep) {
-		keep[containerName(workload, i)] = true
-	}
+	n := replicas(dep)
 	for _, c := range existing {
-		if !keep[c.Name()] {
+		if i, ok := slotOf(c, workload); !ok || i >= n {
 			if err := b.remove(ctx, c); err != nil {
 				return err
 			}
@@ -415,7 +487,7 @@ func (b *Backend) Delete(ctx context.Context, deploymentID string) error {
 			return err
 		}
 	}
-	b.setReady(deploymentID, nil)
+	b.setReady(deploymentID, nil, nil)
 	return nil
 }
 
@@ -472,7 +544,15 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 	}
 
 	out := backend.Rollout{Desired: replicas(dep), ObservedAt: at, Replicas: []wire.ReplicaObserved{}}
-	var ready []int
+	workload := WorkloadName(dep)
+	// Per slot, the ports of its ready current containers and of its ready outgoing ones. A slot
+	// is routed to the outgoing container until the new one is ready, so a rollout with room to
+	// surge has no gap.
+	type serving struct {
+		fresh, old           []int
+		freshNames, oldNames []string
+	}
+	slots := map[string]*serving{}
 	var trouble *wire.LastError
 	reason := ""
 	for _, c := range existing {
@@ -499,8 +579,20 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 		switch {
 		case ok:
 			phase = "running"
+			key := "x:" + c.Name()
+			if i, in := slotOf(c, workload); in {
+				key = strconv.Itoa(i)
+			}
+			s := slots[key]
+			if s == nil {
+				s = &serving{}
+				slots[key] = s
+			}
+			port := publishedPort(info, atoi(c.Labels[LabelPort]))
 			if updated {
-				ready = append(ready, publishedPort(info, atoi(c.Labels[LabelPort])))
+				s.fresh, s.freshNames = append(s.fresh, port), append(s.freshNames, c.Name())
+			} else {
+				s.old, s.oldNames = append(s.old, port), append(s.oldNames, c.Name())
 			}
 		case info.State.Running:
 			phase = "starting"
@@ -556,7 +648,17 @@ func (b *Backend) Observe(ctx context.Context, dep wire.DeploymentDesired) (back
 		out.Message += ": " + trouble.Message
 	}
 	out.Converging = out.Ready < out.Desired
-	b.setReady(dep.DeploymentID, ready)
+	var ready []int
+	var names []string
+	for _, s := range slots {
+		if len(s.fresh) > 0 {
+			ready, names = append(ready, s.fresh...), append(names, s.freshNames...)
+		} else {
+			ready, names = append(ready, s.old...), append(names, s.oldNames...)
+		}
+	}
+	sort.Ints(ready)
+	b.setReady(dep.DeploymentID, ready, names)
 	return out, nil
 }
 
@@ -598,17 +700,31 @@ func (b *Backend) probe(ctx context.Context, p probe, hostPort int) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }
 
-func (b *Backend) setReady(id string, ports []int) {
+func (b *Backend) setReady(id string, ports []int, names []string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.ready == nil {
 		b.ready = map[string][]int{}
+		b.routed = map[string]map[string]bool{}
 	}
 	if len(ports) == 0 {
 		delete(b.ready, id)
+		delete(b.routed, id)
 		return
 	}
 	b.ready[id] = ports
+	routed := make(map[string]bool, len(names))
+	for _, n := range names {
+		routed[n] = true
+	}
+	b.routed[id] = routed
+}
+
+// isRouted says the last Observe sent the resolver to this container.
+func (b *Backend) isRouted(id, name string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.routed[id][name]
 }
 
 // Ready is the loopback ports of each deployment's ready, current replicas, for the resolver.

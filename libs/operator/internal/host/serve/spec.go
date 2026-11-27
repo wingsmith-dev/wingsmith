@@ -25,6 +25,7 @@ const (
 	LabelReplica    = "wingsmith.dev/replica"
 	LabelGPUs       = "wingsmith.dev/gpus"
 	LabelPort       = "wingsmith.dev/port"
+	LabelWorkload   = "wingsmith.dev/workload"
 
 	managedBy = "wingsmith-host"
 )
@@ -35,6 +36,11 @@ const (
 	EnvServedModelName = "WS_SERVED_MODEL_NAME"
 	EnvPort            = "WS_PORT"
 )
+
+// envReserved says a declared variable would shadow one the platform sets.
+func envReserved(name string) bool {
+	return strings.HasPrefix(name, "WS_") || name == "HF_HUB_OFFLINE"
+}
 
 // DefaultModelRoot is the host's model cache, laid out as the operator's /models volume (P1.4b).
 const DefaultModelRoot = "/var/lib/wingsmith/models"
@@ -56,6 +62,7 @@ var (
 	artifactIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 	hfRepoPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)?$`)
 	hfRevPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	envNamePattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	envRef            = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
 )
 
