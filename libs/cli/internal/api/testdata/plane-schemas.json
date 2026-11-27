@@ -588,6 +588,13 @@
   "largest_contiguous_block": "integer",
   "whole_nodes_free": "integer"
  },
+ "ClusterProjectLinkRequest": {
+  "namespaces": "[]string"
+ },
+ "ClusterProjectSchema": {
+  "namespaces": "[]string",
+  "project": "string"
+ },
  "ClusterRollupSchema": {
   "cluster_id": "string",
   "deployment_count": "integer",
