@@ -9,12 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import changes
+from app.auth import AuthManager
 from app.db.models import Replica
 from app.db.models import Workload
 from app.db.models import ChangeLog
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.notify import DatabaseNotifier
+from app.core.context import RequestContext
 from app.ingestion.sink import serving_moved
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -26,6 +28,7 @@ from app.modules.manifest.schemas import ObjectMeta
 from app.modules.manifest.schemas import ScaleReplicas
 from app.modules.manifest.schemas import WorkloadManifest
 from app.modules.projects.schemas import ProjectCreateRequest
+from app.modules.workloads.routes import WorkloadRoutes
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.endpoints.schemas import EndpointCreateRequest
@@ -720,3 +723,19 @@ async def test_delete_manifest_passes_its_own_manager_and_unmanaged_objects(db: 
     await svc.delete_manifest("endpoint", "search", "loose", "wings-cli")
     with pytest.raises(NotFound):
         await svc.endpoint("search", "loose")
+
+
+async def test_the_imperative_delete_refuses_a_managed_workload_unless_forced(db: AsyncSession) -> None:
+    *_, workload = await a_workload(db)
+    svc = ManifestService(db)
+    await svc.put_workload(
+        "search", "gpt-oss-prod", _wire(await svc.workload("search", "gpt-oss-prod")), manager="k8s:alpha/team-a"
+    )
+    context = RequestContext(principal=AuthManager.admin_principal(), db=db)
+    handler = WorkloadRoutes.delete_workload.fn
+    with pytest.raises(Conflict) as refused:
+        await handler(None, context, WorkloadService(db), workload.id)
+    assert refused.value.detail == {"manager": "k8s:alpha/team-a"}
+    await handler(None, context, WorkloadService(db), workload.id, force=True)
+    with pytest.raises(NotFound):
+        await svc.workload("search", "gpt-oss-prod")

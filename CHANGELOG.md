@@ -22,6 +22,8 @@ protocol can change between minor versions.
 - `DELETE /v1/manifests/{workloads|endpoints}/{project}/{name}` with a field manager check: an
   object another manager applied (another `--field-manager`, or a member cluster) is a 409 naming
   it unless `?force=true`.
+- `DELETE /v1/workloads/{ref}` makes the same check: a workload a manifest or member cluster
+  manages is a 409 naming its manager unless `?force=true`.
 - Cluster-project links carry a namespace allowlist (ADR 0042, migration `b9c0d1e2f3a4`):
   `PUT /v1/clusters/{ref}/projects/{project}` takes `{"namespaces": [...]}` and `GET` returns it.
   Only listed namespaces may declare; others get `Synced=False/NamespaceNotAllowed`. Existing links

@@ -167,5 +167,12 @@ class WorkloadRoutes(Controller):
         return Response(await svc.update(current.id, data, if_match=if_match))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_workload(self, context: RequestContext, svc: WorkloadService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_workload(
+        self, context: RequestContext, svc: WorkloadService, ref: str, force: bool = False
+    ) -> None:
+        """A workload a manifest manages (`applied_by`) is a 409 naming its manager, like the manifest
+        DELETE: a cluster-declared one would only be applied again (ADR 0042). `?force=true` deletes it."""
+        current = await svc.get(ref)
+        if not force:
+            await guard(context.db, Workload, current.id, kind="workload", actor=context.principal.name)
+        await svc.delete(current.id)
