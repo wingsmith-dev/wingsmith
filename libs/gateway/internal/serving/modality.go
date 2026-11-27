@@ -14,6 +14,10 @@ const (
 	modalityText  = "text"
 	modalityImage = "image"
 	modalityVideo = "video"
+	// modalitySpeech is text-to-speech and modalityTranscription speech-to-text, each served by a
+	// container worker whose protocol implies it (openai-audio-speech, openai-audio-transcriptions).
+	modalitySpeech        = "speech"
+	modalityTranscription = "transcription"
 )
 
 // pathAnswered says whether an upstream that emits `modality` answers a request to `path`.
@@ -28,15 +32,24 @@ const (
 //     responses, video) has no handler in front of a diffusion worker.
 //   - A video upstream answers `/v1/videos` and nothing else. Chat against a video model was
 //     not verified, so it is refused, not proxied into an answer nobody has seen.
+//   - A speech upstream answers `/v1/audio/speech` only, and a transcription upstream
+//     `/v1/audio/transcriptions` and `/v1/audio/translations`. A text upstream keeps answering
+//     the audio paths it always forwarded (a vLLM Whisper behind a frontend that serves them).
 //
 // An unknown modality answers everything: a plane newer than this gateway is not a reason to
 // refuse traffic the gateway cannot reason about.
 func pathAnswered(modality, path string) bool {
 	images := strings.HasPrefix(path, "/v1/images/")
 	videos := path == "/v1/videos" || strings.HasPrefix(path, "/v1/videos/")
+	speech := path == "/v1/audio/speech"
+	transcription := path == "/v1/audio/transcriptions" || path == "/v1/audio/translations"
 	switch modality {
 	case "", modalityText:
 		return !images && !videos
+	case modalitySpeech:
+		return speech
+	case modalityTranscription:
+		return transcription
 	case modalityImage:
 		return images || path == "/v1/chat/completions"
 	case modalityVideo:

@@ -81,6 +81,7 @@ func routingStages(cfg Config) []stage {
 		stageRewritePolicy,
 		stageMediaURLs(cfg.MediaURLs),
 		stageMediaFacts,
+		stageUnitQuota(cfg.UnitQuotas),
 		stageCacheSalt,
 		stagePickUpstream,
 		stageRewriteServedModel,
@@ -160,6 +161,7 @@ func servedInZone(zone Zone, route routing.Route) bool {
 func stageReadBody(limits bodyLimits) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		markEndpoint(r, metrics.EndpointUnknown, "")
+		limits.maxBytes = bodyCap(r.URL.Path, limits.maxBytes)
 		body, release, ok := readBody(w, r, limits)
 		if !ok {
 			return r, false
@@ -505,6 +507,8 @@ func stageForward(w http.ResponseWriter, r *http.Request, req *requestState) (*h
 	release := inFlight(r)
 	defer release()
 
+	r, cancel := withUpstreamDeadline(r)
+	defer cancel()
 	start := time.Now()
 	defer func() { markUpstreamDuration(r, time.Since(start)) }()
 	req.upstream.Handler().ServeHTTP(w, r)

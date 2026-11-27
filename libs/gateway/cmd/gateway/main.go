@@ -236,6 +236,7 @@ func main() {
 	readiness := serving.NewReadiness(router, recorder)
 	go readiness.RunCoverage(ctx, 15*time.Second)
 
+	unitQuotas := serving.NewUnitQuotas(*replicas)
 	limiter := serving.NewLimiter(serving.TenantLimits{
 		MaxInFlight: envIntDefault("WINGSMITH_GATEWAY_TENANT_MAX_IN_FLIGHT", serving.DefaultTenantMaxInFlight),
 		RPS:         envFloat("WINGSMITH_GATEWAY_TENANT_RPS"),
@@ -262,6 +263,7 @@ func main() {
 			Ready:            readiness,
 			Tenants:          tenants,
 			Limiter:          limiter,
+			UnitQuotas:       unitQuotas,
 			MaxBodyBytes:     maxBodyBytes,
 			BodyReadTimeout:  bodyReadTimeout,
 			WriteIdleTimeout: writeIdleTimeout,
@@ -307,6 +309,7 @@ func main() {
 				Ready:            readiness,
 				Tenants:          tenants,
 				Limiter:          limiter,
+				UnitQuotas:       unitQuotas,
 				MaxBodyBytes:     maxBodyBytes,
 				BodyReadTimeout:  bodyReadTimeout,
 				WriteIdleTimeout: writeIdleTimeout,

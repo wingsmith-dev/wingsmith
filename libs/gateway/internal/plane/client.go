@@ -155,10 +155,24 @@ type Endpoint struct {
 	Upstreams       []Upstream `json:"upstreams"`
 	FailoverOrder   []string   `json:"failover_order"`
 	Policy          *Policy    `json:"policy"`
+	// Limits is the endpoint's serving quota, or nil when nothing was sold on it.
+	Limits *Limits `json:"limits"`
 	// TenantID is the endpoint's project's tenant (docs/decisions/0016). There is
 	// exactly one per endpoint; this is not a cross-tenant endpoint's table.
 	TenantID string `json:"tenant_id"`
 	Revision string `json:"revision"`
+}
+
+// Limits is the part of an endpoint's serving quota this hop enforces: the media unit budgets
+// (P4.2). The request and token rates beside them on the wire are not read yet.
+type Limits struct {
+	// UnitLimits are units per minute across the fleet, keyed by unit (image_units, video_seconds,
+	// speech_characters, speech_seconds, transcription_seconds).
+	UnitLimits map[string]int64 `json:"unit_limits"`
+	// LimitScope is `per_replica` (each replica enforces the whole number) or `divided`.
+	LimitScope string `json:"limit_scope"`
+	// Enforced false is shadow mode: spend is counted, nothing is refused.
+	Enforced bool `json:"enforced"`
 }
 
 // Table is the whole routing table at one revision.

@@ -215,6 +215,7 @@ func (o *observation) sample(status int, elapsed time.Duration) metrics.Sample {
 		if m.haveFrames {
 			sample.VideoFrames = m.frames
 		}
+		sample.MediaUnits = m.units()
 	}
 	return sample
 }

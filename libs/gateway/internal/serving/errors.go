@@ -126,8 +126,18 @@ func modifyResponse(resp *http.Response) error {
 	if err := replaceErrorResponse(resp); err != nil {
 		return err
 	}
+	// Read before the filter drops it: a worker's own header is not forwarded to the caller.
+	audioSeconds := resp.Header.Get(headerAudioSeconds)
 	filterResponseHeaders(resp)
-	return observeUsage(resp)
+	if err := observeUsage(resp); err != nil {
+		return err
+	}
+	if audioSeconds != "" && resp.StatusCode < http.StatusMultipleChoices && resp.Request != nil {
+		if obs := observationFrom(resp.Request.Context()); obs != nil {
+			obs.recordAudioHeader(audioSeconds)
+		}
+	}
+	return nil
 }
 
 // upstreamFailure is the answer this hop gives for one upstream status.

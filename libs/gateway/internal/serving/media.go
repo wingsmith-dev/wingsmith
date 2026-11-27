@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Media usage is the image and video half of what usage.go records for text: raw facts about
@@ -25,9 +26,20 @@ import (
 // Dynamo, which is why the tail holds them.
 
 const (
-	mediaImage = "image"
-	mediaVideo = "video"
+	mediaImage         = "image"
+	mediaVideo         = "video"
+	mediaSpeech        = "speech"
+	mediaTranscription = "transcription"
 )
+
+// headerAudioSeconds is how a worker reports the length of the audio it produced (speech) or
+// read (transcription), in seconds, when its response body does not say. Optional: a response
+// without it records no seconds.
+const headerAudioSeconds = "X-Audio-Duration"
+
+// imageTierPixels is one size tier: an image is billed as ceil(W*H / 1024*1024) tier units, so a
+// 1024x1024 image is one and a 2048x2048 is four. An image whose size nobody stated is one.
+const imageTierPixels = 1024 * 1024
 
 // Where a size came from. There is no "default": Dynamo documents 832x480 for video and OpenAI
 // 1024x1024 for images, but the engine behind a route may apply its own, so a size nobody stated
@@ -71,6 +83,57 @@ type mediaFacts struct {
 	// inferenceSeconds is the engine's own `inference_time_s`, when the response carried one.
 	inferenceSeconds     float64
 	haveInferenceSeconds bool
+
+	// characters is a speech request's `input` length in Unicode code points.
+	characters int64
+	// audioSeconds is the speech produced or the audio transcribed, from the response's
+	// `duration` / `usage.seconds` or the X-Audio-Duration header. haveAudioSeconds says whether
+	// anything stated it.
+	audioSeconds     float64
+	haveAudioSeconds bool
+}
+
+// audio reports whether the facts are a speech or transcription request's.
+func (m *mediaFacts) audio() bool {
+	return m.kind == mediaSpeech || m.kind == mediaTranscription
+}
+
+// sizeTier is the image size tier the facts' size falls in; 1 when no size was stated.
+func (m *mediaFacts) sizeTier() int64 {
+	w, h, ok := strings.Cut(m.size, "x")
+	if !ok {
+		return 1
+	}
+	wn, _ := strconv.ParseInt(w, 10, 64)
+	hn, _ := strconv.ParseInt(h, 10, 64)
+	return max(1, (wn*hn+imageTierPixels-1)/imageTierPixels)
+}
+
+// units is what the request spent of each billable unit, keyed as `unit_limits` and
+// wingsmith_gateway_generated_total name them. Only units something stated are present.
+func (m *mediaFacts) units() map[string]float64 {
+	if m == nil || !m.haveOutputs {
+		return nil
+	}
+	switch m.kind {
+	case mediaImage:
+		return map[string]float64{"image_units": float64(m.outputs * m.sizeTier())}
+	case mediaVideo:
+		if m.haveSeconds {
+			return map[string]float64{"video_seconds": m.seconds * float64(max(m.outputs, 1))}
+		}
+	case mediaSpeech:
+		out := map[string]float64{"speech_characters": float64(m.characters)}
+		if m.haveAudioSeconds {
+			out["speech_seconds"] = m.audioSeconds
+		}
+		return out
+	case mediaTranscription:
+		if m.haveAudioSeconds {
+			return map[string]float64{"transcription_seconds": m.audioSeconds}
+		}
+	}
+	return nil
 }
 
 // mediaKindFor says whether a request is a media generation, and which kind.
@@ -85,6 +148,10 @@ func mediaKindFor(path, modality string) string {
 		return mediaVideo
 	case path == "/v1/chat/completions" && modality == modalityImage:
 		return mediaImage
+	case path == "/v1/audio/speech":
+		return mediaSpeech
+	case path == "/v1/audio/transcriptions" || path == "/v1/audio/translations":
+		return mediaTranscription
 	default:
 		return ""
 	}
@@ -93,6 +160,7 @@ func mediaKindFor(path, modality string) string {
 // mediaRequest is the part of an image or video request body that says what was asked for.
 // `seconds` is a string in OpenAI's video API and an integer in Dynamo's, so it is taken raw.
 type mediaRequest struct {
+	Input   string          `json:"input"`
 	Size    string          `json:"size"`
 	N       *int64          `json:"n"`
 	Seconds json.RawMessage `json:"seconds"`
@@ -111,6 +179,10 @@ func mediaFactsFromRequest(kind string, body []byte, multipart bool) *mediaFacts
 	}
 	var req mediaRequest
 	if err := json.Unmarshal(body, &req); err != nil {
+		return facts
+	}
+	if kind == mediaSpeech {
+		facts.characters = int64(utf8.RuneCountInString(req.Input))
 		return facts
 	}
 	if validSize(req.Size) {
@@ -231,6 +303,16 @@ func mediaTailFields(tail []byte, facts *mediaFacts) {
 			facts.inferenceSeconds, facts.haveInferenceSeconds = seconds, true
 		}
 	}
+	if facts.kind == mediaTranscription && !facts.haveAudioSeconds {
+		for _, key := range []string{`"duration":`, `"seconds":`} {
+			if value, ok := scalarAfter(tail, key); ok {
+				if seconds, err := strconv.ParseFloat(strings.Trim(value, `"`), 64); err == nil && seconds >= 0 {
+					facts.audioSeconds, facts.haveAudioSeconds = seconds, true
+					break
+				}
+			}
+		}
+	}
 	if facts.size == "" && facts.kind == mediaImage {
 		if value, ok := scalarAfter(tail, `"size":`); ok {
 			if size, err := strconv.Unquote(value); err == nil && validSize(size) {
@@ -293,7 +375,24 @@ func (o *observation) mediaCounter() *mediaCounter {
 	if o.media == nil {
 		return nil
 	}
+	if o.media.audio() {
+		return &mediaCounter{}
+	}
 	return newMediaCounter(o.media.chat)
+}
+
+// recordAudioHeader keeps a worker's X-Audio-Duration, which the response body cannot carry for
+// speech (the body is the audio).
+func (o *observation) recordAudioHeader(value string) {
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || seconds < 0 {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.media != nil && o.media.audio() {
+		o.media.audioSeconds, o.media.haveAudioSeconds = seconds, true
+	}
 }
 
 // recordMedia stores what the response scan found.
@@ -303,8 +402,14 @@ func (o *observation) recordMedia(outputs int64, tail []byte) {
 	if o.media == nil {
 		return
 	}
+	if o.media.audio() {
+		// One request is one clip or one transcript; the body is audio or a single object.
+		outputs = 1
+	}
 	o.media.outputs, o.media.haveOutputs = outputs, true
-	mediaTailFields(tail, o.media)
+	if o.media.kind != mediaSpeech {
+		mediaTailFields(tail, o.media)
+	}
 }
 
 // fields freezes media facts into access-log attributes. Absent, never zero, for anything the
@@ -317,10 +422,17 @@ func (m *mediaFacts) fields() []any {
 		return nil
 	}
 	out := []any{"media", m.kind}
-	if m.kind == mediaVideo {
+	switch m.kind {
+	case mediaVideo:
 		out = append(out, "videos", m.outputs)
-	} else {
-		out = append(out, "images", m.outputs)
+	case mediaSpeech:
+		out = append(out, "speech_characters", m.characters)
+	case mediaTranscription:
+	default:
+		out = append(out, "images", m.outputs, "image_units", m.outputs*m.sizeTier())
+	}
+	if m.haveAudioSeconds {
+		out = append(out, "audio_seconds", m.audioSeconds)
 	}
 	if m.requested > 0 {
 		out = append(out, "requested_n", m.requested)

@@ -31,6 +31,14 @@ func TestPathAnswered(t *testing.T) {
 		{"video", "/v1/chat/completions", false},
 		{"video", "/v1/images/generations", false},
 		{"audio", "/v1/audio/speech", true},
+		{"text", "/v1/audio/transcriptions", true},
+		{"speech", "/v1/audio/speech", true},
+		{"speech", "/v1/audio/transcriptions", false},
+		{"speech", "/v1/chat/completions", false},
+		{"transcription", "/v1/audio/transcriptions", true},
+		{"transcription", "/v1/audio/translations", true},
+		{"transcription", "/v1/audio/speech", false},
+		{"transcription", "/v1/embeddings", false},
 	}
 	for _, tc := range cases {
 		if got := pathAnswered(tc.modality, tc.path); got != tc.want {

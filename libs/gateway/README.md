@@ -340,7 +340,41 @@ answered by an image model, on the same line and in `wingsmith_gateway_generated
   byte, the nearest this hop comes to GPU time; `inference_time_s` beside it when the response
   carried one (Dynamo's video response does).
 
+Audio and billable units (P4.2, ADR 0035), on the same line and series:
+
+- `image_units`: images times their size tier, ceil(W*H / 1024x1024); one tier when no size was
+  stated.
+- `speech_characters`: the `/v1/audio/speech` request's `input`, in code points.
+  `speech_seconds`: the worker's `X-Audio-Duration` response header, when it sets one.
+- `transcription_seconds`: a `/v1/audio/transcriptions|translations` response's `duration`
+  (verbose_json) or `usage.seconds`, else `X-Audio-Duration`.
+
 No pricing, and nothing is added to the response body the caller sees.
+
+### Media paths
+
+An upstream answers by its output modality: `speech` answers `/v1/audio/speech` only,
+`transcription` answers `/v1/audio/transcriptions` and `/v1/audio/translations`; anything else is
+`404 unsupported_path`. Each media path has its own body cap (below the listener's
+`WINGSMITH_GATEWAY_MAX_BODY_BYTES` when that is larger) and an upstream deadline:
+
+| Path | Body | Deadline |
+|---|---|---|
+| `/v1/images/generations` | 1 MiB | 2 min |
+| `/v1/images/edits` | 50 MiB | 2 min |
+| `/v1/audio/speech` | 1 MiB | 2 min |
+| `/v1/audio/transcriptions`, `/v1/audio/translations` | 26 MiB | 5 min |
+| `/v1/videos`, `/v1/videos/stream` | 50 MiB | 10 min |
+
+### Media quotas
+
+A serving quota's `unit_limits` (units a minute: `image_units`, `video_seconds`,
+`speech_characters`, `speech_seconds`, `transcription_seconds`) ride the routing table and are
+enforced per replica, from the numbers above. Speech characters are charged before the forward and
+a request the budget cannot cover is refused; the other units are charged once the response states
+them, so a budget may go negative and the endpoint answers `429 rate_limited` with `Retry-After`
+until it refills. `enforced: false` counts without refusing; `limit_scope: divided` gives each
+replica `limit / --gateways`.
 
 ## Tunnel listener
 

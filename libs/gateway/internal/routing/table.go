@@ -123,6 +123,9 @@ type Route struct {
 	// same way Policy is: read on every request and refreshed on a timer,
 	// never fetched per request.
 	TenantID string
+	// Limits is the endpoint's serving quota, nil when none was sold. Its media unit budgets are
+	// enforced by serving.UnitQuotas.
+	Limits *plane.Limits
 	// Visibility is the endpoint's "public" or "private". Only a public
 	// endpoint is served on the public listener; a private one, the plane's
 	// default, answers on the internal listener alone.
@@ -403,6 +406,7 @@ func (r *Router) Load(ctx context.Context) error {
 			Strategy:   endpoint.RoutingStrategy,
 			Policy:     endpoint.Policy,
 			TenantID:   endpoint.TenantID,
+			Limits:     endpoint.Limits,
 			Visibility: endpoint.Visibility,
 			Upstreams:  make([]Upstream, 0, len(endpoint.Upstreams)),
 		}

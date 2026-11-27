@@ -147,7 +147,7 @@ func New(opts ...Option) *Recorder {
 
 	r.generated = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "wingsmith_gateway_generated_total",
-		Help: "What successful image and video generations produced, counted by this hop because the engine reports no usage for either: images, videos, video_seconds and video_frames as the request stated them, and upstream_seconds of wall time inside the cluster. Observability, not metering.",
+		Help: "What successful image, video and audio requests produced, counted by this hop because the engine reports no usage for any of them: images and image_units (images times size tier), videos, video_seconds and video_frames as the request stated them, speech_characters, speech_seconds and transcription_seconds where stated, and upstream_seconds of wall time inside the cluster. Media quotas are spent from the same numbers.",
 	}, append(append([]string{}, routedLabels...), "unit"))
 
 	r.inFlight = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -284,6 +284,10 @@ type Sample struct {
 	// UpstreamSeconds is the wall time the request spent inside a cluster, the nearest this hop
 	// can come to the GPU time it cost.
 	UpstreamSeconds float64
+	// MediaUnits are the billable units the request spent (image_units, video_seconds,
+	// speech_characters, speech_seconds, transcription_seconds), the same numbers a media quota
+	// is spent from. Only units something stated are present.
+	MediaUnits map[string]float64
 }
 
 // Observe records one finished request.
@@ -325,13 +329,22 @@ func (r *Recorder) Observe(s Sample) {
 
 	if s.HaveMedia {
 		labels := []string{endpoint, s.EndpointName, string(origin), s.Deployment, s.Cluster}
-		outputs := UnitImages
-		if s.MediaKind == "video" {
-			outputs = UnitVideos
+		switch s.MediaKind {
+		case "video":
+			r.generated.WithLabelValues(append(labels, string(UnitVideos))...).Add(float64(s.MediaOutputs))
 			r.generated.WithLabelValues(append(labels, string(UnitVideoSeconds))...).Add(s.VideoSeconds)
 			r.generated.WithLabelValues(append(labels, string(UnitVideoFrames))...).Add(float64(s.VideoFrames))
+		case "image":
+			r.generated.WithLabelValues(append(labels, string(UnitImages))...).Add(float64(s.MediaOutputs))
+			r.generated.WithLabelValues(append(labels, string(UnitImageUnits))...).Add(s.MediaUnits[string(UnitImageUnits)])
+		default:
+			// Audio: only the units the request or response stated, never a zero for one it did not.
+			for _, unit := range []Unit{UnitSpeechCharacters, UnitSpeechSeconds, UnitTranscriptionSeconds} {
+				if value, ok := s.MediaUnits[string(unit)]; ok {
+					r.generated.WithLabelValues(append(labels, string(unit))...).Add(value)
+				}
+			}
 		}
-		r.generated.WithLabelValues(append(labels, string(outputs))...).Add(float64(s.MediaOutputs))
 		r.generated.WithLabelValues(append(labels, string(UnitUpstreamSeconds))...).Add(s.UpstreamSeconds)
 	}
 }
@@ -345,6 +358,11 @@ const (
 	UnitVideoSeconds    Unit = "video_seconds"
 	UnitVideoFrames     Unit = "video_frames"
 	UnitUpstreamSeconds Unit = "upstream_seconds"
+	// UnitImageUnits is images times their size tier (ceil(W*H / 1024*1024)), the billable image unit.
+	UnitImageUnits           Unit = "image_units"
+	UnitSpeechCharacters     Unit = "speech_characters"
+	UnitSpeechSeconds        Unit = "speech_seconds"
+	UnitTranscriptionSeconds Unit = "transcription_seconds"
 )
 
 // InFlight marks a request as being proxied and returns the release.
