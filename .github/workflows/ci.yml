@@ -526,7 +526,7 @@ jobs:
             context: libs/console
             file: libs/console/Dockerfile
           - image: operator
-            context: libs/operator
+            context: libs
             file: libs/operator/Dockerfile
           - image: agent
             context: libs

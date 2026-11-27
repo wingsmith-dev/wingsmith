@@ -1,10 +1,15 @@
 FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
 WORKDIR /src
 
-COPY go.mod go.sum ./
+# Build context is `libs/`: the operator module requires libs/agent (the host data path) and
+# libs/packages/tunnel through `replace`, and a path outside the context does not exist here.
+COPY packages/tunnel/ ./packages/tunnel/
+COPY agent/ ./agent/
+COPY operator/go.mod operator/go.sum ./operator/
+WORKDIR /src/operator
 RUN go mod download
 
-COPY . .
+COPY operator/ ./
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION}" \

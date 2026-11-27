@@ -30,6 +30,38 @@ type Config struct {
 	CAFile    string            `json:"ca_file,omitempty"`
 	Labels    map[string]string `json:"labels,omitempty"`
 	Pool      string            `json:"pool,omitempty"`
+
+	// Serving (P2.4). Off by default: a host enrolled before serving existed stays supply-only
+	// until its operator opts in.
+	Serve bool `json:"serve,omitempty"`
+	// Gateway is the tunnel address (host:port) the data path dials, from the plane's setup
+	// instructions. Required with Serve.
+	Gateway string `json:"gateway,omitempty"`
+	// GatewayCAFile verifies the gateway instead of the system roots.
+	GatewayCAFile string `json:"gateway_ca_file,omitempty"`
+	// GatewayPlaintext dials the tunnel without TLS. Local development only.
+	GatewayPlaintext bool `json:"gateway_plaintext,omitempty"`
+	// AllowedImagePrefixes is the image allowlist. Empty refuses every workload (fail closed).
+	AllowedImagePrefixes []string `json:"allowed_image_prefixes,omitempty"`
+	// ContainerImageTagsAllowed lets an image be named by tag instead of digest.
+	ContainerImageTagsAllowed bool `json:"container_image_tags_allowed,omitempty"`
+	// ModelRoot is the model cache; /var/lib/wingsmith/models when empty.
+	ModelRoot string `json:"model_root,omitempty"`
+	// DockerSocket is the Engine API socket; /var/run/docker.sock when empty.
+	DockerSocket string `json:"docker_socket,omitempty"`
+	// CDI requests GPUs as CDI devices instead of through the NVIDIA runtime hook.
+	CDI bool `json:"cdi,omitempty"`
+}
+
+// ValidateServing refuses a serving config that could not route a request.
+func (c *Config) ValidateServing() error {
+	if !c.Serve {
+		return nil
+	}
+	if strings.TrimSpace(c.Gateway) == "" {
+		return errors.New("serve is on but gateway (the tunnel host:port) is not set in the host config")
+	}
+	return nil
 }
 
 // Validate refuses a config that could not open a session, before anything is written.

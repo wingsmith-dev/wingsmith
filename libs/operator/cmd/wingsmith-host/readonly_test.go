@@ -11,9 +11,9 @@ import (
 	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
-// TestRunAppliesNothing: until P2.4 a host is supply-only. Declared state is acknowledged and
-// dropped, and nothing that could act on it is linked in.
-func TestRunAppliesNothing(t *testing.T) {
+// TestSupplyOnlyAppliesNothing: a host without serving turned on acknowledges declared state and
+// drops it, and none of the Kubernetes apply path is linked in either way.
+func TestSupplyOnlyAppliesNothing(t *testing.T) {
 	handle := ignoreDemand(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, typ := range []string{"workload.desired", "operation.requested", "node.desired"} {
 		if err := handle(context.Background(), &syncpkg.Envelope{Type: typ}); err != nil {

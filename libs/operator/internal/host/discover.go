@@ -40,8 +40,11 @@ type Discoverer struct {
 	// Labels are the operator-chosen labels placement matches on, from the host config.
 	Labels map[string]string
 	Pool   string
-	Log    *slog.Logger
-	Now    func() time.Time
+	// Runtimes are the serving runtimes this host runs: [container] once serving is on, nil
+	// (unknown) otherwise.
+	Runtimes []string
+	Log      *slog.Logger
+	Now      func() time.Time
 }
 
 var _ observe.Discoverer = (*Discoverer)(nil)
@@ -80,7 +83,7 @@ func (d *Discoverer) Discover(ctx context.Context) (observe.Snapshot, error) {
 		node.DriverVersion = inv.DriverVersion
 		node.Devices = d.devices(m.Hostname, inv.GPUs)
 	}
-	return observe.Snapshot{Nodes: []observe.Node{node}, At: d.now()}, nil
+	return observe.Snapshot{Nodes: []observe.Node{node}, Runtimes: d.Runtimes, At: d.now()}, nil
 }
 
 func (d *Discoverer) devices(hostname string, gpus []GPU) []observe.Device {
