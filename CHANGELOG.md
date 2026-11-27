@@ -15,6 +15,10 @@ protocol can change between minor versions.
 - Artifacts can be private to a project (`private: true` with `project` on create, read back as
   `owner_project_id`). Handle and digest are unique within the public catalogue or within one
   project, and a reference by handle or name reaches only public artifacts and the caller's own.
+- Workload manifests carry `spec.replicas` (`spec.scale.desired` is now a read-only alias) and an
+  `Unschedulable` status condition, and `GET`/`PUT /v1/manifests/workloads/{project}/{name}/scale`
+  reads and sets the replica count: spec, generation-bumping, `If-Match`-checked and audited as a
+  `workload.scale` operation; a capacity shortfall is accepted and reported (ADR 0024).
 - Workloads, endpoints and artifacts read as `plane.wingsmith.dev/v1alpha1` manifests at
   `GET /v1/manifests/{kind}/{project}/{name}` (public artifacts at `/v1/manifests/artifacts/{name}`),
   and `wings get <kind> <name> -o yaml` prints one.
