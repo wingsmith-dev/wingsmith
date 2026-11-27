@@ -123,3 +123,31 @@ async def test_a_target_names_exactly_one_thing(db: AsyncSession) -> None:
         await svc.create(EndpointCreateRequest(name="chat", project=project.id, targets=[EndpointTargetRequest()]))
     with pytest.raises(Invalid, match="twice"):
         await svc.create(EndpointCreateRequest(name="chat", project=project.id, targets=[by_ref("a"), by_ref("a")]))
+
+
+async def test_a_commitment_on_a_workload_ref_endpoint_reports_and_filters_by_workload(db: AsyncSession) -> None:
+    from app.modules.quotas.schemas import ServingQuotaCreateRequest
+    from app.modules.quotas.services import ServingQuotaService
+
+    _, project, _, workload = await a_workload(db)
+    e = await EndpointService(db).create(
+        EndpointCreateRequest(name="chat", project=project.id, slug="m", targets=[by_ref(workload.name)])
+    )
+    quotas = ServingQuotaService(db)
+    await quotas.create(ServingQuotaCreateRequest(endpoint=e.id))
+    (report,) = (await quotas.resolved()).quotas
+    assert (report.endpoint, report.workloads) == (e.id, [workload.id])
+    (filtered,) = (await quotas.resolved(workload=workload.name)).quotas
+    assert filtered.endpoint == e.id
+    assert (await quotas.resolved(workload="nobody")).quotas == []
+
+
+async def test_a_benchmark_of_a_workload_ref_endpoint_covers_its_deployments(db: AsyncSession) -> None:
+    from app.modules.benchmarks.repository import BenchmarkRepository
+
+    _, project, _, workload = await a_workload(db)
+    e = await EndpointService(db).create(
+        EndpointCreateRequest(name="chat", project=project.id, slug="m", targets=[by_ref(workload.name)])
+    )
+    rows = await BenchmarkRepository(db).endpoint_targets(e.id)
+    assert [(row[0].uid, row[1].uid, row[2].uid) for row in rows] == [(e.id, workload.deployments[0].id, workload.id)]

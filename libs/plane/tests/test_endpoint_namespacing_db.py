@@ -134,3 +134,23 @@ async def test_the_public_id_lock_is_held_and_released_with_the_transaction(db: 
     await svc.create(EndpointCreateRequest(name="chat", project=first, slug="a"))
     held = (await db.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"))).scalar_one()
     assert held == 0
+
+
+async def test_concurrent_defaulted_creates_of_one_slug_move_the_loser_aside(db: AsyncSession, sessions) -> None:
+    import asyncio
+
+    first, second = await two_projects(db)
+    await db.commit()
+
+    async def create(project: str):
+        async with sessions() as session:
+            return await EndpointService(session).create(EndpointCreateRequest(name="chat", project=project))
+
+    a, b = await asyncio.gather(create(first), create(second))
+    by_project = {first: a.slug, second: b.slug}
+    assert sorted(by_project.values()) in (
+        sorted(["chat", f"{second}-chat"]),
+        sorted(["chat", f"{first}-chat"]),
+    )
+    loser = first if by_project[first] != "chat" else second
+    assert by_project[loser] == f"{loser}-chat"
