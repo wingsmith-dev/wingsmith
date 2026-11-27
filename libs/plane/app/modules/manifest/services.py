@@ -17,6 +17,7 @@ from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import WorkloadRevision
 from app.core.exceptions import NotFound
+from app.modules.artifacts.scope import visible
 from app.modules.artifacts.services import ArtifactService
 from app.modules.endpoints.services import EndpointService
 from app.modules.workloads.services import WorkloadService
@@ -43,12 +44,12 @@ class ManifestService:
             raise NotFound(f"no project {ref!r}")
         return project
 
-    async def _names(self, column, uids) -> dict[str, str]:
+    async def _names(self, column, uids, *where) -> dict[str, str]:
         model = column.class_
         uids = {u for u in uids if u}
         if not uids:
             return {}
-        rows = await self.db.execute(select(model.uid, column).where(model.uid.in_(uids)))
+        rows = await self.db.execute(select(model.uid, column).where(model.uid.in_(uids), *where))
         return {uid: name for uid, name in rows.all()}
 
     async def workload(self, project: str, name: str) -> WorkloadManifest:
@@ -79,7 +80,9 @@ class ManifestService:
         )
         refs = Refs(
             projects={owner.uid: owner.slug},
-            artifacts=await self._names(Artifact.handle, [w.serving.artifact_id, *w.adapter_artifact_ids]),
+            artifacts=await self._names(
+                Artifact.handle, [w.serving.artifact_id, *w.adapter_artifact_ids], visible(owner.id)
+            ),
             clusters=await self._names(Cluster.name, [w.pinned_cluster_id, *w.cluster_floors]),
         )
         return workload_manifest(w, refs, placement, note)
@@ -110,7 +113,7 @@ class ManifestService:
             raise NotFound(f"no artifact {name!r} {where}")
         refs = Refs(
             projects={owner.uid: owner.slug} if owner else {},
-            artifacts=await self._names(Artifact.handle, [a.base_artifact_id]),
+            artifacts=await self._names(Artifact.handle, [a.base_artifact_id], visible(owner.id if owner else None)),
         )
         if a.project_id and a.project_id not in refs.projects:
             refs.projects |= await self._names(Project.slug, [a.project_id])
