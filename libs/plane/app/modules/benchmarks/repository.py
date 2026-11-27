@@ -29,6 +29,7 @@ from app.modules.artifacts.scope import visible
 from app.modules.deployments.naming import by_ref
 from app.modules.endpoints.repository import AMBIGUOUS_HINT
 from app.modules.endpoints.repository import ref_query
+from app.modules.endpoints.repository import target_deployment
 
 
 class BenchmarkRepository:
@@ -180,7 +181,7 @@ class BenchmarkRepository:
                 EndpointTarget,
                 (EndpointTarget.endpoint_id == Endpoint.id) & EndpointTarget.enabled.is_(True),
             )
-            .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .outerjoin(Deployment, target_deployment())
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, (Workload.artifact_id == Artifact.id) & visible(Workload.project_id))
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import ColumnElement
 from sqlalchemy import or_
 from sqlalchemy import func
 from sqlalchemy import select
@@ -41,6 +42,20 @@ def ref_query(ref: str, project: str | None = None) -> Select:
 
 
 AMBIGUOUS_HINT = "say which with `project`"
+
+
+def target_deployment() -> ColumnElement[bool]:
+    """The join condition from an `EndpointTarget` to the deployments it routes to: its pinned
+    deployment, or every deployment of the workload a workload ref names in the endpoint's project
+    (ADR 0026). The enclosing query has to carry `Endpoint` and `EndpointTarget` in its FROM."""
+    ref = aliased(Workload, name="ref_workload")
+    by_ref = (
+        select(ref.id)
+        .where(ref.project_id == Endpoint.project_id, ref.name == EndpointTarget.workload_name)
+        .correlate(Endpoint, EndpointTarget)
+    )
+    return or_(Deployment.id == EndpointTarget.deployment_id, Deployment.workload_id.in_(by_ref))
+
 
 PUBLIC_ID_LOCK_PREFIX = "wingsmith.endpoint-id:"
 
@@ -183,7 +198,6 @@ class EndpointRepository:
         a disabled endpoint: the gateway's table carries no project flag, so this
         is the only place a project can be switched off.
         """
-        ref = aliased(Workload, name="ref_workload")
         query = (
             select(
                 Endpoint,
@@ -200,14 +214,7 @@ class EndpointRepository:
             .join(Project, Project.id == Endpoint.project_id)
             .join(Tenant, Tenant.id == Project.tenant_id)
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
-            .outerjoin(
-                ref,
-                (ref.project_id == Endpoint.project_id) & (ref.name == EndpointTarget.workload_name),
-            )
-            .outerjoin(
-                Deployment,
-                or_(EndpointTarget.deployment_id == Deployment.id, Deployment.workload_id == ref.id),
-            )
+            .outerjoin(Deployment, target_deployment())
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)

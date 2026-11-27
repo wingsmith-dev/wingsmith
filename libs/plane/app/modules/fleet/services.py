@@ -25,6 +25,7 @@ from app.db.models import Deployment
 from app.db.models import EndpointTarget
 from app.db.models import ClusterSyncState
 from app.db.supply import free_device_sum
+from app.modules.endpoints.repository import target_deployment
 
 from .schemas import FleetNodesSchema
 from .schemas import FleetDevicesSchema
@@ -154,7 +155,7 @@ class FleetService:
                 EndpointTarget,
                 and_(EndpointTarget.endpoint_id == Endpoint.id, EndpointTarget.enabled.is_(True)),
             )
-            .outerjoin(Deployment, Deployment.id == EndpointTarget.deployment_id)
+            .outerjoin(Deployment, target_deployment())
             .outerjoin(ready, ready.c.deployment_id == Deployment.id)
             .group_by(Endpoint.id, Endpoint.enabled)
             .subquery()

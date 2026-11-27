@@ -21,6 +21,7 @@ from app.db.models import AllocationDevice
 from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 from app.modules.endpoints.repository import endpoint_by_ref
+from app.modules.endpoints.repository import target_deployment
 
 
 def _project_ids(ref: str) -> Select:
@@ -222,7 +223,8 @@ class ServingQuotaRepository:
         """
         return (
             select(EndpointTarget.endpoint_id)
-            .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .join(Endpoint, EndpointTarget.endpoint_id == Endpoint.id)
+            .join(Deployment, target_deployment())
             .where(Deployment.workload_id.in_(ref_ids(Workload, ref)))
         )
 
@@ -248,7 +250,7 @@ class ServingQuotaRepository:
                 EndpointTarget,
                 and_(EndpointTarget.endpoint_id == Endpoint.id, EndpointTarget.enabled.is_(True)),
             )
-            .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .outerjoin(Deployment, target_deployment())
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .where(Endpoint.enabled.is_(True))
             .order_by(ServingQuota.seq.asc())

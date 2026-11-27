@@ -10,6 +10,7 @@ from app.db.models import Endpoint
 from app.db.models import Deployment
 from app.db.models import EndpointTarget
 from app.db.models import DeploymentStatus
+from app.modules.endpoints.repository import target_deployment
 
 
 class ServingRepository:
@@ -33,7 +34,7 @@ class ServingRepository:
         ready = (
             select(func.coalesce(func.sum(DeploymentStatus.ready_replicas), 0))
             .select_from(EndpointTarget)
-            .join(Deployment, Deployment.id == EndpointTarget.deployment_id)
+            .join(Deployment, target_deployment())
             .join(DeploymentStatus, DeploymentStatus.deployment_id == Deployment.id)
             .where(
                 EndpointTarget.endpoint_id == Endpoint.id,
@@ -46,7 +47,7 @@ class ServingRepository:
         desired = (
             select(func.coalesce(func.sum(Deployment.desired_replicas), 0))
             .select_from(EndpointTarget)
-            .join(Deployment, Deployment.id == EndpointTarget.deployment_id)
+            .join(Deployment, target_deployment())
             .where(
                 EndpointTarget.endpoint_id == Endpoint.id,
                 EndpointTarget.enabled.is_(True),

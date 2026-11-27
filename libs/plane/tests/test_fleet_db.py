@@ -285,6 +285,45 @@ async def test_the_fleet_summary_counts_every_collection(db):
     assert (summary.workloads.total, summary.workloads.paused) == (8, 1)
 
 
+async def test_an_endpoint_targeting_a_workload_by_name_is_counted_by_its_deployments(db):
+    """A workload ref (ADR 0026) carries no deployment_id; it must not read as idle or 0/0."""
+    from app.modules.serving.services import ServingService
+
+    demand = await seed_demand(db)
+    artifact, _ = await seed_artifact(db, "zz-ref")
+    cluster = await seed_cluster(db, "zz-ref")
+    deployment = await seed_deployment(db, demand, artifact, cluster, "admitted", desired=2, ready=2)
+    workload = (
+        await db.execute(
+            text(
+                "select w.name from demand_workload w join demand_deployment d on d.workload_id = w.id where d.id = :d"
+            ),
+            {"d": deployment},
+        )
+    ).scalar_one()
+    await db.execute(
+        text(
+            "insert into demand_deployment_status (deployment_id, cluster_id, desired_replicas, ready_replicas)"
+            " values (:d, :c, 2, 2)"
+        ),
+        {"d": deployment, "c": cluster},
+    )
+    await seed_endpoint(db, demand, [])
+    endpoint = (await db.execute(text("select id from demand_endpoint"))).scalar_one()
+    await db.execute(
+        text("insert into demand_endpoint_target (endpoint_id, workload_name, enabled) values (:e, :w, true)"),
+        {"e": endpoint, "w": workload},
+    )
+    await db.commit()
+
+    endpoints = (await FleetService(db).summary(now=NOW)).endpoints
+    assert (endpoints.serving, endpoints.idle) == (1, 0)
+
+    tenant = (await db.execute(text("select uid from bind_tenant where slug = 'zz-fleet'"))).scalar_one()
+    [model] = (await ServingService(db, tenant).overview()).models
+    assert (model.replicas_ready, model.replicas_desired) == (2, 2)
+
+
 async def test_artifact_usage_answers_many_artifacts_in_the_order_asked(db):
     demand = await seed_demand(db)
     base, base_uid = await seed_artifact(db, "zz-base")
