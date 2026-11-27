@@ -61,6 +61,13 @@ type Policy struct {
 	Rules   []Rule `json:"rules"`
 }
 
+// Limits is the media unit part of an endpoint's serving quota.
+type Limits struct {
+	UnitLimits map[string]int64 `json:"unit_limits"`
+	LimitScope string           `json:"limit_scope"`
+	Enforced   bool             `json:"enforced"`
+}
+
 // Endpoint is one public model name.
 type Endpoint struct {
 	ID              string     `json:"id"`
@@ -71,6 +78,7 @@ type Endpoint struct {
 	Upstreams       []Upstream `json:"upstreams"`
 	FailoverOrder   []string   `json:"failover_order"`
 	Policy          *Policy    `json:"policy"`
+	Limits          *Limits    `json:"limits"`
 	TenantID        string     `json:"tenant_id"`
 	Revision        string     `json:"revision"`
 }
