@@ -481,7 +481,7 @@ async def test_put_container_workload_round_trips(db: AsyncSession) -> None:
     cluster, project, artifact, _ = await a_workload(db)
     svc = ManifestService(db)
     m, created = await svc.put_workload("search", "worker", _container_body(artifact.handle, cluster.name))
-    assert created
+    assert created == "created"
     assert m.spec.runtime.kind == "container"
     assert m.spec.runtime.image == CONTAINER_IMAGE
     assert m.spec.runtime.engine is None
@@ -489,7 +489,7 @@ async def test_put_container_workload_round_trips(db: AsyncSession) -> None:
     assert tuple(row) == ("container", "container")
 
     replayed, created = await svc.put_workload("search", "worker", _wire(m))
-    assert not created
+    assert created == "unchanged"
     assert replayed.metadata.generation == m.metadata.generation
     assert replayed.status.serving_digest == m.status.serving_digest
 

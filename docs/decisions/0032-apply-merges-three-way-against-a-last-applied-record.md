@@ -17,7 +17,8 @@ nothing. `wings diff` also needs to know what an apply would do without doing it
   generation and is outside the declared-field diff. It is stored in the PUT's own transaction.
 - **Three-way merge on the server, one manager.** A field in the record and absent from the new
   body is reset to its schema default, as if declared; an `x-defaulted` one keeps the stored value
-  (it is the plane's to fill), and an `x-immutable` one is a 422 naming it. Maps (labels,
+  (it is the plane's to fill), and an `x-immutable` one whose default is not what is stored is a
+  422 naming it. Maps (labels,
   overrides, engine args) are user data and replaced whole. Fields never declared keep their
   stored value. No client-side merge.
 - **No record, no change.** An object never applied (created over the HTTP API, or before this)

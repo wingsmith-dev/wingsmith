@@ -294,7 +294,7 @@ class ManifestService:
 
         Replace diffs what the manifest declares, three-way against the last-applied record: a
         field the previous apply declared and this one leaves out goes back to its default
-        (`x-defaulted` ones keep the stored value, `x-immutable` ones are a 422), and any other
+        (`x-defaulted` ones keep the stored value; an `x-immutable` one whose default differs from the stored value is a 422), and any other
         undeclared field keeps the stored value. Without a record, only declared fields count.
         A declared field equal to the stored value changes nothing, so a replay moves no
         generation and rolls nothing. The body is then stored as the record, in the same
@@ -531,7 +531,8 @@ _SKIP_REMOVED = {("spec", "enabled"), ("status",)}
 def merge_removed(body: dict, last: dict | None, cls, exempt=frozenset()) -> dict:
     """The body with every field the last apply declared and this one leaves out set to its
     default, as if declared. `x-defaulted` fields and `exempt` paths are left out instead, so
-    they keep the stored value; an `x-immutable` one is a 422. Maps are user data and are
+    they keep the stored value. An `x-immutable` one is reset too, so the immutable check
+    refuses it (422) unless the default is what is stored. Maps are user data and are
     replaced whole, so only struct fields are walked."""
     body = _applied(body)
     if not last:
@@ -553,8 +554,6 @@ def merge_removed(body: dict, last: dict | None, cls, exempt=frozenset()) -> dic
                 marks = _marks(hints[f.name])
                 if "x-defaulted" in marks:
                     continue
-                if "x-immutable" in marks:
-                    raise Invalid(f"{_dotted(here)} cannot be removed after create", {"field": _dotted(here)})
                 node[key] = msgspec.to_builtins(getattr(obj, f.name))
                 continue
             child = getattr(obj, f.name)
