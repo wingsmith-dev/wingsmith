@@ -126,6 +126,11 @@ JSON API (ADR 0028). Workloads and endpoints are read in `--project`; an artifac
 private there, from the public catalogue otherwise. The kinds' JSON Schema, with its `x-immutable`
 and `x-defaulted` markers, is embedded at `internal/api/manifest-schema.json`.
 
+`wings get <kind>` without a name lists the kind (every project unless `--project` is set). `-w`
+lists, then streams each change (ADDED, MODIFIED, DELETED) from the list's `resourceVersion`
+(ADR 0039); `-o json` prints one watch event per line. When the plane ends the stream it resumes
+from the last RV; when that RV has been compacted (410) it relists.
+
 `wings apply -f file|dir|- [-R]` PUTs each Workload, then each Endpoint, then in file order
 (ADR 0029, 0032). The plane keeps the last manifest applied to each object and merges against it:
 a field removed from the file goes back to its default, a field never declared keeps its stored

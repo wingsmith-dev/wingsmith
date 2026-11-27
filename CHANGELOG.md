@@ -9,6 +9,12 @@ protocol can change between minor versions.
 
 ### Added
 
+- List and watch manifests over HTTP (ADR 0039). `GET /v1/manifests/{workloads,endpoints}[/{project}]`
+  and `/v1/manifests/artifacts` list a kind with the `resourceVersion` the items are current as of;
+  `?watch=true&resourceVersion=` streams Kubernetes-style JSON-line events from there, with
+  bookmarks, `timeoutSeconds`, equality `labelSelector` and `metadata.name` / `metadata.namespace`
+  `fieldSelector`. A compacted RV is 410 (an `ERROR` event mid-stream). `wings get <kind> [name]`
+  lists without a name and `-w` watches, relisting when the RV expires.
 - A durable, ordered change log for Workloads, Endpoints and Artifacts (ADR 0038). Every write
   records a hint in `change_log` in the same transaction, in commit order; `GET
   /v1/changes?since=<rv>&limit=` reads it and answers 410 Gone once `since` has been compacted

@@ -226,7 +226,7 @@ not created. Writing to an observed resource has no route and returns `405 metho
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus read-only derived views (one of them batched across artifacts), one operation, and a declared baseline sub-resource; see below |
 | `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution and a read-only serving history, see below |
-| `/v1/manifests` | Workloads, endpoints and artifacts as `plane.wingsmith.dev/v1alpha1` manifests by `{project}/{name}` (a public artifact by `{name}`); workloads and endpoints are applied with `PUT` (201 create, 200 replace, declared fields only, `If-Match` 409); ADR 0022, 0029 |
+| `/v1/manifests` | Workloads, endpoints and artifacts as `plane.wingsmith.dev/v1alpha1` manifests by `{project}/{name}` (a public artifact by `{name}`); workloads and endpoints are applied with `PUT` (201 create, 200 replace, declared fields only, `If-Match` 409); ADR 0022, 0029; listed per kind at `/v1/manifests/{kind}[/{project}]` with the list's `resourceVersion`, and watched with `?watch=true&resourceVersion=` as JSON lines (`ADDED`/`MODIFIED`/`DELETED`/`BOOKMARK`/`ERROR`), 410 once the RV is compacted, 429 when the plane's watch slots are full; ADR 0039 |
 | `/v1/changes` | The change log for workloads, endpoints and artifacts: `?since=<resourceVersion>&limit=` returns ordered hints (kind, namespace, name, uid, op, generation); 410 `gone` once `since` is compacted (24h); ADR 0038 |
 | `/v1/deployments` | declared, per-cluster, read-mostly, see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs, see below |
