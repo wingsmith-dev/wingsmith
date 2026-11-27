@@ -2,7 +2,8 @@ name: release
 
 # A semver tag on main publishes that commit: the six images, multi-arch, at the tag's version and
 # no other tag, each signed keylessly with cosign and carrying an SBOM and provenance attestation,
-# and the chart at the same version. Nothing here runs for a branch or a pull request.
+# and the chart at the same version. The wingsmith-host .deb and .rpm attach to the tag's GitHub
+# release. Nothing here runs for a branch or a pull request.
 
 on:
   push:
@@ -21,6 +22,7 @@ defaults:
 
 env:
   HELM_VERSION: "v3.22.0"
+  GO_VERSION: "1.26"
 
 jobs:
   version:
@@ -172,3 +174,64 @@ jobs:
           fi
           printf '%s' "$GH_TOKEN" | cosign login ghcr.io -u "$GH_ACTOR" --password-stdin
           cosign sign --yes "$CHART_REPO/cluster-setup@$digest"
+
+  host-packages:
+    name: host packages (${{ matrix.runner }})
+    needs: [version, ci]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: libs/operator
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: false
+      - run: go mod download
+      - run: deploy/host/build-packages.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-packages-${{ matrix.runner }}
+          path: |
+            libs/operator/dist/*.deb
+            libs/operator/dist/*.rpm
+          if-no-files-found: error
+          retention-days: 7
+
+  # Attaches the .deb and .rpm (and their checksums) to the tag's GitHub release, creating it when
+  # absent. No apt or rpm repository is published.
+  host-release:
+    needs: [version, host-packages]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: host-packages-*
+          merge-multiple: true
+          path: packages
+      - name: attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd packages
+          sha256sum -- *.deb *.rpm >wingsmith-host-SHA256SUMS
+          if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" -R "$REPO" --verify-tag --title "$TAG" --notes "See CHANGELOG.md."
+          fi
+          gh release upload "$TAG" -R "$REPO" --clobber -- *.deb *.rpm wingsmith-host-SHA256SUMS

@@ -71,6 +71,40 @@ jobs:
       - name: go test -race
         run: go test -race ./...
 
+  # The wingsmith-host .deb and .rpm build for both architectures and list their contents; nothing
+  # is published here (release.yml attaches them to a tag's GitHub release).
+  host-packages:
+    name: host packages (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    defaults:
+      run:
+        working-directory: libs/operator
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/operator/go.sum
+      - run: go mod download
+      - name: build and list
+        run: VERSION=0.0.0-dev deploy/host/build-packages.sh
+      - name: the packages carry the binary, unit and config
+        run: |
+          deb="$(ls dist/*.deb)"
+          for f in ./usr/bin/wingsmith-host ./usr/lib/systemd/system/wingsmith-host.service ./etc/wingsmith/host.json; do
+            dpkg-deb -c "$deb" | grep -q " $f\$" || { echo "::error::$deb lacks $f"; exit 1; }
+          done
+          dpkg-deb -I "$deb" postinst >/dev/null
+          file dist/wingsmith-host
+
   plane:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
