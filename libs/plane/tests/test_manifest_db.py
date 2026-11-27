@@ -188,10 +188,12 @@ async def test_put_scale_replayed_is_a_no_op(db: AsyncSession) -> None:
     assert len(await _scale_operations(db, workload.id)) == 1
 
 
-async def test_put_scale_outside_the_bounds_is_still_refused(db: AsyncSession) -> None:
+async def test_put_scale_outside_the_bounds_widens_them(db: AsyncSession) -> None:
     await a_workload(db)
-    with pytest.raises(Invalid):
-        await ManifestService(db).put_scale("search", "gpt-oss-prod", _scale(5))
+    s = await ManifestService(db).put_scale("search", "gpt-oss-prod", _scale(3))
+    assert s.spec.replicas == 3
+    m = await ManifestService(db).workload("search", "gpt-oss-prod")
+    assert (m.spec.scale.min, m.spec.scale.max) == (1, 3)
 
 
 async def test_put_scale_keeps_the_new_count_when_placement_refuses(db: AsyncSession, monkeypatch) -> None:

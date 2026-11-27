@@ -132,7 +132,10 @@ class ManifestService:
         if replicas == workload.desired_scale:
             return scale_view(w, owner.slug)
 
-        parameters = WorkloadScaleParameters(desired=replicas)
+        # No autoscaler owns the bounds yet, so a manual count widens them (ADR 0025).
+        parameters = WorkloadScaleParameters(
+            desired=replicas, min=min(workload.min_scale, replicas), max=max(workload.max_scale, replicas)
+        )
         now = dt.datetime.now(dt.UTC)
         change = await svc.change_scale(w.id, parameters, refuse=False)
         self.db.add(
