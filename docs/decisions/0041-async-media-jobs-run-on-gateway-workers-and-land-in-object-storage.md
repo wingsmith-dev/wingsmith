@@ -33,7 +33,10 @@ outputs are delivered as signed URLs from object storage with a per-project rete
   a per-tenant unique `idempotency_key`, and `retention_until` set at completion from the project's
   `media_retention_days` (default 7).
 - **The gateway talks to the plane as its service principal** on `/v1/gateway/media-jobs/*`:
-  create, read, cancel (all tenant-scoped), claim, heartbeat, complete. Tenants never reach the
+  create, read, cancel (all tenant-scoped), claim, heartbeat, complete. Heartbeat and complete
+  carry the claim's `attempts` as a lease token, since every slot of a replica shares one worker
+  id; a stale claim is answered 409. A worker heartbeats once more before its upload, so a lost
+  lease leaves no object behind. Tenants never reach the
   plane; they call the gateway with their API key, and a job is only visible to the tenant that
   created it.
 - **API.** `POST /v1/videos` is always async when the gateway has object storage configured and
@@ -55,8 +58,8 @@ outputs are delivered as signed URLs from object storage with a per-project rete
 ## Consequences
 
 - Object storage is required for async. A response is spooled to local disk once per running job.
-- A worker decodes a JSON response whose `data[0].b64_json` is the video in memory. Very large
-  outputs want a streaming decoder later.
+- A worker stream-decodes a JSON response's `data[0].b64_json` into a second spool file, so the
+  video never sits in memory; it takes twice its size on disk while it uploads.
 - Quota reservation and settlement can hit different replicas' buckets; quotas are already
   per replica (ADR 0036), so a fleet total is still approximate.
 - Webhooks, queue-depth autoscaling and spot placement are P4.4.

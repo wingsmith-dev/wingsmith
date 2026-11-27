@@ -161,6 +161,9 @@ protocol can change between minor versions.
 
 ### Fixed
 
+- Media job leases are fenced by the claim's attempt, so a stale claim on the same replica can no
+  longer heartbeat or complete a job claimed again; the worker confirms its lease before uploading,
+  and a `b64_json` output is stream-decoded to disk instead of into memory.
 - Hosts sync the allocation map and declared-state checkpoint to disk before renaming them into
   place, so a power loss cannot leave an empty file.
 - Endpoints whose targets are workload refs now report their replicas in the serving view, count
