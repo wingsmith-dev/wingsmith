@@ -41,10 +41,14 @@ func (c *Client) Manifest(ctx context.Context, collection, project, name string)
 	return out, err
 }
 
-// ApplyOptions are a PUT's optional parts: a dry run and an If-Match revision.
+// ApplyOptions are a PUT's optional parts: a dry run, an If-Match revision, the
+// field manager (the plane defaults it to wings-cli) and a forced takeover from
+// another manager.
 type ApplyOptions struct {
-	DryRun  bool
-	IfMatch string
+	DryRun       bool
+	IfMatch      string
+	FieldManager string
+	Force        bool
 }
 
 // Apply results, from the plane's X-Wingsmith-Result header.
@@ -59,9 +63,15 @@ const (
 // created, configured or unchanged.
 func (c *Client) ApplyManifest(ctx context.Context, collection, project, name string, m Manifest, opts ApplyOptions) (Manifest, string, error) {
 	path := "/v1/manifests/" + collection + "/" + url.PathEscape(project) + "/" + url.PathEscape(name)
-	var q url.Values
+	q := url.Values{}
 	if opts.DryRun {
-		q = url.Values{"dryRun": {"All"}}
+		q.Set("dryRun", "All")
+	}
+	if opts.FieldManager != "" {
+		q.Set("fieldManager", opts.FieldManager)
+	}
+	if opts.Force {
+		q.Set("force", "true")
 	}
 	var headers map[string]string
 	if opts.IfMatch != "" {

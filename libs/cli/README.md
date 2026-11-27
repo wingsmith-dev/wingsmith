@@ -133,6 +133,11 @@ value, and applying the same file again prints `unchanged`. A failed document do
 rest; every result is printed and apply exits 1 if any failed. `--if-match <resourceVersion>`
 makes a single-document apply conditional. Artifact documents are refused for now.
 
+The plane records who applied each object (ADR 0033). `--field-manager <name>` names the applier
+(default `wings-cli`); an object another manager applied, or one the console took over, is refused
+with a conflict naming its manager, and `--force-conflicts` takes it over. The console and plain
+HTTP writes are refused the same way on an applied object until they force a takeover.
+
 `wings diff -f ...` shows what apply would change: it reads each object, asks the plane for the
 result of a dry-run PUT (`?dryRun=All`, nothing kept) and prints a unified YAML diff of spec and
 metadata without the plane-managed keys. Exit 0 means no change, 1 a change, above 1 an error.

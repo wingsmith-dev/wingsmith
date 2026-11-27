@@ -944,6 +944,9 @@
  },
  "EndpointSchema": {
   "aliases": "[]string",
+  "applied_at": "string?",
+  "applied_by": "string?",
+  "applied_by_principal": "string?",
   "conditions": "[]$EndpointConditionSchema",
   "created_at": "string",
   "enabled": "boolean",
@@ -2299,6 +2302,9 @@
  },
  "WorkloadSchema": {
   "adapter_artifact_ids": "[]string",
+  "applied_at": "string?",
+  "applied_by": "string?",
+  "applied_by_principal": "string?",
   "artifact_tag": "string?",
   "cluster_floors": "object",
   "created_at": "string",

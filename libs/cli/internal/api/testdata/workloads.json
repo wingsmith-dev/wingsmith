@@ -165,7 +165,10 @@
         }
       ],
       "artifact_tag": null,
-      "generation": 1
+      "generation": 1,
+      "applied_by": null,
+      "applied_by_principal": null,
+      "applied_at": null
     },
     {
       "id": "wkl_01m0dsfeh294c34fkb2wfgzx6g",
@@ -326,7 +329,10 @@
         }
       ],
       "artifact_tag": null,
-      "generation": 1
+      "generation": 1,
+      "applied_by": null,
+      "applied_by_principal": null,
+      "applied_at": null
     },
     {
       "id": "wkl_01m0dsfehd4m2jqemsjnvwj7r4",
@@ -487,7 +493,10 @@
         }
       ],
       "artifact_tag": null,
-      "generation": 1
+      "generation": 1,
+      "applied_by": null,
+      "applied_by_principal": null,
+      "applied_at": null
     }
   ],
   "count": 3

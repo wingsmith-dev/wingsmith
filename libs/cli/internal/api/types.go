@@ -734,22 +734,26 @@ type Workload struct {
 	AdapterArtifactIDs []string    `json:"adapter_artifact_ids"`
 	// ServedModelName is the model id the engine registers under, read from the
 	// artifact's slug. It is reported, never declared.
-	ServedModelName string               `json:"served_model_name"`
-	ArtifactTag     *string              `json:"artifact_tag"`
-	Overrides       map[string]any       `json:"overrides"`
-	Labels          map[string]any       `json:"labels"`
-	Strategy        string               `json:"strategy"`
-	ClusterFloors   map[string]any       `json:"cluster_floors"`
-	MaxClusters     *int                 `json:"max_clusters"`
-	PinnedClusterID *string              `json:"pinned_cluster_id"`
-	Scale           WorkloadScale        `json:"scale"`
-	StartedAt       *time.Time           `json:"started_at"`
-	FinishedAt      *time.Time           `json:"finished_at"`
-	DeadlineAt      *time.Time           `json:"deadline_at"`
-	CreatedAt       time.Time            `json:"created_at"`
-	UpdatedAt       *time.Time           `json:"updated_at"`
-	Revision        string               `json:"revision"`
-	Deployments     []WorkloadDeployment `json:"deployments"`
+	ServedModelName string  `json:"served_model_name"`
+	ArtifactTag     *string `json:"artifact_tag"`
+	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0033).
+	AppliedBy          *string              `json:"applied_by"`
+	AppliedByPrincipal *string              `json:"applied_by_principal"`
+	AppliedAt          *time.Time           `json:"applied_at"`
+	Overrides          map[string]any       `json:"overrides"`
+	Labels             map[string]any       `json:"labels"`
+	Strategy           string               `json:"strategy"`
+	ClusterFloors      map[string]any       `json:"cluster_floors"`
+	MaxClusters        *int                 `json:"max_clusters"`
+	PinnedClusterID    *string              `json:"pinned_cluster_id"`
+	Scale              WorkloadScale        `json:"scale"`
+	StartedAt          *time.Time           `json:"started_at"`
+	FinishedAt         *time.Time           `json:"finished_at"`
+	DeadlineAt         *time.Time           `json:"deadline_at"`
+	CreatedAt          time.Time            `json:"created_at"`
+	UpdatedAt          *time.Time           `json:"updated_at"`
+	Revision           string               `json:"revision"`
+	Deployments        []WorkloadDeployment `json:"deployments"`
 }
 
 // WorkloadCreateRequest is what it takes to run something, without saying where.
@@ -1001,6 +1005,10 @@ type Endpoint struct {
 	Revision  string          `json:"revision"`
 	// Conditions carries ResolvedRefs, False while a workload ref names no workload.
 	Conditions []EndpointCondition `json:"conditions"`
+	// AppliedBy is the field manager that applied it last; nil when nothing manages it (ADR 0033).
+	AppliedBy          *string    `json:"applied_by"`
+	AppliedByPrincipal *string    `json:"applied_by_principal"`
+	AppliedAt          *time.Time `json:"applied_at"`
 }
 
 // WorkloadRef names a workload in the endpoint's own project.

@@ -232,3 +232,28 @@ func TestDiffExitsAboveOneWhenThePlaneFails(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyFieldManagerAndForceConflictsReachTheQuery(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.RawQuery)
+		_, _ = w.Write([]byte(`{"kind":"Workload"}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("WINGSMITH_FAKE", "0")
+	t.Setenv("WINGSMITH_SERVER", srv.URL)
+	t.Setenv("WINGSMITH_TOKEN", "wss1_test")
+	t.Setenv("WINGSMITH_PROJECT", "core")
+	file := filepath.Join(t.TempDir(), "m.yaml")
+	writeFile(t, file, doc("Workload", "chat", "{}"))
+	if _, errOut, code := run(t, "apply", "-f", file); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if _, errOut, code := run(t, "apply", "-f", file, "--field-manager", "argo", "--force-conflicts"); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	want := []string{"", "fieldManager=argo&force=true"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("queries %q, want %q", got, want)
+	}
+}

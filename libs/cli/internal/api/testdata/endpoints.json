@@ -51,7 +51,10 @@
             "updated_at": null,
             "revision": "1787165563854292",
             "generation": 1,
-            "conditions": []
+            "conditions": [],
+            "applied_by": null,
+            "applied_by_principal": null,
+            "applied_at": null
         }
     ],
     "count": 1,

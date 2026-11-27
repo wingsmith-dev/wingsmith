@@ -220,7 +220,8 @@ type applyOutcome struct {
 
 func newApplyCmd(app *App) *cobra.Command {
 	var src manifestSources
-	var ifMatch string
+	var ifMatch, fieldManager string
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "apply -f <file|dir|->",
 		Short: "Create or replace Workloads and Endpoints from manifests",
@@ -237,7 +238,12 @@ not stop the rest: every result is printed and apply exits 1 if any failed.
 A document without metadata.namespace is applied in --project. A document with
 metadata.resourceVersion is applied only if the object is still at that
 revision; --if-match does the same for a single document. Artifact manifests
-are not applied yet: register artifacts with 'wings artifact create'.`,
+are not applied yet: register artifacts with 'wings artifact create'.
+
+The plane records who applied each object: --field-manager names the applier
+(default wings-cli). An object another manager applied, or one the console took
+over, is refused with a conflict naming its manager; --force-conflicts takes it
+over.`,
 		Example: `  wings apply -f chat.yaml
   wings apply -f deploy/ -R
   cat chat.yaml | wings apply -f -`,
@@ -270,7 +276,7 @@ are not applied yet: register artifacts with 'wings artifact create'.`,
 				o := applyOutcome{Ref: p.ref, Source: p.source}
 				err := p.err
 				if err == nil {
-					o.Object, o.Result, err = app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{IfMatch: ifMatch})
+					o.Object, o.Result, err = app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{IfMatch: ifMatch, FieldManager: fieldManager, Force: force})
 				}
 				if err != nil {
 					o.Error, o.Object = errs.As(err), nil
@@ -306,11 +312,14 @@ are not applied yet: register artifacts with 'wings artifact create'.`,
 	}
 	src.bind(cmd)
 	cmd.Flags().StringVar(&ifMatch, "if-match", "", "apply only if the object is still at this resourceVersion")
+	cmd.Flags().StringVar(&fieldManager, "field-manager", "", "name the applier the plane records (default wings-cli)")
+	cmd.Flags().BoolVar(&force, "force-conflicts", false, "take over objects another manager applied")
 	return group(cmd, "demand")
 }
 
 func newDiffCmd(app *App) *cobra.Command {
 	var src manifestSources
+	var fieldManager string
 	cmd := &cobra.Command{
 		Use:   "diff -f <file|dir|->",
 		Short: "Show what apply would change",
@@ -345,7 +354,7 @@ error, like diff(1).`,
 				if err != nil {
 					return err
 				}
-				merged, _, err := app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{DryRun: true})
+				merged, _, err := app.Backend.ApplyManifest(ctx, p.collection, p.project, p.name, p.doc, api.ApplyOptions{DryRun: true, FieldManager: fieldManager})
 				if err != nil {
 					return err
 				}
@@ -370,13 +379,20 @@ error, like diff(1).`,
 		},
 	}
 	src.bind(cmd)
+	cmd.Flags().StringVar(&fieldManager, "field-manager", "", "diff as this applier (default wings-cli)")
 	return group(cmd, "demand")
 }
 
 // managedMetadata are the keys the plane writes, which a diff leaves out.
 var managedMetadata = []string{"uid", "generation", "creationTimestamp", "resourceVersion"}
 
-const lastAppliedAnnotation = "plane.wingsmith.dev/last-applied"
+// planeAnnotations are the annotations the plane writes on read (ADR 0032, 0033).
+var planeAnnotations = map[string]bool{
+	"plane.wingsmith.dev/last-applied":         true,
+	"plane.wingsmith.dev/applied-by":           true,
+	"plane.wingsmith.dev/applied-by-principal": true,
+	"plane.wingsmith.dev/applied-at":           true,
+}
 
 // diffYAML is the part of a manifest diff compares, as YAML: no status and no
 // plane-managed metadata. A nil manifest is the empty string.
@@ -401,7 +417,7 @@ func diffYAML(m api.Manifest) (string, error) {
 		if notes, ok := trimmed["annotations"].(map[string]any); ok {
 			kept := map[string]any{}
 			for k, v := range notes {
-				if k != lastAppliedAnnotation {
+				if !planeAnnotations[k] {
 					kept[k] = v
 				}
 			}
