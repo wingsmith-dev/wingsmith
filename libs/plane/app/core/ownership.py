@@ -49,7 +49,9 @@ async def guard(
     `manager` is the writer's own field manager, `None` for an imperative write (console, API).
     An object nobody manages, or one this manager already does, passes untouched.
     """
-    row = (await db.execute(select(model.id, model.name, model.applied_by).where(model.uid == uid))).one()
+    # Lock the row so a write racing a first apply can't read a stale NULL manager and pass.
+    stmt = select(model.id, model.name, model.applied_by).where(model.uid == uid).with_for_update()
+    row = (await db.execute(stmt)).one()
     if row.applied_by is None or row.applied_by == manager:
         return
     if not force:
