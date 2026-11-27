@@ -132,9 +132,9 @@ class ServingQuotaStandardSchema(Struct):
 class ServingQuotaSchema(Struct):
     """One endpoint's committed request rate, token rate and concurrency.
 
-    Advisory today. The gateway does not read serving quotas, so nothing refuses a
-    request over these numbers; `enforced` records whether the operator wants them
-    enforced once something does.
+    rpm/tpm/concurrency are advisory; unit_limits are enforced by the gateway.
+    Nothing refuses a request over the committed rates; `enforced` records whether
+    the operator wants them enforced once something does.
 
     Every field here is declared. There is no `usage`, and there is
     intentionally no observed sibling of the shape `QuotaSchema.usage` has: a device quota's

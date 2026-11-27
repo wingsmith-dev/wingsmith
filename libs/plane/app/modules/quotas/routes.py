@@ -2,9 +2,9 @@
 
 Two unrelated objects live here and the names are close enough to be dangerous.
 A `Quota` is devices, checked once by placement when a workload is admitted. A
-`ServingQuota` is traffic (RPM, TPM, concurrency) declared for an endpoint and
-not enforced yet: the gateway does not read serving quotas, so every limit here
-is advisory until it does. Different table, different consumer, and no field in
+`ServingQuota` is traffic (RPM, TPM, concurrency) declared for an endpoint, plus
+media `unit_limits`. rpm/tpm/concurrency are advisory; unit_limits are enforced
+by the gateway. Different table, different consumer, and no field in
 common.
 
 Declared limits and observed usage arrive together and stay apart: `usage` is
@@ -95,9 +95,8 @@ class QuotaRoutes(Controller):
 class ServingQuotaRoutes(Controller):
     """Serving quotas: the traffic a served endpoint is committed to carry.
 
-    Declared here and not enforced anywhere yet: the gateway does not read these,
-    so `enforced` records what the operator wants once it does, and every limit is
-    advisory today. No handler reads a counter, calls the metrics backend or reports a rate: the
+    rpm/tpm/concurrency are advisory; unit_limits are enforced by the gateway.
+    `enforced` records what the operator wants for the rates once something does. No handler reads a counter, calls the metrics backend or reports a rate: the
     observed half of these numbers is on the metrics surface, and folding it in
     here would put the data plane's measurements on the control plane's read path.
     """

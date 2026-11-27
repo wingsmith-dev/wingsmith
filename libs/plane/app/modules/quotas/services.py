@@ -539,8 +539,7 @@ class ServingQuotaService:
 
     Every method here reads or writes `bind_serving_quota` and rows this database
     already owns. Nothing counts a request, and nothing calls the metrics backend.
-    Nothing enforces these numbers yet either: the gateway does not read serving
-    quotas, so a declared limit is advisory until it does.
+    rpm/tpm/concurrency are advisory; unit_limits are enforced by the gateway.
     """
 
     def __init__(self, db: AsyncSession) -> None:
