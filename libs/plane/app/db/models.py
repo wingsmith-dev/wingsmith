@@ -12,10 +12,12 @@ from sqlalchemy import Boolean
 from sqlalchemy import Integer
 from sqlalchemy import Numeric
 from sqlalchemy import DateTime
+from sqlalchemy import Identity
 from sqlalchemy import BigInteger
 from sqlalchemy import ForeignKey
 from sqlalchemy import CheckConstraint
 from sqlalchemy import UniqueConstraint
+from sqlalchemy import func
 from sqlalchemy import text
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import relationship
@@ -24,6 +26,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db.base import BaseMixin
+from app.db.engine import Base
 
 
 dUUID = text("gen_random_uuid()")
@@ -371,6 +374,8 @@ class Artifact(BaseMixin):
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    resource_version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    """The `change_log.seq` of this row's last change: `metadata.resourceVersion` and `If-Match`."""
     digest: Mapped[str] = mapped_column(String(128), nullable=False)
     # False when the digest is a reference, not content: `hf:org/model` for weights we
     # adopted by watching a cluster serve them. The row is a real artifact and workloads may point
@@ -496,6 +501,8 @@ class Workload(BaseMixin):
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    resource_version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    """The `change_log.seq` of this row's last change: `metadata.resourceVersion` and `If-Match`."""
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     project_id: Mapped[UUID] = mapped_column(
@@ -877,6 +884,8 @@ class Endpoint(BaseMixin):
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    resource_version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    """The `change_log.seq` of this row's last change: `metadata.resourceVersion` and `If-Match`."""
     project_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -1812,3 +1821,35 @@ class ReactorState(BaseMixin):
     lease_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_event_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     last_tick_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChangeLog(Base):
+    """One committed change to a `Workload`, `Endpoint` or `Artifact` (ADR 0035).
+
+    A hint, never a body: what changed and how, in commit order. `seq` is global and is the
+    `metadata.resourceVersion` of the object right after the change. Rows older than the retention
+    window are compacted away; `ChangeLogState.compacted_through` says how far.
+    """
+
+    __tablename__ = "change_log"
+
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    project_id: Mapped[UUID | None] = mapped_column(DBUUID, nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    uid: Mapped[str] = mapped_column(String(40), nullable=False)
+    op: Mapped[str] = mapped_column(String(16), nullable=False)
+    generation: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+
+class ChangeLogState(Base):
+    """The one row saying how far the change log has been compacted. A reader resuming at or
+    below `compacted_through` has missed changes and must relist (410 Gone)."""
+
+    __tablename__ = "change_log_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    compacted_through: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")

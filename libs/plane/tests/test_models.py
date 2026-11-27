@@ -52,6 +52,8 @@ BINDING = {
 }
 
 MACHINERY = {
+    "change_log",
+    "change_log_state",
     "ops_component",
     "ops_component_status",
     "ops_operation",
@@ -83,6 +85,10 @@ def test_metadata_contains_every_expected_table() -> None:
     assert EXPECTED <= set(Base.metadata.tables)
 
 
+LOG_TABLES = {"change_log", "change_log_state"}
+"""The change log is keyed by its own seq, which is the point of it (ADR 0035), not by the mixin's."""
+
+
 def test_metadata_contains_no_unexpected_tables() -> None:
     importlib.import_module("app.db.models")
     assert set(Base.metadata.tables) == EXPECTED
@@ -91,6 +97,8 @@ def test_metadata_contains_no_unexpected_tables() -> None:
 def test_every_table_has_the_base_mixin_columns() -> None:
     importlib.import_module("app.db.models")
     for name, table in Base.metadata.tables.items():
+        if name in LOG_TABLES:
+            continue
         columns = set(table.columns.keys())
         assert {"created_at", "updated_at", "seq"} <= columns, name
         assert "id" in columns, name
