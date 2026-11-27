@@ -20,6 +20,9 @@ data:
   WINGSMITH_WORKLOAD_NAMESPACE: {{ include "cluster-setup.workloadNamespace" . | quote }}
   WINGSMITH_DECLARE_WORKLOADS: {{ .Values.cluster.declareWorkloads | quote }}
   WINGSMITH_DEFAULT_PROJECT: {{ .Values.cluster.defaultProject | quote }}
+  WINGSMITH_DECLARE_QPS: {{ .Values.cluster.declare.qps | quote }}
+  WINGSMITH_DECLARE_BURST: {{ .Values.cluster.declare.burst | quote }}
+  WINGSMITH_DECLARE_CONCURRENCY: {{ .Values.cluster.declare.concurrency | quote }}
   WINGSMITH_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
   # "0" is the operator's own off switch.
   WINGSMITH_METRICS_ADDR: {{ ternary (printf ":%v" .Values.operator.metrics.port) "0" .Values.operator.metrics.enabled | quote }}

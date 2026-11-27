@@ -107,6 +107,11 @@ type Config struct {
 	// DefaultProject is the plane project a namespace without the plane.wingsmith.dev/project
 	// label declares into. Empty means such namespaces are not synced.
 	DefaultProject string
+	// DeclareQPS, DeclareBurst and DeclareConcurrency bound the declare controller's work queue,
+	// so a hub reconnect that relists every Workload does not hammer the plane.
+	DeclareQPS         int
+	DeclareBurst       int
+	DeclareConcurrency int
 
 	// PoolLabelKey and GPUPoolValue name the node label that selects accelerator nodes. How a
 	// cluster labels its pools is a local fact, not something the plane declares.
@@ -289,6 +294,9 @@ func Load() (*Config, error) {
 		WorkloadNamespace:         env("WINGSMITH_WORKLOAD_NAMESPACE", "dynamo"),
 		DeclareWorkloads:          l.bool("WINGSMITH_DECLARE_WORKLOADS", true),
 		DefaultProject:            env("WINGSMITH_DEFAULT_PROJECT", ""),
+		DeclareQPS:                l.int("WINGSMITH_DECLARE_QPS", 10),
+		DeclareBurst:              l.int("WINGSMITH_DECLARE_BURST", 50),
+		DeclareConcurrency:        l.int("WINGSMITH_DECLARE_CONCURRENCY", 4),
 		PoolLabelKey:              env("WINGSMITH_POOL_LABEL_KEY", "wingsmith.dev/pool"),
 		GPUPoolValue:              env("WINGSMITH_GPU_POOL_VALUE", "gpu"),
 		CachePoolValue:            env("WINGSMITH_CACHE_POOL_VALUE", "cache"),

@@ -40,6 +40,15 @@
         },
         "declareWorkloads": { "type": "boolean" },
         "defaultProject": { "type": "string" },
+        "declare": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "qps": { "type": "integer", "minimum": 1 },
+            "burst": { "type": "integer", "minimum": 1 },
+            "concurrency": { "type": "integer", "minimum": 1 }
+          }
+        },
         "logLevel": { "enum": ["debug", "info", "warn", "error"] },
         "logFormat": { "enum": ["json", "text"] }
       }

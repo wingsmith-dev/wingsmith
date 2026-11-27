@@ -66,7 +66,7 @@ next expansion. The resource's spec is never rewritten; the effective list is in
 | `planeUID`, `planeResourceVersion`, `planeGeneration` | the plane object as last applied |
 | `Synced` | the plane accepted this generation: `True/Applied`; `False` with `ManagerConflict` (another field manager owns the plane object), `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `PlaneError`; `Unknown/PlaneUnreachable` |
 | `Ready` | serving. `Unknown/AwaitingStatus` for now: serving status from the plane arrives in a later release |
-| `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`) |
+| `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`), or `DeleteFailing` after 10 failed plane deletes |
 | `Reconciling` | `True` while waiting on the plane or on serving status |
 
 `kubectl get workloads` shows Synced, Ready and Age. The conditions follow kstatus: Stalled=True is
@@ -79,14 +79,25 @@ fully, so a typo is reported as `Synced=False/Invalid` after the apply, not refu
 API server. A generated schema replaces it in a later release.
 
 While the plane is unreachable the operator retries every 30s, and after every reconnect it
-reapplies every resource; unchanged ones are no-ops on the plane.
+reapplies every resource; unchanged ones are no-ops on the plane. The relist goes through a token
+bucket (`cluster.declare.qps`, default 10, `burst` 50) and at most `concurrency` (default 4)
+reconciles run at once, so a reconnect with thousands of resources does not flood the plane.
 
 ## Delete
 
 Deleting the resource deletes the plane workload first (finalizer `plane.wingsmith.dev/sync`).
 `spec.deletionPolicy: Orphan` (default `Delete`) leaves the plane workload in place instead. If
 someone has since taken the plane object over (`wings apply --force-conflicts`, console Take over),
-it is released and left in place.
+it is released and left in place. A plane that no longer knows the object (`invalid`) also releases it.
+
+**Stuck Terminating on a plane refusal.** A delete the plane refuses (a conflict, or a plane error)
+is retried with exponential backoff (30s doubling, capped at 16 minutes). After 10 failed attempts
+the resource shows `Stalled=True/DeleteFailing` with the plane's reason and keeps retrying at the
+cap. To let it go and keep the plane object, patch the policy:
+
+```sh
+kubectl patch workload chat -n team-a --type=merge -p '{"spec":{"deletionPolicy":"Orphan"}}'
+```
 
 **Stuck Terminating while the plane is unreachable.** The resource shows
 `Synced=Unknown/PlaneUnreachable` and waits. If the plane will not come back, or you want the plane

@@ -134,6 +134,9 @@ func run() error {
 			Cluster:        cfg.ClusterID,
 			DefaultProject: cfg.DefaultProject,
 			Log:            log.With("controller", "declare"),
+			QPS:            cfg.DeclareQPS,
+			Burst:          cfg.DeclareBurst,
+			Concurrency:    cfg.DeclareConcurrency,
 		}).SetupWithManager(mgr); err != nil {
 			return err
 		}

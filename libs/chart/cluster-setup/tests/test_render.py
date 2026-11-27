@@ -821,6 +821,11 @@ def test_declared_workloads_get_operator_rbac_and_aggregated_roles(chart):
     assert get(docs, "ClusterRole", "wingsmith-view")["metadata"]["labels"]["rbac.authorization.k8s.io/aggregate-to-view"]
     config = get(docs, "ConfigMap", "wingsmith-operator", docs_namespace(docs))
     assert config["data"]["WINGSMITH_DEFAULT_PROJECT"] == "search"
+    assert (config["data"]["WINGSMITH_DECLARE_QPS"], config["data"]["WINGSMITH_DECLARE_BURST"],
+            config["data"]["WINGSMITH_DECLARE_CONCURRENCY"]) == ("10", "50", "4")
+    tuned = render(chart, **{"cluster.declare.qps": 2, "cluster.declare.concurrency": 1})
+    tuned_config = get(tuned, "ConfigMap", "wingsmith-operator", docs_namespace(tuned))["data"]
+    assert (tuned_config["WINGSMITH_DECLARE_QPS"], tuned_config["WINGSMITH_DECLARE_CONCURRENCY"]) == ("2", "1")
 
     off = render(chart, **{"cluster.declareWorkloads": False})
     role = get(off, "ClusterRole", "wingsmith-operator")

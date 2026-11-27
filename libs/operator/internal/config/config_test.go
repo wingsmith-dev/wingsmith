@@ -24,6 +24,9 @@ func TestLoadDefaults(t *testing.T) {
 	if c.PoolLabelKey != "wingsmith.dev/pool" || c.CacheTaintKey != "wingsmith.dev/cache" {
 		t.Errorf("pool label = %q, cache taint = %q, want the wingsmith.dev defaults", c.PoolLabelKey, c.CacheTaintKey)
 	}
+	if c.DeclareQPS != 10 || c.DeclareBurst != 50 || c.DeclareConcurrency != 4 {
+		t.Errorf("declare limits = %d/%d/%d, want 10/50/4", c.DeclareQPS, c.DeclareBurst, c.DeclareConcurrency)
+	}
 	if c.DCGMEndpoint != "" {
 		t.Errorf("dcgm endpoint = %q, want none until the cluster names one", c.DCGMEndpoint)
 	}
@@ -63,10 +66,16 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("WINGSMITH_LOG_LEVEL", "debug")
 	t.Setenv("WINGSMITH_SEND_QUEUE_SIZE", "8")
 	t.Setenv("WINGSMITH_BACKOFF_MAX", "1m")
+	t.Setenv("WINGSMITH_DECLARE_QPS", "3")
+	t.Setenv("WINGSMITH_DECLARE_BURST", "7")
+	t.Setenv("WINGSMITH_DECLARE_CONCURRENCY", "2")
 
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if c.DeclareQPS != 3 || c.DeclareBurst != 7 || c.DeclareConcurrency != 2 {
+		t.Fatalf("declare limits not applied: %+v", c)
 	}
 	if c.LogLevel != slog.LevelDebug || c.SendQueueSize != 8 || c.BackoffMax != time.Minute {
 		t.Fatalf("overrides not applied: %+v", c)
