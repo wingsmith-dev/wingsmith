@@ -784,7 +784,7 @@ class FakeCreateRepo:
         self.replaced = (endpoint, aliases)
 
     async def project_by_ref(self, ref):
-        return SimpleNamespace(id=uuid.uuid4(), uid="prj_1", tenant_id=uuid.uuid4())
+        return SimpleNamespace(id=uuid.uuid4(), uid="prj_1", slug="acme", tenant_id=uuid.uuid4())
 
     async def deployments_by_ref(self, refs, tenant_id, project_id=None):
         if self.deployment is None:
