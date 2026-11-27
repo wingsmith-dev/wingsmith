@@ -23,8 +23,15 @@ the same slug, so the second one was silently unreachable.
 - **`slug` is global and is the routing key.** It gets a unique index, and create or update with a
   slug another endpoint has as its slug or alias is a 409. No `spec.host` is added: the slug
   already is the host-like key, and clients keep their URLs.
+- **A defaulted slug moves aside; a declared one does not.** The slug defaults to the artifact's
+  slug, else the lowercased name. When that default is already another endpoint's slug or alias,
+  it becomes `<project>-<default>`, lowercased and DNS-safe, so a second project on the same model
+  is not refused. A declared slug that clashes is still a 409.
+- **Slug and alias writes are serialized.** The slug-vs-alias check spans two tables, so create and
+  update take a transaction-scoped advisory lock per public id before checking.
 - **The migration does not pick a winner.** If existing endpoints share a slug, the upgrade stops
-  and lists them; an operator renames all but one and reruns it.
+  and lists them; an operator renames all but one and reruns it. A follow-up migration
+  (8d3f6c0e2b57) does the same for an alias equal to another endpoint's slug.
 - **The CLI retries in the default project.** A bare name the plane calls ambiguous is retried with
   the configured project, as deployment names already are.
 

@@ -36,6 +36,11 @@ protocol can change between minor versions.
 
 ### Changed
 
+- An endpoint created without a slug whose default (the artifact slug, else the lowercased name)
+  is already taken gets `<project>-<default>` instead of a 409; a declared slug that clashes is
+  still refused (ADR 0024). Serving quota and endpoint benchmark creates take `project` for an
+  endpoint name two projects share. A migration refuses existing aliases equal to another
+  endpoint's slug.
 - Endpoint names are unique per project instead of globally. A bare name two projects share needs
   `?project=` (or the id) on endpoint reads, writes, metrics and SLA; `wings` retries it in the
   default project. Endpoint slugs are now unique, and a slug another endpoint has as its slug or
