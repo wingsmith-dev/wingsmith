@@ -1,0 +1,6 @@
+# Shipped ENGINE_PRESET_IMAGES entries. Append-only: add new releases here when they ship, never
+# edit or remove a line (tests/test_engine_presets.py checks the settings default still has each).
+vllm@0.34.0=docker.io/vllm/vllm-openai@sha256:20fdb089454afbb324efa4110a2c025ff7b27cc1a086e07aa580b18df8ad1ce1
+vllm@0.33.0=docker.io/vllm/vllm-openai@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e
+sglang@0.5.23=docker.io/lmsysorg/sglang@sha256:f832b5c39559c9caa900b22ad37c76fcce66470676855c42052102c537812f1f
+sglang@0.5.22=docker.io/lmsysorg/sglang@sha256:e3a4f06001a29542fc4a8638536d9ffc5eb9c9942b08603c09b19a56eae4a1ae
