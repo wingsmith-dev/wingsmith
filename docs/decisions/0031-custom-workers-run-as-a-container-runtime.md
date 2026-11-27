@@ -46,7 +46,7 @@ contract; this records the model decisions the MVP (P8.2) took.
 
 ## Consequences
 
-- MVP limits: `openai-chat` only, aggregated, one node per replica, a pinned artifact (the worker
+- MVP limits: `openai-chat` only (P4.2 added the media protocols, ADR 0036), aggregated, one node per replica, a pinned artifact (the worker
   runs offline). Completions, embeddings, plain HTTP, Secret env refs, presets, gang workers and
   host execution are P8.3/P8.4.
 - A container workload has no Dynamo frontend, so engine-metric autoscaling and KV routing do not

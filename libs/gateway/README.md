@@ -340,7 +340,7 @@ answered by an image model, on the same line and in `wingsmith_gateway_generated
   byte, the nearest this hop comes to GPU time; `inference_time_s` beside it when the response
   carried one (Dynamo's video response does).
 
-Audio and billable units (P4.2, ADR 0035), on the same line and series:
+Audio and billable units (P4.2, ADR 0036), on the same line and series:
 
 - `image_units`: images times their size tier, ceil(W*H / 1024x1024); one tier when no size was
   stated.

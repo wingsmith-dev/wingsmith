@@ -4,8 +4,28 @@ A workload can run your own serving image instead of NVIDIA Dynamo by declaring
 `spec.runtime.kind: container`. The platform pulls the weights as for any workload, mounts them
 read-only, and routes requests to your container's `http` port. ADR 0031 has the reasoning.
 
-Today this is the MVP: the worker answers the OpenAI chat API (`protocol: openai-chat`), runs one
-pod per replica on one node, and serves a pinned artifact (`hf://repo@revision` or a cached path).
+The worker answers one OpenAI API family, named by `protocol`, runs one pod per replica on one node,
+and serves a pinned artifact (`hf://repo@revision` or a cached path).
+
+## Protocols
+
+The protocol decides what the worker emits (`serving.outputModality`), which paths the gateway
+sends it, and the default readiness probe. Declaring a different `outputModality` is refused.
+
+| `protocol` | Emits | Gateway paths | Default readiness |
+|---|---|---|---|
+| `openai-chat` (default) | text | chat, completions, embeddings, messages, responses | `GET /v1/models` |
+| `openai-images` | image | `/v1/images/generations`, `/v1/images/edits`, chat | `GET /health` |
+| `openai-audio-speech` | speech | `/v1/audio/speech` | `GET /health` |
+| `openai-audio-transcriptions` | transcription | `/v1/audio/transcriptions`, `/v1/audio/translations` | `GET /health` |
+| `openai-videos` | video | `/v1/videos` | `GET /health` |
+
+Audio is served only this way (diffusers, SGLang-diffusion, Whisper or a TTS server behind one of
+these protocols); the omni engine under Dynamo emits image or video. A speech worker may set
+`X-Audio-Duration` (seconds) on its response so the gateway can meter `speech_seconds`; a
+transcription worker's `duration` (verbose_json) or `usage.seconds` is read for
+`transcription_seconds`. The gateway's media limits and quotas are in
+`libs/gateway/README.md`.
 
 ## A minimal manifest
 
@@ -25,7 +45,7 @@ spec:
       - name: http
         containerPort: 8000
     protocol: openai-chat
-    readinessProbe:            # optional; defaults to httpGet /health on port http
+    readinessProbe:            # optional; defaults by protocol (see Protocols)
       httpGet: {path: /v1/models, port: http}
     metrics: {port: http, path: /metrics}
   serving:
@@ -36,7 +56,8 @@ spec:
 
 Apply it with `wings apply -f my-worker.yaml`, or create the same thing with
 `wings workload create my-worker --artifact qwen3-8b --class l40s-48 --runtime container
---image ghcr.io/acme/worker@sha256:... --arg --model --arg '$(WS_MODEL_PATH)'`.
+--image ghcr.io/acme/worker@sha256:... --arg --model --arg '$(WS_MODEL_PATH)'`. Add
+`--protocol openai-audio-speech` (or another protocol) for a media worker.
 
 ## What the platform provides
 

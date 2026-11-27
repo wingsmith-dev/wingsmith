@@ -9,6 +9,16 @@ protocol can change between minor versions.
 
 ### Added
 
+- Audio and media custom workers (P4.2). Container `protocol` takes `openai-images`,
+  `openai-audio-speech`, `openai-audio-transcriptions` and `openai-videos` beside `openai-chat`,
+  each implying an output modality (`speech` and `transcription` are new); readiness defaults to
+  `/v1/models` for chat and `/health` otherwise (`wings workload create --protocol`). The gateway
+  routes `/v1/audio/speech` and `/v1/audio/transcriptions|translations` by modality, caps body
+  size and upstream time per media path, meters `image_units` (images x size tier),
+  `speech_characters`, `speech_seconds` and `transcription_seconds`, and enforces a serving
+  quota's new `unit_limits` (units a minute, `wings serving-quota --unit-limit`) on those same
+  counters (ADR 0036).
+
 - Ownership of applied objects. A PUT records its field manager (`?fieldManager=`, default
   `wings-cli`), principal and time on the Workload or Endpoint, shown as
   `plane.wingsmith.dev/applied-by*` annotations and `applied_by*` fields. A console PATCH, a workload

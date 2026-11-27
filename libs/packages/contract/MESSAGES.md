@@ -293,7 +293,9 @@ absent, per §2.
 **`serving.runtime` picks what runs the weights: absent (or `dynamo`), or `container`.** Under
 `container` the serving block carries `serving.container`: `image` (digest-pinned), `command`,
 `args`, `env` (`[{name, value}]`), `ports` (`[{name, container_port}]`, one named `http`),
-`protocol` (`openai-chat`), `readiness_probe` / `liveness_probe` / `startup_probe` as
+`protocol` (`openai-chat`, `openai-images`, `openai-audio-speech`, `openai-audio-transcriptions`
+or `openai-videos`; the default readiness probe is `/v1/models` for `openai-chat` and `/health` for
+the rest), `readiness_probe` / `liveness_probe` / `startup_probe` as
 `corev1.Probe` objects with their Kubernetes keys, and `metrics` (`{port, path}`). The engine
 fields are not read for it. The operator renders an `apps/v1` Deployment and a Service labelled
 `wingsmith.dev/role=frontend`, mounts the artifact's cache directory read-only, and sets

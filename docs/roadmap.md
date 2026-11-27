@@ -22,8 +22,9 @@ There are no dates. Order within a section is roughly the order the work is expe
   weight, but placement uses it only as a ceiling on what the project may hold. The floor is not
   reserved against other projects, and idle capacity is not shared out by weight.
 - **Engines other than NVIDIA Dynamo.** A workload can run a custom container (`runtime.kind:
-  container`) on Kubernetes, but only aggregated, single-node and `openai-chat`. Completions,
-  embeddings, plain HTTP, gang workers and host execution are still to come.
+  container`) on Kubernetes, but only aggregated, single-node and one of the OpenAI protocols
+  (`openai-chat`, `openai-images`, `openai-audio-speech`, `openai-audio-transcriptions`,
+  `openai-videos`). Plain HTTP and gang workers are still to come.
 - **Endpoint-level benchmarks.** Harnesses declare an `endpoint` level (conformance with its
   failover probe, evalscope against a served endpoint, an LLM judge credential), but nothing
   executes a run at that level. The plane serves only the `deployment` and `workload` levels and
