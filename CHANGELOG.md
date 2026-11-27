@@ -9,6 +9,18 @@ protocol can change between minor versions.
 
 ### Added
 
+- Workload CRDs in member clusters (ADR 0042). The cluster-setup chart installs
+  `workloads.plane.wingsmith.dev` (v1alpha1); a Workload applied with kubectl, Argo CD or Flux in a
+  namespace labelled `plane.wingsmith.dev/project=<slug>` (or `cluster.defaultProject`) is applied to
+  the plane by the operator over new wire messages `manifest.apply`/`manifest.delete`/`manifest.result`,
+  as field manager `k8s:<cluster>/<namespace>`. A cluster declares only into projects linked to it
+  (`PUT /v1/clusters/{ref}/projects/{project}`, migration `a8b9c0d1e2f3`). Placement defaults to
+  this cluster only, sent on the wire and echoed in status. Finalizer `plane.wingsmith.dev/sync`
+  deletes (or releases) the plane object; status carries `observedGeneration`, `planeUID`,
+  `planeResourceVersion` and `Synced`/`Conflict`/`Ready`/`Stalled`/`Reconciling` conditions;
+  reconnects relist and reapply. Aggregated `wingsmith-edit`/`wingsmith-view` roles. See
+  docs/operations/declaring-workloads-from-your-cluster.md.
+
 - Async media jobs (ADR 0041). With `WINGSMITH_MEDIA_S3_*` set, `POST /v1/videos` queues a job in
   the plane and returns an OpenAI video object; `GET /v1/videos/{id}`, `/content` (302 to a signed
   URL, 1h) and `DELETE` read, fetch and cancel it. Other media paths run in the background with
@@ -122,6 +134,8 @@ protocol can change between minor versions.
 
 ### Changed
 
+- `spec.placement.allowedClusters` on a Workload manifest is mutable; a change rewrites the
+  workload's placement policy and takes effect at the next expansion (ADR 0042).
 - Host rollouts start the new container beside the old one when the box has the GPUs for it, and
   move the route only once the new one is ready; otherwise they replace in place as before. A
   paused deployment on a host stops its containers and frees their GPUs.
