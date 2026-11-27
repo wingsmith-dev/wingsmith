@@ -107,3 +107,30 @@ async def test_serving_quotas_and_benchmarks_take_the_project_for_a_shared_name(
         await quotas.create(ServingQuotaCreateRequest(endpoint="chat"))
     created = await quotas.create(ServingQuotaCreateRequest(endpoint="chat", project=second))
     assert created.endpoint == b.id
+
+
+async def test_a_defaulted_slug_another_project_holds_moves_aside_and_a_declared_one_does_not(
+    db: AsyncSession,
+) -> None:
+    first, second = await two_projects(db)
+    svc = EndpointService(db)
+    a = await svc.create(EndpointCreateRequest(name="Chat", project=first))
+    assert a.slug == "chat", "the name-based default is lowercased"
+    b = await svc.create(EndpointCreateRequest(name="Chat", project=second))
+    assert b.slug == "other-chat"
+    with pytest.raises(Conflict, match="model id"):
+        await svc.create(EndpointCreateRequest(name="chat2", project=second, slug="chat"))
+
+
+async def test_the_public_id_lock_is_held_and_released_with_the_transaction(db: AsyncSession) -> None:
+    from sqlalchemy import text
+
+    first, _ = await two_projects(db)
+    svc = EndpointService(db)
+    await svc.repo.lock_public_ids(["b", "a", "a"])
+    held = (await db.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"))).scalar_one()
+    assert held == 2
+    await db.commit()
+    await svc.create(EndpointCreateRequest(name="chat", project=first, slug="a"))
+    held = (await db.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"))).scalar_one()
+    assert held == 0

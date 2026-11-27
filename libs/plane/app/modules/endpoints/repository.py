@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
@@ -40,6 +41,8 @@ def ref_query(ref: str, project: str | None = None) -> Select:
 
 
 AMBIGUOUS_HINT = "say which with `project`"
+
+PUBLIC_ID_LOCK_PREFIX = "wingsmith.endpoint-id:"
 
 
 async def endpoint_by_ref(db: AsyncSession, ref: str, project: str | None = None) -> Endpoint | None:
@@ -354,6 +357,13 @@ class EndpointRepository:
         """
         result = await self.db.execute(self.alias_owner_query(alias).limit(1))
         return result.scalar_one_or_none()
+
+    async def lock_public_ids(self, ids: builtins.list[str]) -> None:
+        """Transaction-scoped advisory locks on public ids, in sorted order so two writers cannot
+        deadlock. Released at commit or rollback."""
+        for value in sorted(set(ids)):
+            key = func.hashtextextended(PUBLIC_ID_LOCK_PREFIX + value, 0)
+            await self.db.execute(select(func.pg_advisory_xact_lock(key)))
 
     async def name_exists(self, slug: str, exclude_id: UUID | None = None) -> bool:
         """Whether any other endpoint is already published under this public id.

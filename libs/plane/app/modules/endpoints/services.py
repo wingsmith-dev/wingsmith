@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import hashlib
 import builtins
 import datetime as dt
@@ -500,6 +501,21 @@ def _targets_of(targets, order) -> tuple:
     return tuple(rows), tuple(str(u) for u in order or ())
 
 
+SLUG_INDEX = "ix_demand_endpoint_slug"
+
+
+def constraint_of(exc: IntegrityError) -> str | None:
+    """The constraint or index a Postgres integrity error names, when the driver says."""
+    diag = getattr(getattr(exc, "orig", None), "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
+def default_slug_in(project: str, slug: str) -> str:
+    """A defaulted slug another endpoint already holds, prefixed with the project and made
+    DNS-safe (lowercase letters, digits, `-` and `.`)."""
+    return re.sub(r"[^a-z0-9.-]+", "-", f"{project}-{slug}".lower()).strip("-")
+
+
 def split_weight(weight: int, count: int) -> list[int]:
     """A workload ref's weight over its `count` routable deployments: an even integer split, the
     remainder going one each to the first deployments by id, so the parts always sum to `weight`."""
@@ -769,6 +785,9 @@ class EndpointService:
         dependent routing is worse than a loud misconfiguration), but it means the plane is the
         only place the ambiguity can actually be prevented.
         """
+        # Serializes writers claiming any of these ids until commit: the checks below span two
+        # tables, so without it two concurrent writes could both pass and both land.
+        await self.repo.lock_public_ids([slug, *aliases])
         if await self.repo.name_exists(slug, exclude_id=endpoint_id):
             raise Conflict(f"{slug!r} is already another endpoint's model id", {"slug": slug})
         owner = await self.repo.get_alias_owner(slug)
@@ -782,6 +801,9 @@ class EndpointService:
             owner = await self.repo.get_alias_owner(alias)
             if owner is not None and owner != endpoint_id:
                 raise Conflict(f"{alias!r} is already an alias of another endpoint", {"alias": alias})
+
+    async def _taken(self, slug: str) -> bool:
+        return await self.repo.name_exists(slug) or await self.repo.get_alias_owner(slug) is not None
 
     async def create(self, data: EndpointCreateRequest) -> EndpointSchema:
         check_shape(data.visibility, data.routing_strategy)
@@ -799,6 +821,7 @@ class EndpointService:
         # failure but a 404 from inside the cluster, with the deployment healthy and the tunnel
         # open. Declaring one is then unambiguously a request for an alias.
         slug = (data.slug or "").strip().lower()
+        declared = bool(slug)
         if not slug and targets:
             first = targets[0]
             if first.deployment_id is not None:
@@ -806,7 +829,11 @@ class EndpointService:
             else:
                 slug = await self.repo.workload_artifact_slug(project.id, first.workload_name)
         if not slug:
-            slug = str(data.name)
+            slug = str(data.name).strip().lower()
+        if not declared and await self._taken(slug):
+            # Only a default moves aside: a second project serving the same model gets its own id
+            # instead of a 409. A declared slug that clashes is still refused below.
+            slug = default_slug_in(project.slug, slug)
 
         aliases = normalise_aliases(data.aliases)
         await self._check_namespace(slug, aliases)
@@ -829,6 +856,8 @@ class EndpointService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
+            if constraint_of(exc) == SLUG_INDEX:
+                raise Conflict(f"{slug!r} is already another endpoint's model id", {"slug": slug}) from exc
             raise Conflict(f"endpoint {data.name!r} already exists in project {data.project!r}") from exc
         return await self.get(endpoint.uid)
 
@@ -901,6 +930,8 @@ class EndpointService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
+            if constraint_of(exc) == SLUG_INDEX:
+                raise Conflict(f"{slug!r} is already another endpoint's model id", {"slug": slug}) from exc
             raise Conflict("endpoint conflicts with an existing one") from exc
         return await self.get(endpoint.uid)
 

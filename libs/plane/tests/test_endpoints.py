@@ -773,6 +773,9 @@ class FakeCreateRepo:
     async def existing_workloads(self, pairs):
         return set()
 
+    async def lock_public_ids(self, ids):
+        self.locked = sorted(set(ids))
+
     async def name_exists(self, slug, exclude_id=None):
         owner = self.slugs.get(slug)
         return owner is not None and owner != exclude_id
@@ -1531,3 +1534,22 @@ def test_a_workload_refs_weight_splits_evenly_and_sums_to_the_whole() -> None:
     assert split_weight(100, 3) == [34, 33, 33]
     assert split_weight(1, 2) == [1, 0]
     assert sum(split_weight(7, 4)) == 7
+
+
+def test_a_moved_aside_default_slug_is_dns_safe() -> None:
+    from app.modules.endpoints.services import default_slug_in
+
+    assert default_slug_in("Search", "openai/gpt-oss-20b") == "search-openai-gpt-oss-20b"
+
+
+def test_an_integrity_error_is_read_for_its_constraint_name() -> None:
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.endpoints.services import SLUG_INDEX
+    from app.modules.endpoints.services import constraint_of
+
+    orig = SimpleNamespace(diag=SimpleNamespace(constraint_name=SLUG_INDEX))
+    assert constraint_of(IntegrityError("x", {}, orig)) == SLUG_INDEX
+    assert constraint_of(IntegrityError("x", {}, Exception())) is None
