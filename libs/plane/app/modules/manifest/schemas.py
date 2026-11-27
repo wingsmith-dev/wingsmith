@@ -228,15 +228,16 @@ class ScaleSpec(Struct, kw_only=True):
 class PlacementSpec(Struct, kw_only=True):
     """Where replicas may go. Cluster references are names.
 
-    `allowed_regions` and `allowed_clusters` become the workload's own placement policy at create
-    and are not editable through the workload afterwards.
+    `allowed_regions` and `allowed_clusters` become the workload's own placement policy.
+    `allowed_regions` is fixed at create; `allowed_clusters` may change and takes effect at the next
+    expansion (ADR 0042).
     """
 
     strategy: str = "pack"
     cluster_floors: dict[str, int] = {}
     max_clusters: int | None = None
     allowed_regions: Annotated[list[str], IMMUTABLE] = []
-    allowed_clusters: Annotated[list[str], IMMUTABLE] = []
+    allowed_clusters: list[str] = []
 
 
 class WorkloadManifestSpec(Struct, kw_only=True):

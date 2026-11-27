@@ -1000,15 +1000,14 @@
   },
   "PlacementSpec": {
    "additionalProperties": false,
-   "description": "Where replicas may go. Cluster references are names.\n\n    `allowed_regions` and `allowed_clusters` become the workload's own placement policy at create\n    and are not editable through the workload afterwards.",
+   "description": "Where replicas may go. Cluster references are names.\n\n    `allowed_regions` and `allowed_clusters` become the workload's own placement policy.\n    `allowed_regions` is fixed at create; `allowed_clusters` may change and takes effect at the next\n    expansion (ADR 0042).",
    "properties": {
     "allowedClusters": {
      "default": [],
      "items": {
       "type": "string"
      },
-     "type": "array",
-     "x-immutable": true
+     "type": "array"
     },
     "allowedRegions": {
      "default": [],

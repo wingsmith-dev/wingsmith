@@ -14,6 +14,7 @@ from collections.abc import Awaitable
 import msgspec
 
 from msgspec import UNSET
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1703,6 +1704,53 @@ class WorkloadService:
             raise _conflict(exc, workload.name, project) from exc
         await self._announce(cluster_uid, deployment.uid, deployment.generation)
         return await self.get(workload.uid)
+
+    async def set_allowed_clusters(self, ref: str, clusters: list[str]) -> bool:
+        """Replaces the workload's cluster allow-list. True when it changed.
+
+        Writes the generated placement policy (`constraint_name`), creating it, or deleting it
+        once it constrains nothing. Like `strategy`, it takes effect at the next expansion; running
+        deployments are not moved by this write (ADR 0042). A pinned workload has no allow-list.
+        """
+        row = await self._one(ref, lock=True)
+        workload = row[0]
+        wanted = []
+        for name in clusters:
+            cluster = await self.repo.cluster_by_ref(name)
+            if cluster is None:
+                raise NotFound(f"no cluster {name!r}")
+            if cluster.id not in wanted:
+                wanted.append(cluster.id)
+        if wanted and workload.pinned_cluster_id is not None:
+            raise Invalid(
+                "cluster pins placement to one and an allow-list asks placement to choose",
+                {"field": "spec.placement.allowedClusters"},
+            )
+        name = constraint_name(workload.uid)
+        policy = await self.db.scalar(select(Policy).where(Policy.name == name))
+        current = list(policy.allowed_cluster_ids) if policy else []
+        if current == wanted:
+            return False
+        if policy is None:
+            self.db.add(
+                Policy(
+                    uid=new_uid(POLICY),
+                    name=name,
+                    description=f"Placement constraint declared for workload {workload.name}.",
+                    allowed_regions=[],
+                    allowed_cluster_ids=wanted,
+                    enabled=True,
+                    attachments=[PolicyAttachment(subject_type=SUBJECT_WORKLOAD, subject_id=workload.id)],
+                )
+            )
+        elif not wanted and not policy.allowed_regions:
+            await self.repo.detach(workload, SUBJECT_WORKLOAD, name)
+        else:
+            policy.allowed_cluster_ids = wanted
+        bump_spec(workload)
+        await self.db.flush()
+        record_change(self.db, workload, MODIFIED)
+        return True
 
     async def delete(self, ref: str) -> None:
         """Deletes the workload, every cluster's copy of it, and the placement policy created for it.

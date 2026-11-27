@@ -414,6 +414,8 @@ class ManifestService:
                 )
             if changed("spec", "paused"):
                 changes.append(await svc.change_paused(current.metadata.uid, m.spec.paused))
+            if changed("spec", "placement", "allowed_clusters"):
+                await svc.set_allowed_clusters(current.metadata.uid, list(m.spec.placement.allowed_clusters))
             scale = current.spec.scale
             desired = (
                 m.spec.replicas if declared.has("spec", "replicas") and m.spec.replicas is not None else scale.desired
@@ -429,6 +431,22 @@ class ManifestService:
             await self._record(Workload, current.metadata.uid, body, manager)
             after = await hold.done(lambda: self.workload(project, name), dry_run)
         return after, _result(current, after)
+
+    async def delete_workload(self, project: str, name: str, manager: str) -> str:
+        """Deletes a workload this manager applied: `deleted`, `released` or `absent`.
+
+        One another manager (or nobody) now manages is released instead: left in place, untouched,
+        so a cluster giving up its declaration never deletes what somebody took over (ADR 0042).
+        """
+        try:
+            _, w = await self._owned_workload(project, name)
+        except NotFound:
+            return "absent"
+        applied_by = await self.db.scalar(select(Workload.applied_by).where(Workload.uid == w.id))
+        if applied_by != manager:
+            return "released"
+        await WorkloadService(self.db).delete(w.id)
+        return "deleted"
 
     async def put_endpoint(
         self,
@@ -619,7 +637,6 @@ IMMUTABLE_PATHS = (
     ("gang_size",),
     ("cluster",),
     ("placement", "allowed_regions"),
-    ("placement", "allowed_clusters"),
     ("serving", "artifact"),
 )
 """The `x-immutable` workload fields, plus `serving.artifact`: other weights are a new workload.
