@@ -208,6 +208,7 @@ func run() error {
 	// measure. Start makes the shutdown report them refused and retryable instead.
 	executor.Start(ctx)
 	if reconciler != nil {
+		reconciler.Supply = observer
 		reconciler.Bind(client)
 	}
 

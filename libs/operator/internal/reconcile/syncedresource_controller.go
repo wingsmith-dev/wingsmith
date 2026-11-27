@@ -78,6 +78,9 @@ type SyncedResourceReconciler struct {
 	// before the question was worth putting.
 	Frontend FrontendModels
 
+	// Supply is the inventory source the backend reports. Optional: left nil, Inventory errors.
+	Supply InventorySource
+
 	reportMu sync.Mutex
 	reported map[string]reportKey
 	staged   map[string]stageState
