@@ -482,6 +482,32 @@
    "title": "CapabilitiesSchema",
    "type": "object"
   },
+  "Condition": {
+   "additionalProperties": false,
+   "description": "A Kubernetes-style condition: `status` is `\"True\"`, `\"False\"` or `\"Unknown\"`.",
+   "properties": {
+    "message": {
+     "default": "",
+     "type": "string"
+    },
+    "reason": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "status",
+    "reason"
+   ],
+   "title": "Condition",
+   "type": "object"
+  },
   "DiffusionSchema": {
    "additionalProperties": false,
    "description": "What a vLLM-Omni worker reads from its stage-config file instead of its command line.\n\n    Two fields because only two vary per model. The operator writes the rest of the file\n    (one stage, the devices the pod holds, the executor), and the Dynamo omni CLI refuses\n    `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`\n    exists because omni defaults every model to 50 inference steps, which is wrong for every\n    distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.",
@@ -1264,6 +1290,7 @@
   },
   "ScaleSpec": {
    "additionalProperties": false,
+   "description": "The bounds `replicas` moves within. `desired` is a read-only alias of `spec.replicas`,\n    kept in v1alpha1 and dropped before beta (ADR 0024): an apply never reads it.",
    "properties": {
     "desired": {
      "default": 1,
@@ -1578,6 +1605,18 @@
      "default": null,
      "x-defaulted": true
     },
+    "replicas": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true
+    },
     "runtime": {
      "$ref": "#/$defs/RuntimeSpec"
     },
@@ -1720,6 +1759,13 @@
       }
      ],
      "default": null
+    },
+    "conditions": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/Condition"
+     },
+     "type": "array"
     },
     "deployments": {
      "items": {

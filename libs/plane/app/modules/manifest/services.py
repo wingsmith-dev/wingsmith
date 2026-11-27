@@ -6,37 +6,48 @@ an id, and the object must live in exactly the namespace asked for. An artifact 
 project is reachable only under that project; a public one only without a namespace.
 """
 
+import datetime as dt
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import OPERATION
+from app.core.ids import new_uid
 from app.db.models import Policy
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import WorkloadRevision
+from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.modules.artifacts.scope import visible
+from app.modules.workloads.views import _revision
+from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.artifacts.services import ArtifactService
 from app.modules.endpoints.services import EndpointService
 from app.modules.workloads.services import WorkloadService
 from app.modules.workloads.services import constraint_name
 from app.modules.workloads.repository import WorkloadRepository
 
+from .schemas import Scale
 from .schemas import ArtifactManifest
 from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
 from .translate import Refs
 from .translate import Placement
+from .translate import scale_view
 from .translate import artifact_manifest
 from .translate import endpoint_manifest
 from .translate import workload_manifest
 
 
 class ManifestService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:
         self.db = db
+        self.actor = actor
 
     async def _project(self, ref: str) -> Project:
         project = await WorkloadRepository(self.db).project_by_ref(ref)
@@ -86,6 +97,62 @@ class ManifestService:
             clusters=await self._names(Cluster.name, [w.pinned_cluster_id, *w.cluster_floors]),
         )
         return workload_manifest(w, refs, placement, note)
+
+    async def _owned_workload(self, project: str, name: str):
+        owner = await self._project(project)
+        try:
+            w = await WorkloadService(self.db).get(name, owner.uid)
+        except NotFound:
+            raise NotFound(f"no workload {name!r} in project {project!r}") from None
+        if w.name != name or w.project_id != owner.uid:
+            raise NotFound(f"no workload {name!r} in project {project!r}")
+        return owner, w
+
+    async def scale(self, project: str, name: str) -> Scale:
+        owner, w = await self._owned_workload(project, name)
+        return scale_view(w, owner.slug)
+
+    async def put_scale(self, project: str, name: str, data: Scale, if_match: str | None = None) -> Scale:
+        """Writes `spec.replicas` as the workload's `desired_scale` (ADR 0024).
+
+        Spec, so it moves `generation` and honours `If-Match` (or `metadata.resourceVersion`);
+        audited, so a change files a succeeded `workload.scale` operation in the same commit.
+        A placement shortfall is accepted and reads as an `Unschedulable` condition. Restating
+        the current count is a no-op: no generation, no operation, nothing announced.
+        """
+        owner, w = await self._owned_workload(project, name)
+        svc = WorkloadService(self.db)
+        row = await svc._one(w.id, lock=True)
+        workload = row[0]
+        expected = if_match if if_match is not None else data.metadata.resource_version
+        revision = _revision(workload)
+        if expected is not None and expected != revision:
+            raise Conflict("workload changed since it was read", {"revision": revision})
+        replicas = data.spec.replicas
+        if replicas == workload.desired_scale:
+            return scale_view(w, owner.slug)
+
+        parameters = WorkloadScaleParameters(desired=replicas)
+        now = dt.datetime.now(dt.UTC)
+        change = await svc.change_scale(w.id, parameters, refuse=False)
+        self.db.add(
+            Operation(
+                uid=new_uid(OPERATION),
+                type="workload.scale",
+                target_type="workload",
+                target_id=workload.id,
+                phase="succeeded",
+                requested_by=self.actor,
+                reason="PUT /scale",
+                payload={"parameters": {"desired": replicas}},
+                result=change.result,
+                started_at=now,
+                finished_at=dt.datetime.now(dt.UTC),
+            )
+        )
+        await self.db.commit()
+        await svc.announce(change)
+        return scale_view(await svc.get(w.id), owner.slug)
 
     async def endpoint(self, project: str, name: str) -> EndpointManifest:
         owner = await self._project(project)

@@ -113,6 +113,9 @@ class WorkloadServingSpec(Struct, kw_only=True):
 
 
 class ScaleSpec(Struct, kw_only=True):
+    """The bounds `replicas` moves within. `desired` is a read-only alias of `spec.replicas`,
+    kept in v1alpha1 and dropped before beta (ADR 0024): an apply never reads it."""
+
     min: int = 1
     max: int = 1
     desired: int = 1
@@ -146,6 +149,7 @@ class WorkloadManifestSpec(Struct, kw_only=True):
     preemptible: bool = False
     paused: bool = False
     deadline_at: dt.datetime | None = None
+    replicas: Annotated[int | None, DEFAULTED] = None
     scale: ScaleSpec = field(default_factory=ScaleSpec)
     placement: PlacementSpec = field(default_factory=PlacementSpec)
     runtime: RuntimeSpec
@@ -168,6 +172,18 @@ class WorkloadScaleStatus(Struct, kw_only=True):
     ready: int
 
 
+class Condition(Struct, kw_only=True):
+    """A Kubernetes-style condition: `status` is `"True"`, `"False"` or `"Unknown"`."""
+
+    type: str
+    status: str
+    reason: str
+    message: str = ""
+
+
+UNSCHEDULABLE = "Unschedulable"
+
+
 class WorkloadStatus(Struct, kw_only=True):
     """What the plane derived or observed. Never written through a manifest."""
 
@@ -179,6 +195,7 @@ class WorkloadStatus(Struct, kw_only=True):
     topology: TopologyViewSchema
     scale: WorkloadScaleStatus
     deployments: list[WorkloadDeploymentStatus]
+    conditions: list[Condition] = []
     artifact_tag: str | None = None
     started_at: dt.datetime | None = None
     finished_at: dt.datetime | None = None
@@ -190,6 +207,28 @@ class WorkloadManifest(Struct, kw_only=True):
     metadata: ObjectMeta
     spec: WorkloadManifestSpec
     status: WorkloadStatus | None = None
+
+
+class ScaleReplicas(Struct, kw_only=True):
+    replicas: int
+
+
+class ScaleStatus(Struct, kw_only=True):
+    """`replicas` is what placement placed, which is below `spec.replicas` while unschedulable."""
+
+    replicas: int
+    ready_replicas: int = 0
+
+
+class Scale(Struct, kw_only=True):
+    """The `/scale` subresource: a workload's replica count alone, Kubernetes `autoscaling/v1`
+    shaped. `metadata.resourceVersion` on a PUT counts as `If-Match`."""
+
+    api_version: str = field(default=API_VERSION, name="apiVersion")
+    kind: str = "Scale"
+    metadata: ObjectMeta
+    spec: ScaleReplicas
+    status: ScaleStatus | None = None
 
 
 # --------------------------------------------------------------------------- Endpoint

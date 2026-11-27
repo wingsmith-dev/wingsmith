@@ -1,10 +1,13 @@
 from litestar import Response
 from litestar import Controller
 from litestar import get
+from litestar import put
 from litestar.di import Provide
+from litestar.params import Parameter
 
 from app.core.context import RequestContext
 
+from .schemas import Scale
 from .schemas import ArtifactManifest
 from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
@@ -12,7 +15,7 @@ from .services import ManifestService
 
 
 async def manifest_svc_generator(context: RequestContext):
-    yield ManifestService(db=context.db)
+    yield ManifestService(db=context.db, actor=context.principal.name)
 
 
 class ManifestRoutes(Controller):
@@ -32,6 +35,26 @@ class ManifestRoutes(Controller):
         self, context: RequestContext, svc: ManifestService, project: str, name: str
     ) -> Response[WorkloadManifest]:
         return Response(await svc.workload(project, name))
+
+    @get("/workloads/{project:str}/{name:str}/scale")
+    async def get_workload_scale(
+        self, context: RequestContext, svc: ManifestService, project: str, name: str
+    ) -> Response[Scale]:
+        return Response(await svc.scale(project, name))
+
+    @put("/workloads/{project:str}/{name:str}/scale")
+    async def put_workload_scale(
+        self,
+        context: RequestContext,
+        svc: ManifestService,
+        project: str,
+        name: str,
+        data: Scale,
+        if_match: str | None = Parameter(header="If-Match", default=None),
+    ) -> Response[Scale]:
+        """Sets the replica count. A shortfall is accepted and shown as `Unschedulable`;
+        a stale `If-Match` is a 409 (ADR 0024)."""
+        return Response(await svc.put_scale(project, name, data, if_match))
 
     @get("/endpoints/{project:str}/{name:str}")
     async def get_endpoint_manifest(

@@ -651,6 +651,12 @@
   "enabled": "boolean",
   "kind": "string"
  },
+ "Condition": {
+  "message": "string",
+  "reason": "string",
+  "status": "string",
+  "type": "string"
+ },
  "ConfigSchema": {
   "api": "$ApiConfigSchema",
   "app": "$AppConfigSchema",
@@ -1629,10 +1635,24 @@
   "unit": "string",
   "value": "number?"
  },
+ "Scale": {
+  "apiVersion": "string",
+  "kind": "string",
+  "metadata": "$ObjectMeta",
+  "spec": "$ScaleReplicas",
+  "status": "$ScaleStatus?"
+ },
+ "ScaleReplicas": {
+  "replicas": "integer"
+ },
  "ScaleSpec": {
   "desired": "integer",
   "max": "integer",
   "min": "integer"
+ },
+ "ScaleStatus": {
+  "ready_replicas": "integer",
+  "replicas": "integer"
  },
  "SeriesPointSchema": {
   "at": "number",
@@ -2024,6 +2044,7 @@
   "placement": "$PlacementSpec",
   "preemptible": "boolean",
   "priority_class": "string?",
+  "replicas": "integer?",
   "runtime": "$RuntimeSpec",
   "scale": "$ScaleSpec",
   "serving": "$WorkloadServingSpec"
@@ -2191,6 +2212,7 @@
  },
  "WorkloadStatus": {
   "artifact_tag": "string?",
+  "conditions": "[]$Condition",
   "deployments": "[]$WorkloadDeploymentStatus",
   "finished_at": "string?",
   "imported_args": "object",

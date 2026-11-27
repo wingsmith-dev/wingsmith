@@ -12,13 +12,18 @@ from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.endpoints.schemas import EndpointSchema
 from app.modules.workloads.schemas import WorkloadSchema
 
+from .schemas import UNSCHEDULABLE
 from .schemas import NOTE_ANNOTATION
+from .schemas import Scale
+from .schemas import Condition
 from .schemas import ScaleSpec
 from .schemas import ObjectMeta
 from .schemas import RuntimeSpec
+from .schemas import ScaleStatus
 from .schemas import ArtifactSpec
 from .schemas import EndpointSpec
 from .schemas import PlacementSpec
+from .schemas import ScaleReplicas
 from .schemas import ArtifactStatus
 from .schemas import EndpointStatus
 from .schemas import WorkloadStatus
@@ -67,6 +72,44 @@ def _labels(labels: dict) -> dict[str, str]:
     return {str(k): str(v) for k, v in labels.items()}
 
 
+def workload_conditions(w: WorkloadSchema) -> list[Condition]:
+    """Derived from the scale rollup, so it can never disagree with it.
+
+    A paused workload places nothing on purpose and is not unschedulable.
+    """
+    if w.paused or w.scale.placed >= w.scale.desired:
+        return [Condition(type=UNSCHEDULABLE, status="False", reason="Placed")]
+    return [
+        Condition(
+            type=UNSCHEDULABLE,
+            status="True",
+            reason="InsufficientCapacity",
+            message=f"placement placed {w.scale.placed} of {w.scale.desired} replicas",
+        )
+    ]
+
+
+def declared_replicas(spec: WorkloadManifestSpec) -> int | None:
+    """The replica count a manifest asks for. `spec.scale.desired` is a read-only alias and
+    never counts; `None` leaves `desired_scale` where it is."""
+    return spec.replicas
+
+
+def scale_view(w: WorkloadSchema, namespace: str | None) -> Scale:
+    return Scale(
+        metadata=ObjectMeta(
+            name=w.name,
+            namespace=namespace,
+            uid=w.id,
+            generation=w.generation,
+            creation_timestamp=w.created_at,
+            resource_version=w.revision,
+        ),
+        spec=ScaleReplicas(replicas=w.scale.desired),
+        status=ScaleStatus(replicas=w.scale.placed, ready_replicas=w.scale.ready),
+    )
+
+
 def workload_manifest(
     w: WorkloadSchema, refs: Refs, placement: Placement | None = None, note: str | None = None
 ) -> WorkloadManifest:
@@ -91,6 +134,7 @@ def workload_manifest(
             preemptible=w.preemptible,
             paused=w.paused,
             deadline_at=w.deadline_at,
+            replicas=w.scale.desired,
             scale=ScaleSpec(min=w.scale.min, max=w.scale.max, desired=w.scale.desired),
             placement=PlacementSpec(
                 strategy=w.strategy,
@@ -147,6 +191,7 @@ def workload_manifest(
                 )
                 for d in w.deployments
             ],
+            conditions=workload_conditions(w),
             artifact_tag=w.artifact_tag,
             started_at=w.started_at,
             finished_at=w.finished_at,

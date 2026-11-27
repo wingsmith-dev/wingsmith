@@ -3909,6 +3909,30 @@
         "title": "ComponentUpdateRequest",
         "type": "object"
       },
+      "Condition": {
+        "properties": {
+          "message": {
+            "default": "",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "status",
+          "type"
+        ],
+        "title": "Condition",
+        "type": "object"
+      },
       "ConfigSchema": {
         "properties": {
           "api": {
@@ -10096,6 +10120,52 @@
         "title": "SampleSchema",
         "type": "object"
       },
+      "Scale": {
+        "properties": {
+          "apiVersion": {
+            "default": "plane.wingsmith.dev/v1alpha1",
+            "type": "string"
+          },
+          "kind": {
+            "default": "Scale",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ScaleReplicas"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScaleStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "metadata",
+          "spec"
+        ],
+        "title": "Scale",
+        "type": "object"
+      },
+      "ScaleReplicas": {
+        "properties": {
+          "replicas": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "replicas"
+        ],
+        "title": "ScaleReplicas",
+        "type": "object"
+      },
       "ScaleSpec": {
         "properties": {
           "desired": {
@@ -10113,6 +10183,22 @@
         },
         "required": [],
         "title": "ScaleSpec",
+        "type": "object"
+      },
+      "ScaleStatus": {
+        "properties": {
+          "ready_replicas": {
+            "default": 0,
+            "type": "integer"
+          },
+          "replicas": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "replicas"
+        ],
+        "title": "ScaleStatus",
         "type": "object"
       },
       "SeriesPointSchema": {
@@ -12413,6 +12499,16 @@
               }
             ]
           },
+          "replicas": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeSpec"
           },
@@ -13306,6 +13402,12 @@
                 "type": "null"
               }
             ]
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array"
           },
           "deployments": {
             "items": {
@@ -25001,6 +25103,250 @@
           }
         },
         "summary": "GetWorkloadManifest",
+        "tags": [
+          "Manifests"
+        ]
+      }
+    },
+    "/v1/manifests/workloads/{project}/{name}/scale": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1ManifestsWorkloadsProjectNameScaleGetWorkloadScale",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scale"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetWorkloadScale",
+        "tags": [
+          "Manifests"
+        ]
+      },
+      "put": {
+        "deprecated": false,
+        "operationId": "V1ManifestsWorkloadsProjectNameScalePutWorkloadScale",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": false,
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Scale"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scale"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "PutWorkloadScale",
         "tags": [
           "Manifests"
         ]
