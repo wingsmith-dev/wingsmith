@@ -1,0 +1,41 @@
+<?xml version="1.0" ?>
+<!DOCTYPE nvidia_smi_log SYSTEM "nvsmi_device_v11.dtd">
+<nvidia_smi_log>
+	<driver_version>470.256.02</driver_version>
+	<cuda_version>11.4</cuda_version>
+	<attached_gpus>1</attached_gpus>
+	<gpu id="00000000:00:1E.0">
+		<product_name>Tesla T4</product_name>
+		<mig_mode>
+			<current_mig>N/A</current_mig>
+		</mig_mode>
+		<uuid>GPU-11112222-3333-4444-5555-666677778888</uuid>
+		<minor_number>0</minor_number>
+		<fb_memory_usage>
+			<total>15109 MiB</total>
+		</fb_memory_usage>
+		<ecc_mode>
+			<current_ecc>Enabled</current_ecc>
+		</ecc_mode>
+		<ecc_errors>
+			<volatile>
+				<single_bit>
+					<device_memory>3</device_memory>
+					<total>3</total>
+				</single_bit>
+				<double_bit>
+					<device_memory>0</device_memory>
+					<total>0</total>
+				</double_bit>
+			</volatile>
+			<aggregate>
+				<single_bit><total>N/A</total></single_bit>
+				<double_bit><total>N/A</total></double_bit>
+			</aggregate>
+		</ecc_errors>
+		<clocks_throttle_reasons>
+			<clocks_throttle_reason_gpu_idle>Not Active</clocks_throttle_reason_gpu_idle>
+			<clocks_throttle_reason_sw_power_cap>Active</clocks_throttle_reason_sw_power_cap>
+		</clocks_throttle_reasons>
+	</gpu>
+</nvidia_smi_log>

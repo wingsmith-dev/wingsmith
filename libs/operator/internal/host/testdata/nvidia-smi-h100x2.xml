@@ -1,0 +1,75 @@
+<?xml version="1.0" ?>
+<!DOCTYPE nvidia_smi_log SYSTEM "nvsmi_device_v12.dtd">
+<nvidia_smi_log>
+	<timestamp>Thu Nov 27 10:00:00 2026</timestamp>
+	<driver_version>570.86.15</driver_version>
+	<cuda_version>12.8</cuda_version>
+	<attached_gpus>2</attached_gpus>
+	<gpu id="00000000:18:00.0">
+		<product_name>NVIDIA H100 80GB HBM3</product_name>
+		<product_brand>NVIDIA</product_brand>
+		<mig_mode>
+			<current_mig>Disabled</current_mig>
+			<pending_mig>Disabled</pending_mig>
+		</mig_mode>
+		<uuid>GPU-3f1a2b4c-0000-1111-2222-333344445555</uuid>
+		<minor_number>0</minor_number>
+		<fb_memory_usage>
+			<total>81559 MiB</total>
+			<reserved>328 MiB</reserved>
+			<used>1 MiB</used>
+			<free>81230 MiB</free>
+		</fb_memory_usage>
+		<ecc_mode>
+			<current_ecc>Enabled</current_ecc>
+			<pending_ecc>Enabled</pending_ecc>
+		</ecc_mode>
+		<ecc_errors>
+			<volatile>
+				<sram_correctable>0</sram_correctable>
+				<sram_uncorrectable_parity>0</sram_uncorrectable_parity>
+				<sram_uncorrectable_secded>0</sram_uncorrectable_secded>
+				<dram_correctable>12</dram_correctable>
+				<dram_uncorrectable>0</dram_uncorrectable>
+			</volatile>
+			<aggregate>
+				<sram_correctable>0</sram_correctable>
+				<dram_correctable>40</dram_correctable>
+				<dram_uncorrectable>0</dram_uncorrectable>
+			</aggregate>
+		</ecc_errors>
+		<clocks_event_reasons>
+			<clocks_event_reason_gpu_idle>Active</clocks_event_reason_gpu_idle>
+			<clocks_event_reason_applications_clocks_setting>Not Active</clocks_event_reason_applications_clocks_setting>
+			<clocks_event_reason_sw_power_cap>Not Active</clocks_event_reason_sw_power_cap>
+			<clocks_event_reason_hw_slowdown>Not Active</clocks_event_reason_hw_slowdown>
+		</clocks_event_reasons>
+	</gpu>
+	<gpu id="00000000:2A:00.0">
+		<product_name>NVIDIA H100 80GB HBM3</product_name>
+		<mig_mode>
+			<current_mig>Enabled</current_mig>
+		</mig_mode>
+		<uuid>GPU-9e8d7c6b-0000-1111-2222-333344446666</uuid>
+		<minor_number>1</minor_number>
+		<fb_memory_usage>
+			<total>81559 MiB</total>
+		</fb_memory_usage>
+		<ecc_mode>
+			<current_ecc>Enabled</current_ecc>
+		</ecc_mode>
+		<ecc_errors>
+			<volatile>
+				<dram_correctable>0</dram_correctable>
+				<dram_uncorrectable>2</dram_uncorrectable>
+			</volatile>
+			<aggregate>
+				<dram_uncorrectable>3</dram_uncorrectable>
+			</aggregate>
+		</ecc_errors>
+		<clocks_event_reasons>
+			<clocks_event_reason_gpu_idle>Not Active</clocks_event_reason_gpu_idle>
+			<clocks_event_reason_sw_thermal_slowdown>Active</clocks_event_reason_sw_thermal_slowdown>
+		</clocks_event_reasons>
+	</gpu>
+</nvidia_smi_log>

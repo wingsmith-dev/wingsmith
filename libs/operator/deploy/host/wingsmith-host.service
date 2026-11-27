@@ -1,0 +1,28 @@
+# Example unit for wingsmith-host. Install the binary at /usr/local/bin/wingsmith-host, run
+# `wingsmith-host enrol <token> --plane <wss://hub-url> --cluster <name>` once, then
+# `systemctl enable --now wingsmith-host`.
+[Unit]
+Description=Wingsmith host agent
+Documentation=https://github.com/wingsmith-dev/wingsmith/blob/main/docs/operations/linux-host.md
+Wants=network-online.target
+After=network-online.target nvidia-persistenced.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wingsmith-host run --config /etc/wingsmith/host.json
+Restart=always
+RestartSec=5
+StateDirectory=wingsmith
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/wingsmith
+# NVML opens /dev/nvidia*; supply-only needs no other device access.
+DeviceAllow=/dev/nvidiactl r
+DeviceAllow=char-nvidia r
+DeviceAllow=/dev/nvidia-uvm r
+
+[Install]
+WantedBy=multi-user.target

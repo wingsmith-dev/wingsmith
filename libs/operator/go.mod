@@ -3,6 +3,7 @@ module github.com/wingsmith-dev/wingsmith/libs/operator
 go 1.26.0
 
 require (
+	github.com/NVIDIA/go-nvml v0.12.4-1
 	github.com/coder/websocket v1.8.14
 	github.com/go-logr/logr v1.4.2
 	golang.org/x/sync v0.23.0
