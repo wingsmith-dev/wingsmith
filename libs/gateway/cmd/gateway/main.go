@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/metrics"
+	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/objectstore"
 	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/plane"
 	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/routing"
 	"github.com/wingsmith-dev/wingsmith/libs/gateway/internal/serving"
@@ -254,6 +255,34 @@ func main() {
 	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("WINGSMITH_GATEWAY_MEDIA_URL_HOSTS"), ","))
 	drain, grace := readDrainPlan()
 
+	// Async media jobs (docs/decisions/0041), on only when object storage is configured.
+	var jobs *serving.Jobs
+	mediaStore, err := objectstore.FromEnv()
+	if err != nil {
+		slog.Error("gateway: media object storage", "err", err)
+		os.Exit(1)
+	}
+	if mediaStore != nil {
+		jobs = &serving.Jobs{Queue: planeClient, Store: mediaStore, URLTTL: envDurationDefault("WINGSMITH_MEDIA_SIGNED_URL_TTL", serving.DefaultSignedURLTTL)}
+		workerID := *gatewayID
+		if workerID == "" {
+			workerID, _ = os.Hostname()
+		}
+		worker := &serving.JobWorker{
+			Queue: planeClient,
+			Store: mediaStore,
+			// Its own internal-zone handler: no probes, no write deadlines on a spool file.
+			Handler: serving.New(serving.Config{
+				Router: router, Metrics: recorder, Tenants: tenants, UnitQuotas: unitQuotas,
+				MediaURLs: mediaURLs, Jobs: jobs, Zone: serving.ZoneInternal,
+			}),
+			ID:          workerID,
+			Concurrency: envIntDefault("WINGSMITH_GATEWAY_MEDIA_JOB_CONCURRENCY", 2),
+		}
+		go worker.Run(ctx)
+		slog.Info("gateway: media jobs on", "worker", workerID, "concurrency", worker.Concurrency)
+	}
+
 	srv := &http.Server{
 		Addr: *listenAddr,
 		Handler: serving.New(serving.Config{
@@ -269,6 +298,7 @@ func main() {
 			WriteIdleTimeout: writeIdleTimeout,
 			BodyBudget:       bodyBudget,
 			MediaURLs:        mediaURLs,
+			Jobs:             jobs,
 			// Off unless asked for: zero retention of request content.
 			LogUpstreamBodies: *logUpstreamBodies,
 			// The ClusterIP port with no ingress (docs/decisions/0016). The
@@ -315,6 +345,7 @@ func main() {
 				WriteIdleTimeout: writeIdleTimeout,
 				BodyBudget:       bodyBudget,
 				MediaURLs:        mediaURLs,
+				Jobs:             jobs,
 				Zone:             serving.ZonePublic,
 				// A tenant declaring `auth: none` is refused here unless the
 				// operator opts in.

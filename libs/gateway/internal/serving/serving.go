@@ -115,6 +115,8 @@ type Config struct {
 	// MediaURLs restricts which remote media a request may ask an engine to
 	// fetch. Nil allows every URL.
 	MediaURLs *MediaURLPolicy
+	// Jobs turns on async media jobs (docs/decisions/0041). Nil keeps video synchronous.
+	Jobs *Jobs
 }
 
 // New builds the gateway handler.

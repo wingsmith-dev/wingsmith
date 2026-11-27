@@ -158,16 +158,32 @@ func stageUnitQuota(quotas *UnitQuotas) stage {
 		if kind == "" {
 			return r, true
 		}
-		retryAfter, ok := quotas.admit(req.route, kind, upfront)
-		if !ok {
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
-			MarkOutcome(r, metrics.OutcomeRateLimited)
-			writeError(w, http.StatusTooManyRequests, "rate_limited",
-				"The model '"+req.route.Name+"' is over its media quota. Retry shortly.")
-			return r, false
-		}
 		route := req.route
+		// A job reserves what it asked for at submit and keeps it; the worker that runs it does
+		// not admit again and settles only the difference (docs/decisions/0041).
+		run := jobRunFrom(r.Context())
+		switch {
+		case run != nil:
+			upfront = run.reserved
+		case req.asyncKind != "":
+			for unit, v := range reservedUnits(kind, req.body) {
+				upfront[unit] = v
+			}
+		}
+		if run == nil {
+			retryAfter, ok := quotas.admit(req.route, kind, upfront)
+			if !ok {
+				w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+				MarkOutcome(r, metrics.OutcomeRateLimited)
+				writeError(w, http.StatusTooManyRequests, "rate_limited",
+					"The model '"+req.route.Name+"' is over its media quota. Retry shortly.")
+				return r, false
+			}
+		}
 		req.release = append(req.release, func() {
+			if req.asyncSubmitted {
+				return
+			}
 			obs.mu.Lock()
 			units := obs.media.units()
 			obs.mu.Unlock()

@@ -40,6 +40,10 @@ type requestState struct {
 	// the current rewritten copy of it holds there (setBody).
 	budget     *BodyBudget
 	copyCharge int64
+	// asyncKind is the media kind of a request stageAsyncIntent will submit as a job, and
+	// asyncSubmitted whether stageSubmitJob queued it (docs/decisions/0041).
+	asyncKind      string
+	asyncSubmitted bool
 }
 
 // stage is one step of routing a request to an upstream. It returns the
@@ -65,7 +69,7 @@ func routingStages(cfg Config) []stage {
 		stageKeyCheck(tenants, cfg.AllowUnauthenticatedPublic),
 		stageTenantEnabled,
 		stageCatalog(resolver, tenants),
-		stageVideoRetrieval,
+		stageJobReads(cfg.Jobs),
 		stageSupportedPath,
 		stageTenantLimit(cfg.Limiter, ZonePublic),
 		stageReadBody(bodyLimits{maxBytes: cfg.MaxBodyBytes, readTimeout: cfg.BodyReadTimeout, budget: cfg.BodyBudget}),
@@ -81,7 +85,9 @@ func routingStages(cfg Config) []stage {
 		stageRewritePolicy,
 		stageMediaURLs(cfg.MediaURLs),
 		stageMediaFacts,
+		stageAsyncIntent(cfg.Jobs),
 		stageUnitQuota(cfg.UnitQuotas),
+		stageSubmitJob(cfg.Jobs),
 		stageCacheSalt,
 		stagePickUpstream,
 		stageRewriteServedModel,
