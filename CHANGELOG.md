@@ -9,6 +9,14 @@ protocol can change between minor versions.
 
 ### Added
 
+- Async media jobs (ADR 0041). With `WINGSMITH_MEDIA_S3_*` set, `POST /v1/videos` queues a job in
+  the plane and returns an OpenAI video object; `GET /v1/videos/{id}`, `/content` (302 to a signed
+  URL, 1h) and `DELETE` read, fetch and cancel it. Other media paths run in the background with
+  `Prefer: respond-async` or `"background": true` (202, `/v1/media/jobs/{id}`). Gateway replicas
+  claim jobs under a lease, run them through the internal pipeline and write outputs to
+  `media/{project}/{job}`; an expired lease requeues. `Idempotency-Key` dedupes submissions, quotas
+  reserve at submit, each job logs one `media_job.finished` line, and the reactor deletes outputs
+  after the project's `media_retention_days` (default 7). See docs/operations/async-media.md.
 - Engine presets for container workers (ADR 0040). `runtime: {kind: container, preset: vllm|sglang,
   version, args}` expands on the plane into a digest-pinned official image from
   `ENGINE_PRESET_IMAGES`, the serve command with tensor parallelism from the shape, readiness by
