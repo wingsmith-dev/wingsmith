@@ -50,7 +50,7 @@ func TestTheEmbeddedManifestSchemaCoversEveryKindAndCarriesItsMarkers(t *testing
 	if err := json.Unmarshal(doc.Defs["WorkloadManifestSpec"], &spec); err != nil {
 		t.Fatal(err)
 	}
-	if spec.Properties["gang_size"]["x-immutable"] != true || spec.Properties["priority_class"]["x-defaulted"] != true {
+	if spec.Properties["gangSize"]["x-immutable"] != true || spec.Properties["priorityClass"]["x-defaulted"] != true {
 		t.Errorf("markers missing: %v", spec.Properties)
 	}
 }

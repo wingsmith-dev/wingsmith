@@ -15,16 +15,30 @@ def test_create_only_fields_are_marked_immutable() -> None:
         name: sorted(k for k, v in body.get("properties", {}).items() if v.get("x-immutable"))
         for name, body in defs.items()
     }
-    assert immutable["WorkloadManifestSpec"] == ["cluster", "enabled", "gang_size", "kind"]
-    assert immutable["PlacementSpec"] == ["allowed_clusters", "allowed_regions"]
+    assert immutable["WorkloadManifestSpec"] == ["cluster", "enabled", "gangSize", "kind"]
+    assert immutable["PlacementSpec"] == ["allowedClusters", "allowedRegions"]
     assert immutable["ArtifactSpec"] == ["digest", "source"]
 
 
 def test_server_defaults_are_marked_so_a_diff_skips_them_when_undeclared() -> None:
     defs = json_schema()["$defs"]
-    assert _props(defs, "WorkloadManifestSpec")["priority_class"]["x-defaulted"] is True
+    assert _props(defs, "WorkloadManifestSpec")["priorityClass"]["x-defaulted"] is True
     assert _props(defs, "EndpointSpec")["slug"]["x-defaulted"] is True
     assert _props(defs, "ArtifactSpec")["slug"]["x-defaulted"] is True
+
+
+def test_every_field_is_camel_case() -> None:
+    defs = json_schema()["$defs"]
+    snake = sorted(f"{name}.{k}" for name, body in defs.items() for k in body.get("properties", {}) if "_" in k)
+    assert snake == []
+    assert set(_props(defs, "EndpointTargetSpec")) >= {"workloadRef", "servedModelName"}
+    assert "lastTransitionTime" in _props(defs, "Condition")
+
+
+def test_the_http_api_stays_snake_case() -> None:
+    from app.modules.workloads.schemas import ShapeSchema
+
+    assert "device_class" in ShapeSchema.__struct_encode_fields__
 
 
 def test_the_api_version_is_the_plane_group_not_the_operators() -> None:

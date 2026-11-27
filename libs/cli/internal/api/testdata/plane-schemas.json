@@ -222,6 +222,12 @@
   "scope": "string",
   "sizable": "boolean"
  },
+ "ArtifactLocation": {
+  "preferred": "boolean",
+  "region": "string?",
+  "scheme": "string",
+  "uri": "string"
+ },
  "ArtifactLocationRequest": {
   "preferred": "boolean",
   "region": "string?",
@@ -270,20 +276,20 @@
   "verified": "boolean"
  },
  "ArtifactSpec": {
-  "base_artifact": "string?",
+  "baseArtifact": "string?",
   "digest": "string",
-  "display_name": "string",
+  "displayName": "string",
   "format": "string?",
   "kind": "string",
   "licence": "string?",
-  "locations": "[]$ArtifactLocationSchema",
-  "parameter_count": "integer?",
+  "locations": "[]$ArtifactLocation",
+  "parameterCount": "integer?",
   "project": "string?",
   "properties": "object",
-  "size_bytes": "integer",
+  "sizeBytes": "integer",
   "slug": "string",
   "source": "string?",
-  "upstream": "$ArtifactUpstreamSchema"
+  "upstream": "$ArtifactUpstream"
  },
  "ArtifactStatus": {
   "residency": "[]string",
@@ -301,6 +307,21 @@
   "size_bytes": "integer",
   "slug": "string",
   "upstream": "$ArtifactUpstreamSchema"
+ },
+ "ArtifactUpstream": {
+  "contextLength": "integer?",
+  "inputModalities": "[]string",
+  "licence": "string?",
+  "maxOutputTokens": "integer?",
+  "provider": "string?",
+  "providerModelId": "string?",
+  "reasoning": "boolean?",
+  "recordedAt": "string?",
+  "recordedBy": "string?",
+  "releasedAt": "string?",
+  "sourceUri": "string?",
+  "structuredOutputModes": "[]string",
+  "toolCalling": "boolean?"
  },
  "ArtifactUpstreamSchema": {
   "context_length": "integer?",
@@ -490,11 +511,31 @@
   "label": "string",
   "samples": "[]$SampleSchema"
  },
+ "Cache": {
+  "kvCacheDtype": "string?",
+  "kvCacheFraction": "number?",
+  "prefixCacheConfig": "object",
+  "prefixCacheEnabled": "boolean"
+ },
  "CacheSchema": {
   "kv_cache_dtype": "string?",
   "kv_cache_fraction": "number?",
   "prefix_cache_config": "object",
   "prefix_cache_enabled": "boolean"
+ },
+ "Capabilities": {
+  "assertedAt": "string?",
+  "assertedBy": "string?",
+  "inputModalities": "[]string",
+  "parallelToolCalls": "boolean",
+  "promptCacheMode": "string",
+  "promptCacheTtlSeconds": "integer?",
+  "reasoningSupported": "boolean",
+  "sourceUri": "string?",
+  "streamingSupported": "boolean",
+  "structuredOutputModes": "[]string",
+  "toolCallingSupported": "boolean",
+  "toolChoiceModes": "[]string"
  },
  "CapabilitiesSchema": {
   "asserted_at": "string?",
@@ -653,6 +694,7 @@
   "kind": "string"
  },
  "Condition": {
+  "lastTransitionTime": "string?",
   "message": "string",
   "reason": "string",
   "status": "string",
@@ -812,6 +854,10 @@
   "identifier": "string",
   "kind": "string"
  },
+ "Diffusion": {
+  "defaultSamplingParams": "object",
+  "modelClassName": "string?"
+ },
  "DiffusionSchema": {
   "default_sampling_params": "object",
   "model_class_name": "string?"
@@ -888,16 +934,27 @@
  "EndpointSpec": {
   "aliases": "[]string",
   "enabled": "boolean",
-  "failover_order": "[]string",
-  "routing_strategy": "string",
+  "failoverOrder": "[]string",
+  "routingStrategy": "string",
   "slug": "string",
-  "surface": "$EndpointSurfaceSchema",
+  "surface": "$EndpointSurface",
   "targets": "[]$EndpointTargetSpec",
   "visibility": "string"
  },
  "EndpointStatus": {
   "conditions": "[]$Condition",
   "targets": "[]$EndpointTargetStatus"
+ },
+ "EndpointSurface": {
+  "authMode": "string?",
+  "corsEnabled": "boolean?",
+  "errorShape": "string?",
+  "maxRequestBytes": "integer?",
+  "outputLengthParams": "[]string",
+  "policy": "$Policy?",
+  "protocols": "[]string",
+  "requestTimeoutSeconds": "integer?",
+  "streamingTransport": "string?"
  },
  "EndpointSurfaceSchema": {
   "auth_mode": "string?",
@@ -930,13 +987,13 @@
   "deployment": "string?",
   "enabled": "boolean",
   "role": "string",
-  "served_model_name": "string?",
+  "servedModelName": "string?",
   "weight": "integer",
-  "workload_ref": "$WorkloadRef?"
+  "workloadRef": "$WorkloadRef?"
  },
  "EndpointTargetStatus": {
   "deployment": "string",
-  "deployment_id": "string",
+  "deploymentId": "string",
   "workload": "string?"
  },
  "EndpointUpdateRequest": {
@@ -1227,9 +1284,18 @@
   "id": "string",
   "type": "string"
  },
+ "Overlay": {
+  "dynamo": "object",
+  "podSpec": "object"
+ },
  "OverlaySchema": {
   "dynamo": "object",
   "pod_spec": "object"
+ },
+ "Parallelism": {
+  "expert": "integer",
+  "pipeline": "integer",
+  "tensor": "integer"
  },
  "ParallelismSchema": {
   "expert": "integer",
@@ -1269,11 +1335,15 @@
   "topology_domain_kind": "string?"
  },
  "PlacementSpec": {
-  "allowed_clusters": "[]string",
-  "allowed_regions": "[]string",
-  "cluster_floors": "object",
-  "max_clusters": "integer?",
+  "allowedClusters": "[]string",
+  "allowedRegions": "[]string",
+  "clusterFloors": "object",
+  "maxClusters": "integer?",
   "strategy": "string"
+ },
+ "Policy": {
+  "rules": "[]$Rule",
+  "version": "integer"
  },
  "PolicyAttachmentRequest": {
   "subject": "string",
@@ -1478,6 +1548,14 @@
   "lease_seconds": "number",
   "notify_timeout": "number"
  },
+ "Reasoning": {
+  "defaultOn": "boolean",
+  "parser": "string?",
+  "suppressEosUntilThinkEnd": "boolean",
+  "thinkBeginToken": "string?",
+  "thinkEndToken": "string?",
+  "transport": "string"
+ },
  "ReasoningSchema": {
   "default_on": "boolean",
   "parser": "string?",
@@ -1603,10 +1681,21 @@
   "url": "string",
   "weight": "integer"
  },
+ "Resources": {
+  "cpuCores": "integer?",
+  "diskGib": "integer?",
+  "memoryMib": "integer?"
+ },
  "ResourcesSchema": {
   "cpu_cores": "integer?",
   "disk_gib": "integer?",
   "memory_mib": "integer?"
+ },
+ "Role": {
+  "engineArgs": "object",
+  "maxBatchTokens": "integer?",
+  "role": "string",
+  "weight": "integer"
  },
  "RoleSchema": {
   "engine_args": "object",
@@ -1614,11 +1703,31 @@
   "role": "string",
   "weight": "integer"
  },
+ "Router": {
+  "kvOverlapScoreCredit": "number?",
+  "mode": "string?",
+  "queuePolicy": "string?",
+  "queueThreshold": "number?"
+ },
  "RouterSchema": {
   "kv_overlap_score_credit": "number?",
   "mode": "string?",
   "queue_policy": "string?",
   "queue_threshold": "number?"
+ },
+ "Rule": {
+  "default": "any",
+  "deny": "boolean",
+  "drop": "boolean",
+  "enum": "[]any?",
+  "key": "string",
+  "max": "number?",
+  "min": "number?",
+  "predicate": "string",
+  "route": "string",
+  "stream": "boolean?",
+  "valueFrom": "string",
+  "whenPresent": "string"
  },
  "RuleSchema": {
   "default": "any",
@@ -1637,7 +1746,7 @@
  "RuntimeSpec": {
   "args": "object",
   "engine": "string",
-  "frontend_image": "string?",
+  "frontendImage": "string?",
   "image": "string?",
   "kind": "string",
   "version": "string"
@@ -1664,7 +1773,7 @@
   "min": "integer"
  },
  "ScaleStatus": {
-  "ready_replicas": "integer",
+  "readyReplicas": "integer",
   "replicas": "integer"
  },
  "SeriesPointSchema": {
@@ -1691,6 +1800,17 @@
   "replicas_desired": "integer",
   "replicas_ready": "integer",
   "state": "string"
+ },
+ "Serving": {
+  "contextOverflow": "string",
+  "diffusion": "$Diffusion?",
+  "maxImagesPerRequest": "integer?",
+  "maxVideosPerRequest": "integer?",
+  "outputModality": "string?",
+  "reasoning": "$Reasoning",
+  "streamUsage": "string",
+  "structuredOutputBackend": "string?",
+  "toolCallParser": "string?"
  },
  "ServingBenchmarkSummarySchema": {
   "graded_run_count": "integer",
@@ -1818,6 +1938,13 @@
   "chart_version": "string",
   "operator_image": "string"
  },
+ "Shape": {
+  "deviceClass": "string",
+  "deviceCount": "integer",
+  "deviceMemoryMibMin": "integer",
+  "requiresSingleTopologyDomain": "boolean",
+  "topologyDomainKind": "string?"
+ },
  "ShapeSchema": {
   "device_class": "string",
   "device_count": "integer",
@@ -1936,6 +2063,11 @@
   "roles": "[]$RoleSchema",
   "serving_topology": "string"
  },
+ "TopologyView": {
+  "groupDevices": "integer",
+  "roles": "[]$Role",
+  "servingTopology": "string"
+ },
  "TopologyViewSchema": {
   "group_devices": "integer",
   "roles": "[]$RoleSchema",
@@ -2032,13 +2164,13 @@
   "status": "$DeploymentStatusSchema?"
  },
  "WorkloadDeploymentStatus": {
-  "admission_phase": "string",
+  "admissionPhase": "string",
   "authority": "string",
   "cluster": "string",
-  "desired_replicas": "integer",
+  "desiredReplicas": "integer",
   "enabled": "boolean",
   "name": "string",
-  "ready_replicas": "integer"
+  "readyReplicas": "integer"
  },
  "WorkloadManifest": {
   "apiVersion": "string",
@@ -2049,15 +2181,15 @@
  },
  "WorkloadManifestSpec": {
   "cluster": "string?",
-  "deadline_at": "string?",
+  "deadlineAt": "string?",
   "enabled": "boolean?",
-  "gang_size": "integer",
+  "gangSize": "integer",
   "kind": "string",
   "overrides": "object",
   "paused": "boolean",
   "placement": "$PlacementSpec",
   "preemptible": "boolean",
-  "priority_class": "string?",
+  "priorityClass": "string?",
   "replicas": "integer?",
   "runtime": "$RuntimeSpec",
   "scale": "$ScaleSpec",
@@ -2193,20 +2325,20 @@
  },
  "WorkloadServingSpec": {
   "adapters": "[]string",
-  "api": "$ServingSchema",
+  "api": "$Serving",
   "artifact": "string",
-  "cache": "$CacheSchema",
-  "capabilities": "$CapabilitiesSchema",
-  "context_length": "integer",
+  "cache": "$Cache",
+  "capabilities": "$Capabilities",
+  "contextLength": "integer",
   "dtype": "string?",
-  "max_batch_tokens": "integer?",
-  "overlay": "$OverlaySchema",
-  "parallelism": "$ParallelismSchema",
+  "maxBatchTokens": "integer?",
+  "overlay": "$Overlay",
+  "parallelism": "$Parallelism",
   "quantization": "string?",
-  "resources": "$ResourcesSchema",
-  "roles": "[]$RoleSchema",
-  "router": "$RouterSchema",
-  "shape": "$ShapeSchema",
+  "resources": "$Resources",
+  "roles": "[]$Role",
+  "router": "$Router",
+  "shape": "$Shape",
   "topology": "string"
  },
  "WorkloadServingUpdate": {
@@ -2231,18 +2363,18 @@
   "topology": "$TopologySchema"
  },
  "WorkloadStatus": {
-  "artifact_tag": "string?",
+  "artifactTag": "string?",
   "conditions": "[]$Condition",
   "deployments": "[]$WorkloadDeploymentStatus",
-  "finished_at": "string?",
-  "imported_args": "object",
+  "finishedAt": "string?",
+  "importedArgs": "object",
   "phase": "string",
-  "resolved_engine_args": "object",
+  "resolvedEngineArgs": "object",
   "scale": "$WorkloadScaleStatus",
-  "served_model_name": "string",
-  "serving_digest": "string",
-  "started_at": "string?",
-  "topology": "$TopologyViewSchema"
+  "servedModelName": "string",
+  "servingDigest": "string",
+  "startedAt": "string?",
+  "topology": "$TopologyView"
  },
  "WorkloadUpdateRequest": {
   "adapter_artifacts": "[]string",

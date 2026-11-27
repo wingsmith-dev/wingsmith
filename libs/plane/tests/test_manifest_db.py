@@ -59,6 +59,10 @@ async def test_a_workload_reads_back_as_a_manifest_named_by_names(db: AsyncSessi
     wire = msgspec.json.decode(msgspec.json.encode(m))
     assert set(wire) == {"apiVersion", "kind", "metadata", "spec", "status"}
     assert {"creationTimestamp", "resourceVersion"} <= set(wire["metadata"])
+    assert {"gangSize", "priorityClass", "replicas"} <= set(wire["spec"])
+    assert "deviceClass" in wire["spec"]["serving"]["shape"]
+    assert {"servedModelName", "observedGeneration"} - set(wire["status"]) == {"observedGeneration"}
+    assert wire["status"]["conditions"][0].keys() >= {"type", "status", "reason", "message", "lastTransitionTime"}
 
 
 async def test_a_workload_is_only_reached_in_its_own_namespace_and_by_name(db: AsyncSession) -> None:

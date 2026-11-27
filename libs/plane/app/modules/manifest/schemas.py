@@ -1,8 +1,10 @@
 """The Kubernetes-shaped manifest of a Workload, Endpoint and Artifact (ADR 0022).
 
 A second representation beside the `/v1` request and read schemas, not a replacement for them.
-`metadata` is spelled the Kubernetes way (camelCase) so `kubectl` and Argo can read it later;
-`spec` and `status` keep the plane's snake_case vocabulary, so a field reads the same in both.
+Every field is spelled the Kubernetes way, camelCase, in `metadata`, `spec` and `status` alike
+(ADR 0028), so `kubectl` and Argo read it as they would any object. The Python attributes stay
+snake_case; msgspec renames on the wire. Free-form maps (`labels`, `args`, `overrides`,
+`properties`, engine args) are user data and keep their keys as written.
 
 The JSON Schema carries two markers that apply and diff read:
 
@@ -11,7 +13,10 @@ The JSON Schema carries two markers that apply and diff read:
   the manifest declared it, so a server default never reads as drift.
 """
 
+import types
+import typing
 import datetime as dt
+import functools
 
 from typing import Annotated
 
@@ -20,20 +25,84 @@ import msgspec
 from msgspec import Meta
 from msgspec import field
 
-from app.core.schemas import Struct
-from app.modules.artifacts.schemas import ArtifactLocationSchema
-from app.modules.artifacts.schemas import ArtifactUpstreamSchema
-from app.modules.endpoints.schemas import EndpointSurfaceSchema
-from app.modules.workloads.schemas import RoleSchema
-from app.modules.workloads.schemas import CacheSchema
-from app.modules.workloads.schemas import ShapeSchema
-from app.modules.workloads.schemas import RouterSchema
-from app.modules.workloads.schemas import OverlaySchema
-from app.modules.workloads.schemas import ServingSchema
-from app.modules.workloads.schemas import ResourcesSchema
-from app.modules.workloads.schemas import ParallelismSchema
-from app.modules.workloads.schemas import CapabilitiesSchema
-from app.modules.workloads.schemas import TopologyViewSchema
+from app.core.schemas import Struct as BaseStruct
+from app.modules.artifacts.schemas import ArtifactLocationSchema as _ArtifactLocationSchema
+from app.modules.artifacts.schemas import ArtifactUpstreamSchema as _ArtifactUpstreamSchema
+from app.modules.endpoints.schemas import EndpointSurfaceSchema as _EndpointSurfaceSchema
+from app.modules.workloads.schemas import RoleSchema as _RoleSchema
+from app.modules.workloads.schemas import CacheSchema as _CacheSchema
+from app.modules.workloads.schemas import ShapeSchema as _ShapeSchema
+from app.modules.workloads.schemas import RouterSchema as _RouterSchema
+from app.modules.workloads.schemas import OverlaySchema as _OverlaySchema
+from app.modules.workloads.schemas import ServingSchema as _ServingSchema
+from app.modules.workloads.schemas import ResourcesSchema as _ResourcesSchema
+from app.modules.workloads.schemas import ParallelismSchema as _ParallelismSchema
+from app.modules.workloads.schemas import CapabilitiesSchema as _CapabilitiesSchema
+from app.modules.workloads.schemas import TopologyViewSchema as _TopologyViewSchema
+
+
+class Struct(BaseStruct, rename="camel"):
+    """A manifest object: camelCase on the wire, snake_case in Python."""
+
+
+@functools.cache
+def camel(cls: type) -> type:
+    """A camelCase copy of an HTTP API schema, nested schemas included, for a manifest to embed.
+
+    The HTTP API keeps snake_case, so its schemas are copied, not renamed. `translate`
+    converts a read schema's value into the copy with `msgspec.convert(..., from_attributes=True)`.
+    """
+    hints = typing.get_type_hints(cls, include_extras=True)
+    fields = []
+    for f in msgspec.structs.fields(cls):
+        default = f.default if f.default is not msgspec.NODEFAULT else msgspec.NODEFAULT
+        if f.default_factory is not msgspec.NODEFAULT:
+            factory = f.default_factory
+            default = field(default_factory=lambda factory=factory: camel_value(factory()))
+        if default is msgspec.NODEFAULT:
+            fields.append((f.name, _camel_type(hints[f.name])))
+        else:
+            fields.append((f.name, _camel_type(hints[f.name]), default))
+    name = cls.__name__.removesuffix("Schema")
+    out = msgspec.defstruct(name, fields, bases=(Struct,), module=__name__)
+    out.__doc__ = cls.__doc__
+    return out
+
+
+def _camel_type(t):
+    if isinstance(t, type) and issubclass(t, msgspec.Struct):
+        return camel(t)
+    args = typing.get_args(t)
+    if not args:
+        return t
+    origin = typing.get_origin(t)
+    if origin is Annotated:
+        return Annotated[(_camel_type(args[0]), *t.__metadata__)]
+    mapped = tuple(_camel_type(a) for a in args)
+    if origin in (typing.Union, types.UnionType):
+        return functools.reduce(lambda a, b: a | b, mapped)
+    return origin[mapped if len(mapped) > 1 else mapped[0]]
+
+
+def camel_value(v):
+    if isinstance(v, msgspec.Struct):
+        return msgspec.convert(v, camel(type(v)), from_attributes=True)
+    return v
+
+
+ArtifactLocationSchema = camel(_ArtifactLocationSchema)
+ArtifactUpstreamSchema = camel(_ArtifactUpstreamSchema)
+EndpointSurfaceSchema = camel(_EndpointSurfaceSchema)
+RoleSchema = camel(_RoleSchema)
+CacheSchema = camel(_CacheSchema)
+ShapeSchema = camel(_ShapeSchema)
+RouterSchema = camel(_RouterSchema)
+OverlaySchema = camel(_OverlaySchema)
+ServingSchema = camel(_ServingSchema)
+ResourcesSchema = camel(_ResourcesSchema)
+ParallelismSchema = camel(_ParallelismSchema)
+CapabilitiesSchema = camel(_CapabilitiesSchema)
+TopologyViewSchema = camel(_TopologyViewSchema)
 
 
 API_VERSION = "plane.wingsmith.dev/v1alpha1"
@@ -65,8 +134,8 @@ class ObjectMeta(Struct, kw_only=True):
     annotations: dict[str, str] = {}
     uid: str | None = None
     generation: int | None = None
-    creation_timestamp: dt.datetime | None = field(default=None, name="creationTimestamp")
-    resource_version: str | None = field(default=None, name="resourceVersion")
+    creation_timestamp: dt.datetime | None = None
+    resource_version: str | None = None
 
 
 # --------------------------------------------------------------------------- Workload
@@ -179,6 +248,8 @@ class Condition(Struct, kw_only=True):
     status: str
     reason: str
     message: str = ""
+    last_transition_time: dt.datetime | None = None
+    """Null where the plane derives the condition on read and keeps no history of it."""
 
 
 UNSCHEDULABLE = "Unschedulable"
@@ -202,7 +273,7 @@ class WorkloadStatus(Struct, kw_only=True):
 
 
 class WorkloadManifest(Struct, kw_only=True):
-    api_version: str = field(default=API_VERSION, name="apiVersion")
+    api_version: str = API_VERSION
     kind: str = WORKLOAD
     metadata: ObjectMeta
     spec: WorkloadManifestSpec
@@ -224,7 +295,7 @@ class Scale(Struct, kw_only=True):
     """The `/scale` subresource: a workload's replica count alone, Kubernetes `autoscaling/v1`
     shaped. `metadata.resourceVersion` on a PUT counts as `If-Match`."""
 
-    api_version: str = field(default=API_VERSION, name="apiVersion")
+    api_version: str = API_VERSION
     kind: str = "Scale"
     metadata: ObjectMeta
     spec: ScaleReplicas
@@ -281,7 +352,7 @@ class EndpointStatus(Struct, kw_only=True):
 
 
 class EndpointManifest(Struct, kw_only=True):
-    api_version: str = field(default=API_VERSION, name="apiVersion")
+    api_version: str = API_VERSION
     kind: str = ENDPOINT
     metadata: ObjectMeta
     spec: EndpointSpec
@@ -325,7 +396,7 @@ class ArtifactStatus(Struct, kw_only=True):
 
 
 class ArtifactManifest(Struct, kw_only=True):
-    api_version: str = field(default=API_VERSION, name="apiVersion")
+    api_version: str = API_VERSION
     kind: str = ARTIFACT
     metadata: ObjectMeta
     spec: ArtifactSpec

@@ -37,6 +37,7 @@ from .schemas import WorkloadServingSpec
 from .schemas import EndpointTargetStatus
 from .schemas import WorkloadManifestSpec
 from .schemas import WorkloadDeploymentStatus
+from .schemas import camel_value as _c
 
 
 @dataclass
@@ -157,20 +158,20 @@ def workload_manifest(
             serving=WorkloadServingSpec(
                 artifact=refs.artifact(s.artifact_id),
                 adapters=[refs.artifact(a) for a in w.adapter_artifact_ids],
-                shape=s.shape,
+                shape=_c(s.shape),
                 context_length=s.context_length,
                 max_batch_tokens=s.max_batch_tokens,
                 quantization=s.quantization,
                 dtype=s.dtype,
-                parallelism=s.parallelism,
-                cache=s.cache,
-                api=s.serving,
-                capabilities=s.capabilities,
-                resources=s.resources,
-                overlay=s.overlay,
+                parallelism=_c(s.parallelism),
+                cache=_c(s.cache),
+                api=_c(s.serving),
+                capabilities=_c(s.capabilities),
+                resources=_c(s.resources),
+                overlay=_c(s.overlay),
                 topology=s.topology.serving_topology,
-                roles=s.topology.roles,
-                router=s.router,
+                roles=[_c(r) for r in s.topology.roles],
+                router=_c(s.router),
             ),
             overrides=w.overrides,
         ),
@@ -180,7 +181,7 @@ def workload_manifest(
             serving_digest=w.serving_digest,
             resolved_engine_args=s.resolved_engine_args,
             imported_args=s.imported_args,
-            topology=s.topology,
+            topology=_c(s.topology),
             scale=WorkloadScaleStatus(placed=w.scale.placed, ready=w.scale.ready),
             deployments=[
                 WorkloadDeploymentStatus(
@@ -231,7 +232,7 @@ def endpoint_manifest(e: EndpointSchema, refs: Refs) -> EndpointManifest:
                 for t in e.targets
             ],
             failover_order=[refs.deployment(d) for d in e.failover_order],
-            surface=e.surface,
+            surface=_c(e.surface),
         ),
         status=EndpointStatus(
             targets=[
@@ -273,8 +274,8 @@ def artifact_manifest(a: ArtifactSchema, refs: Refs) -> ArtifactManifest:
             base_artifact=refs.artifact(a.base_artifact_id),
             project=refs.project(a.project_id),
             properties=a.metadata,
-            locations=a.locations,
-            upstream=a.upstream,
+            locations=[_c(loc) for loc in a.locations],
+            upstream=_c(a.upstream),
         ),
         status=ArtifactStatus(
             verified=a.verified,

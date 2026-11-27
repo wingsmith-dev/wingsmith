@@ -1310,6 +1310,36 @@
         "title": "ArtifactFitmentSchema",
         "type": "object"
       },
+      "ArtifactLocation": {
+        "properties": {
+          "preferred": {
+            "type": "boolean"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scheme": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferred",
+          "scheme",
+          "uri"
+        ],
+        "title": "ArtifactLocation",
+        "type": "object"
+      },
       "ArtifactLocationRequest": {
         "properties": {
           "preferred": {
@@ -1571,7 +1601,7 @@
       },
       "ArtifactSpec": {
         "properties": {
-          "base_artifact": {
+          "baseArtifact": {
             "oneOf": [
               {
                 "type": "string"
@@ -1585,7 +1615,7 @@
             "default": "",
             "type": "string"
           },
-          "display_name": {
+          "displayName": {
             "default": "",
             "type": "string"
           },
@@ -1615,11 +1645,11 @@
           },
           "locations": {
             "items": {
-              "$ref": "#/components/schemas/ArtifactLocationSchema"
+              "$ref": "#/components/schemas/ArtifactLocation"
             },
             "type": "array"
           },
-          "parameter_count": {
+          "parameterCount": {
             "oneOf": [
               {
                 "type": "integer"
@@ -1642,7 +1672,7 @@
           "properties": {
             "type": "object"
           },
-          "size_bytes": {
+          "sizeBytes": {
             "default": 0,
             "type": "integer"
           },
@@ -1661,7 +1691,7 @@
             ]
           },
           "upstream": {
-            "$ref": "#/components/schemas/ArtifactUpstreamSchema"
+            "$ref": "#/components/schemas/ArtifactUpstream"
           }
         },
         "required": [],
@@ -1784,6 +1814,135 @@
         },
         "required": [],
         "title": "ArtifactUpdateRequest",
+        "type": "object"
+      },
+      "ArtifactUpstream": {
+        "properties": {
+          "contextLength": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputModalities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "licence": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxOutputTokens": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerModelId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordedBy": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "releasedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceUri": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "structuredOutputModes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "toolCalling": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "ArtifactUpstream",
         "type": "object"
       },
       "ArtifactUpstreamSchema": {
@@ -2948,6 +3107,40 @@
         "title": "BreakdownSchema",
         "type": "object"
       },
+      "Cache": {
+        "properties": {
+          "kvCacheDtype": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kvCacheFraction": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prefixCacheConfig": {
+            "type": "object"
+          },
+          "prefixCacheEnabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "title": "Cache",
+        "type": "object"
+      },
       "CacheSchema": {
         "properties": {
           "kv_cache_dtype": {
@@ -2980,6 +3173,92 @@
         },
         "required": [],
         "title": "CacheSchema",
+        "type": "object"
+      },
+      "Capabilities": {
+        "properties": {
+          "assertedAt": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assertedBy": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputModalities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "parallelToolCalls": {
+            "default": false,
+            "type": "boolean"
+          },
+          "promptCacheMode": {
+            "default": "off",
+            "type": "string"
+          },
+          "promptCacheTtlSeconds": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoningSupported": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sourceUri": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "streamingSupported": {
+            "default": true,
+            "type": "boolean"
+          },
+          "structuredOutputModes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "toolCallingSupported": {
+            "default": false,
+            "type": "boolean"
+          },
+          "toolChoiceModes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "title": "Capabilities",
         "type": "object"
       },
       "CapabilitiesSchema": {
@@ -3921,6 +4200,17 @@
       },
       "Condition": {
         "properties": {
+          "lastTransitionTime": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "message": {
             "default": "",
             "type": "string"
@@ -4779,6 +5069,26 @@
         "title": "DeviceTopologySchema",
         "type": "object"
       },
+      "Diffusion": {
+        "properties": {
+          "defaultSamplingParams": {
+            "type": "object"
+          },
+          "modelClassName": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "Diffusion",
+        "type": "object"
+      },
       "DiffusionSchema": {
         "properties": {
           "default_sampling_params": {
@@ -5180,13 +5490,13 @@
             "default": true,
             "type": "boolean"
           },
-          "failover_order": {
+          "failoverOrder": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "routing_strategy": {
+          "routingStrategy": {
             "default": "weighted",
             "type": "string"
           },
@@ -5195,7 +5505,7 @@
             "type": "string"
           },
           "surface": {
-            "$ref": "#/components/schemas/EndpointSurfaceSchema"
+            "$ref": "#/components/schemas/EndpointSurface"
           },
           "targets": {
             "items": {
@@ -5231,6 +5541,95 @@
           "targets"
         ],
         "title": "EndpointStatus",
+        "type": "object"
+      },
+      "EndpointSurface": {
+        "properties": {
+          "authMode": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corsEnabled": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorShape": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxRequestBytes": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputLengthParams": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Policy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "protocols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requestTimeoutSeconds": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "streamingTransport": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "EndpointSurface",
         "type": "object"
       },
       "EndpointSurfaceSchema": {
@@ -5441,7 +5840,7 @@
             "default": "primary",
             "type": "string"
           },
-          "served_model_name": {
+          "servedModelName": {
             "oneOf": [
               {
                 "type": "string"
@@ -5455,7 +5854,7 @@
             "default": 100,
             "type": "integer"
           },
-          "workload_ref": {
+          "workloadRef": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkloadRef"
@@ -5475,7 +5874,7 @@
           "deployment": {
             "type": "string"
           },
-          "deployment_id": {
+          "deploymentId": {
             "type": "string"
           },
           "workload": {
@@ -5491,7 +5890,7 @@
         },
         "required": [
           "deployment",
-          "deployment_id"
+          "deploymentId"
         ],
         "title": "EndpointTargetStatus",
         "type": "object"
@@ -7957,6 +8356,19 @@
         "title": "OperationTargetSchema",
         "type": "object"
       },
+      "Overlay": {
+        "properties": {
+          "dynamo": {
+            "type": "object"
+          },
+          "podSpec": {
+            "type": "object"
+          }
+        },
+        "required": [],
+        "title": "Overlay",
+        "type": "object"
+      },
       "OverlaySchema": {
         "properties": {
           "dynamo": {
@@ -7968,6 +8380,25 @@
         },
         "required": [],
         "title": "OverlaySchema",
+        "type": "object"
+      },
+      "Parallelism": {
+        "properties": {
+          "expert": {
+            "default": 1,
+            "type": "integer"
+          },
+          "pipeline": {
+            "default": 1,
+            "type": "integer"
+          },
+          "tensor": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "title": "Parallelism",
         "type": "object"
       },
       "ParallelismSchema": {
@@ -8181,25 +8612,25 @@
       },
       "PlacementSpec": {
         "properties": {
-          "allowed_clusters": {
+          "allowedClusters": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "allowed_regions": {
+          "allowedRegions": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "cluster_floors": {
+          "clusterFloors": {
             "additionalProperties": {
               "type": "integer"
             },
             "type": "object"
           },
-          "max_clusters": {
+          "maxClusters": {
             "oneOf": [
               {
                 "type": "integer"
@@ -8216,6 +8647,23 @@
         },
         "required": [],
         "title": "PlacementSpec",
+        "type": "object"
+      },
+      "Policy": {
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            },
+            "type": "array"
+          },
+          "version": {
+            "default": 2,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "title": "Policy",
         "type": "object"
       },
       "PolicyAttachmentRequest": {
@@ -9294,6 +9742,55 @@
         "title": "ReactorConfigSchema",
         "type": "object"
       },
+      "Reasoning": {
+        "properties": {
+          "defaultOn": {
+            "default": false,
+            "type": "boolean"
+          },
+          "parser": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suppressEosUntilThinkEnd": {
+            "default": false,
+            "type": "boolean"
+          },
+          "thinkBeginToken": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thinkEndToken": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transport": {
+            "default": "reasoning_content",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "Reasoning",
+        "type": "object"
+      },
       "ReasoningSchema": {
         "properties": {
           "default_on": {
@@ -9960,6 +10457,43 @@
         "title": "ResolvedUpstreamSchema",
         "type": "object"
       },
+      "Resources": {
+        "properties": {
+          "cpuCores": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diskGib": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memoryMib": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "Resources",
+        "type": "object"
+      },
       "ResourcesSchema": {
         "properties": {
           "cpu_cores": {
@@ -9997,6 +10531,35 @@
         "title": "ResourcesSchema",
         "type": "object"
       },
+      "Role": {
+        "properties": {
+          "engineArgs": {
+            "type": "object"
+          },
+          "maxBatchTokens": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "weight": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "Role",
+        "type": "object"
+      },
       "RoleSchema": {
         "properties": {
           "engine_args": {
@@ -10024,6 +10587,53 @@
           "role"
         ],
         "title": "RoleSchema",
+        "type": "object"
+      },
+      "Router": {
+        "properties": {
+          "kvOverlapScoreCredit": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queuePolicy": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queueThreshold": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "Router",
         "type": "object"
       },
       "RouterSchema": {
@@ -10071,6 +10681,82 @@
         },
         "required": [],
         "title": "RouterSchema",
+        "type": "object"
+      },
+      "Rule": {
+        "properties": {
+          "default": {},
+          "deny": {
+            "default": false,
+            "type": "boolean"
+          },
+          "drop": {
+            "default": false,
+            "type": "boolean"
+          },
+          "enum": {
+            "oneOf": [
+              {
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "default": "",
+            "type": "string"
+          },
+          "max": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "predicate": {
+            "default": "",
+            "type": "string"
+          },
+          "route": {
+            "default": "",
+            "type": "string"
+          },
+          "stream": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valueFrom": {
+            "default": "",
+            "type": "string"
+          },
+          "whenPresent": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "Rule",
         "type": "object"
       },
       "RuleSchema": {
@@ -10157,7 +10843,7 @@
           "engine": {
             "type": "string"
           },
-          "frontend_image": {
+          "frontendImage": {
             "oneOf": [
               {
                 "type": "string"
@@ -10289,7 +10975,7 @@
       },
       "ScaleStatus": {
         "properties": {
-          "ready_replicas": {
+          "readyReplicas": {
             "default": 0,
             "type": "integer"
           },
@@ -10417,6 +11103,84 @@
           "state"
         ],
         "title": "ServedModelSchema",
+        "type": "object"
+      },
+      "Serving": {
+        "properties": {
+          "contextOverflow": {
+            "default": "reject",
+            "type": "string"
+          },
+          "diffusion": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Diffusion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxImagesPerRequest": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxVideosPerRequest": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputModality": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning": {
+            "$ref": "#/components/schemas/Reasoning"
+          },
+          "streamUsage": {
+            "default": "final_chunk",
+            "type": "string"
+          },
+          "structuredOutputBackend": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "toolCallParser": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "title": "Serving",
         "type": "object"
       },
       "ServingBenchmarkSummarySchema": {
@@ -11249,6 +12013,40 @@
         "title": "SetupConfigSchema",
         "type": "object"
       },
+      "Shape": {
+        "properties": {
+          "deviceClass": {
+            "type": "string"
+          },
+          "deviceCount": {
+            "default": 1,
+            "type": "integer"
+          },
+          "deviceMemoryMibMin": {
+            "default": 0,
+            "type": "integer"
+          },
+          "requiresSingleTopologyDomain": {
+            "default": false,
+            "type": "boolean"
+          },
+          "topologyDomainKind": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "deviceClass"
+        ],
+        "title": "Shape",
+        "type": "object"
+      },
       "ShapeSchema": {
         "properties": {
           "device_class": {
@@ -11923,6 +12721,27 @@
         "title": "TopologySchema",
         "type": "object"
       },
+      "TopologyView": {
+        "properties": {
+          "groupDevices": {
+            "default": 0,
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "type": "array"
+          },
+          "servingTopology": {
+            "default": "aggregated",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "title": "TopologyView",
+        "type": "object"
+      },
       "TopologyViewSchema": {
         "properties": {
           "group_devices": {
@@ -12478,7 +13297,7 @@
       },
       "WorkloadDeploymentStatus": {
         "properties": {
-          "admission_phase": {
+          "admissionPhase": {
             "type": "string"
           },
           "authority": {
@@ -12487,7 +13306,7 @@
           "cluster": {
             "type": "string"
           },
-          "desired_replicas": {
+          "desiredReplicas": {
             "type": "integer"
           },
           "enabled": {
@@ -12496,18 +13315,18 @@
           "name": {
             "type": "string"
           },
-          "ready_replicas": {
+          "readyReplicas": {
             "type": "integer"
           }
         },
         "required": [
-          "admission_phase",
+          "admissionPhase",
           "authority",
           "cluster",
-          "desired_replicas",
+          "desiredReplicas",
           "enabled",
           "name",
-          "ready_replicas"
+          "readyReplicas"
         ],
         "title": "WorkloadDeploymentStatus",
         "type": "object"
@@ -12558,7 +13377,7 @@
               }
             ]
           },
-          "deadline_at": {
+          "deadlineAt": {
             "oneOf": [
               {
                 "format": "date-time",
@@ -12579,7 +13398,7 @@
               }
             ]
           },
-          "gang_size": {
+          "gangSize": {
             "default": 1,
             "type": "integer"
           },
@@ -12601,7 +13420,7 @@
             "default": false,
             "type": "boolean"
           },
-          "priority_class": {
+          "priorityClass": {
             "oneOf": [
               {
                 "type": "string"
@@ -13294,18 +14113,18 @@
             "type": "array"
           },
           "api": {
-            "$ref": "#/components/schemas/ServingSchema"
+            "$ref": "#/components/schemas/Serving"
           },
           "artifact": {
             "type": "string"
           },
           "cache": {
-            "$ref": "#/components/schemas/CacheSchema"
+            "$ref": "#/components/schemas/Cache"
           },
           "capabilities": {
-            "$ref": "#/components/schemas/CapabilitiesSchema"
+            "$ref": "#/components/schemas/Capabilities"
           },
-          "context_length": {
+          "contextLength": {
             "default": 0,
             "type": "integer"
           },
@@ -13319,7 +14138,7 @@
               }
             ]
           },
-          "max_batch_tokens": {
+          "maxBatchTokens": {
             "oneOf": [
               {
                 "type": "integer"
@@ -13330,10 +14149,10 @@
             ]
           },
           "overlay": {
-            "$ref": "#/components/schemas/OverlaySchema"
+            "$ref": "#/components/schemas/Overlay"
           },
           "parallelism": {
-            "$ref": "#/components/schemas/ParallelismSchema"
+            "$ref": "#/components/schemas/Parallelism"
           },
           "quantization": {
             "oneOf": [
@@ -13346,19 +14165,19 @@
             ]
           },
           "resources": {
-            "$ref": "#/components/schemas/ResourcesSchema"
+            "$ref": "#/components/schemas/Resources"
           },
           "roles": {
             "items": {
-              "$ref": "#/components/schemas/RoleSchema"
+              "$ref": "#/components/schemas/Role"
             },
             "type": "array"
           },
           "router": {
-            "$ref": "#/components/schemas/RouterSchema"
+            "$ref": "#/components/schemas/Router"
           },
           "shape": {
-            "$ref": "#/components/schemas/ShapeSchema"
+            "$ref": "#/components/schemas/Shape"
           },
           "topology": {
             "default": "aggregated",
@@ -13529,7 +14348,7 @@
       },
       "WorkloadStatus": {
         "properties": {
-          "artifact_tag": {
+          "artifactTag": {
             "oneOf": [
               {
                 "type": "string"
@@ -13551,7 +14370,7 @@
             },
             "type": "array"
           },
-          "finished_at": {
+          "finishedAt": {
             "oneOf": [
               {
                 "format": "date-time",
@@ -13562,25 +14381,25 @@
               }
             ]
           },
-          "imported_args": {
+          "importedArgs": {
             "type": "object"
           },
           "phase": {
             "type": "string"
           },
-          "resolved_engine_args": {
+          "resolvedEngineArgs": {
             "type": "object"
           },
           "scale": {
             "$ref": "#/components/schemas/WorkloadScaleStatus"
           },
-          "served_model_name": {
+          "servedModelName": {
             "type": "string"
           },
-          "serving_digest": {
+          "servingDigest": {
             "type": "string"
           },
-          "started_at": {
+          "startedAt": {
             "oneOf": [
               {
                 "format": "date-time",
@@ -13592,17 +14411,17 @@
             ]
           },
           "topology": {
-            "$ref": "#/components/schemas/TopologyViewSchema"
+            "$ref": "#/components/schemas/TopologyView"
           }
         },
         "required": [
           "deployments",
-          "imported_args",
+          "importedArgs",
           "phase",
-          "resolved_engine_args",
+          "resolvedEngineArgs",
           "scale",
-          "served_model_name",
-          "serving_digest",
+          "servedModelName",
+          "servingDigest",
           "topology"
         ],
         "title": "WorkloadStatus",
