@@ -9,6 +9,14 @@ protocol can change between minor versions.
 
 ### Added
 
+- Cluster-project links carry a namespace allowlist (ADR 0042, migration `b9c0d1e2f3a4`):
+  `PUT /v1/clusters/{ref}/projects/{project}` takes `{"namespaces": [...]}` and `GET` returns it.
+  Only listed namespaces may declare; others get `Synced=False/NamespaceNotAllowed`. Existing links
+  start empty and allow none until namespaces are added.
+- Workload resources: a failing plane delete backs off and goes `Stalled=True/DeleteFailing` after
+  10 attempts (`deletionPolicy: Orphan` releases it); the declare controller is rate-limited
+  (`cluster.declare.qps`/`burst`/`concurrency`); the plane reports `PlacementDrift` while replicas
+  sit outside `allowedClusters`; the Argo CD health check reads Stalled first.
 - Workload CRDs in member clusters (ADR 0042). The cluster-setup chart installs
   `workloads.plane.wingsmith.dev` (v1alpha1); a Workload applied with kubectl, Argo CD or Flux in a
   namespace labelled `plane.wingsmith.dev/project=<slug>` (or `cluster.defaultProject`) is applied to

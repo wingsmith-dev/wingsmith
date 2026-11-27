@@ -467,3 +467,22 @@ func TestControllerOptionsDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("second item delayed %v, want the bucket to throttle", d)
 	}
 }
+
+type forbiddingPlane struct{ *fakePlane }
+
+func (p *forbiddingPlane) Apply(_ context.Context, _ *wire.ManifestApply) (*wire.ManifestResult, error) {
+	return &wire.ManifestResult{Result: "forbidden", Reason: ReasonNamespaceNotAllowed, Error: "namespace not allowed"}, nil
+}
+
+func TestNamespaceNotAllowedStalls(t *testing.T) {
+	r, c, plane := setup(t, namespace("team-a", "search"), workload("team-a", "chat", spec()))
+	r.Plane = &forbiddingPlane{plane}
+	reconcileOnce(t, r, "team-a", "chat")
+	u := get(t, c, "team-a", "chat")
+	if s := condition(t, u, ConditionSync); s == nil || s.Status != metav1.ConditionFalse || s.Reason != ReasonNamespaceNotAllowed {
+		t.Fatalf("Synced = %+v", s)
+	}
+	if s := condition(t, u, ConditionStalled); s == nil || s.Status != metav1.ConditionTrue {
+		t.Fatalf("Stalled = %+v", s)
+	}
+}

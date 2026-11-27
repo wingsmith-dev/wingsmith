@@ -593,13 +593,14 @@ artifact, which is what puts the download on the timeline of every workload wait
 |---|---|---|
 | `manifest.apply` | op → hub | `kind` (`Workload`), `project`, `name`, `namespace`, `uid`, `body`, `generation`: a Workload custom resource from the member cluster, as the manifest `wings apply` would send |
 | `manifest.delete` | op → hub | `kind`, `project`, `name`, `namespace`, `uid`: the custom resource is being deleted |
-| `manifest.result` | hub → op | `result`, `generation`, `uid`, `rv`, `plane_generation`, `manager`, `allowed_clusters`, `error`. `reply_to` is the apply's or delete's id |
+| `manifest.result` | hub → op | `result`, `generation`, `uid`, `rv`, `plane_generation`, `manager`, `allowed_clusters`, `error`, `reason`. `reply_to` is the apply's or delete's id |
 
 The operator watches Workload resources in namespaces labelled `plane.wingsmith.dev/project` and
 applies each through `ManifestService`, exactly as `PUT /v1/manifests/workloads/{project}/{name}`
 would, as field manager `k8s:<cluster>/<namespace>` (ADR 0042). The hub derives the manager from the
 authenticated cluster and the frame's `namespace`; nothing in the frame names it. A project the
-cluster is not linked to (`PUT /v1/clusters/{ref}/projects/{project}`) is answered `forbidden`.
+cluster is not linked to (`PUT /v1/clusters/{ref}/projects/{project}`) is answered `forbidden`, and so is a namespace not on that link's `namespaces` allowlist, with
+`reason: NamespaceNotAllowed`.
 
 `result` is `created`, `configured` or `unchanged` for an apply, `deleted`, `released` (another
 manager owns it now; left in place) or `absent` for a delete, and `conflict`, `forbidden`, `invalid`

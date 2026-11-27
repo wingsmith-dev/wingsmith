@@ -260,3 +260,14 @@ class ClusterServingRequest(Struct):
     url: Annotated[str, Meta(max_length=2048)]
     credential_id: Annotated[str, Meta(max_length=64)] | None = None
     enabled: bool = True
+
+
+class ClusterProjectLinkRequest(Struct):
+    """The cluster namespaces allowed to declare into the project. Empty allows none."""
+
+    namespaces: list[str] = []
+
+
+class ClusterProjectSchema(Struct):
+    project: str
+    namespaces: list[str]

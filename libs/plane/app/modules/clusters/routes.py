@@ -19,10 +19,12 @@ from .schemas import TunnelAuthRequest
 from .schemas import ClusterSetupSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
+from .schemas import ClusterProjectSchema
 from .schemas import ClusterUpdateRequest
 from .schemas import TunnelIdentitySchema
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
+from .schemas import ClusterProjectLinkRequest
 from .services import ClusterService
 from .services import ClusterProjectService
 
@@ -155,14 +157,17 @@ class ClusterRoutes(Controller):
         await svc.clear_serving(ref)
 
     @get("/{ref:str}/projects")
-    async def list_cluster_projects(self, context: RequestContext, ref: str) -> Response[list[str]]:
-        """Projects this cluster may declare workloads into from its own Workload resources."""
+    async def list_cluster_projects(self, context: RequestContext, ref: str) -> Response[list[ClusterProjectSchema]]:
+        """Projects this cluster may declare workloads into, and from which of its namespaces."""
         return Response(await ClusterProjectService(context.db).list(ref))
 
     @put("/{ref:str}/projects/{project:str}", status_code=204)
-    async def link_cluster_project(self, context: RequestContext, ref: str, project: str) -> None:
-        """Lets the cluster's operator apply Workload resources into `project`. Idempotent."""
-        await ClusterProjectService(context.db).link(ref, project)
+    async def link_cluster_project(
+        self, context: RequestContext, ref: str, project: str, data: ClusterProjectLinkRequest | None = None
+    ) -> None:
+        """Lets the cluster's operator apply Workload resources into `project` from the namespaces
+        listed in the body, replacing any earlier list. No body or an empty list allows none. Idempotent."""
+        await ClusterProjectService(context.db).link(ref, project, data.namespaces if data else [])
 
     @delete("/{ref:str}/projects/{project:str}", status_code=204)
     async def unlink_cluster_project(self, context: RequestContext, ref: str, project: str) -> None:

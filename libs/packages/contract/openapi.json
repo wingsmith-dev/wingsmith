@@ -3556,6 +3556,38 @@
         "title": "ClusterHeadroomSchema",
         "type": "object"
       },
+      "ClusterProjectLinkRequest": {
+        "properties": {
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "title": "ClusterProjectLinkRequest",
+        "type": "object"
+      },
+      "ClusterProjectSchema": {
+        "properties": {
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespaces",
+          "project"
+        ],
+        "title": "ClusterProjectSchema",
+        "type": "object"
+      },
       "ClusterRollupSchema": {
         "properties": {
           "cluster_id": {
@@ -22038,7 +22070,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/ClusterProjectSchema"
                   },
                   "type": "array"
                 }
@@ -22246,6 +22278,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ClusterProjectLinkRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "204": {
             "description": "Request fulfilled, nothing follows",

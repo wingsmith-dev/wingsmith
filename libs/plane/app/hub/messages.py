@@ -1060,7 +1060,9 @@ class ManifestResult(Struct):
 
     `result` is `created`, `configured` or `unchanged` for an apply; `deleted`, `released` or
     `absent` for a delete; `conflict` (another field manager owns it), `forbidden` (the project is
-    not linked to this cluster), `invalid` or `error` (retryable) otherwise, with `error` saying why.
+    not linked to this cluster, or the namespace is not on the link's allowlist), `invalid` or
+    `error` (retryable) otherwise, with `error` saying why. `reason` refines a refusal:
+    `NamespaceNotAllowed` for a namespace off the allowlist.
     """
 
     result: str
@@ -1071,6 +1073,7 @@ class ManifestResult(Struct):
     manager: str | None = None
     allowed_clusters: list[str] | None = None
     error: str | None = None
+    reason: str | None = None
 
 
 MESSAGE_TYPES: dict[str, type[Struct]] = {

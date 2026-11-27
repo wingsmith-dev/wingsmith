@@ -53,11 +53,11 @@ def _apply(body: dict, namespace: str = "team-a", generation: int = 1) -> Manife
     )
 
 
-async def _setup(db: AsyncSession, link: bool = True):
+async def _setup(db: AsyncSession, link: bool = True, namespaces: tuple[str, ...] = ("team-a", "team-b")):
     cluster, project, artifact = await an_environment(db)
     await seed_free_devices(db, cluster.id)
     if link:
-        await ClusterProjectService(db).link(cluster.name, project.slug)
+        await ClusterProjectService(db).link(cluster.name, project.slug, list(namespaces))
     return cluster, artifact, ManifestHandler(async_sessionmaker(db.bind, expire_on_commit=False))
 
 
@@ -65,6 +65,23 @@ async def test_an_unlinked_project_is_refused(db: AsyncSession) -> None:
     cluster, artifact, handler = await _setup(db, link=False)
     result = await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
     assert result.result == "forbidden"
+    assert await db.scalar(select(Workload.id).where(Workload.name == "chat")) is None
+
+
+async def test_only_allowlisted_namespaces_may_declare(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db, namespaces=("team-a",))
+    body = _body(artifact.handle, [cluster.name])
+    assert (await handler.handle(cluster.id, _apply(body))).result == "created"
+    refused = await handler.handle(cluster.id, _apply(body, namespace="team-z"))
+    assert (refused.result, refused.reason) == ("forbidden", "NamespaceNotAllowed")
+    listed = await ClusterProjectService(db).list(cluster.name)
+    assert [(p.project, p.namespaces) for p in listed] == [("search", ["team-a"])]
+
+
+async def test_an_empty_namespace_list_allows_none(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db, namespaces=())
+    refused = await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    assert (refused.result, refused.reason) == ("forbidden", "NamespaceNotAllowed")
     assert await db.scalar(select(Workload.id).where(Workload.name == "chat")) is None
 
 

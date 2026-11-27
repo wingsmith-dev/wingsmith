@@ -60,6 +60,8 @@ const (
 	ReasonDeleting    = "Deleting"
 	ReasonAwaiting    = "AwaitingStatus"
 	ReasonDeleteStuck = "DeleteFailing"
+	// ReasonNamespaceNotAllowed: the project link does not list this namespace.
+	ReasonNamespaceNotAllowed = "NamespaceNotAllowed"
 
 	// DeleteStallAfter is how many failed plane deletes leave the resource Stalled. It keeps
 	// retrying (at the backoff cap); patching spec.deletionPolicy to Orphan releases it.
@@ -282,6 +284,9 @@ func (r *Reconciler) report(ctx context.Context, obj *unstructured.Unstructured,
 			reason := ReasonInvalid
 			if res.Result == "forbidden" {
 				reason = ReasonForbidden
+				if res.Reason == ReasonNamespaceNotAllowed {
+					reason = ReasonNamespaceNotAllowed
+				}
 			} else if strings.Contains(res.Error, "observed") {
 				reason = ReasonObserved
 			}

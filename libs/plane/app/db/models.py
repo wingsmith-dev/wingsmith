@@ -152,7 +152,8 @@ class ClusterProject(BaseMixin):
 
     The plane-side half of declaring from a member cluster (ADR 0042): the hub applies a
     `manifest.apply` only into a project linked here. No link, no declarations; placement is not
-    affected either way.
+    affected either way. `namespaces` is the allowlist of cluster namespaces that may declare into
+    the project; empty allows none.
     """
 
     __tablename__ = "supply_cluster_project"
@@ -165,6 +166,7 @@ class ClusterProject(BaseMixin):
     project_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    namespaces: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
 
 
 class Node(BaseMixin):

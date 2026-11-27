@@ -12,11 +12,20 @@ is the same one `wings apply -f` takes.
    `edit`/`admin`) and `wingsmith-view` (folded into `view`). Helm does not upgrade CRDs in
    `crds/`; on an existing install apply `crds/plane.wingsmith.dev_workloads.yaml` once and restart
    the operator. `cluster.declareWorkloads: false` turns the feature off.
-2. Link the project to the cluster on the plane. A cluster can only declare into linked projects:
+2. Link the project to the cluster on the plane, naming the namespaces allowed to declare into it.
+   A cluster can only declare into linked projects, and only from listed namespaces:
 
    ```sh
-   curl -X PUT -H "Authorization: Bearer $TOKEN" https://plane.example.com/v1/clusters/alpha/projects/search
+   curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"namespaces": ["team-a", "team-b"]}' \
+     https://plane.example.com/v1/clusters/alpha/projects/search
    ```
+
+   The PUT replaces the list, so send every namespace each time; `GET /v1/clusters/alpha/projects`
+   shows each link with its `namespaces`. A link with an empty list (including every link created
+   before the allowlist existed) allows no namespace: add them with the PUT above. A Workload in an
+   unlisted namespace shows `Synced=False/NamespaceNotAllowed` and `Stalled=True`, and the plane
+   object is untouched; a delete from it releases the resource and leaves the plane object.
 
 3. Label the namespaces that declare into it:
 
@@ -24,8 +33,8 @@ is the same one `wings apply -f` takes.
    kubectl label namespace team-a plane.wingsmith.dev/project=search
    ```
 
-   Or set `cluster.defaultProject` in the chart for namespaces without the label. Workloads in any
-   other namespace are ignored.
+   Or set `cluster.defaultProject` in the chart for namespaces without the label; those namespaces
+   still have to be on the link's allowlist. Workloads in any other namespace are ignored.
 
 ## Apply
 
@@ -64,9 +73,9 @@ next expansion. The resource's spec is never rewritten; the effective list is in
 |---|---|
 | `observedGeneration` | the resource generation the plane last answered for |
 | `planeUID`, `planeResourceVersion`, `planeGeneration` | the plane object as last applied |
-| `Synced` | the plane accepted this generation: `True/Applied`; `False` with `ManagerConflict` (another field manager owns the plane object), `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `PlaneError`; `Unknown/PlaneUnreachable` |
+| `Synced` | the plane accepted this generation: `True/Applied`; `False` with `ManagerConflict` (another field manager owns the plane object), `Observed` (adopt it first), `Invalid`, `Forbidden` (project not linked), `NamespaceNotAllowed` (namespace not on the link's allowlist), `PlaneError`; `Unknown/PlaneUnreachable` |
 | `Ready` | serving. `Unknown/AwaitingStatus` for now: serving status from the plane arrives in a later release |
-| `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`), or `DeleteFailing` after 10 failed plane deletes |
+| `Stalled` | `True` on a refusal that needs an edit (`ManagerConflict`, `Observed`, `Invalid`, `Forbidden`, `NamespaceNotAllowed`), or `DeleteFailing` after 10 failed plane deletes |
 | `Reconciling` | `True` while waiting on the plane or on serving status |
 
 `kubectl get workloads` shows Synced, Ready and Age. The conditions follow kstatus: Stalled=True is

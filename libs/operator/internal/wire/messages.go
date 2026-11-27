@@ -802,6 +802,8 @@ type ManifestResult struct {
 	Manager         string   `json:"manager,omitempty"`
 	AllowedClusters []string `json:"allowed_clusters,omitempty"`
 	Error           string   `json:"error,omitempty"`
+	// Reason refines a refusal: NamespaceNotAllowed for a namespace off the link's allowlist.
+	Reason string `json:"reason,omitempty"`
 }
 
 // MessageTypes maps every wire type to a constructor for its payload. A type absent here is

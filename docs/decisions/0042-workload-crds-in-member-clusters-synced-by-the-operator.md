@@ -29,7 +29,11 @@ member cluster and the operator, which already holds a session to the plane, syn
   the same project is a different manager and gets a conflict.
 - **Scoping.** A cluster applies only into projects linked to it: `supply_cluster_project`,
   managed by `PUT|DELETE /v1/clusters/{ref}/projects/{project}` and listed by `GET
-  /v1/clusters/{ref}/projects`. Anything else is answered `forbidden`.
+  /v1/clusters/{ref}/projects`. Each link carries an explicit allowlist of the cluster namespaces
+  that may declare into the project (`namespaces`, set by the PUT body, replaced whole); an empty
+  list allows none, and links that predate it start empty. A namespace label alone is not enough,
+  since anyone who can label a namespace could otherwise write into any linked project. Anything
+  else is answered `forbidden`, with `reason: NamespaceNotAllowed` for an unlisted namespace.
 - **Origin.** The hub stamps `plane.wingsmith.dev/origin-cluster`, `origin-namespace` and
   `origin-uid` into the applied body, so they live in the object's last-applied record and the
   objects a removed cluster leaves behind can be found by querying it.

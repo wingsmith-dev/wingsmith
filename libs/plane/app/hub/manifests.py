@@ -2,7 +2,8 @@
 
 The operator sends `manifest.apply` / `manifest.delete`; this applies them through the same
 `ManifestService` the HTTP API uses, as field manager `k8s:<cluster>/<namespace>`, and answers with
-`manifest.result`. A cluster applies only into projects linked to it (`supply_cluster_project`),
+`manifest.result`. A cluster applies only into projects linked to it (`supply_cluster_project`), and only from the
+namespaces that link allows,
 and only ever as its own manager: the manager is derived here, not read from the frame.
 """
 
@@ -38,6 +39,9 @@ ORIGIN_UID = "plane.wingsmith.dev/origin-uid"
 removed cluster leaves behind can be found."""
 
 
+NAMESPACE_NOT_ALLOWED = "NamespaceNotAllowed"
+
+
 def manager_for(cluster: str, namespace: str) -> str:
     return f"k8s:{cluster}/{namespace}"
 
@@ -61,16 +65,27 @@ class ManifestHandler:
                 cluster = await db.scalar(select(Cluster).where(cluster_ref_clause(cluster_ref)))
                 if cluster is None:
                     return ManifestResult(result="forbidden", generation=generation, error="unknown cluster")
-                project = await db.scalar(
-                    select(Project)
-                    .join(ClusterProject, ClusterProject.project_id == Project.id)
-                    .where(ClusterProject.cluster_id == cluster.id, Project.slug == msg.project)
-                )
-                if project is None:
+                row = (
+                    await db.execute(
+                        select(Project, ClusterProject.namespaces)
+                        .join(ClusterProject, ClusterProject.project_id == Project.id)
+                        .where(ClusterProject.cluster_id == cluster.id, Project.slug == msg.project)
+                    )
+                ).first()
+                if row is None:
                     return ManifestResult(
                         result="forbidden",
                         generation=generation,
                         error=f"project {msg.project!r} is not linked to cluster {cluster.name!r}",
+                    )
+                project, namespaces = row
+                if msg.namespace not in namespaces:
+                    return ManifestResult(
+                        result="forbidden",
+                        generation=generation,
+                        reason=NAMESPACE_NOT_ALLOWED,
+                        error=f"namespace {msg.namespace!r} may not declare into project {msg.project!r}: "
+                        f"add it with PUT /v1/clusters/{cluster.name}/projects/{msg.project}",
                     )
                 manager = manager_for(cluster.name, msg.namespace)
                 svc = ManifestService(db, actor=f"cluster:{cluster.name}")

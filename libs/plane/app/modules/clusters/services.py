@@ -7,6 +7,7 @@ from typing import NoReturn
 from typing import get_args
 from logging import getLogger
 from collections import OrderedDict
+from collections.abc import Sequence
 
 import yaml
 
@@ -38,6 +39,7 @@ from app.core.exceptions import TooManyRequests
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.clusters.schemas import ClusterProjectSchema
 from app.modules.workloads.repository import WorkloadRepository
 
 from .schemas import ClusterPhase
@@ -968,24 +970,26 @@ class ClusterProjectService:
             raise NotFound(f"no project {project!r}")
         return cluster, found
 
-    async def list(self, ref: str) -> list[str]:
+    async def list(self, ref: str) -> Sequence[ClusterProjectSchema]:
         cluster = await self.repo.get(ref)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
-        rows = await self.db.scalars(
-            select(Project.slug)
+        rows = await self.db.execute(
+            select(Project.slug, ClusterProject.namespaces)
             .join(ClusterProject, ClusterProject.project_id == Project.id)
             .where(ClusterProject.cluster_id == cluster.id)
             .order_by(Project.slug)
         )
-        return list(rows)
+        return [ClusterProjectSchema(project=slug, namespaces=[*ns]) for slug, ns in rows.all()]
 
-    async def link(self, ref: str, project: str) -> None:
+    async def link(self, ref: str, project: str, namespaces: Sequence[str] | None = None) -> None:
+        """Links the project, replacing its namespace allowlist."""
         cluster, found = await self._pair(ref, project)
+        allowed = sorted(set(namespaces or []))
         await self.db.execute(
             pg_insert(ClusterProject)
-            .values(cluster_id=cluster.id, project_id=found.id)
-            .on_conflict_do_nothing(constraint="uq_supply_cluster_project")
+            .values(cluster_id=cluster.id, project_id=found.id, namespaces=allowed)
+            .on_conflict_do_update(constraint="uq_supply_cluster_project", set_={"namespaces": allowed})
         )
         await self.db.commit()
 
