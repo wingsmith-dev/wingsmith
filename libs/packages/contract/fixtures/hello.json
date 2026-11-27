@@ -6,6 +6,7 @@
   "payload": {
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "operator_version": "0.4.2",
+    "agent_kind": "kubernetes",
     "lossy": false,
     "resume_from": 4390,
     "session_id": "01j9x2e5g7qk8v3b0yhn4tzses"

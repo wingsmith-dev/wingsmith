@@ -17,7 +17,7 @@ operator                                            hub
    │                                                 │
    ├─ WSS connect (Authorization: Bearer <token>) ───►
    │                                                 │
-   ├─ hello { cluster_id, operator_version, session_id, resume_from, lossy } ►
+   ├─ hello { cluster_id, operator_version, agent_kind, session_id, resume_from, lossy } ►
    │                                                 │
    ◄─ welcome { session_id, ack_seq, full_resync } ──┤
    │                                                 │
@@ -54,6 +54,11 @@ port-forward does not protect a socket that cluster agents dial in to over the n
 protocol-error close, because a different major is free to change what a frame means. A version that
 is not release-shaped (`dev`, a commit) is a build from source and is admitted, with a log line on
 the hub. An operator that omits the field is read as the latter.
+
+**`hello.agent_kind` must match the cluster's kind.** `kubernetes` is the operator, `host` is
+wingsmith-host. A hello whose kind differs from the registered cluster's is refused like a disabled
+cluster, before any state is written, so one kind's token cannot drive the other's ingestion. An
+agent that omits the field is read as `kubernetes`.
 
 ## 2. Envelope
 

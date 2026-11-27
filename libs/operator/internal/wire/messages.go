@@ -9,11 +9,14 @@ import (
 
 // Hello is the first frame the operator sends. It is never sent twice on one connection.
 type Hello struct {
-	ClusterID       string  `json:"cluster_id"`
-	OperatorVersion string  `json:"operator_version"`
-	Lossy           bool    `json:"lossy"`
-	ResumeFrom      *uint64 `json:"resume_from,omitempty"`
-	SessionID       *string `json:"session_id,omitempty"`
+	ClusterID       string `json:"cluster_id"`
+	OperatorVersion string `json:"operator_version"`
+	// AgentKind is "kubernetes" (the operator) or "host" (wingsmith-host). The hub refuses an
+	// agent whose kind is not its cluster's; a hub reads an absent field as "kubernetes".
+	AgentKind  string  `json:"agent_kind,omitempty"`
+	Lossy      bool    `json:"lossy"`
+	ResumeFrom *uint64 `json:"resume_from,omitempty"`
+	SessionID  *string `json:"session_id,omitempty"`
 }
 
 // Welcome is the hub's answer to Hello.

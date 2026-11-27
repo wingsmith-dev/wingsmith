@@ -34,7 +34,7 @@ bandwidth we do not care about at this scale.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `hello` | op → hub | `cluster_id`, `operator_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** `cluster_id` must name the cluster the enrolment token belongs to, and `operator_version` is checked against the plane's release line (PROTOCOL §1). |
+| `hello` | op → hub | `cluster_id`, `operator_version`, `agent_kind`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** `agent_kind` (`kubernetes` default, or `host`) must match the cluster's kind (PROTOCOL §1). `cluster_id` must name the cluster the enrolment token belongs to, and `operator_version` is checked against the plane's release line (PROTOCOL §1). |
 | `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** `reply_to` is the `hello`'s id. |
 | `ping` / `pong` | either | empty. **Unsequenced.** |
 | `error` | either | `code`, `message`, `retryable` |

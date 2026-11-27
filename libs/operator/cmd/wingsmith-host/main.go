@@ -158,6 +158,7 @@ func run(args []string) error {
 		ClusterID:       cfg.Cluster,
 		Token:           token,
 		OperatorVersion: version,
+		AgentKind:       "host",
 		TLSConfig:       tlsCfg,
 		Handler:         observe.WithObserver(syncpkg.HandlerFunc(ignoreDemand(log)), observer),
 		Checkpointer:    checkpoint.Adapt(cursor),

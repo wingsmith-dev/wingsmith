@@ -145,6 +145,8 @@ type Options struct {
 	ClusterID       string
 	Token           string
 	OperatorVersion string
+	// AgentKind is sent in hello; empty means "kubernetes".
+	AgentKind string
 
 	TLSConfig  *tls.Config
 	HTTPClient *http.Client
@@ -176,6 +178,9 @@ func (o *Options) defaults() {
 	}
 	if o.SendQueueSize <= 0 {
 		o.SendQueueSize = 1024
+	}
+	if o.AgentKind == "" {
+		o.AgentKind = "kubernetes"
 	}
 	if o.OperatorVersion == "" {
 		o.OperatorVersion = "dev"
@@ -455,6 +460,7 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) (bool, err
 	hello := wire.Hello{
 		ClusterID:       c.opts.ClusterID,
 		OperatorVersion: c.opts.OperatorVersion,
+		AgentKind:       c.opts.AgentKind,
 		Lossy:           cursor.Lossy || c.replay.Lossy(),
 	}
 	if cursor.SessionID != "" {
