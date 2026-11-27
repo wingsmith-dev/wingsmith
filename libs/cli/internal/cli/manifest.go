@@ -35,29 +35,47 @@ func manifestCollection(kind string) (string, error) {
 }
 
 func newGetCmd(app *App) *cobra.Command {
+	var watch bool
 	cmd := &cobra.Command{
-		Use:   "get <kind> <name>",
-		Short: "Print one object as a plane.wingsmith.dev/v1alpha1 manifest",
+		Use:   "get <kind> [name]",
+		Short: "Print objects as plane.wingsmith.dev/v1alpha1 manifests, or watch them",
 		Long: `Print a Workload, Endpoint or Artifact as the manifest the plane renders:
-metadata, the declared spec and the derived status.
+metadata, the declared spec and the derived status. Without a name, list every
+object of the kind.
 
-Workloads and endpoints are read in --project. An artifact is read in --project
-when it is private to it, and from the public catalogue otherwise.
+Workloads and endpoints are read in --project (every project when listing
+without one). An artifact is read in --project when it is private to it, and
+from the public catalogue otherwise.
 
-Human output is YAML; -o json and -o yaml print the manifest alone.`,
+-w lists, then keeps printing each change as the plane streams it: ADDED,
+MODIFIED or DELETED with the object. When the plane no longer keeps the point
+the watch resumes from, it relists and carries on.
+
+Human output is YAML for one object and a table for a list or a watch; -o json
+and -o yaml print the manifest or list alone, and -w -o json prints one watch
+event per line.`,
 		Example: `  wings get workload chat --project core
+  wings get workloads
+  wings get endpoints --project core -w
   wings get artifact gpt-oss-120b -o yaml`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			collection, err := manifestCollection(args[0])
 			if err != nil {
 				return err
 			}
-			name := args[1]
-			project := ""
-			if app.projectSet {
-				project = app.Project
+			project := app.projectFlag()
+			if len(args) == 1 || watch {
+				q := api.ManifestQuery{Collection: collection, Project: project}
+				if len(args) == 2 {
+					q.Name = args[1]
+				}
+				if watch {
+					return watchManifests(app, cmd, q)
+				}
+				return listManifests(app, cmd, q)
 			}
+			name := args[1]
 			if collection != "artifacts" && project == "" {
 				return errs.New(errs.CodeUsage, "a %s lives in a project", strings.TrimSuffix(collection, "s")).
 					WithFlag("project")
@@ -83,7 +101,106 @@ Human output is YAML; -o json and -o yaml print the manifest alone.`,
 			})
 		},
 	}
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "after listing, print every change until interrupted")
 	return group(cmd, "demand")
+}
+
+func listManifests(app *App, cmd *cobra.Command, q api.ManifestQuery) error {
+	ctx, cancel := app.RequestContext()
+	defer cancel()
+	list, err := app.Backend.ListManifests(ctx, q)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, m := range list.Items {
+		names = append(names, manifestRef(m))
+	}
+	return app.Emit(&output.Result{
+		Command: cmdPath(cmd),
+		Data:    map[string]any{"items": list.Items, "metadata": map[string]any{"resourceVersion": list.ResourceVersion}},
+		Names:   names,
+		Human: func(w io.Writer, s ui.Style, width int) {
+			for _, m := range list.Items {
+				fmt.Fprintln(w, manifestLine("", m))
+			}
+		},
+	})
+}
+
+// watchManifests lists, prints, and then streams changes from the list's
+// resourceVersion. An expired RV relists; a stream the plane ends resumes from
+// the last RV seen. It returns when the context ends or the plane refuses.
+func watchManifests(app *App, cmd *cobra.Command, q api.ManifestQuery) error {
+	ctx := app.Ctx
+	w := cmd.OutOrStdout()
+	machine := !app.Human()
+	print := func(e api.WatchEvent) error {
+		if e.Type == "BOOKMARK" {
+			return nil
+		}
+		if machine {
+			return json.NewEncoder(w).Encode(e)
+		}
+		_, err := fmt.Fprintln(w, manifestLine(e.Type, e.Object))
+		return err
+	}
+	rv := ""
+	for {
+		if rv == "" {
+			lctx, cancel := app.RequestContext()
+			list, err := app.Backend.ListManifests(lctx, q)
+			cancel()
+			if err != nil {
+				return err
+			}
+			for _, m := range list.Items {
+				if err := print(api.WatchEvent{Type: "ADDED", Object: m}); err != nil {
+					return err
+				}
+			}
+			rv = list.ResourceVersion
+			if app.Backend.Simulated() {
+				return nil // the fake never changes on its own
+			}
+		}
+		err := app.Backend.WatchManifests(ctx, q, rv, func(e api.WatchEvent) error {
+			if v := e.ResourceVersion(); v != "" {
+				rv = v
+			}
+			return print(e)
+		})
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case errors.Is(err, api.ErrWatchExpired):
+			rv = ""
+		case err != nil:
+			return err
+		}
+	}
+}
+
+func manifestRef(m api.Manifest) string {
+	kind, _ := m["kind"].(string)
+	meta, _ := m["metadata"].(map[string]any)
+	name, _ := meta["name"].(string)
+	return strings.ToLower(kind) + "/" + name
+}
+
+// manifestLine is one object on one line: event type, ref, namespace, resourceVersion.
+func manifestLine(event string, m api.Manifest) string {
+	meta, _ := m["metadata"].(map[string]any)
+	ns, _ := meta["namespace"].(string)
+	rv, _ := meta["resourceVersion"].(string)
+	if ns == "" {
+		ns = "-"
+	}
+	fields := []string{manifestRef(m), ns, rv}
+	if event != "" {
+		fields = append([]string{event}, fields...)
+	}
+	return strings.Join(fields, "\t")
 }
 
 func writeManifestYAML(w io.Writer, m api.Manifest) error {

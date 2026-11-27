@@ -3,8 +3,13 @@ package api
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
+
+	"github.com/wingsmith-dev/wingsmith/libs/cli/internal/errs"
 )
 
 // ManifestAPIVersion is the group and version of the plane's manifest kinds. It is
@@ -90,4 +95,123 @@ func (c *Client) ApplyManifest(ctx context.Context, collection, project, name st
 		}
 	}
 	return out, result, nil
+}
+
+// ManifestList is every object of a kind and the resourceVersion they are all
+// current as of: a watch started from it misses nothing.
+type ManifestList struct {
+	Items           []Manifest
+	ResourceVersion string
+}
+
+// ManifestQuery narrows a list or watch. An empty Project means every namespace.
+type ManifestQuery struct {
+	Collection string
+	Project    string
+	Name       string
+}
+
+func (q ManifestQuery) path() string {
+	p := "/v1/manifests/" + q.Collection
+	if q.Project != "" && q.Collection != "artifacts" {
+		p += "/" + url.PathEscape(q.Project)
+	}
+	return p
+}
+
+func (q ManifestQuery) values() url.Values {
+	v := url.Values{}
+	var fields []string
+	if q.Name != "" {
+		fields = append(fields, "metadata.name="+q.Name)
+	}
+	if q.Project != "" && q.Collection == "artifacts" {
+		fields = append(fields, "metadata.namespace="+q.Project)
+	}
+	if len(fields) > 0 {
+		v.Set("fieldSelector", strings.Join(fields, ","))
+	}
+	return v
+}
+
+// ListManifests lists the objects a query matches.
+func (c *Client) ListManifests(ctx context.Context, q ManifestQuery) (ManifestList, error) {
+	var out struct {
+		Items    []Manifest `json:"items"`
+		Metadata struct {
+			ResourceVersion string `json:"resourceVersion"`
+		} `json:"metadata"`
+	}
+	if err := c.get(ctx, q.path(), q.values(), &out); err != nil {
+		return ManifestList{}, err
+	}
+	return ManifestList{Items: out.Items, ResourceVersion: out.Metadata.ResourceVersion}, nil
+}
+
+// WatchEvent is one line of a watch: ADDED, MODIFIED, DELETED, BOOKMARK or ERROR.
+type WatchEvent struct {
+	Type   string   `json:"type"`
+	Object Manifest `json:"object"`
+}
+
+// ResourceVersion is the event's object's metadata.resourceVersion.
+func (e WatchEvent) ResourceVersion() string {
+	meta, _ := e.Object["metadata"].(map[string]any)
+	rv, _ := meta["resourceVersion"].(string)
+	return rv
+}
+
+// ErrWatchExpired is a watch whose resourceVersion the plane no longer keeps
+// (HTTP 410, or an ERROR event carrying it): relist and watch again.
+var ErrWatchExpired = errs.New(errs.CodeConflict, "the watch's resourceVersion has expired; relist")
+
+// WatchManifests streams changes after resourceVersion to fn until the plane
+// ends the stream (nil), the context ends, or the RV expires (ErrWatchExpired).
+func (c *Client) WatchManifests(ctx context.Context, q ManifestQuery, resourceVersion string, fn func(WatchEvent) error) error {
+	v := q.values()
+	v.Set("watch", "true")
+	v.Set("resourceVersion", resourceVersion)
+	v.Set("allowWatchBookmarks", "true")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+q.path()+"?"+v.Encode(), nil)
+	if err != nil {
+		return errs.Wrap(err, errs.CodeInternal, "cannot build request")
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "wings/"+c.Version)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	// The stream outlives any request timeout: the context is what ends it.
+	resp, err := (&http.Client{Transport: c.HTTP.Transport}).Do(req)
+	if err != nil {
+		return transportError(ctx, err, c.Server)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusGone {
+		return ErrWatchExpired
+	}
+	if resp.StatusCode >= 400 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return httpError(resp, payload)
+	}
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var e WatchEvent
+		if err := dec.Decode(&e); err != nil {
+			if err == io.EOF || ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errs.Wrap(err, errs.CodeNetwork, "the watch stream broke")
+		}
+		if e.Type == "ERROR" {
+			if code, _ := e.Object["code"].(float64); code == http.StatusGone {
+				return ErrWatchExpired
+			}
+			msg, _ := e.Object["message"].(string)
+			return errs.New(errs.CodeServerError, "watch failed: %s", msg)
+		}
+		if err := fn(e); err != nil {
+			return err
+		}
+	}
 }

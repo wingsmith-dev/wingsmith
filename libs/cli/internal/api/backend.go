@@ -48,6 +48,8 @@ type Backend interface {
 	EndpointSLA(ctx context.Context, ref string, q SLAQuery) (SLAReport, error)
 	Manifest(ctx context.Context, collection, project, name string) (Manifest, error)
 	ApplyManifest(ctx context.Context, collection, project, name string, m Manifest, opts ApplyOptions) (Manifest, string, error)
+	ListManifests(ctx context.Context, q ManifestQuery) (ManifestList, error)
+	WatchManifests(ctx context.Context, q ManifestQuery, resourceVersion string, fn func(WatchEvent) error) error
 
 	Tenants(ctx context.Context, opts ListOpts) (Page[Tenant], error)
 	Tenant(ctx context.Context, ref string) (Tenant, error)

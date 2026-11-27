@@ -52,3 +52,54 @@ func (b *Backend) ApplyManifest(ctx context.Context, collection, project, name s
 	}
 	return m, api.ApplyConfigured, nil
 }
+
+// ListManifests lists the fake's objects of a kind, each as Manifest renders it.
+// The fake keeps no change log, so its resourceVersion is always "1".
+func (b *Backend) ListManifests(ctx context.Context, q api.ManifestQuery) (api.ManifestList, error) {
+	var names []string
+	switch q.Collection {
+	case "workloads":
+		page, err := b.Workloads(ctx, api.ListOpts{All: true})
+		if err != nil {
+			return api.ManifestList{}, err
+		}
+		for _, w := range page.Items {
+			names = append(names, w.Name)
+		}
+	case "endpoints":
+		page, err := b.Endpoints(ctx, api.ListOpts{All: true})
+		if err != nil {
+			return api.ManifestList{}, err
+		}
+		for _, e := range page.Items {
+			names = append(names, e.Name)
+		}
+	case "artifacts":
+		page, err := b.Artifacts(ctx, api.ListOpts{All: true})
+		if err != nil {
+			return api.ManifestList{}, err
+		}
+		for _, a := range page.Items {
+			names = append(names, a.Name)
+		}
+	default:
+		return api.ManifestList{}, errs.New(errs.CodeUsage, "unknown manifest collection %q", q.Collection)
+	}
+	out := api.ManifestList{ResourceVersion: "1", Items: []api.Manifest{}}
+	for _, name := range names {
+		if q.Name != "" && name != q.Name {
+			continue
+		}
+		m, err := b.Manifest(ctx, q.Collection, q.Project, name)
+		if err != nil {
+			return api.ManifestList{}, err
+		}
+		out.Items = append(out.Items, m)
+	}
+	return out, nil
+}
+
+// WatchManifests sends nothing: the fake never changes on its own.
+func (b *Backend) WatchManifests(ctx context.Context, q api.ManifestQuery, resourceVersion string, fn func(api.WatchEvent) error) error {
+	return nil
+}
