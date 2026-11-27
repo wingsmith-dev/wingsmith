@@ -9,7 +9,7 @@ After=network-online.target nvidia-persistenced.service
 
 [Service]
 Type=simple
-# Runs as root on purpose for the supply-only phase: NVML needs the nvidia device nodes and the
+# Runs as root for the supply-only phase, by design: NVML needs the nvidia device nodes and the
 # sandboxing below narrows what root can touch.
 # TODO(P2.6): run as a dedicated wingsmith user in the video group.
 ExecStart=/usr/local/bin/wingsmith-host run --config /etc/wingsmith/host.json
