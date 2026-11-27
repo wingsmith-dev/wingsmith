@@ -24,6 +24,7 @@ from .schemas import TunnelIdentitySchema
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
 from .services import ClusterService
+from .services import ClusterProjectService
 
 
 class ClusterRoutes(Controller):
@@ -152,3 +153,18 @@ class ClusterRoutes(Controller):
     @delete("/{ref:str}/serving", status_code=204)
     async def clear_serving(self, context: RequestContext, svc: ClusterService, ref: str) -> None:
         await svc.clear_serving(ref)
+
+    @get("/{ref:str}/projects")
+    async def list_cluster_projects(self, context: RequestContext, ref: str) -> Response[list[str]]:
+        """Projects this cluster may declare workloads into from its own Workload resources."""
+        return Response(await ClusterProjectService(context.db).list(ref))
+
+    @put("/{ref:str}/projects/{project:str}", status_code=204)
+    async def link_cluster_project(self, context: RequestContext, ref: str, project: str) -> None:
+        """Lets the cluster's operator apply Workload resources into `project`. Idempotent."""
+        await ClusterProjectService(context.db).link(ref, project)
+
+    @delete("/{ref:str}/projects/{project:str}", status_code=204)
+    async def unlink_cluster_project(self, context: RequestContext, ref: str, project: str) -> None:
+        """Stops new applies into `project`; objects already declared stay."""
+        await ClusterProjectService(context.db).unlink(ref, project)

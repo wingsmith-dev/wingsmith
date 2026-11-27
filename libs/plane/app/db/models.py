@@ -147,6 +147,26 @@ class ClusterServing(BaseMixin):
     cluster: Mapped[Cluster] = relationship("Cluster", back_populates="serving", lazy="noload")
 
 
+class ClusterProject(BaseMixin):
+    """A project whose workloads this cluster's operator may declare from its own Workload CRs.
+
+    The plane-side half of declaring from a member cluster (ADR 0042): the hub applies a
+    `manifest.apply` only into a project linked here. No link, no declarations; placement is not
+    affected either way.
+    """
+
+    __tablename__ = "supply_cluster_project"
+    __table_args__ = (UniqueConstraint("cluster_id", "project_id", name="uq_supply_cluster_project"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
 class Node(BaseMixin):
     """A machine observed inside a cluster. Never declared: nodes appear, they are not written.
 

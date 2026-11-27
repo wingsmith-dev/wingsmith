@@ -11,14 +11,19 @@ from collections import OrderedDict
 import yaml
 
 from msgspec import UNSET
+from sqlalchemy import delete
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.auth import AuthManager
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
 from app.db.models import Cluster
+from app.db.models import Project
+from app.db.models import ClusterProject
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 from app.ingestion import statements
@@ -33,6 +38,7 @@ from app.core.exceptions import TooManyRequests
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.workloads.repository import WorkloadRepository
 
 from .schemas import ClusterPhase
 from .schemas import ClusterSchema
@@ -943,4 +949,49 @@ class ClusterService:
             return
         await self.repo.clear_serving(cluster.serving)
         cluster.serving = None
+        await self.db.commit()
+
+
+class ClusterProjectService:
+    """Which projects a cluster may declare workloads into from its own Workload resources (ADR 0042)."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.repo = ClusterRepository(db)
+
+    async def _pair(self, ref: str, project: str) -> tuple[Cluster, Project]:
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        found = await WorkloadRepository(self.db).project_by_ref(project)
+        if found is None:
+            raise NotFound(f"no project {project!r}")
+        return cluster, found
+
+    async def list(self, ref: str) -> list[str]:
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        rows = await self.db.scalars(
+            select(Project.slug)
+            .join(ClusterProject, ClusterProject.project_id == Project.id)
+            .where(ClusterProject.cluster_id == cluster.id)
+            .order_by(Project.slug)
+        )
+        return list(rows)
+
+    async def link(self, ref: str, project: str) -> None:
+        cluster, found = await self._pair(ref, project)
+        await self.db.execute(
+            pg_insert(ClusterProject)
+            .values(cluster_id=cluster.id, project_id=found.id)
+            .on_conflict_do_nothing(constraint="uq_supply_cluster_project")
+        )
+        await self.db.commit()
+
+    async def unlink(self, ref: str, project: str) -> None:
+        cluster, found = await self._pair(ref, project)
+        await self.db.execute(
+            delete(ClusterProject).where(ClusterProject.cluster_id == cluster.id, ClusterProject.project_id == found.id)
+        )
         await self.db.commit()
