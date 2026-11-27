@@ -289,6 +289,7 @@ class Condition(Struct, kw_only=True):
 
 
 UNSCHEDULABLE = "Unschedulable"
+PLACEMENT_DRIFT = "PlacementDrift"
 
 
 class WorkloadStatus(Struct, kw_only=True):

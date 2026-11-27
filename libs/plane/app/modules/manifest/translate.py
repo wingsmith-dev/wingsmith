@@ -38,6 +38,7 @@ from app.modules.workloads.schemas import WorkloadServingRequest
 
 from .schemas import UNSCHEDULABLE
 from .schemas import NOTE_ANNOTATION
+from .schemas import PLACEMENT_DRIFT
 from .schemas import Scale
 from .schemas import Condition
 from .schemas import ScaleSpec
@@ -115,6 +116,34 @@ def workload_conditions(w: WorkloadSchema) -> list[Condition]:
             message=f"placement placed {w.scale.placed} of {w.scale.desired} replicas",
         )
     ]
+
+
+def placement_drift(deployments, allowed_clusters: list[str]) -> Condition | None:
+    """`PlacementDrift=True` while replicas sit on a cluster outside `allowed_clusters`.
+
+    Narrowing the allowed set never moves running replicas: they stay until the workload is
+    redeployed or scaled there, and this condition is how that is visible. No condition without
+    an allowed set to drift from.
+    """
+    if not allowed_clusters:
+        return None
+    allowed = set(allowed_clusters)
+    outside = sorted(
+        {
+            d.cluster_name
+            for d in deployments
+            if d.cluster_name not in allowed and (d.desired_replicas or d.replicas.ready)
+        }
+    )
+    if not outside:
+        return Condition(type=PLACEMENT_DRIFT, status="False", reason="WithinAllowedClusters")
+    return Condition(
+        type=PLACEMENT_DRIFT,
+        status="True",
+        reason="OutsideAllowedClusters",
+        message=f"replicas run on {', '.join(outside)}, outside spec.placement.allowedClusters; "
+        "they are not moved automatically",
+    )
 
 
 def declared_replicas(spec: WorkloadManifestSpec) -> int | None:
@@ -213,7 +242,8 @@ def workload_manifest(
                 )
                 for d in w.deployments
             ],
-            conditions=workload_conditions(w),
+            conditions=workload_conditions(w)
+            + [c for c in [placement_drift(w.deployments, placement.allowed_clusters)] if c],
             artifact_tag=w.artifact_tag,
             started_at=w.started_at,
             finished_at=w.finished_at,

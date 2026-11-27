@@ -128,3 +128,19 @@ async def test_put_refuses_a_dry_run_other_than_all() -> None:
     fn = ManifestRoutes.put_workload_manifest.fn
     with pytest.raises(Invalid):
         await fn(None, request=None, svc=None, project="p", name="n", data=None, if_match=None, dry_run="Server")
+
+
+def test_placement_drift_flags_replicas_outside_the_allowed_clusters() -> None:
+    from types import SimpleNamespace
+
+    from app.modules.manifest.translate import placement_drift
+
+    def d(cluster: str, desired: int, ready: int = 0) -> SimpleNamespace:
+        return SimpleNamespace(cluster_name=cluster, desired_replicas=desired, replicas=SimpleNamespace(ready=ready))
+
+    assert placement_drift([d("alpha", 1)], []) is None
+    within = placement_drift([d("alpha", 2), d("beta", 0)], ["alpha"])
+    assert within is not None and (within.type, within.status) == ("PlacementDrift", "False")
+    drift = placement_drift([d("alpha", 1), d("beta", 0, ready=1), d("gamma", 1)], ["alpha"])
+    assert drift is not None and (drift.status, drift.reason) == ("True", "OutsideAllowedClusters")
+    assert "beta, gamma" in drift.message
