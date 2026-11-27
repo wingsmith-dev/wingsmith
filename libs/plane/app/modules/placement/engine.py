@@ -107,7 +107,7 @@ def _rank(verdict: ClusterVerdict) -> tuple:
 
 def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: CapacitySnapshot) -> ClusterVerdict:
     reasons: list[Rejection] = []
-    reasons.extend(_health_reasons(cluster))
+    reasons.extend(_health_reasons(request, cluster))
     reasons.extend(_runtime_reasons(request, cluster))
     reasons.extend(_policy_reasons(request, cluster, snapshot.policies))
     reasons.extend(_name_reasons(request, cluster))
@@ -217,17 +217,17 @@ def _no_runtime(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rej
     ]
 
 
-def _health_reasons(cluster: ClusterSnapshot) -> list[Rejection]:
+def _health_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rejection]:
     """Declared phase and observed reachability, checked as the two axes they are."""
     reasons: list[Rejection] = []
-    if cluster.kind == "host":
-        # A host reports supply but has no serving backend yet (P2.4). Refusing here keeps it
-        # visible as capacity while saying, per candidate, why nothing lands on it.
+    if cluster.kind == "host" and request.runtime != "container":
+        # A host runs plain engine containers and never Dynamo (P2.4). Whether it serves at all
+        # is the runtime check's to say: a supply-only host reports no runtimes.
         reasons.append(
             Rejection(
                 code=CLUSTER_KIND,
-                message=f"cluster {cluster.name} is a host; hosts do not serve workloads yet",
-                detail={"kind": cluster.kind},
+                message=f"cluster {cluster.name} is a host; hosts run container workloads only",
+                detail={"kind": cluster.kind, "runtime": request.runtime},
             )
         )
     if cluster.phase not in PLACEABLE_PHASES:

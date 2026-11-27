@@ -289,14 +289,35 @@ def test_draining_but_reachable_cluster_is_not_a_target():
     assert verdict_for(decision, "iad-1").free_devices == 8
 
 
-def test_host_cluster_is_supply_but_not_a_target():
-    snap = CapacitySnapshot(clusters=(cluster("c1", "box-1", devices("c1", count=8), kind="host"),))
+def test_host_cluster_refuses_dynamo_workloads():
+    snap = CapacitySnapshot(
+        clusters=(cluster("c1", "box-1", devices("c1", count=8), kind="host", runtimes=("container",)),)
+    )
 
     decision = place(request(8), snap)
 
     assert decision.placed is False
-    assert codes_for(decision, "box-1") == [codes.CLUSTER_KIND]
+    assert codes.CLUSTER_KIND in codes_for(decision, "box-1")
     assert verdict_for(decision, "box-1").free_devices == 8
+
+
+def test_serving_host_takes_container_workloads():
+    snap = CapacitySnapshot(
+        clusters=(cluster("c1", "box-1", devices("c1", count=8), kind="host", runtimes=("container",)),)
+    )
+
+    decision = place(request(8, runtime="container"), snap)
+
+    assert decision.placed is True
+
+
+def test_supply_only_host_refuses_container_workloads():
+    snap = CapacitySnapshot(clusters=(cluster("c1", "box-1", devices("c1", count=8), kind="host"),))
+
+    decision = place(request(8, runtime="container"), snap)
+
+    assert decision.placed is False
+    assert codes_for(decision, "box-1") == [codes.CLUSTER_RUNTIME]
 
 
 def test_active_but_unreachable_cluster_is_not_a_target():

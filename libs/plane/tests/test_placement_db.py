@@ -1387,3 +1387,28 @@ async def test_a_shared_workload_name_never_resolves_to_another_projects_deploym
         core_project = (await fetch(sessions, "select id from bind_project where slug = 'core'"))[0][0]
         found = await endpoints.deployments_by_ref(["qwen"], None, core_project)
         assert [d.uid for d in found["qwen"]] == [core_dep.id]
+
+
+async def test_a_serving_host_takes_container_workloads_and_refuses_dynamo(sessions) -> None:
+    """A host is a one-node cluster of kind host. Once it reports the container runtime it is a
+    target for container workloads, and it never takes a Dynamo one (P2.4)."""
+    await seed_demand(sessions)
+    host = await seed_supply(sessions, "box-1", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(text("update supply_cluster set kind = 'host' where id = :id"), {"id": host})
+        await db.execute(
+            text("update supply_cluster_sync_state set runtimes = '{container}' where cluster_id = :id"), {"id": host}
+        )
+        dynamo = await seed_workload(db, "dynamo-one", "c")
+        container = await seed_workload(db, "container-one", "d")
+        await db.execute(text("update demand_workload set runtime_kind = 'container' where id = :id"), {"id": container})
+
+    async with sessions() as db:
+        refused = await PlacementService(db).preview(PlacementPreviewRequest(workload="dynamo-one", project="core"))
+        placed = await PlacementService(db).preview(PlacementPreviewRequest(workload="container-one", project="core"))
+
+    assert dynamo
+    assert not refused.placed
+    assert "cluster_kind" in {r.code for v in refused.verdicts for r in v.reasons}
+    assert placed.placed
+    assert placed.cluster_name == "box-1"
