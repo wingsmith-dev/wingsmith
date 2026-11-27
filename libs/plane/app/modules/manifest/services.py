@@ -562,7 +562,7 @@ def with_last_applied(m, state):
         if state.applied_by_principal:
             extra[APPLIED_BY_PRINCIPAL] = state.applied_by_principal
         if state.applied_at is not None:
-            extra[APPLIED_AT] = state.applied_at.isoformat().replace("+00:00", "Z")
+            extra[APPLIED_AT] = state.applied_at.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
     if extra:
         m.metadata.annotations = m.metadata.annotations | extra
     return m
