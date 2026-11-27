@@ -9,6 +9,12 @@ protocol can change between minor versions.
 
 ### Added
 
+- A durable, ordered change log for Workloads, Endpoints and Artifacts (ADR 0037). Every write
+  records a hint in `change_log` in the same transaction, in commit order; `GET
+  /v1/changes?since=<rv>&limit=` reads it and answers 410 Gone once `since` has been compacted
+  (24h by default, `WINGSMITH_CHANGE_LOG_RETENTION_SECONDS`). `metadata.resourceVersion` and
+  `If-Match` on these three kinds are now the object's last change seq, so status writes move them
+  too; `generation` stays the spec counter.
 - Linux host packages and hardening (P2.6). Tagged releases attach `wingsmith-host` `.deb` and
   `.rpm` packages for amd64 and arm64 that install the binary, the systemd unit and a placeholder
   config, and create a `wingsmith` system user in the `docker` group with `/etc/wingsmith` and
