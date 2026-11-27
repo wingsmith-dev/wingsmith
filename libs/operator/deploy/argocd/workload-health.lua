@@ -8,12 +8,13 @@ local cond = {}
 for _, c in ipairs(obj.status.conditions) do
   cond[c.type] = c
 end
+-- Stalled first: a stuck delete or a refusal is Degraded even before observedGeneration catches up.
+if cond.Stalled ~= nil and cond.Stalled.status == "True" then
+  return {status = "Degraded", message = cond.Stalled.message}
+end
 if obj.metadata.generation ~= nil and obj.status.observedGeneration ~= obj.metadata.generation then
   hs.message = "waiting for the plane to observe this generation"
   return hs
-end
-if cond.Stalled ~= nil and cond.Stalled.status == "True" then
-  return {status = "Degraded", message = cond.Stalled.message}
 end
 if cond.Synced ~= nil and cond.Synced.status == "False" then
   return {status = "Degraded", message = cond.Synced.message}
