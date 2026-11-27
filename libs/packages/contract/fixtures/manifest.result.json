@@ -17,6 +17,31 @@
       "alpha"
     ],
     "reason": "ManagerConflict",
-    "error": "workload 'chat' is managed by 'k8s:alpha/team-b'; retry with force=true to take it over"
+    "error": "workload 'chat' is managed by 'k8s:alpha/team-b'; retry with force=true to take it over",
+    "status": {
+      "scale": {
+        "placed": 2,
+        "ready": 1
+      },
+      "deployments": [
+        {
+          "name": "chat-alpha",
+          "cluster": "alpha",
+          "admissionPhase": "running",
+          "authority": "plane",
+          "enabled": true,
+          "desiredReplicas": 2,
+          "readyReplicas": 1
+        }
+      ],
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "False",
+          "reason": "ReplicasNotReady",
+          "message": "1 of 2 ready"
+        }
+      ]
+    }
   }
 }

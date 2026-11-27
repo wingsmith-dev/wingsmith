@@ -14,6 +14,7 @@ import contextlib
 
 import msgspec
 
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from app.core.ids import new_uid
 from app.db.models import Policy
 from app.db.models import Cluster
 from app.db.models import Project
+from app.db.models import Replica
 from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
@@ -231,8 +233,21 @@ class ManifestService:
             projects={owner.uid: owner.slug},
             deployments=await self._names(Deployment.object_name, deployments),
             workload_deployments=expanded,
+            ready=await self._ready(deployments),
         )
         return with_last_applied(endpoint_manifest(e, refs), await self._applied_state(Endpoint, e.id))
+
+    async def _ready(self, uids) -> dict[str, int]:
+        uids = [u for u in uids if u is not None]
+        if not uids:
+            return {}
+        rows = await self.db.execute(
+            select(Deployment.uid, func.count(Replica.id))
+            .join(Replica, Replica.deployment_id == Deployment.id)
+            .where(Deployment.uid.in_(uids), Replica.ready.is_(True))
+            .group_by(Deployment.uid)
+        )
+        return {uid: int(n) for uid, n in rows.all()}
 
     async def artifact(self, project: str | None, name: str) -> ArtifactManifest:
         owner = await self._project(project) if project is not None else None
@@ -438,15 +453,48 @@ class ManifestService:
         One another manager (or nobody) now manages is released instead: left in place, untouched,
         so a cluster giving up its declaration never deletes what somebody took over (ADR 0042).
         """
+        return await self._delete_declared(Workload, project, name, manager)
+
+    async def delete_endpoint(self, project: str, name: str, manager: str) -> str:
+        """`delete_workload` for an endpoint."""
+        return await self._delete_declared(Endpoint, project, name, manager)
+
+    async def _delete_declared(self, model, project: str, name: str, manager: str) -> str:
         try:
-            _, w = await self._owned_workload(project, name)
+            uid = await self._uid(model, project, name)
         except NotFound:
             return "absent"
-        applied_by = await self.db.scalar(select(Workload.applied_by).where(Workload.uid == w.id))
+        applied_by = await self.db.scalar(select(model.applied_by).where(model.uid == uid).with_for_update())
         if applied_by != manager:
             return "released"
-        await WorkloadService(self.db).delete(w.id)
+        await self._delete(model, uid)
         return "deleted"
+
+    async def delete_manifest(self, kind: str, project: str, name: str, manager: str, force: bool = False) -> None:
+        """`DELETE /v1/manifests/{kind}/{project}/{name}`: deletes the object unless another field
+        manager applied it, which is a 409 naming that manager. `force` deletes it anyway. An object
+        nobody manages (console-made, or taken over) passes, like an imperative delete."""
+        model = Workload if kind == "workload" else Endpoint
+        uid = await self._uid(model, project, name)
+        applied_by = await self.db.scalar(select(model.applied_by).where(model.uid == uid).with_for_update())
+        if applied_by is not None and applied_by != manager and not force:
+            raise Conflict(
+                f"{kind} {name!r} is managed by {applied_by!r}; retry with force=true to delete it anyway",
+                {"manager": applied_by},
+            )
+        await self._delete(model, uid)
+
+    async def _uid(self, model, project: str, name: str) -> str:
+        if model is Workload:
+            _, w = await self._owned_workload(project, name)
+            return w.id
+        return (await self.endpoint(project, name)).metadata.uid
+
+    async def _delete(self, model, uid: str) -> None:
+        if model is Workload:
+            await WorkloadService(self.db).delete(uid)
+        else:
+            await EndpointService(self.db).delete(uid)
 
     async def put_endpoint(
         self,

@@ -68,10 +68,10 @@ def test_the_manifest_routes_are_addressed_by_namespace_and_name() -> None:
     }
 
 
-def test_workloads_and_endpoints_are_applied_with_put() -> None:
+def test_workloads_and_endpoints_are_applied_with_put_and_deleted() -> None:
     paths = create_app().openapi_schema.to_schema()["paths"]
     for kind in ("workloads", "endpoints"):
-        assert {"get", "put"} <= set(paths[f"/v1/manifests/{kind}/{{project}}/{{name}}"])
+        assert {"get", "put", "delete"} <= set(paths[f"/v1/manifests/{kind}/{{project}}/{{name}}"])
     assert "put" not in paths["/v1/manifests/artifacts/{project}/{name}"]
 
 

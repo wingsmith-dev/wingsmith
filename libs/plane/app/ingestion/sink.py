@@ -31,9 +31,11 @@ from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
 from app.db.models import Artifact
+from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import Deployment
+from app.db.models import EndpointTarget
 from app.db.models import HubClusterClaim
 from app.ingestion import statements
 from app.db.changes import MODIFIED
@@ -505,6 +507,8 @@ class DatabaseSink:
                 if _moved(before, payload):
                     await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
+                if before is None or (before.phase, before.ready_replicas) != (payload.phase, payload.ready_replicas):
+                    await serving_moved(db, deployment[0], deployment[1])
                 # The frame names this deployment's whole replica set on this cluster, so the
                 # replicas it does not name are gone. Nothing else ever removes one: demand
                 # state is not pruned against a resync, so a rolled or restarted pod left its
@@ -518,6 +522,7 @@ class DatabaseSink:
                         statements.prune_deployment_replicas(cluster_id, deployment[0], payload.replica_ids)
                     )
                     if pruned.rowcount:
+                        await serving_moved(db, deployment[0], deployment[1])
                         logger.info(
                             "ingestion.deployment.replicas_pruned deployment=%s cluster=%s removed=%d kept=%d",
                             payload.deployment_id,
@@ -546,7 +551,11 @@ class DatabaseSink:
                         frame.cluster_id,
                     )
                     return None
+                uid = statements.observed_uid(payload.replica_id, "rep_")
+                was = await db.scalar(select(Replica.ready).where(Replica.uid == uid))
                 await db.execute(statements.upsert_replica(cluster_id, deployment[0], payload))
+                if bool(was) != bool(payload.ready):
+                    await serving_moved(db, deployment[0], deployment[1])
                 return REPLICA, statements.observed_uid(payload.replica_id, "rep_")
             case "allocation.observed":
                 assert isinstance(payload, AllocationObserved)
@@ -911,6 +920,27 @@ class DatabaseDesiredSource:
         async with self.sessions() as db:
             async for item in open_operations(db, cluster_id):
                 yield item
+
+
+async def serving_moved(db: AsyncSession, deployment_id: UUID, workload_id: UUID) -> None:
+    """Logs a change on the workload, and on every endpoint routing to it, when a deployment's
+    phase or ready count moved: their manifests' `Ready` reads it, so a watch or a member cluster's
+    custom resource sees serving change (ADR 0039, 0042)."""
+    workload = await db.get(Workload, workload_id)
+    if workload is None:
+        return
+    record_change(db, workload, MODIFIED, force=True)
+    endpoints = await db.scalars(
+        select(Endpoint)
+        .join(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
+        .where(
+            (EndpointTarget.deployment_id == deployment_id)
+            | ((EndpointTarget.workload_name == workload.name) & (Endpoint.project_id == workload.project_id))
+        )
+        .distinct()
+    )
+    for endpoint in endpoints:
+        record_change(db, endpoint, MODIFIED, force=True)
 
 
 async def roll_up_started(db: AsyncSession, workload_id: UUID, payload: DeploymentObserved) -> None:

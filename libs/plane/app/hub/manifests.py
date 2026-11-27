@@ -8,16 +8,25 @@ and only ever as its own manager: the manager is derived here, not read from the
 """
 
 import copy
+import asyncio
+import contextlib
 
 from logging import getLogger
+from collections.abc import AsyncIterator
+
+import msgspec
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.db import changes
 from app.db.engine import session_factory
 from app.db.models import Cluster
 from app.db.models import Project
+from app.db.models import Endpoint
+from app.db.models import Workload
+from app.db.models import ChangeLog
 from app.db.models import ClusterProject
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -28,6 +37,7 @@ from app.modules.manifest.services import ManifestService
 from .messages import ManifestApply
 from .messages import ManifestDelete
 from .messages import ManifestResult
+from .messages import ManifestChanged
 
 
 logger = getLogger(__name__)
@@ -40,6 +50,9 @@ removed cluster leaves behind can be found."""
 
 
 NAMESPACE_NOT_ALLOWED = "NamespaceNotAllowed"
+
+POLL_SECONDS = 5.0
+"""How often the change feed reads the log when no notification woke it first."""
 
 
 def manager_for(cluster: str, namespace: str) -> str:
@@ -89,12 +102,13 @@ class ManifestHandler:
                     )
                 manager = manager_for(cluster.name, msg.namespace)
                 svc = ManifestService(db, actor=f"cluster:{cluster.name}")
+                workload = msg.kind == "Workload"
                 if isinstance(msg, ManifestDelete):
-                    result = await svc.delete_workload(project.slug, msg.name, manager)
+                    delete = svc.delete_workload if workload else svc.delete_endpoint
+                    result = await delete(project.slug, msg.name, manager)
                     return ManifestResult(result=result, manager=manager)
-                m, result = await svc.put_workload(
-                    project.slug, msg.name, with_origin(msg, cluster.name), manager=manager
-                )
+                put = svc.put_workload if workload else svc.put_endpoint
+                m, result = await put(project.slug, msg.name, with_origin(msg, cluster.name), manager=manager)
                 return ManifestResult(
                     result=result,
                     generation=generation,
@@ -102,7 +116,8 @@ class ManifestHandler:
                     rv=m.metadata.resource_version,
                     plane_generation=m.metadata.generation,
                     manager=manager,
-                    allowed_clusters=list(m.spec.placement.allowed_clusters),
+                    allowed_clusters=list(m.spec.placement.allowed_clusters) if workload else None,
+                    status=msgspec.to_builtins(m.status) if m.status is not None else None,
                 )
         except Conflict as exc:
             return ManifestResult(result="conflict", generation=generation, error=exc.message)
@@ -111,6 +126,57 @@ class ManifestHandler:
         except Exception as exc:
             logger.exception("hub.manifest.failed kind=%s project=%s name=%s", msg.kind, msg.project, msg.name)
             return ManifestResult(result="error", generation=generation, error=str(exc) or type(exc).__name__)
+
+    async def feed(
+        self, cluster_ref: str, wakeup: asyncio.Event | None = None, poll: float = POLL_SECONDS
+    ) -> AsyncIterator[ManifestChanged]:
+        """The objects this cluster declared, each time one changes: the change log the manifest
+        watch reads (ADR 0039), from its head at the time of the call. Changes to objects other
+        managers own are skipped, and so are deletes (the resource is gone or going already).
+
+        `wakeup` is set on every committed change (the watch fanout); without it the log is polled.
+        """
+        async with self.sessions() as db:
+            cluster = await db.scalar(select(Cluster).where(cluster_ref_clause(cluster_ref)))
+            if cluster is None:
+                return
+            prefix = manager_for(cluster.name, "")
+            cursor = await changes.current(db)
+        while True:
+            if wakeup is not None:
+                wakeup.clear()
+            async with self.sessions() as db:
+                head = await changes.current(db)
+                if head < cursor:
+                    # Compacted past us and restarted: nothing to replay, the resync covers it.
+                    cursor = head
+                found = []
+                for kind, model in ((changes.WORKLOAD, Workload), (changes.ENDPOINT, Endpoint)):
+                    rows = await db.execute(
+                        select(model.name, model.applied_by, Project.slug)
+                        .join(ChangeLog, ChangeLog.uid == model.uid)
+                        .join(Project, Project.id == model.project_id)
+                        .where(
+                            ChangeLog.seq > cursor,
+                            ChangeLog.seq <= head,
+                            ChangeLog.kind == kind,
+                            ChangeLog.op != changes.DELETED,
+                            model.applied_by.startswith(prefix, autoescape=True),
+                        )
+                        .distinct()
+                    )
+                    for name, applied_by, slug in rows.all():
+                        found.append(
+                            ManifestChanged(kind=kind, project=slug, name=name, namespace=applied_by[len(prefix) :])
+                        )
+            cursor = head
+            for item in found:
+                yield item
+            if wakeup is None:
+                await asyncio.sleep(poll)
+            else:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(wakeup.wait(), poll)
 
 
 def with_origin(msg: ManifestApply, cluster: str) -> dict:

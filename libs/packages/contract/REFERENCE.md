@@ -207,10 +207,12 @@ response follows are in [`API.md`](API.md).
 | GET | `/v1/manifests/endpoints/{project}` | Lists every Endpoint (`EndpointList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/endpoints/{project}/{name}` | GetEndpointManifest |
 | PUT | `/v1/manifests/endpoints/{project}/{name}` | PutEndpointManifest |
+| DELETE | `/v1/manifests/endpoints/{project}/{name}` | DeleteEndpointManifest |
 | GET | `/v1/manifests/workloads` | Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/workloads/{project}` | Lists every Workload (`WorkloadList`), current as of `metadata.resourceVersion`, or with `?watch=true` streams changes as JSON lines (`{"type": "ADDED\|MODIFIED\|DELETED\|BOOKMARK\|ERROR", "object": ...}`, ADR 0039). |
 | GET | `/v1/manifests/workloads/{project}/{name}` | GetWorkloadManifest |
 | PUT | `/v1/manifests/workloads/{project}/{name}` | PutWorkloadManifest |
+| DELETE | `/v1/manifests/workloads/{project}/{name}` | DeleteWorkloadManifest |
 | GET | `/v1/manifests/workloads/{project}/{name}/scale` | GetWorkloadScale |
 | PUT | `/v1/manifests/workloads/{project}/{name}/scale` | PutWorkloadScale |
 

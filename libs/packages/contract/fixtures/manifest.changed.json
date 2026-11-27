@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "manifest.changed",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc9d",
+  "ts": "2026-08-19T14:32:10.000Z",
+  "seq": 8873,
+  "ack": 4501,
+  "payload": {
+    "kind": "Workload",
+    "project": "search",
+    "name": "chat",
+    "namespace": "team-a"
+  }
+}

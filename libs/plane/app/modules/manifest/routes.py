@@ -3,6 +3,7 @@ from litestar import Response
 from litestar import Controller
 from litestar import get
 from litestar import put
+from litestar import delete
 from litestar.di import Provide
 from litestar.params import Parameter
 from litestar.response import Stream
@@ -224,6 +225,32 @@ class ManifestRoutes(Controller):
             project, name, await request.json(), if_match, dry, manager=field_manager(manager), force=force
         )
         return _applied(m, result)
+
+    @delete("/workloads/{project:str}/{name:str}", status_code=204)
+    async def delete_workload_manifest(
+        self,
+        svc: ManifestService,
+        project: str,
+        name: str,
+        manager: str | None = Parameter(query="fieldManager", default=None),
+        force: bool = False,
+    ) -> None:
+        """Deletes the workload. One another field manager applied (another `--field-manager`, or a
+        member cluster's `k8s:<cluster>/<namespace>`) is a 409 naming it unless `?force=true`; a
+        cluster-declared one would only be applied again from its custom resource (ADR 0042)."""
+        await svc.delete_manifest("workload", project, name, field_manager(manager), force=force)
+
+    @delete("/endpoints/{project:str}/{name:str}", status_code=204)
+    async def delete_endpoint_manifest(
+        self,
+        svc: ManifestService,
+        project: str,
+        name: str,
+        manager: str | None = Parameter(query="fieldManager", default=None),
+        force: bool = False,
+    ) -> None:
+        """Deletes the endpoint, with the field manager check of the workload delete."""
+        await svc.delete_manifest("endpoint", project, name, field_manager(manager), force=force)
 
     @get("/endpoints/{project:str}/{name:str}")
     async def get_endpoint_manifest(

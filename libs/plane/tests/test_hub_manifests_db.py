@@ -1,5 +1,7 @@
 """Workloads a member cluster declares over the wire (ADR 0042): scoping, manager, origin, delete."""
 
+import asyncio
+
 import pytest
 
 from sqlalchemy import select
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Policy
+from app.db.models import Endpoint
 from app.db.models import Workload
 from app.hub.messages import ManifestApply
 from app.hub.messages import ManifestDelete
@@ -132,3 +135,69 @@ async def test_delete_removes_its_own_and_releases_anothers(db: AsyncSession) ->
     mine = ManifestDelete(kind="Workload", project="search", name="chat", namespace="team-a", uid="cr-1")
     assert (await handler.handle(cluster.id, mine)).result == "deleted"
     assert (await handler.handle(cluster.id, mine)).result == "absent"
+
+
+def _endpoint(namespace: str = "team-a", name: str = "chat-ep") -> ManifestApply:
+    body = {
+        "apiVersion": API_VERSION,
+        "kind": "Endpoint",
+        "metadata": {"name": name},
+        "spec": {"slug": f"{name}-slug", "targets": [{"workloadRef": {"name": "chat"}}]},
+    }
+    return ManifestApply(
+        kind="Endpoint", project="search", name=name, namespace=namespace, uid="cr-ep", body=body, generation=1
+    )
+
+
+async def test_apply_answers_with_the_plane_status(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    result = await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    conditions = {c["type"]: c["status"] for c in result.status["conditions"]}
+    assert conditions["Ready"] == "False" and "Unschedulable" in conditions
+    assert "deployments" in result.status and "scale" in result.status
+
+
+async def test_an_endpoint_is_declared_scoped_and_deleted_like_a_workload(db: AsyncSession) -> None:
+    cluster, _, handler = await _setup(db)
+    refused = await handler.handle(cluster.id, _endpoint(namespace="team-z"))
+    assert (refused.result, refused.reason) == ("forbidden", "NamespaceNotAllowed")
+
+    created = await handler.handle(cluster.id, _endpoint())
+    assert created.result == "created", created.error
+    assert created.manager == f"k8s:{cluster.name}/team-a" and created.allowed_clusters is None
+    ready = next(c for c in created.status["conditions"] if c["type"] == "Ready")
+    assert (ready["status"], ready["reason"]) == ("False", "NoReadyTargets")
+    assert (await handler.handle(cluster.id, _endpoint())).result == "unchanged"
+
+    m = await ManifestService(db).endpoint("search", "chat-ep")
+    assert m.metadata.annotations["plane.wingsmith.dev/applied-by"] == created.manager
+    assert ORIGIN_CLUSTER in m.metadata.annotations[LAST_APPLIED]
+
+    other = ManifestDelete(kind="Endpoint", project="search", name="chat-ep", namespace="team-b", uid="x")
+    assert (await handler.handle(cluster.id, other)).result == "released"
+    mine = ManifestDelete(kind="Endpoint", project="search", name="chat-ep", namespace="team-a", uid="cr-ep")
+    assert (await handler.handle(cluster.id, mine)).result == "deleted"
+    assert await db.scalar(select(Endpoint.id).where(Endpoint.name == "chat-ep")) is None
+
+
+async def test_an_endpoint_into_an_unlinked_project_is_refused(db: AsyncSession) -> None:
+    cluster, _, handler = await _setup(db, link=False)
+    assert (await handler.handle(cluster.id, _endpoint())).result == "forbidden"
+
+
+async def test_the_feed_names_only_this_clusters_declarations(db: AsyncSession) -> None:
+    cluster, artifact, handler = await _setup(db)
+    feed = handler.feed(cluster.id, poll=0.05)
+    first = asyncio.ensure_future(anext(feed))
+    await asyncio.sleep(0.1)  # the feed starts from the head it read
+    await handler.handle(cluster.id, _apply(_body(artifact.handle, [cluster.name])))
+    changed = await asyncio.wait_for(first, 5)
+    assert (changed.kind, changed.project, changed.name, changed.namespace) == ("Workload", "search", "chat", "team-a")
+
+    # Something another manager owns is not this cluster's to hear about.
+    svc = ManifestService(db)
+    await svc.put_workload("search", "solo", _body(artifact.handle, [cluster.name]) | {"metadata": {"name": "solo"}})
+    await handler.handle(cluster.id, _endpoint())
+    changed = await asyncio.wait_for(anext(feed), 5)
+    assert (changed.kind, changed.name) == ("Endpoint", "chat-ep")
+    await feed.aclose()

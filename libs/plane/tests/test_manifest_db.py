@@ -8,10 +8,14 @@ import msgspec
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import changes
+from app.db.models import Replica
 from app.db.models import Workload
+from app.db.models import ChangeLog
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.notify import DatabaseNotifier
+from app.ingestion.sink import serving_moved
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -156,7 +160,7 @@ async def test_scale_reads_spec_replicas_and_what_was_placed(db: AsyncSession) -
     assert (s.kind, s.spec.replicas, s.status.replicas) == ("Scale", 1, 1)
     m = await ManifestService(db).workload("search", "gpt-oss-prod")
     assert m.spec.replicas == m.spec.scale.desired == 1
-    assert [(c.type, c.status) for c in m.status.conditions] == [("Unschedulable", "False")]
+    assert [(c.type, c.status) for c in m.status.conditions] == [("Ready", "False"), ("Unschedulable", "False")]
 
 
 async def test_put_scale_bumps_generation_and_files_an_operation(db: AsyncSession) -> None:
@@ -175,7 +179,7 @@ async def test_put_scale_accepts_unschedulable_replicas_as_a_condition(db: Async
     assert s.spec.replicas == 20
     assert s.status.replicas < 20
     m = await ManifestService(db).workload("search", "gpt-oss-prod")
-    (condition,) = m.status.conditions
+    _, condition = m.status.conditions
     assert (condition.type, condition.status, condition.reason) == ("Unschedulable", "True", "InsufficientCapacity")
 
 
@@ -366,7 +370,7 @@ async def test_put_workload_accepts_unschedulable_replicas_as_a_condition(db: As
     body["spec"]["replicas"] = 20
     m, _ = await svc.put_workload("search", "gpt-oss-prod", body)
     assert m.spec.replicas == 20
-    (condition,) = m.status.conditions
+    _, condition = m.status.conditions
     assert (condition.type, condition.status) == ("Unschedulable", "True")
 
 
@@ -401,7 +405,7 @@ async def test_put_endpoint_with_a_workload_ref_to_a_missing_workload_reads_as_a
         "search", "chat", _endpoint_body(slug="later", targets=[{"workloadRef": {"name": "not-yet"}}])
     )
     assert created == "created"
-    assert [(c.type, c.status) for c in m.status.conditions] == [("ResolvedRefs", "False")]
+    assert [(c.type, c.status) for c in m.status.conditions] == [("ResolvedRefs", "False"), ("Ready", "False")]
 
 
 async def test_put_endpoint_with_a_slug_another_endpoint_holds_is_a_conflict(db: AsyncSession) -> None:
@@ -627,3 +631,92 @@ def test_replicas_are_exempt_only_when_autoscaled(monkeypatch) -> None:
 
 
 SERVING = {"artifact": "a", "shape": {"deviceClass": "h100"}}
+
+
+async def _ready_replicas(db: AsyncSession, deployment_uid: str, ready: int) -> None:
+    row = await db.scalar(select(Deployment).where(Deployment.uid == deployment_uid))
+    for i in range(ready):
+        db.add(
+            Replica(
+                uid=f"rep_{deployment_uid[-8:]}{i}",
+                deployment_id=row.id,
+                cluster_id=row.cluster_id,
+                name=f"pod-{i}",
+                phase="ready",
+                ready=True,
+            )
+        )
+    await db.commit()
+
+
+async def test_workload_ready_follows_its_ready_replicas(db: AsyncSession) -> None:
+    *_, deployment = await a_deployment(db)
+    m = await ManifestService(db).workload("search", "gpt-oss-prod")
+    ready = next(c for c in m.status.conditions if c.type == "Ready")
+    assert (ready.status, ready.reason) == ("False", "ReplicasNotReady")
+    await _ready_replicas(db, deployment.id, 1)
+    db.expunge_all()
+    m = await ManifestService(db).workload("search", "gpt-oss-prod")
+    ready = next(c for c in m.status.conditions if c.type == "Ready")
+    assert (ready.status, ready.reason) == ("True", "ReplicasReady")
+
+
+async def test_endpoint_ready_is_routable(db: AsyncSession) -> None:
+    *_, deployment = await a_deployment(db)
+    svc = ManifestService(db)
+    m, _ = await svc.put_endpoint(
+        "search", "chat", _endpoint_body(slug="chat-r", targets=[{"workloadRef": {"name": "gpt-oss-prod"}}])
+    )
+    ready = next(c for c in m.status.conditions if c.type == "Ready")
+    assert (ready.status, ready.reason) == ("False", "NoReadyTargets")
+    await _ready_replicas(db, deployment.id, 2)
+    db.expunge_all()
+    ready = next(c for c in (await svc.endpoint("search", "chat")).status.conditions if c.type == "Ready")
+    assert (ready.status, ready.reason) == ("True", "Routable")
+
+
+async def test_a_serving_change_is_logged_on_the_workload_and_its_endpoints(db: AsyncSession) -> None:
+    *_, deployment = await a_deployment(db)
+    svc = ManifestService(db)
+    await svc.put_endpoint(
+        "search", "chat", _endpoint_body(slug="chat-s", targets=[{"workloadRef": {"name": "gpt-oss-prod"}}])
+    )
+    head = await changes.current(db)
+    row = await db.scalar(select(Deployment).where(Deployment.uid == deployment.id))
+    await serving_moved(db, row.id, row.workload_id)
+    await changes.commit(db)
+    logged = (await db.execute(select(ChangeLog.kind, ChangeLog.op).where(ChangeLog.seq > head))).all()
+    assert sorted(logged) == [("Endpoint", "MODIFIED"), ("Workload", "MODIFIED")]
+
+
+async def test_delete_manifest_checks_the_field_manager(db: AsyncSession) -> None:
+    await a_workload(db)
+    svc = ManifestService(db)
+    body = _wire(await svc.workload("search", "gpt-oss-prod"))
+    await svc.put_workload("search", "gpt-oss-prod", body, manager="k8s:alpha/team-a")
+    with pytest.raises(Conflict) as refused:
+        await svc.delete_manifest("workload", "search", "gpt-oss-prod", "wings-cli")
+    assert refused.value.detail == {"manager": "k8s:alpha/team-a"}
+    await svc.delete_manifest("workload", "search", "gpt-oss-prod", "wings-cli", force=True)
+    with pytest.raises(NotFound):
+        await svc.workload("search", "gpt-oss-prod")
+
+
+async def test_delete_manifest_passes_its_own_manager_and_unmanaged_objects(db: AsyncSession) -> None:
+    _, project, _, deployment = await a_deployment(db)
+    svc = ManifestService(db)
+    await svc.put_endpoint(
+        "search",
+        "mine",
+        _endpoint_body("mine", slug="mine", targets=[{"deployment": deployment.object_name}]),
+        manager="ci",
+    )
+    await svc.delete_manifest("endpoint", "search", "mine", "ci")
+    await EndpointService(db).create(
+        EndpointCreateRequest(
+            name="loose", project=project.id, targets=[EndpointTargetRequest(deployment=deployment.id)]
+        )
+    )
+    await svc.delete_manifest("endpoint", "search", "loose", "wings-cli")
+    with pytest.raises(NotFound):
+        await svc.endpoint("search", "loose")

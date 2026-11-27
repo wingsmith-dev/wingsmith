@@ -36,6 +36,7 @@ from app.modules.workloads.schemas import WorkloadCreateRequest
 from app.modules.workloads.schemas import ContainerMetricsSchema as _ContainerMetricsSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
 
+from .schemas import READY
 from .schemas import UNSCHEDULABLE
 from .schemas import NOTE_ANNOTATION
 from .schemas import PLACEMENT_DRIFT
@@ -75,6 +76,8 @@ class Refs:
     deployments: dict[str, str] = field(default_factory=dict)
     workload_deployments: dict[str, list[str]] = field(default_factory=dict)
     """A workload ref's name to the uids of its current deployments; absent when it names none."""
+    ready: dict[str, int] = field(default_factory=dict)
+    """A deployment uid to its ready replicas across clusters; absent reads as none."""
 
     def project(self, uid: str | None) -> str | None:
         return None if uid is None else self.projects.get(uid, uid)
@@ -104,18 +107,50 @@ def _labels(labels: dict) -> dict[str, str]:
 def workload_conditions(w: WorkloadSchema) -> list[Condition]:
     """Derived from the scale rollup, so it can never disagree with it.
 
-    A paused workload is placed nowhere by design and is not unschedulable.
+    A paused workload is placed nowhere by design and is not unschedulable. `Ready` is serving:
+    every desired replica ready, like a Deployment's Available.
     """
-    if w.paused or w.scale.placed >= w.scale.desired:
-        return [Condition(type=UNSCHEDULABLE, status="False", reason="Placed")]
-    return [
-        Condition(
-            type=UNSCHEDULABLE,
-            status="True",
-            reason="InsufficientCapacity",
-            message=f"placement placed {w.scale.placed} of {w.scale.desired} replicas",
+    return [_ready(w), _unschedulable(w)]
+
+
+def _ready(w: WorkloadSchema) -> Condition:
+    if w.paused:
+        return Condition(type=READY, status="False", reason="Paused", message="the workload is paused")
+    if w.scale.ready >= w.scale.desired:
+        return Condition(
+            type=READY, status="True", reason="ReplicasReady", message=f"{w.scale.ready} of {w.scale.desired} ready"
         )
-    ]
+    return Condition(
+        type=READY, status="False", reason="ReplicasNotReady", message=f"{w.scale.ready} of {w.scale.desired} ready"
+    )
+
+
+def _unschedulable(w: WorkloadSchema) -> Condition:
+    if w.paused or w.scale.placed >= w.scale.desired:
+        return Condition(type=UNSCHEDULABLE, status="False", reason="Placed")
+    return Condition(
+        type=UNSCHEDULABLE,
+        status="True",
+        reason="InsufficientCapacity",
+        message=f"placement placed {w.scale.placed} of {w.scale.desired} replicas",
+    )
+
+
+def endpoint_ready(targets: list[EndpointTargetStatus], refs: Refs, enabled: bool) -> Condition:
+    """`Ready` is routable: enabled, with at least one resolved target deployment serving."""
+    if not enabled:
+        return Condition(type=READY, status="False", reason="Disabled", message="the endpoint is disabled")
+    serving = sum(1 for t in targets if refs.ready.get(t.deployment_id, 0) > 0)
+    if serving:
+        return Condition(
+            type=READY, status="True", reason="Routable", message=f"{serving} of {len(targets)} targets serving"
+        )
+    return Condition(
+        type=READY,
+        status="False",
+        reason="NoReadyTargets",
+        message=f"none of {len(targets)} targets has a ready replica",
+    )
 
 
 def placement_drift(deployments, allowed_clusters: list[str]) -> Condition | None:
@@ -313,22 +348,25 @@ def endpoint_manifest(e: EndpointSchema, refs: Refs) -> EndpointManifest:
             failover_order=[refs.deployment(d) for d in e.failover_order],
             surface=_c(e.surface),
         ),
-        status=EndpointStatus(
-            targets=[
-                EndpointTargetStatus(deployment=refs.deployment(t.deployment_id), deployment_id=t.deployment_id)
-                for t in e.targets
-                if t.deployment_id is not None
-            ]
-            + [
-                EndpointTargetStatus(deployment=refs.deployment(uid), deployment_id=uid, workload=t.workload_ref.name)
-                for t in e.targets
-                if t.workload_ref is not None
-                for uid in refs.workload_deployments.get(t.workload_ref.name, [])
-            ],
-            conditions=[
-                Condition(type=c.type, status=c.status, reason=c.reason, message=c.message) for c in e.conditions
-            ],
-        ),
+        status=_endpoint_status(e, refs),
+    )
+
+
+def _endpoint_status(e: EndpointSchema, refs: Refs) -> EndpointStatus:
+    targets = [
+        EndpointTargetStatus(deployment=refs.deployment(t.deployment_id), deployment_id=t.deployment_id)
+        for t in e.targets
+        if t.deployment_id is not None
+    ] + [
+        EndpointTargetStatus(deployment=refs.deployment(uid), deployment_id=uid, workload=t.workload_ref.name)
+        for t in e.targets
+        if t.workload_ref is not None
+        for uid in refs.workload_deployments.get(t.workload_ref.name, [])
+    ]
+    conditions = [Condition(type=c.type, status=c.status, reason=c.reason, message=c.message) for c in e.conditions]
+    return EndpointStatus(
+        targets=targets,
+        conditions=[*conditions, endpoint_ready(targets, refs, e.enabled)],
     )
 
 

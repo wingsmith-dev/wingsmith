@@ -227,23 +227,30 @@ class Fanout:
         self.cap = cap
         self.connect = connect
         self.waiters: set[asyncio.Event] = set()
+        self.uncounted: set[asyncio.Event] = set()
         self.task: asyncio.Task | None = None
 
     def admit(self) -> None:
         """429 when every slot is taken; a cheap pre-check before a stream starts."""
-        if len(self.waiters) >= self.cap:
+        if len(self.waiters) - len(self.uncounted) >= self.cap:
             raise TooManyRequests(f"this plane already serves {self.cap} watches", {"limit": self.cap})
 
-    def subscribe(self) -> asyncio.Event:
-        self.admit()
+    def subscribe(self, counted: bool = True) -> asyncio.Event:
+        """`counted=False` takes no watch slot: the hub's per-cluster manifest feed, bounded by the
+        number of connected clusters, not by clients."""
+        if counted:
+            self.admit()
         event = asyncio.Event()
         self.waiters.add(event)
+        if not counted:
+            self.uncounted.add(event)
         if self.task is None or self.task.done():
             self.task = asyncio.create_task(self._listen())
         return event
 
     def unsubscribe(self, event: asyncio.Event) -> None:
         self.waiters.discard(event)
+        self.uncounted.discard(event)
         if not self.waiters and self.task is not None:
             self.task.cancel()
             self.task = None

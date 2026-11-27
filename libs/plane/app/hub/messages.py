@@ -1035,7 +1035,7 @@ class ManifestApply(Struct):
     result so the operator can set `observedGeneration`. Answered by `manifest.result`.
     """
 
-    kind: Literal["Workload"]
+    kind: Literal["Workload", "Endpoint"]
     project: str
     name: str
     namespace: str
@@ -1048,7 +1048,7 @@ class ManifestDelete(Struct):
     """The custom resource is being deleted: delete the plane object, or release it when another
     manager owns it now. Operator to plane; answered by `manifest.result`."""
 
-    kind: Literal["Workload"]
+    kind: Literal["Workload", "Endpoint"]
     project: str
     name: str
     namespace: str
@@ -1062,7 +1062,8 @@ class ManifestResult(Struct):
     `absent` for a delete; `conflict` (another field manager owns it), `forbidden` (the project is
     not linked to this cluster, or the namespace is not on the link's allowlist), `invalid` or
     `error` (retryable) otherwise, with `error` saying why. `reason` refines a refusal:
-    `NamespaceNotAllowed` for a namespace off the allowlist.
+    `NamespaceNotAllowed` for a namespace off the allowlist. `status` is the plane object's
+    `status` as a manifest read renders it (serving, placement, conditions), on an accepted apply.
     """
 
     result: str
@@ -1074,6 +1075,22 @@ class ManifestResult(Struct):
     allowed_clusters: list[str] | None = None
     error: str | None = None
     reason: str | None = None
+    status: dict | None = None
+
+
+class ManifestChanged(Struct):
+    """A plane object this cluster declared changed, its serving status included (ADR 0042).
+
+    Hub to operator, from the change log the manifest watch reads (ADR 0039), for objects whose
+    field manager is `k8s:<this cluster>/<namespace>`. The operator reapplies the resource and
+    writes the status the `manifest.result` carries. Not answered; one lost is caught by the
+    operator's periodic resync.
+    """
+
+    kind: Literal["Workload", "Endpoint"]
+    project: str
+    name: str
+    namespace: str
 
 
 MESSAGE_TYPES: dict[str, type[Struct]] = {
@@ -1111,6 +1128,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "manifest.apply": ManifestApply,
     "manifest.delete": ManifestDelete,
     "manifest.result": ManifestResult,
+    "manifest.changed": ManifestChanged,
 }
 
 

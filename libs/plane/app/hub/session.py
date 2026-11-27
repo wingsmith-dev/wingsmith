@@ -62,6 +62,7 @@ from app.hub.standing import OpenStanding
 from app.hub.manifests import ManifestHandler
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
+from app.modules.manifest.watch import fanout as manifest_fanout
 from app.modules.clusters.enrolment import schedule_promote_on_enrolment
 
 
@@ -329,6 +330,8 @@ class OperatorSession:
             asyncio.create_task(self._ownership_loop(), name="hub-ownership"),
             asyncio.create_task(self._sync_loop(), name="hub-sync"),
         ]
+        if self.manifests is not None:
+            tasks.append(asyncio.create_task(self._manifest_feed_loop(), name="hub-manifests"))
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
@@ -756,8 +759,8 @@ class OperatorSession:
                 else:
                     result = await self.manifests.handle(cluster_id, payload)
                 await self._send("manifest.result", result, reply_to=envelope.id)
-            case "manifest.result":
-                raise ProtocolViolation("manifest.result is hub to operator only")
+            case "manifest.result" | "manifest.changed":
+                raise ProtocolViolation(f"{envelope.type} is hub to operator only")
             case _:
                 if envelope.type.endswith(_EVENT_SUFFIX):
                     await self.sink.record_event(self._sink_frame(envelope))
@@ -797,6 +800,25 @@ class OperatorSession:
                     close_code=CLOSE_TRY_AGAIN_LATER,
                 )
             await self._send("ping", Ping())
+
+    async def _manifest_feed_loop(self) -> None:
+        """Tells the operator when a plane object it declared changes, serving status included, so
+        its custom resource's status follows the plane (ADR 0042). A failed read is logged and the
+        feed restarts from the log's head; the operator's periodic resync covers the gap."""
+        assert self.manifests is not None and self.state is not None
+        hub = manifest_fanout()
+        while True:
+            wakeup = hub.subscribe(counted=False)
+            try:
+                async for changed in self.manifests.feed(self.state.cluster_id, wakeup):
+                    await self._send("manifest.changed", changed)
+            except (asyncio.CancelledError, Backpressure):
+                raise
+            except Exception:
+                logger.warning("hub.manifests.feed_failed", exc_info=True)
+            finally:
+                hub.unsubscribe(wakeup)
+            await asyncio.sleep(self.config.ownership_check_interval)
 
     async def _ownership_loop(self) -> None:
         """Polls this session's own claim row and self-evicts the moment it no longer wins.

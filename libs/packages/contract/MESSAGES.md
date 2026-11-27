@@ -591,11 +591,12 @@ artifact, which is what puts the download on the timeline of every workload wait
 
 | Type | Direction | Payload |
 |---|---|---|
-| `manifest.apply` | op → hub | `kind` (`Workload`), `project`, `name`, `namespace`, `uid`, `body`, `generation`: a Workload custom resource from the member cluster, as the manifest `wings apply` would send |
+| `manifest.apply` | op → hub | `kind` (`Workload` or `Endpoint`), `project`, `name`, `namespace`, `uid`, `body`, `generation`: a Workload custom resource from the member cluster, as the manifest `wings apply` would send |
 | `manifest.delete` | op → hub | `kind`, `project`, `name`, `namespace`, `uid`: the custom resource is being deleted |
-| `manifest.result` | hub → op | `result`, `generation`, `uid`, `rv`, `plane_generation`, `manager`, `allowed_clusters`, `error`, `reason`. `reply_to` is the apply's or delete's id |
+| `manifest.result` | hub → op | `result`, `generation`, `uid`, `rv`, `plane_generation`, `manager`, `allowed_clusters` (Workload), `error`, `reason`, `status` (the plane object's manifest `status` on an accepted apply). `reply_to` is the apply's or delete's id |
+| `manifest.changed` | hub → op | `kind`, `project`, `name`, `namespace`: a plane object this cluster declared changed, serving status included. The operator reapplies that resource and writes the `status` the result carries. Not answered |
 
-The operator watches Workload resources in namespaces labelled `plane.wingsmith.dev/project` and
+The operator watches Workload and Endpoint resources in namespaces labelled `plane.wingsmith.dev/project` and
 applies each through `ManifestService`, exactly as `PUT /v1/manifests/workloads/{project}/{name}`
 would, as field manager `k8s:<cluster>/<namespace>` (ADR 0042). The hub derives the manager from the
 authenticated cluster and the frame's `namespace`; nothing in the frame names it. A project the
@@ -607,6 +608,11 @@ manager owns it now; left in place) or `absent` for a delete, and `conflict`, `f
 or `error` (retryable) otherwise. Both requests are sequenced and idempotent: a replay after resume,
 or the operator's relist on reconnect, applies the same body and answers `unchanged`. A result whose
 `reply_to` the operator no longer waits on is dropped.
+
+`manifest.changed` comes from the plane's change log (ADR 0039), for objects whose field manager is
+`k8s:<this cluster>/<namespace>`, from the log's head when the session opened: the operator's relist on
+reconnect covers anything before it. A deployment's phase or ready count moving logs a change on its
+workload and the endpoints routing to it, so serving changes arrive this way too.
 
 ## Operations
 
