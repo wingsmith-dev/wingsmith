@@ -18,6 +18,8 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import WorkloadRole
 from app.core.serving import TEXT
+from app.core.serving import DYNAMO
+from app.core.serving import CONTAINER
 from app.core.serving import AGGREGATED
 from app.core.serving import is_omni
 from app.core.serving import serving_digest
@@ -29,8 +31,10 @@ from .schemas import CacheSchema
 from .schemas import ShapeSchema
 from .schemas import RouterSchema
 from .schemas import OverlaySchema
+from .schemas import RuntimeSchema
 from .schemas import ServingSchema
 from .schemas import TopologySchema
+from .schemas import ContainerSchema
 from .schemas import ResourcesSchema
 from .schemas import ParallelismSchema
 from .schemas import CapabilitiesSchema
@@ -308,6 +312,8 @@ def resolved_engine_args(workload: Workload, artifact: Artifact) -> dict[str, st
     wire, the two have to be made to agree or this becomes a resolved view of
     something the cluster does not do.
     """
+    if (workload.runtime_kind or DYNAMO) == CONTAINER:
+        return {}
     serving = serving_block(workload.serving)
     resolved = dict(recipe_engine_args(workload, artifact))
     for flag, value in serving_companion_args(workload.engine, serving).items():
@@ -417,13 +423,16 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
     landed on it, by `app.core.serving`, which is the only thing entitled to
     compute it.
     """
+    container = data.runtime.kind == CONTAINER
     return {
         "artifact_id": artifact.id,
-        "engine": data.engine,
-        "engine_runtime_version": data.engine_runtime_version,
-        "engine_runtime_image": resolve_engine_runtime_image(
-            data.engine, data.engine_runtime_version, data.engine_runtime_image
-        ),
+        "runtime_kind": data.runtime.kind,
+        "runtime_spec": msgspec.to_builtins(data.runtime.container) if container else {},
+        "engine": CONTAINER if container else data.engine,
+        "engine_runtime_version": "" if container else data.engine_runtime_version,
+        "engine_runtime_image": None
+        if container
+        else resolve_engine_runtime_image(data.engine, data.engine_runtime_version, data.engine_runtime_image),
         "frontend_image": data.frontend_image,
         "engine_args": data.engine_args,
         "imported_args": data.imported_args,
@@ -451,6 +460,13 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
         "capabilities": msgspec.to_builtins(data.capabilities),
         "router": declared_router(msgspec.to_builtins(data.router)),
     }
+
+
+def runtime_block(workload: Workload) -> RuntimeSchema:
+    """The stored runtime as the block a request and a read carry."""
+    if (workload.runtime_kind or DYNAMO) != CONTAINER:
+        return RuntimeSchema()
+    return RuntimeSchema(kind=CONTAINER, container=msgspec.convert(workload.runtime_spec or {}, ContainerSchema))
 
 
 def serving_request(
@@ -505,6 +521,7 @@ def serving_request(
         serving=serving_block(workload.serving),
         capabilities=capabilities_block(workload.capabilities),
         router=router_block(workload.router),
+        runtime=runtime_block(workload),
         topology=TopologySchema(
             serving_topology=workload.serving_topology or AGGREGATED,
             roles=[
@@ -573,6 +590,7 @@ def serving_view(workload: Workload, artifact: Artifact, roles: Sequence[Workloa
         ),
         topology=topology_view(workload, roles),
         router=router_block(workload.router),
+        runtime=runtime_block(workload),
     )
 
 

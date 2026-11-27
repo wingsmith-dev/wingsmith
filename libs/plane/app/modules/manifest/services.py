@@ -46,11 +46,14 @@ from .schemas import ArtifactManifest
 from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
 from .translate import SERVING_FIELDS
+from .translate import DYNAMO_RUNTIME_FIELDS
 from .translate import Refs
 from .translate import Placement
 from .translate import scale_view
+from .translate import is_container
 from .translate import serving_value
 from .translate import endpoint_create
+from .translate import runtime_request
 from .translate import workload_create
 from .translate import endpoint_surface
 from .translate import endpoint_targets
@@ -264,8 +267,16 @@ class ManifestService:
         m = _decode(body, WorkloadManifest)
         owner = await self._project(project)
         self._identity(m, project, owner, name)
-        if m.spec.runtime.kind != "dynamo":
+        if (m.spec.runtime.kind or "dynamo") not in ("dynamo", "container"):
             raise Invalid(f"runtime kind {m.spec.runtime.kind!r} is not supported", {"field": "spec.runtime.kind"})
+        if m.spec.runtime.kind == "container" and isinstance(m.spec.runtime.args, dict) and m.spec.runtime.args:
+            raise Invalid("spec.runtime.args is a list under kind container", {"field": "spec.runtime.args"})
+        if m.spec.runtime.kind != "container" and isinstance(m.spec.runtime.args, list):
+            raise Invalid(
+                "spec.runtime.args is a map of engine flags under kind dynamo", {"field": "spec.runtime.args"}
+            )
+        if m.spec.runtime.kind != "container" and (not m.spec.runtime.engine or not m.spec.runtime.version):
+            raise Invalid("spec.runtime needs engine and version under kind dynamo", {"field": "spec.runtime"})
         declared = Declared(body)
         try:
             current = await self.workload(project, name)
@@ -317,7 +328,14 @@ class ManifestService:
                 update[key] = getattr(m.spec.placement, key)
         if changed("spec", "serving", "adapters"):
             update["adapter_artifacts"] = list(m.spec.serving.adapters)
-        serving = {key: serving_value(m.spec, key) for key, path in SERVING_FIELDS.items() if changed("spec", *path)}
+        container = is_container(m.spec)
+        serving = {
+            key: serving_value(m.spec, key)
+            for key, path in SERVING_FIELDS.items()
+            if changed("spec", *path) and not (container and key in DYNAMO_RUNTIME_FIELDS)
+        }
+        if container and runtime_request(m.spec) != runtime_request(current.spec):
+            serving["runtime"] = runtime_request(m.spec)
         if changed("spec", "serving", "topology") or changed("spec", "serving", "roles"):
             serving["topology"] = topology_request(m.spec.serving)
         if serving:
@@ -392,6 +410,7 @@ class ManifestService:
 
 IMMUTABLE_PATHS = (
     ("kind",),
+    ("runtime", "kind"),
     ("gang_size",),
     ("cluster",),
     ("placement", "allowed_regions"),

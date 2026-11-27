@@ -139,6 +139,7 @@ class PlacementService:
                 else requires_single_domain
             ),
             domain_kind=workload_row.topology_domain_kind if domain_kind is None else domain_kind,
+            runtime=getattr(workload_row, "runtime_kind", None) or "dynamo",
             deployment_name=deployment_name,
             atomic=True,
         )
@@ -197,6 +198,7 @@ class PlacementService:
             tensor_parallel=max(workload.tensor_parallel, 1),
             requires_single_domain=workload.requires_single_topology_domain,
             domain_kind=workload.topology_domain_kind,
+            runtime=workload.runtime_kind or "dynamo",
             desired_scale=workload.desired_scale,
             gang_size=max(workload.gang_size, 1),
             strategy=workload.strategy,

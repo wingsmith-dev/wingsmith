@@ -15,20 +15,25 @@ from collections.abc import Sequence
 import msgspec
 
 from app.core import devices
+from app.config import settings
 from app.core.vram import Sizing
 from app.core.vram import sizing_of
 from app.core.vram import impossible
 from app.db.models import Artifact
 from app.db.models import WorkloadRole
 from app.core.serving import TEXT
+from app.core.serving import DYNAMO
+from app.core.serving import CONTAINER
 from app.core.serving import AGGREGATED
 from app.core.serving import OMNI_ENGINES
 from app.core.serving import DERIVED_FLAGS
+from app.core.serving import RUNTIME_KINDS
 from app.core.serving import SERVING_ROLES
 from app.core.serving import TOPOLOGY_FLAGS
 from app.core.serving import OUTPUT_MODALITIES
 from app.core.serving import AMD64_ONLY_ENGINES
 from app.core.serving import SERVING_TOPOLOGIES
+from app.core.serving import CONTAINER_PROTOCOLS
 from app.core.serving import is_omni
 from app.core.serving import flag_name
 from app.core.serving import check_retention
@@ -569,6 +574,84 @@ def check_host_architecture(engine: str, device_class: str) -> None:
         )
 
 
+INJECTED_ENV = frozenset({"WS_MODEL_PATH", "WS_SERVED_MODEL_NAME", "WS_PORT", "HF_HUB_OFFLINE"})
+"""What the platform sets on every container worker; a declared env var may not override them."""
+
+PROBE_KEYS = frozenset(
+    {
+        "httpGet",
+        "tcpSocket",
+        "grpc",
+        "initialDelaySeconds",
+        "periodSeconds",
+        "timeoutSeconds",
+        "successThreshold",
+        "failureThreshold",
+        "terminationGracePeriodSeconds",
+    }
+)
+"""`corev1.Probe` less `exec`: a probe that runs a command is a second entrypoint nobody reviewed."""
+
+
+def check_runtime(data: WorkloadServingRequest) -> None:
+    """The `runtime` block: dynamo carries no container, container carries a pinned one.
+
+    The MVP container runtime is one aggregated `openai-chat` worker per replica, so the Dynamo
+    settings that have no meaning there (topology, router, engine args, the Dynamo overlay) are
+    refused, not dropped.
+    """
+    runtime = data.runtime
+    if runtime.kind not in RUNTIME_KINDS:
+        raise Invalid(
+            f"runtime.kind must be one of {sorted(RUNTIME_KINDS)}, not {runtime.kind!r}", {"kind": runtime.kind}
+        )
+    if runtime.kind == DYNAMO:
+        if runtime.container is not None:
+            raise Invalid("runtime.container is only read under runtime.kind container", {"kind": runtime.kind})
+        if not data.engine.strip() or data.engine == CONTAINER:
+            raise Invalid("a dynamo workload names its engine", {"engine": data.engine})
+        return
+    c = runtime.container
+    if c is None or not c.image.strip():
+        raise Invalid("runtime.kind container needs runtime.container.image", {"kind": runtime.kind})
+    if "@sha256:" not in c.image and not settings.CONTAINER_IMAGE_TAGS_ALLOWED:
+        raise Invalid(
+            "a container image is pinned by digest (repo@sha256:...); tags need CONTAINER_IMAGE_TAGS_ALLOWED",
+            {"image": c.image},
+        )
+    if c.protocol not in CONTAINER_PROTOCOLS:
+        raise Invalid(
+            f"runtime.container.protocol must be one of {sorted(CONTAINER_PROTOCOLS)}, not {c.protocol!r}",
+            {"protocol": c.protocol},
+        )
+    names = [p.name for p in c.ports]
+    if "http" not in names or len(set(names)) != len(names):
+        raise Invalid("runtime.container.ports needs exactly one port named http, and unique names", {"ports": names})
+    for port in c.ports:
+        if not 1 <= port.container_port <= 65535:
+            raise Invalid(f"port {port.name} is out of range", {"port": port.container_port})
+    for env in c.env:
+        if not env.name or env.name in INJECTED_ENV:
+            raise Invalid(f"env {env.name!r} is set by the platform", {"name": env.name})
+    for key in ("readiness_probe", "liveness_probe", "startup_probe"):
+        probe = getattr(c, key)
+        if probe is not None:
+            _refuse_keys(probe, PROBE_KEYS, f"runtime.container.{key}")
+    if c.metrics is not None and c.metrics.port not in names:
+        raise Invalid("runtime.container.metrics.port names a declared port", {"port": c.metrics.port})
+    if data.topology.serving_topology != AGGREGATED or data.topology.roles:
+        raise Invalid("a container workload is aggregated; disaggregated serving is dynamo only", {})
+    declared_router = {k: v for k, v in msgspec.to_builtins(data.router).items() if v is not None}
+    if declared_router:
+        raise Invalid("router settings are dynamo frontend settings; a container workload has none", declared_router)
+    if data.engine_args:
+        raise Invalid("engine_args are dynamo engine flags; put a container worker's flags in its args", {})
+    if data.overlay.pod_spec or data.overlay.dynamo:
+        raise Invalid("overlay is not supported on a container workload", {})
+    if data.engine_runtime_image or data.frontend_image:
+        raise Invalid("a container workload names its image in runtime.container.image", {})
+
+
 def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> None:
     """Rejects a serving configuration that cannot be placed, run, or believed.
 
@@ -576,13 +659,14 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
     whole configuration it would leave behind, never as the fields it names, so a
     patch cannot arrive at a state a create would have refused.
     """
+    check_runtime(data)
     check_shape(
         device_class=data.shape.device_class,
         device_count=data.shape.device_count,
         tensor_parallel=data.parallelism.tensor,
         pipeline_parallel=data.parallelism.pipeline,
         expert_parallel=data.parallelism.expert,
-        context_length=None if is_omni(data.engine) else data.context_length,
+        context_length=None if is_omni(data.engine) or data.runtime.kind == CONTAINER else data.context_length,
         kv_cache_fraction=data.cache.kv_cache_fraction,
     )
     check_footprint(

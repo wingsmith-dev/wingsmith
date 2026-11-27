@@ -205,8 +205,24 @@ def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]
 
     Empty for every model the corpus does not cover, which is nearly all of them.
     """
+    if is_container(workload):
+        return {}
     defaults = dynamo_recipes.engine_defaults(artifact.slug or "", workload.engine, workload.device_class)
     return {flag: value for flag, value in defaults.items() if flag not in DERIVED_FLAGS}
+
+
+DYNAMO = "dynamo"
+CONTAINER = "container"
+RUNTIME_KINDS = frozenset({DYNAMO, CONTAINER})
+"""`Workload.runtime_kind`. A container workload stores `engine = CONTAINER` (P8.1 decision a)."""
+
+CONTAINER_PROTOCOLS = frozenset({"openai-chat"})
+"""What a container worker may answer in the P8.2 MVP; completions, embeddings and plain http follow."""
+
+
+def is_container(workload: object) -> bool:
+    """Whether a workload row runs a custom container. `getattr` because migrations hash old rows."""
+    return (getattr(workload, "runtime_kind", None) or DYNAMO) == CONTAINER
 
 
 AGGREGATED = "aggregated"
@@ -548,6 +564,10 @@ def serving_digest(
     router = declared_router(getattr(workload, "router", None))
     if router:
         payload["router"] = router
+    # Only off dynamo, so every existing digest stays byte-identical.
+    if is_container(workload):
+        payload["runtime_kind"] = CONTAINER
+        payload["runtime_spec"] = _canonical(workload.runtime_spec or {})
     if workload.serving_topology == DISAGGREGATED:
         payload["serving_topology"] = workload.serving_topology
         payload["roles"] = [_role_config(role) for role in sorted(roles, key=lambda role: role.role)]

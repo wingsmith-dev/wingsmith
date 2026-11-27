@@ -108,6 +108,9 @@ class ClusterSyncState(BaseMixin):
     observed_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     read_only: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     multinode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    runtimes: Mapped[list[str] | None] = mapped_column(ARRAY(String(16)), nullable=True)
+    """Serving runtimes the operator discovered (`dynamo`, `container`). Null is an operator that
+    predates the report or could not discover, read as Dynamo-capable as before."""
     connected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disconnected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -486,7 +489,10 @@ class Workload(BaseMixin):
     """
 
     __tablename__ = "demand_workload"
-    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_demand_workload_project_name"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_demand_workload_project_name"),
+        CheckConstraint("runtime_kind IN ('dynamo', 'container')", name="ck_demand_workload_runtime_kind"),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -535,6 +541,12 @@ class Workload(BaseMixin):
     memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
     overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    runtime_kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="dynamo")
+    """`dynamo` or `container` (P8). A container workload stores `engine='container'` and its
+    worker in `runtime_spec`; the Dynamo engine columns are not read for it."""
+    runtime_spec: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """The container worker (image, command, args, env, ports, protocol, probes, metrics), `{}`
+    under dynamo. In `serving_digest` only when `runtime_kind != 'dynamo'`."""
     serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     """How the served API behaves: thinking mode, reasoning and tool-call parsers, streaming defaults,
     structured output, EOS suppression. Every field renders to a flag the cluster obeys."""

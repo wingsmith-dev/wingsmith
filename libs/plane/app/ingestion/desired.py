@@ -34,17 +34,22 @@ from app.db.models import Deployment
 from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.core.serving import is_container
 from app.core.serving import declared_router
 from app.core.serving import output_modality
 from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
+from app.hub.messages import EnvVar
 from app.hub.messages import Overlay
 from app.hub.messages import RoleSpec
 from app.hub.messages import Resources
 from app.hub.messages import RouterSpec
+from app.hub.messages import MetricsSpec
 from app.hub.messages import Parallelism
 from app.hub.messages import ServingSpec
 from app.hub.messages import CacheDesired
+from app.hub.messages import ContainerPort
+from app.hub.messages import ContainerSpec
 from app.hub.messages import DiffusionSpec
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
@@ -374,6 +379,28 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
         router=_router(workload),
         output_modality=_output_modality(workload),
         diffusion=_diffusion(workload),
+        runtime="container" if is_container(workload) else None,
+        container=_container(workload),
+    )
+
+
+def _container(workload: Workload) -> ContainerSpec | None:
+    """The stored container worker as the wire carries it, None under dynamo."""
+    if not is_container(workload):
+        return None
+    spec = workload.runtime_spec or {}
+    metrics = spec.get("metrics")
+    return ContainerSpec(
+        image=spec["image"],
+        protocol=spec.get("protocol") or "openai-chat",
+        command=list(spec.get("command") or []),
+        args=list(spec.get("args") or []),
+        env=[EnvVar(name=e["name"], value=str(e.get("value") or "")) for e in spec.get("env") or []],
+        ports=[ContainerPort(name=p["name"], container_port=int(p["container_port"])) for p in spec.get("ports") or []],
+        readiness_probe=spec.get("readiness_probe"),
+        liveness_probe=spec.get("liveness_probe"),
+        startup_probe=spec.get("startup_probe"),
+        metrics=MetricsSpec(port=metrics["port"], path=metrics["path"]) if metrics else None,
     )
 
 

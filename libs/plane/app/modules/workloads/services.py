@@ -1092,8 +1092,14 @@ class WorkloadService:
         stored_roles = await self.repo.roles_of(workload)
         request = serving_request(workload, artifact, stored_roles)
         await self._seed_revision(workload, request, workload.serving_digest)
+        stored_kind = request.runtime.kind
         for key, value in declared.items():
             setattr(request, key, value)
+        if request.runtime.kind != stored_kind:
+            raise Invalid(
+                f"runtime.kind is immutable ({stored_kind}); create a new workload to change it",
+                {"kind": request.runtime.kind},
+            )
         if was_derived and "engine_runtime_image" not in declared:
             request.engine_runtime_image = None
         check_serving_request(request, artifact)

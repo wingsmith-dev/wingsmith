@@ -241,6 +241,55 @@ class TopologyViewSchema(Struct):
     """
 
 
+class EnvVarSchema(Struct):
+    """One literal environment variable of a container worker."""
+
+    name: str
+    value: str = ""
+
+
+class ContainerPortSchema(Struct):
+    """A port the worker listens on. The one named `http` is what the platform routes to."""
+
+    name: str
+    container_port: int
+
+
+class ContainerMetricsSchema(Struct):
+    """Where a container worker serves Prometheus metrics: a declared port name and a path."""
+
+    port: str = "http"
+    path: str = "/metrics"
+
+
+class ContainerSchema(Struct):
+    """A custom worker (P8): the platform mounts the weights read-only at `$WS_MODEL_PATH`, sets
+    `WS_SERVED_MODEL_NAME`, `WS_PORT` and `HF_HUB_OFFLINE=1`, and routes to the port named `http`.
+
+    `image` is pinned by digest (`repo@sha256:...`). `args` may use `$(WS_MODEL_PATH)` and the
+    other injected variables. The probes are `corev1.Probe` objects with their Kubernetes keys;
+    readiness defaults to an httpGet on `/health` at port `http`.
+    """
+
+    image: str
+    command: list[str] = []
+    args: list[str] = []
+    env: list[EnvVarSchema] = []
+    ports: list[ContainerPortSchema] = []
+    protocol: str = "openai-chat"
+    readiness_probe: dict | None = None
+    liveness_probe: dict | None = None
+    startup_probe: dict | None = None
+    metrics: ContainerMetricsSchema | None = None
+
+
+class RuntimeSchema(Struct):
+    """What runs the weights: `dynamo` (the engine fields beside this block) or `container`."""
+
+    kind: str = "dynamo"
+    container: ContainerSchema | None = None
+
+
 class WorkloadServingSchema(Struct):
     """How the workload serves its weights, as one block.
 
@@ -284,6 +333,7 @@ class WorkloadServingSchema(Struct):
     overlay: OverlaySchema
     topology: TopologyViewSchema
     router: RouterSchema = field(default_factory=RouterSchema)
+    runtime: RuntimeSchema = field(default_factory=RuntimeSchema)
 
 
 class WorkloadServingRequest(Struct):
@@ -301,9 +351,10 @@ class WorkloadServingRequest(Struct):
     """
 
     artifact: str
-    engine: str
-    engine_runtime_version: str
     shape: ShapeSchema
+    engine: str = ""
+    """Required under `runtime.kind: dynamo`; a container workload stores `container`."""
+    engine_runtime_version: str = ""
     context_length: int = 0
     """The engine's `--max-model-len`. Required of every text engine; a diffusion model has none.
 
@@ -326,6 +377,7 @@ class WorkloadServingRequest(Struct):
     capabilities: CapabilitiesSchema = field(default_factory=CapabilitiesSchema)
     topology: TopologySchema = field(default_factory=TopologySchema)
     router: RouterSchema = field(default_factory=RouterSchema)
+    runtime: RuntimeSchema = field(default_factory=RuntimeSchema)
 
 
 class WorkloadServingUpdate(Struct):
@@ -362,6 +414,7 @@ class WorkloadServingUpdate(Struct):
     capabilities: CapabilitiesSchema | UnsetType = UNSET
     topology: TopologySchema | UnsetType = UNSET
     router: RouterSchema | UnsetType = UNSET
+    runtime: RuntimeSchema | UnsetType = UNSET
 
 
 class WorkloadDeploymentSchema(Struct):

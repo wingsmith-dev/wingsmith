@@ -32,6 +32,7 @@ from app.modules.endpoints.schemas import EndpointSurfaceSchema as _EndpointSurf
 from app.modules.workloads.schemas import RoleSchema as _RoleSchema
 from app.modules.workloads.schemas import CacheSchema as _CacheSchema
 from app.modules.workloads.schemas import ShapeSchema as _ShapeSchema
+from app.modules.workloads.schemas import EnvVarSchema as _EnvVarSchema
 from app.modules.workloads.schemas import RouterSchema as _RouterSchema
 from app.modules.workloads.schemas import OverlaySchema as _OverlaySchema
 from app.modules.workloads.schemas import ServingSchema as _ServingSchema
@@ -39,6 +40,8 @@ from app.modules.workloads.schemas import ResourcesSchema as _ResourcesSchema
 from app.modules.workloads.schemas import ParallelismSchema as _ParallelismSchema
 from app.modules.workloads.schemas import CapabilitiesSchema as _CapabilitiesSchema
 from app.modules.workloads.schemas import TopologyViewSchema as _TopologyViewSchema
+from app.modules.workloads.schemas import ContainerPortSchema as _ContainerPortSchema
+from app.modules.workloads.schemas import ContainerMetricsSchema as _ContainerMetricsSchema
 
 
 class Struct(BaseStruct, rename="camel"):
@@ -95,6 +98,9 @@ ArtifactUpstreamSchema = camel(_ArtifactUpstreamSchema)
 EndpointSurfaceSchema = camel(_EndpointSurfaceSchema)
 RoleSchema = camel(_RoleSchema)
 CacheSchema = camel(_CacheSchema)
+EnvVarSchema = camel(_EnvVarSchema)
+ContainerMetricsSchema = camel(_ContainerMetricsSchema)
+ContainerPortSchema = camel(_ContainerPortSchema)
 ShapeSchema = camel(_ShapeSchema)
 RouterSchema = camel(_RouterSchema)
 OverlaySchema = camel(_OverlaySchema)
@@ -118,6 +124,7 @@ NOTE_ANNOTATION = "plane.wingsmith.dev/note"
 
 IMMUTABLE = Meta(extra_json_schema={"x-immutable": True})
 DEFAULTED = Meta(extra_json_schema={"x-defaulted": True})
+IMMUTABLE_DEFAULTED = Meta(extra_json_schema={"x-immutable": True, "x-defaulted": True})
 
 
 class ObjectMeta(Struct, kw_only=True):
@@ -141,19 +148,34 @@ class ObjectMeta(Struct, kw_only=True):
 # --------------------------------------------------------------------------- Workload
 
 
-class RuntimeSpec(Struct, kw_only=True):
-    """What process serves the weights. Only `dynamo` today; custom workers add `container`.
+class RuntimeSpec(Struct, kw_only=True, omit_defaults=True):
+    """What process serves the weights: a tagged union on `kind`, `dynamo` when left out.
 
-    `kind` picks the runtime and the rest is read under it. For `dynamo`, `engine` and `version`
-    pick the worker image unless `image` pins one, and `args` are the engine's own flags.
+    `dynamo`: `engine` and `version` pick the worker image unless `image` pins one, and `args`
+    is a map of the engine's own flags.
+
+    `container` (a custom worker): `image` is pinned by digest, `command` and `args` are lists
+    (`args` may use `$(WS_MODEL_PATH)`, `$(WS_SERVED_MODEL_NAME)`, `$(WS_PORT)`), `ports` names
+    one `http`, `protocol` is `openai-chat`, the probes are `corev1.Probe` objects, and
+    `metrics` is `{port, path}`. `engine`, `version` and `frontendImage` are not read.
+
+    Unset fields are left out of a read, so each kind shows only its own.
     """
 
-    kind: str = "dynamo"
-    engine: str
-    version: str
+    kind: Annotated[str | None, IMMUTABLE_DEFAULTED] = None
+    engine: str | None = None
+    version: str | None = None
     image: str | None = None
     frontend_image: str | None = None
-    args: dict = {}
+    args: dict | list[str] = {}
+    command: list[str] = []
+    env: list[EnvVarSchema] = []
+    ports: list[ContainerPortSchema] = []
+    protocol: str | None = None
+    readiness_probe: dict | None = None
+    liveness_probe: dict | None = None
+    startup_probe: dict | None = None
+    metrics: ContainerMetricsSchema | None = None
 
 
 class WorkloadServingSpec(Struct, kw_only=True):

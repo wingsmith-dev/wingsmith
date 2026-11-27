@@ -712,6 +712,34 @@
   "reactor": "$ReactorConfigSchema",
   "setup": "$SetupConfigSchema"
  },
+ "ContainerMetrics": {
+  "path": "string",
+  "port": "string"
+ },
+ "ContainerMetricsSchema": {
+  "path": "string",
+  "port": "string"
+ },
+ "ContainerPort": {
+  "containerPort": "integer",
+  "name": "string"
+ },
+ "ContainerPortSchema": {
+  "container_port": "integer",
+  "name": "string"
+ },
+ "ContainerSchema": {
+  "args": "[]string",
+  "command": "[]string",
+  "env": "[]$EnvVarSchema",
+  "image": "string",
+  "liveness_probe": "object?",
+  "metrics": "$ContainerMetricsSchema?",
+  "ports": "[]$ContainerPortSchema",
+  "protocol": "string",
+  "readiness_probe": "object?",
+  "startup_probe": "object?"
+ },
  "CredentialPutRequest": {
   "expires_at": "string?",
   "kind": "string",
@@ -1008,6 +1036,14 @@
   "surface": "object",
   "targets": "[]$EndpointTargetRequest",
   "visibility": "string"
+ },
+ "EnvVar": {
+  "name": "string",
+  "value": "string"
+ },
+ "EnvVarSchema": {
+  "name": "string",
+  "value": "string"
  },
  "EventSchema": {
   "cluster_id": "string?",
@@ -1745,13 +1781,25 @@
   "value_from": "string",
   "when_present": "string"
  },
+ "RuntimeSchema": {
+  "container": "$ContainerSchema?",
+  "kind": "string"
+ },
  "RuntimeSpec": {
-  "args": "object",
-  "engine": "string",
+  "args": "object|[]string",
+  "command": "[]string",
+  "engine": "string?",
+  "env": "[]$EnvVar",
   "frontendImage": "string?",
   "image": "string?",
-  "kind": "string",
-  "version": "string"
+  "kind": "string?",
+  "livenessProbe": "object?",
+  "metrics": "$ContainerMetrics?",
+  "ports": "[]$ContainerPort",
+  "protocol": "string?",
+  "readinessProbe": "object?",
+  "startupProbe": "object?",
+  "version": "string?"
  },
  "SampleSchema": {
   "metric": "string",
@@ -2298,6 +2346,7 @@
   "quantization": "string?",
   "resources": "$ResourcesSchema",
   "router": "$RouterSchema",
+  "runtime": "$RuntimeSchema",
   "serving": "$ServingSchema",
   "shape": "$ShapeSchema",
   "topology": "$TopologySchema"
@@ -2321,6 +2370,7 @@
   "resolved_engine_args": "object",
   "resources": "$ResourcesSchema",
   "router": "$RouterSchema",
+  "runtime": "$RuntimeSchema",
   "serving": "$ServingSchema",
   "shape": "$ShapeSchema",
   "topology": "$TopologyViewSchema"
@@ -2360,6 +2410,7 @@
   "quantization": "string?",
   "resources": "$ResourcesSchema",
   "router": "$RouterSchema",
+  "runtime": "$RuntimeSchema",
   "serving": "$ServingSchema",
   "shape": "$ShapeSchema",
   "topology": "$TopologySchema"

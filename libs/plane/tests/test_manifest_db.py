@@ -453,3 +453,60 @@ async def test_put_workload_annotations_without_the_note_clear_it(db: AsyncSessi
     body["metadata"]["annotations"] = {}
     m, _ = await svc.put_workload("search", "gpt-oss-prod", body)
     assert NOTE_ANNOTATION not in m.metadata.annotations
+
+
+CONTAINER_IMAGE = "ghcr.io/acme/worker@sha256:" + "a" * 64
+
+
+def _container_body(artifact: str, cluster: str, image: str = CONTAINER_IMAGE) -> dict:
+    body = _workload_body(artifact, cluster)
+    body["metadata"]["name"] = "worker"
+    body["spec"]["runtime"] = {
+        "kind": "container",
+        "image": image,
+        "args": ["--model", "$(WS_MODEL_PATH)"],
+        "ports": [{"name": "http", "containerPort": 8000}],
+        "protocol": "openai-chat",
+    }
+    body["spec"]["serving"].pop("contextLength")
+    return body
+
+
+async def test_put_container_workload_round_trips(db: AsyncSession) -> None:
+    cluster, project, artifact, _ = await a_workload(db)
+    svc = ManifestService(db)
+    m, created = await svc.put_workload("search", "worker", _container_body(artifact.handle, cluster.name))
+    assert created
+    assert m.spec.runtime.kind == "container"
+    assert m.spec.runtime.image == CONTAINER_IMAGE
+    assert m.spec.runtime.engine is None
+    row = (await db.execute(select(Workload.runtime_kind, Workload.engine).where(Workload.uid == m.metadata.uid))).one()
+    assert tuple(row) == ("container", "container")
+
+    replayed, created = await svc.put_workload("search", "worker", _wire(m))
+    assert not created
+    assert replayed.metadata.generation == m.metadata.generation
+    assert replayed.status.serving_digest == m.status.serving_digest
+
+    bumped, _ = await svc.put_workload(
+        "search",
+        "worker",
+        _container_body(artifact.handle, cluster.name, image="ghcr.io/acme/worker@sha256:" + "b" * 64),
+    )
+    assert bumped.metadata.generation == m.metadata.generation + 1
+    assert bumped.status.serving_digest != m.status.serving_digest
+    assert bumped.spec.runtime.image.endswith("b" * 64)
+
+
+async def test_put_refuses_a_runtime_kind_change_and_a_tagged_image(db: AsyncSession) -> None:
+    cluster, project, artifact, _ = await a_workload(db)
+    svc = ManifestService(db)
+    with pytest.raises(Invalid):
+        await svc.put_workload(
+            "search", "worker", _container_body(artifact.handle, cluster.name, image="ghcr.io/a/w:1")
+        )
+    await svc.put_workload("search", "applied", _workload_body(artifact.handle, cluster.name))
+    body = _container_body(artifact.handle, cluster.name)
+    body["metadata"]["name"] = "applied"
+    with pytest.raises(Invalid):
+        await svc.put_workload("search", "applied", body)

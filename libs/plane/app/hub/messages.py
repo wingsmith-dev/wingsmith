@@ -209,6 +209,9 @@ class ClusterObserved(Struct):
     region: str = ""
     read_only: bool = False
     multinode: bool = False
+    runtimes: list[str] | None = None
+    """Serving runtimes discovered on the cluster. Absent (an older operator, or discovery failed)
+    keeps the cluster Dynamo-capable, as it read before the field existed."""
 
 
 class NodeCondition(Struct):
@@ -457,6 +460,39 @@ class RoleSpec(Struct):
     engine_args: dict[str, str] = {}
 
 
+class EnvVar(Struct):
+    name: str
+    value: str
+
+
+class ContainerPort(Struct):
+    name: str
+    container_port: int
+
+
+class MetricsSpec(Struct):
+    port: str
+    path: str
+
+
+class ContainerSpec(Struct, omit_defaults=True):
+    """A custom worker as the cluster renders it (operator `wire.ContainerSpec`).
+
+    The probes are `corev1.Probe` objects with their Kubernetes keys, passed through as declared.
+    """
+
+    image: str
+    protocol: str
+    command: list[str] = []
+    args: list[str] = []
+    env: list[EnvVar] = []
+    ports: list[ContainerPort] = []
+    readiness_probe: dict[str, Any] | None = None
+    liveness_probe: dict[str, Any] | None = None
+    startup_probe: dict[str, Any] | None = None
+    metrics: MetricsSpec | None = None
+
+
 class RouterSpec(Struct, omit_defaults=True):
     """How a deployment's own frontend routes between its workers. Every field optional.
 
@@ -564,6 +600,12 @@ class ServingSpec(Struct):
 
     diffusion: DiffusionSpec | None = None
     """The omni worker's stage configuration, or None to leave omni's defaults in place."""
+
+    runtime: Literal["dynamo", "container"] | None = None
+    """None under dynamo, so a Dynamo deployment's frame stays what it was; `container` for P8."""
+
+    container: ContainerSpec | None = None
+    """The custom worker under `runtime: container`, None otherwise. See `ContainerSpec`."""
 
 
 class PlacementConstraints(Struct):

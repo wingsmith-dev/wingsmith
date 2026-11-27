@@ -515,6 +515,41 @@
    "title": "Condition",
    "type": "object"
   },
+  "ContainerMetrics": {
+   "additionalProperties": false,
+   "description": "Where a container worker serves Prometheus metrics: a declared port name and a path.",
+   "properties": {
+    "path": {
+     "default": "/metrics",
+     "type": "string"
+    },
+    "port": {
+     "default": "http",
+     "type": "string"
+    }
+   },
+   "required": [],
+   "title": "ContainerMetrics",
+   "type": "object"
+  },
+  "ContainerPort": {
+   "additionalProperties": false,
+   "description": "A port the worker listens on. The one named `http` is what the platform routes to.",
+   "properties": {
+    "containerPort": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "containerPort"
+   ],
+   "title": "ContainerPort",
+   "type": "object"
+  },
   "Diffusion": {
    "additionalProperties": false,
    "description": "What a vLLM-Omni worker reads from its stage-config file instead of its command line.\n\n    Two fields because only two vary per model. The operator writes the rest of the file\n    (one stage, the devices the pod holds, the executor), and the Dynamo omni CLI refuses\n    `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`\n    exists because omni defaults every model to 50 inference steps, which is wrong for every\n    distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.",
@@ -825,6 +860,24 @@
     "deploymentId"
    ],
    "title": "EndpointTargetStatus",
+   "type": "object"
+  },
+  "EnvVar": {
+   "additionalProperties": false,
+   "description": "One literal environment variable of a container worker.",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "value": {
+     "default": "",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "EnvVar",
    "type": "object"
   },
   "ObjectMeta": {
@@ -1277,14 +1330,46 @@
   },
   "RuntimeSpec": {
    "additionalProperties": false,
-   "description": "What process serves the weights. Only `dynamo` today; custom workers add `container`.\n\n    `kind` picks the runtime and the rest is read under it. For `dynamo`, `engine` and `version`\n    pick the worker image unless `image` pins one, and `args` are the engine's own flags.",
+   "description": "What process serves the weights: a tagged union on `kind`, `dynamo` when left out.\n\n    `dynamo`: `engine` and `version` pick the worker image unless `image` pins one, and `args`\n    is a map of the engine's own flags.\n\n    `container` (a custom worker): `image` is pinned by digest, `command` and `args` are lists\n    (`args` may use `$(WS_MODEL_PATH)`, `$(WS_SERVED_MODEL_NAME)`, `$(WS_PORT)`), `ports` names\n    one `http`, `protocol` is `openai-chat`, the probes are `corev1.Probe` objects, and\n    `metrics` is `{port, path}`. `engine`, `version` and `frontendImage` are not read.\n\n    Unset fields are left out of a read, so each kind shows only its own.",
    "properties": {
     "args": {
-     "default": {},
-     "type": "object"
+     "anyOf": [
+      {
+       "type": "object"
+      },
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     ],
+     "default": {}
+    },
+    "command": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "engine": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "env": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/EnvVar"
+     },
+     "type": "array"
     },
     "frontendImage": {
      "anyOf": [
@@ -1309,17 +1394,93 @@
      "default": null
     },
     "kind": {
-     "default": "dynamo",
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-defaulted": true,
+     "x-immutable": true
+    },
+    "livenessProbe": {
+     "anyOf": [
+      {
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "metrics": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/ContainerMetrics"
+      }
+     ],
+     "default": null
+    },
+    "ports": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/ContainerPort"
+     },
+     "type": "array"
+    },
+    "protocol": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "readinessProbe": {
+     "anyOf": [
+      {
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "startupProbe": {
+     "anyOf": [
+      {
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "version": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     }
    },
-   "required": [
-    "engine",
-    "version"
-   ],
+   "required": [],
    "title": "RuntimeSpec",
    "type": "object"
   },

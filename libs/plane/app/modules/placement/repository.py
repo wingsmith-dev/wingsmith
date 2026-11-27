@@ -115,7 +115,7 @@ class PlacementRepository:
     async def _clusters(self, device_class: str, deployment_name: str | None = None) -> tuple[ClusterSnapshot, ...]:
         rows = (
             await self.db.execute(
-                select(Cluster, ClusterSyncState.reachable).outerjoin(
+                select(Cluster, ClusterSyncState.reachable, ClusterSyncState.runtimes).outerjoin(
                     ClusterSyncState, ClusterSyncState.cluster_id == Cluster.id
                 )
             )
@@ -131,6 +131,7 @@ class PlacementRepository:
                 region=cluster.region,
                 phase=cluster.phase,
                 kind=cluster.kind,
+                runtimes=tuple(runtimes) if runtimes is not None else None,
                 reachable=bool(reachable),
                 zone=cluster.zone,
                 residency=cluster.residency,
@@ -140,7 +141,7 @@ class PlacementRepository:
                 reserved=tuple(reserved.get(cluster.id, ())),
                 taken_names=taken.get(cluster.id, {}),
             )
-            for cluster, reachable in rows
+            for cluster, reachable, runtimes in rows
         )
 
     async def _devices(self, device_class: str) -> dict[UUID, list[DeviceSnapshot]]:

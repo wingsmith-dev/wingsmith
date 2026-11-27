@@ -220,6 +220,10 @@ class Settings:
     prefetch job's layout has to be the one the engine later reads.
     """
 
+    CONTAINER_IMAGE_TAGS_ALLOWED: bool = False
+    """Admin flag: accept a container workload's image by tag instead of `@sha256:` digest. Off,
+    every custom worker is digest-pinned, so a pushed tag cannot change what a cluster runs."""
+
     BENCHMARK_CONFORMANCE_IMAGE: str = ""
     """Image the `conformance` benchmark harness runs when a request names none.
     Empty refuses such runs with a message naming this setting."""

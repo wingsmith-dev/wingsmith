@@ -19,15 +19,20 @@ from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.workloads.schemas import RoleSchema as _RoleSchema
 from app.modules.workloads.schemas import CacheSchema as _CacheSchema
 from app.modules.workloads.schemas import ShapeSchema as _ShapeSchema
+from app.modules.workloads.schemas import EnvVarSchema as _EnvVarSchema
 from app.modules.workloads.schemas import RouterSchema as _RouterSchema
 from app.modules.workloads.schemas import OverlaySchema as _OverlaySchema
+from app.modules.workloads.schemas import RuntimeSchema
 from app.modules.workloads.schemas import ServingSchema as _ServingSchema
 from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import WorkloadSchema
+from app.modules.workloads.schemas import ContainerSchema
 from app.modules.workloads.schemas import ResourcesSchema as _ResourcesSchema
 from app.modules.workloads.schemas import ParallelismSchema as _ParallelismSchema
 from app.modules.workloads.schemas import CapabilitiesSchema as _CapabilitiesSchema
+from app.modules.workloads.schemas import ContainerPortSchema as _ContainerPortSchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
+from app.modules.workloads.schemas import ContainerMetricsSchema as _ContainerMetricsSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
 
 from .schemas import UNSCHEDULABLE
@@ -165,14 +170,7 @@ def workload_manifest(
                 allowed_regions=list(placement.allowed_regions),
                 allowed_clusters=list(placement.allowed_clusters),
             ),
-            runtime=RuntimeSpec(
-                kind="dynamo",
-                engine=s.engine,
-                version=s.engine_runtime_version,
-                image=s.engine_runtime_image,
-                frontend_image=s.frontend_image,
-                args=s.engine_args,
-            ),
+            runtime=runtime_spec(w),
             serving=WorkloadServingSpec(
                 artifact=refs.artifact(s.artifact_id),
                 adapters=[refs.artifact(a) for a in w.adapter_artifact_ids],
@@ -218,6 +216,33 @@ def workload_manifest(
             started_at=w.started_at,
             finished_at=w.finished_at,
         ),
+    )
+
+
+def runtime_spec(w: WorkloadSchema) -> RuntimeSpec:
+    s = w.serving
+    c = s.runtime.container
+    if s.runtime.kind == "container" and c is not None:
+        return RuntimeSpec(
+            kind="container",
+            image=c.image,
+            command=list(c.command),
+            args=list(c.args),
+            env=[_c(e) for e in c.env],
+            ports=[_c(p) for p in c.ports],
+            protocol=c.protocol,
+            readiness_probe=c.readiness_probe,
+            liveness_probe=c.liveness_probe,
+            startup_probe=c.startup_probe,
+            metrics=_c(c.metrics) if c.metrics is not None else None,
+        )
+    return RuntimeSpec(
+        kind="dynamo",
+        engine=s.engine,
+        version=s.engine_runtime_version,
+        image=s.engine_runtime_image,
+        frontend_image=s.frontend_image,
+        args=s.engine_args,
     )
 
 
@@ -348,10 +373,48 @@ _SERVING_TYPES = {
 }
 
 
+def is_container(spec: WorkloadManifestSpec) -> bool:
+    return spec.runtime.kind == "container"
+
+
+DYNAMO_RUNTIME_FIELDS = frozenset(
+    {"engine", "engine_runtime_version", "engine_runtime_image", "frontend_image", "engine_args"}
+)
+"""The serving fields read off `spec.runtime` under `kind: dynamo`, and not read under `container`."""
+
+
+def runtime_request(spec: WorkloadManifestSpec) -> RuntimeSchema:
+    """`spec.runtime` as the HTTP API's `runtime` block."""
+    r = spec.runtime
+    if not is_container(spec):
+        return RuntimeSchema(kind=r.kind or "dynamo")
+    if isinstance(r.args, dict) and r.args:
+        raise ValueError("spec.runtime.args is a list of strings under kind container")
+    return RuntimeSchema(
+        kind="container",
+        container=ContainerSchema(
+            image=r.image or "",
+            command=list(r.command),
+            args=list(r.args) if isinstance(r.args, list) else [],
+            env=[_snake(e, _EnvVarSchema) for e in r.env],
+            ports=[_snake(p, _ContainerPortSchema) for p in r.ports],
+            protocol=r.protocol or "openai-chat",
+            readiness_probe=r.readiness_probe,
+            liveness_probe=r.liveness_probe,
+            startup_probe=r.startup_probe,
+            metrics=_snake(r.metrics, _ContainerMetricsSchema) if r.metrics is not None else None,
+        ),
+    )
+
+
 def serving_value(spec: WorkloadManifestSpec, key: str):
     """One `WorkloadServingRequest` field's value, read from the manifest spec."""
     if key == "topology":
         return topology_request(spec.serving)
+    if key == "runtime":
+        return runtime_request(spec)
+    if key in DYNAMO_RUNTIME_FIELDS and is_container(spec):
+        return {"engine_args": {}, "engine_runtime_image": None, "frontend_image": None}.get(key, "")
     section, attr = SERVING_FIELDS[key]
     value = getattr(getattr(spec, section), attr)
     return _snake(value, _SERVING_TYPES[key]) if key in _SERVING_TYPES else value
@@ -362,7 +425,7 @@ def workload_create(m: WorkloadManifest, project: str) -> WorkloadCreateRequest:
     widen to hold it, as `/scale` does (ADR 0025)."""
     s = m.spec
     desired = s.replicas if s.replicas is not None else s.scale.min
-    serving = {key: serving_value(s, key) for key in (*SERVING_FIELDS, "topology")}
+    serving = {key: serving_value(s, key) for key in (*SERVING_FIELDS, "topology", "runtime")}
     return WorkloadCreateRequest(
         serving=WorkloadServingRequest(artifact=s.serving.artifact, **serving),
         name=m.metadata.name,

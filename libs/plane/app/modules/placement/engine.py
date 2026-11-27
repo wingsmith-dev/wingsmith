@@ -12,6 +12,7 @@ from .decision import NAME_TAKEN
 from .decision import CLUSTER_KIND
 from .decision import CLUSTER_PHASE
 from .decision import POLICY_REGION
+from .decision import CLUSTER_RUNTIME
 from .decision import QUOTA_EXHAUSTED
 from .decision import POLICY_RESIDENCY
 from .decision import CLUSTER_UNREACHABLE
@@ -107,6 +108,7 @@ def _rank(verdict: ClusterVerdict) -> tuple:
 def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: CapacitySnapshot) -> ClusterVerdict:
     reasons: list[Rejection] = []
     reasons.extend(_health_reasons(cluster))
+    reasons.extend(_runtime_reasons(request, cluster))
     reasons.extend(_policy_reasons(request, cluster, snapshot.policies))
     reasons.extend(_name_reasons(request, cluster))
 
@@ -190,6 +192,27 @@ def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[R
             code=NAME_TAKEN,
             message=f"cluster {cluster.name} already has a deployment named {request.deployment_name!r}",
             detail={"name": request.deployment_name},
+        )
+    ]
+
+
+def _runtime_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rejection]:
+    """A cluster whose operator found no Dynamo runs container workloads only (P8.2, decision d).
+
+    Unknown runtimes (an older operator, or a failed discovery) read as Dynamo-capable, so no
+    cluster loses workloads it already served.
+    """
+    if cluster.runtimes is None:
+        return [] if request.runtime == "dynamo" else _no_runtime(request, cluster)
+    return [] if request.runtime in cluster.runtimes else _no_runtime(request, cluster)
+
+
+def _no_runtime(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rejection]:
+    return [
+        Rejection(
+            code=CLUSTER_RUNTIME,
+            message=f"cluster {cluster.name} does not run the {request.runtime} runtime",
+            detail={"runtime": request.runtime, "runtimes": list(cluster.runtimes or ())},
         )
     ]
 
@@ -896,6 +919,7 @@ def _unit_request(demand: WorkloadDemand) -> PlacementRequest:
         tensor_parallel=demand.tensor_parallel,
         requires_single_domain=demand.requires_single_domain,
         domain_kind=demand.domain_kind,
+        runtime=demand.runtime,
         deployment_name=demand.name,
         atomic=True,
     )

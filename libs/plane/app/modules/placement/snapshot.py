@@ -125,6 +125,8 @@ class ClusterSnapshot(Snap):
     phase: str = "active"
     reachable: bool = True
     kind: str = "kubernetes"
+    runtimes: tuple[str, ...] | None = None
+    """What the operator discovered it can run. None is unknown and reads as Dynamo-capable."""
     zone: str | None = None
     residency: str | None = None
     devices: tuple[DeviceSnapshot, ...] = ()
@@ -217,6 +219,7 @@ class PlacementRequest(Snap):
     little it cares which domain they sit in.
     """
     requires_single_domain: bool = False
+    runtime: str = "dynamo"
     domain_kind: str | None = None
     deployment_name: str | None = None
     atomic: bool = False
@@ -260,6 +263,7 @@ class WorkloadDemand(Snap):
     device_memory_mib_min: int = 0
     tensor_parallel: int = 1
     requires_single_domain: bool = False
+    runtime: str = "dynamo"
     domain_kind: str | None = None
     desired_scale: int = 1
     gang_size: int = 1

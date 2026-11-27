@@ -1163,3 +1163,26 @@ def test_a_reserved_single_domain_unit_is_charged_to_the_roomiest_node_of_its_fa
     decision = place(request(4, tensor_parallel=4, requires_single_domain=True, domain_kind="nvlink"), snap)
     assert decision.placed is False
     assert codes_for(decision, "iad-1") == [codes.INSUFFICIENT_TOPOLOGY]
+
+
+def test_a_cluster_without_dynamo_takes_container_workloads_only():
+    snap = CapacitySnapshot(clusters=(cluster("c1", "plain-1", devices("c1", count=8), runtimes=("container",)),))
+
+    assert codes_for(place(request(8), snap), "plain-1") == [codes.CLUSTER_RUNTIME]
+    assert place(request(8, runtime="container"), snap).placed is True
+
+
+def test_unknown_runtimes_keep_a_cluster_dynamo_capable_and_refuse_containers():
+    snap = CapacitySnapshot(clusters=(cluster("c1", "old-1", devices("c1", count=8)),))
+
+    assert place(request(8), snap).placed is True
+    assert codes_for(place(request(8, runtime="container"), snap), "old-1") == [codes.CLUSTER_RUNTIME]
+
+
+def test_a_cluster_with_both_runtimes_takes_either():
+    snap = CapacitySnapshot(
+        clusters=(cluster("c1", "full-1", devices("c1", count=8), runtimes=("dynamo", "container")),)
+    )
+
+    assert place(request(8), snap).placed is True
+    assert place(request(8, runtime="container"), snap).placed is True
