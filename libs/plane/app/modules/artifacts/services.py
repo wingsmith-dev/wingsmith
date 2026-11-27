@@ -25,6 +25,11 @@ from app.core.vram import sizing_of
 from app.db.models import Artifact
 from app.db.models import ArtifactBaseline
 from app.db.models import ArtifactLocation
+from app.db.changes import ADDED
+from app.db.changes import DELETED
+from app.db.changes import MODIFIED
+from app.db.changes import commit
+from app.db.changes import record_change
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
 from app.core.schemas import ListResponse
@@ -468,7 +473,8 @@ class ArtifactService:
 
         changed = _reread(artifact, draft)
         if changed:
-            await self.db.commit()
+            record_change(self.db, artifact, MODIFIED)
+            await commit(self.db)
         return ArtifactRefreshSchema(
             artifact=await self._reload(artifact.uid),
             source=source,
@@ -702,7 +708,8 @@ class ArtifactService:
             artifact = self._artifact(data, artifact_handle, slug, base_id, project_id, owner_id)
             try:
                 await self.repo.add(artifact)
-                await self.db.commit()
+                record_change(self.db, artifact, ADDED)
+                await commit(self.db)
             except IntegrityError as exc:
                 await self.db.rollback()
                 if not _broke_handle(exc):
@@ -816,8 +823,9 @@ class ArtifactService:
         if not (artifact.slug or "").strip():
             artifact.slug = artifact_slug(artifact.digest, artifact.locations)
 
+        record_change(self.db, artifact, MODIFIED)
         try:
-            await self.db.commit()
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("artifact conflicts with an existing one") from exc
@@ -832,8 +840,9 @@ class ArtifactService:
         """
         artifact, *_ = await self._one(ref, project=project)
         try:
+            record_change(self.db, artifact, DELETED)
             await self.repo.delete(artifact)
-            await self.db.commit()
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"artifact {ref!r} is still referenced by a workload") from exc
@@ -939,7 +948,7 @@ class ArtifactBaselineService:
         )
         try:
             await self.repo.add_baseline(baseline)
-            await self.db.commit()
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(
@@ -973,11 +982,11 @@ class ArtifactBaselineService:
         for key, value in fields.items():
             setattr(row, key, value)
 
-        await self.db.commit()
+        await commit(self.db)
         return self.schema(await self._one(artifact, row.uid), artifact.uid)
 
     async def delete(self, ref: str, baseline: str, project: str | None = None) -> None:
         artifact = await self._artifact(ref, project)
         row = await self._one(artifact, baseline)
         await self.repo.delete_baseline(row)
-        await self.db.commit()
+        await commit(self.db)

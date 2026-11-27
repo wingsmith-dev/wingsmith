@@ -18,6 +18,11 @@ from app.core.ids import new_uid
 from app.db.models import Endpoint
 from app.db.models import EndpointAlias
 from app.db.models import EndpointTarget
+from app.db.changes import ADDED
+from app.db.changes import DELETED
+from app.db.changes import MODIFIED
+from app.db.changes import commit
+from app.db.changes import record_change
 from app.core.schemas import ListResponse
 from app.core.serving import TEXT
 from app.core.serving import served_model
@@ -863,7 +868,8 @@ class EndpointService:
         )
         try:
             await self.repo.add(endpoint)
-            await self.db.commit()
+            record_change(self.db, endpoint, ADDED)
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             if constraint_of(exc) == SLUG_INDEX:
@@ -934,8 +940,9 @@ class EndpointService:
         if _spec_of(endpoint, aliases if aliases is not UNSET else alias_names(endpoint)) != before or retargeted:
             endpoint.generation += 1
 
+        record_change(self.db, endpoint, MODIFIED)
         try:
-            await self.db.commit()
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             if constraint_of(exc) == SLUG_INDEX:
@@ -950,8 +957,9 @@ class EndpointService:
         name must never take the capacity serving it with it.
         """
         row = await self._one(ref, project)
+        record_change(self.db, row[0], DELETED)
         await self.repo.delete(row[0])
-        await self.db.commit()
+        await commit(self.db)
 
     async def resolved(self, ref: str | None = None, project: str | None = None) -> ResolvedTableSchema:
         """The routing table: every enabled endpoint, with its targets as addresses.

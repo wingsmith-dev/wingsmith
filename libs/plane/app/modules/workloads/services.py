@@ -35,6 +35,12 @@ from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
+from app.db.changes import ADDED
+from app.db.changes import DELETED
+from app.db.changes import MODIFIED
+from app.db.changes import commit
+from app.db.changes import after_commit
+from app.db.changes import record_change
 from app.core.schemas import ListResponse
 from app.core.serving import AGGREGATED
 from app.core.serving import SERVING_TOPOLOGIES
@@ -542,7 +548,7 @@ class WorkloadService:
         if found is None:
             raise NotFound(f"no revision {revision!r} of workload {workload.uid}")
         found.note = data.note
-        await self.db.commit()
+        await commit(self.db)
         return _revision_view(found)
 
     async def revisions(
@@ -572,10 +578,12 @@ class WorkloadService:
         reader against a transaction that has not landed. Missing the wakeup costs
         latency and nothing else: the next resync carries the same state.
         """
-        await self.notifier.changed(
-            self.db,
-            DeclaredChange(cluster_id=cluster_uid, kind=DEPLOYMENT_KIND, uid=uid, generation=generation),
-        )
+        change = DeclaredChange(cluster_id=cluster_uid, kind=DEPLOYMENT_KIND, uid=uid, generation=generation)
+
+        async def send() -> None:
+            await self.notifier.changed(self.db, change)
+
+        await after_commit(self.db, send)
 
     def schema(
         self,
@@ -1057,7 +1065,8 @@ class WorkloadService:
                 )
             if paused:
                 await self.change_paused(workload.uid, True)
-            await self.db.commit()
+            record_change(self.db, workload, ADDED)
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             raise _conflict(exc, data.name, data.project, None if constraint is None else constraint.name) from exc
@@ -1139,7 +1148,7 @@ class WorkloadService:
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """`change_update`, committed and announced."""
         change = await self.change_update(ref, data, if_match)
-        await self.db.commit()
+        await commit(self.db)
         await self.announce(change)
         return await self.get(change.result["workload"])
 
@@ -1271,6 +1280,7 @@ class WorkloadService:
             raise _conflict(exc, name, None) from exc
 
         change.result["workload"] = workload.uid
+        record_change(self.db, workload, MODIFIED)
         return change
 
     async def _reconcile(self, workload: Workload, deployment_rows: list, exclude: str | None = None) -> WorkloadChange:
@@ -1360,6 +1370,7 @@ class WorkloadService:
             "shares": {s.cluster: s.replicas for s in decision.shares if s.replicas > 0},
             "touched": [a.uid for a in change.announcements],
         }
+        record_change(self.db, workload, MODIFIED)
         return change
 
     async def announce(self, change: WorkloadChange) -> None:
@@ -1368,7 +1379,7 @@ class WorkloadService:
             await self._announce(item.cluster_uid, item.uid, item.generation)
 
     async def _commit(self, change: WorkloadChange) -> dict:
-        await self.db.commit()
+        await commit(self.db)
         await self.announce(change)
         return change.result
 
@@ -1399,6 +1410,7 @@ class WorkloadService:
         workload.min_scale = min_scale
         workload.max_scale = max_scale
         workload.desired_scale = desired
+        record_change(self.db, workload, MODIFIED)
         deployment_rows = (await self.repo.deployments([workload.id], lock=True)).get(workload.id, [])
         if refuse:
             return await self._reconcile(workload, deployment_rows)
@@ -1450,6 +1462,7 @@ class WorkloadService:
                 )
                 change.touch(deployment_row.cluster_uid, deployment)
             await self.db.flush()
+            record_change(self.db, workload, MODIFIED)
             return change
 
         for deployment_row in deployment_rows:
@@ -1552,6 +1565,7 @@ class WorkloadService:
         change.result["devices_per_unit"] = {"before": before_unit, "after": after_unit}
         change.result["scale"] = {"min": min_scale, "desired": desired, "max": max_scale}
         change.result["unavailability"] = _reshape_unavailability(before_total, after_unit * desired)
+        record_change(self.db, workload, MODIFIED)
         return change
 
     async def reshape(self, ref: str, parameters: WorkloadReshapeParameters) -> dict:
@@ -1676,7 +1690,8 @@ class WorkloadService:
             )
             if alongside is not None:
                 await alongside()
-            await self.db.commit()
+            record_change(self.db, workload, ADDED)
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             if violated(exc) == DEPLOYMENT_NAME_CONSTRAINT:
@@ -1719,7 +1734,8 @@ class WorkloadService:
             {"deployments": str(len(deployments))},
         )
         await self.repo.detach(workload, SUBJECT_WORKLOAD, constraint_name(workload.uid))
+        record_change(self.db, workload, DELETED)
         await self.repo.delete(workload, deployments)
-        await self.db.commit()
+        await commit(self.db)
         for cluster_uid, uid, generation in announcements:
             await self._announce(cluster_uid, uid, generation)

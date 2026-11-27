@@ -11,11 +11,14 @@ import datetime as dt
 
 from sqlalchemy import select
 from sqlalchemy import update
+from sqlalchemy.orm.util import identity_key
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import OPERATION
 from app.core.ids import new_uid
 from app.db.models import Operation
+from app.db.changes import MODIFIED
+from app.db.changes import record_change
 from app.core.exceptions import Conflict
 from app.core.exceptions import InvalidParameter
 
@@ -64,6 +67,13 @@ async def guard(
         .where(model.uid == uid)
         .values(applied_by=None, applied_by_principal=None, applied_at=None, last_applied=None)
     )
+    # Loaded only to name the change, then let go: a row loaded here would sit in the identity
+    # map without the relationships the service's own joined read fills.
+    loaded = identity_key(model, row.id) in db.sync_session.identity_map
+    obj = await db.get(model, row.id)
+    record_change(db, obj, MODIFIED, force=True)
+    if not loaded:
+        db.expunge(obj)
     now = dt.datetime.now(dt.UTC)
     db.add(
         Operation(

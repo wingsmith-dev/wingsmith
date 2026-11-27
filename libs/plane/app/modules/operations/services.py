@@ -20,6 +20,8 @@ from app.db.notify import OPERATION as OPERATION_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
+from app.db.changes import commit
+from app.db.changes import after_commit
 from app.core.schemas import ListResponse
 from app.core.ownership import guard
 from app.core.exceptions import Invalid
@@ -163,10 +165,12 @@ class OperationService:
         that snapshot) but the replay of open operations the session performs
         when the cluster next connects.
         """
-        await self.notifier.changed(
-            self.db,
-            DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=uid),
-        )
+        change = DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=uid)
+
+        async def send() -> None:
+            await self.notifier.changed(self.db, change)
+
+        await after_commit(self.db, send)
 
     def schema(self, operation: Operation, cluster_uid: str | None, target_uid: str) -> OperationSchema:
         payload = operation.payload or {}
@@ -357,7 +361,7 @@ class OperationService:
 
         try:
             await self.repo.add(operation)
-            await self.db.commit()
+            await commit(self.db)
         except IntegrityError as exc:
             await self.db.rollback()
             if idempotency_key is not None:
@@ -407,12 +411,12 @@ class OperationService:
             operation.phase = "failed"
             operation.error = str(exc)
             operation.finished_at = dt.datetime.now(dt.UTC)
-            await self.db.commit()
+            await commit(self.db)
             return
         operation.phase = "succeeded"
         operation.result = change.result
         operation.finished_at = dt.datetime.now(dt.UTC)
-        await self.db.commit()
+        await commit(self.db)
         await service.announce(change)
 
     async def cancel(self, ref: str) -> OperationSchema:
@@ -450,7 +454,7 @@ class OperationService:
             # operation was carrying. A benchmark run is the case that has its own row to leave
             # open, and it is left open for ever unless the cancellation is carried across here.
             await self.db.execute(follows_operation(operation.uid, "cancelled"))
-        await self.db.commit()
+        await commit(self.db)
         if operation.phase != "cancelled":
             cluster_uid = await self.repo.cluster_uid(operation.cluster_id)
             if cluster_uid is not None:
