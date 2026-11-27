@@ -37,13 +37,22 @@ without missing or reordering a change, in a shape people who know Kubernetes al
   1800s). A `BOOKMARK` with the cursor's RV every 30s; `allowWatchBookmarks` is accepted and they
   are always on.
 - **Backpressure.** Each watch buffers at most 1000 events; a client that leaves the buffer full
-  for 10s is closed. A process serves at most 256 watches; one more is 429. Watches are admin
-  routes like the rest of `/v1/manifests`.
+  for 10s is closed. A process serves at most 256 watches; one more is 429, checked by the route
+  before the stream starts. The slot itself is taken when the body is first iterated and released
+  when iteration ends, so a client that disconnects before the first byte holds nothing; one that
+  loses a race for the last slot gets an `ERROR` event with a 429 `Status`.
+- **Access.** `/v1/manifests/*`, watches included, is admin-only: `authorize` in
+  `app/core/context.py` is deny-by-default, tenants reach only `GET /v1/serving`, the gateway its
+  three routes, and operator credentials no HTTP route.
 - `/v1/changes` stays as the low-level feed of hints.
 
 ## Consequences
 
 - Each event re-renders the manifest through the service read, several queries per object; a
-  list is O(objects) such renders. Fine at today's scale, the first thing to batch if not.
+  list is O(objects) such renders, and N watchers of one kind each render the same change. Fine
+  at today's scale. A per-process LRU keyed by (kind, uid, row RV) would share renders across
+  watchers; deferred, since the render includes project-scoped reads and selector checks that
+  would need care to keep correct.
 - `wings get <kind> [name] -w` lists, prints, watches from the list's RV, resumes from the last RV
-  when the plane ends the stream, and relists on 410.
+  when the plane ends the stream, and relists on 410. A stream that ends or expires without an
+  event backs off before the next attempt, 1s doubling to 30s, reset after any event.
