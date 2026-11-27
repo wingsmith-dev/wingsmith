@@ -32,6 +32,9 @@ on.
 - **`NOTIFY wingsmith_changes`** carries the highest seq, delivered on commit. A wakeup only.
 - **Retention.** The reactor's slow pass deletes rows older than
   `WINGSMITH_CHANGE_LOG_RETENTION_SECONDS` (24h) and raises `change_log_state.compacted_through`.
+  `created_at` is `clock_timestamp()` taken under the log lock, not the transaction start, and
+  compaction is seq-monotonic: it stops at the first row inside the window and deletes up to it in
+  batches of 10k, so a watcher never misses a row that is still retained.
   `GET /v1/changes?since=<rv>&limit=` returns hints after `since` in order; `since` at or below
   `compacted_through` is 410 Gone, and the client relists.
 - **Scope**: Workload, Endpoint, Artifact. Deployments and operations stay on `NOTIFY` and the hub.
