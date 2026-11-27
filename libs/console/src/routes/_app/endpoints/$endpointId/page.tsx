@@ -75,6 +75,7 @@ import {
   quantLabel,
   type ResolvedTarget,
 } from "./Targets"
+import { deploymentTargets } from "@/modules/demand/types"
 
 export function EndpointDetailPage() {
   const { endpointId } = useParams({ from: "/_app/endpoints/$endpointId" })
@@ -147,7 +148,7 @@ export function EndpointDetailPage() {
     )
 
     const map = new Map<string, ResolvedTarget>()
-    for (const target of endpoint?.targets ?? []) {
+    for (const target of deploymentTargets(endpoint)) {
       const deployment = byDeployment.get(target.deployment_id)
       const workload = deployment?.workload_id
         ? workloadById.get(deployment.workload_id)
@@ -165,7 +166,7 @@ export function EndpointDetailPage() {
 
   /** The serving block and artifact behind the primary target, for the right-hand card. */
   const backing = useMemo<ResolvedTarget | undefined>(() => {
-    const targets = endpoint?.targets ?? []
+    const targets = deploymentTargets(endpoint)
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
     return primary ? resolved.get(primary.deployment_id) : undefined
   }, [endpoint?.targets, resolved])
@@ -173,7 +174,7 @@ export function EndpointDetailPage() {
   /** The distinct regions this endpoint's targets land in: its region affinity. */
   const regions = useMemo(() => {
     const seen = new Set<string>()
-    for (const target of endpoint?.targets ?? []) {
+    for (const target of deploymentTargets(endpoint)) {
       const region = resolved.get(target.deployment_id)?.region
       if (region) seen.add(region)
     }
@@ -186,7 +187,7 @@ export function EndpointDetailPage() {
       endpoint
         ? servingHealth(
             endpoint,
-            endpoint.targets
+            deploymentTargets(endpoint)
               .filter((target) => target.enabled)
               .map(
                 (target) =>
@@ -488,14 +489,13 @@ export function EndpointDetailPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {endpoint.targets.map((target) => {
+                        {deploymentTargets(endpoint).map((target) => {
                           const { deployment, region } =
                             resolved.get(target.deployment_id) ?? {}
                           const rollup = deployment?.replicas
-                          const totalWeight = endpoint.targets.reduce(
-                            (s, t) => s + (t.enabled ? t.weight : 0),
-                            0
-                          )
+                          const totalWeight = deploymentTargets(
+                            endpoint
+                          ).reduce((s, t) => s + (t.enabled ? t.weight : 0), 0)
                           const weightPct =
                             totalWeight > 0 && target.enabled
                               ? Math.round((target.weight / totalWeight) * 100)
@@ -581,7 +581,7 @@ export function EndpointDetailPage() {
                             </TableRow>
                           )
                         })}
-                        {endpoint.targets.length === 0 && (
+                        {deploymentTargets(endpoint).length === 0 && (
                           <TableRow>
                             <TableCell
                               colSpan={5}
@@ -706,7 +706,7 @@ export function EndpointDetailPage() {
                           events={events.items}
                           loading={events.isLoading}
                           empty={
-                            endpoint.targets.length === 0
+                            deploymentTargets(endpoint).length === 0
                               ? "This endpoint routes nowhere, so nothing can be recorded against it."
                               : "Nothing has been recorded against this endpoint's targets yet."
                           }

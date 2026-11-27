@@ -7,6 +7,7 @@ import type {
   Endpoint,
   Workload,
 } from "@/modules/demand/types"
+import { deploymentTargets } from "@/modules/demand/types"
 
 /**
  * Whether this name can serve, which is not what `enabled` says.
@@ -25,7 +26,7 @@ export function servingHealth(
   endpoint: Endpoint,
   rollups: (DeploymentReplicaRollup | undefined)[]
 ): { tone: StatusTone; label: string } {
-  if (endpoint.targets.length === 0) {
+  if (deploymentTargets(endpoint).length === 0) {
     return { tone: "danger", label: "Routes nowhere" }
   }
   const known = rollups.filter((r): r is DeploymentReplicaRollup => r != null)

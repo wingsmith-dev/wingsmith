@@ -128,7 +128,7 @@ export function TargetsField({
             <div key={index} className="space-y-1.5">
               <div className="grid grid-cols-[1fr_5rem_7.5rem_auto] items-center gap-2">
                 <DeploymentSelect
-                  value={row.deployment}
+                  value={row.deployment ?? ""}
                   choices={choices}
                   ariaLabel="Deployment"
                   onChange={(deployment) => patch(index, { deployment })}

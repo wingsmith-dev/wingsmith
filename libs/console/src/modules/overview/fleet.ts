@@ -5,6 +5,7 @@ import type { ClusterStage } from "@/modules/clusters/stage"
 import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment, Endpoint } from "@/modules/demand/types"
 import type { FleetDevices } from "./types"
+import { deploymentTargets } from "@/modules/demand/types"
 
 /**
  * How long a deployment may sit outside `running` before it is worth chasing.
@@ -54,7 +55,7 @@ export function summarizeEndpointHealth(
 
   for (const endpoint of endpoints) {
     if (!endpoint.enabled) continue
-    const targets = endpoint.targets
+    const targets = deploymentTargets(endpoint)
       .filter((target) => target.enabled)
       .map((target) => byId.get(target.deployment_id))
       .filter(

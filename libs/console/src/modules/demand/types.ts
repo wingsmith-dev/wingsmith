@@ -750,14 +750,27 @@ export interface DeploymentStatus {
 /** No partial ownership (ADR 0009). */
 export type DeploymentAuthority = "observed" | "managed"
 
-/** `EndpointTargetSchema`. Named by deployment id; the cluster is not repeated. */
+/** `EndpointTargetSchema`. A deployment id or a workload ref (ADR 0026), exactly one. */
 export interface EndpointTarget {
-  deployment_id: string
+  deployment_id: string | null
+  workload_ref?: { name: string } | null
   weight: number
   role: string
   enabled: boolean
   /** Override for the engine's model name. Costs a gateway poll, not a reload. */
   served_model_name: string | null
+}
+
+/** A target that names a deployment. */
+export type DeploymentTarget = EndpointTarget & { deployment_id: string }
+
+/** The targets that name a deployment; workload refs are not shown by the console yet. */
+export function deploymentTargets(
+  endpoint: { targets: EndpointTarget[] } | undefined | null
+): DeploymentTarget[] {
+  return (endpoint?.targets ?? []).filter(
+    (t): t is DeploymentTarget => t.deployment_id !== null
+  )
 }
 
 /** `EndpointSurfaceSchema`: gateway terms, enforced or only disclosed (`SURFACE_ENFORCEMENT`). */
@@ -824,7 +837,8 @@ export interface Endpoint {
 
 /** `EndpointTargetRequest`: names the deployment, never the cluster. */
 export interface EndpointTargetRequest {
-  deployment: string
+  deployment?: string
+  workload_ref?: { name: string }
   weight?: number
   role?: string
   enabled?: boolean

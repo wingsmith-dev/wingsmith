@@ -32,6 +32,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { EndpointForm } from "./EndpointForm"
+import { deploymentTargets } from "@/modules/demand/types"
 
 interface Health {
   tone: StatusTone
@@ -113,7 +114,7 @@ function makeResolver(
   const artifactById = new Map(artifacts.map((a) => [a.id, a]))
 
   return (endpoint: Endpoint) => {
-    const targets = endpoint.targets
+    const targets = deploymentTargets(endpoint)
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
     const deployment = primary
       ? deploymentById.get(primary.deployment_id)
@@ -262,7 +263,7 @@ function columns(
       key: "targets",
       header: "Targets",
       cell: (endpoint) => {
-        const targets = endpoint.targets
+        const targets = deploymentTargets(endpoint)
         const enabled = targets.filter((t) => t.enabled).length
         return (
           <div className="flex items-center gap-2">

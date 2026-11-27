@@ -19,6 +19,7 @@ import {
   useUpdateEndpoint,
 } from "@/modules/demand/queries"
 import type { Endpoint, EndpointTargetRequest } from "@/modules/demand/types"
+import { deploymentTargets } from "@/modules/demand/types"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -52,13 +53,29 @@ export function EndpointForm({
   )
   const [enabled, setEnabled] = useState(endpoint?.enabled ?? true)
   const [targets, setTargets] = useState<EndpointTargetRequest[]>(
-    endpoint?.targets.map((t) => ({
+    deploymentTargets(endpoint).map((t) => ({
       deployment: t.deployment_id,
       weight: t.weight,
       role: t.role,
       enabled: t.enabled,
       served_model_name: t.served_model_name,
     })) ?? []
+  )
+  // Workload refs (ADR 0026) are not edited here, so a save keeps them as they were.
+  const workloadRefs: EndpointTargetRequest[] = (
+    endpoint?.targets ?? []
+  ).flatMap((t) =>
+    t.workload_ref
+      ? [
+          {
+            workload_ref: t.workload_ref,
+            weight: t.weight,
+            role: t.role,
+            enabled: t.enabled,
+            served_model_name: t.served_model_name,
+          },
+        ]
+      : []
   )
   const [failover, setFailover] = useState<string[]>(
     endpoint?.failover_order ?? []
@@ -76,7 +93,7 @@ export function EndpointForm({
     visibility,
     routing_strategy: routing,
     enabled,
-    targets,
+    targets: [...targets, ...workloadRefs],
     failover_order: failover,
     labels,
   }
