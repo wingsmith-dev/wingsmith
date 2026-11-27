@@ -32,7 +32,9 @@ type KubeBackend struct {
 var _ backend.Backend = (*KubeBackend)(nil)
 
 // backend is the runtime this reconciler drives.
-func (r *SyncedResourceReconciler) backend() *KubeBackend { return &KubeBackend{Reconciler: r} }
+func (r *SyncedResourceReconciler) backend() *KubeBackend {
+	return &KubeBackend{Reconciler: r, Supply: r.Supply}
+}
 
 // Apply implements backend.Backend.
 //
@@ -111,6 +113,27 @@ func (b *KubeBackend) Apply(ctx context.Context, d backend.Desired) (backend.App
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
 		"replicas", dep.MinReplicas, "namespace", obj.GetNamespace())
 	return backend.Applied{Name: obj.GetName()}, nil
+}
+
+// Prune implements backend.Backend.
+func (b *KubeBackend) Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error {
+	r := b.Reconciler
+	// A rename renders under a new object name, and the object the old name created is still
+	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
+	// teardown never runs, and the apply only ever touches the current name.
+	if err := r.pruneRendered(ctx, dep.DeploymentID, current); err != nil {
+		return err
+	}
+	// An edit to the serving block renders the same graph deployment under the same name, and
+	// Dynamo answers it by creating a component deployment under a new spec hash and abandoning
+	// the previous one, which keeps its accelerators. See supersede.go; on a full node the new
+	// pod can never schedule until the abandoned one is gone.
+	return r.pruneSuperseded(ctx, current)
+}
+
+// Delete implements backend.Backend.
+func (b *KubeBackend) Delete(ctx context.Context, deploymentID string) error {
+	return b.Reconciler.pruneRendered(ctx, deploymentID, "")
 }
 
 // Observe implements backend.Backend.

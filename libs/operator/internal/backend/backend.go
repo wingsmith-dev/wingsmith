@@ -20,6 +20,14 @@ type Backend interface {
 	// recur unchanged, which the caller reports as failed instead of retrying.
 	Apply(ctx context.Context, d Desired) (Applied, error)
 
+	// Prune collects what earlier applies of this deployment left behind now that `current`
+	// (the name Apply returned, or the name already running) is what serves it. It runs after
+	// every pass that reaches a current workload, written or not.
+	Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error
+
+	// Delete removes everything the runtime holds for one deployment id. Absent is success.
+	Delete(ctx context.Context, deploymentID string) error
+
 	// Observe reads what is actually running for one deployment, in the rollout vocabulary of
 	// MESSAGES.md (phase, closed-set reason, message).
 	Observe(ctx context.Context, dep wire.DeploymentDesired) (Rollout, error)

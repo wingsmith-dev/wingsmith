@@ -181,18 +181,7 @@ func (r *SyncedResourceReconciler) afterApply(
 	dep wire.DeploymentDesired,
 	name string,
 ) (ctrl.Result, error) {
-	// A rename renders under a new object name, and the object the old name created is still
-	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
-	// teardown never runs, and the apply above only ever touches the current name.
-	if err := r.pruneRendered(ctx, dep.DeploymentID, name); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// An edit to the serving block renders the same graph deployment under the same name, and
-	// Dynamo answers it by creating a component deployment under a new spec hash and abandoning
-	// the previous one, which keeps its accelerators. See supersede.go; on a full node the new
-	// pod can never schedule until the abandoned one is gone.
-	if err := r.pruneSuperseded(ctx, name); err != nil {
+	if err := r.backend().Prune(ctx, dep, name); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -373,7 +362,7 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 
 	id := deploymentID(res)
 	if id != "" {
-		if err := r.pruneRendered(ctx, id, ""); err != nil {
+		if err := r.backend().Delete(ctx, id); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
