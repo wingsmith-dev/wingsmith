@@ -386,3 +386,84 @@ func controllerContains(list []string, s string) bool {
 	}
 	return false
 }
+
+// refusingPlane answers every delete with one result.
+type refusingPlane struct {
+	*fakePlane
+	result string
+}
+
+func (p *refusingPlane) Delete(_ context.Context, _ *wire.ManifestDelete) (*wire.ManifestResult, error) {
+	return &wire.ManifestResult{Result: p.result, Error: "plane says " + p.result}, nil
+}
+
+func TestInvalidDeleteReleases(t *testing.T) {
+	r, c, plane := setup(t, namespace("team-a", "search"), workload("team-a", "chat", spec()))
+	reconcileOnce(t, r, "team-a", "chat")
+	r.Plane = &refusingPlane{fakePlane: plane, result: "invalid"}
+	if err := c.Delete(context.Background(), get(t, c, "team-a", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	reconcileOnce(t, r, "team-a", "chat")
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "team-a", Name: "chat"}, newWorkload()); err == nil {
+		t.Fatal("invalid delete kept the resource Terminating")
+	}
+}
+
+func TestFailingDeleteBacksOffThenStallsAndOrphanUnsticks(t *testing.T) {
+	r, c, plane := setup(t, namespace("team-a", "search"), workload("team-a", "chat", spec()))
+	reconcileOnce(t, r, "team-a", "chat")
+	r.Plane = &refusingPlane{fakePlane: plane, result: "conflict"}
+	if err := c.Delete(context.Background(), get(t, c, "team-a", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	var last time.Duration
+	for i := 1; i <= DeleteStallAfter; i++ {
+		res := reconcileOnce(t, r, "team-a", "chat")
+		if res.RequeueAfter < last || res.RequeueAfter > 32*r.Retry {
+			t.Fatalf("attempt %d requeue = %v after %v", i, res.RequeueAfter, last)
+		}
+		last = res.RequeueAfter
+		st := condition(t, get(t, c, "team-a", "chat"), ConditionStalled)
+		if i < DeleteStallAfter && st != nil && st.Status == metav1.ConditionTrue {
+			t.Fatalf("stalled after %d attempts", i)
+		}
+		if i == DeleteStallAfter && (st == nil || st.Status != metav1.ConditionTrue || st.Reason != ReasonDeleteStuck) {
+			t.Fatalf("Stalled = %+v", st)
+		}
+	}
+	if last != 32*r.Retry {
+		t.Fatalf("backoff cap = %v", last)
+	}
+
+	u := get(t, c, "team-a", "chat")
+	_ = unstructured.SetNestedField(u.Object, DeletionOrphan, "spec", "deletionPolicy")
+	if err := c.Update(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	reconcileOnce(t, r, "team-a", "chat")
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "team-a", Name: "chat"}, newWorkload()); err == nil {
+		t.Fatal("Orphan did not release the resource")
+	}
+}
+
+func TestControllerOptionsDefaultsAndOverrides(t *testing.T) {
+	r := &Reconciler{}
+	if o := r.controllerOptions(); o.MaxConcurrentReconciles != 4 || o.RateLimiter == nil {
+		t.Fatalf("defaults = %+v", o)
+	}
+	r = &Reconciler{QPS: 1, Burst: 1, Concurrency: 2}
+	o := r.controllerOptions()
+	if o.MaxConcurrentReconciles != 2 {
+		t.Fatalf("concurrency = %d", o.MaxConcurrentReconciles)
+	}
+	// burst 1 at 1 qps: the second distinct item waits for the bucket.
+	a := reconcile.Request{NamespacedName: types.NamespacedName{Name: "a"}}
+	b := reconcile.Request{NamespacedName: types.NamespacedName{Name: "b"}}
+	if d := o.RateLimiter.When(a); d > 50*time.Millisecond {
+		t.Fatalf("first item delayed %v", d)
+	}
+	if d := o.RateLimiter.When(b); d < 500*time.Millisecond {
+		t.Fatalf("second item delayed %v, want the bucket to throttle", d)
+	}
+}

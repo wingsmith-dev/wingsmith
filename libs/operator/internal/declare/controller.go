@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -16,8 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -56,6 +59,11 @@ const (
 	ReasonPlaneError  = "PlaneError"
 	ReasonDeleting    = "Deleting"
 	ReasonAwaiting    = "AwaitingStatus"
+	ReasonDeleteStuck = "DeleteFailing"
+
+	// DeleteStallAfter is how many failed plane deletes leave the resource Stalled. It keeps
+	// retrying (at the backoff cap); patching spec.deletionPolicy to Orphan releases it.
+	DeleteStallAfter = 10
 
 	// DeletionOrphan in spec.deletionPolicy leaves the plane object when the resource goes.
 	DeletionOrphan = "Orphan"
@@ -74,6 +82,9 @@ type Reconciler struct {
 	// Retry is how soon an unreachable or failing plane is tried again; Resync how often a
 	// synced resource is re-applied as a drift check.
 	Retry, Resync time.Duration
+	// QPS and Burst feed the work queue's bucket limiter and Concurrency caps parallel
+	// reconciles, so a reconnect relisting every resource does not flood the plane.
+	QPS, Burst, Concurrency int
 }
 
 func newWorkload() *unstructured.Unstructured {
@@ -195,15 +206,40 @@ func (r *Reconciler) finalize(ctx context.Context, obj *unstructured.Unstructure
 		return r.unreachable(ctx, obj, err)
 	}
 	switch result.Result {
-	case "deleted", "released", "absent", "forbidden":
+	case "deleted", "released", "absent", "forbidden", "invalid":
 		// forbidden: the project was unlinked from this cluster, so the plane object is no longer
-		// this cluster's to delete. Holding the resource Terminating would fix nothing.
+		// this cluster's to delete. invalid: the plane does not know the object (gone, or a kind
+		// or name it never accepted), so there is nothing left to delete. Holding the resource
+		// Terminating would fix neither.
 		r.Log.Info("workload released", "namespace", obj.GetNamespace(), "name", obj.GetName(), "result", result.Result)
 		return reconcile.Result{}, r.release(ctx, obj)
 	}
+	// conflict or a plane error: retry with exponential backoff, and after DeleteStallAfter
+	// attempts say so with Stalled=True. Setting spec.deletionPolicy: Orphan unsticks it.
+	attempts, _, _ := unstructured.NestedInt64(obj.Object, "status", "deleteAttempts")
+	attempts++
+	msg := result.Error
+	if msg == "" {
+		msg = "plane answered " + result.Result
+	}
 	return r.write(ctx, obj, func(st *status) {
-		st.set(ConditionSync, metav1.ConditionFalse, ReasonDeleting, result.Error)
-	}, r.Retry)
+		st.obj["deleteAttempts"] = attempts
+		st.set(ConditionSync, metav1.ConditionFalse, ReasonDeleting, msg)
+		if attempts >= DeleteStallAfter {
+			st.set(ConditionStalled, metav1.ConditionTrue, ReasonDeleteStuck, fmt.Sprintf(
+				"plane delete failed %d times: %s; set spec.deletionPolicy: Orphan to release the resource and keep the plane object", attempts, msg))
+			st.drop(ConditionReconciling)
+		}
+	}, r.deleteBackoff(attempts))
+}
+
+// deleteBackoff doubles Retry per failed attempt, capped at 32x.
+func (r *Reconciler) deleteBackoff(attempts int64) time.Duration {
+	shift := attempts - 1
+	if shift > 5 {
+		shift = 5
+	}
+	return r.Retry << shift
 }
 
 func (r *Reconciler) release(ctx context.Context, obj *unstructured.Unstructured) error {
@@ -353,10 +389,33 @@ func (r *Reconciler) SetupWithManager(mgr manager.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("declare-workload").
+		WithOptions(r.controllerOptions()).
 		For(newWorkload()).
 		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.inNamespace)).
 		WatchesRawSource(source.Channel(reconnects, &handler.TypedEnqueueRequestForObject[*unstructured.Unstructured]{})).
 		Complete(r)
+}
+
+// controllerOptions is the per-item exponential backoff combined with a shared token bucket,
+// and a small worker pool.
+func (r *Reconciler) controllerOptions() controller.Options {
+	qps, burst, workers := r.QPS, r.Burst, r.Concurrency
+	if qps <= 0 {
+		qps = 10
+	}
+	if burst <= 0 {
+		burst = 50
+	}
+	if workers <= 0 {
+		workers = 4
+	}
+	return controller.Options{
+		MaxConcurrentReconciles: workers,
+		RateLimiter: workqueue.NewTypedMaxOfRateLimiter(
+			workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](5*time.Millisecond, 5*time.Minute),
+			&workqueue.TypedBucketRateLimiter[reconcile.Request]{Limiter: rate.NewLimiter(rate.Limit(qps), burst)},
+		),
+	}
 }
 
 func (r *Reconciler) inNamespace(ctx context.Context, o client.Object) []reconcile.Request {

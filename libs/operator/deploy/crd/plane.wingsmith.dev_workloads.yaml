@@ -130,6 +130,10 @@ spec:
                   format: int64
                 fieldManager:
                   type: string
+                deleteAttempts:
+                  description: Failed plane deletes while Terminating; Stalled is set after 10.
+                  type: integer
+                  format: int64
                 placement:
                   description: The effective placement the plane holds, defaulted when spec.placement is absent.
                   type: object
