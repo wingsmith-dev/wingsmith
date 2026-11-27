@@ -58,7 +58,9 @@ type MediaJobCreate struct {
 
 // MediaJobComplete is what a worker reports when it is done with a job.
 type MediaJobComplete struct {
-	Worker          string             `json:"worker"`
+	Worker string `json:"worker"`
+	// Lease is the claim's Attempts, which fences this claim off from a later one.
+	Lease           int                `json:"lease"`
 	Status          string             `json:"status"`
 	ObjectKey       string             `json:"object_key,omitempty"`
 	ContentType     string             `json:"content_type,omitempty"`
@@ -163,12 +165,13 @@ func (c *Client) ClaimMediaJob(ctx context.Context, worker string) (MediaJob, bo
 	return job, true, nil
 }
 
-// HeartbeatMediaJob extends worker's lease and reports whether the caller asked to cancel.
-func (c *Client) HeartbeatMediaJob(ctx context.Context, id, worker string, progress int) (bool, error) {
+// HeartbeatMediaJob extends worker's lease, the claim's Attempts, and reports whether the caller
+// asked to cancel.
+func (c *Client) HeartbeatMediaJob(ctx context.Context, id, worker string, lease, progress int) (bool, error) {
 	var out struct {
 		CancelRequested bool `json:"cancel_requested"`
 	}
-	in := map[string]any{"worker": worker, "progress": progress}
+	in := map[string]any{"worker": worker, "lease": lease, "progress": progress}
 	_, err := c.jobCall(ctx, http.MethodPost, "/"+url.PathEscape(id)+"/heartbeat", nil, in, &out)
 	return out.CancelRequested, err
 }

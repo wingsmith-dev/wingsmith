@@ -1,11 +1,13 @@
 package serving
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -87,6 +89,18 @@ func (wk *JobWorker) run(parent context.Context, job plane.MediaJob) {
 
 	var mu sync.Mutex
 	var lost, cancelled bool
+	// beat extends the lease and reports whether the job may go on. A plane that does not answer
+	// is not a lost lease: the next beat tries again, and the lease outlives a few misses.
+	beat := func(ctx context.Context) bool {
+		stop, err := wk.Queue.HeartbeatMediaJob(ctx, job.ID, wk.ID, job.Attempts, 0)
+		if !errors.Is(err, plane.ErrLeaseLost) && !stop {
+			return true
+		}
+		mu.Lock()
+		lost, cancelled = lost || err != nil, cancelled || stop
+		mu.Unlock()
+		return false
+	}
 	beatDone := make(chan struct{})
 	go func() {
 		defer close(beatDone)
@@ -98,18 +112,14 @@ func (wk *JobWorker) run(parent context.Context, job plane.MediaJob) {
 				return
 			case <-tick.C:
 			}
-			stop, err := wk.Queue.HeartbeatMediaJob(ctx, job.ID, wk.ID, 0)
-			if errors.Is(err, plane.ErrLeaseLost) || stop {
-				mu.Lock()
-				lost, cancelled = lost || err != nil, cancelled || stop
-				mu.Unlock()
+			if !beat(ctx) {
 				cancel()
 				return
 			}
 		}
 	}()
 
-	outcome := wk.execute(ctx, job)
+	outcome := wk.execute(ctx, job, beat)
 	cancel()
 	<-beatDone
 	mu.Lock()
@@ -128,7 +138,7 @@ func (wk *JobWorker) run(parent context.Context, job plane.MediaJob) {
 	if wasCancelled {
 		outcome = plane.MediaJobComplete{Status: "cancelled", UpstreamSeconds: outcome.UpstreamSeconds}
 	}
-	outcome.Worker = wk.ID
+	outcome.Worker, outcome.Lease = wk.ID, job.Attempts
 	// The report outlives the job's own deadline: the work is done and should be recorded.
 	report, done := context.WithTimeout(context.WithoutCancel(parent), 30*time.Second)
 	defer done()
@@ -147,8 +157,9 @@ func failed(code, message string, upstream float64) plane.MediaJobComplete {
 	return plane.MediaJobComplete{Status: "failed", Error: &plane.JobError{Code: code, Message: message}, UpstreamSeconds: upstream}
 }
 
-// execute runs the job upstream and stores its output, returning what to report.
-func (wk *JobWorker) execute(ctx context.Context, job plane.MediaJob) plane.MediaJobComplete {
+// execute runs the job upstream and stores its output, returning what to report. beat confirms the
+// lease before the upload, so a worker that lost the job leaves no object behind.
+func (wk *JobWorker) execute(ctx context.Context, job plane.MediaJob, beat func(context.Context) bool) plane.MediaJobComplete {
 	body := withoutBackground(job.Request)
 	run := &jobRun{reserved: reservedUnits(job.Kind, body)}
 	req, err := http.NewRequestWithContext(withJobRun(ctx, run), http.MethodPost, job.Path, bytes.NewReader(body))
@@ -186,6 +197,13 @@ func (wk *JobWorker) execute(ctx context.Context, job plane.MediaJob) plane.Medi
 	if err != nil {
 		return failed("invalid_output", err.Error(), seconds)
 	}
+	if content != spool {
+		defer func() { _ = content.Close(); _ = os.Remove(content.Name()) }()
+	}
+	if !beat(ctx) {
+		// run reports nothing for a lost lease and cancelled for a cancel.
+		return failed("lease_lost", "the job's lease was lost before its output was stored", seconds)
+	}
 	key := ObjectKey(job)
 	if err := wk.Store.Put(ctx, key, content, size, contentType); err != nil {
 		return failed("store_failed", err.Error(), seconds)
@@ -222,8 +240,9 @@ var outputContentType = map[string]string{
 }
 
 // outputOf is the object to store: the decoded `data[0].b64_json` of a JSON media response, or
-// the response as it came (an audio stream, or JSON carrying only URLs).
-func outputOf(spool *os.File, contentType, kind string) (io.Reader, string, int64, error) {
+// the response as it came (an audio stream, or JSON carrying only URLs). The base64 is decoded as
+// a stream into a second spool file, so a large output never sits in memory.
+func outputOf(spool *os.File, contentType, kind string) (*os.File, string, int64, error) {
 	info, err := spool.Stat()
 	if err != nil {
 		return nil, "", 0, err
@@ -234,23 +253,161 @@ func outputOf(spool *os.File, contentType, kind string) (io.Reader, string, int6
 	if !strings.HasPrefix(contentType, "application/json") || outputContentType[kind] == "" {
 		return spool, contentType, info.Size(), nil
 	}
-	var parsed struct {
-		Data []struct {
-			B64JSON string `json:"b64_json"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(spool).Decode(&parsed); err != nil {
-		return nil, "", 0, err
-	}
-	if len(parsed.Data) == 0 || parsed.Data[0].B64JSON == "" {
-		_, _ = spool.Seek(0, io.SeekStart)
-		return spool, contentType, info.Size(), nil
-	}
-	decoded, err := base64.StdEncoding.DecodeString(parsed.Data[0].B64JSON)
+	dec := json.NewDecoder(spool)
+	found, err := seekFirstB64(dec)
 	if err != nil {
 		return nil, "", 0, err
 	}
-	return bytes.NewReader(decoded), outputContentType[kind], int64(len(decoded)), nil
+	if !found {
+		if _, err := spool.Seek(0, io.SeekStart); err != nil {
+			return nil, "", 0, err
+		}
+		return spool, contentType, info.Size(), nil
+	}
+	out, err := os.CreateTemp("", "wingsmith-job-out-*")
+	if err != nil {
+		return nil, "", 0, err
+	}
+	fail := func(err error) (*os.File, string, int64, error) {
+		_ = out.Close()
+		_ = os.Remove(out.Name())
+		return nil, "", 0, err
+	}
+	value := &b64String{r: bufio.NewReader(io.MultiReader(dec.Buffered(), spool))}
+	if err := value.open(); err != nil {
+		return fail(err)
+	}
+	size, err := io.Copy(out, base64.NewDecoder(base64.StdEncoding, value))
+	if err != nil {
+		return fail(err)
+	}
+	if size == 0 {
+		return fail(errors.New("empty b64_json"))
+	}
+	if _, err := out.Seek(0, io.SeekStart); err != nil {
+		return fail(err)
+	}
+	return out, outputContentType[kind], size, nil
+}
+
+// seekFirstB64 walks dec to just past the key of `data[0].b64_json`, skipping every other value,
+// and reports whether it is there. The value itself is left unread.
+func seekFirstB64(dec *json.Decoder) (bool, error) {
+	if err := expectDelim(dec, '{'); err != nil {
+		return false, err
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return false, err
+		}
+		if key != "data" {
+			if err := skipJSON(dec); err != nil {
+				return false, err
+			}
+			continue
+		}
+		tok, err := dec.Token()
+		if err != nil {
+			return false, err
+		}
+		if tok != json.Delim('[') || !dec.More() {
+			return false, nil
+		}
+		if err := expectDelim(dec, '{'); err != nil {
+			return false, nil
+		}
+		for dec.More() {
+			field, err := dec.Token()
+			if err != nil {
+				return false, err
+			}
+			if field == "b64_json" {
+				return true, nil
+			}
+			if err := skipJSON(dec); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
+	}
+	return false, nil
+}
+
+func expectDelim(dec *json.Decoder, want json.Delim) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if tok != want {
+		return fmt.Errorf("expected %q", want)
+	}
+	return nil
+}
+
+func skipJSON(dec *json.Decoder) error {
+	var skip json.RawMessage
+	return dec.Decode(&skip)
+}
+
+// b64String reads the contents of a JSON string value from r, which is positioned before the
+// `:` that precedes it, unescaping only what can appear in base64 (`\/`, and line breaks).
+type b64String struct {
+	r    *bufio.Reader
+	done bool
+}
+
+func (s *b64String) open() error {
+	for {
+		c, err := s.r.ReadByte()
+		if err != nil {
+			return err
+		}
+		switch c {
+		case ' ', '\t', '\n', '\r', ':':
+		case '"':
+			return nil
+		default:
+			return errors.New("b64_json is not a string")
+		}
+	}
+}
+
+func (s *b64String) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) && !s.done {
+		c, err := s.r.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			return n, err
+		}
+		switch c {
+		case '"':
+			s.done = true
+			continue
+		case '\\':
+			e, err := s.r.ReadByte()
+			if err != nil {
+				return n, io.ErrUnexpectedEOF
+			}
+			switch e {
+			case '/':
+				c = '/'
+			case 'n', 'r':
+				continue
+			default:
+				return n, fmt.Errorf("unexpected escape \\%c in b64_json", e)
+			}
+		}
+		p[n] = c
+		n++
+	}
+	if n == 0 && s.done {
+		return 0, io.EOF
+	}
+	return n, nil
 }
 
 // spoolWriter is the ResponseWriter a job runs against: headers in memory, body on disk.

@@ -31,7 +31,7 @@ func TestMediaJobCallsCarryTheTenantAndMapStatuses(t *testing.T) {
 		t.Fatalf("cancel err = %v path %s", err, gotPath)
 	}
 	status = http.StatusConflict
-	if _, err := c.HeartbeatMediaJob(context.Background(), "mjb_1", "gw", 0); !errors.Is(err, ErrLeaseLost) {
+	if _, err := c.HeartbeatMediaJob(context.Background(), "mjb_1", "gw", 1, 0); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("heartbeat err = %v", err)
 	}
 	status = http.StatusNoContent

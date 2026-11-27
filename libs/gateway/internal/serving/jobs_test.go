@@ -26,6 +26,7 @@ type fakeQueue struct {
 	keys      map[string]string
 	completed map[string]plane.MediaJobComplete
 	cancel    bool
+	lost      bool
 }
 
 func newFakeQueue() *fakeQueue {
@@ -97,9 +98,12 @@ func (q *fakeQueue) ClaimMediaJob(_ context.Context, worker string) (plane.Media
 	return plane.MediaJob{}, false, nil
 }
 
-func (q *fakeQueue) HeartbeatMediaJob(_ context.Context, id, worker string, _ int) (bool, error) {
+func (q *fakeQueue) HeartbeatMediaJob(_ context.Context, id, worker string, lease, _ int) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.lost || lease != q.jobs[id].Attempts {
+		return false, plane.ErrLeaseLost
+	}
 	return q.cancel || q.jobs[id].CancelRequested, nil
 }
 
@@ -107,6 +111,9 @@ func (q *fakeQueue) CompleteMediaJob(_ context.Context, id string, in plane.Medi
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	job := q.jobs[id]
+	if in.Lease != job.Attempts {
+		return plane.MediaJob{}, plane.ErrLeaseLost
+	}
 	job.Status, job.ObjectKey, job.ContentType, job.Units = in.Status, in.ObjectKey, in.ContentType, in.Units
 	job.Error = in.Error
 	q.completed[id] = in
@@ -387,6 +394,19 @@ func TestACancelRequestedWhileRunningStopsTheJob(t *testing.T) {
 	}
 	if got := g.queue.completed[id].Status; got != "cancelled" {
 		t.Fatalf("status = %s, want cancelled", got)
+	}
+}
+
+func TestALeaseLostBeforeTheUploadStoresAndReportsNothing(t *testing.T) {
+	g := newJobRig(t, "video", videoUpstream, nil)
+	g.worker.Heartbeat = time.Hour
+	id := decode(t, g.call(t, http.MethodPost, "/v1/videos", `{"model":"gen","prompt":"x"}`))["id"].(string)
+	g.queue.lost = true
+	if _, err := g.worker.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := g.queue.completed[id]; ok || len(g.s3.objects) != 0 {
+		t.Fatalf("completed %v, objects %d", ok, len(g.s3.objects))
 	}
 }
 

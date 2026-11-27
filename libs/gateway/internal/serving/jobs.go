@@ -28,7 +28,7 @@ type JobQueue interface {
 	MediaJob(ctx context.Context, id, tenant string) (plane.MediaJob, error)
 	CancelMediaJob(ctx context.Context, id, tenant string) (plane.MediaJob, error)
 	ClaimMediaJob(ctx context.Context, worker string) (plane.MediaJob, bool, error)
-	HeartbeatMediaJob(ctx context.Context, id, worker string, progress int) (bool, error)
+	HeartbeatMediaJob(ctx context.Context, id, worker string, lease, progress int) (bool, error)
 	CompleteMediaJob(ctx context.Context, id string, in plane.MediaJobComplete) (plane.MediaJob, error)
 }
 
