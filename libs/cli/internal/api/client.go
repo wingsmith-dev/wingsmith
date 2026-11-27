@@ -373,8 +373,14 @@ func (c *Client) Endpoints(ctx context.Context, o ListOpts) (Page[Endpoint], err
 	return list[Endpoint](ctx, c, "/v1/endpoints", q.values(), o)
 }
 
+// Endpoint reads one endpoint. A name is unique per project, so a bare one two
+// projects share is refused by the plane; the default project then says which.
 func (c *Client) Endpoint(ctx context.Context, ref string) (Endpoint, error) {
-	return one[Endpoint](ctx, c, "/v1/endpoints", ref, nil)
+	out, err := one[Endpoint](ctx, c, "/v1/endpoints", ref, nil)
+	if err != nil && c.DefaultProject != "" && errs.As(err).Code == errs.CodeInvalidState {
+		return one[Endpoint](ctx, c, "/v1/endpoints", ref, url.Values{"project": {c.DefaultProject}})
+	}
+	return out, err
 }
 
 // EndpointSLA reads one endpoint's SLA report off the metrics surface.

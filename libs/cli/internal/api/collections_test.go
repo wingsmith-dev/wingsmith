@@ -245,3 +245,28 @@ func TestDeploymentByWorkloadNameRetriesInProject(t *testing.T) {
 		t.Fatalf("queries %q, want a bare lookup then project=team", queries)
 	}
 }
+
+// TestAmbiguousEndpointNameRetriesInProject: endpoint names are unique per project, so a bare
+// name two projects share is refused and retried inside the default project.
+func TestAmbiguousEndpointNameRetriesInProject(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("project") == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"code":"invalid","message":"'chat' names an endpoint in more than one project"}`)
+			return
+		}
+		fmt.Fprint(w, `{"id":"e1","name":"chat"}`)
+	}))
+	defer srv.Close()
+	c, _ := NewClient(srv.URL, "", "team", "1.0", time.Second)
+
+	e, err := c.Endpoint(context.Background(), "chat")
+	if err != nil || e.ID != "e1" {
+		t.Fatalf("got %+v, %v", e, err)
+	}
+	if len(queries) != 2 || queries[1] != "project=team" {
+		t.Fatalf("queries %q, want a bare lookup then project=team", queries)
+	}
+}
