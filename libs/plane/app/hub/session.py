@@ -215,6 +215,7 @@ class OperatorSession:
         "live",
         "principal",
         "registry",
+        "_agent_kind",
         "sink",
         "standing",
         "state",
@@ -247,6 +248,7 @@ class OperatorSession:
         self.instance = instance_id() if instance is None else instance
         self.live = LiveSessions() if live is None else live
         self.state: SessionState | None = None
+        self._agent_kind = "kubernetes"
         self._outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=self.config.send_queue_size)
         self._last_recv = 0.0
         self._closing = False
@@ -356,7 +358,8 @@ class OperatorSession:
         hello = envelope.payload
         assert isinstance(hello, Hello)
         cluster_uid = self._admitted_cluster(hello)
-        refusal = await self.standing.refusal(cluster_uid, self.credential)
+        self._agent_kind = hello.agent_kind
+        refusal = await self.standing.refusal(cluster_uid, self.credential, hello.agent_kind)
         if refusal is not None:
             raise self._refusal(cluster_uid, refusal)
 
@@ -797,7 +800,9 @@ class OperatorSession:
                 continue
             try:
                 owns = await self.claims.owns(state.cluster_id, state.session_id)
-                refusal = await self.standing.refusal(state.cluster_id, self.credential) if owns else None
+                refusal = (
+                    await self.standing.refusal(state.cluster_id, self.credential, self._agent_kind) if owns else None
+                )
             except Exception as exc:
                 failures += 1
                 logger.warning(

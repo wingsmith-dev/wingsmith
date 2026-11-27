@@ -117,6 +117,9 @@ class Hello(Struct):
     """Defaulted so a peer that omits it is still read; checked against `OPERATOR_MAJOR` at the handshake."""
     resume_from: int | None = None
     session_id: str | None = None
+    agent_kind: str = "kubernetes"
+    """`kubernetes` (the operator) or `host` (wingsmith-host). Must match the cluster's kind; an
+    operator from before the field existed is a Kubernetes one."""
 
 
 class Welcome(Struct):

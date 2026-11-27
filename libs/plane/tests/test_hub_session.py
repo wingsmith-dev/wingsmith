@@ -32,6 +32,7 @@ from app.hub.messages import DeploymentDesired
 from app.hub.standing import ROTATED
 from app.hub.standing import UNKNOWN
 from app.hub.standing import DISABLED
+from app.hub.standing import KIND_MISMATCH
 from app.hub.standing import MemoryStanding
 from app.hub.standing import judge
 from app.hub.ownership import ClaimStore
@@ -320,6 +321,43 @@ def test_standing_is_judged_on_the_registry_row_and_the_token_the_session_opened
     assert judge("active", "new", "old") == ROTATED
     assert judge("draining", "abc", "abc") is None
     assert judge("pending", "abc", None) is None
+    assert judge("active", "abc", "abc", "host", "kubernetes") == KIND_MISMATCH
+    assert judge("active", "abc", "abc", "host", "host") is None
+    assert judge("active", "abc", "abc", "kubernetes", "kubernetes") is None
+
+
+@pytest.mark.parametrize("agent_kind", [None, "kubernetes"])
+async def test_a_kubernetes_operator_holding_a_host_clusters_token_is_refused(agent_kind: str | None) -> None:
+    """Otherwise the sink would read the k8s nodes as a host's and retire all but one of them.
+    An operator that sends no agent_kind predates the field and is a Kubernetes one."""
+    standing = MemoryStanding()
+    standing.kinds[CLUSTER] = "host"
+    sink = MemorySink()
+    harness = Harness(standing=standing, sink=sink)
+    await harness.start()
+    hello = {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}
+    if agent_kind is not None:
+        hello["agent_kind"] = agent_kind
+    harness.connection.push(frame("hello", hello))
+
+    error = await harness.connection.next_of_type("error")
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert KIND_MISMATCH in error["payload"]["message"]
+    assert not [doc for doc in harness.connection.frames() if doc["type"] == "welcome"]
+    assert sink.connections == []
+    await harness.stop()
+
+
+async def test_a_host_agent_is_admitted_to_a_host_cluster() -> None:
+    standing = MemoryStanding()
+    standing.kinds[CLUSTER] = "host"
+    harness = Harness(standing=standing)
+    await harness.start()
+    harness.connection.push(
+        frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False, "agent_kind": "host"})
+    )
+    await harness.connection.next_of_type("welcome")
+    await harness.stop()
 
 
 # --------------------------------------------------------------------------- versions

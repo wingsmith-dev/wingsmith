@@ -29,20 +29,28 @@ logger = getLogger(__name__)
 UNKNOWN = "cluster is not registered"
 DISABLED = "cluster is disabled"
 ROTATED = "the enrolment token this session opened with was rotated"
+KIND_MISMATCH = "the agent's kind does not match the cluster's kind"
 
 
 class Standing(Protocol):
     """The seam `OperatorSession` asks through. `None` admits; a string is the refusal."""
 
-    async def refusal(self, cluster_uid: str, credential: str | None) -> str | None: ...
+    async def refusal(self, cluster_uid: str, credential: str | None, agent_kind: str = "kubernetes") -> str | None: ...
 
 
-def judge(phase: str | None, token_hash: str | None, credential: str | None) -> str | None:
+def judge(
+    phase: str | None,
+    token_hash: str | None,
+    credential: str | None,
+    kind: str | None = None,
+    agent_kind: str = "kubernetes",
+) -> str | None:
     """The decision, apart from the lookup. `phase` is `None` when the cluster has no row.
 
     `credential` is the digest of the token the session opened with. A session
     with none (a test, or a caller that never had one) is judged on the cluster
-    alone.
+    alone. `kind` is the cluster's kind; an agent of the other kind is refused, so a host's
+    token in a Kubernetes operator (or the reverse) never writes observed state the wrong way.
     """
     if phase is None:
         return UNKNOWN
@@ -50,6 +58,8 @@ def judge(phase: str | None, token_hash: str | None, credential: str | None) -> 
         return DISABLED
     if credential is not None and token_hash != credential:
         return ROTATED
+    if kind is not None and kind != agent_kind:
+        return KIND_MISMATCH
     return None
 
 
@@ -65,20 +75,22 @@ class DatabaseStanding:
             self._sessions = session_factory()
         return self._sessions
 
-    async def refusal(self, cluster_uid: str, credential: str | None) -> str | None:
+    async def refusal(self, cluster_uid: str, credential: str | None, agent_kind: str = "kubernetes") -> str | None:
         async with self.sessions() as db:
             row = (
-                await db.execute(select(Cluster.phase, Cluster.token_hash).where(cluster_ref_clause(cluster_uid)))
+                await db.execute(
+                    select(Cluster.phase, Cluster.token_hash, Cluster.kind).where(cluster_ref_clause(cluster_uid))
+                )
             ).first()
         if row is None:
             return judge(None, None, credential)
-        return judge(row.phase, row.token_hash, credential)
+        return judge(row.phase, row.token_hash, credential, row.kind, agent_kind)
 
 
 class OpenStanding:
     """Admits every cluster. For tests and for a hub run with no registry behind it."""
 
-    async def refusal(self, cluster_uid: str, credential: str | None) -> str | None:
+    async def refusal(self, cluster_uid: str, credential: str | None, agent_kind: str = "kubernetes") -> str | None:
         return None
 
 
@@ -87,6 +99,10 @@ class MemoryStanding:
 
     def __init__(self) -> None:
         self.refusals: dict[str, str] = {}
+        self.kinds: dict[str, str] = {}
 
-    async def refusal(self, cluster_uid: str, credential: str | None) -> str | None:
-        return self.refusals.get(cluster_uid)
+    async def refusal(self, cluster_uid: str, credential: str | None, agent_kind: str = "kubernetes") -> str | None:
+        if cluster_uid in self.refusals:
+            return self.refusals[cluster_uid]
+        kind = self.kinds.get(cluster_uid)
+        return KIND_MISMATCH if kind is not None and kind != agent_kind else None
