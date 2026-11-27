@@ -1,28 +1,50 @@
-# Example unit for wingsmith-host. Install the binary at /usr/local/bin/wingsmith-host, run
-# `wingsmith-host enrol <token> --plane <wss://hub-url> --cluster <name>` once, then
-# `systemctl enable --now wingsmith-host`.
+# Unit for wingsmith-host, shipped by the .deb/.rpm (binary at /usr/bin/wingsmith-host). Run
+# `sudo wingsmith-host enrol <token> --plane <wss://hub-url> --cluster <name>` once, then
+# `systemctl enable --now wingsmith-host`. A bare binary install under /usr/local/bin needs
+# ExecStart overridden with a drop-in.
 [Unit]
 Description=Wingsmith host agent
 Documentation=https://github.com/wingsmith-dev/wingsmith/blob/main/docs/operations/linux-host.md
 Wants=network-online.target
-After=network-online.target nvidia-persistenced.service
+After=network-online.target docker.service nvidia-persistenced.service
 
 [Service]
 Type=simple
-# Runs as root for the supply-only phase, by design: NVML needs the nvidia device nodes and the
-# sandboxing below narrows what root can touch.
-# TODO(P2.6): run as a dedicated wingsmith user in the video group.
-ExecStart=/usr/local/bin/wingsmith-host run --config /etc/wingsmith/host.json
+# A dedicated user. Membership of the docker group is what lets it drive the Engine API, and it
+# is root-equivalent on this host: anyone in it can start a privileged container. The sandbox
+# below limits what the agent process itself can do, not what the Docker daemon will do for it.
+User=wingsmith
+Group=wingsmith
+SupplementaryGroups=docker
+ExecStart=/usr/bin/wingsmith-host run --config /etc/wingsmith/host.json
 Restart=always
 RestartSec=5
 StateDirectory=wingsmith
-StateDirectoryMode=0700
+StateDirectoryMode=0750
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+UMask=0027
 ReadWritePaths=/var/lib/wingsmith
-# NVML and nvidia-smi open /dev/nvidia* read-write to issue ioctls; no other device access.
+# The agent reads GPU inventory through NVML (and nvidia-smi as a fallback), which open
+# /dev/nvidia* read-write to issue ioctls; no other device access. The driver creates those
+# nodes world-accessible, so no extra group is needed.
+DevicePolicy=closed
 DeviceAllow=/dev/nvidiactl rw
 DeviceAllow=char-nvidia rw
 DeviceAllow=char-nvidia-frontend rw

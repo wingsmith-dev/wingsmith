@@ -1,0 +1,6 @@
+{
+  "plane": "",
+  "cluster": "",
+  "token_path": "/etc/wingsmith/token",
+  "state_dir": "/var/lib/wingsmith"
+}

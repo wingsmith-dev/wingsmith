@@ -1,0 +1,39 @@
+# The wingsmith-host .deb and .rpm, built by build-packages.sh (from libs/operator, with the
+# binary at dist/wingsmith-host and VERSION and ARCH in the environment).
+name: wingsmith-host
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: admin
+priority: optional
+maintainer: Wingsmith <noreply@wingsmith.dev>
+description: |
+  Wingsmith host agent. Enrols a Linux GPU machine with a Wingsmith plane and serves
+  deployments on it as Docker containers.
+vendor: Wingsmith
+homepage: https://github.com/wingsmith-dev/wingsmith
+license: Apache-2.0
+overrides:
+  deb:
+    recommends:
+      - docker-ce | docker.io
+contents:
+  - src: dist/wingsmith-host
+    dst: /usr/bin/wingsmith-host
+    file_info:
+      mode: 0755
+  - src: deploy/host/wingsmith-host.service
+    dst: /usr/lib/systemd/system/wingsmith-host.service
+    file_info:
+      mode: 0644
+  # Kept on upgrade; enrol rewrites it.
+  - src: deploy/host/host.json
+    dst: /etc/wingsmith/host.json
+    type: config|noreplace
+    file_info:
+      mode: 0640
+scripts:
+  postinstall: deploy/host/scripts/postinstall.sh
+  preremove: deploy/host/scripts/preremove.sh
+  postremove: deploy/host/scripts/postremove.sh
