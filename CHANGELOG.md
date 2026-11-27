@@ -38,6 +38,10 @@ protocol can change between minor versions.
 
 ### Changed
 
+- Manifests (`plane.wingsmith.dev/v1alpha1`) are camelCase in `spec` and `status` as well as
+  `metadata` (`workloadRef`, `servedModelName`, `readyReplicas`), and conditions carry
+  `lastTransitionTime`. The `/v1` JSON API stays snake_case (ADR 0028).
+
 - An endpoint created without a slug whose default (the artifact slug, else the lowercased name)
   is already taken gets `<project>-<default>` instead of a 409; a declared slug that clashes is
   still refused (ADR 0024). Serving quota and endpoint benchmark creates take `project` for an

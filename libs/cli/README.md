@@ -121,7 +121,8 @@ success-rate objective its serving quota declares (`GET /v1/metrics/endpoints/{r
 
 `wings get <kind> <name>` prints a Workload, Endpoint or Artifact as a `plane.wingsmith.dev/v1alpha1`
 manifest (`GET /v1/manifests/...`, ADR 0022): `spec` is what was declared, `status` what the plane
-derived. Workloads and endpoints are read in `--project`; an artifact in `--project` when it is
+derived. Every manifest field is camelCase (`workloadRef`, `readyReplicas`), unlike the snake_case
+JSON API (ADR 0028). Workloads and endpoints are read in `--project`; an artifact in `--project` when it is
 private there, from the public catalogue otherwise. The kinds' JSON Schema, with its `x-immutable`
 and `x-defaulted` markers, is embedded at `internal/api/manifest-schema.json`.
 
