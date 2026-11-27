@@ -603,6 +603,8 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		containerPort        int
 		containerArgs        []string
 		protocol             string
+		preset               string
+		presetVersion        string
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -632,7 +634,11 @@ $WS_MODEL_PATH. --arg passes its arguments, which may use $(WS_MODEL_PATH),
 $(WS_SERVED_MODEL_NAME) and $(WS_PORT). The protocol implies what the worker
 emits: openai-chat (text), openai-images, openai-audio-speech (TTS),
 openai-audio-transcriptions (STT) or openai-videos. Audio is served this way
-only: omni under Dynamo emits image or video.`,
+only: omni under Dynamo emits image or video.
+
+--preset vllm|sglang runs the stock engine image as a container worker: the plane
+picks the digest-pinned image for --version, serves the weights with tensor
+parallelism from --devices, and probes and scrapes it. --arg flags are appended.`,
 		Example: `  wings workload create assistant --project core --artifact gpt-oss-120b \
     --class h100-80 --context-length 8192 --scale 2
   wings workload create assistant-tp8 --project core --artifact gpt-oss-120b \
@@ -642,7 +648,9 @@ only: omni under Dynamo emits image or video.`,
     --output-modality image --sampling-default num_inference_steps=4
   wings workload create my-worker --project core --artifact qwen3-8b --class l40s-48 \
     --runtime container --image ghcr.io/acme/worker@sha256:... \
-    --arg --model --arg '$(WS_MODEL_PATH)'`,
+    --arg --model --arg '$(WS_MODEL_PATH)'
+  wings workload create oss-vllm --project core --artifact gpt-oss-120b --class h100-80 \
+    --devices 2 --preset vllm --version 0.34.0 --arg --max-model-len --arg 32768`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || !app.projectSet {
@@ -651,7 +659,7 @@ only: omni under Dynamo emits image or video.`,
 			}
 			project := app.Project
 			omni := isOmniEngine(engine)
-			runtime, err := containerRuntime(runtimeKind, image, containerPort, containerArgs, protocol)
+			runtime, err := containerRuntime(runtimeKind, image, containerPort, containerArgs, protocol, preset, presetVersion)
 			if err != nil {
 				return err
 			}
@@ -818,13 +826,29 @@ only: omni under Dynamo emits image or video.`,
 	fl.StringVar(&image, "image", "", "the custom worker's image, pinned by digest (--runtime container)")
 	fl.IntVar(&containerPort, "port", 8000, "the port the custom worker serves on (--runtime container)")
 	fl.StringArrayVar(&containerArgs, "arg", nil, "a custom worker argument (repeatable, --runtime container)")
+	fl.StringVar(&preset, "preset", "", "run a stock engine as a container worker: vllm|sglang (implies --runtime container)")
+	fl.StringVar(&presetVersion, "version", "", "the --preset engine version (default: the plane's newest pinned one)")
 	fl.StringVar(&protocol, "protocol", "", "the API the custom worker answers (--runtime container): "+strings.Join(containerProtocols, "|"))
 	return cmd
 }
 
 // containerRuntime is the runtime block --runtime container sends, nil under
 // dynamo so the plane's default stands.
-func containerRuntime(kind, image string, port int, args []string, protocol string) (*api.ServingRuntime, error) {
+func containerRuntime(kind, image string, port int, args []string, protocol, preset, version string) (*api.ServingRuntime, error) {
+	if preset != "" {
+		if kind != "" && kind != "dynamo" && kind != "container" {
+			return nil, errs.New(errs.CodeUsage, "--preset runs --runtime container, not %q", kind)
+		}
+		if image != "" {
+			return nil, errs.New(errs.CodeUsage, "--preset picks the image; leave out --image")
+		}
+		if !slices.Contains(enginePresets, preset) {
+			return nil, errs.New(errs.CodeUsage, "--preset is one of %s, not %q", strings.Join(enginePresets, ", "), preset)
+		}
+		kind = "container"
+	} else if version != "" {
+		return nil, errs.New(errs.CodeUsage, "--version is the --preset engine version; for Dynamo use --engine-runtime-version")
+	}
 	switch kind {
 	case "", "dynamo":
 		if image != "" || len(args) > 0 || protocol != "" {
@@ -835,8 +859,8 @@ func containerRuntime(kind, image string, port int, args []string, protocol stri
 	default:
 		return nil, errs.New(errs.CodeUsage, "--runtime is dynamo or container, not %q", kind)
 	}
-	if image == "" {
-		return nil, errs.New(errs.CodeInputRequired, "--runtime container needs --image")
+	if image == "" && preset == "" {
+		return nil, errs.New(errs.CodeInputRequired, "--runtime container needs --image or --preset")
 	}
 	if protocol == "" {
 		protocol = containerProtocols[0]
@@ -851,8 +875,13 @@ func containerRuntime(kind, image string, port int, args []string, protocol stri
 		Env:      []api.ServingEnvVar{},
 		Ports:    []api.ServingContainerPort{{Name: "http", ContainerPort: port}},
 		Protocol: protocol,
+		Preset:   preset,
+		Version:  version,
 	}}, nil
 }
+
+// enginePresets are the plane's app.core.presets.PRESETS.
+var enginePresets = []string{"vllm", "sglang"}
 
 // containerProtocols are the plane's CONTAINER_PROTOCOLS, the default first.
 var containerProtocols = []string{
