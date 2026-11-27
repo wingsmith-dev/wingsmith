@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
+from app.db.notify import DatabaseNotifier
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -272,7 +273,9 @@ async def test_put_workload_replayed_bumps_nothing_and_rolls_nothing(db: AsyncSe
     after, created = await svc.put_workload("search", "gpt-oss-prod", _wire(before))
     assert created != "created"
     assert after.metadata.generation == before.metadata.generation
-    assert after.metadata.resource_version == before.metadata.resource_version
+    # The first apply records last-applied, which is a change; a second identical one is not.
+    again, _ = await svc.put_workload("search", "gpt-oss-prod", _wire(before))
+    assert again.metadata.resource_version == after.metadata.resource_version
     assert await _deployment_generations(db, workload.id) == rolled
 
 
@@ -575,10 +578,10 @@ async def test_put_dry_run_persists_nothing_and_announces_nothing(db: AsyncSessi
     *_, workload = await a_workload(db, preemptible=False)
     announced = []
 
-    async def record(self, *args):
-        announced.append(args)
+    async def record(self, db, change):
+        announced.append(change)
 
-    monkeypatch.setattr(WorkloadService, "_announce", record)
+    monkeypatch.setattr(DatabaseNotifier, "changed", record)
     svc = ManifestService(db)
     before = await svc.workload("search", "gpt-oss-prod")
     rolled = await _deployment_generations(db, workload.id)

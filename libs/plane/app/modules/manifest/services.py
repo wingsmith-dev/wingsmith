@@ -15,7 +15,6 @@ import contextlib
 import msgspec
 
 from sqlalchemy import select
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import OPERATION
@@ -29,6 +28,10 @@ from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import WorkloadRevision
+from app.db.changes import MODIFIED
+from app.db.changes import commit
+from app.db.changes import unit_of_work
+from app.db.changes import record_change
 from app.core.ownership import DEFAULT_MANAGER
 from app.core.ownership import guard
 from app.core.exceptions import Invalid
@@ -199,7 +202,7 @@ class ManifestService:
                 finished_at=dt.datetime.now(dt.UTC),
             )
         )
-        await self.db.commit()
+        await commit(self.db)
         await svc.announce(change)
         return scale_view(await svc.get(w.id), owner.slug)
 
@@ -279,40 +282,26 @@ class ManifestService:
             if await self.db.scalar(visible_ids(ref, owner.id).limit(1)) is None:
                 raise Invalid(f"{path}: no artifact {ref!r} visible to project {owner.slug!r}", {"field": path})
 
-    async def _hold(self, *services):
-        """Runs a write with every service commit made a flush and every announcement held back,
-        so create, replace and the last-applied record land in one transaction. `release` commits
-        and then announces; `discard` rolls back and announces nothing (`dryRun=All`)."""
-        held: list = []
-        for svc in services:
-            original = svc._announce
-
-            async def defer(*args, original=original):
-                held.append((original, args))
-
-            svc._announce = defer
-        self.db.commit = self.db.flush
-        hold = _Hold(self.db, held)
-        try:
-            yield hold
-        finally:
-            del self.db.commit
-            for svc in services:
-                del svc._announce
-
-    _hold = contextlib.asynccontextmanager(_hold)
+    @contextlib.asynccontextmanager
+    async def _hold(self):
+        """One unit of work for create or replace and the last-applied record: service commits
+        inside it flush, cluster wakeups wait for the commit, `dryRun=All` rolls it all back."""
+        async with unit_of_work(self.db) as unit:
+            yield _Hold(unit)
 
     async def _record(self, model, uid: str, body: dict, manager: str) -> None:
-        await self.db.execute(
-            update(model)
-            .where(model.uid == uid)
-            .values(
-                last_applied=_applied(body),
-                applied_by=manager,
-                applied_by_principal=self.actor,
-                applied_at=dt.datetime.now(dt.UTC),
-            )
-        )
+        """Stores the applied body and who applied it. A replayed apply by the same manager writes
+        nothing, so it does not move `resourceVersion`."""
+        obj = await self.db.scalar(select(model).where(model.uid == uid))
+        applied = _applied(body)
+        if (obj.last_applied, obj.applied_by, obj.applied_by_principal) == (applied, manager, self.actor):
+            return
+        obj.last_applied = applied
+        obj.applied_by = manager
+        obj.applied_by_principal = self.actor
+        obj.applied_at = dt.datetime.now(dt.UTC)
+        await self.db.flush()
+        record_change(self.db, obj, MODIFIED)
 
     async def put_workload(
         self,
@@ -354,7 +343,7 @@ class ManifestService:
             current = None
 
         svc = WorkloadService(self.db)
-        async with self._hold(svc) as hold:
+        async with self._hold() as hold:
             if current is None:
                 await self._check_artifacts(
                     owner,
@@ -363,7 +352,7 @@ class ManifestService:
                 )
                 created = await svc.create(workload_create(m, owner.uid), paused=bool(m.spec.paused))
                 await self._record(Workload, created.id, body, manager)
-                return await hold.done(self.workload(project, name), dry_run), "created"
+                return await hold.done(lambda: self.workload(project, name), dry_run), "created"
 
             if any(d.authority != MANAGED for d in current.status.deployments):
                 raise Invalid(f"workload {name!r} is observed, adopt it first", {"name": name, "reason": "observed"})
@@ -438,7 +427,7 @@ class ManifestService:
             for change in changes:
                 await svc.announce(change)
             await self._record(Workload, current.metadata.uid, body, manager)
-            after = await hold.done(self.workload(project, name), dry_run)
+            after = await hold.done(lambda: self.workload(project, name), dry_run)
         return after, _result(current, after)
 
     async def put_endpoint(
@@ -472,7 +461,7 @@ class ManifestService:
                 if Declared(body).has("spec", "surface"):
                     await svc.update(created.id, EndpointUpdateRequest(surface=endpoint_surface(m.spec)))
                 await self._record(Endpoint, created.id, body, manager)
-                return await hold.done(self.endpoint(project, name), dry_run), "created"
+                return await hold.done(lambda: self.endpoint(project, name), dry_run), "created"
 
             await svc._one(current.metadata.uid, lock=True)
             await guard(
@@ -503,27 +492,22 @@ class ManifestService:
             if update:
                 await svc.update(current.metadata.uid, EndpointUpdateRequest(**update), if_match=revision)
             await self._record(Endpoint, current.metadata.uid, body, manager)
-            after = await hold.done(self.endpoint(project, name), dry_run)
+            after = await hold.done(lambda: self.endpoint(project, name), dry_run)
         return after, _result(current, after)
 
 
 class _Hold:
-    def __init__(self, db: AsyncSession, held: list) -> None:
-        self.db = db
-        self.held = held
+    def __init__(self, unit) -> None:
+        self.unit = unit
 
     async def done(self, read, dry_run: bool):
-        """Reads the would-be object, then commits and announces, or rolls back."""
-        out = await read
+        """Commits and then reads the stored object, or reads the would-be object and rolls back."""
         if dry_run:
-            await self.db.rollback()
-            self.held.clear()
+            out = await read()
+            self.unit.discard()
             return out
-        await AsyncSession.commit(self.db)
-        for announce, args in self.held:
-            await announce(*args)
-        self.held.clear()
-        return out
+        await self.unit.commit()
+        return await read()
 
 
 LAST_APPLIED = "plane.wingsmith.dev/last-applied"
