@@ -22,6 +22,7 @@ export function cluster(name: string, region: string, id = name): Cluster {
     zone: null,
     residency: null,
     phase: "active",
+    kind: "kubernetes",
     labels: {},
     capabilities: {},
     enrolled_at: NOW,

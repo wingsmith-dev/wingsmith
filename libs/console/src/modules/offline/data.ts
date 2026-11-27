@@ -474,6 +474,7 @@ for (const spec of SPECS) {
     zone: spec.zone,
     residency: spec.residency,
     phase: spec.phase,
+    kind: "kubernetes",
     labels: spec.labels,
     capabilities: spec.capabilities,
     enrolled_at: spec.enrolled ? iso(172_800) : null,

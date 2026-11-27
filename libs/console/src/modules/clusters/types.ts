@@ -67,6 +67,8 @@ export interface ClusterServingRequest {
   enabled?: boolean
 }
 
+export type ClusterKind = "kubernetes" | "host"
+
 export interface Cluster {
   id: string
   name: string
@@ -75,6 +77,8 @@ export interface Cluster {
   zone: string | null
   residency: string | null
   phase: ClusterPhase
+  /** Declared at registration: `host` is one bare Linux machine running wingsmith-host. */
+  kind: ClusterKind
   labels: Record<string, string>
   capabilities: Record<string, unknown>
   enrolled_at: string | null
@@ -158,6 +162,7 @@ export interface ClusterCreateRequest {
   zone?: string | null
   residency?: string | null
   phase?: ClusterPhase
+  kind?: ClusterKind
   labels?: Record<string, string>
   capabilities?: Record<string, unknown>
   /** Omitted defaults to the cluster's name; null registers it as not observable. */

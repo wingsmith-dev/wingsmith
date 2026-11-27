@@ -78,7 +78,12 @@ export function ClusterCard({
   // a different and worse claim than one that has not been enrolled.
   const onboarding = health === "onboarding"
 
-  const region = [cluster.region, cluster.sync.cloud, cluster.sync.distribution]
+  const region = [
+    cluster.kind === "host" ? "host" : null,
+    cluster.region,
+    cluster.sync.cloud,
+    cluster.sync.distribution,
+  ]
     .filter(Boolean)
     .join(" · ")
 
