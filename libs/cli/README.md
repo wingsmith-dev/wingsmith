@@ -126,6 +126,10 @@ JSON API (ADR 0028). Workloads and endpoints are read in `--project`; an artifac
 private there, from the public catalogue otherwise. The kinds' JSON Schema, with its `x-immutable`
 and `x-defaulted` markers, is embedded at `internal/api/manifest-schema.json`.
 
+`wings apply -f file.yaml` PUTs each Workload, then each Endpoint, in the file (ADR 0029): the
+plane creates the object or replaces the fields the manifest declares, and applying the same file
+again changes nothing. Artifact documents are refused for now; `wings diff` and pruning come later.
+
 Declared state, observed state and operations stay separate at the CLI too. Draining a node is
 an operation (`wings operation create node.drain …`), not a flag on `node`, so it has a record of
 who asked, why, and how it ended.

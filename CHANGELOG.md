@@ -9,6 +9,11 @@ protocol can change between minor versions.
 
 ### Added
 
+- `PUT /v1/manifests/{workloads|endpoints}/{project}/{name}` creates (201) or replaces (200) an
+  object from its manifest: only declared fields are compared, so a replay changes nothing;
+  `If-Match`/`metadata.resourceVersion` conflicts are 409, immutable field changes 422; replica
+  shortfalls are reported as `Unschedulable`. `wings apply -f file.yaml` applies Workloads, then
+  Endpoints (ADR 0029). Endpoint deployment targets accept the deployment's object name.
 - Operator: a `Backend` seam (apply, observe, inventory) with Kubernetes/Dynamo as its
   implementation, and a file-backed resume cursor for the coming host agent (ADR 0027).
 - Endpoint targets can name a workload in the endpoint's project (`workload_ref: {name}`), resolved
