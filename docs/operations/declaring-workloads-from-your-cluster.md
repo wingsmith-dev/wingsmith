@@ -71,11 +71,11 @@ next expansion. The resource's spec is never rewritten; the effective list is in
 
 `kubectl get workloads` shows Synced, Ready and Age. The conditions follow kstatus: Stalled=True is
 failed, Reconciling=True is in progress. A resource the operator has not written status to yet has
-no conditions, which kstatus reads as Current; wait on `condition=Synced` rather than on kstatus
+no conditions, which kstatus reads as Current; wait on `condition=Synced`, not on kstatus
 alone right after an apply.
 
 **Schema.** The CRD checks the spec loosely (unknown fields are kept) and the plane validates it
-fully, so a typo is reported as `Synced=False/Invalid` after the apply rather than refused by the
+fully, so a typo is reported as `Synced=False/Invalid` after the apply, not refused by the
 API server. A generated schema replaces it in a later release.
 
 While the plane is unreachable the operator retries every 30s, and after every reconnect it
@@ -136,7 +136,7 @@ spec:
 
 ## Flux
 
-A Kustomization with `wait: true` reads kstatus; to wait for acceptance rather than serving, add:
+A Kustomization with `wait: true` reads kstatus; to wait for acceptance instead of serving, add:
 
 ```yaml
 spec:
