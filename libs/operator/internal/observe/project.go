@@ -219,6 +219,7 @@ func (o *Observer) project(s Snapshot) projection {
 		Devices:      len(p.devices),
 		ReadOnly:     o.ReadOnly,
 		Multinode:    s.Multinode,
+		Runtimes:     s.Runtimes,
 		ObservedAt:   observedAt,
 	}
 

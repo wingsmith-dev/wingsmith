@@ -267,15 +267,23 @@ func (r *SyncedResourceReconciler) runningAsDeclared(
 	if dep.Serving.Digest == "" {
 		return nil, nil
 	}
-	live := &unstructured.Unstructured{}
-	live.SetGroupVersionKind(render.GVK)
 	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.WorkloadName(dep)}
-	err := r.Client.Get(ctx, key, live)
-	switch {
-	case apierrors.IsNotFound(err), apimeta.IsNoMatchError(err):
-		return nil, nil
-	case err != nil:
-		return nil, fmt.Errorf("read graph deployment %s: %w", key.Name, err)
+	live := &unstructured.Unstructured{}
+	if dep.Serving.IsContainer() {
+		found, err := (containerRenderer{r.backend()}).get(ctx, deploymentGVK, key)
+		if err != nil || found == nil {
+			return nil, err
+		}
+		live = found
+	} else {
+		live.SetGroupVersionKind(render.GVK)
+		err := r.Client.Get(ctx, key, live)
+		switch {
+		case apierrors.IsNotFound(err), apimeta.IsNoMatchError(err):
+			return nil, nil
+		case err != nil:
+			return nil, fmt.Errorf("read graph deployment %s: %w", key.Name, err)
+		}
 	}
 	if !live.GetDeletionTimestamp().IsZero() || live.GetLabels()[deploymentIDLabel] != dep.DeploymentID {
 		return nil, nil

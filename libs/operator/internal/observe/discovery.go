@@ -186,6 +186,9 @@ type Snapshot struct {
 	// second copy of the same truth that can be wrong.
 	Multinode bool
 
+	// Runtimes are the serving runtimes discovered (`dynamo`, `container`); nil is unknown.
+	Runtimes []string
+
 	At time.Time
 }
 

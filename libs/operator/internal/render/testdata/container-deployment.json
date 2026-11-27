@@ -1,0 +1,162 @@
+{
+  "kind": "Deployment",
+  "apiVersion": "apps/v1",
+  "metadata": {
+    "name": "chat-iad",
+    "namespace": "dynamo",
+    "labels": {
+      "wingsmith.dev/deployment-id": "dep_01J9X2",
+      "wingsmith.dev/managed-by": "wingsmith-operator",
+      "wingsmith.dev/project": "prj_01J9X2",
+      "wingsmith.dev/role": "frontend",
+      "wingsmith.dev/runtime": "container"
+    },
+    "annotations": {
+      "wingsmith.dev/generation": "7",
+      "wingsmith.dev/layout": "0x0/",
+      "wingsmith.dev/serving-digest": "svg_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "spec": {
+    "replicas": 1,
+    "selector": {
+      "matchLabels": {
+        "wingsmith.dev/deployment-id": "dep_01J9X2",
+        "wingsmith.dev/runtime": "container"
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "wingsmith.dev/deployment-id": "dep_01J9X2",
+          "wingsmith.dev/managed-by": "wingsmith-operator",
+          "wingsmith.dev/project": "prj_01J9X2",
+          "wingsmith.dev/role": "frontend",
+          "wingsmith.dev/runtime": "container"
+        },
+        "annotations": {
+          "prometheus.io/path": "/metrics",
+          "prometheus.io/port": "8000",
+          "prometheus.io/scrape": "true"
+        }
+      },
+      "spec": {
+        "volumes": [
+          {
+            "name": "model-cache",
+            "persistentVolumeClaim": {
+              "claimName": "model-cache",
+              "readOnly": true
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "worker",
+            "image": "ghcr.io/acme/worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "command": [
+              "python",
+              "-m",
+              "worker"
+            ],
+            "args": [
+              "--model",
+              "$(WS_MODEL_PATH)",
+              "--port",
+              "$(WS_PORT)"
+            ],
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8000,
+                "protocol": "TCP"
+              }
+            ],
+            "env": [
+              {
+                "name": "WS_MODEL_PATH",
+                "value": "/models/hf/hub/models--Qwen--Qwen3-8B/snapshots/ffffffffffffffffffffffffffffffffffffffff"
+              },
+              {
+                "name": "WS_SERVED_MODEL_NAME",
+                "value": "qwen3-8b"
+              },
+              {
+                "name": "WS_PORT",
+                "value": "8000"
+              },
+              {
+                "name": "HF_HUB_OFFLINE",
+                "value": "1"
+              },
+              {
+                "name": "LOG_LEVEL",
+                "value": "info"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "nvidia.com/gpu": "1"
+              },
+              "requests": {
+                "nvidia.com/gpu": "1"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "model-cache",
+                "readOnly": true,
+                "mountPath": "/models/hf",
+                "subPath": "hf"
+              }
+            ],
+            "readinessProbe": {
+              "httpGet": {
+                "path": "/health",
+                "port": "http"
+              },
+              "periodSeconds": 10,
+              "failureThreshold": 3
+            },
+            "securityContext": {
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "privileged": false,
+              "runAsNonRoot": true,
+              "allowPrivilegeEscalation": false
+            }
+          }
+        ],
+        "nodeSelector": {
+          "wingsmith.dev/pool": "gpu"
+        },
+        "automountServiceAccountToken": false,
+        "securityContext": {
+          "runAsNonRoot": true,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "tolerations": [
+          {
+            "key": "nvidia.com/gpu",
+            "operator": "Exists",
+            "effect": "NoSchedule"
+          }
+        ],
+        "enableServiceLinks": false
+      }
+    },
+    "strategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "maxUnavailable": "1",
+        "maxSurge": "0"
+      }
+    }
+  },
+  "status": {}
+}

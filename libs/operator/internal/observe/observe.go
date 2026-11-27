@@ -542,7 +542,7 @@ func indexCapacity(in []wire.CapacityObserved) map[string]wire.CapacityObserved 
 // on every tick, and comparing it would put a frame on the wire for a cluster nothing changed on.
 func sameCluster(a, b wire.ClusterObserved) bool {
 	a.ObservedAt, b.ObservedAt = "", ""
-	return a == b
+	return reflect.DeepEqual(a, b)
 }
 
 func sameNode(a, b wire.NodeObserved) bool {

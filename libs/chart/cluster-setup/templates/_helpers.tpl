@@ -338,6 +338,13 @@ benchmark.
 - apiGroups: [nvidia.com]
   resources: [dynamographdeployments/status]
   verbs: [get]
+# A custom worker (runtime: container) renders as a plain Deployment and Service.
+- apiGroups: [apps]
+  resources: [deployments]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [""]
+  resources: [services]
+  verbs: [create, delete, get, list, patch, update, watch]
 # Not an object this operator renders. It is where the Dynamo operator writes
 # down that it could not do what a graph deployment asked, and the graph's own
 # condition only names the child instead of repeating why. `delete` is here for

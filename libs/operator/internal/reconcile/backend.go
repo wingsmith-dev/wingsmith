@@ -22,8 +22,8 @@ type InventorySource interface {
 	Inventory(ctx context.Context) (backend.Inventory, error)
 }
 
-// KubeBackend is the Kubernetes/Dynamo implementation of backend.Backend: it renders a
-// DynamoGraphDeployment, server-side applies it, and reads pods back.
+// KubeBackend is the Kubernetes implementation of backend.Backend. It drives each deployment
+// through the WorkloadRenderer for its runtime: Dynamo, or a plain container (P8.2).
 type KubeBackend struct {
 	Reconciler *SyncedResourceReconciler
 	Supply     InventorySource
@@ -31,12 +31,61 @@ type KubeBackend struct {
 
 var _ backend.Backend = (*KubeBackend)(nil)
 
+// WorkloadRenderer is one serving runtime on Kubernetes: what it renders and applies, how it
+// collects what earlier applies left behind, how it tears down, and how it reads a rollout back.
+type WorkloadRenderer interface {
+	Apply(ctx context.Context, d backend.Desired) (backend.Applied, error)
+	Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error
+	Delete(ctx context.Context, deploymentID string) error
+	Observe(ctx context.Context, dep wire.DeploymentDesired) (backend.Rollout, error)
+}
+
+// dynamoRenderer renders a DynamoGraphDeployment, server-side applies it, and reads pods back.
+type dynamoRenderer struct{ *KubeBackend }
+
+var (
+	_ WorkloadRenderer = dynamoRenderer{}
+	_ WorkloadRenderer = containerRenderer{}
+)
+
+// renderer is the runtime one deployment runs under.
+func (b *KubeBackend) renderer(dep wire.DeploymentDesired) WorkloadRenderer {
+	if dep.Serving.IsContainer() {
+		return containerRenderer{b}
+	}
+	return dynamoRenderer{b}
+}
+
+// Apply implements backend.Backend.
+func (b *KubeBackend) Apply(ctx context.Context, d backend.Desired) (backend.Applied, error) {
+	return b.renderer(d.Deployment).Apply(ctx, d)
+}
+
+// Prune implements backend.Backend.
+func (b *KubeBackend) Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error {
+	return b.renderer(dep).Prune(ctx, dep, current)
+}
+
+// Delete implements backend.Backend. Teardown knows only the id, so every runtime collects what
+// it rendered for it; absent is success for each.
+func (b *KubeBackend) Delete(ctx context.Context, deploymentID string) error {
+	if err := (dynamoRenderer{b}).Delete(ctx, deploymentID); err != nil {
+		return err
+	}
+	return containerRenderer{b}.Delete(ctx, deploymentID)
+}
+
+// Observe implements backend.Backend.
+func (b *KubeBackend) Observe(ctx context.Context, dep wire.DeploymentDesired) (backend.Rollout, error) {
+	return b.renderer(dep).Observe(ctx, dep)
+}
+
 // backend is the runtime this reconciler drives.
 func (r *SyncedResourceReconciler) backend() *KubeBackend {
 	return &KubeBackend{Reconciler: r, Supply: r.Supply}
 }
 
-// Apply implements backend.Backend.
+// Apply renders and applies the graph deployment.
 //
 // Nothing is written when what is running was already built from these inputs. The apply is
 // otherwise unconditional, and an unconditional apply makes every change to the renderer a
@@ -54,7 +103,7 @@ func (r *SyncedResourceReconciler) backend() *KubeBackend {
 // longer corrects drift on the graph deployment, and a fix to the renderer does not reach a running
 // workload. Both are deliberate. To force one, bump the deployment's generation, or delete the
 // graph deployment as `TopologyImmutable` describes.
-func (b *KubeBackend) Apply(ctx context.Context, d backend.Desired) (backend.Applied, error) {
+func (b dynamoRenderer) Apply(ctx context.Context, d backend.Desired) (backend.Applied, error) {
 	r := b.Reconciler
 	dep := d.Deployment
 	obj, err := render.DynamoGraphDeployment(render.Inputs{
@@ -115,8 +164,8 @@ func (b *KubeBackend) Apply(ctx context.Context, d backend.Desired) (backend.App
 	return backend.Applied{Name: obj.GetName()}, nil
 }
 
-// Prune implements backend.Backend.
-func (b *KubeBackend) Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error {
+// Prune collects graph deployments under an old name and component deployments Dynamo abandoned.
+func (b dynamoRenderer) Prune(ctx context.Context, dep wire.DeploymentDesired, current string) error {
 	r := b.Reconciler
 	// A rename renders under a new object name, and the object the old name created is still
 	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
@@ -131,13 +180,13 @@ func (b *KubeBackend) Prune(ctx context.Context, dep wire.DeploymentDesired, cur
 	return r.pruneSuperseded(ctx, current)
 }
 
-// Delete implements backend.Backend.
-func (b *KubeBackend) Delete(ctx context.Context, deploymentID string) error {
+// Delete removes every graph deployment rendered for the id.
+func (b dynamoRenderer) Delete(ctx context.Context, deploymentID string) error {
 	return b.Reconciler.pruneRendered(ctx, deploymentID, "")
 }
 
-// Observe implements backend.Backend.
-func (b *KubeBackend) Observe(ctx context.Context, dep wire.DeploymentDesired) (backend.Rollout, error) {
+// Observe reads the graph's worker and frontend pods.
+func (b dynamoRenderer) Observe(ctx context.Context, dep wire.DeploymentDesired) (backend.Rollout, error) {
 	out, err := b.Reconciler.observeRollout(ctx, dep)
 	if err != nil {
 		return backend.Rollout{}, err

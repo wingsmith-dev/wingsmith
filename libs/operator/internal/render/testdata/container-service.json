@@ -1,0 +1,38 @@
+{
+  "kind": "Service",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "chat-iad",
+    "namespace": "dynamo",
+    "labels": {
+      "wingsmith.dev/deployment-id": "dep_01J9X2",
+      "wingsmith.dev/managed-by": "wingsmith-operator",
+      "wingsmith.dev/project": "prj_01J9X2",
+      "wingsmith.dev/role": "frontend",
+      "wingsmith.dev/runtime": "container"
+    },
+    "annotations": {
+      "wingsmith.dev/generation": "7",
+      "wingsmith.dev/layout": "0x0/",
+      "wingsmith.dev/serving-digest": "svg_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "spec": {
+    "ports": [
+      {
+        "name": "http",
+        "protocol": "TCP",
+        "port": 8000,
+        "targetPort": "http"
+      }
+    ],
+    "selector": {
+      "wingsmith.dev/deployment-id": "dep_01J9X2",
+      "wingsmith.dev/runtime": "container"
+    },
+    "type": "ClusterIP"
+  },
+  "status": {
+    "loadBalancer": {}
+  }
+}

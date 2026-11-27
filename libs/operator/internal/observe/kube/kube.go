@@ -134,7 +134,18 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (observe.Snapshot, error)
 		}
 	}
 
+	var runtimes []string
+	if source, ok := k.Groups.(KindSource); ok && source != nil {
+		found, err := servingRuntimes(source, dynamoGraphGV, dynamoGraphKind)
+		if err != nil {
+			k.log().Warn("runtime discovery failed; reporting runtimes unknown", "error", err)
+		} else {
+			runtimes = found
+		}
+	}
+
 	out := observe.Snapshot{
+		Runtimes:  runtimes,
 		At:        time.Now().UTC(),
 		Nodes:     make([]observe.Node, 0, len(nodes.Items)),
 		Workloads: workloads,
