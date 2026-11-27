@@ -8,6 +8,8 @@ project is reachable only under that project; a public one only without a namesp
 
 import datetime as dt
 
+import msgspec
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,24 +23,34 @@ from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import WorkloadRevision
+from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.modules.artifacts.scope import visible
+from app.modules.artifacts.scope import visible_ids
 from app.modules.workloads.views import _revision
+from app.modules.workloads.schemas import WorkloadServingUpdate
+from app.modules.workloads.schemas import WorkloadUpdateRequest
 from app.modules.workloads.schemas import WorkloadScaleParameters
 from app.modules.artifacts.services import ArtifactService
 from app.modules.endpoints.services import EndpointService
+from app.modules.workloads.services import MANAGED
 from app.modules.workloads.services import WorkloadService
 from app.modules.workloads.services import constraint_name
 from app.modules.workloads.repository import WorkloadRepository
 
+from .schemas import NOTE_ANNOTATION
 from .schemas import Scale
 from .schemas import ArtifactManifest
 from .schemas import EndpointManifest
 from .schemas import WorkloadManifest
+from .translate import SERVING_FIELDS
 from .translate import Refs
 from .translate import Placement
 from .translate import scale_view
+from .translate import serving_value
+from .translate import workload_create
+from .translate import topology_request
 from .translate import artifact_manifest
 from .translate import endpoint_manifest
 from .translate import workload_manifest
@@ -201,3 +213,175 @@ class ManifestService:
         if a.project_id and a.project_id not in refs.projects:
             refs.projects |= await self._names(Project.slug, [a.project_id])
         return artifact_manifest(a, refs)
+
+    # ----------------------------------------------------------------------- PUT (ADR 0029)
+
+    def _identity(self, m, project: str, owner: Project, name: str) -> None:
+        if m.metadata.name != name:
+            raise Invalid(
+                f"metadata.name {m.metadata.name!r} does not match the path's {name!r}",
+                {"field": "metadata.name"},
+            )
+        if m.metadata.namespace is not None and m.metadata.namespace not in (project, owner.slug, owner.uid):
+            raise Invalid(
+                f"metadata.namespace {m.metadata.namespace!r} does not match the path's {project!r}",
+                {"field": "metadata.namespace"},
+            )
+
+    @staticmethod
+    def _expect(current, if_match: str | None, body_version: str | None) -> str | None:
+        expected = if_match if if_match is not None else body_version
+        if expected is not None and expected != current.metadata.resource_version:
+            raise Conflict(
+                f"{current.kind.lower()} changed since it was read",
+                {"revision": current.metadata.resource_version},
+            )
+        return current.metadata.resource_version
+
+    async def _check_artifacts(self, owner: Project, refs: dict[str, str]) -> None:
+        """Every artifact the manifest names exists and is visible to its project. No implicit
+        create, and another project's private artifact reads as missing."""
+        for path, ref in refs.items():
+            if await self.db.scalar(visible_ids(ref, owner.id).limit(1)) is None:
+                raise Invalid(f"{path}: no artifact {ref!r} visible to project {owner.slug!r}", {"field": path})
+
+    async def put_workload(
+        self, project: str, name: str, body: dict, if_match: str | None = None
+    ) -> tuple[WorkloadManifest, bool]:
+        """Creates or replaces a workload from its manifest. Returns it and whether it was created.
+
+        Replace diffs only what the manifest declares: a field it leaves out keeps the stored
+        value, and a declared field equal to it changes nothing, so replaying a manifest moves no
+        generation and rolls nothing. Create-only fields (`enabled`) are ignored on replace until
+        the last-applied record exists. A placement shortfall is accepted and reads as
+        `Unschedulable`. `replicas` left out leaves `desired_scale` where it is, which is also
+        what an autoscaler owning the count will need.
+        """
+        m = _decode(body, WorkloadManifest)
+        owner = await self._project(project)
+        self._identity(m, project, owner, name)
+        if m.spec.runtime.kind != "dynamo":
+            raise Invalid(f"runtime kind {m.spec.runtime.kind!r} is not supported", {"field": "spec.runtime.kind"})
+        declared = Declared(body)
+        try:
+            current = await self.workload(project, name)
+        except NotFound:
+            current = None
+
+        svc = WorkloadService(self.db)
+        if current is None:
+            await self._check_artifacts(
+                owner,
+                {"spec.serving.artifact": m.spec.serving.artifact}
+                | {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)},
+            )
+            created = await svc.create(workload_create(m, owner.uid))
+            if m.spec.paused:
+                await svc._commit(await svc.change_paused(created.id, True))
+            return await self.workload(project, name), True
+
+        if any(d.authority != MANAGED for d in current.status.deployments):
+            raise Conflict(
+                f"workload {name!r} is observed, not managed by the plane; adopt it before applying",
+                {"name": name},
+            )
+        revision = self._expect(current, if_match, m.metadata.resource_version)
+        for path in IMMUTABLE_PATHS:
+            if declared.has("spec", *path) and _value(m.spec, path) != _value(current.spec, path):
+                raise Invalid(f"spec.{_dotted(path)} cannot change after create", {"field": f"spec.{_dotted(path)}"})
+        if declared.has("spec", "serving", "adapters") and m.spec.serving.adapters != current.spec.serving.adapters:
+            await self._check_artifacts(
+                owner, {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)}
+            )
+
+        def changed(*path: str) -> bool:
+            return declared.has(*path) and _value(m, path) != _value(current, path)
+
+        update: dict = {}
+        if changed("metadata", "labels"):
+            update["labels"] = dict(m.metadata.labels)
+        note = m.metadata.annotations.get(NOTE_ANNOTATION)
+        if declared.has("metadata", "annotations") and note != current.metadata.annotations.get(NOTE_ANNOTATION):
+            update["note"] = note
+        for key in ("priority_class", "preemptible", "deadline_at", "overrides"):
+            if changed("spec", key):
+                update[key] = getattr(m.spec, key)
+        for key in ("strategy", "cluster_floors", "max_clusters"):
+            if changed("spec", "placement", key):
+                update[key] = getattr(m.spec.placement, key)
+        if changed("spec", "serving", "adapters"):
+            update["adapter_artifacts"] = list(m.spec.serving.adapters)
+        serving = {key: serving_value(m.spec, key) for key, path in SERVING_FIELDS.items() if changed("spec", *path)}
+        if changed("spec", "serving", "topology") or changed("spec", "serving", "roles"):
+            serving["topology"] = topology_request(m.spec.serving)
+        if serving:
+            update["serving"] = WorkloadServingUpdate(**serving)
+        if update:
+            await svc.update(current.metadata.uid, WorkloadUpdateRequest(**update), if_match=revision)
+
+        changes = []
+        if changed("spec", "paused"):
+            changes.append(await svc.change_paused(current.metadata.uid, m.spec.paused))
+        scale = current.spec.scale
+        desired = m.spec.replicas if declared.has("spec", "replicas") and m.spec.replicas is not None else scale.desired
+        low = m.spec.scale.min if declared.has("spec", "scale", "min") else scale.min
+        high = m.spec.scale.max if declared.has("spec", "scale", "max") else scale.max
+        low, high = min(low, desired), max(high, desired)
+        if (low, high, desired) != (scale.min, scale.max, scale.desired):
+            parameters = WorkloadScaleParameters(min=low, max=high, desired=desired)
+            changes.append(await svc.change_scale(current.metadata.uid, parameters, refuse=False))
+        if changes:
+            await self.db.commit()
+            for change in changes:
+                await svc.announce(change)
+        return await self.workload(project, name), False
+
+
+IMMUTABLE_PATHS = (
+    ("kind",),
+    ("gang_size",),
+    ("cluster",),
+    ("placement", "allowed_regions"),
+    ("placement", "allowed_clusters"),
+    ("serving", "artifact"),
+)
+"""The `x-immutable` workload fields, plus `serving.artifact`: other weights are a new workload.
+`enabled` is create-only and ignored on replace, since a read cannot say what it was."""
+
+
+def _camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(p.title() for p in rest)
+
+
+def _dotted(path) -> str:
+    return ".".join(_camel(p) for p in path)
+
+
+def _value(obj, path):
+    for attr in path:
+        obj = getattr(obj, attr)
+    return msgspec.to_builtins(obj)
+
+
+def _decode(body: dict, cls):
+    try:
+        return msgspec.convert(body, cls, strict=False)
+    except msgspec.ValidationError as exc:
+        raise Invalid(f"not a valid {cls.__name__}: {exc}") from exc
+
+
+class Declared:
+    """Which fields a manifest wrote, read from the body as sent, before defaults filled it in.
+    Paths are snake_case; the body is camelCase."""
+
+    def __init__(self, body: dict) -> None:
+        self.body = body
+
+    def has(self, *path: str) -> bool:
+        node = self.body
+        for attr in path:
+            if not isinstance(node, dict) or _camel(attr) not in node:
+                return False
+            node = node[_camel(attr)]
+        return True

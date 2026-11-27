@@ -8,9 +8,23 @@ back unchanged.
 from dataclasses import field
 from dataclasses import dataclass
 
+import msgspec
+
 from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.endpoints.schemas import EndpointSchema
+from app.modules.workloads.schemas import RoleSchema as _RoleSchema
+from app.modules.workloads.schemas import CacheSchema as _CacheSchema
+from app.modules.workloads.schemas import ShapeSchema as _ShapeSchema
+from app.modules.workloads.schemas import RouterSchema as _RouterSchema
+from app.modules.workloads.schemas import OverlaySchema as _OverlaySchema
+from app.modules.workloads.schemas import ServingSchema as _ServingSchema
+from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import WorkloadSchema
+from app.modules.workloads.schemas import ResourcesSchema as _ResourcesSchema
+from app.modules.workloads.schemas import ParallelismSchema as _ParallelismSchema
+from app.modules.workloads.schemas import CapabilitiesSchema as _CapabilitiesSchema
+from app.modules.workloads.schemas import WorkloadCreateRequest
+from app.modules.workloads.schemas import WorkloadServingRequest
 
 from .schemas import UNSCHEDULABLE
 from .schemas import NOTE_ANNOTATION
@@ -281,4 +295,91 @@ def artifact_manifest(a: ArtifactSchema, refs: Refs) -> ArtifactManifest:
             verified=a.verified,
             residency=sorted({loc.region for loc in a.locations if loc.region}),
         ),
+    )
+
+
+# --------------------------------------------------------------------------- manifests to requests (PUT)
+
+
+def _snake(v, cls: type):
+    """A manifest's camelCase copy of an HTTP API schema back into the schema itself."""
+    return msgspec.convert(v, cls, from_attributes=True)
+
+
+def topology_request(serving: WorkloadServingSpec) -> TopologySchema:
+    return TopologySchema(serving_topology=serving.topology, roles=[_snake(r, _RoleSchema) for r in serving.roles])
+
+
+SERVING_FIELDS = {
+    # WorkloadServingRequest field: the manifest path it is read from, under `spec`.
+    "engine": ("runtime", "engine"),
+    "engine_runtime_version": ("runtime", "version"),
+    "engine_runtime_image": ("runtime", "image"),
+    "frontend_image": ("runtime", "frontend_image"),
+    "engine_args": ("runtime", "args"),
+    "shape": ("serving", "shape"),
+    "context_length": ("serving", "context_length"),
+    "max_batch_tokens": ("serving", "max_batch_tokens"),
+    "quantization": ("serving", "quantization"),
+    "dtype": ("serving", "dtype"),
+    "parallelism": ("serving", "parallelism"),
+    "cache": ("serving", "cache"),
+    "serving": ("serving", "api"),
+    "capabilities": ("serving", "capabilities"),
+    "resources": ("serving", "resources"),
+    "overlay": ("serving", "overlay"),
+    "router": ("serving", "router"),
+}
+"""`topology` is built from `serving.topology` and `serving.roles` together."""
+
+_SERVING_TYPES = {
+    "shape": _ShapeSchema,
+    "parallelism": _ParallelismSchema,
+    "cache": _CacheSchema,
+    "serving": _ServingSchema,
+    "capabilities": _CapabilitiesSchema,
+    "resources": _ResourcesSchema,
+    "overlay": _OverlaySchema,
+    "router": _RouterSchema,
+}
+
+
+def serving_value(spec: WorkloadManifestSpec, key: str):
+    """One `WorkloadServingRequest` field's value, read from the manifest spec."""
+    if key == "topology":
+        return topology_request(spec.serving)
+    section, attr = SERVING_FIELDS[key]
+    value = getattr(getattr(spec, section), attr)
+    return _snake(value, _SERVING_TYPES[key]) if key in _SERVING_TYPES else value
+
+
+def workload_create(m: WorkloadManifest, project: str) -> WorkloadCreateRequest:
+    """The create a manifest stands for. `replicas` omitted starts at `scale.min`; the bounds
+    widen to hold it, as `/scale` does (ADR 0025)."""
+    s = m.spec
+    desired = s.replicas if s.replicas is not None else s.scale.min
+    serving = {key: serving_value(s, key) for key in (*SERVING_FIELDS, "topology")}
+    return WorkloadCreateRequest(
+        serving=WorkloadServingRequest(artifact=s.serving.artifact, **serving),
+        name=m.metadata.name,
+        project=project,
+        cluster=s.cluster,
+        allowed_regions=list(s.placement.allowed_regions),
+        allowed_clusters=list(s.placement.allowed_clusters),
+        priority_class=s.priority_class,
+        kind=s.kind,
+        min_scale=min(s.scale.min, desired),
+        max_scale=max(s.scale.max, desired),
+        desired_scale=desired,
+        strategy=s.placement.strategy,
+        cluster_floors=dict(s.placement.cluster_floors),
+        max_clusters=s.placement.max_clusters,
+        enabled=True if s.enabled is None else s.enabled,
+        preemptible=s.preemptible,
+        gang_size=s.gang_size,
+        deadline_at=s.deadline_at,
+        adapter_artifacts=list(s.serving.adapters),
+        overrides=s.overrides,
+        labels=dict(m.metadata.labels),
+        note=m.metadata.annotations.get(NOTE_ANNOTATION),
     )

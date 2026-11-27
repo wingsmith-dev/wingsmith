@@ -1,6 +1,9 @@
 """The manifest schema: markers a client applies and diffs by, and the path layout."""
 
+import pytest
+
 from app.api.app import create_app
+from app.modules.manifest.routes import ManifestRoutes
 from app.modules.manifest.schemas import API_VERSION
 from app.modules.manifest.schemas import json_schema
 
@@ -57,3 +60,31 @@ def test_the_manifest_routes_are_addressed_by_namespace_and_name() -> None:
         "/v1/manifests/artifacts/{project}/{name}",
         "/v1/manifests/artifacts/{name}",
     }
+
+
+def test_workloads_and_endpoints_are_applied_with_put() -> None:
+    paths = create_app().openapi_schema.to_schema()["paths"]
+    assert {"get", "put"} <= set(paths["/v1/manifests/workloads/{project}/{name}"])
+    assert "put" not in paths["/v1/manifests/artifacts/{project}/{name}"]
+
+
+@pytest.mark.parametrize("created, status", [(True, 201), (False, 200)])
+@pytest.mark.parametrize("handler, method", [("put_workload_manifest", "put_workload")])
+async def test_put_answers_201_on_create_and_200_on_replace(handler, method, created, status) -> None:
+    seen = {}
+
+    class Svc:
+        async def _put(self, project, name, body, if_match):
+            seen.update(project=project, name=name, body=body, if_match=if_match)
+            return "manifest", created
+
+    setattr(Svc, method, Svc._put)
+
+    class Req:
+        async def json(self):
+            return {"metadata": {"name": "n"}}
+
+    fn = getattr(ManifestRoutes, handler).fn
+    response = await fn(None, request=Req(), svc=Svc(), project="p", name="n", data=None, if_match="7")
+    assert (response.status_code, response.content) == (status, "manifest")
+    assert seen == {"project": "p", "name": "n", "body": {"metadata": {"name": "n"}}, "if_match": "7"}
