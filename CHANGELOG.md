@@ -9,6 +9,8 @@ protocol can change between minor versions.
 
 ### Added
 
+- Operator: a `Backend` seam (apply, observe, inventory) with Kubernetes/Dynamo as its
+  implementation, and a file-backed resume cursor for the coming host agent (ADR 0027).
 - Endpoint targets can name a workload in the endpoint's project (`workload_ref: {name}`), resolved
   at read time to its current deployments with the weight split evenly over them. A ref to a
   missing workload is accepted and reported as a `ResolvedRefs` condition (ADR 0026).

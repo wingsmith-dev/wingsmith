@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/backend"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
@@ -87,7 +89,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		if err := r.holdOpen(ctx, res); err != nil {
 			return ctrl.Result{}, err
 		}
-		return r.afterApply(ctx, res, dep, live)
+		return r.afterApply(ctx, res, dep, live.GetName())
 	}
 
 	artifactID := servedArtifact(dep)
@@ -140,83 +142,30 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.stage(res, dep, "Rendering",
 		fmt.Sprintf("building %s from %s", dep.DeploymentID, dep.Serving.Digest))
 
-	obj, err := render.DynamoGraphDeployment(render.Inputs{
-		Deployment: dep,
-		Artifact:   *artifact,
-		Layout: render.Layout{
-			DevicesPerNode:  placed.DevicesPerNode,
-			NodesPerReplica: placed.NodesPerReplica,
-			Domain:          placed.Domain,
-		},
-	}, r.Render)
-	if err != nil {
-		return r.fail(ctx, res, "RenderFailed", err.Error())
-	}
-	render.Owned(obj, res, v1alpha1.GroupVersion.WithKind("SyncedResource"))
-
 	// The finalizer goes on before the apply, never after. Between the two there is a window in
 	// which a workload exists and nothing records that it has to be cleaned up, and ordering it
 	// this way makes the window the harmless direction: a finalizer with nothing rendered under
 	// it removes itself on the next teardown, where a workload with no finalizer is one nobody
 	// will ever delete.
-	if err := r.holdOpen(ctx, res); err != nil {
-		return ctrl.Result{}, err
+	applied, err := r.backend().Apply(ctx, backend.Desired{
+		Deployment: dep,
+		Artifact:   *artifact,
+		Layout: backend.Layout{
+			DevicesPerNode:  placed.DevicesPerNode,
+			NodesPerReplica: placed.NodesPerReplica,
+			Domain:          placed.Domain,
+		},
+		Owner: backend.Owner{Namespace: res.Namespace, Name: res.Name, UID: string(res.UID)},
+		Hold:  func(ctx context.Context) error { return r.holdOpen(ctx, res) },
+	})
+	var rejected *backend.Rejected
+	if errors.As(err, &rejected) {
+		return r.fail(ctx, res, rejected.Reason, rejected.Message)
 	}
-
-	// Nothing is written when what is running was already built from these inputs. The apply
-	// below is otherwise unconditional, and an unconditional apply makes every change to the
-	// renderer a fleet-wide reload: Dynamo hashes a component's whole pod template to name the
-	// DynamoComponentDeployment it creates, so a single byte of difference (even a label nothing
-	// reads) abandons the running worker and starts a new one. Every model reloads its weights,
-	// and on a saturated cluster that deadlocks: the new pod cannot schedule until the old one
-	// releases the accelerators it is still holding.
-	//
-	// This is what the serving digest was for. Its definition is *would this produce the same
-	// running process*, computed by the plane over its own declaration, so a comparison against
-	// it is insensitive to how this operator happens to render that declaration today.
-	//
-	// The cost, stated plainly: while the declaration and the layout stand still, this operator
-	// no longer corrects drift on the graph deployment, and a fix to the renderer does not reach
-	// a running workload. Both are deliberate: a render that reaches a running workload without
-	// anybody declaring a change is exactly the behaviour above. To force one, bump the
-	// deployment's generation, or delete the graph deployment as `TopologyImmutable` describes;
-	// either is a decision somebody made instead of a side effect of a rollout restart.
-	current, err := r.renderIsCurrent(ctx, obj)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if current {
-		r.Log.Info("already built from these inputs; not applying",
-			"deployment", dep.DeploymentID, "generation", dep.Generation,
-			"digest", dep.Serving.Digest, "namespace", obj.GetNamespace())
-		return r.afterApply(ctx, res, dep, obj)
-	}
-
-	if err := r.Client.Patch(ctx, obj, client.Apply, fieldOwner, client.ForceOwnership); err != nil {
-		if immutableTopology(err) {
-			return r.fail(ctx, res, "TopologyImmutable", fmt.Sprintf(
-				"%s already exists with a different set of components, and Dynamo refuses to "+
-					"change the set on a live graph. Delete the graph deployment to have this "+
-					"operator render it again from the current serving configuration: "+
-					"kubectl -n %s delete dynamographdeployment %s. The model reloads its "+
-					"weights, so this is a deliberate redeploy and not something to do while it "+
-					"is serving.", obj.GetName(), obj.GetNamespace(), obj.GetName()))
-		}
-		if apimeta.IsNoMatchError(err) {
-			return ctrl.Result{}, fmt.Errorf("apply %s: the cluster does not serve %s; install the Dynamo operator: %w",
-				obj.GetName(), render.GVK.Kind, err)
-		}
-		if clusterRejected(err) {
-			return r.fail(ctx, res, "ClusterRejected", fmt.Sprintf(
-				"the cluster refused %s and will refuse it again unchanged: %s",
-				obj.GetName(), err.Error()))
-		}
-		return ctrl.Result{}, fmt.Errorf("apply %s: %w", obj.GetName(), err)
-	}
-	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
-		"replicas", dep.MinReplicas, "namespace", obj.GetNamespace())
-
-	return r.afterApply(ctx, res, dep, obj)
+	return r.afterApply(ctx, res, dep, applied.Name)
 }
 
 // afterApply is everything that follows a graph deployment being current, written or not.
@@ -230,12 +179,12 @@ func (r *SyncedResourceReconciler) afterApply(
 	ctx context.Context,
 	res *v1alpha1.SyncedResource,
 	dep wire.DeploymentDesired,
-	obj *unstructured.Unstructured,
+	name string,
 ) (ctrl.Result, error) {
 	// A rename renders under a new object name, and the object the old name created is still
 	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
 	// teardown never runs, and the apply above only ever touches the current name.
-	if err := r.pruneRendered(ctx, dep.DeploymentID, obj.GetName()); err != nil {
+	if err := r.pruneRendered(ctx, dep.DeploymentID, name); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -243,7 +192,7 @@ func (r *SyncedResourceReconciler) afterApply(
 	// Dynamo answers it by creating a component deployment under a new spec hash and abandoning
 	// the previous one, which keeps its accelerators. See supersede.go; on a full node the new
 	// pod can never schedule until the abandoned one is gone.
-	if err := r.pruneSuperseded(ctx, obj.GetName()); err != nil {
+	if err := r.pruneSuperseded(ctx, name); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -258,16 +207,16 @@ func (r *SyncedResourceReconciler) afterApply(
 	//
 	// A failure to read it is not a failure to reconcile: the apply succeeded. The plain
 	// conclusion is reported in its place.
-	out, err := r.observeRollout(ctx, dep)
+	out, err := r.backend().Observe(ctx, dep)
 	if err != nil {
 		r.Log.Warn("could not read back what is running", "deployment", dep.DeploymentID, "error", err)
 		r.report(res, phasePlaced, "Applied", applied)
 		return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
 	}
 
-	r.reportRollout(res, dep, out)
+	r.reportStatus(res, dep, out)
 
-	if out.ready < out.desired || (out.frontendUnready && out.trouble == nil) {
+	if out.Converging {
 		// Still filling in. Pod events are the fast path; this short requeue is the floor under
 		// missed events, a restarting watch, or a worker or frontend pod that has not been created
 		// yet. A named failure can rest on the drift floor because the watch will wake its recovery.

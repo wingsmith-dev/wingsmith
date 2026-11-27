@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wingsmith-dev/wingsmith/libs/operator/api/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/backend"
 	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
@@ -162,6 +163,11 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 // deployment read "Applied to the cluster; waiting for replicas" underneath a strip that already
 // said it was serving. `Progressing` and `Serving` are what the pods actually say.
 func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, out rollout) {
+	r.reportStatus(res, dep, out.status(time.Now().UTC()))
+}
+
+// reportStatus sends a backend rollout reading as the deployment's observed frames.
+func (r *SyncedResourceReconciler) reportStatus(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, out backend.Rollout) {
 	reporter := r.reporter()
 	if reporter == nil {
 		return
@@ -171,47 +177,47 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		return
 	}
 
-	present := make([]string, 0, len(out.replicas))
-	for _, replica := range out.replicas {
+	present := make([]string, 0, len(out.Replicas))
+	for _, replica := range out.Replicas {
 		present = append(present, replica.ReplicaID)
 	}
 	sort.Strings(present)
 
-	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	observedAt := out.ObservedAt.Format(time.RFC3339Nano)
 	r.send(reporter, id, wire.DeploymentObserved{
 		DeploymentID:        id,
 		ClusterID:           r.ClusterID,
 		Generation:          dep.Generation,
-		Phase:               out.phase(),
-		DesiredReplicas:     out.desired,
-		ReadyReplicas:       out.ready,
-		UpdatedReplicas:     out.updated,
-		UnavailableReplicas: out.unavailable,
+		Phase:               out.Phase,
+		DesiredReplicas:     out.Desired,
+		ReadyReplicas:       out.Ready,
+		UpdatedReplicas:     out.Updated,
+		UnavailableReplicas: out.Unavailable,
 		// Empty, never nil: this loop always knows the whole set, so it always makes the
 		// claim. See wire.DeploymentObserved.ReplicaIDs for why the distinction matters.
 		ReplicaIDs: present,
 		// Beside the scalars and never instead of them. See wire.DeploymentObserved.Roles.
-		Roles:   out.roles,
-		Reason:  out.reason(),
-		Message: out.message(),
+		Roles:   out.Roles,
+		Reason:  out.Reason,
+		Message: out.Message,
 		// The failure the shortfall is explained by, when the cluster explained it. The field
 		// has been on the wire and in the plane's schema since the beginning and nothing ever
 		// wrote it, so `last_error_message` was null for every deployment that ever broke.
-		LastError:  out.trouble.lastError(observedAt),
+		LastError:  out.LastError,
 		ObservedAt: observedAt,
 	})
 
 	// The replicas themselves, each under its own id. Not suppressed against a previous
 	// report: a replica frame carries a restart count and a readiness that move on their own,
 	// and the set is small: one frame per running pod per reconcile, not per pod per second.
-	for _, replica := range out.replicas {
+	for _, replica := range out.Replicas {
 		if err := reporter.Send(TypeReplicaObserved, replica.ReplicaID, replica); err != nil {
 			r.Log.Warn("could not report replica", "replica", replica.Name, "error", err)
 			return
 		}
 	}
 
-	r.reportAllocations(reporter, id, out)
+	r.reportHeld(reporter, id, out.Allocations)
 }
 
 // reportAllocations says which accelerators this deployment's replicas are holding, and hands back
@@ -232,12 +238,16 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 // off are pruned against `deployment.observed.replica_ids`, which is rebuilt from the live pods on
 // every reconcile and so survives a restart, and an allocation cascades with its replica.
 func (r *SyncedResourceReconciler) reportAllocations(reporter Reporter, id string, out rollout) {
+	r.reportHeld(reporter, id, out.allocations)
+}
+
+func (r *SyncedResourceReconciler) reportHeld(reporter Reporter, id string, allocations []wire.AllocationObserved) {
 	if r.Devices == nil {
 		return
 	}
 
-	held := make(map[string]wire.AllocationObserved, len(out.allocations))
-	for _, allocation := range out.allocations {
+	held := make(map[string]wire.AllocationObserved, len(allocations))
+	for _, allocation := range allocations {
 		held[allocation.AllocationID] = allocation
 		if err := reporter.Send(TypeAllocationObserved, allocation.AllocationID, allocation); err != nil {
 			r.Log.Warn("could not report allocation",

@@ -8,6 +8,7 @@ import (
 	stdsync "sync"
 	"time"
 
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/backend"
 	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
 )
@@ -567,4 +568,23 @@ func sameCapacity(a, b wire.CapacityObserved) bool {
 func sameWorkload(a, b wire.WorkloadDiscovered) bool {
 	a.ObservedAt, b.ObservedAt = "", ""
 	return reflect.DeepEqual(a, b)
+}
+
+// Inventory performs one discovery and returns its projection, without sending anything or
+// touching the loop's state. It is the supply half of the Kubernetes backend.
+func (o *Observer) Inventory(ctx context.Context) (backend.Inventory, error) {
+	snapshot, err := o.discover(ctx)
+	if err != nil {
+		return backend.Inventory{}, fmt.Errorf("discover: %w", err)
+	}
+	snapshot.normalise()
+	p := o.project(snapshot)
+	return backend.Inventory{
+		Cluster:  p.cluster,
+		Nodes:    p.nodes,
+		Devices:  p.devices,
+		Topology: p.domains,
+		Capacity: p.capacity,
+		At:       snapshot.At,
+	}, nil
 }
