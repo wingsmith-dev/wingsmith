@@ -67,6 +67,7 @@ class FakeWorkload:
         self.created_at = stamp or EPOCH
         self.updated_at = None
         self.generation = 1
+        self.resource_version = 0
 
 
 @pytest.fixture
@@ -277,13 +278,13 @@ def test_phase_is_the_least_advanced_deployment_unless_one_failed():
     assert derive_phase([FakeDeployment("failed"), FakeDeployment("pending")]) == "failed"
 
 
-def test_revision_is_the_spec_generation_and_ignores_write_stamps():
+def test_revision_is_the_resource_version_not_the_generation_or_a_stamp():
     workload = FakeWorkload()
-    quiet = _revision(workload)
     workload.updated_at = EPOCH + dt.timedelta(seconds=1)
-    assert _revision(workload) == quiet == "1"
     workload.generation = 2
-    assert _revision(workload) == "2"
+    assert _revision(workload) == "0"
+    workload.resource_version = 41
+    assert _revision(workload) == "41"
 
 
 def test_the_unit_of_scale_is_named_by_kind():

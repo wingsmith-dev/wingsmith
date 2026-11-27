@@ -503,7 +503,7 @@ class ArtifactService:
             metadata=artifact.metadata_,
             created_at=artifact.created_at,
             updated_at=artifact.updated_at,
-            revision=revision(artifact),
+            revision=str(artifact.resource_version),
             locations=[_location(loc) for loc in artifact.locations],
             upstream=_upstream(artifact),
         )
@@ -777,7 +777,8 @@ class ArtifactService:
         the row it is about to replace.
         """
         artifact, *_ = await self._one(ref, lock=True, project=project)
-        check_if_match(artifact, if_match, "artifact")
+        if if_match is not None and if_match != str(artifact.resource_version):
+            raise Conflict("artifact changed since it was read", {"revision": str(artifact.resource_version)})
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         if "kind" in fields and fields["kind"] not in KINDS:

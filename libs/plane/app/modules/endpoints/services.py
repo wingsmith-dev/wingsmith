@@ -484,8 +484,8 @@ def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
 
 
 def _revision(endpoint: Endpoint) -> str:
-    """The value `If-Match` is checked against: the spec generation."""
-    return str(endpoint.generation)
+    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0035)."""
+    return str(endpoint.resource_version)
 
 
 _SPEC = ("slug", "visibility", "routing_strategy", "enabled", "surface", "labels")

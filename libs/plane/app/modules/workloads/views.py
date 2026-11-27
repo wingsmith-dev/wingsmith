@@ -64,13 +64,12 @@ def derive_phase(deployments: list[Deployment]) -> str:
 
 
 def _revision(workload: Workload) -> str:
-    """The value `If-Match` is checked against: the spec generation.
+    """The value `If-Match` is checked against: the `change_log` seq of the last change (ADR 0035).
 
-    Only spec writes move it (see `spec.py`), so observation landing on the row or on its
-    deployments is never mistaken for a concurrent edit. Scale is spec, so a scale that only
-    moved a share still moves it.
+    Any logged write moves it, status and rollups included, as Kubernetes' `resourceVersion` does;
+    `generation` stays the spec counter.
     """
-    return str(workload.generation)
+    return str(workload.resource_version)
 
 
 def _revision_view(row: WorkloadRevision) -> WorkloadRevisionSchema:

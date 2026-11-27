@@ -188,11 +188,8 @@ def test_label_selector_becomes_a_predicate_per_key(repo):
     assert "->>" not in sql(repo.list_query(limit=10))
 
 
-def test_revision_is_the_spec_generation_not_the_last_write():
-    first = Endpoint(created_at=EPOCH, updated_at=None, generation=1)
-    later = Endpoint(created_at=EPOCH, updated_at=EPOCH + dt.timedelta(seconds=1), generation=1)
-    assert _revision(first) == _revision(later) == "1"
-    assert _revision(Endpoint(created_at=EPOCH, generation=2)) == "2"
+def test_revision_is_the_resource_version_not_the_generation():
+    assert _revision(Endpoint(created_at=EPOCH, generation=3, resource_version=7)) == "7"
 
 
 def test_list_query_never_touches_a_cluster_table(repo):
@@ -319,6 +316,7 @@ class FakeEndpoint:
         self.created_at = EPOCH
         self.updated_at = None
         self.generation = 1
+        self.resource_version = 0
         self.applied_by = self.applied_by_principal = self.applied_at = None
 
 
