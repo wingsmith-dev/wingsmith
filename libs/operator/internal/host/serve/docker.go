@@ -58,6 +58,7 @@ type ContainerCreate struct {
 	Image        string              `json:"Image"`
 	Entrypoint   []string            `json:"Entrypoint,omitempty"`
 	Cmd          []string            `json:"Cmd,omitempty"`
+	User         string              `json:"User,omitempty"`
 	Env          []string            `json:"Env"`
 	Labels       map[string]string   `json:"Labels"`
 	ExposedPorts map[string]struct{} `json:"ExposedPorts"`

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/host/secret"
 )
 
 // Default paths. The token is a credential and lives apart from the config, so the config can
@@ -16,6 +18,8 @@ const (
 	DefaultConfigPath = "/etc/wingsmith/host.json"
 	DefaultTokenPath  = "/etc/wingsmith/token"
 	DefaultStateDir   = "/var/lib/wingsmith"
+	// ServiceUser is the account the packaged unit runs the agent as.
+	ServiceUser = "wingsmith"
 )
 
 // Config is what `enrol` writes and `run` reads.
@@ -103,7 +107,8 @@ func (c *Config) Validate(allowPlaintext bool) error {
 }
 
 // Enrol writes the token (0600) and the config (0644), each atomically, creating their
-// directories. The token is checked for shape only; whether the plane accepts it is the
+// directories. Run as root on a host where the service user exists, the token is handed to that
+// user so the unit can read it. The token is checked for shape only; whether the plane accepts it is the
 // handshake's to say on the first `run`.
 func Enrol(configPath string, cfg Config, token string) error {
 	token = strings.TrimSpace(token)
@@ -112,6 +117,9 @@ func Enrol(configPath string, cfg Config, token string) error {
 	}
 	if err := writeAtomic(cfg.TokenPath, []byte(token+"\n"), 0o600); err != nil {
 		return fmt.Errorf("write token: %w", err)
+	}
+	if err := chownToService(cfg.TokenPath); err != nil {
+		return fmt.Errorf("hand the token to %s: %w", ServiceUser, err)
 	}
 	raw, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -139,18 +147,11 @@ func LoadConfig(path string) (Config, string, error) {
 	if cfg.StateDir == "" {
 		cfg.StateDir = DefaultStateDir
 	}
-	info, err := os.Stat(cfg.TokenPath)
+	token, err := secret.Read(cfg.TokenPath)
 	if err != nil {
 		return Config{}, "", fmt.Errorf("read token: %w", err)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return Config{}, "", fmt.Errorf("token %s is readable by others (%v); chmod 600 it", cfg.TokenPath, info.Mode().Perm())
-	}
-	token, err := os.ReadFile(cfg.TokenPath)
-	if err != nil {
-		return Config{}, "", fmt.Errorf("read token: %w", err)
-	}
-	return cfg, strings.TrimSpace(string(token)), nil
+	return cfg, token, nil
 }
 
 func writeAtomic(path string, data []byte, mode os.FileMode) error {

@@ -596,7 +596,11 @@ func (c *Cache) start(ctx context.Context, t target, img, token string) error {
 		Image:      img,
 		Entrypoint: []string{"python3", "-c"},
 		Cmd:        []string{t.script},
-		Env:        env,
+		// The fetch writes as the agent's own uid, so the files it leaves are ones the agent (the
+		// wingsmith user, without capabilities) can later evict, and the container needs no
+		// DAC override to write into the agent-owned cache directories.
+		User: prefetchUser(),
+		Env:  env,
 		Labels: map[string]string{
 			LabelManagedBy: prefetchManagedBy, LabelArtifact: id, LabelModelPath: t.model.path,
 			LabelProject: t.art.OwnerProject,
@@ -749,3 +753,6 @@ func dirSize(dir string) int64 {
 	})
 	return total
 }
+
+// prefetchUser is the agent's uid:gid.
+func prefetchUser() string { return fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()) }

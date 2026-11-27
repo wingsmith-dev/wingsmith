@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,9 +28,6 @@ func newCacheRig(t *testing.T) *cacheRig {
 	if err := os.RemoveAll(filepath.Join(r.models, "hf")); err != nil {
 		t.Fatal(err)
 	}
-	old := tokenOwnerUID
-	tokenOwnerUID = uint32(os.Geteuid())
-	t.Cleanup(func() { tokenOwnerUID = old })
 	cr := &cacheRig{rig: r, creds: t.TempDir(), now: time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC), used: 10}
 	cr.cache = &Cache{
 		Docker: r.b.Docker, Policy: r.b.Policy, Root: r.models, CredentialsDir: cr.creds, Log: r.b.Log,
@@ -122,6 +120,9 @@ func TestPrefetchLifecycleAndResidency(t *testing.T) {
 	if !slices.Contains(spec.Env, "HF_HOME=/models/hf") || !spec.HostConfig.ReadonlyRootfs ||
 		!slices.Equal(spec.HostConfig.CapDrop, []string{"ALL"}) || spec.HostConfig.RestartPolicy.Name != "no" {
 		t.Fatalf("hardening = %+v env %v", spec.HostConfig, spec.Env)
+	}
+	if want := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()); spec.User != want {
+		t.Fatalf("prefetch runs as %q, want the agent's own %q", spec.User, want)
 	}
 	for _, e := range spec.Env {
 		if strings.HasPrefix(e, "HF_TOKEN=") {
