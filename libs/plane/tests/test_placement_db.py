@@ -1401,7 +1401,9 @@ async def test_a_serving_host_takes_container_workloads_and_refuses_dynamo(sessi
         )
         dynamo = await seed_workload(db, "dynamo-one", "c")
         container = await seed_workload(db, "container-one", "d")
-        await db.execute(text("update demand_workload set runtime_kind = 'container' where id = :id"), {"id": container})
+        await db.execute(
+            text("update demand_workload set runtime_kind = 'container' where id = :id"), {"id": container}
+        )
 
     async with sessions() as db:
         refused = await PlacementService(db).preview(PlacementPreviewRequest(workload="dynamo-one", project="core"))
