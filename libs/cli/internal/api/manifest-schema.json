@@ -1435,6 +1435,17 @@
      },
      "type": "array"
     },
+    "preset": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
     "protocol": {
      "anyOf": [
       {
@@ -2007,6 +2018,17 @@
     },
     "resolvedEngineArgs": {
      "type": "object"
+    },
+    "runtime": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/RuntimeSpec"
+      }
+     ],
+     "default": null
     },
     "scale": {
      "$ref": "#/$defs/WorkloadScaleStatus"

@@ -17,6 +17,8 @@ from app.config import settings
 from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import WorkloadRole
+from app.core.presets import expand
+from app.core.presets import default_version
 from app.core.serving import TEXT
 from app.core.serving import DYNAMO
 from app.core.serving import CONTAINER
@@ -26,6 +28,7 @@ from app.core.serving import is_omni
 from app.core.serving import serving_digest
 from app.core.serving import declared_router
 from app.core.serving import recipe_engine_args
+from app.core.exceptions import Invalid
 
 from .schemas import RoleSchema
 from .schemas import CacheSchema
@@ -428,7 +431,7 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
     return {
         "artifact_id": artifact.id,
         "runtime_kind": data.runtime.kind,
-        "runtime_spec": msgspec.to_builtins(data.runtime.container) if container else {},
+        "runtime_spec": stored_container(data.runtime.container) if container else {},
         "engine": CONTAINER if container else data.engine,
         "engine_runtime_version": "" if container else data.engine_runtime_version,
         "engine_runtime_image": None
@@ -467,11 +470,34 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
     }
 
 
-def runtime_block(workload: Workload) -> RuntimeSchema:
-    """The stored runtime as the block a request and a read carry."""
+def stored_container(container: ContainerSchema | None) -> dict:
+    """A declared container as `runtime_spec` holds it. A preset's version is defaulted here, so a
+    later table default cannot move a stored workload; the preset keys are left out when unset,
+    so a plain container stores (and hashes) exactly what it did before presets existed."""
+    if container is None:
+        return {}
+    stored = msgspec.to_builtins(container)
+    if container.preset:
+        stored["version"] = (container.version or default_version(container.preset)).lstrip("v")
+    else:
+        stored.pop("preset", None)
+        stored.pop("version", None)
+    return stored
+
+
+def runtime_block(workload: Workload, resolved: bool = False) -> RuntimeSchema:
+    """The stored runtime as the block a request and a read carry. A read (`resolved`) adds the
+    worker that actually runs, the preset expanded."""
     if (workload.runtime_kind or DYNAMO) != CONTAINER:
         return RuntimeSchema()
-    return RuntimeSchema(kind=CONTAINER, container=msgspec.convert(workload.runtime_spec or {}, ContainerSchema))
+    container = msgspec.convert(workload.runtime_spec or {}, ContainerSchema)
+    shown = None
+    if resolved and container.preset:
+        try:
+            shown = expand(container, workload.device_count)
+        except Invalid:
+            shown = None
+    return RuntimeSchema(kind=CONTAINER, container=container, resolved=shown)
 
 
 def serving_request(
@@ -595,7 +621,7 @@ def serving_view(workload: Workload, artifact: Artifact, roles: Sequence[Workloa
         ),
         topology=topology_view(workload, roles),
         router=router_block(workload.router),
-        runtime=runtime_block(workload),
+        runtime=runtime_block(workload, resolved=True),
     )
 
 

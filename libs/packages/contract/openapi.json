@@ -4466,6 +4466,7 @@
             "type": "array"
           },
           "image": {
+            "default": "",
             "type": "string"
           },
           "liveness_probe": {
@@ -4494,6 +4495,16 @@
             },
             "type": "array"
           },
+          "preset": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "protocol": {
             "default": "openai-chat",
             "type": "string"
@@ -4517,11 +4528,13 @@
                 "type": "null"
               }
             ]
+          },
+          "version": {
+            "default": "",
+            "type": "string"
           }
         },
-        "required": [
-          "image"
-        ],
+        "required": [],
         "title": "ContainerSchema",
         "type": "object"
       },
@@ -11210,6 +11223,16 @@
           "kind": {
             "default": "dynamo",
             "type": "string"
+          },
+          "resolved": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContainerSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [],
@@ -11308,6 +11331,16 @@
               "$ref": "#/components/schemas/ContainerPort"
             },
             "type": "array"
+          },
+          "preset": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "protocol": {
             "enum": [
@@ -14963,6 +14996,16 @@
           },
           "resolvedEngineArgs": {
             "type": "object"
+          },
+          "runtime": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "scale": {
             "$ref": "#/components/schemas/WorkloadScaleStatus"

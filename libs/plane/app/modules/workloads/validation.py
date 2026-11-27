@@ -22,6 +22,7 @@ from app.core.vram import sizing_of
 from app.core.vram import impossible
 from app.db.models import Artifact
 from app.db.models import WorkloadRole
+from app.core.presets import expand
 from app.core.serving import TEXT
 from app.core.serving import DYNAMO
 from app.core.serving import CONTAINER
@@ -633,6 +634,8 @@ def check_runtime(data: WorkloadServingRequest) -> None:
             raise Invalid("a dynamo workload names its engine", {"engine": data.engine})
         return
     c = runtime.container
+    if c is not None and c.preset:
+        c = expand(c, data.shape.device_count)
     if c is None or not c.image.strip():
         raise Invalid("runtime.kind container needs runtime.container.image", {"kind": runtime.kind})
     if "@sha256:" not in c.image and not settings.CONTAINER_IMAGE_TAGS_ALLOWED:

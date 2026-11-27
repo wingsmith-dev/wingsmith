@@ -224,6 +224,18 @@ class Settings:
     prefetch job's layout has to be the one the engine later reads.
     """
 
+    ENGINE_PRESET_IMAGES: str = (
+        "vllm@0.34.0=docker.io/vllm/vllm-openai@sha256:20fdb089454afbb324efa4110a2c025ff7b27cc1a086e07aa580b18df8ad1ce1,"
+        "vllm@0.33.0=docker.io/vllm/vllm-openai@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e,"
+        "sglang@0.5.23=docker.io/lmsysorg/sglang@sha256:f832b5c39559c9caa900b22ad37c76fcce66470676855c42052102c537812f1f,"
+        "sglang@0.5.22=docker.io/lmsysorg/sglang@sha256:e3a4f06001a29542fc4a8638536d9ffc5eb9c9942b08603c09b19a56eae4a1ae"
+    )
+    """`preset@version=repo@sha256:digest` entries a container workload's `preset` resolves from
+    (P8.3). The first entry of a preset is its default version. An entry without `@sha256:` is a
+    placeholder and refuses the workload naming it. Entries are append-only: a version keeps its
+    digest, so a stored workload's image never moves under it. Update procedure in
+    docs/operations/custom-workers.md."""
+
     CONTAINER_IMAGE_TAGS_ALLOWED: bool = False
     """Admin flag: accept a container workload's image by tag instead of `@sha256:` digest. Off,
     every custom worker is digest-pinned, so a pushed tag cannot change what a cluster runs."""

@@ -571,6 +571,8 @@ type ServingSpec struct {
 type ServingRuntime struct {
 	Kind      string            `json:"kind"`
 	Container *ServingContainer `json:"container"`
+	// Resolved is read-only: the worker a preset expands to.
+	Resolved *ServingContainer `json:"resolved,omitempty"`
 }
 
 // ServingContainer is a custom worker. The plane mounts the weights read-only at
@@ -586,6 +588,9 @@ type ServingContainer struct {
 	LivenessProbe  map[string]any         `json:"liveness_probe"`
 	StartupProbe   map[string]any         `json:"startup_probe"`
 	Metrics        *ServingMetrics        `json:"metrics"`
+	// Preset (vllm|sglang) has the plane fill image, command, serve args, probes and metrics.
+	Preset  string `json:"preset,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 type ServingEnvVar struct {

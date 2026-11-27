@@ -185,6 +185,10 @@ class RuntimeSpec(Struct, kw_only=True, omit_defaults=True):
     liveness_probe: dict | None = None
     startup_probe: dict | None = None
     metrics: ContainerMetricsSchema | None = None
+    preset: str | None = None
+    """`vllm` or `sglang` under `kind: container`: the plane fills image, command, serve args,
+    port, probes and metrics, `version` picks the engine release, and `args` are appended.
+    `status.runtime` shows the expansion."""
 
 
 class WorkloadServingSpec(Struct, kw_only=True):
@@ -295,6 +299,8 @@ class WorkloadStatus(Struct, kw_only=True):
     resolved_engine_args: dict
     imported_args: dict
     topology: TopologyViewSchema
+    runtime: RuntimeSpec | None = None
+    """The container worker a `preset` expands to, as it runs. Absent without a preset."""
     scale: WorkloadScaleStatus
     deployments: list[WorkloadDeploymentStatus]
     conditions: list[Condition] = []

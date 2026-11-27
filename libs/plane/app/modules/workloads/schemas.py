@@ -273,7 +273,8 @@ class ContainerSchema(Struct):
     `/health` for the media protocols. `protocol` implies `serving.output_modality`.
     """
 
-    image: str
+    image: str = ""
+    """Required unless `preset` picks it."""
     command: list[str] = []
     args: list[str] = []
     env: list[EnvVarSchema] = []
@@ -283,6 +284,12 @@ class ContainerSchema(Struct):
     liveness_probe: dict | None = None
     startup_probe: dict | None = None
     metrics: ContainerMetricsSchema | None = None
+    preset: str | None = None
+    """`vllm` or `sglang` (P8.3): the plane fills image, command, serve args, port, probes and
+    metrics from `ENGINE_PRESET_IMAGES`; declared `args` are appended. Read back expanded in
+    `runtime.resolved`."""
+    version: str = ""
+    """The preset's engine version; defaulted to the table's first entry on write."""
 
 
 class RuntimeSchema(Struct):
@@ -290,6 +297,8 @@ class RuntimeSchema(Struct):
 
     kind: str = "dynamo"
     container: ContainerSchema | None = None
+    resolved: ContainerSchema | None = None
+    """Read-only: the worker that actually runs, a preset expanded. Ignored on input."""
 
 
 class WorkloadServingSchema(Struct):

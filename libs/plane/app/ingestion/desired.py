@@ -19,6 +19,8 @@ from logging import getLogger
 from collections.abc import Sequence
 from collections.abc import AsyncIterator
 
+import msgspec
+
 from msgspec import Struct
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +36,7 @@ from app.db.models import Deployment
 from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.core.presets import expand
 from app.core.serving import OPENAI_CHAT
 from app.core.serving import is_container
 from app.core.serving import declared_router
@@ -64,6 +67,7 @@ from app.ingestion.statements import UnknownCluster
 from app.ingestion.statements import cluster_ref_clause
 from app.modules.artifacts.scope import visible
 from app.modules.credentials.scope import ProjectCredentials
+from app.modules.workloads.schemas import ContainerSchema
 from app.modules.workloads.services import resolved_engine_args
 
 
@@ -389,7 +393,9 @@ def _container(workload: Workload) -> ContainerSpec | None:
     """The stored container worker as the wire carries it, None under dynamo."""
     if not is_container(workload):
         return None
-    spec = workload.runtime_spec or {}
+    spec = msgspec.to_builtins(
+        expand(msgspec.convert(workload.runtime_spec or {}, ContainerSchema), workload.device_count)
+    )
     metrics = spec.get("metrics")
     return ContainerSpec(
         image=spec["image"],

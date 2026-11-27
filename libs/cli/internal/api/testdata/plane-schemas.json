@@ -756,9 +756,11 @@
   "liveness_probe": "object?",
   "metrics": "$ContainerMetricsSchema?",
   "ports": "[]$ContainerPortSchema",
+  "preset": "string?",
   "protocol": "string",
   "readiness_probe": "object?",
-  "startup_probe": "object?"
+  "startup_probe": "object?",
+  "version": "string"
  },
  "CredentialPutRequest": {
   "expires_at": "string?",
@@ -1816,7 +1818,8 @@
  },
  "RuntimeSchema": {
   "container": "$ContainerSchema?",
-  "kind": "string"
+  "kind": "string",
+  "resolved": "$ContainerSchema?"
  },
  "RuntimeSpec": {
   "args": "object|[]string",
@@ -1829,6 +1832,7 @@
   "livenessProbe": "object?",
   "metrics": "$ContainerMetrics?",
   "ports": "[]$ContainerPort",
+  "preset": "string?",
   "protocol": "string?",
   "readinessProbe": "object?",
   "startupProbe": "object?",
@@ -2468,6 +2472,7 @@
   "importedArgs": "object",
   "phase": "string",
   "resolvedEngineArgs": "object",
+  "runtime": "$RuntimeSpec?",
   "scale": "$WorkloadScaleStatus",
   "servedModelName": "string",
   "servingDigest": "string",

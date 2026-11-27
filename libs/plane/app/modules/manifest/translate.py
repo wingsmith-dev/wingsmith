@@ -199,6 +199,7 @@ def workload_manifest(
             resolved_engine_args=s.resolved_engine_args,
             imported_args=s.imported_args,
             topology=_c(s.topology),
+            runtime=runtime_spec(w, resolved=True),
             scale=WorkloadScaleStatus(placed=w.scale.placed, ready=w.scale.ready),
             deployments=[
                 WorkloadDeploymentStatus(
@@ -220,13 +221,15 @@ def workload_manifest(
     )
 
 
-def runtime_spec(w: WorkloadSchema) -> RuntimeSpec:
+def runtime_spec(w: WorkloadSchema, resolved: bool = False) -> RuntimeSpec | None:
     s = w.serving
-    c = s.runtime.container
+    c = s.runtime.resolved if resolved else s.runtime.container
+    if resolved and c is None:
+        return None
     if s.runtime.kind == "container" and c is not None:
         return RuntimeSpec(
             kind="container",
-            image=c.image,
+            image=c.image or None,
             command=list(c.command),
             args=list(c.args),
             env=[_c(e) for e in c.env],
@@ -236,6 +239,8 @@ def runtime_spec(w: WorkloadSchema) -> RuntimeSpec:
             liveness_probe=c.liveness_probe,
             startup_probe=c.startup_probe,
             metrics=_c(c.metrics) if c.metrics is not None else None,
+            preset=None if resolved else c.preset,
+            version=(c.version or None) if c.preset and not resolved else None,
         )
     return RuntimeSpec(
         kind="dynamo",
@@ -404,6 +409,8 @@ def runtime_request(spec: WorkloadManifestSpec) -> RuntimeSchema:
             liveness_probe=r.liveness_probe,
             startup_probe=r.startup_probe,
             metrics=_snake(r.metrics, _ContainerMetricsSchema) if r.metrics is not None else None,
+            preset=r.preset,
+            version=r.version or "",
         ),
     )
 
