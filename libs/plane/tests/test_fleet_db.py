@@ -187,7 +187,8 @@ async def seed_deployment(
 async def seed_endpoint(db, demand, targets: list[tuple[uuid.UUID, bool]], enabled: bool = True) -> None:
     endpoint = await insert(
         db,
-        "insert into demand_endpoint (uid, project_id, name, enabled) values (:uid, :project, :name, :enabled)",
+        "insert into demand_endpoint (uid, project_id, name, slug, enabled)"
+        " values (:uid, :project, :name, :name, :enabled)",
         uid=ids.new_uid(ids.ENDPOINT),
         project=demand["project"],
         name=f"zz-{uuid.uuid4().hex[:8]}",
