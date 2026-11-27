@@ -26,6 +26,7 @@ func TestFileStoreFirstBootAndRoundTrip(t *testing.T) {
 	if err := s.SetLossy(ctx, true); err != nil {
 		t.Fatal(err)
 	}
+	_ = s.Close()
 	got, err := NewFileStore(path).Load(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +35,7 @@ func TestFileStoreFirstBootAndRoundTrip(t *testing.T) {
 		t.Fatalf("reload: got %+v want %+v", got, want)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(path))
-	if len(entries) != 1 {
+	if len(entries) != 2 { // the cursor and its .lock sidecar
 		t.Fatalf("temp files left behind: %v", entries)
 	}
 }
@@ -81,6 +82,7 @@ func TestFileStoreLossyClearsAcrossSession(t *testing.T) {
 	if err := s.Save(ctx, State{SessionID: "s2", AppliedSeq: 1}); err != nil {
 		t.Fatal(err)
 	}
+	_ = s.Close()
 	got, _ := NewFileStore(path).Load(ctx)
 	if got.Lossy || got.SessionID != "s2" {
 		t.Fatalf("got %+v", got)
@@ -100,7 +102,8 @@ func TestFileStoreCorruptFileIsAnError(t *testing.T) {
 func TestFileStoreAdaptsToCheckpointer(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "cursor.json")
-	a := Adapt(NewFileStore(path))
+	fs := NewFileStore(path)
+	a := Adapt(fs)
 	if _, err := a.Load(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -110,8 +113,32 @@ func TestFileStoreAdaptsToCheckpointer(t *testing.T) {
 	if err := a.MarkLossy(ctx); err != nil {
 		t.Fatal(err)
 	}
+	_ = fs.Close()
 	got, _ := NewFileStore(path).Load(ctx)
 	if want := (State{SessionID: "s1", AppliedSeq: 1, Lossy: true}); got != want {
 		t.Fatalf("got %+v", got)
 	}
+}
+
+func TestFileStoreLockExcludesSecondHolder(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "cursor.json")
+	a := NewFileStore(path)
+	if _, err := a.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Load(ctx); err != nil {
+		t.Fatalf("reload by the holder: %v", err)
+	}
+	b := NewFileStore(path)
+	if _, err := b.Load(ctx); !errors.Is(err, ErrLocked) {
+		t.Fatalf("second holder: got %v, want ErrLocked", err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Load(ctx); err != nil {
+		t.Fatalf("after release: %v", err)
+	}
+	_ = b.Close()
 }
