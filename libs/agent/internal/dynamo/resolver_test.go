@@ -614,6 +614,7 @@ func TestAContainerWorkersServiceIsItsDeploymentsFrontend(t *testing.T) {
 	worker := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-worker", Namespace: testNamespace, Labels: map[string]string{
 			RoleLabel: roleFrontend, DeploymentIDLabel: "dep_01c0nt", "wingsmith.dev/runtime": "container",
+			"wingsmith.dev/managed-by": "wingsmith-operator",
 		}},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{DeploymentIDLabel: "dep_01c0nt", "wingsmith.dev/runtime": "container"},
@@ -626,7 +627,15 @@ func TestAContainerWorkersServiceIsItsDeploymentsFrontend(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "stray", Namespace: testNamespace, Labels: map[string]string{RoleLabel: roleFrontend}},
 		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 80}}},
 	}
-	resolver, err := New(Config{Namespace: testNamespace, Services: services(t, worker, stray)})
+	// role=frontend and a deployment id without the operator's ownership and runtime labels is
+	// someone else's Service and must not capture that deployment's traffic.
+	unowned := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "unowned", Namespace: testNamespace, Labels: map[string]string{
+			RoleLabel: roleFrontend, DeploymentIDLabel: "dep_01other",
+		}},
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 80}}},
+	}
+	resolver, err := New(Config{Namespace: testNamespace, Services: services(t, worker, stray, unowned)})
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -642,5 +651,8 @@ func TestAContainerWorkersServiceIsItsDeploymentsFrontend(t *testing.T) {
 	}
 	if _, err := resolver.URL(); err == nil {
 		t.Fatal("a role=frontend Service with no deployment id became the shared frontend")
+	}
+	if got, err := resolver.URLFor("dep_01other"); err == nil {
+		t.Fatalf("an unowned role=frontend Service was routed to: %s", got)
 	}
 }

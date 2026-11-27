@@ -429,16 +429,24 @@ func (r *Resolver) discover(ctx context.Context) (_ frontends, answered bool, _ 
 const (
 	RoleLabel    = "wingsmith.dev/role"
 	roleFrontend = "frontend"
+
+	runtimeLabel      = "wingsmith.dev/runtime"
+	runtimeContainer  = "container"
+	managedByLabel    = "wingsmith.dev/managed-by"
+	managedByOperator = "wingsmith-operator"
 )
 
 // isFrontend says a Service fronts a model: Dynamo's frontend component, or a Service labelled
 // role=frontend for one deployment. The second always names its deployment, so it is never taken
-// for the cluster's shared frontend.
+// for the cluster's shared frontend. It must also carry the operator's ownership and runtime
+// labels, so neither a Dynamo Service nor one Wingsmith did not render is taken for a container's.
 func isFrontend(service corev1.Service) bool {
 	if service.Spec.Selector[ComponentLabel] == componentFrontend {
 		return true
 	}
-	return service.Labels[RoleLabel] == roleFrontend && service.Labels[DeploymentIDLabel] != ""
+	l := service.Labels
+	return l[RoleLabel] == roleFrontend && l[DeploymentIDLabel] != "" &&
+		l[runtimeLabel] == runtimeContainer && l[managedByLabel] == managedByOperator
 }
 
 // deploymentOf reads the routing key off a frontend Service, or empty for the
