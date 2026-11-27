@@ -1,11 +1,11 @@
-package observe
+package kube
 
 import (
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 
-	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Clouds and distributions this operator can name. Anything it cannot name is reported empty,
@@ -87,13 +87,13 @@ func cloudOf(providerID string) string {
 // Carried because a taint is why a node with free accelerators is not receiving work, and without
 // it the plane can only report the symptom. The effect is lowercased into the same snake-case
 // dialect every other enum on the wire uses.
-func taintsOf(in []corev1.Taint) []Taint {
+func taintsOf(in []corev1.Taint) []observe.Taint {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]Taint, 0, len(in))
+	out := make([]observe.Taint, 0, len(in))
 	for _, t := range in {
-		out = append(out, Taint{Key: t.Key, Value: t.Value, Effect: snake(string(t.Effect))})
+		out = append(out, observe.Taint{Key: t.Key, Value: t.Value, Effect: snake(string(t.Effect))})
 	}
 	return out
 }
@@ -163,13 +163,4 @@ func distributionOf(labels map[string]string, kubeletVersion, osImage string) st
 		return ""
 	}
 	return DistributionVanilla
-}
-
-// taints converts discovered taints into their wire form.
-func taints(in []Taint) []wire.NodeTaint {
-	out := make([]wire.NodeTaint, 0, len(in))
-	for _, t := range in {
-		out = append(out, wire.NodeTaint{Key: t.Key, Value: t.Value, Effect: t.Effect})
-	}
-	return out
 }

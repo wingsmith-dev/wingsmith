@@ -1,4 +1,4 @@
-package observe
+package kube
 
 import (
 	"context"

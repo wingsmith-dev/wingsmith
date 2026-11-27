@@ -1,6 +1,10 @@
-package observe
+package kube
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+)
 
 // directScrape is the shape the operator actually gets. It scrapes each exporter pod itself, so
 // nothing collides with the exporter's own identity, nothing is renamed, and the pod holding the
@@ -32,7 +36,7 @@ func TestParseDCGMReadsAPlainPodLabelWhenNothingWasRenamed(t *testing.T) {
 // allocations. The plane counts devices per allocation to decide what is free.
 func TestPodDevicesGroupsTheCardsOnePodHolds(t *testing.T) {
 	got := podDevicesFrom(ParseDCGM(directScrape))
-	held := got[PodKey("dynamo", "gemma-decode-0")]
+	held := got[observe.PodKey("dynamo", "gemma-decode-0")]
 	if len(held) != 2 {
 		t.Fatalf("pod holds %v, want two cards", held)
 	}
@@ -45,7 +49,7 @@ func TestPodDevicesGroupsTheCardsOnePodHolds(t *testing.T) {
 // read as one workload holding every free accelerator in the cluster.
 func TestPodDevicesLeavesIdleCardsUnattributed(t *testing.T) {
 	got := podDevicesFrom(ParseDCGM(directScrape))
-	if _, found := got[PodKey("", "")]; found {
+	if _, found := got[observe.PodKey("", "")]; found {
 		t.Fatal("idle cards were grouped under an empty pod")
 	}
 	for key, held := range got {
@@ -60,7 +64,7 @@ func TestPodDevicesLeavesIdleCardsUnattributed(t *testing.T) {
 // TestDeviceIndexAnswersNothingUntilItIsPublished: an unpublished index must not be mistaken for a
 // cluster in which nothing holds anything.
 func TestDeviceIndexAnswersNothingUntilItIsPublished(t *testing.T) {
-	var index DeviceIndex
+	var index observe.DeviceIndex
 	if got := index.DevicesForPod("dynamo", "gemma-decode-0"); got != nil {
 		t.Fatalf("unpublished index answered %v", got)
 	}
@@ -76,7 +80,7 @@ func TestDeviceIndexAnswersNothingUntilItIsPublished(t *testing.T) {
 // TestDeviceIndexIsSafeForAConcurrentReader: one loop publishes on its tick while another reads on
 // every reconcile.
 func TestDeviceIndexIsSafeForAConcurrentReader(t *testing.T) {
-	var index DeviceIndex
+	var index observe.DeviceIndex
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < 200; i++ {

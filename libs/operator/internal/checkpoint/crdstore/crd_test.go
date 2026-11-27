@@ -1,4 +1,4 @@
-package checkpoint
+package crdstore
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	checkpointv1alpha1 "github.com/wingsmith-dev/wingsmith/libs/operator/api/checkpoint/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
 	syncpkg "github.com/wingsmith-dev/wingsmith/libs/operator/internal/sync"
 )
 
@@ -41,7 +42,7 @@ func TestRestartDuringPartitionDoesNotRewind(t *testing.T) {
 
 	first := loaded(t, c)
 	for seq := uint64(1); seq <= 7; seq++ {
-		if err := first.Save(ctx, State{SessionID: "sess-a", AppliedSeq: seq}); err != nil {
+		if err := first.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: seq}); err != nil {
 			t.Fatalf("save %d: %v", seq, err)
 		}
 	}
@@ -58,7 +59,7 @@ func TestRestartDuringPartitionDoesNotRewind(t *testing.T) {
 		t.Fatalf("cursor unexpectedly lossy")
 	}
 
-	if err := restarted.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 6}); !errors.Is(err, ErrRewind) {
+	if err := restarted.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 6}); !errors.Is(err, checkpoint.ErrRewind) {
 		t.Fatalf("rewind accepted: %v", err)
 	}
 }
@@ -72,7 +73,7 @@ func TestCrashBetweenApplyAndCheckpointFailsBackwards(t *testing.T) {
 
 	s := loaded(t, c)
 	for seq := uint64(1); seq <= 3; seq++ {
-		if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: seq}); err != nil {
+		if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: seq}); err != nil {
 			t.Fatalf("save %d: %v", seq, err)
 		}
 	}
@@ -91,10 +92,10 @@ func TestCrashBetweenApplyAndCheckpointFailsBackwards(t *testing.T) {
 		t.Fatalf("cursor = %d, want 3 (the last recorded, not the last applied)", got.AppliedSeq)
 	}
 
-	if err := after.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 4}); err != nil {
+	if err := after.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 4}); err != nil {
 		t.Fatalf("replayed frame rejected: %v", err)
 	}
-	if err := after.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 4}); err != nil {
+	if err := after.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 4}); err != nil {
 		t.Fatalf("duplicate replay rejected: %v", err)
 	}
 }
@@ -102,19 +103,19 @@ func TestCrashBetweenApplyAndCheckpointFailsBackwards(t *testing.T) {
 func TestGapRejection(t *testing.T) {
 	ctx := context.Background()
 
-	stores := map[string]Store{
-		"memory": &Memory{},
+	stores := map[string]checkpoint.Store{
+		"memory": &checkpoint.Memory{},
 		"crd":    loaded(t, newFakeClient(t)),
 	}
 	for name, s := range stores {
 		t.Run(name, func(t *testing.T) {
-			if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
+			if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
 				t.Fatalf("save 1: %v", err)
 			}
-			if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 2}); err != nil {
+			if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 2}); err != nil {
 				t.Fatalf("save 2: %v", err)
 			}
-			if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 5}); !errors.Is(err, ErrGap) {
+			if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 5}); !errors.Is(err, checkpoint.ErrGap) {
 				t.Fatalf("gap accepted: %v", err)
 			}
 			got, err := s.Load(ctx)
@@ -124,10 +125,10 @@ func TestGapRejection(t *testing.T) {
 			if got.AppliedSeq != 2 {
 				t.Fatalf("cursor moved past gap: %d", got.AppliedSeq)
 			}
-			if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 3}); err != nil {
+			if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 3}); err != nil {
 				t.Fatalf("contiguous save after refused gap: %v", err)
 			}
-			if err := s.Save(ctx, State{AppliedSeq: 4}); !errors.Is(err, ErrNoSession) {
+			if err := s.Save(ctx, checkpoint.State{AppliedSeq: 4}); !errors.Is(err, checkpoint.ErrNoSession) {
 				t.Fatalf("sessionless save accepted: %v", err)
 			}
 		})
@@ -139,13 +140,13 @@ func TestGapRejection(t *testing.T) {
 func TestNewSessionCannotClaimHistory(t *testing.T) {
 	ctx := context.Background()
 	s := loaded(t, newFakeClient(t))
-	if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if err := s.Save(ctx, State{SessionID: "sess-b", AppliedSeq: 9}); !errors.Is(err, ErrGap) {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-b", AppliedSeq: 9}); !errors.Is(err, checkpoint.ErrGap) {
 		t.Fatalf("new session claiming history accepted: %v", err)
 	}
-	if err := s.Save(ctx, State{SessionID: "sess-b", AppliedSeq: 0}); err != nil {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-b", AppliedSeq: 0}); err != nil {
 		t.Fatalf("new session reset rejected: %v", err)
 	}
 }
@@ -158,13 +159,13 @@ func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 	c := newFakeClient(t)
 
 	s := loaded(t, c)
-	if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	if err := s.SetLossy(ctx, true); err != nil {
 		t.Fatalf("set lossy: %v", err)
 	}
-	if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 2}); err != nil {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 2}); err != nil {
 		t.Fatalf("save after lossy: %v", err)
 	}
 
@@ -177,7 +178,7 @@ func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 		t.Fatalf("lossy marker lost across restart: %+v", got)
 	}
 
-	cursor, err := Adapt(restarted).Load(ctx)
+	cursor, err := checkpoint.Adapt(restarted).Load(ctx)
 	if err != nil {
 		t.Fatalf("adapter load: %v", err)
 	}
@@ -188,7 +189,7 @@ func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 		t.Fatalf("adapter lost the cursor it must declare alongside lossy: %+v", cursor)
 	}
 
-	if err := restarted.Save(ctx, State{SessionID: "sess-b", AppliedSeq: 0}); err != nil {
+	if err := restarted.Save(ctx, checkpoint.State{SessionID: "sess-b", AppliedSeq: 0}); err != nil {
 		t.Fatalf("fresh session save: %v", err)
 	}
 	after, err := restarted.Load(ctx)
@@ -207,7 +208,7 @@ func TestLoadFailureIsNotAZeroCursor(t *testing.T) {
 	if _, err := s.Load(context.Background()); err == nil {
 		t.Fatal("unreadable cursor reported as zero state")
 	}
-	if err := s.Save(context.Background(), State{SessionID: "sess-a", AppliedSeq: 1}); err == nil {
+	if err := s.Save(context.Background(), checkpoint.State{SessionID: "sess-a", AppliedSeq: 1}); err == nil {
 		t.Fatal("save accepted before a successful load")
 	}
 }
@@ -216,7 +217,7 @@ func TestCursorIsStoredBesideTheCRDs(t *testing.T) {
 	ctx := context.Background()
 	c := newFakeClient(t)
 	s := loaded(t, c)
-	if err := s.Save(ctx, State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
+	if err := s.Save(ctx, checkpoint.State{SessionID: "sess-a", AppliedSeq: 1}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	var obj checkpointv1alpha1.StreamCheckpoint
@@ -241,7 +242,7 @@ func (errClient) Get(context.Context, client.ObjectKey, client.Object, ...client
 func TestAdapterSaveDoesNotClearLossy(t *testing.T) {
 	ctx := context.Background()
 	store := loaded(t, newFakeClient(t))
-	adapter := Adapt(store)
+	adapter := checkpoint.Adapt(store)
 
 	if err := adapter.Save(ctx, syncpkg.Cursor{SessionID: "sess-a", Seq: 1}); err != nil {
 		t.Fatalf("save: %v", err)

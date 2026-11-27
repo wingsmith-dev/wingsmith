@@ -28,7 +28,7 @@ const (
 const (
 	membershipJoined = "joined"
 	defaultPool      = "default"
-	unknownClass     = "unknown"
+	UnknownClass     = "unknown"
 	resyncScope      = "supply"
 )
 

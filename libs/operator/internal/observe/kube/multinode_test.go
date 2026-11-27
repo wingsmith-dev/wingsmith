@@ -1,6 +1,10 @@
-package observe
+package kube
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+)
 
 // The two backends Dynamo can render onto, under the group names they actually serve, plus the
 // versioned and vendor-prefixed spellings a rename would plausibly produce.
@@ -58,11 +62,11 @@ func TestDiscoveryGroupsIsEmptyWhenUnset(t *testing.T) {
 // The reconcile loop reads this holder on its own clock, so an unpublished one must read false
 // instead of panicking or reporting a capability nothing observed.
 func TestCapabilityDefaultsToIncapable(t *testing.T) {
-	var unset *Capability
+	var unset *observe.Capability
 	if unset.Multinode() {
 		t.Error("a nil holder must read false")
 	}
-	fresh := &Capability{}
+	fresh := &observe.Capability{}
 	if fresh.Multinode() {
 		t.Error("a holder nothing has published to must read false")
 	}

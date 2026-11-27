@@ -24,9 +24,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint/crdstore"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/config"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/health"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
+	kubeobserve "github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe/kube"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/operate"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/reconcile"
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/render"
@@ -117,7 +119,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("build discovery client: %w", err)
 	}
-	cursor := checkpoint.NewCRDStore(directClient, cfg.Namespace)
+	cursor := crdstore.NewCRDStore(directClient, cfg.Namespace)
 
 	store := &reconcile.Store{
 		Client:            mgr.GetClient(),
@@ -131,10 +133,10 @@ func run() error {
 		ClusterID:       cfg.ClusterID,
 		OperatorVersion: version,
 		ReadOnly:        cfg.ReadOnly,
-		Discoverer: &observe.KubeDiscoverer{
+		Discoverer: &kubeobserve.KubeDiscoverer{
 			Client: directClient,
-			Groups: &observe.DiscoveryGroups{Client: discoveryClient},
-			DCGM: &observe.DCGMSource{
+			Groups: &kubeobserve.DiscoveryGroups{Client: discoveryClient},
+			DCGM: &kubeobserve.DCGMSource{
 				Endpoint: cfg.DCGMEndpoint,
 				Client:   &http.Client{Timeout: cfg.DCGMTimeout},
 				Kube:     directClient,

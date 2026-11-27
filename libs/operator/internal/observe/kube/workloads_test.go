@@ -1,8 +1,10 @@
-package observe
+package kube
 
 import (
 	"context"
 	"testing"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -155,15 +157,15 @@ func TestDiscoveryIgnoresWorkloadsHoldingNoDevices(t *testing.T) {
 // TestDiscoveredWorkloadIDsAreStable: the decision to track a workload is stored against this id,
 // so two operators, or one operator across a restart, must derive the same one.
 func TestDiscoveredWorkloadIDsAreStable(t *testing.T) {
-	a := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
-	b := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
+	a := observe.DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
+	b := observe.DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaaa", "serving", kindDeployment, "gpt-oss-120b-vllm")
 	if a != b {
 		t.Fatalf("id is not a pure function of the observation: %s != %s", a, b)
 	}
-	if other := DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaab", "serving", kindDeployment, "gpt-oss-120b-vllm"); other == a {
+	if other := observe.DiscoveredWorkloadID("clu_01j9x2aaaaaaaaaaaaaaaaaaab", "serving", kindDeployment, "gpt-oss-120b-vllm"); other == a {
 		t.Fatal("the same workload name in two clusters minted one id")
 	}
-	if len(a) != 30 || a[:4] != workloadPrefix {
+	if len(a) != 30 || a[:4] != "dsw_" {
 		t.Fatalf("id does not have the contract's shape: %q", a)
 	}
 }
@@ -171,34 +173,34 @@ func TestDiscoveredWorkloadIDsAreStable(t *testing.T) {
 // TestObserverSendsDiscoveredWorkloadsOnceUntilTheyChange: an idle cluster stays off the wire, and
 // re-sending an unchanged sighting would spend the queue's replacement slots for nothing.
 func TestObserverSendsDiscoveredWorkloadsOnceUntilTheyChange(t *testing.T) {
-	workload := Workload{
+	workload := observe.Workload{
 		Namespace: "serving", Name: "gpt-oss-120b-vllm", Kind: kindDeployment,
 		ReplicasDesired: 2, ReplicasReady: 2, DevicesPerReplica: 4, DevicesTotal: 8,
 		Nodes: []string{"gpu-a"},
 	}
-	discoverer := NewFake(Snapshot{Workloads: []Workload{workload}})
+	discoverer := observe.NewFake(observe.Snapshot{Workloads: []observe.Workload{workload}})
 	o := newTestObserver(t, discoverer)
-	sender := o.recorder(t)
+	sender := recorder(t, o)
 
 	if err := o.Tick(context.Background()); err != nil {
 		t.Fatalf("first tick: %v", err)
 	}
-	if got := len(sender.ofType(TypeWorkloadDiscovered)); got != 1 {
+	if got := len(sender.ofType(observe.TypeWorkloadDiscovered)); got != 1 {
 		t.Fatalf("want one sighting on the first tick, got %d", got)
 	}
 	if err := o.Tick(context.Background()); err != nil {
 		t.Fatalf("second tick: %v", err)
 	}
-	if got := len(sender.ofType(TypeWorkloadDiscovered)); got != 1 {
+	if got := len(sender.ofType(observe.TypeWorkloadDiscovered)); got != 1 {
 		t.Fatalf("an unchanged sighting was re-sent: %d frames", got)
 	}
 
 	workload.ReplicasReady = 1
-	discoverer.Set(Snapshot{Workloads: []Workload{workload}})
+	discoverer.Set(observe.Snapshot{Workloads: []observe.Workload{workload}})
 	if err := o.Tick(context.Background()); err != nil {
 		t.Fatalf("third tick: %v", err)
 	}
-	if got := len(sender.ofType(TypeWorkloadDiscovered)); got != 2 {
+	if got := len(sender.ofType(observe.TypeWorkloadDiscovered)); got != 2 {
 		t.Fatalf("a changed sighting was not sent: %d frames", got)
 	}
 }

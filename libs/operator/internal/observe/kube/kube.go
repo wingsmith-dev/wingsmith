@@ -1,4 +1,4 @@
-package observe
+package kube
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -82,7 +84,7 @@ func (k *KubeDiscoverer) poolKey() string {
 	return k.PoolLabelKey
 }
 
-var _ Discoverer = (*KubeDiscoverer)(nil)
+var _ observe.Discoverer = (*KubeDiscoverer)(nil)
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
@@ -91,21 +93,21 @@ var _ Discoverer = (*KubeDiscoverer)(nil)
 // RBAC markers live here, not on a Reconcile method, because this is the only place that
 // issues the List calls they authorize; controller-gen aggregates markers by package, not by
 // type, so placement next to the call site keeps the grant traceable to its use.
-func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
+func (k *KubeDiscoverer) Discover(ctx context.Context) (observe.Snapshot, error) {
 	var nodes corev1.NodeList
 	if err := listAll(ctx, k.Client, &nodes, nil); err != nil {
-		return Snapshot{}, fmt.Errorf("list nodes: %w", err)
+		return observe.Snapshot{}, fmt.Errorf("list nodes: %w", err)
 	}
 	// Only pods holding accelerators are kept, a page at a time. They are all that workload
 	// discovery and allocation read, and a large cluster's other pods would otherwise sit in
 	// memory whole.
 	var pods corev1.PodList
 	if err := listAll(ctx, k.Client, &pods, holdsDevices); err != nil {
-		return Snapshot{}, fmt.Errorf("list pods: %w", err)
+		return observe.Snapshot{}, fmt.Errorf("list pods: %w", err)
 	}
 	workloads, err := k.discoverWorkloads(ctx, &pods)
 	if err != nil {
-		return Snapshot{}, err
+		return observe.Snapshot{}, err
 	}
 	allocated := allocatedByNode(&pods)
 
@@ -132,9 +134,9 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		}
 	}
 
-	out := Snapshot{
+	out := observe.Snapshot{
 		At:        time.Now().UTC(),
-		Nodes:     make([]Node, 0, len(nodes.Items)),
+		Nodes:     make([]observe.Node, 0, len(nodes.Items)),
 		Workloads: workloads,
 		Devices:   podDevicesFrom(inventory),
 		Multinode: multinode,
@@ -223,9 +225,9 @@ func (k *KubeDiscoverer) log() *slog.Logger {
 	return k.Log
 }
 
-func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, log *slog.Logger) Node {
+func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, log *slog.Logger) observe.Node {
 	labels := n.Labels
-	out := Node{
+	out := observe.Node{
 		Name:           n.Name,
 		Pool:           labels[poolKey],
 		Cordoned:       n.Spec.Unschedulable,
@@ -248,7 +250,7 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 		if c.Type == corev1.NodeReady {
 			out.Ready = c.Status == corev1.ConditionTrue
 		}
-		out.Conditions = append(out.Conditions, Condition{
+		out.Conditions = append(out.Conditions, observe.Condition{
 			Type:    snake(string(c.Type)),
 			Status:  strings.ToLower(string(c.Status)),
 			Reason:  snake(c.Reason),
@@ -288,7 +290,7 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 // last count per node would put cross-pass mutable state into a projection that is otherwise a pure
 // function of one node object, and would have to be pruned as the node set churns: a cache with a
 // lifetime problem, bought for a log line whose reader is already running at Debug.
-func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.Logger) []Device {
+func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.Logger) []observe.Device {
 	labels, annotations := n.Labels, n.Annotations
 	scraped := inventory.forNode(n.Name, labels)
 	byIndex := make(map[int]DCGMDevice, len(scraped))
@@ -319,10 +321,10 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 
 	model := labels[labelGPUProduct]
 	memory := int64(atoi(labels[labelGPUMemory]))
-	mig := Mig{Enabled: labels[labelMigStrategy] != "" && labels[labelMigStrategy] != "none"}
+	mig := observe.Mig{Enabled: labels[labelMigStrategy] != "" && labels[labelMigStrategy] != "none"}
 	clique := labels[labelGPUClique]
 
-	devices := make([]Device, 0, count)
+	devices := make([]observe.Device, 0, count)
 	for i := 0; i < count; i++ {
 		uuid := fmt.Sprintf("%s-gpu%d", n.Name, i)
 		if i < len(uuids) && uuids[i] != "" {
@@ -344,19 +346,19 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 		if deviceMemory <= 0 {
 			deviceMemory = classMemoryMiB(class)
 		}
-		health := HealthHealthy
+		health := observe.HealthHealthy
 		switch {
 		case !ready:
-			health = HealthUnknown
+			health = observe.HealthUnknown
 		default:
 			if _, bad := unhealthy[uuid]; bad {
-				health = HealthUnhealthy
+				health = observe.HealthUnhealthy
 			}
 			if _, bad := unhealthy[strconv.Itoa(i)]; bad {
-				health = HealthUnhealthy
+				health = observe.HealthUnhealthy
 			}
 		}
-		d := Device{
+		d := observe.Device{
 			UUID:            uuid,
 			Index:           i,
 			Model:           nodeModel,
@@ -415,7 +417,7 @@ func deviceClass(gfdProduct, dcgmModel string) string {
 	case dcgmModel != "":
 		return devices.Load().Resolve(devices.DialectDCGM, dcgmModel)
 	default:
-		return unknownClass
+		return observe.UnknownClass
 	}
 }
 

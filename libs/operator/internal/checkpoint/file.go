@@ -112,10 +112,10 @@ func (s *FileStore) Save(_ context.Context, next State) error {
 	if !s.loaded {
 		return fmt.Errorf("checkpoint: Save before Load")
 	}
-	if err := validateAdvance(s.last, next); err != nil {
+	if err := ValidateAdvance(s.last, next); err != nil {
 		return err
 	}
-	merged := merge(s.last, next)
+	merged := Merge(s.last, next)
 	if err := s.write(merged); err != nil {
 		return err
 	}

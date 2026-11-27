@@ -1,4 +1,4 @@
-package observe
+package kube
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -118,12 +120,12 @@ func TestKubeDiscoveryReadsLabelsNotHardware(t *testing.T) {
 		t.Fatal("the observed node is a mirror of Kubernetes, which it must not be")
 	}
 
-	byUUID := map[string]Device{}
+	byUUID := map[string]observe.Device{}
 	for _, dev := range n.Devices {
 		byUUID[dev.UUID] = dev
 	}
 	healthy, bad := byUUID["GPU-aaaa"], byUUID["GPU-cccc"]
-	if healthy.Health != HealthHealthy || bad.Health != HealthUnhealthy {
+	if healthy.Health != observe.HealthHealthy || bad.Health != observe.HealthUnhealthy {
 		t.Fatalf("health is %q / %q", healthy.Health, bad.Health)
 	}
 	if healthy.DeviceClass != "h100-80gb-sxm" {
@@ -150,7 +152,7 @@ func TestUnreadyNodeReportsUnknownHealth(t *testing.T) {
 		t.Fatalf("node discovered as ready=%v cordoned=%v", n.Ready, n.Cordoned)
 	}
 	for _, dev := range n.Devices {
-		if dev.Health != HealthUnknown {
+		if dev.Health != observe.HealthUnknown {
 			t.Fatalf("device on an unreachable node reports %q", dev.Health)
 		}
 	}
@@ -179,11 +181,11 @@ func TestCPUOnlyNodesCarryNoDevices(t *testing.T) {
 	if err := o.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	r := o.recorder(t)
-	if len(r.ofType(TypeDeviceObserved)) != 0 || len(r.ofType(TypeTopologyObserved)) != 0 {
+	r := recorder(t, o)
+	if len(r.ofType(observe.TypeDeviceObserved)) != 0 || len(r.ofType(observe.TypeTopologyObserved)) != 0 {
 		t.Fatal("a CPU-only cluster produced device or topology frames")
 	}
-	if len(r.ofType(TypeNodeObserved)) != 1 {
+	if len(r.ofType(observe.TypeNodeObserved)) != 1 {
 		t.Fatal("a CPU node is still a member and must be observed")
 	}
 }
@@ -224,8 +226,8 @@ func TestDeviceClassPrecedence(t *testing.T) {
 	}
 
 	none := gpuNode("gpu-c", map[string]string{labelGPUCount: "1"}, nil, true, false)
-	if got := projectKubeNode(none, nil, labelPool, discardLog).Devices[0].DeviceClass; got != unknownClass {
-		t.Fatalf("a node with no product label should be %q, got %q", unknownClass, got)
+	if got := projectKubeNode(none, nil, labelPool, discardLog).Devices[0].DeviceClass; got != observe.UnknownClass {
+		t.Fatalf("a node with no product label should be %q, got %q", observe.UnknownClass, got)
 	}
 }
 

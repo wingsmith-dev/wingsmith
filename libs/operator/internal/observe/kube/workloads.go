@@ -1,10 +1,12 @@
-package observe
+package kube
 
 import (
 	"context"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/observe"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -70,7 +72,7 @@ type podUsage struct {
 // Read-only in the strongest sense: it lists, it does not adopt, it sets no owner reference and it
 // writes no label. Nothing here can cause a pod to restart, which is the property that makes it
 // safe to run against a cluster full of loaded models.
-func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.PodList) ([]Workload, error) {
+func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.PodList) ([]observe.Workload, error) {
 	usage := map[workloadKey]*podUsage{}
 	for i := range pods.Items {
 		p := &pods.Items[i]
@@ -111,9 +113,9 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 		return nil, err
 	}
 
-	out := make([]Workload, 0, len(usage))
+	out := make([]observe.Workload, 0, len(usage))
 	for key, u := range usage {
-		w := Workload{
+		w := observe.Workload{
 			Namespace:         key.Namespace,
 			Name:              key.Name,
 			Kind:              key.Kind,
@@ -152,7 +154,7 @@ type controller struct {
 	labels      map[string]string
 	model       string
 	fingerprint string
-	spec        *WorkloadSpec
+	spec        *observe.WorkloadSpec
 }
 
 // controllers reads the Deployments and StatefulSets behind the workloads in usage. Others are
@@ -345,12 +347,12 @@ func keys(in map[string]bool) []string {
 // Nothing here is interpreted. `--tensor-parallel-size 2` leaves as two strings in a list, and the
 // plane is what decides that means tensor parallelism. But the command line is redacted on the way
 // out: see commandShape and redactedArgs.
-func servingSpec(t *corev1.PodTemplateSpec) *WorkloadSpec {
+func servingSpec(t *corev1.PodTemplateSpec) *observe.WorkloadSpec {
 	c := servingContainer(t)
 	if c == nil {
 		return nil
 	}
-	out := &WorkloadSpec{
+	out := &observe.WorkloadSpec{
 		Image:        c.Image,
 		Command:      commandShape(c.Command),
 		Args:         redactedArgs(c.Args),

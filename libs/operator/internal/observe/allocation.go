@@ -17,36 +17,6 @@ func PodKey(namespace, name string) string {
 	return namespace + "/" + name
 }
 
-// podDevicesFrom reads the pod bindings out of one DCGM scrape.
-//
-// Cards with no binding are skipped, not recorded against an empty pod: an idle accelerator
-// is held by nobody, and grouping the idle ones together under "" would read as one workload
-// holding every free card in the cluster.
-func podDevicesFrom(inventory *DCGMInventory) PodDevices {
-	if inventory == nil {
-		return nil
-	}
-	out := PodDevices{}
-	for _, list := range inventory.byHost {
-		for _, d := range list {
-			if d.Pod == "" || d.Namespace == "" || d.UUID == "" {
-				continue
-			}
-			key := PodKey(d.Namespace, d.Pod)
-			if !contains(out[key], d.UUID) {
-				out[key] = append(out[key], d.UUID)
-			}
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	for key := range out {
-		sortStrings(out[key])
-	}
-	return out
-}
-
 func contains(list []string, want string) bool {
 	for _, s := range list {
 		if s == want {

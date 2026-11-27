@@ -146,7 +146,7 @@ func (o *Observer) project(s Snapshot) projection {
 
 			class := d.DeviceClass
 			if class == "" {
-				class = unknownClass
+				class = UnknownClass
 			}
 			row, ok := pools[pool][class]
 			if !ok {

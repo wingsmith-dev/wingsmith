@@ -1,4 +1,4 @@
-package checkpoint
+package crdstore
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	checkpointv1alpha1 "github.com/wingsmith-dev/wingsmith/libs/operator/api/checkpoint/v1alpha1"
+	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/checkpoint"
 )
 
 // DefaultName is the name of the singleton StreamCheckpoint object. There is exactly one stream
@@ -37,12 +38,12 @@ type CRDStore struct {
 
 	mu     stdsync.Mutex
 	loaded bool
-	last   State
+	last   checkpoint.State
 }
 
 // +kubebuilder:rbac:groups=wingsmith.dev,resources=streamcheckpoints,verbs=get;list;watch;create;update;patch
 
-var _ Store = (*CRDStore)(nil)
+var _ checkpoint.Store = (*CRDStore)(nil)
 
 // NewCRDStore builds a CRDStore for the singleton cursor in ns.
 func NewCRDStore(c client.Client, ns string) *CRDStore {
@@ -59,17 +60,17 @@ func (s *CRDStore) key() types.NamespacedName {
 
 // Load reads the persisted cursor. A missing object is a genuine first boot and yields the zero
 // State; any other error is returned, never flattened into a zero cursor.
-func (s *CRDStore) Load(ctx context.Context) (State, error) {
+func (s *CRDStore) Load(ctx context.Context) (checkpoint.State, error) {
 	var obj checkpointv1alpha1.StreamCheckpoint
 	err := s.Client.Get(ctx, s.key(), &obj)
 	switch {
 	case apierrors.IsNotFound(err):
 		s.mu.Lock()
-		s.loaded, s.last = true, State{}
+		s.loaded, s.last = true, checkpoint.State{}
 		s.mu.Unlock()
-		return State{}, nil
+		return checkpoint.State{}, nil
 	case err != nil:
-		return State{}, fmt.Errorf("read checkpoint %s: %w", s.key(), err)
+		return checkpoint.State{}, fmt.Errorf("read checkpoint %s: %w", s.key(), err)
 	}
 	st := fromSpec(obj.Spec)
 	s.mu.Lock()
@@ -81,17 +82,17 @@ func (s *CRDStore) Load(ctx context.Context) (State, error) {
 // Save validates the advance and writes it. The write is a full read-modify-write against the
 // live object so that a second writer (a stray operator replica) collides on resourceVersion
 // instead of silently overwriting a further-ahead cursor.
-func (s *CRDStore) Save(ctx context.Context, next State) error {
+func (s *CRDStore) Save(ctx context.Context, next checkpoint.State) error {
 	s.mu.Lock()
 	if !s.loaded {
 		s.mu.Unlock()
 		return fmt.Errorf("checkpoint: Save before Load")
 	}
-	if err := validateAdvance(s.last, next); err != nil {
+	if err := checkpoint.ValidateAdvance(s.last, next); err != nil {
 		s.mu.Unlock()
 		return err
 	}
-	merged := merge(s.last, next)
+	merged := checkpoint.Merge(s.last, next)
 	s.mu.Unlock()
 
 	if err := s.write(ctx, merged); err != nil {
@@ -130,7 +131,7 @@ func (s *CRDStore) SetLossy(ctx context.Context, lossy bool) error {
 	return nil
 }
 
-func (s *CRDStore) write(ctx context.Context, st State) error {
+func (s *CRDStore) write(ctx context.Context, st checkpoint.State) error {
 	key := s.key()
 	var obj checkpointv1alpha1.StreamCheckpoint
 	err := s.Client.Get(ctx, key, &obj)
@@ -148,7 +149,7 @@ func (s *CRDStore) write(ctx context.Context, st State) error {
 	return s.Client.Update(ctx, &obj)
 }
 
-func toSpec(s State) checkpointv1alpha1.StreamCheckpointSpec {
+func toSpec(s checkpoint.State) checkpointv1alpha1.StreamCheckpointSpec {
 	now := metav1.Now()
 	return checkpointv1alpha1.StreamCheckpointSpec{
 		SessionID:  s.SessionID,
@@ -158,10 +159,10 @@ func toSpec(s State) checkpointv1alpha1.StreamCheckpointSpec {
 	}
 }
 
-func fromSpec(s checkpointv1alpha1.StreamCheckpointSpec) State {
+func fromSpec(s checkpointv1alpha1.StreamCheckpointSpec) checkpoint.State {
 	seq := s.AppliedSeq
 	if seq < 0 {
 		seq = 0
 	}
-	return State{SessionID: s.SessionID, AppliedSeq: uint64(seq), Lossy: s.Lossy}
+	return checkpoint.State{SessionID: s.SessionID, AppliedSeq: uint64(seq), Lossy: s.Lossy}
 }

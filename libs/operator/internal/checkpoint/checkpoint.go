@@ -66,13 +66,13 @@ type Store interface {
 	SetLossy(ctx context.Context, lossy bool) error
 }
 
-// validateAdvance enforces the no-gap, no-rewind rule.
+// ValidateAdvance enforces the no-gap, no-rewind rule.
 //
 // A session change resets the cursor: a new session numbers its inbound stream from 1, so the
 // only legal cursors immediately after the switch are 0 (nothing applied yet) and 1 (the first
 // frame applied). Anything higher would claim to have applied frames the new session has not
 // sent.
-func validateAdvance(old, next State) error {
+func ValidateAdvance(old, next State) error {
 	if next.SessionID == "" {
 		return ErrNoSession
 	}
@@ -92,10 +92,10 @@ func validateAdvance(old, next State) error {
 	return nil
 }
 
-// merge carries the lossy flag forward within a session and clears it across one: a fresh session
+// Merge carries the lossy flag forward within a session and clears it across one: a fresh session
 // is precisely the repair for a lossy replay buffer, so continuing to advertise loss afterwards
 // would force a resync on every subsequent reconnect.
-func merge(old, next State) State {
+func Merge(old, next State) State {
 	if old.SessionID == next.SessionID {
 		next.Lossy = next.Lossy || old.Lossy
 	}
@@ -120,10 +120,10 @@ func (m *Memory) Load(context.Context) (State, error) {
 func (m *Memory) Save(_ context.Context, s State) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := validateAdvance(m.state, s); err != nil {
+	if err := ValidateAdvance(m.state, s); err != nil {
 		return err
 	}
-	m.state = merge(m.state, s)
+	m.state = Merge(m.state, s)
 	return nil
 }
 
