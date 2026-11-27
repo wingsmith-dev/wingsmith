@@ -231,6 +231,11 @@ class EndpointSchema(Struct):
     conditions: list[EndpointConditionSchema] = []
     """`ResolvedRefs`: `False` with reason `WorkloadNotFound` while a workload ref names no workload
     in the endpoint's project. Derived on read; never an error."""
+    applied_by: str | None = None
+    """The field manager that applied it last (`wings-cli` by default), or null when nothing manages
+    it. Read-only: a PATCH or operation on a managed object is a 409 unless forced (ADR 0033)."""
+    applied_by_principal: str | None = None
+    applied_at: dt.datetime | None = None
 
 
 class EndpointTargetRequest(Struct):

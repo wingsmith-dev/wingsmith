@@ -64,8 +64,11 @@ class OperationRoutes(Controller):
         svc: OperationService,
         data: OperationCreateRequest,
         idempotency_key: str | None = Parameter(header="Idempotency-Key", default=None),
+        force: bool = False,
     ) -> Response[OperationSchema]:
-        return Response(await svc.create(data, idempotency_key=idempotency_key), status_code=201)
+        """A workload operation other than a drain on a workload a manifest manages is a 409 naming
+        its manager; `?force=true` takes the workload over first (ADR 0033)."""
+        return Response(await svc.create(data, idempotency_key=idempotency_key, force=force), status_code=201)
 
     @get("/summary")
     async def operations_summary(

@@ -573,6 +573,10 @@ class Workload(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     # The manifest body the last `wings apply` sent (ADR 0032). Not spec: no generation.
     last_applied: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Who applied it last (ADR 0033): field manager, principal, time. Null when nothing manages it.
+    applied_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    applied_by_principal: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    applied_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     serving_topology: Mapped[str] = mapped_column(String(16), nullable=False, server_default="aggregated", index=True)
@@ -893,6 +897,10 @@ class Endpoint(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     # The manifest body the last `wings apply` sent (ADR 0032). Not spec: no generation.
     last_applied: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Who applied it last (ADR 0033): field manager, principal, time. Null when nothing manages it.
+    applied_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    applied_by_principal: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    applied_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
     """Counts changes to the declared fields and aliases. Targets resolve at read time and do not count."""
 

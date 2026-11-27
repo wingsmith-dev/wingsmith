@@ -656,6 +656,9 @@ class EndpointService:
             generation=endpoint.generation,
             revision=_revision(endpoint),
             conditions=ref_conditions([n for n in refs if (endpoint.project_id, n) not in existing]),
+            applied_by=endpoint.applied_by,
+            applied_by_principal=endpoint.applied_by_principal,
+            applied_at=endpoint.applied_at,
         )
 
     def _referenced(self, endpoints: builtins.list[Endpoint]) -> builtins.list[UUID]:

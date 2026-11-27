@@ -7,9 +7,11 @@ from litestar import delete
 from litestar.di import Provide
 from litestar.params import Parameter
 
+from app.db.models import Endpoint
 from app.core.context import RequestContext
 from app.core.filters import parse_labels
 from app.core.schemas import ListResponse
+from app.core.ownership import guard
 
 from .depends import endpoint_svc_generator
 from .schemas import EndpointSchema
@@ -97,8 +99,12 @@ class EndpointRoutes(Controller):
         data: EndpointUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
         project: str | None = None,
+        force: bool = False,
     ) -> Response[EndpointSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match, project=project))
+        """An endpoint a manifest manages is a 409 naming its manager; `?force=true` takes it over (ADR 0033)."""
+        current = await svc.get(ref, project)
+        await guard(context.db, Endpoint, current.id, kind="endpoint", actor=context.principal.name, force=force)
+        return Response(await svc.update(current.id, data, if_match=if_match))
 
     @delete("/{ref:str}", status_code=204)
     async def delete_endpoint(

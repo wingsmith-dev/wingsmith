@@ -29,6 +29,8 @@ from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import WorkloadRevision
+from app.core.ownership import DEFAULT_MANAGER
+from app.core.ownership import guard
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -73,6 +75,15 @@ class ManifestService:
     def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:
         self.db = db
         self.actor = actor
+
+    async def _applied_state(self, model, uid: str):
+        return (
+            await self.db.execute(
+                select(model.last_applied, model.applied_by, model.applied_by_principal, model.applied_at).where(
+                    model.uid == uid
+                )
+            )
+        ).one()
 
     async def _project(self, ref: str) -> Project:
         project = await WorkloadRepository(self.db).project_by_ref(ref)
@@ -121,8 +132,7 @@ class ManifestService:
             ),
             clusters=await self._names(Cluster.name, [w.pinned_cluster_id, *w.cluster_floors]),
         )
-        record = await self.db.scalar(select(Workload.last_applied).where(Workload.uid == w.id))
-        return with_last_applied(workload_manifest(w, refs, placement, note), record)
+        return with_last_applied(workload_manifest(w, refs, placement, note), await self._applied_state(Workload, w.id))
 
     async def _owned_workload(self, project: str, name: str):
         owner = await self._project(project)
@@ -209,8 +219,7 @@ class ManifestService:
             deployments=await self._names(Deployment.object_name, deployments),
             workload_deployments=expanded,
         )
-        record = await self.db.scalar(select(Endpoint.last_applied).where(Endpoint.uid == e.id))
-        return with_last_applied(endpoint_manifest(e, refs), record)
+        return with_last_applied(endpoint_manifest(e, refs), await self._applied_state(Endpoint, e.id))
 
     async def artifact(self, project: str | None, name: str) -> ArtifactManifest:
         owner = await self._project(project) if project is not None else None
@@ -283,11 +292,27 @@ class ManifestService:
 
     _hold = contextlib.asynccontextmanager(_hold)
 
-    async def _record(self, model, uid: str, body: dict) -> None:
-        await self.db.execute(update(model).where(model.uid == uid).values(last_applied=_applied(body)))
+    async def _record(self, model, uid: str, body: dict, manager: str) -> None:
+        await self.db.execute(
+            update(model)
+            .where(model.uid == uid)
+            .values(
+                last_applied=_applied(body),
+                applied_by=manager,
+                applied_by_principal=self.actor,
+                applied_at=dt.datetime.now(dt.UTC),
+            )
+        )
 
     async def put_workload(
-        self, project: str, name: str, body: dict, if_match: str | None = None, dry_run: bool = False
+        self,
+        project: str,
+        name: str,
+        body: dict,
+        if_match: str | None = None,
+        dry_run: bool = False,
+        manager: str = DEFAULT_MANAGER,
+        force: bool = False,
     ) -> tuple[WorkloadManifest, str]:
         """Creates or replaces a workload from its manifest. Returns it and `created`,
         `configured` or `unchanged` (ADR 0029, 0032).
@@ -327,17 +352,17 @@ class ManifestService:
                     | {f"spec.serving.adapters[{i}]": a for i, a in enumerate(m.spec.serving.adapters)},
                 )
                 created = await svc.create(workload_create(m, owner.uid), paused=bool(m.spec.paused))
-                await self._record(Workload, created.id, body)
+                await self._record(Workload, created.id, body, manager)
                 return await hold.done(self.workload(project, name), dry_run), "created"
 
             if any(d.authority != MANAGED for d in current.status.deployments):
-                raise Conflict(
-                    f"workload {name!r} is observed, not managed by the plane; adopt it before applying",
-                    {"name": name},
-                )
+                raise Invalid(f"workload {name!r} is observed, adopt it first", {"name": name, "reason": "observed"})
             # Hold the row for the whole replace and re-read it, so If-Match is checked against what
             # this transaction writes over, whichever of spec, pause or scale it changes.
             await svc._one(current.metadata.uid, lock=True)
+            await guard(
+                self.db, Workload, current.metadata.uid, kind="workload", actor=self.actor, force=force, manager=manager
+            )
             current = await self.workload(project, name)
             revision = self._expect(current, if_match, m.metadata.resource_version)
             exempt = {("spec", "replicas")} if autoscaled(current) else set()
@@ -402,12 +427,19 @@ class ManifestService:
                 changes.append(await svc.change_scale(current.metadata.uid, parameters, refuse=False))
             for change in changes:
                 await svc.announce(change)
-            await self._record(Workload, current.metadata.uid, body)
+            await self._record(Workload, current.metadata.uid, body, manager)
             after = await hold.done(self.workload(project, name), dry_run)
         return after, _result(current, after)
 
     async def put_endpoint(
-        self, project: str, name: str, body: dict, if_match: str | None = None, dry_run: bool = False
+        self,
+        project: str,
+        name: str,
+        body: dict,
+        if_match: str | None = None,
+        dry_run: bool = False,
+        manager: str = DEFAULT_MANAGER,
+        force: bool = False,
     ) -> tuple[EndpointManifest, str]:
         """Creates or replaces an endpoint from its manifest, three-way against the last-applied
         record like a workload.
@@ -429,10 +461,13 @@ class ManifestService:
                 created = await svc.create(endpoint_create(m, owner.uid))
                 if Declared(body).has("spec", "surface"):
                     await svc.update(created.id, EndpointUpdateRequest(surface=endpoint_surface(m.spec)))
-                await self._record(Endpoint, created.id, body)
+                await self._record(Endpoint, created.id, body, manager)
                 return await hold.done(self.endpoint(project, name), dry_run), "created"
 
             await svc._one(current.metadata.uid, lock=True)
+            await guard(
+                self.db, Endpoint, current.metadata.uid, kind="endpoint", actor=self.actor, force=force, manager=manager
+            )
             current = await self.endpoint(project, name)
             revision = self._expect(current, if_match, m.metadata.resource_version)
             merged = merge_removed(body, last_applied(current), EndpointManifest)
@@ -457,7 +492,7 @@ class ManifestService:
                 update["failover_order"] = list(order.failover_order)
             if update:
                 await svc.update(current.metadata.uid, EndpointUpdateRequest(**update), if_match=revision)
-            await self._record(Endpoint, current.metadata.uid, body)
+            await self._record(Endpoint, current.metadata.uid, body, manager)
             after = await hold.done(self.endpoint(project, name), dry_run)
         return after, _result(current, after)
 
@@ -483,6 +518,11 @@ class _Hold:
 
 LAST_APPLIED = "plane.wingsmith.dev/last-applied"
 """The body the last apply sent, as compact JSON, like `kubectl.kubernetes.io/last-applied-configuration`."""
+APPLIED_BY = "plane.wingsmith.dev/applied-by"
+APPLIED_BY_PRINCIPAL = "plane.wingsmith.dev/applied-by-principal"
+APPLIED_AT = "plane.wingsmith.dev/applied-at"
+PLANE_ANNOTATIONS = frozenset({LAST_APPLIED, APPLIED_BY, APPLIED_BY_PRINCIPAL, APPLIED_AT})
+"""Written by the plane on read, never taken from a body (ADR 0032, 0033)."""
 
 _READ_ONLY_META = ("uid", "generation", "creationTimestamp", "resourceVersion")
 
@@ -492,7 +532,7 @@ def _applied(body: dict) -> dict:
     out = {k: v for k, v in body.items() if k != "status"}
     meta = {k: v for k, v in (out.get("metadata") or {}).items() if k not in _READ_ONLY_META}
     if isinstance(meta.get("annotations"), dict):
-        meta["annotations"] = {k: v for k, v in meta["annotations"].items() if k != LAST_APPLIED}
+        meta["annotations"] = {k: v for k, v in meta["annotations"].items() if k not in PLANE_ANNOTATIONS}
     out["metadata"] = meta
     return out
 
@@ -502,11 +542,19 @@ def last_applied(m) -> dict | None:
     return json.loads(raw) if raw else None
 
 
-def with_last_applied(m, record: dict | None):
-    if record is not None:
-        m.metadata.annotations = m.metadata.annotations | {
-            LAST_APPLIED: json.dumps(record, sort_keys=True, separators=(",", ":"))
-        }
+def with_last_applied(m, state):
+    """The plane's own annotations: the last-applied record and who applied it (ADR 0032, 0033)."""
+    extra = {}
+    if state.last_applied is not None:
+        extra[LAST_APPLIED] = json.dumps(state.last_applied, sort_keys=True, separators=(",", ":"))
+    if state.applied_by is not None:
+        extra[APPLIED_BY] = state.applied_by
+        if state.applied_by_principal:
+            extra[APPLIED_BY_PRINCIPAL] = state.applied_by_principal
+        if state.applied_at is not None:
+            extra[APPLIED_AT] = state.applied_at.isoformat().replace("+00:00", "Z")
+    if extra:
+        m.metadata.annotations = m.metadata.annotations | extra
     return m
 
 
@@ -518,7 +566,7 @@ def autoscaled(current: WorkloadManifest) -> bool:
 
 def _result(before, after) -> str:
     def seen(m):
-        notes = {k: v for k, v in m.metadata.annotations.items() if k != LAST_APPLIED}
+        notes = {k: v for k, v in m.metadata.annotations.items() if k not in PLANE_ANNOTATIONS}
         return m.metadata.generation, m.metadata.labels, notes
 
     return "unchanged" if seen(before) == seen(after) else "configured"

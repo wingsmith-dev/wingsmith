@@ -7,9 +7,11 @@ from litestar import delete
 from litestar.di import Provide
 from litestar.params import Parameter
 
+from app.db.models import Workload
 from app.core.context import RequestContext
 from app.core.filters import parse_labels
 from app.core.schemas import ListResponse
+from app.core.ownership import guard
 
 from .depends import workload_svc_generator
 from .schemas import WorkloadSchema
@@ -156,8 +158,13 @@ class WorkloadRoutes(Controller):
         ref: str,
         data: WorkloadUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        force: bool = False,
     ) -> Response[WorkloadSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match))
+        """A workload a manifest manages (`applied_by`) is a 409 naming its manager; `?force=true`
+        takes it over first (ADR 0033)."""
+        current = await svc.get(ref)
+        await guard(context.db, Workload, current.id, kind="workload", actor=context.principal.name, force=force)
+        return Response(await svc.update(current.id, data, if_match=if_match))
 
     @delete("/{ref:str}", status_code=204)
     async def delete_workload(self, context: RequestContext, svc: WorkloadService, ref: str) -> None:

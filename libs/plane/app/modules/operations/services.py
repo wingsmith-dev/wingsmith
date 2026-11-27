@@ -14,12 +14,14 @@ from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.db.models import Cluster
+from app.db.models import Workload
 from app.db.models import Operation
 from app.db.notify import OPERATION as OPERATION_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
+from app.core.ownership import guard
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -64,6 +66,9 @@ Refused at creation with a reason, not recorded as `pending`, because a
 pending operation nothing will ever pick up reads as a stuck cluster. They stay
 named here so a listing can still filter on a type an older plane recorded.
 """
+
+UNGUARDED = frozenset({"workload.drain"})
+"""Workload operations allowed on a workload a manifest manages: a drain changes no spec (ADR 0033)."""
 
 PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.reshape", "workload.drain"})
 """Operations the plane carries out itself, instead of handing to a cluster.
@@ -276,7 +281,9 @@ class OperationService:
             raise NotFound(f"no target {data.target!r} in cluster {data.cluster!r}")
         return matches[0]
 
-    async def create(self, data: OperationCreateRequest, idempotency_key: str | None = None) -> OperationSchema:
+    async def create(
+        self, data: OperationCreateRequest, idempotency_key: str | None = None, force: bool = False
+    ) -> OperationSchema:
         """Validates the target against the type, then records the intent.
 
         The phase written here is `pending` and nothing else: the plane records
@@ -312,6 +319,9 @@ class OperationService:
             existing = await self.repo.by_idempotency_key(idempotency_key)
             if existing is not None:
                 return await self._replay(existing, fingerprint)
+
+        if prefix == WORKLOAD and data.type not in UNGUARDED:
+            await guard(self.db, Workload, target.uid, kind="workload", actor=self.actor, force=force)
 
         cluster_id = target.cluster_id
         if cluster is not None:

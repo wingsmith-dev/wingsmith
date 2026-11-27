@@ -345,14 +345,14 @@ async def test_put_workload_refuses_a_missing_or_hidden_artifact(db: AsyncSessio
         assert exc.value.detail["field"] == "spec.serving.artifact"
 
 
-async def test_put_workload_on_an_observed_workload_is_a_conflict(db: AsyncSession) -> None:
+async def test_put_workload_on_an_observed_workload_is_a_422(db: AsyncSession) -> None:
     _, _, _, deployment = await a_deployment(db)
     await db.execute(Deployment.__table__.update().where(Deployment.uid == deployment.id).values(authority="observed"))
     await db.commit()
     db.expire_all()
     svc = ManifestService(db)
     body = _wire(await svc.workload("search", "gpt-oss-prod"))
-    with pytest.raises(Conflict):
+    with pytest.raises(Invalid):
         await svc.put_workload("search", "gpt-oss-prod", body)
 
 

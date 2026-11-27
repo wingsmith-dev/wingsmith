@@ -627,6 +627,9 @@ class WorkloadService:
             revision=_revision(workload),
             deployments=deployments,
             artifact_tag=artifact_tag,
+            applied_by=workload.applied_by,
+            applied_by_principal=workload.applied_by_principal,
+            applied_at=workload.applied_at,
         )
 
     def _deployment(

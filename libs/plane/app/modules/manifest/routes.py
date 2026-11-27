@@ -7,6 +7,7 @@ from litestar.di import Provide
 from litestar.params import Parameter
 
 from app.core.context import RequestContext
+from app.core.ownership import field_manager
 from app.core.exceptions import Invalid
 
 from .schemas import Scale
@@ -83,6 +84,8 @@ class ManifestRoutes(Controller):
         data: WorkloadManifest,
         if_match: str | None = Parameter(header="If-Match", default=None),
         dry_run: str | None = Parameter(query="dryRun", default=None),
+        manager: str | None = Parameter(query="fieldManager", default=None),
+        force: bool = False,
     ) -> Response[WorkloadManifest]:
         """Creates (201) or replaces (200) the workload the manifest declares (ADR 0029, 0032).
 
@@ -91,9 +94,15 @@ class ManifestRoutes(Controller):
         `configured` or `unchanged`; `?dryRun=All` returns the would-be object and keeps nothing. `If-Match` or
         `metadata.resourceVersion` makes it conditional (409 when stale); neither is
         last-write-wins. A changed immutable field is a 422 naming it.
+
+        `?fieldManager=` names who applies (default `wings-cli`, ADR 0033). An object another
+        manager applied is a 409 naming it unless `?force=true`, which takes it over. An observed
+        workload is a 422: adopt it first.
         """
         dry = _dry_run(dry_run)
-        m, result = await svc.put_workload(project, name, await request.json(), if_match, dry)
+        m, result = await svc.put_workload(
+            project, name, await request.json(), if_match, dry, manager=field_manager(manager), force=force
+        )
         return _applied(m, result)
 
     @get("/endpoints/{project:str}/{name:str}")
@@ -112,10 +121,15 @@ class ManifestRoutes(Controller):
         data: EndpointManifest,
         if_match: str | None = Parameter(header="If-Match", default=None),
         dry_run: str | None = Parameter(query="dryRun", default=None),
+        manager: str | None = Parameter(query="fieldManager", default=None),
+        force: bool = False,
     ) -> Response[EndpointManifest]:
-        """Creates (201) or replaces (200) the endpoint the manifest declares (ADR 0029)."""
+        """Creates (201) or replaces (200) the endpoint the manifest declares (ADR 0029). Ownership
+        and `?fieldManager=` / `?force=true` as for a workload (ADR 0033)."""
         dry = _dry_run(dry_run)
-        m, result = await svc.put_endpoint(project, name, await request.json(), if_match, dry)
+        m, result = await svc.put_endpoint(
+            project, name, await request.json(), if_match, dry, manager=field_manager(manager), force=force
+        )
         return _applied(m, result)
 
     @get("/artifacts/{project:str}/{name:str}")

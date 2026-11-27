@@ -570,6 +570,11 @@ class WorkloadSchema(Struct):
     revision: str
     deployments: list[WorkloadDeploymentSchema]
     artifact_tag: str | None
+    applied_by: str | None = None
+    """The field manager that applied it last (`wings-cli` by default), or null when nothing manages
+    it. Read-only: a PATCH or operation on a managed object is a 409 unless forced (ADR 0033)."""
+    applied_by_principal: str | None = None
+    applied_at: dt.datetime | None = None
 
 
 class WorkloadPlacementNodeSchema(Struct):
