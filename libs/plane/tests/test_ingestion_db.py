@@ -1359,3 +1359,30 @@ async def test_another_workloads_download_stays_out_of_this_ones_timeline(sessio
         kinds = [row[0].type for row in result.all()]
 
     assert "cache.absent" not in kinds
+
+
+async def _workload_changes(sessions, after: int) -> list[str]:
+    rows = await fetch(
+        sessions,
+        "SELECT op FROM change_log WHERE kind = 'Workload' AND uid = :uid AND seq > :after ORDER BY seq",
+        {"uid": SEEDED_WORKLOAD, "after": after},
+    )
+    return [r.op for r in rows]
+
+
+async def test_a_replica_ready_flip_logs_a_change_on_its_workload_and_a_repeat_does_not(sessions, cluster) -> None:
+    """Ready is read from serving, so a replica flipping ready is what wakes the watch and the
+    member cluster's custom resource (ADR 0042); a frame repeating the same readiness is not."""
+    await apply_supply(DatabaseSink(sessions))
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    head = (await fetch(sessions, "SELECT coalesce(max(seq), 0) AS s FROM change_log"))[0].s
+
+    await sink.apply_observed(observed("replica.observed", deployment_id=DEPLOYMENT, ready=True))
+    assert await _workload_changes(sessions, head) == ["MODIFIED"]
+
+    await sink.apply_observed(observed("replica.observed", deployment_id=DEPLOYMENT, ready=True))
+    assert await _workload_changes(sessions, head) == ["MODIFIED"]
+
+    await sink.apply_observed(observed("replica.observed", deployment_id=DEPLOYMENT, ready=False, phase="starting"))
+    assert await _workload_changes(sessions, head) == ["MODIFIED", "MODIFIED"]

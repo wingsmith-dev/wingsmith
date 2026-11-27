@@ -151,6 +151,19 @@ def test_an_enrolment_token_is_refused_on_every_route(client):
     assert statuses == {401}
 
 
+def test_a_cluster_credential_cannot_reach_the_manifest_routes(client):
+    """Clusters declare over the hub, which derives the manager (ADR 0042); over HTTP an enrolment
+    token names nobody, and an operator principal is refused by the policy on every manifest route."""
+    manifest = [(method, path) for method, path in PROTECTED if path.startswith("/v1/manifests")]
+    assert {"PUT", "DELETE", "GET"} <= {method for method, _ in manifest}
+    token, _ = AuthManager.mint_enrolment_token()
+    assert {_call(client, method, path, token).status_code for method, path in manifest} == {401}
+    operator = AuthManager.operator_principal(cluster_uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa", cluster_name="alpha")
+    for method, path in manifest:
+        with pytest.raises(Forbidden):
+            authorize(operator, method, _template(path))
+
+
 def test_a_handler_that_never_asks_for_context_is_still_authenticated():
     """Authorization is not opt-in: leaving `context` out of a signature makes nothing public."""
 
