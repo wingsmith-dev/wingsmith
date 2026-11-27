@@ -12,7 +12,10 @@ so placement refuses container workloads there with `cluster_runtime`.
 ## Requirements
 
 - Linux, x86_64 or arm64, with glibc 2.28 or later (RHEL/Rocky 8+, Debian 10+, Ubuntu 20.04+) and
-  the NVIDIA driver installed (`nvidia-smi` works).
+  the NVIDIA driver installed (`nvidia-smi` works). The `nvidia-uvm` module must be loaded at
+  boot: the unit sets `NoNewPrivileges`, so the agent cannot load it through `nvidia-modprobe`.
+  `echo nvidia-uvm | sudo tee /etc/modules-load.d/nvidia-uvm.conf` and `sudo modprobe nvidia-uvm`
+  do it.
 - systemd.
 - Docker, to serve (see [Prerequisites](#prerequisites)); a supply-only host does not need it.
 - Outbound access to the hub's `wss://` URL.
@@ -82,12 +85,13 @@ rootful nor rootless Podman is tested yet.
 
 ## Upgrade
 
-Install the newer package over the old one and restart the agent:
+Install the newer package over the old one:
 
 ```sh
 sudo apt install ./wingsmith-host_${NEW}_${ARCH}.deb   # or dnf install ./wingsmith-host-….rpm
-sudo systemctl restart wingsmith-host
 ```
+
+If the agent was running, the package stops it, fixes ownership of its state and starts it again.
 
 The package keeps `/etc/wingsmith/host.json`, the token and `/var/lib/wingsmith`. Replica
 containers keep running and serving through the restart: they belong to Docker, and the agent
