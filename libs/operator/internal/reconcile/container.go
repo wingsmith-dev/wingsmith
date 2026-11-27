@@ -23,6 +23,7 @@ import (
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;create;update;patch;delete
 
 var (
 	deploymentGVK = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"}
@@ -58,6 +59,11 @@ func (b containerRenderer) Apply(ctx context.Context, d backend.Desired) (backen
 			return backend.Applied{}, fmt.Errorf("convert %s: %w", objs.Deployment.Name, err)
 		}
 		obj := &unstructured.Unstructured{Object: m}
+		render.Owned(obj, &owner, v1alpha1.GroupVersion.WithKind("SyncedResource"))
+		rendered = append(rendered, obj)
+	}
+	if objs.PodMonitor != nil {
+		obj := &unstructured.Unstructured{Object: objs.PodMonitor}
 		render.Owned(obj, &owner, v1alpha1.GroupVersion.WithKind("SyncedResource"))
 		rendered = append(rendered, obj)
 	}
@@ -135,7 +141,11 @@ func (b containerRenderer) Delete(ctx context.Context, deploymentID string) erro
 
 func (b containerRenderer) remove(ctx context.Context, id, keep string) error {
 	r := b.Reconciler
-	for _, gvk := range []schema.GroupVersionKind{deploymentGVK, serviceGVK} {
+	kinds := []schema.GroupVersionKind{deploymentGVK, serviceGVK}
+	if r.Render.PodMonitorEnabled {
+		kinds = append(kinds, render.PodMonitorGVK)
+	}
+	for _, gvk := range kinds {
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
 		err := r.Client.List(ctx, list,

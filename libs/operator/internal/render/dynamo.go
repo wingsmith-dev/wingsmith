@@ -136,6 +136,9 @@ type Options struct {
 	// default, a container image must be pinned by digest whatever the plane allows.
 	ContainerImageTagsAllowed bool
 
+	// PodMonitorEnabled renders a PodMonitor for a container worker that declares metrics.
+	PodMonitorEnabled bool
+
 	// FrontendGlobalNamespace sets globalDynamoNamespace on every component of the graph, the
 	// workers as well as the frontend: a frontend in a narrower namespace than its workers would
 	// discover none of them. Nil means true, the shared Dynamo namespace. Only read when

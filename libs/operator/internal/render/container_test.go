@@ -195,3 +195,52 @@ func TestContainerDefaultReadinessFollowsTheProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestContainerMetricsAreAnnotatedForScraping(t *testing.T) {
+	objs, err := Container(containerInputs(), containerOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := objs.Deployment.Spec.Template.Annotations
+	want := map[string]string{"prometheus.io/scrape": "true", "prometheus.io/path": "/metrics", "prometheus.io/port": "8000"}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("annotation %s = %q, want %q", k, got[k], v)
+		}
+	}
+	if objs.PodMonitor != nil {
+		t.Error("a PodMonitor rendered without PodMonitorEnabled")
+	}
+
+	in := containerInputs()
+	in.Deployment.Serving.Container.Metrics = nil
+	objs, err = Container(in, containerOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := objs.Deployment.Spec.Template.Annotations["prometheus.io/scrape"]; ok {
+		t.Error("a worker without metrics is annotated for scraping")
+	}
+}
+
+func TestContainerPodMonitorBehindTheFlag(t *testing.T) {
+	opts := containerOptions()
+	opts.PodMonitorEnabled = true
+	objs, err := Container(containerInputs(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pm := objs.PodMonitor
+	if pm == nil || pm["kind"] != "PodMonitor" || pm["apiVersion"] != "monitoring.coreos.com/v1" {
+		t.Fatalf("PodMonitor = %v", pm)
+	}
+	spec := pm["spec"].(map[string]any)
+	ep := spec["podMetricsEndpoints"].([]any)[0].(map[string]any)
+	if ep["port"] != "http" || ep["path"] != "/metrics" {
+		t.Errorf("endpoint = %v", ep)
+	}
+	sel := spec["selector"].(map[string]any)["matchLabels"].(map[string]any)
+	if sel[deploymentIDLabel] != containerInputs().Deployment.DeploymentID {
+		t.Errorf("selector = %v", sel)
+	}
+}

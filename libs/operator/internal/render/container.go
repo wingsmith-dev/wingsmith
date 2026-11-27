@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/wingsmith-dev/wingsmith/libs/operator/internal/wire"
@@ -43,7 +44,14 @@ const (
 type ContainerObjects struct {
 	Deployment *appsv1.Deployment
 	Service    *corev1.Service
+	// PodMonitor is a monitoring.coreos.com/v1 PodMonitor, nil unless Options.PodMonitorEnabled
+	// and the worker declares metrics. Unstructured so the operator needs no prometheus-operator
+	// module.
+	PodMonitor map[string]any
 }
+
+// PodMonitorGVK is the prometheus-operator kind a container worker's metrics are declared with.
+var PodMonitorGVK = schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "PodMonitor"}
 
 // containerLabels are the ownership labels plus the runtime and role, on the Deployment, its pod
 // template and the Service alike.
@@ -191,7 +199,32 @@ func Container(in Inputs, opts Options) (ContainerObjects, error) {
 			}},
 		},
 	}
-	return ContainerObjects{Deployment: deployment, Service: service}, nil
+	out := ContainerObjects{Deployment: deployment, Service: service}
+	if m := c.Metrics; m != nil && opts.PodMonitorEnabled {
+		selector := map[string]any{}
+		for k, v := range containerSelector(in) {
+			selector[k] = v
+		}
+		meta := map[string]any{"name": name, "namespace": opts.Namespace, "labels": stringMap(labels), "annotations": stringMap(inputAnnotations(in))}
+		out.PodMonitor = map[string]any{
+			"apiVersion": PodMonitorGVK.GroupVersion().String(),
+			"kind":       PodMonitorGVK.Kind,
+			"metadata":   meta,
+			"spec": map[string]any{
+				"selector":            map[string]any{"matchLabels": selector},
+				"podMetricsEndpoints": []any{map[string]any{"port": m.Port, "path": m.Path}},
+			},
+		}
+	}
+	return out, nil
+}
+
+func stringMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // inputAnnotations are the inputs the render was built from, compared before any write, the same

@@ -161,6 +161,10 @@ type Config struct {
 	// ContainerImageTagsAllowed lets container runtime images be named by tag instead of digest.
 	ContainerImageTagsAllowed bool
 
+	// PodMonitorEnabled renders a monitoring.coreos.com/v1 PodMonitor beside each container
+	// worker that declares metrics. The chart sets it only when the CRD is served.
+	PodMonitorEnabled bool
+
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
 	// deployment's engine runtime image. Empty for public images.
 	EnginePullSecrets []string
@@ -290,6 +294,7 @@ func Load() (*Config, error) {
 		EnginePullSecrets:         envList("WINGSMITH_ENGINE_PULL_SECRETS"),
 		AllowedImagePrefixes:      envList("WINGSMITH_ALLOWED_IMAGE_PREFIXES"),
 		ContainerImageTagsAllowed: l.bool("WINGSMITH_CONTAINER_IMAGE_TAGS_ALLOWED", false),
+		PodMonitorEnabled:         l.bool("WINGSMITH_POD_MONITOR_ENABLED", false),
 
 		FrontendEnabled:                l.bool("WINGSMITH_FRONTEND_ENABLED", false),
 		FrontendImage:                  env("WINGSMITH_FRONTEND_IMAGE", ""),

@@ -136,6 +136,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		EnginePullSecrets:         cfg.EnginePullSecrets,
 		ImagePrefixes:             cfg.AllowedImagePrefixes,
 		ContainerImageTagsAllowed: cfg.ContainerImageTagsAllowed,
+		PodMonitorEnabled:         cfg.PodMonitorEnabled,
 
 		FrontendEnabled:         cfg.FrontendEnabled,
 		FrontendImage:           cfg.FrontendImage,
