@@ -70,3 +70,37 @@ def test_duplicate_slugs_stop_the_upgrade_by_name(scratch) -> None:
     with _connect(scratch) as conn, conn.cursor() as cur:
         cur.execute("UPDATE demand_endpoint SET slug = 'gpt-oss-b' WHERE uid = 'end_b'")
     assert _alembic(scratch, "upgrade", AFTER).returncode == 0
+
+
+def test_an_alias_equal_to_another_endpoints_slug_stops_the_upgrade_by_name(scratch) -> None:
+    assert _alembic(scratch, "upgrade", "7c2e5b9d1a46").returncode == 0
+    with _connect(scratch) as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO bind_tenant (id, uid, name, slug) VALUES (gen_random_uuid(), 'tnt_t', 't', 't') RETURNING id"
+        )
+        tenant = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO bind_project (id, uid, tenant_id, name, slug)"
+            " VALUES (gen_random_uuid(), 'prj_t', %s, 'core', 'core') RETURNING id",
+            (tenant,),
+        )
+        project = cur.fetchone()[0]
+        ids = {}
+        for uid, slug in (("end_a", "gpt-oss"), ("end_b", "other")):
+            cur.execute(
+                "INSERT INTO demand_endpoint (id, uid, project_id, name, slug)"
+                " VALUES (gen_random_uuid(), %s, %s, %s, %s) RETURNING id",
+                (uid, project, uid, slug),
+            )
+            ids[uid] = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO demand_endpoint_alias (id, endpoint_id, alias) VALUES (gen_random_uuid(), %s, 'gpt-oss')",
+            (ids["end_b"],),
+        )
+    failed = _alembic(scratch, "upgrade", "8d3f6c0e2b57")
+    assert failed.returncode != 0
+    assert "'gpt-oss': alias of end_b, slug of end_a" in failed.stderr
+
+    with _connect(scratch) as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM demand_endpoint_alias")
+    assert _alembic(scratch, "upgrade", "8d3f6c0e2b57").returncode == 0
