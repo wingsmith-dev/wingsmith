@@ -1290,7 +1290,7 @@
   },
   "ScaleSpec": {
    "additionalProperties": false,
-   "description": "The bounds `replicas` moves within. `desired` is a read-only alias of `spec.replicas`,\n    kept in v1alpha1 and dropped before beta (ADR 0024): an apply never reads it.",
+   "description": "The bounds `replicas` moves within. `desired` is a read-only alias of `spec.replicas`,\n    kept in v1alpha1 and dropped before beta (ADR 0025): an apply never reads it.",
    "properties": {
     "desired": {
      "default": 1,

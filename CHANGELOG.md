@@ -18,7 +18,7 @@ protocol can change between minor versions.
 - Workload manifests carry `spec.replicas` (`spec.scale.desired` is now a read-only alias) and an
   `Unschedulable` status condition, and `GET`/`PUT /v1/manifests/workloads/{project}/{name}/scale`
   reads and sets the replica count: spec, generation-bumping, `If-Match`-checked and audited as a
-  `workload.scale` operation; a capacity shortfall is accepted and reported (ADR 0024).
+  `workload.scale` operation; a capacity shortfall is accepted and reported (ADR 0025).
 - Workloads, endpoints and artifacts read as `plane.wingsmith.dev/v1alpha1` manifests at
   `GET /v1/manifests/{kind}/{project}/{name}` (public artifacts at `/v1/manifests/artifacts/{name}`),
   and `wings get <kind> <name> -o yaml` prints one.

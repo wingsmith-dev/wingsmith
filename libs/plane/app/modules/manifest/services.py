@@ -113,7 +113,7 @@ class ManifestService:
         return scale_view(w, owner.slug)
 
     async def put_scale(self, project: str, name: str, data: Scale, if_match: str | None = None) -> Scale:
-        """Writes `spec.replicas` as the workload's `desired_scale` (ADR 0024).
+        """Writes `spec.replicas` as the workload's `desired_scale` (ADR 0025).
 
         Spec, so it moves `generation` and honours `If-Match` (or `metadata.resourceVersion`);
         audited, so a change files a succeeded `workload.scale` operation in the same commit.

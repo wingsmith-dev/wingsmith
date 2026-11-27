@@ -1366,7 +1366,7 @@ class WorkloadService:
 
         `refuse=False` is the declarative path (`/scale`, PUT): a placement refusal keeps
         the new totals and the shares already placed, and the shortfall reads as an
-        `Unschedulable` condition on the workload's status instead of an error (ADR 0023).
+        `Unschedulable` condition on the workload's status instead of an error (ADR 0025).
         Totals that contradict each other are still refused either way.
         """
         row = await self._one(ref, lock=True)

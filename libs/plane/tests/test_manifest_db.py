@@ -119,7 +119,7 @@ async def test_an_artifact_is_reached_in_its_scope_only(db: AsyncSession) -> Non
             await svc.artifact(project, name)
 
 
-# --------------------------------------------------------------------------- /scale (ADR 0024)
+# --------------------------------------------------------------------------- /scale (ADR 0025)
 
 
 def _scale(replicas: int, resource_version: str | None = None) -> Scale:

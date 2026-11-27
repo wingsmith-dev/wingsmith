@@ -1,4 +1,4 @@
-# 0024: Scale is spec, written through a `/scale` subresource
+# 0025: Scale is spec, written through a `/scale` subresource
 
 **Status:** accepted · 2026-11-27 · amends [architecture §6.3](../architecture/README.md) ("Scaling is an operation, not a field write")
 

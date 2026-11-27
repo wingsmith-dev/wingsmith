@@ -53,7 +53,7 @@ class ManifestRoutes(Controller):
         if_match: str | None = Parameter(header="If-Match", default=None),
     ) -> Response[Scale]:
         """Sets the replica count. A shortfall is accepted and shown as `Unschedulable`;
-        a stale `If-Match` is a 409 (ADR 0024)."""
+        a stale `If-Match` is a 409 (ADR 0025)."""
         return Response(await svc.put_scale(project, name, data, if_match))
 
     @get("/endpoints/{project:str}/{name:str}")

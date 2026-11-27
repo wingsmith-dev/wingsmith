@@ -114,7 +114,7 @@ class WorkloadServingSpec(Struct, kw_only=True):
 
 class ScaleSpec(Struct, kw_only=True):
     """The bounds `replicas` moves within. `desired` is a read-only alias of `spec.replicas`,
-    kept in v1alpha1 and dropped before beta (ADR 0024): an apply never reads it."""
+    kept in v1alpha1 and dropped before beta (ADR 0025): an apply never reads it."""
 
     min: int = 1
     max: int = 1

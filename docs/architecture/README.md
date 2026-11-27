@@ -389,7 +389,7 @@ scoped to one cluster or fleet-wide. A fleet-wide quota is spent once across eve
 placement counts what the project holds and has been placed everywhere before admitting it in any
 one of them. A cluster's own quota takes precedence over a fleet-wide one in that cluster.
 
-**Scale is spec, written through `/scale`** ([ADR 0024](../decisions/0024-scale-is-spec-with-a-scale-subresource.md),
+**Scale is spec, written through `/scale`** ([ADR 0025](../decisions/0025-scale-is-spec-with-a-scale-subresource.md),
 amending "scaling is an operation, not a field write"). `spec.replicas` is declared and bumps the
 generation; a shortfall on quota reads as an `Unschedulable` condition instead of a refusal, and
 each change still files a `workload.scale` operation. `workload.pause` and `workload.drain` stay
