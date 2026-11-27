@@ -1099,6 +1099,8 @@ class Project(BaseMixin):
         DBUUID, ForeignKey("bind_priority_class.id", ondelete="SET NULL"), nullable=True
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    media_retention_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="7")
+    """How long a finished media job's output is kept before the reactor deletes it (ADR 0041)."""
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="projects", lazy="noload")
     quotas: Mapped[list[Quota]] = relationship("Quota", back_populates="project", lazy="noload")
@@ -1853,3 +1855,53 @@ class ChangeLogState(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     compacted_through: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+
+
+MEDIA_JOB_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
+
+
+class MediaJob(BaseMixin):
+    """One async media generation (ADR 0041). Run by a gateway worker under a lease; the output
+    lives in object storage at `object_key`, never in this row."""
+
+    __tablename__ = "media_job"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_media_job_idempotency"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="ck_media_job_status"
+        ),
+        Index("ix_media_job_claim", "status", "lease_expires_at"),
+        Index("ix_media_job_retention", "retention_until"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    tenant_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    endpoint_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    path: Mapped[str] = mapped_column(String(128), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    request: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="queued")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retention_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    upstream_seconds: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True)
+    units: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

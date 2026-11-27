@@ -7793,6 +7793,366 @@
         "title": "ManifestListMeta",
         "type": "object"
       },
+      "MediaJobClaimRequest": {
+        "properties": {
+          "kinds": {
+            "oneOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "worker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker"
+        ],
+        "title": "MediaJobClaimRequest",
+        "type": "object"
+      },
+      "MediaJobCompleteRequest": {
+        "properties": {
+          "content_type": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "object_key": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size_bytes": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "units": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upstream_seconds": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "worker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "worker"
+        ],
+        "title": "MediaJobCompleteRequest",
+        "type": "object"
+      },
+      "MediaJobCreateRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "request": {
+            "type": "object"
+          },
+          "tenant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "kind",
+          "model",
+          "path",
+          "request",
+          "tenant"
+        ],
+        "title": "MediaJobCreateRequest",
+        "type": "object"
+      },
+      "MediaJobHeartbeatRequest": {
+        "properties": {
+          "progress": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "worker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker"
+        ],
+        "title": "MediaJobHeartbeatRequest",
+        "type": "object"
+      },
+      "MediaJobHeartbeatSchema": {
+        "properties": {
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "lease_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cancel_requested",
+          "lease_expires_at"
+        ],
+        "title": "MediaJobHeartbeatSchema",
+        "type": "object"
+      },
+      "MediaJobSchema": {
+        "properties": {
+          "attempts": {
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "completed_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_type": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endpoint": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "object_key": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "request": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size_bytes": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "units": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upstream_seconds": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "attempts",
+          "cancel_requested",
+          "created_at",
+          "id",
+          "kind",
+          "model",
+          "path",
+          "progress",
+          "project",
+          "status",
+          "tenant"
+        ],
+        "title": "MediaJobSchema",
+        "type": "object"
+      },
       "MetricRuleSchema": {
         "properties": {
           "comparison": {
@@ -26259,6 +26619,673 @@
         "summary": "FleetSummary",
         "tags": [
           "Fleet"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs": {
+      "post": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsCreateMediaJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaJobSchema"
+                }
+              }
+            },
+            "description": "Document created, URL follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "CreateMediaJob",
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs/claim": {
+      "post": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsClaimClaimMediaJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaJobClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MediaJobSchema"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Document created, URL follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "ClaimMediaJob",
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs/{uid}": {
+      "get": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsUidGetMediaJob",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaJobSchema"
+                }
+              }
+            },
+            "description": "Request fulfilled, document follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "GetMediaJob",
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs/{uid}/cancel": {
+      "post": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsUidCancelCancelMediaJob",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "allowEmptyValue": false,
+            "allowReserved": false,
+            "deprecated": false,
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaJobSchema"
+                }
+              }
+            },
+            "description": "Document created, URL follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "CancelMediaJob",
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs/{uid}/complete": {
+      "post": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsUidCompleteCompleteMediaJob",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaJobCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaJobSchema"
+                }
+              }
+            },
+            "description": "Document created, URL follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "CompleteMediaJob",
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/v1/gateway/media-jobs/{uid}/heartbeat": {
+      "post": {
+        "deprecated": false,
+        "operationId": "V1GatewayMediaJobsUidHeartbeatHeartbeatMediaJob",
+        "parameters": [
+          {
+            "deprecated": false,
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaJobHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaJobHeartbeatSchema"
+                }
+              }
+            },
+            "description": "Document created, URL follows",
+            "headers": {
+              "Content-Security-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "deprecated": false,
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Validation Exception",
+                  "examples": [
+                    {
+                      "detail": "Bad Request",
+                      "extra": {},
+                      "status_code": 400
+                    }
+                  ],
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object",
+                        "array"
+                      ]
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "status_code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad request syntax or unsupported method"
+          }
+        },
+        "summary": "HeartbeatMediaJob",
+        "tags": [
+          "Gateway"
         ]
       }
     },

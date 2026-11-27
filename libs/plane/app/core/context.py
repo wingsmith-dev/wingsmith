@@ -89,6 +89,9 @@ GATEWAY_ROUTES = frozenset(
 """Everything the gateway principal may call: the tenant table, the routing table,
 and agent-token verification for its tunnel listener."""
 
+GATEWAY_PREFIXES = ("/v1/gateway/media-jobs",)
+"""Prefixes the gateway principal may call with any method: the async media job queue (ADR 0041)."""
+
 SERVICE_ONLY = ("/v1/gateway", "/v1/clusters/tunnel-auth")
 """Routes built for the gateway that an admin session is refused on.
 
@@ -139,7 +142,7 @@ def authorize(principal: Principal, method: str, route: str) -> None:
             return
         raise Forbidden("this credential is scoped to its own serving view")
     if principal.kind == GATEWAY:
-        if (method, route) in GATEWAY_ROUTES:
+        if (method, route) in GATEWAY_ROUTES or any(_within(route, prefix) for prefix in GATEWAY_PREFIXES):
             return
         raise Forbidden("the gateway's service credential does not reach this route")
     raise Forbidden("this credential does not reach the HTTP API")

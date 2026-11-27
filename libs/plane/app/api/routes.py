@@ -35,6 +35,7 @@ from app.modules.workloads.routes import WorkloadRoutes
 from app.modules.benchmarks.routes import BenchmarkRoutes
 from app.modules.components.routes import ComponentRoutes
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
+from app.modules.media_jobs.routes import MediaJobRoutes
 from app.modules.operations.routes import OperationRoutes
 from app.modules.allocations.routes import AllocationRoutes
 from app.modules.credentials.routes import CredentialRoutes
@@ -64,6 +65,7 @@ V1_ROUTES = [
     ChangeRoutes,
     TenantRoutes,
     GatewayRoutes,
+    MediaJobRoutes,
     ProjectRoutes,
     CredentialRoutes,
     QuotaRoutes,

@@ -47,6 +47,8 @@ from app.db.models import Cluster
 from app.db.models import ReactorState
 from app.db.models import NotificationChannel
 from app.utils.tasks import cancelled
+from app.integrations.objectstore import media_store
+from app.modules.media_jobs.services import MediaJobService
 
 from . import alerts as alert_store
 from . import notify
@@ -430,6 +432,11 @@ async def _repair(sessions: async_sessionmaker[AsyncSession], moment: dt.datetim
             await changes.compact(db, dt.timedelta(seconds=settings.CHANGE_LOG_RETENTION_SECONDS))
         except Exception:
             logger.warning("reactor.changes.compact_failed", exc_info=True)
+    async with sessions() as db:
+        try:
+            await MediaJobService(db).collect_expired(media_store(), moment)
+        except Exception:
+            logger.warning("reactor.media_jobs.collect_failed", exc_info=True)
 
 
 async def reactor_loop(instance: str, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:

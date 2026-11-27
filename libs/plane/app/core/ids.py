@@ -33,6 +33,7 @@ ALERT_THRESHOLD = "alt_"
 SERVING_QUOTA = "sqt_"
 TENANT_TOKEN = "tkn_"
 TENANT_API_KEY = "tak_"
+MEDIA_JOB = "mjb_"
 
 PREFIXES = frozenset(
     {
@@ -66,6 +67,7 @@ PREFIXES = frozenset(
         SERVING_QUOTA,
         TENANT_TOKEN,
         TENANT_API_KEY,
+        MEDIA_JOB,
     }
 )
 

@@ -174,8 +174,8 @@ class Settings:
     """Bearer token the inference gateway presents to the plane API.
 
     It resolves to the `gateway` principal, which may read the routing table and
-    the tenant table and verify an agent's enrolment token, and nothing else: no
-    admin rights, no writes. Generate a long random value and give the same one
+    the tenant table, verify an agent's enrolment token and run media jobs
+    (`/v1/gateway/media-jobs`), and nothing else: no admin rights. Generate a long random value and give the same one
     to the gateway as `WINGSMITH_GATEWAY_SERVICE_TOKEN`.
 
     Unset outside `local` means no gateway principal resolves at all, which
@@ -186,6 +186,22 @@ class Settings:
     Cluster operators never use this or any other shared token. Each cluster
     holds its own enrolment token, minted by the plane at registration.
     """
+
+    MEDIA_JOB_LEASE_SECONDS: int = 60
+    """How long a gateway worker holds a media job between heartbeats before it is requeued (ADR 0041)."""
+
+    MEDIA_JOB_MAX_ATTEMPTS: int = 3
+    """Claims a media job gets before an expired lease fails it instead of requeueing it."""
+
+    MEDIA_S3_ENDPOINT: str = ""
+    """S3-compatible endpoint holding media job outputs, such as `https://s3.eu-west-1.amazonaws.com`
+    or a MinIO URL. The plane only deletes expired objects there; the gateway writes and signs.
+    Empty turns retention into row deletion only."""
+
+    MEDIA_S3_BUCKET: str = ""
+    MEDIA_S3_REGION: str = "us-east-1"
+    MEDIA_S3_ACCESS_KEY_ID: str = ""
+    MEDIA_S3_SECRET_ACCESS_KEY: str = ""
 
     HF_TOKEN: str = ""
     """Token presented to the HuggingFace Hub when resolving a model slug.

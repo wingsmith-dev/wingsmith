@@ -185,6 +185,12 @@ response follows are in [`API.md`](API.md).
 
 | Method | Path | What |
 |---|---|---|
+| POST | `/v1/gateway/media-jobs` | CreateMediaJob |
+| POST | `/v1/gateway/media-jobs/claim` | ClaimMediaJob |
+| GET | `/v1/gateway/media-jobs/{uid}` | GetMediaJob |
+| POST | `/v1/gateway/media-jobs/{uid}/cancel` | CancelMediaJob |
+| POST | `/v1/gateway/media-jobs/{uid}/complete` | CompleteMediaJob |
+| POST | `/v1/gateway/media-jobs/{uid}/heartbeat` | HeartbeatMediaJob |
 | GET | `/v1/gateway/tenants` | ResolveTenants |
 
 ## `/v1/manifests`
